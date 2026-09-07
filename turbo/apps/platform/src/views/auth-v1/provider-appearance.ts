@@ -6,17 +6,30 @@ type Appearance = NonNullable<ClerkProviderProps["appearance"]>;
 // object. Resolving the full element map through `Appearance["elements"]`
 // causes TS2590 "union type too complex" because `Appearance` is a union of
 // all per-component themes (SignIn, UserProfile, UserButton, …). We type the
-// helper outputs against this minimal local shape and let the final return
-// assemble into `Appearance`.
+// legacy helper outputs against this minimal local shape and let the final
+// return assemble into `Appearance`.
 type ElementStyle = string | Record<string, unknown>;
 type Elements = Record<string, ElementStyle>;
 
 /**
- * Shared appearance inherited by Clerk's hosted v1 comparison routes. All
- * colors resolve through the platform design tokens and track light/dark
- * themes through the `data-theme` attribute on `<html>`.
+ * The current sign-in inherits only Clerk's cascade layer and semantic design
+ * tokens. Its component-level appearance owns the visual rules, so a future
+ * Clerk surface cannot accidentally inherit an unrelated account or navbar
+ * override.
  */
 export function getAuthV1ProviderAppearance(): Appearance {
+  return {
+    cssLayerName: "clerk",
+    variables: clerkVariables(),
+  };
+}
+
+/**
+ * Sign-up remains on the restored v1 presentation until its own migration.
+ * Keep its broad legacy element map isolated from the token-only sign-in
+ * provider so this transition does not restyle the neighboring route.
+ */
+export function getAuthV1LegacyProviderAppearance(): Appearance {
   const elements: Elements = {
     ...cardElements(),
     ...navbarElements(),
@@ -28,7 +41,7 @@ export function getAuthV1ProviderAppearance(): Appearance {
   };
   return {
     cssLayerName: "clerk",
-    variables: clerkVariables(),
+    variables: legacyClerkVariables(),
     elements,
   };
 }
@@ -47,13 +60,18 @@ function clerkVariables(): Record<string, string> {
     colorBorder: "hsl(var(--border))",
     colorRing: "hsl(var(--ring))",
     colorDanger: "hsl(var(--destructive))",
+    fontFamily: "var(--font-family-sans)",
+    fontSize: "var(--text-sm)",
+    borderRadius: "var(--radius-lg)",
+  };
+}
+
+function legacyClerkVariables(): Record<string, string> {
+  return {
+    ...clerkVariables(),
     colorSuccess: "hsl(142 71% 45%)",
     colorWarning: "hsl(38 92% 50%)",
     colorShimmer: "hsl(var(--muted))",
-    fontFamily:
-      "var(--font-family-sans, 'Noto Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)",
-    fontSize: "0.875rem",
-    borderRadius: "0.5rem",
     spacing: "1rem",
   };
 }

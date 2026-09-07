@@ -2,20 +2,14 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
+const cardClassName =
+  "overflow-hidden rounded-xl border border-border bg-card text-card-foreground";
+
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "rounded-xl border border-border bg-card text-card-foreground overflow-hidden",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <div ref={ref} className={cn(cardClassName, className)} {...props} />;
 });
 Card.displayName = "Card";
 
@@ -93,4 +87,5 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
+  cardClassName,
 };

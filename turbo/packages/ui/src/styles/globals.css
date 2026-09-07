@@ -147,6 +147,13 @@
   --font-size-sm: 14px;
   --font-size-xs: 12px;
 
+  /* Auth actions and compact status badges share these Figma text roles
+   * across app-owned and provider-owned surfaces. */
+  --text-action: 13px;
+  --text-action--line-height: 17px;
+  --text-badge: 10px;
+  --text-badge--line-height: 1;
+
   /* Line Height (from Figma) */
   --line-height-8: 32px;
   --line-height-7: 28px;
@@ -268,6 +275,18 @@
   --color-segment-selected: hsl(var(--segment-selected));
   --color-segment-track: hsl(var(--segment-track));
   --shadow-segment-selected: var(--segment-selected-shadow);
+}
+
+@layer utilities {
+  .okou-auth-action-text {
+    font-size: var(--text-action);
+    line-height: var(--text-action--line-height);
+  }
+
+  .okou-auth-badge-text {
+    font-size: var(--text-badge);
+    line-height: var(--text-badge--line-height);
+  }
 }
 
 @layer base {

@@ -1,5 +1,7 @@
-export const AUTH_V2_PRIMARY_ACTION_CLASS =
-  "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed";
+import {
+  AUTH_LINK_ACTION_CLASS,
+  AUTH_PRIMARY_ACTION_CLASS,
+} from "../auth/auth-action-styles.ts";
 
-export const AUTH_V2_LINK_ACTION_CLASS =
-  "text-brand-text hover:text-brand-text-hover active:text-brand-text-hover";
+export const AUTH_V2_PRIMARY_ACTION_CLASS = AUTH_PRIMARY_ACTION_CLASS;
+export const AUTH_V2_LINK_ACTION_CLASS = AUTH_LINK_ACTION_CLASS;

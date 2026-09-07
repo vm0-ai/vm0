@@ -14,14 +14,22 @@ import {
   resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
 import { getClerkLocalization } from "./clerk-localization.ts";
-import { getAuthV1ProviderAppearance } from "./provider-appearance.ts";
+import {
+  getAuthV1LegacyProviderAppearance,
+  getAuthV1ProviderAppearance,
+} from "./provider-appearance.ts";
 
 interface ClerkProviderProps {
   readonly children: ReactNode;
   readonly clerk: BrowserClerk;
+  readonly mode: "sign-in" | "sign-up";
 }
 
-export function AuthV1ClerkProvider({ children, clerk }: ClerkProviderProps) {
+export function AuthV1ClerkProvider({
+  children,
+  clerk,
+  mode,
+}: ClerkProviderProps) {
   const { t } = useTranslation();
   const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
@@ -36,7 +44,10 @@ export function AuthV1ClerkProvider({ children, clerk }: ClerkProviderProps) {
     Clerk: clerk,
     afterSignOutUrl: resolveAppAuthUrl("/v1/sign-in"),
     allowedRedirectOrigins,
-    appearance: getAuthV1ProviderAppearance(),
+    appearance:
+      mode === "sign-in"
+        ? getAuthV1ProviderAppearance()
+        : getAuthV1LegacyProviderAppearance(),
     localization: getClerkLocalization(
       clerkBrandName,
       locale,

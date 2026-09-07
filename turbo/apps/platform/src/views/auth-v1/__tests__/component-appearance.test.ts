@@ -1,3 +1,4 @@
+import { buttonVariants, cardClassName, inputClassName } from "@okouai/ui";
 import { expect, test } from "vitest";
 
 import {
@@ -53,10 +54,19 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
     socialButtonsPlacement: "top",
     socialButtonsVariant: "blockButton",
   });
-  expect(elementClasses(appearance, "cardBox")).toContain("rounded-[12px]");
+  expect(elementClasses(appearance, "cardBox")).toContain(cardClassName);
   expect(elementClasses(appearance, "formFieldInput")).toContain(
-    "border-[hsl(var(--gray-400))]",
+    inputClassName,
   );
+  expect(elementClasses(appearance, "formButtonPrimary")).toContain(
+    buttonVariants({ size: "default", variant: "default" }),
+  );
+  expect(elementClasses(appearance, "formButtonPrimary")).toContain(
+    "okou-auth-action-text",
+  );
+  expect(
+    elementClasses(appearance, "lastAuthenticationStrategyBadge"),
+  ).toContain("okou-auth-badge-text");
   expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
     platformOkouWordmarkDarkImg,
   );
@@ -80,8 +90,18 @@ test("Hosted sign-in selects the theme-aware Okou logo", () => {
   ).toContain(platformOkouWordmarkLightImg);
 });
 
-test("The provider places Clerk styles below Tailwind utilities", () => {
-  expect(getAuthV1ProviderAppearance().cssLayerName).toBe("clerk");
+test("The sign-in provider exposes only design tokens below Tailwind utilities", () => {
+  const appearance = getAuthV1ProviderAppearance();
+
+  expect(appearance.cssLayerName).toBe("clerk");
+  expect(appearance).not.toHaveProperty("elements");
+  expect(appearance.variables).toMatchObject({
+    borderRadius: "var(--radius-lg)",
+    colorBackground: "hsl(var(--card))",
+    colorPrimary: "hsl(var(--primary))",
+    fontFamily: "var(--font-family-sans)",
+    fontSize: "var(--text-sm)",
+  });
 });
 
 test("Sign-up remains on the legacy appearance during the sign-in migration", () => {

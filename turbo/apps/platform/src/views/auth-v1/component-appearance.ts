@@ -1,15 +1,40 @@
+import { buttonVariants, cardClassName, cn, inputClassName } from "@okouai/ui";
 import type { SignIn } from "@clerk/react";
 import type { ComponentProps } from "react";
-import type { BrandName } from "../../signals/branding.ts";
-import type { AuthBrandContext } from "../../signals/auth.ts";
+
 import {
   platformOkouWordmarkDarkImg,
   platformOkouWordmarkLightImg,
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
+import type { AuthBrandContext } from "../../signals/auth.ts";
+import type { BrandName } from "../../signals/branding.ts";
+import { AUTH_LINK_ACTION_CLASS } from "../auth/auth-action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
+
+const authV1OutlineActionClass = cn(
+  buttonVariants({ size: "default", variant: "outline" }),
+  "w-full shadow-none",
+);
+const authV1SocialActionClass = cn(authV1OutlineActionClass, "bg-transparent");
+const authV1PrimaryActionClass = cn(
+  buttonVariants({ size: "default", variant: "default" }),
+  "w-full okou-auth-action-text shadow-none",
+);
+const authV1OtpInputClass = cn(
+  inputClassName,
+  "w-9 px-0 text-center text-base font-medium uppercase",
+);
+const authV1PasswordToggleClass = cn(
+  buttonVariants({ size: "icon", variant: "ghost" }),
+  "text-foreground",
+);
+const authV1IdentityPreviewEditClass = buttonVariants({
+  size: "icon-2xs",
+  variant: "quiet",
+});
 
 // Clerk always adds `crossorigin="anonymous"` to its logo image. The public
 // static asset hosts intentionally omit CORS headers, so render the real brand
@@ -46,7 +71,6 @@ export function getAuthV1SignInAppearance(
   authBrand: AuthBrandContext,
 ): ClerkAppearance {
   const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
-  const logoWidth = authBrand.brandName === "Okou" ? "4.75rem" : "4.167rem";
 
   return {
     theme: "simple",
@@ -60,8 +84,7 @@ export function getAuthV1SignInAppearance(
     },
     elements: {
       rootBox: "mx-auto w-full max-w-[25rem]",
-      cardBox:
-        "w-full overflow-hidden rounded-[12px] border border-border bg-card shadow-none",
+      cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
       header: "items-center p-0 text-center",
       logoBox: {
@@ -70,10 +93,10 @@ export function getAuthV1SignInAppearance(
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
         backgroundSize: "contain",
-        height: "1.25rem",
-        marginBottom: "1.25rem",
+        height: "calc(var(--spacing) * 5)",
+        marginBottom: "calc(var(--spacing) * 5)",
         padding: 0,
-        width: logoWidth,
+        width: "fit-content",
       },
       logoImage: "block h-full w-auto opacity-0",
       headerTitle: "text-lg font-medium leading-7 text-foreground",
@@ -81,11 +104,10 @@ export function getAuthV1SignInAppearance(
       main: "m-0 gap-6",
       socialButtonsRoot: "m-0",
       socialButtons: "grid grid-cols-1 gap-2 sm:grid-cols-2",
-      socialButtonsBlockButton:
-        "h-9 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-transparent text-sm font-medium text-foreground shadow-none transition-colors hover:bg-state-hover active:bg-state-pressed",
+      socialButtonsBlockButton: authV1SocialActionClass,
       socialButtonsBlockButtonText: "text-foreground",
       lastAuthenticationStrategyBadge:
-        "rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm",
+        "rounded-md border border-border bg-card px-1.5 py-0.5 okou-auth-badge-text font-medium text-muted-foreground shadow-sm",
       dividerRow: "m-0 gap-4",
       dividerLine: "bg-border",
       dividerText: "text-sm text-muted-foreground",
@@ -93,17 +115,13 @@ export function getAuthV1SignInAppearance(
       formFieldRow: "gap-2",
       formField: "gap-2",
       formFieldLabel: "text-sm font-medium leading-5 text-foreground",
-      formFieldInput:
-        "h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground shadow-none outline-none transition-colors placeholder:text-sm placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10",
+      formFieldInput: cn(inputClassName, "shadow-none"),
       formFieldInput__password:
         "font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal",
-      formFieldInputShowPasswordButton:
-        "rounded-md border-0 bg-transparent text-muted-foreground shadow-none transition-colors hover:bg-state-hover hover:text-foreground active:bg-state-pressed",
+      formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",
-      formButtonPrimary:
-        "h-9 w-full rounded-lg bg-primary text-[13px] font-medium text-primary-foreground shadow-none transition-colors hover:bg-primary-hover active:bg-primary-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-      formButtonReset:
-        "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
+      formButtonPrimary: authV1PrimaryActionClass,
+      formButtonReset: AUTH_LINK_ACTION_CLASS,
       formFieldErrorText: "text-sm text-destructive",
       formFieldHintText: "text-sm text-muted-foreground",
       formFieldInfoText: "text-sm text-muted-foreground",
@@ -111,34 +129,32 @@ export function getAuthV1SignInAppearance(
       alertText: "text-sm text-foreground",
       identityPreview: "rounded-lg border border-border bg-muted/50",
       identityPreviewText: "text-foreground",
-      identityPreviewEditButton:
-        "rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground active:bg-state-pressed",
-      formResendCodeLink:
-        "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
+      identityPreviewEditButton: authV1IdentityPreviewEditClass,
+      formResendCodeLink: AUTH_LINK_ACTION_CLASS,
       otpCodeFieldInputs: "gap-2",
-      otpCodeFieldInput:
-        "h-9 w-9 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input text-center text-base font-medium uppercase text-foreground outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/10",
+      otpCodeFieldInput: authV1OtpInputClass,
       alternativeMethods: "gap-2",
-      alternativeMethodsBlockButton:
-        "h-9 w-full justify-between rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-background px-3 text-sm text-foreground shadow-none transition-colors hover:bg-state-hover active:bg-state-pressed",
+      alternativeMethodsBlockButton: cn(
+        authV1OutlineActionClass,
+        "justify-between",
+      ),
       alternativeMethodsBlockButtonText: "text-foreground",
-      backLink:
-        "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
+      backLink: AUTH_LINK_ACTION_CLASS,
       footer: "m-0 gap-0 bg-card p-0",
       footerAction: "text-sm",
-      footerAction__signIn:
-        "w-full justify-center border-t border-border px-10 py-4 text-brand-text transition-colors hover:text-brand-text-hover",
+      footerAction__signIn: cn(
+        "w-full justify-center border-t border-border px-10 py-4",
+        AUTH_LINK_ACTION_CLASS,
+      ),
       footerActionText: "text-foreground",
       footerActionLink:
         "text-inherit no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-      footerAction__usePasskey:
-        "flex h-9 w-full items-center justify-center rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-[13px] font-medium text-foreground transition-colors hover:bg-state-hover hover:text-foreground active:bg-state-pressed",
+      footerAction__usePasskey: authV1OutlineActionClass,
       footerPages: "border-t border-border bg-card",
-      footerPagesLink:
-        "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
+      footerPagesLink: AUTH_LINK_ACTION_CLASS,
       passkeyIcon__firstFactor: "size-4",
       formFieldCheckboxInput:
-        "size-4 shrink-0 rounded-[3px] border-[1.5px] border-foreground/35 bg-transparent shadow-none accent-primary",
+        "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary",
       formFieldCheckboxLabel: "text-sm text-foreground",
     },
   };

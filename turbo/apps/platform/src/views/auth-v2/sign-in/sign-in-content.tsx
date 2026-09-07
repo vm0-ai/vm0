@@ -106,7 +106,7 @@ function OAuthFactorButton({
           : copy.googleProvider}
       </FactorActionContent>
       {factor.lastUsed ? (
-        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm">
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 okou-auth-badge-text font-medium text-muted-foreground shadow-sm">
           {copy.lastUsed}
         </span>
       ) : null}
@@ -379,7 +379,7 @@ function IdentifierStep({
           <Button
             aria-busy={selectingFactorId === passkeyFactor.id}
             aria-label={signInFactorLabel(passkeyFactor, copy)}
-            className="w-full text-[13px]"
+            className="w-full okou-auth-action-text"
             disabled={operationPending}
             type="button"
             variant="outline"
@@ -606,7 +606,7 @@ function PasswordStep({
             resetFactor ? (
               <Button
                 className={cn(
-                  "h-auto p-0 text-[13px] leading-[17px]",
+                  "h-auto p-0 okou-auth-action-text",
                   AUTH_V2_LINK_ACTION_CLASS,
                 )}
                 disabled={submitting}
@@ -675,7 +675,10 @@ function PasswordRecoveryStep({
         <Button
           aria-busy={selectingFactorId === resetFactor.id}
           aria-label={copy.passwordResetMethod}
-          className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
+          className={cn(
+            "w-full okou-auth-action-text",
+            AUTH_V2_PRIMARY_ACTION_CLASS,
+          )}
           disabled={selecting}
           type="button"
           onClick={() => {
@@ -764,7 +767,10 @@ function HelpStep({ copy, signals }: SignInStepProps) {
   return (
     <div className="flex flex-col gap-4">
       <Button
-        className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
+        className={cn(
+          "w-full okou-auth-action-text",
+          AUTH_V2_PRIMARY_ACTION_CLASS,
+        )}
         asChild
       >
         <a href={copy.supportEmailHref}>
@@ -871,9 +877,7 @@ function CodeResendButton({
       {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
       <Button
         className={cn(
-          expired
-            ? "w-full"
-            : "mx-auto h-auto w-fit p-0 text-[13px] leading-[17px]",
+          expired ? "w-full" : "mx-auto h-auto w-fit p-0 okou-auth-action-text",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
         disabled={operationPending || (coolingDown && !expired)}

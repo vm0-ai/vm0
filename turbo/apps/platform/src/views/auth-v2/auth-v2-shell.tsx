@@ -61,7 +61,7 @@ export function AuthV2Shell({
         aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
         aria-labelledby={AUTH_V2_TITLE_ID}
         className={cn(
-          "relative w-full rounded-[12px] border-border p-0 shadow-none",
+          "relative w-full border-border p-0 shadow-none",
           choiceLayout && "overflow-hidden",
         )}
         data-testid="app-auth-v2"
