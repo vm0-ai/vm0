@@ -807,9 +807,9 @@ test("Fade a clipped chat title and pace its scroll by the hidden distance", asy
     path: `/chats/${EXISTING_THREAD_ID}`,
   });
 
-  expect(
-    await within(sidebar()).findByText("Release plan"),
-  ).toBeInTheDocument();
+  await expect(
+    within(sidebar()).findByText("Release plan"),
+  ).resolves.toBeInTheDocument();
 
   const clipped = titleFadeBox("Quarterly launch narrative");
   expect(clipped.style.getPropertyValue("--okou-nav-title-overflow")).toBe(
