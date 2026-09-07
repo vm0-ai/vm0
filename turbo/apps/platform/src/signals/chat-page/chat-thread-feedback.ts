@@ -805,12 +805,14 @@ function createListenersRef({
   reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const captureNativeSelection$ = command(({ get, set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    if (!get(selection$)?.touchRange) {
-      set(capture$);
-    }
-  });
+  const captureNativeSelection$ = command(
+    ({ get, set }, signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (!get(selection$)?.touchRange) {
+        set(capture$);
+      }
+    },
+  );
   const debouncedCapture$ = debounceCommand(captureNativeSelection$, 0);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -899,11 +901,9 @@ function createListenersRef({
           if (
             get(selection$) === null ||
             isSelectionInteractionTarget(event.target) ||
-            set(isProgrammaticScrollEvent$, event.target)
+            set(isProgrammaticScrollEvent$, event.target) ||
+            scrollReconciliationScheduled
           ) {
-            return;
-          }
-          if (scrollReconciliationScheduled) {
             return;
           }
           scrollReconciliationScheduled = true;

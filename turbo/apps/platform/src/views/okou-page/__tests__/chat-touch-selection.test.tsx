@@ -1,3 +1,5 @@
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
@@ -110,6 +112,67 @@ async function longPress(passage: HTMLElement, offset: number) {
   fireEvent.pointerUp(passage, touchAt(offset));
 }
 
+test("Touch passages keep native selection and quote actions by default", async () => {
+  installCapabilityChat({ events: completedConversation(PASSAGE) });
+  await setupPage({ context, path: RUN_PATH });
+  await readyChat();
+  const passage = await screen.findByText(PASSAGE);
+
+  fireEvent.pointerDown(passage, touchAt(PASSAGE.indexOf("launch")));
+  await selectPassage("launch plan");
+  fireEvent.pointerUp(passage, touchAt(PASSAGE.indexOf(" has")));
+
+  expect(window.getSelection()?.toString()).toBe("launch plan");
+  expect(fireEvent.contextMenu(passage)).toBeTruthy();
+  expect(
+    screen.queryByLabelText("Adjust selection start"),
+  ).not.toBeInTheDocument();
+  await quoteSelectedPassage();
+  expect(feedbackItems()[0]).toHaveTextContent("launch plan");
+});
+
+test("Disabling touch selection removes an active selection and restores native actions", async () => {
+  mockTouchLayout(PASSAGE);
+  installCapabilityChat({ events: completedConversation(PASSAGE) });
+  const releaseFeatures = context.mocks.deferred<void>();
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      await withSignal(releaseFeatures.promise);
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ChatTouchSelection]: false },
+        effectiveSwitches: { [FeatureSwitchKey.ChatTouchSelection]: false },
+      });
+    },
+  );
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    cachedFeatureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
+  await readyChat();
+  const passage = await screen.findByText(PASSAGE);
+
+  await longPress(passage, PASSAGE.indexOf("launch"));
+  expect(screen.getByLabelText("Adjust selection end")).toBeVisible();
+  expect(fireEvent.contextMenu(passage)).toBeFalsy();
+
+  releaseFeatures.resolve(undefined);
+  await waitFor(() => {
+    expect(
+      screen.queryByLabelText("Adjust selection end"),
+    ).not.toBeInTheDocument();
+  });
+
+  fireEvent.pointerDown(passage, touchAt(PASSAGE.indexOf("launch")));
+  expect(fireEvent.contextMenu(passage)).toBeTruthy();
+  await selectPassage("launch plan");
+  fireEvent.pointerUp(passage, touchAt(PASSAGE.indexOf(" has")));
+  expect(window.getSelection()?.toString()).toBe("launch plan");
+  await quoteSelectedPassage();
+  expect(feedbackItems()[0]).toHaveTextContent("launch plan");
+});
+
 test("Touch selection survives release and quotes an adjusted range without a native selection", async () => {
   const sends: CapturedChatSend[] = [];
   mockTouchLayout(PASSAGE);
@@ -119,7 +182,11 @@ test("Touch selection survives release and quotes an adjusted range without a na
       sends.push(send);
     },
   });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const passage = await screen.findByText(PASSAGE);
 
@@ -158,7 +225,11 @@ test.each(["button", "keyboard"])(
     const clipboard = context.mocks.browser.clipboardWriteText();
     mockTouchLayout(text, "standard");
     installCapabilityChat({ events: completedConversation(text) });
-    await setupPage({ context, path: RUN_PATH });
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+    });
     await readyChat();
     const passage = await screen.findByText(text);
 
@@ -187,7 +258,11 @@ test("Touch selection starts on a complete Unicode character without the word se
   const clipboard = context.mocks.browser.clipboardWriteText();
   mockTouchLayout(text, "standard");
   installCapabilityChat({ events: completedConversation(text) });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const segmenter = Intl.Segmenter;
   Object.defineProperty(Intl, "Segmenter", { value: undefined });
@@ -214,7 +289,11 @@ test("Touch selection leaves editing and link menus available and returns to nat
       `${PASSAGE}\n\n[Reference](https://example.com)`,
     ),
   });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const passage = await screen.findByText(PASSAGE);
   const composer = screen.getByRole("textbox", { name: "Message" });
@@ -248,7 +327,11 @@ test("Touch selection leaves editing and link menus available and returns to nat
 test("Scroll and multi-touch gestures can cancel a pending press before another selection", async () => {
   mockTouchLayout(PASSAGE);
   installCapabilityChat({ events: completedConversation(PASSAGE) });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const passage = await screen.findByText(PASSAGE);
 
@@ -276,7 +359,11 @@ test("Scroll and multi-touch gestures can cancel a pending press before another 
 test("A viewport change repositions a touch selection after keyboard dismissal", async () => {
   const moveText = mockTouchLayout(PASSAGE);
   installCapabilityChat({ events: completedConversation(PASSAGE) });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const passage = await screen.findByText(PASSAGE);
   screen.getByRole("textbox", { name: "Message" }).focus();
@@ -301,7 +388,11 @@ test("Touch copy preserves paragraph boundaries across text nodes", async () => 
   installCapabilityChat({
     events: completedConversation(`${first}\n\n${second}`),
   });
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatTouchSelection]: true },
+  });
   await readyChat();
   const passage = await screen.findByText(first);
   await longPress(passage, 0);

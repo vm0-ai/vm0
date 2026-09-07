@@ -72,6 +72,7 @@ export enum FeatureSwitchKey {
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
+  ChatTouchSelection = "chatTouchSelection",
   VoiceInputV2 = "voiceInputV2",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",

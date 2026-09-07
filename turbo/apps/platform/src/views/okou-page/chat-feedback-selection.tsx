@@ -392,8 +392,10 @@ export function ChatFeedbackSelection({
 }) {
   const selection = useGet(feedback.selection$);
   const translationResult = useGet(feedback.translationResult$);
-  const translationEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatTranslation];
+  const features = useGet(featureSwitch$);
+  const translationEnabled = features[FeatureSwitchKey.ChatTranslation];
+  const touchSelectionEnabled =
+    features[FeatureSwitchKey.ChatTouchSelection] ?? false;
   const forwardSelection = useGet(feedback.forwardSelection$);
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
@@ -409,8 +411,10 @@ export function ChatFeedbackSelection({
   return (
     <>
       <span ref={setFeedbackSelectionListenersRef} hidden />
-      <span ref={setTouchSelectionListenersRef} hidden />
-      {selection?.touch ? (
+      {touchSelectionEnabled ? (
+        <span ref={setTouchSelectionListenersRef} hidden />
+      ) : null}
+      {touchSelectionEnabled && selection?.touch ? (
         <>
           <span ref={setTouchSelectionOverlayRef} hidden />
           <ChatTouchSelection
