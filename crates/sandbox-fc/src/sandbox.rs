@@ -3602,8 +3602,8 @@ fn idle_transition_error(
 // building a fully-initialised `FirecrackerSandbox` (which pulls in the
 // network pool, NBD COW device, firecracker child process, etc.).
 
-/// Maximum time to wait for balloon inflation before pausing vCPUs.
-const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Initial time to wait for balloon inflation before considering an extension.
+const BALLOON_SETTLE_INITIAL_TIMEOUT: Duration = Duration::from_secs(5);
 /// Additional wait when the balloon is still making progress and the
 /// guest reports enough unused memory to finish reclaiming safely.
 const BALLOON_SETTLE_PROGRESS_GRACE: Duration = Duration::from_secs(5);
@@ -3936,8 +3936,8 @@ enum PhysicalParkOutcome {
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`]. A severe deficit that is still progressing with
-/// enough unused guest memory gets repeated
+/// [`BALLOON_SETTLE_INITIAL_TIMEOUT`]. A severe deficit that is still progressing
+/// with enough unused guest memory gets repeated
 /// [`BALLOON_SETTLE_PROGRESS_GRACE`] extensions up to
 /// [`BALLOON_SETTLE_MAX_TIMEOUT`]. The returned outcome rejects only the existing
 /// severe-deficit classification. Errors from stats fetching are non-fatal —
@@ -3962,7 +3962,7 @@ async fn wait_for_balloon_with_optional_handoff(
 ) -> BalloonSettleWaitResult {
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
-    let mut settle_timeout = BALLOON_SETTLE_TIMEOUT;
+    let mut settle_timeout = BALLOON_SETTLE_INITIAL_TIMEOUT;
     let mut deadline = summary.started_at + settle_timeout;
     let max_deadline = summary.started_at + BALLOON_SETTLE_MAX_TIMEOUT;
     let mut fast_poll_intervals = BALLOON_SETTLE_FAST_POLL_INTERVALS.into_iter();

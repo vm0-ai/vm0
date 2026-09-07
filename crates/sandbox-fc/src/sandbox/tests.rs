@@ -4570,7 +4570,7 @@ where
         }
     }
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
     drop(guard);
@@ -4612,7 +4612,8 @@ async fn advance_balloon_wait_to_progress_grace<F>(
     wait_for_balloon_sample_count(future.as_mut(), captured, 2).await;
     tokio::time::pause();
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0])
+        .await;
     tokio::time::resume();
     loop {
         if has_captured_event(
@@ -5038,7 +5039,7 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
         }
     }
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
@@ -5365,7 +5366,8 @@ async fn wait_for_balloon_reusable_progressing_timeout_logs_at_info() {
     tokio::time::resume();
     wait_for_balloon_sample_count(wait.as_mut(), &captured, 2).await;
     tokio::time::pause();
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0])
+        .await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
@@ -5527,7 +5529,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     let mut api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::DelayedOk(
-            BALLOON_SETTLE_TIMEOUT + Duration::from_secs(1),
+            BALLOON_SETTLE_INITIAL_TIMEOUT + Duration::from_secs(1),
             MockBalloonStats::new(target_mib, target_mib),
         )]),
     );
@@ -5549,7 +5551,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     );
 
     tokio::time::pause();
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
