@@ -70,28 +70,31 @@ function createIntroVideoStyleGallerySignals() {
         const scroll = node.closest<HTMLElement>(
           "[data-intro-video-catalog-scroll]",
         );
+        if (!scroll) {
+          throw new Error(
+            "The intro video style gallery must render inside the catalog scroll container",
+          );
+        }
         const sections = [
           ...node.querySelectorAll<HTMLElement>(
             "[data-intro-video-style-group]",
           ),
         ];
         const syncActiveGroup = () => {
-          if (!scroll) {
-            return;
-          }
           // The active group is the last heading that has reached the top edge.
           // The tolerance covers the scroll padding an anchored jump leaves.
           const edge = scroll.getBoundingClientRect().top + 32;
           const reached = sections.filter((section) => {
             return section.getBoundingClientRect().top <= edge;
           });
+          // Overscrolling above the first heading keeps the first group active.
           const active = reached.at(-1) ?? sections.at(0);
           set(
             internalActiveGroup$,
             active?.dataset.introVideoStyleGroup ?? null,
           );
         };
-        scroll?.addEventListener("scroll", syncActiveGroup, {
+        scroll.addEventListener("scroll", syncActiveGroup, {
           passive: true,
           signal,
         });
