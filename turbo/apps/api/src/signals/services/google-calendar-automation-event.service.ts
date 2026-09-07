@@ -1222,6 +1222,22 @@ function googleCalendarWatchTargetType(
     : "explicit_calendar";
 }
 
+function logCalendarWatchActionRequiredRecovery(args: {
+  readonly watchStateId: string;
+  readonly episode: GoogleCalendarWatchActionRequiredEpisode;
+  readonly targetType: GoogleCalendarWatchTargetType;
+}): void {
+  log.debug("Workflow watch action-required episode recovered", {
+    provider: "google_calendar",
+    action: "recover",
+    result: "ok",
+    reason: args.episode.reason,
+    watchStateId: args.watchStateId,
+    episodeStartedAt: args.episode.startedAt.toISOString(),
+    targetType: args.targetType,
+  });
+}
+
 function googleCalendarLifecycleLockKey(
   connectorId: string,
   calendarId: string,
@@ -1904,13 +1920,9 @@ async function activatePreparedCalendarWatch(args: {
 
   const state = finalization.state;
   if (finalization.recoveredEpisode) {
-    log.debug("Workflow watch action-required episode recovered", {
-      provider: "google_calendar",
-      action: "recover",
-      result: "ok",
-      reason: finalization.recoveredEpisode.reason,
+    logCalendarWatchActionRequiredRecovery({
       watchStateId: state.id,
-      episodeStartedAt: finalization.recoveredEpisode.startedAt.toISOString(),
+      episode: finalization.recoveredEpisode,
       targetType: googleCalendarWatchTargetType(state.calendarId),
     });
   }
@@ -2616,11 +2628,9 @@ async function reconcileActionRequiredNonPrimaryCalendarWatch(
   );
   signal.throwIfAborted();
   if (migrated) {
-    log.debug("Workflow watch legacy primary alias recovered", {
-      provider: "google_calendar",
-      action: "migrate_primary",
-      result: "ok",
+    logCalendarWatchActionRequiredRecovery({
       watchStateId: args.state.id,
+      episode: args.episode,
       targetType: "verified_legacy_primary_alias",
     });
     return { kind: "renewed" };

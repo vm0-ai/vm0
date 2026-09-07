@@ -4256,6 +4256,9 @@ describe("okou workflow automations", () => {
     expect(recoveryLogs).toHaveLength(1);
     const [, recoveryFields] = recoveryLogs[0] ?? [];
     expect(recoveryFields).toMatchObject({
+      provider: "google_calendar",
+      action: "recover",
+      result: "ok",
       reason: "reconnect_required",
       watchStateId: isRecord(actionRequiredFields)
         ? actionRequiredFields.watchStateId
