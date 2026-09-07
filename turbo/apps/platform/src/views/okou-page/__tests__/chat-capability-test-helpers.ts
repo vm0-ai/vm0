@@ -1,5 +1,10 @@
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+} from "@testing-library/react";
 
 import { click } from "../../../__tests__/page-helper.ts";
 import {
@@ -154,14 +159,20 @@ function visibleSelectionRange(
   return range;
 }
 
-function setPassageSelection(passage: string, occurrence = 0): void {
+function setPassageSelection(
+  passage: string,
+  occurrence = 0,
+  interaction: "mouse" | "native" = "mouse",
+): void {
   const node = textNodeContaining(passage, occurrence);
   const start = node.data.indexOf(passage);
   const target = node.parentElement;
   if (!target) {
     throw new Error("Selectable passage has no element target");
   }
-  fireEvent.mouseDown(target, { button: 0 });
+  if (interaction === "mouse") {
+    fireEvent.mouseDown(target, { button: 0 });
+  }
   const range = visibleSelectionRange(
     node,
     start,
@@ -174,7 +185,11 @@ function setPassageSelection(passage: string, occurrence = 0): void {
   }
   selection.removeAllRanges();
   selection.addRange(range);
-  fireEvent.mouseUp(target, { button: 0 });
+  if (interaction === "mouse") {
+    fireEvent.mouseUp(target, { button: 0 });
+  } else {
+    fireEvent(document, new Event("selectionchange"));
+  }
 }
 
 export async function selectPassage(
@@ -189,16 +204,9 @@ export async function selectPassageWithoutActions(
   passage: string,
   occurrence = 0,
 ): Promise<void> {
-  setPassageSelection(passage, occurrence);
-  await waitFor(() => {
-    if (
-      document.querySelector(
-        '[data-radix-popper-content-wrapper] button[aria-keyshortcuts="q"]',
-      )
-    ) {
-      throw new Error("Out-of-scope selection still exposes passage actions");
-    }
-  });
+  const existingQuoteAction = await findButton("Quote");
+  setPassageSelection(passage, occurrence, "native");
+  await waitForElementToBeRemoved(existingQuoteAction);
 }
 
 export async function selectAcrossPassages(

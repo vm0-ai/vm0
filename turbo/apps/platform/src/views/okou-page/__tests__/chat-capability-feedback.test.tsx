@@ -163,7 +163,40 @@ test("Keep the legacy Markdown selection boundary when expansion is disabled", a
   renderedDetail.textContent = "A rendered detail outside Markdown.";
   assistantReply.append(renderedDetail);
 
+  await selectPassage("launch plan has three careful stages");
   await selectPassageWithoutActions("rendered detail outside Markdown");
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
+});
+
+test("Keep touch passage actions on the legacy Markdown boundary", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(pointer: coarse)";
+  });
+  installCapabilityChat({
+    events: completedConversation(FIRST_PASSAGE),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatDesktopSelection]: true },
+  });
+
+  await readyChat();
+  const firstResponse = await screen.findByText(FIRST_PASSAGE);
+  const assistantReply = firstResponse.closest('[data-role="assistant"]');
+  if (!assistantReply) {
+    throw new Error("AI reply boundary was not rendered");
+  }
+  const renderedDetail = document.createElement("div");
+  renderedDetail.textContent = "A touch-only detail outside Markdown.";
+  assistantReply.append(renderedDetail);
+
+  await selectPassage("launch plan has three careful stages");
+  await selectPassageWithoutActions("touch-only detail outside Markdown");
 
   expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
   expect(queryToolbarButton("Quote")).not.toBeInTheDocument();

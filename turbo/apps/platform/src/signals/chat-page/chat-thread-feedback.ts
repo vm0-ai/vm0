@@ -39,6 +39,7 @@ import {
 const FEEDBACK_SOURCE_SELECTOR =
   ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
@@ -160,6 +161,10 @@ function closestExpandedFeedbackSource(node: Node | null): Element | null {
     element?.closest("[data-feedback-source]") ??
     null
   );
+}
+
+function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
+  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
 }
 
 function resolveSelectionSource(
@@ -395,7 +400,9 @@ function createSelectionState(threadId: string) {
   const capture$ = command(({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     const selection = readFeedbackSelection(
-      get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
     );
     if (!selection || selection.threadId !== threadId) {
       set(close$);
@@ -419,7 +426,9 @@ function createSelectionState(threadId: string) {
       return;
     }
     const selection = readFeedbackSelection(
-      get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
     );
     if (
       !selection ||
@@ -810,7 +819,9 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            (get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection]
+            (shouldExpandSelectionToAssistantReply(
+              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+            )
               ? closestExpandedFeedbackSource(event.target)
               : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
