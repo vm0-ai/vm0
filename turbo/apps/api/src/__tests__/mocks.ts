@@ -1185,7 +1185,7 @@ vi.mock("../signals/external/axiom", async () => {
   };
 });
 
-vi.mock("@axiomhq/js", () => {
+function createAxiomSdkMock() {
   return {
     Axiom: vi.fn<(...args: AxiomSdkConstructorArguments) => AxiomSdkClientMock>(
       function (options) {
@@ -1209,9 +1209,11 @@ vi.mock("@axiomhq/js", () => {
       },
     ),
   };
-});
+}
 
-vi.mock("@axiomhq/logging", () => {
+vi.mock("@axiomhq/js", createAxiomSdkMock);
+
+function createAxiomLoggingMock() {
   return {
     EVENT: Symbol("EVENT"),
     Logger: vi.fn<
@@ -1233,7 +1235,26 @@ vi.mock("@axiomhq/logging", () => {
       return transport;
     }),
   };
-});
+}
+
+vi.mock("@axiomhq/logging", createAxiomLoggingMock);
+
+// Logging integration tests import the application logger after entering this
+// scope so both SDKs and the logger's cached instances belong to that test.
+export async function withRealAxiomLoggingForTest(
+  runTest: () => Promise<void>,
+): Promise<void> {
+  vi.doUnmock("@axiomhq/logging");
+  vi.doUnmock("@axiomhq/js");
+  vi.resetModules();
+  await Promise.resolve()
+    .then(runTest)
+    .finally(() => {
+      vi.doMock("@axiomhq/js", createAxiomSdkMock);
+      vi.doMock("@axiomhq/logging", createAxiomLoggingMock);
+      vi.resetModules();
+    });
+}
 
 export function getApiTestMocks(): ApiTestMocks {
   return apiTestMocks;

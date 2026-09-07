@@ -1492,10 +1492,13 @@ describe("POST /api/image-io/generate", () => {
     {
       detailShape: "a string detail",
       detail: FAL_OUTPUT_SAFETY_FILTER_MESSAGE,
+      providerErrorType: "unknown",
     },
     {
       detailShape: "Pydantic detail entries",
+      providerErrorType: "content_policy_violation",
       detail: [
+        { type: "file_download_error", msg: "Unrelated provider diagnostic" },
         {
           type: "content_policy_violation",
           loc: ["body", "prompt"],
@@ -1509,7 +1512,7 @@ describe("POST /api/image-io/generate", () => {
     },
   ])(
     "maps Fal output safety failures from $detailShape without charging or retaining private diagnostics",
-    async ({ detail }) => {
+    async ({ detail, providerErrorType }) => {
       const fixture = await seedImageFixture({ credits: 1000 });
       const pricingFixture = await createScopedImagePricing({
         configured: GPT_IMAGE_1_PRICING,
@@ -1561,7 +1564,10 @@ describe("POST /api/image-io/generate", () => {
           },
         },
       };
-      await postFalWebhookEnvelope(app, initialRequestUrl, webhookPayload);
+      await Promise.all([
+        postFalWebhookEnvelope(app, initialRequestUrl, webhookPayload),
+        postFalWebhookEnvelope(app, initialRequestUrl, webhookPayload),
+      ]);
       await flushWaitUntilForTest();
 
       const expectedError = {
@@ -1594,16 +1600,17 @@ describe("POST /api/image-io/generate", () => {
       // second terminal failure event.
       await postFalWebhookEnvelope(app, initialRequestUrl, webhookPayload);
       await flushWaitUntilForTest();
-      const debugFailureLogs =
-        context.mocks.axiomLogging.debug.mock.calls.filter(([message]) => {
+      const infoFailureLogs = context.mocks.axiomLogging.info.mock.calls.filter(
+        ([message]) => {
           return message === FAL_FAILURE_LOG_MESSAGE;
-        });
+        },
+      );
       const warnFailureLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
         ([message]) => {
           return message === FAL_FAILURE_LOG_MESSAGE;
         },
       );
-      expect(debugFailureLogs).toStrictEqual([
+      expect(infoFailureLogs).toStrictEqual([
         [
           FAL_FAILURE_LOG_MESSAGE,
           expect.objectContaining({
@@ -1613,7 +1620,7 @@ describe("POST /api/image-io/generate", () => {
             type: "image",
             providerStatus: "ERROR",
             providerHttpStatus: 422,
-            providerErrorType: undefined,
+            providerErrorType,
             failureKind: "output_safety_blocked",
             failureStage: "output",
             classificationSource: "normalized_message_exact",
@@ -1628,11 +1635,16 @@ describe("POST /api/image-io/generate", () => {
         ],
       ]);
       expect(warnFailureLogs).toHaveLength(0);
+      expect(
+        context.mocks.axiomLogging.debug.mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
 
       const publicAndLogSurfaces = JSON.stringify({
         realtime: context.mocks.ably.publish.mock.calls,
         status: statusBody,
-        debugFailureLogs,
+        infoFailureLogs,
         warnFailureLogs,
       });
       for (const privateValue of [
@@ -1920,11 +1932,11 @@ describe("POST /api/image-io/generate", () => {
       });
 
       const expectedLoggingMock = expected
-        ? context.mocks.axiomLogging.debug
+        ? context.mocks.axiomLogging.info
         : context.mocks.axiomLogging.warn;
       const unexpectedLoggingMock = expected
         ? context.mocks.axiomLogging.warn
-        : context.mocks.axiomLogging.debug;
+        : context.mocks.axiomLogging.info;
       const failureLogs = expectedLoggingMock.mock.calls.filter(([message]) => {
         return message === FAL_FAILURE_LOG_MESSAGE;
       });
@@ -1958,6 +1970,11 @@ describe("POST /api/image-io/generate", () => {
         ],
       ]);
       expect(unexpectedFailureLogs).toHaveLength(0);
+      expect(
+        context.mocks.axiomLogging.debug.mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
 
       const publicAndLogSurfaces = JSON.stringify({
         realtime: context.mocks.ably.publish.mock.calls,
@@ -1988,131 +2005,238 @@ describe("POST /api/image-io/generate", () => {
     },
   );
 
-  it("keeps near-match Fal diagnostics on the sanitized unknown-failure fallback", async () => {
-    const fixture = await seedImageFixture({ credits: 1000 });
-    const pricingFixture = await createScopedImagePricing({
-      configured: GPT_IMAGE_1_PRICING,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    let observedRequestUrl: string | null = null;
-    server.use(
-      http.post(FAL_GPT_IMAGE_1_URL, ({ request }) => {
-        observedRequestUrl = request.url;
-        return HttpResponse.json(falQueueHandle("unknown-failure"));
-      }),
-    );
-
-    const app = createImageIoTestApp(pricingFixture.resolution);
-    const response = await app.request("/api/image-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ prompt: "private-unknown-failure-prompt" }),
-    });
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "image",
-      fixture.userId,
-    );
-
-    await postFalWebhookEnvelope(app, observedRequestUrl, {
+  it.each([
+    {
+      caseName: "near-match safety text",
       status: "FAILED",
+      wrapper: "payload",
       error: "Unexpected status code: 422",
-      payload: {
-        detail: [
-          {
-            // Missing final punctuation is deliberately not an exact match.
-            type: "content_policy_violation",
-            loc: ["body", "prompt"],
-            msg: "The generated image was blocked by the safety filter",
-            input: {
-              prompt: "private-unknown-failure-prompt",
-              image_url: "https://private.example/reference-unknown.png",
-            },
-          },
-        ],
+      detail: [
+        {
+          type: "content_policy_violation",
+          loc: ["body", "prompt"],
+          // Missing punctuation must not change the public classification.
+          msg: "The generated image was blocked by the safety filter",
+        },
+      ],
+      providerErrorType: "content_policy_violation",
+      providerHttpStatus: 422,
+    },
+    {
+      caseName: "changed provider text and location",
+      status: "ERROR",
+      wrapper: "data",
+      error: "Invalid status code: 422",
+      detail: {
+        type: "file_download_error",
+        loc: ["private-provider-location"],
+        msg: "private-provider-message https://private.example/input",
+        ctx: { credential: "private-provider-token" },
       },
-    });
-    await flushWaitUntilForTest();
+      providerErrorType: "file_download_error",
+      providerHttpStatus: 422,
+    },
+    {
+      caseName: "missing messages and an unknown first type",
+      status: "ERROR",
+      wrapper: "response",
+      error: "Unexpected status code: 422",
+      detail: [
+        { type: "file_download_error:private-provider-token" },
+        { type: "image_load_error" },
+      ],
+      providerErrorType: "image_load_error",
+      providerHttpStatus: 422,
+    },
+    {
+      caseName: "the documented legacy validation envelope",
+      status: "ERROR",
+      wrapper: "payload",
+      error: "Invalid status code: 422",
+      detail: [
+        {
+          type: "value_error.missing",
+          loc: ["body", "prompt"],
+          msg: "field required",
+        },
+      ],
+      providerErrorType: "value_error.missing",
+      providerHttpStatus: 422,
+    },
+    {
+      caseName: "an unknown type and out-of-range HTTP status",
+      status: "ERROR",
+      wrapper: "payload",
+      error: "Unexpected status code: 999",
+      detail: [
+        {
+          type: "file_download_error:private-provider-token",
+          msg: "private-provider-message",
+        },
+      ],
+      providerErrorType: "unknown",
+      providerHttpStatus: undefined,
+    },
+    {
+      caseName: "empty diagnostics and a non-string error",
+      status: "ERROR",
+      wrapper: "payload",
+      error: { message: "private-provider-message" },
+      detail: null,
+      providerErrorType: "unknown",
+      providerHttpStatus: undefined,
+    },
+    {
+      caseName: "free-form detail and trailing error text",
+      status: "ERROR",
+      wrapper: "payload",
+      error: "Invalid status code: 422 private-provider-token",
+      detail: "private-provider-message https://private.example/input",
+      providerErrorType: "unknown",
+      providerHttpStatus: undefined,
+    },
+  ])(
+    "retains safe Fal diagnostics for $caseName without changing the public fallback",
+    async ({
+      status,
+      wrapper,
+      error,
+      detail,
+      providerErrorType,
+      providerHttpStatus,
+    }) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        configured: GPT_IMAGE_1_PRICING,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let observedRequestUrl: string | null = null;
+      server.use(
+        http.post(FAL_GPT_IMAGE_1_URL, ({ request }) => {
+          observedRequestUrl = request.url;
+          return HttpResponse.json(falQueueHandle("unknown-failure"));
+        }),
+      );
 
-    const expectedError = {
-      message: "Image generation failed.",
-      code: "GENERATION_FAILED",
-    };
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${generationId}`,
-      expect.objectContaining({
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ prompt: "private-unknown-failure-prompt" }),
+      });
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "image",
+        fixture.userId,
+      );
+
+      await postFalWebhookEnvelope(app, observedRequestUrl, {
+        status,
+        error,
+        request_id: "private-fal-request-id",
+        gateway_request_id: "private-fal-gateway-request-id",
+        [wrapper]: {
+          detail,
+          input: {
+            prompt: "private-unknown-failure-prompt",
+            image_url: "https://private.example/reference-unknown.png",
+          },
+        },
+      });
+      await flushWaitUntilForTest();
+
+      const expectedError = {
+        message: "Image generation failed.",
+        code: "GENERATION_FAILED",
+      };
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `built-in-generation:${generationId}`,
+        expect.objectContaining({
+          generationId,
+          type: "image",
+          status: "failed",
+          error: expectedError,
+        }),
+      );
+      const statusResponse = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(statusResponse.status).toBe(200);
+      const statusBody: unknown = await statusResponse.json();
+      expect(statusBody).toMatchObject({
         generationId,
         type: "image",
         status: "failed",
         error: expectedError,
-      }),
-    );
-    const statusResponse = await app.request(
-      `/api/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(statusResponse.status).toBe(200);
-    const statusBody: unknown = await statusResponse.json();
-    expect(statusBody).toMatchObject({
-      generationId,
-      type: "image",
-      status: "failed",
-      error: expectedError,
-    });
+      });
 
-    const debugFailureLogs = context.mocks.axiomLogging.debug.mock.calls.filter(
-      ([message]) => {
-        return message === FAL_FAILURE_LOG_MESSAGE;
-      },
-    );
-    const warnFailureLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
-      ([message]) => {
-        return message === FAL_FAILURE_LOG_MESSAGE;
-      },
-    );
-    expect(debugFailureLogs).toHaveLength(0);
-    expect(warnFailureLogs).toStrictEqual([
-      [
-        FAL_FAILURE_LOG_MESSAGE,
-        expect.objectContaining({
-          context: "BuiltInGenerationWebhooks",
-          provider: "fal",
-          generationId,
-          type: "image",
-          providerStatus: "FAILED",
-          providerHttpStatus: 422,
-          providerErrorType: undefined,
-          failureKind: "unknown",
-          failureStage: "unknown",
-          classificationSource: "fallback",
-          publicErrorCode: "GENERATION_FAILED",
-          retryPolicy: "retry_once",
-          billingDisposition: "not_charged",
-          artifactRecorded: false,
-          usageRecorded: false,
-          admissionStatus: "failed",
-          expected: false,
-        }),
-      ],
-    ]);
-    const publicAndLogSurfaces = JSON.stringify({
-      realtime: context.mocks.ably.publish.mock.calls,
-      status: statusBody,
-      debugFailureLogs,
-      warnFailureLogs,
-    });
-    for (const privateValue of [
-      "private-unknown-failure-prompt",
-      "private.example",
-      "Unexpected status code: 422",
-      "blocked by the safety filter",
-    ]) {
-      expect(publicAndLogSurfaces).not.toContain(privateValue);
-    }
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-    await expect(orgCredits(fixture)).resolves.toBe(1000);
-  });
+      const debugFailureLogs =
+        context.mocks.axiomLogging.debug.mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        });
+      const warnFailureLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        },
+      );
+      const infoFailureLogs = context.mocks.axiomLogging.info.mock.calls.filter(
+        ([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        },
+      );
+      expect(debugFailureLogs).toHaveLength(0);
+      expect(infoFailureLogs).toHaveLength(0);
+      expect(warnFailureLogs).toStrictEqual([
+        [
+          FAL_FAILURE_LOG_MESSAGE,
+          expect.objectContaining({
+            context: "BuiltInGenerationWebhooks",
+            provider: "fal",
+            generationId,
+            type: "image",
+            providerStatus: status,
+            providerHttpStatus,
+            providerErrorType,
+            failureKind: "unknown",
+            failureStage: "unknown",
+            classificationSource: "fallback",
+            publicErrorCode: "GENERATION_FAILED",
+            retryPolicy: "retry_once",
+            billingDisposition: "not_charged",
+            artifactRecorded: false,
+            usageRecorded: false,
+            admissionStatus: "failed",
+            expected: false,
+          }),
+        ],
+      ]);
+      const publicAndLogSurfaces = JSON.stringify({
+        realtime: context.mocks.ably.publish.mock.calls,
+        status: statusBody,
+        debugFailureLogs,
+        infoFailureLogs,
+        warnFailureLogs,
+      });
+      for (const privateValue of [
+        "private-unknown-failure-prompt",
+        "private.example",
+        "Unexpected status code: 422",
+        "Invalid status code:",
+        "blocked by the safety filter",
+        "private-provider-message",
+        "private-provider-token",
+        "private-provider-location",
+        "private-fal-request-id",
+        "private-fal-gateway-request-id",
+      ]) {
+        expect(publicAndLogSurfaces).not.toContain(privateValue);
+      }
+      expect(context.mocks.s3.send).not.toHaveBeenCalled();
+      await expect(orgCredits(fixture)).resolves.toBe(1000);
+    },
+  );
 
   it("does not complete a job after the status route times it out", async () => {
     const fixture = await seedImageFixture({ credits: 1000 });

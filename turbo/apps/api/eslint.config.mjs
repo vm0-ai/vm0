@@ -256,6 +256,19 @@ export default [
     },
   },
   {
+    files: ["src/signals/routes/webhooks-built-in-generations.ts"],
+    rules: {
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Fal built-in generation webhook reported failed generation",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: [
       "src/signals/services/pi-memory-stage1-worker.service.ts",
       "src/signals/services/pi-memory-phase2-worker.service.ts",

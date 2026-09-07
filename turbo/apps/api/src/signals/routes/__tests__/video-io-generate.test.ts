@@ -55,6 +55,8 @@ const FAL_STATUS_URL =
 const FAL_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/response";
 const FAL_VIDEO_URL = "https://v3b.fal.media/files/video-output.mp4";
+const FAL_FAILURE_LOG_MESSAGE =
+  "Fal built-in generation webhook reported failed generation";
 const KLING_V3_4K_MODEL = "fal-ai/kling-video/v3/4k/text-to-video";
 const KLING_V3_4K_QUEUE_URL = `https://queue.fal.run/${KLING_V3_4K_MODEL}`;
 const KLING_STATUS_URL =
@@ -337,11 +339,22 @@ async function postFalWebhook(
   requestUrl: string | null,
   payload: unknown,
 ): Promise<void> {
+  await postFalWebhookEnvelope(app, requestUrl, {
+    status: "COMPLETED",
+    payload,
+  });
+}
+
+async function postFalWebhookEnvelope(
+  app: ReturnType<typeof createVideoIoTestApp>,
+  requestUrl: string | null,
+  payload: unknown,
+): Promise<void> {
   const url = new URL(readFalWebhookUrl(requestUrl));
   const response = await app.request(`${url.pathname}${url.search}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "COMPLETED", payload }),
+    body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
 }
@@ -2359,9 +2372,143 @@ describe("POST /api/video-io/generate", () => {
       requestId: "video-request",
     });
 
+    await postFalWebhookEnvelope(app, observedRequestUrl, {
+      status: "ERROR",
+      error: "Invalid status code: 422",
+      payload: { detail: [{ type: "file_download_error" }] },
+    });
+    const afterLateFailure = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(afterLateFailure.status).toBe(200);
+    await expect(afterLateFailure.json()).resolves.toMatchObject({
+      status: "completed",
+      result: body,
+    });
+    for (const level of ["info", "warn", "debug"] as const) {
+      expect(
+        context.mocks.axiomLogging[level].mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
+    }
+
     // creditsCharged 1504 = 8 seconds at the audio rate (188/s); the silent
     // rate would charge 1000, so the exact balance drop pins the category.
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1504);
+  });
+
+  it("retains safe Fal video failure diagnostics without changing the public error or charging", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_VEO_FAST_QUEUE_URL, ({ request }) => {
+        observedRequestUrl = request.url;
+        return HttpResponse.json({
+          request_id: "private-fal-video-request",
+          status_url: FAL_STATUS_URL,
+          response_url: FAL_RESPONSE_URL,
+        });
+      }),
+    );
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "private-video-prompt",
+        model: "veo3.1-fast",
+        duration: "8s",
+      }),
+    });
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const payload = {
+      status: "ERROR",
+      error: "Invalid status code: 422",
+      request_id: "private-fal-video-request",
+      payload: {
+        detail: [
+          {
+            type: "file_download_error",
+            msg: "private-video-provider-message",
+            input: { url: "https://private.example/input-video.mp4" },
+          },
+        ],
+      },
+    };
+    await postFalWebhookEnvelope(app, observedRequestUrl, payload);
+    await postFalWebhookEnvelope(app, observedRequestUrl, payload);
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    const expectedError = {
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Generation failed",
+    };
+    expect(statusBody).toMatchObject({
+      generationId,
+      status: "failed",
+      error: expectedError,
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({ status: "failed", error: expectedError }),
+    );
+    const failureLogs = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message]) => {
+        return message === FAL_FAILURE_LOG_MESSAGE;
+      },
+    );
+    expect(failureLogs).toStrictEqual([
+      [
+        FAL_FAILURE_LOG_MESSAGE,
+        expect.objectContaining({
+          provider: "fal",
+          generationId,
+          type: "video",
+          providerHttpStatus: 422,
+          providerErrorType: "file_download_error",
+          failureKind: "unknown",
+          publicErrorCode: "INTERNAL_SERVER_ERROR",
+          expected: false,
+        }),
+      ],
+    ]);
+    for (const level of ["info", "debug"] as const) {
+      expect(
+        context.mocks.axiomLogging[level].mock.calls.filter(([message]) => {
+          return message === FAL_FAILURE_LOG_MESSAGE;
+        }),
+      ).toHaveLength(0);
+    }
+    const publicAndLogSurfaces = JSON.stringify({
+      statusBody,
+      realtime: context.mocks.ably.publish.mock.calls,
+      failureLogs,
+    });
+    for (const privateValue of [
+      "private-video-prompt",
+      "private-video-provider-message",
+      "private-fal-video-request",
+      "private.example",
+      "Invalid status code:",
+    ]) {
+      expect(publicAndLogSurfaces).not.toContain(privateValue);
+    }
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    await expect(orgCredits(fixture)).resolves.toBe(10_000);
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {
