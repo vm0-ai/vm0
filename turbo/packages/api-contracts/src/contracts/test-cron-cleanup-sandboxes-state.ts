@@ -27,6 +27,7 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
       "get-export-job",
       "seed-connector-diagnostic-registration",
       "get-connector-diagnostic-registration",
+      "corrupt-connector-diagnostic-registration",
       "delete-connector-diagnostic-registration",
       "transition-run-terminal",
     ]),

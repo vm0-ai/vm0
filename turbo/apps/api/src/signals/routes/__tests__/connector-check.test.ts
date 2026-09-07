@@ -1122,11 +1122,33 @@ describe("POST /api/connectors/diagnostics/check", () => {
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
-  it("distinguishes missing legacy registration from terminal stale state", async () => {
+  it("propagates malformed registration and distinguishes missing from terminal state", async () => {
     const actor = bdd.user();
     await seedAdminMembership(actor);
     const { runId } = await createOwnedRun(actor);
     const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
+
+    await accept(
+      stateClient().action({
+        body: {
+          action: "corrupt-connector-diagnostic-registration",
+          run_id: runId,
+        },
+      }),
+      [200],
+    );
+    const malformed = await accept(
+      client().check({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          mode: "environment",
+          environmentName: "GH_TOKEN",
+        },
+      }),
+      [500],
+    );
+    expect(malformed.body).toStrictEqual({ error: "Internal server error" });
+
     await accept(
       stateClient().action({
         body: {
