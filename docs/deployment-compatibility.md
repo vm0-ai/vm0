@@ -220,6 +220,27 @@ Keep the rollback floor bridge-capable. Delivery parent vm0-ai/vm0#30478 remains
 open until the canonical-only artifact is promoted, bridge processes drain, and
 the final fleet verification completes.
 
+Rootfs build scripts retain those same flock descriptions in an external
+`unshare --fork` waiter until their private PID namespace has terminated. The
+waiter starts in a separate session so owner death cannot orphan a stopped
+process group and send it a job-control `SIGHUP` before cleanup completes. The
+owning runner's death or cancellation closes a process-local control channel;
+namespace init then exits and the kernel terminates its descendants, including
+workers behind `sudo`. The waiter must not be killed as a cancellation shortcut:
+lock availability is the boundary that allows another builder or GC to touch
+staging. In-process shared ownership also keeps the flock and extracted scripts
+alive until the blocking spawn-and-wait task finishes. Existing builders and GC
+need no new lock file or persisted metadata to respect this exclusion.
+
+This containment applies to scripts launched by the new runner, not orphaned
+workers already launched by an older artifact. PID values are namespace-local;
+shared build caches must use independently unique temporary filenames instead
+of treating a script's PID as a host-wide unique attempt identity. Debootstrap
+cache staging uses `.tmp.mktemp.<random>.tar`; new GC recognizes both that format
+and the previous `.tmp.<pid>.tar`. Older GC still respects the shared cache lock,
+but counts leftover new-format staging files toward stable-cache retention until
+it is upgraded (potentially causing a cache miss, not exposing an active build).
+
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
