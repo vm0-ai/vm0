@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use nbd_cow::PooledNbdCowDevice;
+use nbd_cow::{PooledDestroyError, PooledNbdCowDevice};
 use tokio::task::JoinHandle;
 
 use crate::cow_cleanup::{
@@ -12,6 +12,72 @@ use crate::cow_cleanup::{
 
 use super::SnapshotError;
 use super::output::cleanup_remove_dir_result;
+
+// Keep kernel-device teardown at the boundary so snapshot ownership and
+// filesystem cleanup can be exercised without root or a live NBD device.
+pub(super) enum SnapshotCowDevice {
+    Pooled(PooledNbdCowDevice),
+    #[cfg(test)]
+    Test {
+        cow_file: PathBuf,
+        destroy: Pin<Box<dyn Future<Output = Result<(), PooledDestroyError>> + Send>>,
+        cleanup_complete: Option<tokio::sync::oneshot::Sender<()>>,
+    },
+}
+
+impl From<PooledNbdCowDevice> for SnapshotCowDevice {
+    fn from(device: PooledNbdCowDevice) -> Self {
+        Self::Pooled(device)
+    }
+}
+
+impl SnapshotCowDevice {
+    pub(super) fn device_path(&self) -> &Path {
+        match self {
+            Self::Pooled(device) => device.device_path(),
+            #[cfg(test)]
+            Self::Test { .. } => panic!("test COW device cannot be used by Firecracker"),
+        }
+    }
+
+    pub(super) fn into_pooled(self) -> PooledNbdCowDevice {
+        match self {
+            Self::Pooled(device) => device,
+            #[cfg(test)]
+            Self::Test { .. } => panic!("test COW device cannot be published"),
+        }
+    }
+
+    fn cow_file(&self) -> &Path {
+        match self {
+            Self::Pooled(device) => device.cow_file(),
+            #[cfg(test)]
+            Self::Test { cow_file, .. } => cow_file,
+        }
+    }
+
+    #[cfg(test)]
+    fn take_cleanup_complete(&mut self) -> Option<tokio::sync::oneshot::Sender<()>> {
+        match self {
+            Self::Pooled(_) => None,
+            Self::Test {
+                cleanup_complete, ..
+            } => cleanup_complete.take(),
+        }
+    }
+
+    async fn destroy(self) -> Result<(), PooledDestroyError> {
+        match self {
+            Self::Pooled(device) => {
+                device
+                    .destroy_with_retries_detailed(cow_destroy_retry_policy())
+                    .await
+            }
+            #[cfg(test)]
+            Self::Test { destroy, .. } => destroy.await,
+        }
+    }
+}
 
 pub(super) struct SnapshotCowCleanupFinalizer {
     handle: Option<JoinHandle<nbd_cow::error::Result<()>>>,
@@ -92,13 +158,18 @@ async fn observe_detached_snapshot_cow_cleanup(handle: JoinHandle<nbd_cow::error
 }
 
 pub(super) fn destroy_snapshot_cow_and_cleanup_attempt_dir(
-    cow_device: PooledNbdCowDevice,
+    cow_device: impl Into<SnapshotCowDevice>,
 ) -> SnapshotCowCleanupFinalizer {
+    let cow_device = cow_device.into();
+    #[cfg(test)]
+    let (cow_device, cleanup_complete) = {
+        let mut cow_device = cow_device;
+        let cleanup_complete = cow_device.take_cleanup_complete();
+        (cow_device, cleanup_complete)
+    };
     let cow_file = cow_device.cow_file().to_path_buf();
-    SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
-        let result = cow_device
-            .destroy_with_retries_detailed(cow_destroy_retry_policy())
-            .await;
+    let cleanup = async move {
+        let result = cow_device.destroy().await;
         let outcome = classify_cow_destroy_result(&result);
 
         match (result, outcome) {
@@ -115,12 +186,20 @@ pub(super) fn destroy_snapshot_cow_and_cleanup_attempt_dir(
         }
         cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
         Ok(())
+    };
+    SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
+        let result = cleanup.await;
+        #[cfg(test)]
+        if let Some(tx) = cleanup_complete {
+            let _ = tx.send(());
+        }
+        result
     }))
 }
 
 pub(super) async fn destroy_snapshot_cow_after_error(
     context: &'static str,
-    cow_device: PooledNbdCowDevice,
+    cow_device: SnapshotCowDevice,
 ) {
     if let Err(e) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
         tracing::warn!(

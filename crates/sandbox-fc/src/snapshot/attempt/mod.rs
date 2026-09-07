@@ -3,10 +3,10 @@ mod process;
 #[cfg(test)]
 mod tests;
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use nbd_cow::KeptCow;
-use nbd_cow::PooledNbdCowDevice;
 use nbd_cow::pool::DevicePoolHandle;
 use sandbox::SnapshotCreateConfig;
 #[cfg(test)]
@@ -20,7 +20,7 @@ use crate::runtime_dirs::prepare_runtime_socket_dir;
 use crate::workspace_drive_image::prepare_workspace_drive_image;
 
 use super::SnapshotError;
-use super::cow::destroy_snapshot_cow_and_cleanup_attempt_dir;
+use super::cow::{SnapshotAttemptDirGuard, SnapshotCowDevice};
 use super::output::remove_dir_all_if_exists_sync;
 #[cfg(test)]
 use super::publish::SnapshotPublishAttempt;
@@ -46,25 +46,6 @@ async fn cleanup_snapshot_sock_dir(sock_dir: &Path, warning: &'static str) -> bo
             false
         }
     }
-}
-
-pub(super) async fn cleanup_after_netns_pool_failure(
-    cow_device: PooledNbdCowDevice,
-    device_pool: &DevicePoolHandle,
-    sock_dir: &Path,
-) {
-    if let Err(cleanup_err) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
-        tracing::warn!(
-            error = %cleanup_err,
-            "failed to destroy COW device after netns pool failure"
-        );
-    }
-    device_pool.cleanup().await;
-    cleanup_snapshot_sock_dir(
-        sock_dir,
-        "failed to cleanup sock dir after netns pool failure",
-    )
-    .await;
 }
 
 /// Snapshot-local owner for resources acquired while producing one snapshot.
@@ -97,23 +78,46 @@ impl SnapshotAttempt {
         paths: SandboxPaths,
         sock_paths: SockPaths,
         output: SnapshotOutputPaths,
-        netns_pool: NetnsPool,
         device_pool: DevicePoolHandle,
-        cow_device: PooledNbdCowDevice,
+        cow_device: SnapshotCowDevice,
         workspace_image_path: PathBuf,
+        mut attempt_dir_guard: SnapshotAttemptDirGuard,
     ) -> Self {
-        Self {
+        let attempt = Self {
             paths,
             sock_paths: Some(sock_paths),
             output,
             cleanup_resources: SnapshotCleanupResources::new(
-                netns_pool,
                 device_pool,
                 cow_device,
                 workspace_image_path,
             ),
             #[cfg(test)]
             cleanup_complete_tx: None,
+        };
+        // Only the COW finalizer may decide whether owned backing files are
+        // safe to delete, including during network setup or cancellation.
+        attempt_dir_guard.disarm();
+        attempt
+    }
+
+    pub(super) async fn initialize_netns_pool(
+        &mut self,
+        create_pool: impl Future<Output = Result<NetnsPool, SnapshotError>>,
+    ) -> Result<(), SnapshotError> {
+        match create_pool.await {
+            Ok(pool) => {
+                self.cleanup_resources.netns_pool = Some(pool);
+                Ok(())
+            }
+            Err(err) => {
+                self.cleanup_resources
+                    .destroy_cow_after_setup_error("netns pool")
+                    .await;
+                self.cleanup_device_pool().await;
+                self.cleanup_sock_dir().await;
+                Err(err)
+            }
         }
     }
 

@@ -14,6 +14,8 @@ use super::cleanup::{AttemptWorkspaceImage, SnapshotCleanupPresence, SnapshotCle
 
 use super::*;
 
+mod early_setup;
+
 async fn write_required_snapshot_artifacts(output: &SnapshotOutputPaths) {
     tokio::fs::create_dir_all(output.dir())
         .await
