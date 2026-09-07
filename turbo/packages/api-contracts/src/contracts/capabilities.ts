@@ -1,6 +1,5 @@
 /**
- * Capabilities for the Okou protocol capability system.
- * These protect both /api/okou/* and the compatible /api/zero/* routes.
+ * Capabilities carried by Okou run tokens when they call protected API routes.
  */
 export const CAPABILITIES = [
   "agent:read",
@@ -47,17 +46,17 @@ export const CAPABILITIES = [
   "presentation-template:write",
 ] as const;
 
-/** Inferred union type of all zero capability strings. */
+/** Inferred union type of all Okou run capabilities. */
 export type Capability = (typeof CAPABILITIES)[number];
 
-/** Metadata for a single zero capability. */
+/** Metadata for a single Okou run capability. */
 export interface CapabilityMeta {
   group: string;
   label: string;
 }
 
 /**
- * Exhaustive mapping from every zero capability to its UI group and label.
+ * Exhaustive mapping from every Okou run capability to its UI group and label.
  * Adding a new capability to CAPABILITIES without updating this record
  * will produce a TypeScript compile error.
  */

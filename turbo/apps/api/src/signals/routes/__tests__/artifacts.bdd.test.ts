@@ -484,7 +484,7 @@ describe("artifact upload provenance", () => {
   );
 });
 
-describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
+describe("GET /api/chat-threads/:threadId/artifacts", () => {
   it("keeps every hosted-site version as a separate immutable artifact", async () => {
     const actor = bdd.user();
     const owner = await artifactActor(

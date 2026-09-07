@@ -1,4 +1,6 @@
 import { computed } from "ccstate";
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   artifactCatalogContract,
   type ArtifactSummary,
@@ -6,7 +8,9 @@ import {
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 
 import { accept } from "../../lib/accept.ts";
+import { agents$ } from "../agent.ts";
 import { apiClient$ } from "../api-client.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -15,6 +19,33 @@ import { allVisibleWorkflows$ } from "../workflows-page/workflows-signals.ts";
 import { chatListQuery$ } from "./sidebar-state.ts";
 
 const MAX_RESOURCE_SEARCH_RESULTS = 25;
+
+interface ThreeColumnAgentSearchResult {
+  readonly query: string;
+  readonly agents: readonly AgentResponse[];
+}
+
+export const workspaceAgentSearchEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.WorkspaceAgentSearch];
+});
+
+export const threeColumnAgentSearchResults$ = computed(
+  async (get): Promise<ThreeColumnAgentSearchResult> => {
+    const query = get(chatListQuery$).trim().toLowerCase();
+    if (!get(workspaceAgentSearchEnabled$) || !query) {
+      return { query, agents: [] };
+    }
+    const agents = await get(agents$);
+    return {
+      query,
+      agents: agents
+        .filter((agent) => {
+          return agent.displayName?.toLowerCase().includes(query) ?? false;
+        })
+        .slice(0, MAX_RESOURCE_SEARCH_RESULTS),
+    };
+  },
+);
 
 interface ThreeColumnWorkflowSearchResult {
   readonly query: string;

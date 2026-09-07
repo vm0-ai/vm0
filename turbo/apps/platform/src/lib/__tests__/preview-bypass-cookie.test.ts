@@ -55,7 +55,7 @@ test("A preview credential reaches its matching API host", () => {
     search: "",
   };
   const cookie = "x-vercel-protection-bypass=preview%20secret";
-  const apiUrl = new URL("https://pr-22085-api.vm6.ai/api/okou/status");
+  const apiUrl = new URL("https://pr-22085-api.vm6.ai/api/chat/events");
 
   appendPreviewBypassToUrl(apiUrl, location, cookie);
 
@@ -72,7 +72,7 @@ test("A preview credential does not reach a lookalike API host", () => {
   };
   const cookie = "x-vercel-protection-bypass=preview%20secret";
   const lookalikeUrl = new URL(
-    "https://pr-22085-api.vm6.ai.evil.example/api/okou/status",
+    "https://pr-22085-api.vm6.ai.evil.example/api/chat/events",
   );
 
   appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
@@ -90,7 +90,7 @@ test("A preview credential does not reach another preview API host", () => {
   };
   const cookie = "x-vercel-protection-bypass=preview%20secret";
   const otherPreviewUrl = new URL(
-    "https://pr-22086-api.vm6.ai/api/okou/status",
+    "https://pr-22086-api.vm6.ai/api/chat/events",
   );
 
   appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);

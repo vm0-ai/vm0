@@ -87,12 +87,12 @@ const completeResponseSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Zero contract for uploads.
+ * Okou upload contract.
  *
  * `prepare` issues a presigned PUT URL so the browser can send the file body
  * straight to R2, bypassing the Next.js runtime's body-size limits. `complete`
  * confirms the object exists after the PUT and persists run associations when
- * the request is authenticated with a run-scoped zero token.
+ * the request is authenticated with an Okou run token.
  */
 export const uploadsContract = c.router({
   prepare: {

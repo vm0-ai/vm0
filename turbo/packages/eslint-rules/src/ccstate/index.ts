@@ -28,7 +28,6 @@
  * - no-test-after-each: Disallow file-level afterEach cleanup in platform tests
  * - require-accept: Enforce that apiClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
- * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
  * - no-react-class-component: Disallow React class components — use function components with hooks
  * - prefer-ui-components: Disallow raw button/input/textarea styled like a @okouai/ui component
  */
@@ -66,7 +65,6 @@ import requireClientSignal from "./rules/require-client-signal.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
 import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
-import noRawMswHttp from "./rules/no-raw-msw-http.ts";
 import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
 import noReactClassComponent from "./rules/no-react-class-component.ts";
 import preferUiComponents from "./rules/prefer-ui-components.ts";
@@ -110,7 +108,6 @@ const plugin = {
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
     "no-duplicate-route-param": noDuplicateRouteParam,
-    "no-raw-msw-http": noRawMswHttp,
     "no-mockapi-raw-async": noMockApiRawAsync,
     "no-react-class-component": noReactClassComponent,
     "prefer-ui-components": preferUiComponents,

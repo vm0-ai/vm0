@@ -15,10 +15,9 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, and agents); the only mocks are the Clerk
-SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
-bearers are minted with the exported test token signers (api-bdd-github and
-api-bdd-computer-use precedent).
+CLI auth, and agents); the only mocks are the Clerk SDK boundary and the S3
+accept for agent creation. Sandbox, Okou run, and forged-PAT bearers are minted
+with the exported test token signers.
 */
 
 const context = testContext();

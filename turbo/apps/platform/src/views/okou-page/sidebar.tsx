@@ -709,6 +709,11 @@ function ThreeColumnSearchDialogContainer() {
           pathParams: { threadId },
         });
       }}
+      onSelectAgent={(agentId) => {
+        navigate("/agents/:agentId/chat", {
+          pathParams: { agentId },
+        });
+      }}
       onSelectWorkflow={(workflowId) => {
         navigate("/workflows/:workflowId", {
           pathParams: { workflowId },

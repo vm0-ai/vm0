@@ -144,7 +144,7 @@ function preferenceClient() {
   );
 }
 
-/** The preference route only accepts a session, so zero tokens cannot seed it. */
+/** The preference route only accepts a session, so Okou run tokens cannot seed it. */
 async function setMemberMediaDefaults(fixture: AgentFixture): Promise<void> {
   createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
   await accept(
@@ -190,7 +190,7 @@ async function readCreatedThreadEvent(threadId: string, token: string) {
   return event;
 }
 
-describe("POST /api/zero/chat-threads", () => {
+describe("POST /api/chat-threads", () => {
   it("resolves only sparse connector selections during account deletion", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {});
@@ -750,7 +750,7 @@ describe("POST /api/zero/chat-threads", () => {
     );
   });
 
-  it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
+  it("creates a titled thread with an Okou run token carrying chat-thread:write", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,
@@ -1040,7 +1040,7 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
+  it("rejects an Okou run token without chat-thread:write", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,

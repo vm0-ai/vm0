@@ -11,6 +11,8 @@ import {
 } from "../../signals/__tests__/test-helpers.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import { mockNow } from "../../lib/time.ts";
+import { ApiError } from "../../lib/api-error.ts";
+import { SharedDatabaseHttpError } from "../http-error.ts";
 import type {
   SharedDatabaseBridgeEvents,
   SharedDatabasePortLike,
@@ -188,6 +190,87 @@ function connectProtocolTransport(
     workerPort,
   };
 }
+
+test("preserve a rejected 401 through the port and allow a later query to succeed", async () => {
+  initializeWorker();
+  const { bridge } = connectProtocolTransport(context.signal);
+  await bridge.registerTab(context.signal);
+  let denied = true;
+  const key = dataKey(crypto.randomUUID());
+  const recoveredRow = row(key.threadId, 1);
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    if (denied) {
+      return respond(401, {
+        error: { code: "UNAUTHORIZED", message: "Unauthorized" },
+      });
+    }
+    return respond(
+      200,
+      chatEventRowsResponse(
+        query.sinceSeqId === 0 ? [recoveredRow] : [],
+        query,
+      ),
+    );
+  });
+  const query = {
+    dataKey: key,
+    afterSeqId: null,
+    consistency: "catch-up",
+  } as const;
+  const failed = bridge.query(query, context.signal);
+  await expect(failed).rejects.toBeInstanceOf(SharedDatabaseHttpError);
+  await expect(failed).rejects.toMatchObject({ status: 401 });
+  denied = false;
+  await expect(bridge.query(query, context.signal)).resolves.toStrictEqual([
+    recoveredRow,
+  ]);
+});
+
+test.each([401, 426, 500])(
+  "preserve HTTP status %s on query errors across MessagePort",
+  async (status) => {
+    initializeWorker();
+    const { bridge } = connectProtocolTransport(context.signal);
+    await bridge.registerTab(context.signal);
+    context.mocks.http.get("*/api/chat-threads/snapshot", () => {
+      return Response.json(
+        { error: { code: "REQUEST_FAILED", message: "Request failed" } },
+        { status },
+      );
+    });
+    const failed = bridge.query(
+      {
+        dataKey: { kind: "chat-thread-event" },
+        afterSeqId: null,
+        consistency: "catch-up",
+      },
+      context.signal,
+    );
+    await expect(failed).rejects.toBeInstanceOf(SharedDatabaseHttpError);
+    await expect(failed).rejects.toMatchObject({ status });
+  },
+);
+
+test.each([401, 426])(
+  "preserve API error classification for computed HTTP %s across MessagePort",
+  async (status) => {
+    initializeWorker();
+    const { bridge } = connectProtocolTransport(context.signal);
+    await bridge.registerTab(context.signal);
+    context.mocks.http.get("*/api/indicators", () => {
+      return Response.json(
+        { error: { code: "REQUEST_FAILED", message: "Request failed" } },
+        { status },
+      );
+    });
+    const failed = bridge.getComputed("chat-thread-indicators");
+    await expect(failed).rejects.toBeInstanceOf(ApiError);
+    await expect(failed).rejects.toMatchObject({
+      status,
+      code: "REQUEST_FAILED",
+    });
+  },
+);
 
 test("Keep concurrent shared chat loads independent", async () => {
   initializeWorker();

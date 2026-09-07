@@ -129,7 +129,7 @@ async function deleteSlackConnection(fixture: SlackFixture): Promise<void> {
   });
 }
 
-describe("GET /api/zero/integrations/slack", () => {
+describe("GET /api/integrations/slack", () => {
   let fixture: SlackFixture;
 
   beforeEach(async () => {
@@ -389,7 +389,7 @@ async function listWorkspaceSlackConnections(
   return state.connections;
 }
 
-describe("DELETE /api/zero/integrations/slack", () => {
+describe("DELETE /api/integrations/slack", () => {
   const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
     (fixture) => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
@@ -530,7 +530,7 @@ describe("DELETE /api/zero/integrations/slack", () => {
   });
 });
 
-describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
+describe("DELETE /api/integrations/slack?action=uninstall", () => {
   const trackSlackFixture = createFixtureTracker<SlackIntegrationFixture>(
     (fixture) => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);

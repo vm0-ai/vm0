@@ -4570,44 +4570,50 @@ where
         }
     }
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let output = future.await;
     drop(guard);
     (output, captured.entries())
 }
 
+async fn wait_for_balloon_sample_count<F>(
+    mut future: std::pin::Pin<&mut F>,
+    captured: &CapturedEvents,
+    expected_sample_count: usize,
+) where
+    F: Future,
+{
+    loop {
+        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
+        if sample_count == expected_sample_count {
+            return;
+        }
+        tokio::select! {
+            _ = future.as_mut() => {
+                panic!(
+                    "balloon wait completed after {sample_count} samples, expected {expected_sample_count}"
+                );
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+}
+
 async fn advance_balloon_wait_to_progress_grace<F>(
     mut future: std::pin::Pin<&mut F>,
     captured: &CapturedEvents,
 ) where
-    F: Future<Output = BalloonSettleResult>,
+    F: Future,
 {
-    for expected_sample_count in 1..=2 {
-        if expected_sample_count == 2 {
-            tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
-            tokio::time::resume();
-        }
-        loop {
-            let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
-            if sample_count == expected_sample_count {
-                break;
-            }
-            tokio::select! {
-                outcome = future.as_mut() => {
-                    panic!(
-                        "balloon wait completed after {sample_count} samples, expected {expected_sample_count}; outcome={outcome:?}"
-                    );
-                }
-                () = tokio::task::yield_now() => {}
-            }
-        }
-        if expected_sample_count == 2 {
-            tokio::time::pause();
-        }
-    }
+    wait_for_balloon_sample_count(future.as_mut(), captured, 1).await;
+    tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+    tokio::time::resume();
+    wait_for_balloon_sample_count(future.as_mut(), captured, 2).await;
+    tokio::time::pause();
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0])
+        .await;
     tokio::time::resume();
     loop {
         if has_captured_event(
@@ -4618,8 +4624,39 @@ async fn advance_balloon_wait_to_progress_grace<F>(
             return;
         }
         tokio::select! {
-            outcome = future.as_mut() => {
-                panic!("balloon wait completed without progress grace; outcome={outcome:?}");
+            _ = future.as_mut() => {
+                panic!("balloon wait completed without progress grace");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+    }
+}
+
+async fn advance_balloon_wait_to_next_progress_grace<F>(
+    mut future: std::pin::Pin<&mut F>,
+    captured: &CapturedEvents,
+    expected_sample_count: usize,
+    expected_grace_count: usize,
+) where
+    F: Future,
+{
+    wait_for_balloon_sample_count(future.as_mut(), captured, expected_sample_count).await;
+    tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
+    tokio::time::resume();
+    loop {
+        let grace_count = captured_message_count(
+            &captured.entries(),
+            "balloon inflation still progressing, extending settle deadline",
+        );
+        if grace_count == expected_grace_count {
+            tokio::time::pause();
+            return;
+        }
+        tokio::select! {
+            _ = future.as_mut() => {
+                panic!(
+                    "balloon wait completed after {grace_count} grace intervals, expected {expected_grace_count}"
+                );
             }
             () = tokio::task::yield_now() => {}
         }
@@ -5002,7 +5039,7 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
         }
     }
 
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
@@ -5027,13 +5064,16 @@ async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
     let target_mib = 4096 - balloon::MIN_GUEST_MIB;
     let initial_stats =
         MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
-    let progressing_stats =
+    let first_progressing_stats =
+        MockBalloonStats::new(target_mib, 1200).with_memory(mib(3000), mib(3300), mib(3940));
+    let second_progressing_stats =
         MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([
             MockBalloonStatsReply::Ok(initial_stats),
-            MockBalloonStatsReply::Ok(progressing_stats),
+            MockBalloonStatsReply::Ok(first_progressing_stats),
+            MockBalloonStatsReply::Ok(second_progressing_stats),
             MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, target_mib)),
         ]),
     );
@@ -5047,6 +5087,7 @@ async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
     tokio::pin!(wait);
 
     advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    advance_balloon_wait_to_next_progress_grace(wait.as_mut(), &captured, 3, 2).await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
@@ -5057,17 +5098,24 @@ async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
         outcome.telemetry_outcome,
         SandboxFinalExecParkSubstageOutcome::TargetReached
     );
+    assert_eq!(
+        captured_message_count(
+            &events,
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        2
+    );
     let event = captured_event(
         &events,
         "balloon inflation still progressing, extending settle deadline",
     );
     assert_eq!(event.level, Level::INFO);
-    assert_event_field(event, "actual", "Some(2314)");
+    assert_event_field(event, "actual", "Some(1200)");
     assert_event_field(event, "target", "3072");
-    assert_event_field(event, "deficit_mib", "Some(758)");
+    assert_event_field(event, "deficit_mib", "Some(1872)");
     assert_event_field(event, "previous_actual_mib", "Some(256)");
-    assert_event_field(event, "reported_free_mib", "Some(2136)");
-    assert_event_field(event, "reported_available_mib", "Some(2265)");
+    assert_event_field(event, "reported_free_mib", "Some(3000)");
+    assert_event_field(event, "reported_available_mib", "Some(3300)");
     assert_event_field(event, "grace_ms", "5000");
     assert!(!has_captured_event(
         &events,
@@ -5076,18 +5124,21 @@ async fn wait_for_balloon_extends_deadline_for_recent_safe_progress() {
 }
 
 #[tokio::test]
-async fn wait_for_balloon_progress_grace_remains_bounded() {
+async fn wait_for_balloon_progress_extensions_stop_when_progress_stalls() {
     let target_mib = 4096 - balloon::MIN_GUEST_MIB;
     let initial_stats =
         MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
-    let progressing_stats =
+    let first_progressing_stats =
+        MockBalloonStats::new(target_mib, 1200).with_memory(mib(3000), mib(3300), mib(3940));
+    let second_progressing_stats =
         MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([
             MockBalloonStatsReply::Ok(initial_stats),
-            MockBalloonStatsReply::Ok(progressing_stats.clone()),
-            MockBalloonStatsReply::Ok(progressing_stats),
+            MockBalloonStatsReply::Ok(first_progressing_stats),
+            MockBalloonStatsReply::Ok(second_progressing_stats.clone()),
+            MockBalloonStatsReply::Ok(second_progressing_stats),
         ]),
     );
     let client = ApiClient::new(api.socket_path()).unwrap();
@@ -5100,18 +5151,8 @@ async fn wait_for_balloon_progress_grace_remains_bounded() {
     tokio::pin!(wait);
 
     advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
-    loop {
-        let sample_count = captured_message_count(&captured.entries(), "waiting for balloon");
-        if sample_count == 3 {
-            break;
-        }
-        tokio::select! {
-            outcome = &mut wait => {
-                panic!("balloon wait completed before the grace sample; outcome={outcome:?}");
-            }
-            () = tokio::task::yield_now() => {}
-        }
-    }
+    advance_balloon_wait_to_next_progress_grace(wait.as_mut(), &captured, 3, 2).await;
+    wait_for_balloon_sample_count(wait.as_mut(), &captured, 4).await;
     tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
     tokio::time::resume();
     let outcome = wait.await;
@@ -5128,15 +5169,91 @@ async fn wait_for_balloon_progress_grace_remains_bounded() {
             &events,
             "balloon inflation still progressing, extending settle deadline"
         ),
-        1
+        2
     );
     let event = captured_event(
         &events,
-        "balloon inflate incomplete after 10s, pausing anyway",
+        "balloon inflate incomplete after 15s, pausing anyway",
     );
     assert_eq!(event.level, Level::WARN);
     assert_event_field(event, "actual", "Some(2314)");
     assert_event_field(event, "deficit_mib", "Some(758)");
+    assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
+}
+
+#[tokio::test]
+async fn wait_for_balloon_progress_extensions_stop_at_absolute_timeout() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let slow_stats_entered = Arc::new(Notify::new());
+    let slow_stats_release = Arc::new(Notify::new());
+    let progressing_stats = |actual_mib| {
+        MockBalloonStats::new(target_mib, actual_mib).with_memory(mib(4096), mib(4096), mib(4096))
+    };
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(progressing_stats(0)),
+            MockBalloonStatsReply::Ok(progressing_stats(100)),
+            MockBalloonStatsReply::Ok(progressing_stats(200)),
+            MockBalloonStatsReply::Ok(progressing_stats(300)),
+            MockBalloonStatsReply::Ok(progressing_stats(400)),
+            MockBalloonStatsReply::Ok(progressing_stats(500)),
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&slow_stats_entered),
+                release: Arc::clone(&slow_stats_release),
+                stats: progressing_stats(600),
+            },
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon_with_outcome(&client, target_mib, "absolute-progress-timeout");
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    for (sample_count, grace_count) in [(3, 2), (4, 3), (5, 4), (6, 5)] {
+        advance_balloon_wait_to_next_progress_grace(
+            wait.as_mut(),
+            &captured,
+            sample_count,
+            grace_count,
+        )
+        .await;
+    }
+    tokio::select! {
+        () = slow_stats_entered.notified() => {}
+        _ = wait.as_mut() => panic!("balloon wait completed before the final bounded request"),
+    }
+    tokio::time::advance(BALLOON_SETTLE_PROGRESS_GRACE).await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    slow_stats_release.notify_waiters();
+    drop(guard);
+    let events = captured.entries();
+
+    expect_severe_memory_retention(outcome.park_outcome);
+    assert_eq!(
+        outcome.telemetry_outcome,
+        SandboxFinalExecParkSubstageOutcome::Deadline
+    );
+    assert_eq!(
+        captured_message_count(
+            &events,
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        5
+    );
+    let event = captured_event(
+        &events,
+        "balloon inflate incomplete after 30s, pausing anyway",
+    );
+    assert_eq!(event.level, Level::WARN);
+    assert_event_field(event, "actual", "Some(500)");
     assert_event_field(event, "reason", "severe_deficit");
     assert_event_field(event, "admission_action", "reject_and_destroy");
 }
@@ -5222,6 +5339,53 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     assert_event_field(event, "max_actual_mib", "Some(800)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
     assert_event_field(event, "reason", "actual_stalled");
+    assert_event_field(event, "admission_action", "reuse");
+}
+
+#[tokio::test]
+async fn wait_for_balloon_reusable_progressing_timeout_logs_at_info() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 700)),
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 800)),
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon_with_outcome(&client, target_mib, "reusable-progress-timeout");
+    tokio::pin!(wait);
+
+    wait_for_balloon_sample_count(wait.as_mut(), &captured, 1).await;
+    tokio::time::advance(BALLOON_SETTLE_FAST_POLL_INTERVALS[0]).await;
+    tokio::time::resume();
+    wait_for_balloon_sample_count(wait.as_mut(), &captured, 2).await;
+    tokio::time::pause();
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT - BALLOON_SETTLE_FAST_POLL_INTERVALS[0])
+        .await;
+    tokio::time::resume();
+    let outcome = wait.await;
+    drop(guard);
+    let events = captured.entries();
+
+    assert_eq!(outcome.park_outcome, SandboxParkOutcome::Reusable);
+    assert_eq!(
+        outcome.telemetry_outcome,
+        SandboxFinalExecParkSubstageOutcome::Deadline
+    );
+    let event = captured_event(
+        &events,
+        "balloon inflate incomplete after 5s, pausing anyway",
+    );
+    assert_eq!(event.level, Level::INFO);
+    assert_event_field(event, "actual", "Some(800)");
+    assert_event_field(event, "deficit_mib", "Some(224)");
+    assert_event_field(event, "reason", "actual_progressing_timeout");
     assert_event_field(event, "admission_action", "reuse");
 }
 
@@ -5365,7 +5529,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     let mut api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::DelayedOk(
-            BALLOON_SETTLE_TIMEOUT + Duration::from_secs(1),
+            BALLOON_SETTLE_INITIAL_TIMEOUT + Duration::from_secs(1),
             MockBalloonStats::new(target_mib, target_mib),
         )]),
     );
@@ -5387,7 +5551,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     );
 
     tokio::time::pause();
-    tokio::time::advance(BALLOON_SETTLE_TIMEOUT).await;
+    tokio::time::advance(BALLOON_SETTLE_INITIAL_TIMEOUT).await;
     tokio::time::resume();
     let outcome = wait.await;
     drop(guard);
@@ -5640,6 +5804,69 @@ async fn exact_handoff_interrupts_in_flight_balloon_settle() {
     );
     assert_eq!(patches[0].path, "/balloon");
     assert_eq!(patches[1].path, "/vm");
+}
+
+#[tokio::test]
+async fn exact_handoff_interrupts_balloon_settle_after_multiple_progress_extensions() {
+    let target_mib = 4096 - balloon::MIN_GUEST_MIB;
+    let stats_entered = Arc::new(Notify::new());
+    let stats_release = Arc::new(Notify::new());
+    let initial_stats =
+        MockBalloonStats::new(target_mib, 256).with_memory(mib(3840), mib(3940), mib(3940));
+    let first_progressing_stats =
+        MockBalloonStats::new(target_mib, 1200).with_memory(mib(3000), mib(3300), mib(3940));
+    let second_progressing_stats =
+        MockBalloonStats::new(target_mib, 2314).with_memory(mib(2136), mib(2265), mib(3940));
+    let api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(initial_stats),
+            MockBalloonStatsReply::Ok(first_progressing_stats),
+            MockBalloonStatsReply::Ok(second_progressing_stats),
+            MockBalloonStatsReply::GatedOk {
+                entered: Arc::clone(&stats_entered),
+                release: Arc::clone(&stats_release),
+                stats: MockBalloonStats::new(target_mib, target_mib),
+            },
+        ]),
+    );
+    let client = ApiClient::new(api.socket_path()).unwrap();
+    let handoff = SandboxFinalExecParkHandoff::new();
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    tokio::time::pause();
+    let wait = wait_for_balloon_with_optional_handoff(
+        &client,
+        target_mib,
+        "handoff-after-progress-extensions",
+        Some(&handoff),
+    );
+    tokio::pin!(wait);
+
+    advance_balloon_wait_to_progress_grace(wait.as_mut(), &captured).await;
+    advance_balloon_wait_to_next_progress_grace(wait.as_mut(), &captured, 3, 2).await;
+    tokio::select! {
+        () = stats_entered.notified() => {}
+        _ = wait.as_mut() => panic!("balloon wait completed before handoff was requested"),
+    }
+    assert!(handoff.request());
+    tokio::time::resume();
+    let outcome = tokio::time::timeout(Duration::from_secs(1), wait)
+        .await
+        .expect("handoff should wake the extended balloon request");
+    stats_release.notify_waiters();
+    drop(guard);
+
+    assert!(matches!(outcome, BalloonSettleWaitResult::Handoff));
+    assert_eq!(
+        captured_message_count(
+            &captured.entries(),
+            "balloon inflation still progressing, extending settle deadline"
+        ),
+        2
+    );
 }
 
 #[tokio::test]

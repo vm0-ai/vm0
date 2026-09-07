@@ -617,8 +617,9 @@
     "resultCount_other": "{{count}} 件の結果",
     "searchAgents": "エージェントを検索...",
     "searching": "検索中...",
-    "searchWorkspace": "チャット、メッセージ、ワークフロー、アーティファクトを検索...",
+    "searchWorkspace": "ワークスペースを検索...",
     "sections": {
+      "agents": "エージェント",
       "artifacts": "アーティファクト",
       "chats": "チャット",
       "messages": "メッセージ",

@@ -238,9 +238,52 @@ every versioned runner directory. Status schema changes must cover those
 old/new combinations rather than treating the file as process-private state.
 
 Current status writers publish `idle_sandboxes` and omit the field when the
-collection is empty. Current maintenance readers and the host monitoring
-collector read only `idle_sandboxes`; a status file without the canonical
-collection is treated as containing no idle sandboxes.
+collection is empty. Blank-enabled writers currently encode ready blanks there
+using `reuse_key: "__vm0_blank__:<sandbox_id>"`. A ready blank has no run ID or
+tenant reuse identity. The migration tracked by [#32071](https://github.com/vm0-ai/vm0/issues/32071)
+separates exact and blank identity without changing shared pool lifecycle rules.
+
+The reader bridge ([#32082](https://github.com/vm0-ai/vm0/issues/32082)) lets doctor
+and the host collector also read `blank_sandboxes: [{"sandbox_id": "..."}]`.
+Missing collections default to empty; malformed present collections are invalid.
+Legacy recognition is confined to input normalization and requires the entire
+reuse key to match the reserved prefix plus that entry's sandbox ID. Other
+prefix-like reuse keys remain exact. Explicit blank IDs suppress same-file idle
+mirrors, and duplicate blank IDs count once. Doctor lists exact reuse keys under
+Idle and sandbox-ID-only entries under Blank, recognizes both as owned processes,
+and never treats an unclaimed blank as an active job. Active mappings take
+priority over duplicate blanks. The writer is unchanged in the bridge release.
+
+The collector exports `vm0_runner_sandboxes{state="blank"}` (including zero).
+`state="idle"` now counts exact inventory only; total parked inventory is the
+sum of `idle` and `blank`. Active, preparing and unknown counts keep their meaning.
+Use `sum by (instance) (vm0_runner_sandboxes{state=~"idle|blank"})` for a per-host
+parked total; replace/group additional host identity labels as needed. Summing
+all states gives total recorded sandbox inventory. UUID deduplication across
+non-stopped version files uses `idle > active > preparing > unknown > blank`:
+an active/claimed record supersedes a duplicate old blank, preserving the existing
+priority between non-blank states. Stopped files are excluded. Sandbox IDs, run
+IDs and reuse keys are never metric labels. Existing Grafana panels selecting
+only `idle` will now show exact inventory; this change does not edit dashboards.
+
+The collector is installed by host provisioning, independently of Runner
+releases. Both its systemd timer and Alloy textfile scrape run every 15 seconds.
+Before enabling the explicit-only writer in
+[#32083](https://github.com/vm0-ai/vm0/issues/32083), verify bridge-capable doctor
+and collector deployment on every supported host and establish a compatible
+rollback floor using the actual reader commit/release ancestry. The target
+Runner's doctor runs during rollback, so an old-reader/new-writer combination
+must be excluded by these gates. Old writers remain readable by bridge readers
+during draining; neither merging this bridge nor releasing Runner proves the
+independent collector is installed. No writer rollout or rollback floor is
+changed by the bridge PR.
+
+Remove legacy prefix recognition only under
+[#32084](https://github.com/vm0-ai/vm0/issues/32084), after all supported live and
+rollback writers publish explicit blanks, old versions have drained, and relevant
+retained non-stopped status files no longer contain synthetic entries. Record
+deployment/file evidence and enforce rollback eligibility before removing it.
+Keep absent-collection support for genuinely exact-only historical status files.
 
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and

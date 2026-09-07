@@ -15,7 +15,7 @@ function client() {
   return setupApp({ context, routes: chatEventsRoutes })(chatEventsContract);
 }
 
-describe("POST /api/zero/chat/events authorization", () => {
+describe("POST /api/chat/events authorization", () => {
   it("rejects an agent token without chat-event:write", async () => {
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({

@@ -10,7 +10,7 @@
  *
  * Bad:
  *   const fetchFn = get(fetch$);
- *   await fetchFn("/api/zero/something", { method: "POST" });
+ *   await fetchFn("/api/chat/events", { method: "POST" });
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

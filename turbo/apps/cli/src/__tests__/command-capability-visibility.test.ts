@@ -274,7 +274,7 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should hide run-only commands and keep global commands visible outside zero scope", () => {
+  it("should hide run-only commands and keep global commands visible outside the Okou run scope", () => {
     const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],

@@ -56,18 +56,11 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
 /**
  * The update line the unqualified release-page and DMG routes serve.
  *
- * #28465 moved the contract from `/api/okou/desktop/updates/**` to the neutral
- * path, which makes the neutral path the successor of the `okou` form rather
- * than a new one: the platform download button and the Zero migration bridge
- * both point at it and both expect an Okou artifact.
- *
  * `/api/desktop/updates/stable/darwin/arm64/dmg` is what the migration wall's
  * `Download Okou` button opens and what the bridge compiled into installed Zero
  * builds hard-codes, so this constant must keep resolving to the current Okou
- * DMG. The unqualified RELEASES.json feed used to resolve to Zero instead;
- * #31475 removed that route rather than aligning it, because a Zero client
- * cannot cross to the Okou bundle through Squirrel and no other caller reached
- * it.
+ * DMG. Both the platform download button and the supported Zero migration
+ * bridge depend on that current artifact.
  */
 const UNQUALIFIED_DESKTOP_UPDATE_LINE = DESKTOP_UPDATE_LINE_OKOU;
 

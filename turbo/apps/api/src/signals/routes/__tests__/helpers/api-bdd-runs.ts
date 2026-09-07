@@ -328,23 +328,6 @@ export function createRunsApi(
   }
 
   return {
-    async requestRemovedAgentRunCreation(actor: ApiTestUser): Promise<number> {
-      const { authorization } = authenticate(context, actor);
-      const app = createAppWithRoutes({
-        signal: context.signal,
-        routes: runRoutes,
-      });
-      const response = await app.request("/api/zero/runs", {
-        method: "POST",
-        headers: {
-          ...(authorization === undefined ? {} : { authorization }),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ agentId: randomUUID(), prompt: "removed" }),
-      });
-      return response.status;
-    },
-
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
       mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
