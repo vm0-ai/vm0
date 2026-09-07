@@ -8,7 +8,7 @@ import {
   reloadAuthV2,
 } from "../lib/auth-v2-ui";
 
-const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
+const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(255, 165, 0)";
 const UNSUPPORTED_CHROME_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/110.0.0.0 Safari/537.36";
 
