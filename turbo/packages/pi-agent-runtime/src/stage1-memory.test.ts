@@ -370,7 +370,7 @@ describe("Pi memory Stage 1 runtime", () => {
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({
         model: "gpt-5.6-terra",
-        reasoning: { effort: "low" },
+        reasoning: { effort: "max" },
         text: {
           format: {
             type: "json_schema",

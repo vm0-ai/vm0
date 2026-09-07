@@ -2142,6 +2142,12 @@ describe("CHAT-02: thread connector account selection", () => {
   });
 
   it("starts the run when the runtime catalog no longer contains the selected built-in", async () => {
+    // Catalog rows are global by source, so isolate mutations from parallel test files.
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-chat-retired-catalog-connector-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({ runtimeProjection: true });
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -2188,9 +2194,6 @@ describe("CHAT-02: thread connector account selection", () => {
       [200],
     );
 
-    onTestFinished(async () => {
-      await installApiTestConnectorCatalog();
-    });
     const catalogVersion = `api-test-without-openai-${randomUUID()}`;
     const catalogWithoutOpenAi = {
       ...API_TEST_CONNECTOR_CATALOG,
@@ -5364,7 +5367,7 @@ function expectApiKeyTerraRequest(
       model: route.runtimeModel,
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -5416,7 +5419,7 @@ function expectApiKeyTerraSandboxCarrier(
     ...(route.type === "vercel-ai-gateway-codex"
       ? { catalogModel: route.catalogModel }
       : {}),
-    thinkingLevel: "low",
+    thinkingLevel: "max",
     credentialBindings: [
       {
         kind: "api-key",
@@ -5453,7 +5456,7 @@ function expectNativeSubscriptionRequest(
       model: "gpt-5.6-terra",
       stream: true,
       store: false,
-      reasoning: { effort: "low" },
+      reasoning: { effort: "max" },
     },
   });
   const { body } = z
@@ -12115,7 +12118,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const h1 = h1Bytes.toString("utf8");
     expect(h1).toContain('"type":"thinking_level_change"');
-    expect(h1).toContain('"thinkingLevel":"low"');
+    expect(h1).toContain('"thinkingLevel":"max"');
     expect(h1).not.toContain("serviceTier");
     const h2Session = MemoryPiSession.fromJsonl(h1);
     const h1Assistant = [...h2Session.buildSessionContext().messages]
@@ -14938,7 +14941,7 @@ describe("CHAT-02: run-level model overrides", () => {
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
           model: "gpt-5.6-terra",
-          thinkingLevel: "low",
+          thinkingLevel: "max",
           credentialBindings: [
             {
               kind: "access-token",
@@ -15445,7 +15448,7 @@ describe("CHAT-02: run-level model overrides", () => {
             model: route.runtimeModel,
             stream: true,
             store: false,
-            reasoning: { effort: "low" },
+            reasoning: { effort: "max" },
           },
         });
         expect(request.body).not.toHaveProperty("previous_response_id");
@@ -18398,6 +18401,12 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "presentation",
       selection: { templateId },
     };
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PresentationTemplates]: false },
+    );
 
     const switchedOff = await chat.requestSendEvent(
       actor,

@@ -5,6 +5,7 @@ mod bounded_command;
 mod byte_size;
 mod ca;
 mod child_cleanup;
+mod cleanup_progress;
 mod cmd;
 mod config;
 mod deps;

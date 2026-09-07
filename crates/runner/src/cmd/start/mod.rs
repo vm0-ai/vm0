@@ -80,7 +80,7 @@ use crate::provider::{
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
-use crate::retry::{RetryState, recv_retry, sleep_until_retry};
+use crate::retry::{RetryState, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::status::{StatusTracker, remove_stale_status_file};
@@ -120,6 +120,7 @@ use job_spawn::{SpawnContext, handle_job_result};
 use mitm_restart::{
     MITM_BACKOFF_INITIAL, MITM_BACKOFF_MAX, MITM_MAX_CONSECUTIVE_FAILURES, MitmRestartHandle,
     finish_mitm_restart_before_shutdown, handle_mitm_restart_result, maybe_spawn_mitm_restart,
+    recv_mitm_restart, stop_mitm_retries,
 };
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
@@ -297,8 +298,12 @@ impl TeardownTimer {
         Self::duration_ms(self.start.elapsed())
     }
 
-    fn phase_start(&self, phase: &'static str) -> Instant {
-        let phase_start = Instant::now();
+    fn phase_start(&self, phase: &'static str) -> crate::cleanup_progress::CleanupProgress {
+        let phase_start = crate::cleanup_progress::CleanupProgress::start(
+            "runner",
+            phase,
+            crate::cleanup_progress::CleanupIdentity::Runner,
+        );
         info!(
             phase,
             elapsed_ms = self.elapsed_ms(),
@@ -307,7 +312,11 @@ impl TeardownTimer {
         phase_start
     }
 
-    fn phase_complete(&self, phase: &'static str, phase_start: Instant) {
+    fn phase_complete(
+        &self,
+        phase: &'static str,
+        phase_start: crate::cleanup_progress::CleanupProgress,
+    ) {
         info!(
             phase,
             phase_ms = Self::duration_ms(phase_start.elapsed()),
@@ -386,12 +395,16 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
         Err(e) => {
             resources.memory_prefetch.cancel();
             resources.provider.shutdown().await;
-            resources.dns_handle.stop().await;
+            if let Err(error) = resources.dns_handle.stop().await {
+                warn!(%error, "failed to clean up network-log helper after startup failure");
+            }
             resources.runtime.shutdown().await;
             if let Err(kill_error) = resources.mitm.kill_now().await {
                 warn!(error = %kill_error, "failed to kill proxy after live runner instance publish failed");
             }
-            resources.kmsg_handle.stop().await;
+            if let Err(error) = resources.kmsg_handle.stop().await {
+                warn!(%error, "failed to clean up network-log helper after startup failure");
+            }
             resources.memory_prefetch.drain().await;
             if let Err(status_error) = resources.status.set_mode(RunnerMode::Stopped).await {
                 warn!(
@@ -410,14 +423,18 @@ async fn shutdown_startup_resources_after_startup_failure(
 ) {
     resources.memory_prefetch.cancel();
     resources.provider.shutdown().await;
-    resources.dns_handle.stop().await;
+    if let Err(error) = resources.dns_handle.stop().await {
+        warn!(%error, "failed to clean up network-log helper after startup failure");
+    }
     if let Some(runtime) = resources.runtime {
         runtime.shutdown().await;
     }
     if let Err(e) = resources.mitm.kill_now().await {
         warn!(error = %e, context, "failed to kill proxy after startup failed");
     }
-    resources.kmsg_handle.stop().await;
+    if let Err(error) = resources.kmsg_handle.stop().await {
+        warn!(%error, "failed to clean up network-log helper after startup failure");
+    }
     resources.memory_prefetch.drain().await;
     if let Err(error) = resources.status.set_mode(RunnerMode::Stopped).await {
         warn!(%error, context, "failed to persist stopped status after startup failure");
@@ -779,7 +796,9 @@ async fn run_start_with_home(
             if let Err(e) = mitm.kill_now().await {
                 warn!(error = %e, "failed to kill proxy after DNS interface resolution failed");
             }
-            kmsg_handle.stop().await;
+            if let Err(error) = kmsg_handle.stop().await {
+                warn!(%error, "failed to clean up network-log helper after startup failure");
+            }
             memory_prefetch.drain().await;
             return Err(RunnerError::Internal(
                 "sandbox runtime did not provide DNS interface pattern".into(),
@@ -796,7 +815,9 @@ async fn run_start_with_home(
             Ok(handle) => {
                 if let Err(e) = runtime.activate_dns_readiness().await {
                     memory_prefetch.cancel();
-                    handle.stop().await;
+                    if let Err(error) = handle.stop().await {
+                        warn!(%error, "failed to clean up network-log helper after startup failure");
+                    }
                     runtime.shutdown().await;
                     if let Err(kill_error) = mitm.kill_now().await {
                         warn!(
@@ -804,7 +825,9 @@ async fn run_start_with_home(
                             "failed to kill proxy after namespace DNS readiness failed"
                         );
                     }
-                    kmsg_handle.stop().await;
+                    if let Err(error) = kmsg_handle.stop().await {
+                        warn!(%error, "failed to clean up network-log helper after startup failure");
+                    }
                     memory_prefetch.drain().await;
                     return Err(RunnerError::Internal(format!(
                         "sandbox runtime DNS readiness: {e}"
@@ -832,7 +855,9 @@ async fn run_start_with_home(
                 if let Err(kill_error) = mitm.kill_now().await {
                     warn!(error = %kill_error, "failed to kill proxy after DNS startup failed");
                 }
-                kmsg_handle.stop().await;
+                if let Err(error) = kmsg_handle.stop().await {
+                    warn!(%error, "failed to clean up network-log helper after startup failure");
+                }
                 memory_prefetch.drain().await;
                 return Err(RunnerError::Internal(format!("dns proxy: {e}")));
             }
@@ -1635,13 +1660,12 @@ impl RequiredNetworkLogComponent {
 async fn handle_required_network_log_completion(
     component: RequiredNetworkLogComponent,
     result: Result<DrainableLineReaderExit, tokio::task::JoinError>,
-    reap_child: impl std::future::Future<Output = ()>,
     cancel: &CancellationToken,
     cancel_tokens: &RunCancellationRegistry,
     lifecycle: &LifecycleController,
 ) -> Option<RunnerError> {
     let mode = lifecycle.current_mode();
-    let terminal_error = if matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
+    if matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
         None
     } else {
         let message = component.terminal_message(&result);
@@ -1653,10 +1677,7 @@ async fn handle_required_network_log_completion(
         );
         handle_stopping_signal(component.stop_source(), cancel, cancel_tokens, lifecycle).await;
         Some(RunnerError::Internal(message))
-    };
-
-    reap_child.await;
-    terminal_error
+    }
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
@@ -2095,7 +2116,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             .await;
 
         // Spawn background restart task when timer fires
-        maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+        maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry);
 
         let can_discover = if matches!(mode, RunnerMode::Running) {
             // A selected finalizing successor can claim against an exact
@@ -2323,10 +2344,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 ).await;
             }
             result = kmsg_handle.wait() => {
+                kmsg_handle.start_child_cleanup();
                 if let Some(error) = handle_required_network_log_completion(
                     RequiredNetworkLogComponent::Kmsg,
                     result,
-                    kmsg_handle.kill_and_reap_child(),
                     &provider_state.cancel,
                     &provider_state.cancel_tokens,
                     &lifecycle,
@@ -2335,10 +2356,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 }
             }
             result = dns_handle.wait() => {
+                dns_handle.start_child_cleanup();
                 if let Some(error) = handle_required_network_log_completion(
                     RequiredNetworkLogComponent::Dns,
                     result,
-                    dns_handle.kill_and_reap_child(),
                     &provider_state.cancel,
                     &provider_state.cancel_tokens,
                     &lifecycle,
@@ -2378,7 +2399,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 ).await;
             }
             // Mitmproxy crash detection
-            _ = mitm_crash_rx.recv() => {
+            Some(()) = mitm_crash_rx.recv() => {
                 error!(
                     r#type = "usage_underbilling",
                     reason = "mitm_restart_in_memory_usage_risk",
@@ -2389,11 +2410,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 mitm_retry.schedule();
             }
             // Mitmproxy restart result (background task)
-            result = recv_retry(&mut mitm_retry.handle) => {
-                handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+            result = recv_mitm_restart(&mut mitm_retry.handle) => {
+                match result {
+                    Ok(result) => handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry),
+                    Err(error) => {
+                        stop_mitm_retries(&mut mitm_crash_rx, &mut mitm_retry);
+                        handle_stopping_signal("mitm-recovery", &provider_state.cancel,
+                            &provider_state.cancel_tokens, &lifecycle).await;
+                        terminal_error = Some(error);
+                    }
+                }
             }
-            // Mitmproxy restart timer
-            () = sleep_until_retry(&mitm_retry.restart_at) => {}
+            // A late crash can arm a timer during recovery. Keep that request,
+            // but do not spin on an expired timer while its owner is in flight.
+            () = sleep_until_retry(&mitm_retry.restart_at), if mitm_retry.handle.is_none() => {}
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
@@ -2491,6 +2521,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
 
+    // Discovery may complete with None on cancellation before the mode-change
+    // branch wins. Publish Stopping before any prolonged teardown in that case.
+    // Ending discovery must not turn an otherwise natural job drain into hard
+    // cancellation; keep lifecycle signal handling authoritative for that.
+    let phase = teardown.phase_start("status_stopping");
+    lifecycle.close_parking();
+    if let Err(error) = shared.status.set_mode(RunnerMode::Stopping).await {
+        error!(%error, "failed to publish stopping status before teardown");
+        terminal_error.get_or_insert_with(|| {
+            RunnerError::Internal(format!("persist stopping status before teardown: {error}"))
+        });
+    }
+    teardown.phase_complete("status_stopping", phase);
+
     let phase = teardown.phase_start("blank_pool_shutdown");
     blank_pool.shutdown().await;
     teardown.phase_complete("blank_pool_shutdown", phase);
@@ -2567,7 +2611,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
         while !jobs.is_empty() {
-            maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+            maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry);
 
             tokio::select! {
                 result = jobs.join_next() => {
@@ -2587,7 +2631,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     test_hooks.test_observer.notify_usage_flush_requested();
                     mitm.request_usage_flush();
                 }
-                _ = mitm_crash_rx.recv() => {
+                Some(()) = mitm_crash_rx.recv() => {
                     error!(
                         r#type = "usage_underbilling",
                         reason = "mitm_restart_in_memory_usage_risk",
@@ -2597,10 +2641,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     );
                     mitm_retry.schedule();
                 }
-                result = recv_retry(&mut mitm_retry.handle) => {
-                    handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+                result = recv_mitm_restart(&mut mitm_retry.handle) => {
+                    match result {
+                        Ok(result) => handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry),
+                        Err(error) => {
+                            stop_mitm_retries(&mut mitm_crash_rx, &mut mitm_retry);
+                            handle_stopping_signal("mitm-recovery", &provider_state.cancel,
+                                &provider_state.cancel_tokens, &lifecycle).await;
+                            terminal_error.get_or_insert(error);
+                        }
+                    }
                 }
-                () = sleep_until_retry(&mitm_retry.restart_at) => {}
+                () = sleep_until_retry(&mitm_retry.restart_at), if mitm_retry.handle.is_none() => {}
             }
         }
     }
@@ -2635,7 +2687,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     exec_config.background_fill.shutdown().await;
     teardown.phase_complete("background_fill_shutdown", phase);
     let phase = teardown.phase_start("finish_mitm_restart");
-    finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
+    if let Err(error) = finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await {
+        error!(%error, "failed to finish mitmproxy recovery");
+        terminal_error.get_or_insert(error);
+    }
     teardown.phase_complete("finish_mitm_restart", phase);
     if let Some(handler_task) = signal_handler_task.take() {
         abort_signal_handler_task(handler_task, "shutdown").await;
@@ -2651,7 +2706,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Runtime shutdown owns those filters, so it must follow DNS shutdown to
     // avoid exposing the wildcard listener between the two cleanup phases.
     let phase = teardown.phase_start("dns_stop");
-    dns_handle.stop().await;
+    if let Err(error) = dns_handle.stop().await {
+        error!(%error, "DNS cleanup failed during shutdown");
+        terminal_error.get_or_insert(error);
+    }
     teardown.phase_complete("dns_stop", phase);
 
     shutdown_runtime(runtime.as_mut(), Some(&teardown)).await;
@@ -2710,7 +2768,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Stop the kmsg monitor and wait for the `dmesg -w` child process
     // to be killed and reaped.
     let phase = teardown.phase_start("kmsg_stop");
-    kmsg_handle.stop().await;
+    if let Err(error) = kmsg_handle.stop().await {
+        error!(%error, "kmsg cleanup failed during shutdown");
+        terminal_error.get_or_insert(error);
+    }
     teardown.phase_complete("kmsg_stop", phase);
     let phase = teardown.phase_start("memory_prefetch_drain");
     memory_prefetch.drain().await;

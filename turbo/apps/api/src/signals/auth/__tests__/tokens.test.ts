@@ -78,6 +78,7 @@ describe("auth tokens", () => {
       orgId: "org_sandbox",
       runId: "run_sandbox",
     });
+    expect(verifyOkouToken(sandboxToken)).toBeNull();
     expect(verifyOkouToken(okouToken)).toStrictEqual({
       userId: "user_okou",
       orgId: "org_okou",
@@ -85,22 +86,6 @@ describe("auth tokens", () => {
       capabilities: ["file:write"],
       publicBrand: "vm0",
     });
-  });
-
-  it("rejects a run token minted with the retired zero scope", () => {
-    const nowSeconds = currentSecond();
-    const retiredScopeToken = signSandboxJwtForTests({
-      scope: "zero",
-      userId: "user_retired_scope",
-      orgId: "org_retired_scope",
-      runId: "run_retired_scope",
-      capabilities: ["file:read"],
-      iat: nowSeconds,
-      exp: nowSeconds + 60,
-    });
-
-    expect(isSandboxToken(retiredScopeToken)).toBeTruthy();
-    expect(verifyOkouToken(retiredScopeToken)).toBeNull();
   });
 
   it("generates a run token with the okou scope behind the sandbox prefix", () => {

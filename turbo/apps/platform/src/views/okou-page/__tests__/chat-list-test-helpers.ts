@@ -354,7 +354,12 @@ export function sidebarThreadLinks(): HTMLAnchorElement[] {
 
 export function sidebarThreadTitles(): string[] {
   return sidebarThreadLinks().map((link) => {
-    return link.textContent?.replace(/\s+/gu, " ").trim() ?? "";
+    return (
+      link
+        .querySelector(".okou-nav-copy")
+        ?.textContent?.replace(/\s+/gu, " ")
+        .trim() ?? ""
+    );
   });
 }
 

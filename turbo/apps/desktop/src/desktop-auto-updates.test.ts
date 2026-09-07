@@ -8,9 +8,17 @@ import type { DesktopAutoUpdatesController } from "./desktop-main-module";
 
 const mocks = vi.hoisted(() => {
   type AutoUpdaterListener = (...args: readonly unknown[]) => void;
+  type NativeUpdateState = "idle" | "checking" | "downloading" | "settling";
+  interface ScheduledNativeSettle {
+    readonly callback: () => void;
+    readonly delay: number | undefined;
+  }
+
   const autoUpdaterListeners = new Map<string, Set<AutoUpdaterListener>>();
   const autoUpdaterOnceListeners = new Map<string, Set<AutoUpdaterListener>>();
   const scheduledUpdateChecks: Array<() => void> = [];
+  const scheduledNativeSettles: ScheduledNativeSettle[] = [];
+  const nativeUpdate = { state: "idle" as NativeUpdateState };
 
   function addAutoUpdaterListener(
     eventName: string,
@@ -38,10 +46,17 @@ const mocks = vi.hoisted(() => {
     autoUpdaterOnceListeners.get(eventName)?.delete(listener);
   }
 
+  function startNativeUpdateCheck(): void {
+    if (nativeUpdate.state !== "idle") {
+      throw new Error("The command is disabled and cannot be executed");
+    }
+    nativeUpdate.state = "checking";
+  }
+
   return {
     app: { isPackaged: true },
     autoUpdater: {
-      checkForUpdates: vi.fn<() => void>(),
+      checkForUpdates: vi.fn(startNativeUpdateCheck),
       quitAndInstall: vi.fn(),
       setFeedURL: vi.fn(),
       on: vi.fn(addAutoUpdaterListener),
@@ -50,12 +65,19 @@ const mocks = vi.hoisted(() => {
     },
     autoUpdaterListeners,
     autoUpdaterOnceListeners,
+    nativeUpdate,
     dialog: {
       showMessageBox: vi.fn<() => Promise<{ response: number }>>(),
     },
+    scheduledNativeSettles,
     scheduledUpdateChecks,
+    startNativeUpdateCheck,
     setInterval: vi.fn((callback: () => void) => {
       scheduledUpdateChecks.push(callback);
+      return 1;
+    }),
+    setTimeout: vi.fn((callback: () => void, delay?: number) => {
+      scheduledNativeSettles.push({ callback, delay });
       return 1;
     }),
   };
@@ -63,6 +85,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("node:timers", () => ({
   setInterval: mocks.setInterval,
+  setTimeout: mocks.setTimeout,
 }));
 
 vi.mock("electron", () => ({
@@ -142,6 +165,38 @@ function emitAutoUpdaterEvent(
   eventName: string,
   ...args: readonly unknown[]
 ): void {
+  if (eventName === "update-available") {
+    if (mocks.nativeUpdate.state !== "checking") {
+      throw new Error(
+        `Cannot enter native download from ${mocks.nativeUpdate.state}`,
+      );
+    }
+    mocks.nativeUpdate.state = "downloading";
+  } else if (eventName === "update-downloaded") {
+    if (mocks.nativeUpdate.state !== "downloading") {
+      throw new Error(
+        `Cannot enter native settle from ${mocks.nativeUpdate.state}`,
+      );
+    }
+    mocks.nativeUpdate.state = "settling";
+  } else if (eventName === "update-not-available" || eventName === "error") {
+    const isLateSettlingError =
+      eventName === "error" && mocks.nativeUpdate.state === "settling";
+    // Errors after update-downloaded belong to the updater globally; the
+    // completed check must remain guarded until its settle timer fires.
+    if (!isLateSettlingError) {
+      if (
+        mocks.nativeUpdate.state !== "checking" &&
+        mocks.nativeUpdate.state !== "downloading"
+      ) {
+        throw new Error(
+          `Cannot finish native update check from ${mocks.nativeUpdate.state}`,
+        );
+      }
+      mocks.nativeUpdate.state = "idle";
+    }
+  }
+
   const listeners = [...(mocks.autoUpdaterListeners.get(eventName) ?? [])];
   const onceListeners = [
     ...(mocks.autoUpdaterOnceListeners.get(eventName) ?? []),
@@ -156,12 +211,29 @@ function expectActiveUpdateCheckListenerCount(expected: number): void {
   for (const eventName of [
     "update-not-available",
     "update-available",
+    "update-downloaded",
     "error",
   ]) {
     expect(mocks.autoUpdaterOnceListeners.get(eventName)?.size ?? 0).toBe(
       expected,
     );
   }
+}
+
+function finishNativeSettle(): void {
+  const settle = mocks.scheduledNativeSettles.shift();
+  if (!settle) {
+    throw new Error("Expected a scheduled native update settle");
+  }
+  if (mocks.nativeUpdate.state !== "settling") {
+    throw new Error(
+      `Cannot finish native settle from ${mocks.nativeUpdate.state}`,
+    );
+  }
+
+  expect(settle.delay).toBe(1000);
+  mocks.nativeUpdate.state = "idle";
+  settle.callback();
 }
 
 function runScheduledUpdateCheck(): void {
@@ -182,7 +254,12 @@ describe("desktop auto-updates", () => {
     vi.clearAllMocks();
     mocks.autoUpdaterListeners.clear();
     mocks.autoUpdaterOnceListeners.clear();
+    mocks.nativeUpdate.state = "idle";
+    mocks.scheduledNativeSettles.length = 0;
     mocks.scheduledUpdateChecks.length = 0;
+    mocks.autoUpdater.checkForUpdates.mockImplementation(
+      mocks.startNativeUpdateCheck,
+    );
     mocks.app.isPackaged = true;
     mocks.dialog.showMessageBox.mockResolvedValue({ response: 1 });
     stubDesktopAutoUpdatePlatform();
@@ -277,7 +354,7 @@ describe("desktop auto-updates", () => {
     const { autoUpdates } = installAndCaptureAutoUpdates(
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
-    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-not-available");
 
     runScheduledUpdateCheck();
     expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
@@ -295,7 +372,7 @@ describe("desktop auto-updates", () => {
     const { autoUpdates } = installAndCaptureAutoUpdates(
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
-    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-not-available");
 
     expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
     expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
@@ -311,35 +388,99 @@ describe("desktop auto-updates", () => {
     expect(mocks.dialog.showMessageBox).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    { eventName: "update-available", args: [] },
-    { eventName: "update-not-available", args: [] },
-    { eventName: "error", args: [new Error("feed unavailable")] },
-  ])(
-    "releases state and listeners after $eventName so another manual check can start",
-    async ({ eventName, args }) => {
-      const consoleError = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-      const { autoUpdates } = installAndCaptureAutoUpdates(
-        () => OFFLINE_COMPUTER_USE_HOST_STATE,
-      );
+  it.each(["startup", "interval", "manual"] as const)(
+    "holds a %s check through download and native settle",
+    async (origin) => {
+      const { autoUpdates } = installAndCaptureAutoUpdates(() => ({
+        ...OFFLINE_COMPUTER_USE_HOST_STATE,
+        lastCommandAt: new Date().toISOString(),
+      }));
+
+      if (origin !== "startup") {
+        emitAutoUpdaterEvent("update-not-available");
+        if (origin === "interval") {
+          runScheduledUpdateCheck();
+        } else {
+          expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+        }
+      }
+      const nativeCallCount = origin === "startup" ? 1 : 2;
+
       emitAutoUpdaterEvent("update-available");
-
+      runScheduledUpdateCheck();
       expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
-      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
+        nativeCallCount,
+      );
+      expect(mocks.nativeUpdate.state).toBe("downloading");
 
-      emitAutoUpdaterEvent(eventName, ...args);
-      await flushAsyncCallbacks();
-
+      emitAutoUpdaterEvent("update-downloaded");
+      runScheduledUpdateCheck();
+      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
+        nativeCallCount,
+      );
+      expect(mocks.nativeUpdate.state).toBe("settling");
       expectActiveUpdateCheckListenerCount(0);
-      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
-      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
-      expectActiveUpdateCheckListenerCount(1);
 
-      consoleError.mockRestore();
+      finishNativeSettle();
+      expect(mocks.nativeUpdate.state).toBe("idle");
+      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      runScheduledUpdateCheck();
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
+        nativeCallCount + 1,
+      );
+      expectActiveUpdateCheckListenerCount(1);
+      expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
     },
   );
+
+  it("releases immediately after no-update and lets later checks run", async () => {
+    const { autoUpdates } = installAndCaptureAutoUpdates(
+      () => OFFLINE_COMPUTER_USE_HOST_STATE,
+    );
+
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    emitAutoUpdaterEvent("update-not-available");
+    await flushAsyncCallbacks();
+
+    expectActiveUpdateCheckListenerCount(0);
+    expect(mocks.scheduledNativeSettles).toHaveLength(0);
+    expect(mocks.dialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expectActiveUpdateCheckListenerCount(1);
+  });
+
+  it("keeps settle ownership when a later updater error arrives", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { autoUpdates } = installAndCaptureAutoUpdates(() => ({
+      ...OFFLINE_COMPUTER_USE_HOST_STATE,
+      lastCommandAt: new Date().toISOString(),
+    }));
+    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-downloaded");
+    const error = new Error("install failed");
+
+    emitAutoUpdaterEvent("error", error);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      "Desktop auto-updater error",
+      error,
+    );
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(mocks.nativeUpdate.state).toBe("settling");
+    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+
+    finishNativeSettle();
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+
+    consoleError.mockRestore();
+  });
 
   it("shows genuine errors from a requested check", async () => {
     const consoleError = vi
@@ -348,9 +489,11 @@ describe("desktop auto-updates", () => {
     const { autoUpdates } = installAndCaptureAutoUpdates(
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
-    emitAutoUpdaterEvent("update-available");
 
+    emitAutoUpdaterEvent("update-available");
     expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    runScheduledUpdateCheck();
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     const error = new Error("feed unavailable");
     emitAutoUpdaterEvent("error", error);
     await flushAsyncCallbacks();
@@ -366,6 +509,10 @@ describe("desktop auto-updates", () => {
         detail: "feed unavailable",
       }),
     );
+    expectActiveUpdateCheckListenerCount(0);
+    expect(mocks.scheduledNativeSettles).toHaveLength(0);
+    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
 
     consoleError.mockRestore();
   });
@@ -377,7 +524,7 @@ describe("desktop auto-updates", () => {
     const { autoUpdates } = installAndCaptureAutoUpdates(
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
-    emitAutoUpdaterEvent("update-available");
+    emitAutoUpdaterEvent("update-not-available");
     const error = new Error("feed unavailable");
     mocks.autoUpdater.checkForUpdates.mockImplementationOnce(() => {
       throw error;
@@ -441,6 +588,7 @@ describe("desktop auto-updates", () => {
     emitAutoUpdaterEvent("update-available");
     emitAutoUpdaterEvent("update-downloaded");
     await flushAsyncCallbacks();
+    finishNativeSettle();
 
     hostState = OFFLINE_COMPUTER_USE_HOST_STATE;
     runScheduledUpdateCheck();
@@ -465,6 +613,7 @@ describe("desktop auto-updates", () => {
     emitAutoUpdaterEvent("update-available");
     emitAutoUpdaterEvent("update-downloaded");
     await flushAsyncCallbacks();
+    finishNativeSettle();
 
     runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
@@ -500,6 +649,7 @@ describe("desktop auto-updates", () => {
     emitAutoUpdaterEvent("update-available");
     emitAutoUpdaterEvent("update-downloaded");
     await flushAsyncCallbacks();
+    finishNativeSettle();
 
     expect(warn).toHaveBeenCalledWith(
       "Unable to inspect Computer Use activity for update",
@@ -538,9 +688,11 @@ describe("desktop auto-updates", () => {
     await vi.waitFor(() => {
       expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
     });
+    finishNativeSettle();
 
     runScheduledUpdateCheck();
     emitAutoUpdaterEvent("checking-for-update");
+    emitAutoUpdaterEvent("update-available");
     emitAutoUpdaterEvent("update-downloaded");
     await flushAsyncCallbacks();
 

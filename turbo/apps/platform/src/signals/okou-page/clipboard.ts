@@ -13,11 +13,6 @@ import {
 } from "../utils.ts";
 
 const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-okou-chat-message";
-// Surface: content copied by a pre-rename app client and held in the system
-// clipboard, which outlives the session that produced it. The window is
-// clipboard lifetime rather than an API contract, so it closes about a week
-// after the rename reaches production; follow-up #31824.
-const LEGACY_CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
 
 export interface ChatClipboardAttachment {
   id: string | null;
@@ -304,18 +299,11 @@ export async function writeChatMessageToClipboard(
 }
 
 function encodedChatMessageFromDocument(doc: Document): string | null {
-  for (const attribute of [
-    CHAT_MESSAGE_CLIPBOARD_ATTR,
-    LEGACY_CHAT_MESSAGE_CLIPBOARD_ATTR,
-  ]) {
-    const encoded = doc
-      .querySelector(`[${attribute}]`)
-      ?.getAttribute(attribute);
-    if (encoded) {
-      return encoded;
-    }
-  }
-  return null;
+  return (
+    doc
+      .querySelector(`[${CHAT_MESSAGE_CLIPBOARD_ATTR}]`)
+      ?.getAttribute(CHAT_MESSAGE_CLIPBOARD_ATTR) ?? null
+  );
 }
 
 export function readChatMessageFromClipboard(

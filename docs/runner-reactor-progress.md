@@ -55,6 +55,75 @@ New branches must be checked against both lock holders and queued waiters. Do no
 spawn discovery unconditionally or change admission/reuse policy to work around
 resource ownership problems.
 
+## Helper recovery and required cleanup
+
+MITM recovery transfers the old child synchronously into one independently
+scheduled restart task. That task finishes old-child reaping and launch-directory
+cleanup **before** starting a replacement. Each child retains its own stopping
+flag and usage identity. Normal shutdown joins in-flight recovery, adopts any
+replacement, and then uses the existing usage-flush/proxy-stop sequence. Ordinary
+startup failures retain backoff; unknown old-child cleanup failures or recovery
+task panics stop the runner and disable further retries. Managed-child Drop
+remains the abnormal process/launch reconciliation fallback.
+Late crash notifications may retain a follow-up retry, but its timer is not
+polled while recovery is in flight: an already expired timer must not spin the
+reactor while it cannot yet spawn another attempt.
+
+DNS/kmsg monitor completion starts independently scheduled child cleanup, then
+the reactor cancels admission and active runs and publishes Stopping. Each
+network-log process retains its cleanup handle for normal shutdown to join;
+dropping the reactor does not abort that reaper. DNS cleanup still precedes
+runtime/filter removal. Cleanup errors are reported instead of logging a
+successful helper stop. Public process/protocol/status schemas are unchanged.
+
+The common teardown entry also publishes Stopping: discovery can return `None`
+on cancellation before the mode-change branch wins. Required cleanup must not
+leave the persisted mode at Running merely because that branch won the race.
+This publication does not turn ordinary discovery exhaustion into hard
+cancellation: active jobs still drain normally unless lifecycle signaling stops
+them.
+
+## Accepted network-log writes
+
+An accepted row owns its pending completion through its bounded shard queue,
+per-path batch and physical blocking append. Normal batch completion still uses
+one accounting lock. Registry/accounting critical sections are synchronous and
+contain no I/O or await; source-generation checks and Notify registration before
+pending-state recheck remain authoritative.
+
+If an outer shard terminates, queued or batched rows that it drops settle as
+**failed**, with a warning and a per-session write-failure observation. Guards
+inside a started blocking append remain there until the real append finishes:
+dropping its async waiter cannot release pending ownership early. Session close
+waits for all accepted writes to settle and reports observed write failures even
+after source attribution has been removed. It does not claim every row was
+persisted when an append failed. Existing best-effort upload and execution-result
+semantics are unchanged; potentially partial batches are not replayed.
+
+## Pending-cleanup diagnostics and candidate disposition
+
+Helper reaping, session accepted-write flush and teardown phases emit
+`required cleanup still pending` every 30 seconds while unfinished. Warnings
+contain component, phase, elapsed milliseconds and a PID or run ID as direct
+event fields (Axiom does not inherit span fields). These observers stop when their
+scope ends; they never cancel cleanup, discharge pending counts or declare
+success. Existing phase-start/completion events remain available. A phase
+completion says that its function returned, not that an earlier reported error
+was repaired.
+
+| Candidate                                     | Verified disposition                                                                                                                                                                                       |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Retained heartbeat/status/GC and PollWakeups  | Independently progressing owners / bounded synchronous state remove the shared-reactor dependency described above.                                                                                         |
+| Inline MITM old-child cleanup                 | Moved into the single-flight restart owner; replacement waits for confirmed old-child cleanup.                                                                                                             |
+| DNS/kmsg monitor failure and reap             | Cancellation and lifecycle publication no longer wait for child cleanup; normal shutdown retains the join.                                                                                                 |
+| Producer drain barriers                       | Request/acknowledgement waits already have bounded, explicit unavailable/timeout outcomes. They do not discharge accepted writes or guarantee data still buffered in the producer/kernel.                  |
+| Pending accounting / outer writer termination | Accepted-write guards settle abandoned work as failed. Regression coverage includes queued rows, multiple paths, concurrent waiters and active blocking I/O.                                               |
+| Ordinary append failure / blocking-task panic | Settles pending with failure evidence, not persistence success. Files remain available for existing best-effort upload/debugging.                                                                          |
+| Genuinely stalled append or filesystem scan   | Required I/O can still wait on the OS. Flush/teardown warnings identify the wait; no timer cancels physical I/O or releases its ownership. Cache scans still depend on filesystem completion.              |
+| Physical park / final host idle publication   | Separate phases. A guest park marker is not proof of completed host publication; the later pool dependency was addressed by the reactor slice. Existing finalization and park regressions remain required. |
+| OS/runtime starvation                         | The incident samples did not establish OOM, sustained CPU starvation or blocked disk writes. No new kernel/runtime guarantee or incident attribution is claimed.                                           |
+| Natural teardown                              | Publishes Stopping before required waits, preserves joins and reports prolonged phases. Real cleanup completion is still required before normal shutdown returns.                                          |
+
 ## Coverage and remaining incident work
 
 `cmd/start/tests/main_loop/shared_resource_progress.rs` drives the real `run()`
@@ -64,9 +133,16 @@ Existing heartbeat tests cover coalescing, monotonic sequences, live-mode
 follow-ups, and no overlapping requests; provider tests cover wakeup scheduling
 and generation/defer semantics.
 
-This is the reactor-progress slice [#32050](https://github.com/vm0-ai/vm0/issues/32050)
-of [#32040](https://github.com/vm0-ai/vm0/issues/32040). Separate follow-ups track
-[helper recovery and outstanding cleanup](https://github.com/vm0-ai/vm0/issues/32051),
+Helper ownership and lifecycle tests run through `run()` with real
+pipe-controlled children and gated child waits. Proxy recovery tests also check
+old-launch cleanup before replacement. NetworkLogManager tests exercise real
+files, shard panic/cancellation, append errors and pending flush observers.
+
+These are the reactor-progress [#32050](https://github.com/vm0-ai/vm0/issues/32050)
+and helper-cleanup [#32051](https://github.com/vm0-ai/vm0/issues/32051) slices
+of [#32040](https://github.com/vm0-ai/vm0/issues/32040). Separate slices track
 [warn-only promotion drain diagnostics](https://github.com/vm0-ai/vm0/issues/32052),
 and [live-runner metric filtering](https://github.com/vm0-ai/vm0/issues/32053).
-These are not fixed by changing reactor task scheduling.
+Neither is replaced by runtime ownership fixes. No matching helper-restart or
+writer-shard-failure marker was found in the two original incidents, so these
+conditional cleanup defects are not presented as their proven production cause.

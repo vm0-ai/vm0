@@ -36,10 +36,12 @@
 //! and prepares addon files, an empty registry, crash channel, and initial
 //! usage state. `start` gives each `mitmdump` process group a private `TMPDIR`
 //! and starts monitor tasks. Unexpected stdout close notifies the runner unless
-//! the child is stopping gracefully. `begin_restart` terminates the old process
-//! group, removes its private launch directory, permanently silences its
-//! monitor, and returns fresh spawn parameters; `complete_restart` stores the
-//! new child. Shutdown writes a usage flush request, signals the addon, waits
+//! the child is stopping gracefully. `begin_restart` transfers the old child
+//! and fresh parameters to an independent recovery task and silences the old
+//! monitor. Recovery reaps the old process tree and removes its private launch
+//! directory before spawning; `complete_restart` stores the new child. Unknown
+//! old-child cleanup failures stop recovery instead of starting another child.
+//! Shutdown writes a usage flush request, signals the addon, waits
 //! boundedly for `usage-pending`, then calls `stop`. Recovery and shutdown only
 //! act on runner-owned private paths and marked processes; legacy shared
 //! `/tmp/_MEI*` paths are deliberately left untouched.
@@ -65,6 +67,7 @@ pub use flush::{
     write_usage_flush_request,
 };
 pub(crate) use managed_process::ManagedMitmdump;
+pub(crate) use process::MitmRestartError;
 pub use process::{MitmProxy, ProxyConfig};
 pub(crate) use registry::{
     ConnectorRuntimeFailCloseOutcome, ConnectorRuntimeRegistryUpdate,

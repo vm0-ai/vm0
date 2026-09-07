@@ -94,6 +94,7 @@ import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-sw
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
+import { optimizelyCmpProvider } from "./connectors/optimizely-cmp/provider";
 import { otoProvider } from "./connectors/oto/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
@@ -1048,6 +1049,11 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     nintendoSwitchParentalControlsProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
+  authCodeRefreshTokenRevokeProviderEntry(
+    "optimizely-cmp",
+    "oauth",
+    optimizelyCmpProvider,
+  ),
   refreshProviderEntry("oto", "api-token", otoProvider),
   authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(

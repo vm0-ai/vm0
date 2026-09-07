@@ -1,6 +1,86 @@
 use tokio::runtime::Handle;
 use tracing::warn;
 
+/// Retains a child through an async reap and its cancellation fallback.
+pub(crate) struct ChildReaper {
+    label: &'static str,
+    child: Option<tokio::process::Child>,
+    #[cfg(test)]
+    gate: Option<ReapGate>,
+}
+
+impl ChildReaper {
+    pub(crate) fn new(label: &'static str, child: tokio::process::Child) -> Self {
+        Self {
+            label,
+            child: Some(child),
+            #[cfg(test)]
+            gate: None,
+        }
+    }
+
+    pub(crate) async fn reap(mut self) -> std::io::Result<()> {
+        let child = self
+            .child
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("child reaper lost its owned child"))?;
+        let _progress = crate::cleanup_progress::CleanupProgress::start(
+            self.label,
+            "child_reap",
+            crate::cleanup_progress::CleanupIdentity::Process(child.id()),
+        );
+        if let Err(error) = child.start_kill() {
+            warn!(label = self.label, pid = child.id(), %error, "failed to kill child before reaping");
+        }
+        #[cfg(test)]
+        if let Some(gate) = self.gate.take() {
+            gate.wait().await;
+        }
+        child.wait().await?;
+        self.child = None;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_gate(mut self, gate: Option<ReapGate>) -> Self {
+        self.gate = gate;
+        self
+    }
+}
+
+impl Drop for ChildReaper {
+    fn drop(&mut self) {
+        kill_and_reap_child_on_drop(self.label, &mut self.child);
+    }
+}
+
+/// Controls completion at the real child wait boundary, not lifecycle logic.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct ReapGate {
+    pub(crate) entered: std::sync::Arc<tokio::sync::Notify>,
+    pub(crate) release: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
+#[cfg(test)]
+impl ReapGate {
+    pub(crate) fn new() -> Self {
+        Self {
+            entered: Default::default(),
+            release: std::sync::Arc::new(tokio::sync::Semaphore::new(0)),
+        }
+    }
+
+    pub(crate) async fn wait(&self) {
+        self.entered.notify_one();
+        self.release
+            .acquire()
+            .await
+            .expect("reap gate closed")
+            .forget();
+    }
+}
+
 /// Kill a child from a synchronous drop fallback and reap it on the active runtime.
 ///
 /// Normal async shutdown paths should still use explicit `wait().await`. This

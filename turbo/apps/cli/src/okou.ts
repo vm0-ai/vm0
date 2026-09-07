@@ -71,6 +71,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "people-search": "people-search:read",
   "web-search": "web-search:read",
   social: "social:read",
+  "image-recognition": "image-recognition:write",
   recognize: "image-recognition:write",
   finance: "finance:read",
   seo: "seo:read",
@@ -83,7 +84,11 @@ const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   presentation: FeatureSwitchKey.PresentationScreenshot,
 };
 
-const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize"]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "image-recognition", "recognize"]);
+
+// Keep this compatibility name directly lazy-loadable without presenting it as
+// a peer canonical command. Its rollout removal gate is tracked by #26929.
+const IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME = "recognize";
 
 const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
@@ -375,10 +380,19 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
-    name: "recognize",
+    name: "image-recognition",
     description: "Recognize one image through a managed multimodal model",
     load: async () => {
-      return (await import("./commands/recognize")).recognizeCommand;
+      return (await import("./commands/image-recognition"))
+        .imageRecognitionCommand;
+    },
+  },
+  {
+    name: IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME,
+    description: "Compatibility command for okou image-recognition",
+    load: async () => {
+      return (await import("./commands/image-recognition"))
+        .imageRecognitionCompatibilityCommand;
     },
   },
   {
@@ -450,7 +464,9 @@ function addCommandWithVisibility(
   cmd: Command,
   payload: SandboxTokenPayload | undefined,
 ): void {
-  const hidden = shouldHideCommand(cmd.name(), payload);
+  const hidden =
+    cmd.name() === IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME ||
+    shouldHideCommand(cmd.name(), payload);
   prog.addCommand(cmd, hidden ? { hidden: true } : {});
 }
 
@@ -492,6 +508,16 @@ async function loadRequestedCommand(
   }
 
   return COMMAND_DEFINITION_BY_NAME.get(name)?.load();
+}
+
+export async function registerRequestedCommand(
+  prog: Command,
+  argv: string[] = process.argv,
+): Promise<void> {
+  const requestedCommand = await loadRequestedCommand(
+    getRequestedCommandName(argv),
+  );
+  registerCommands(prog, requestedCommand ? [requestedCommand] : undefined);
 }
 
 function commandExampleIfVisible(
@@ -657,9 +683,6 @@ if (
   process.argv[1]?.endsWith("okou")
 ) {
   await configureGlobalProxyFromEnv();
-  const requestedCommand = await loadRequestedCommand(
-    getRequestedCommandName(),
-  );
-  registerCommands(program, requestedCommand ? [requestedCommand] : undefined);
+  await registerRequestedCommand(program);
   program.parse();
 }

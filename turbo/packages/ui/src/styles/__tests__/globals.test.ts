@@ -178,14 +178,9 @@ function readDeclarationValue(css: string, name: string): string {
   return css.slice(start + `--${name}:`.length, css.indexOf(";", start));
 }
 
-// All four palettes, not just the two the switch is off for. The `newUi` blocks
-// carry their own scale and their own ladder, so leaving them out means the
-// palette most of this file is about is the one nothing checks.
 const THEMES = [
   { name: "light", selector: ":root" },
   { name: "dark", selector: '[data-theme="dark"]' },
-  { name: "new UI light", selector: ":root[data-new-ui]" },
-  { name: "new UI dark", selector: ".dark[data-new-ui]" },
 ];
 
 describe("global focus colors", () => {
@@ -332,10 +327,10 @@ describe("interaction state ladder", () => {
   });
 });
 
-describe("new UI primary palette", () => {
+describe("primary palette", () => {
   it.each([
-    { name: "light", selector: ":root[data-new-ui]" },
-    { name: "dark", selector: ".dark[data-new-ui]," },
+    { name: "light", selector: ":root" },
+    { name: "dark", selector: ".dark," },
   ])("pairs Amber with Ink in $name", ({ selector }) => {
     const properties = readCustomProperties(readRuleBody(globalCss, selector));
 
@@ -350,13 +345,13 @@ describe("new UI primary palette", () => {
   });
 });
 
-describe("new UI neutral gray palette", () => {
+describe("neutral gray palette", () => {
   const grayStops = [0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
   const themes = [
     {
       anchorStop: 100,
       name: "light",
-      selector: ":root[data-new-ui]",
+      selector: ":root",
       textStop: 700,
       uiStop: 600,
       worstSurface: "--sidebar-rail",
@@ -364,7 +359,7 @@ describe("new UI neutral gray palette", () => {
     {
       anchorStop: 950,
       name: "dark",
-      selector: ".dark[data-new-ui],",
+      selector: ".dark,",
       textStop: 800,
       uiStop: 600,
       worstSurface: "--accent",
@@ -451,11 +446,11 @@ describe("new UI neutral gray palette", () => {
 
   it("keeps the dialog overlay on Ink when theme-aware grays invert", () => {
     const lightProperties = readCustomProperties(
-      readRuleBody(globalCss, ":root[data-new-ui]"),
+      readRuleBody(globalCss, ":root"),
     );
     const darkProperties = new Map(lightProperties);
     for (const [name, value] of readCustomProperties(
-      readRuleBody(globalCss, ".dark[data-new-ui],"),
+      readRuleBody(globalCss, ".dark,"),
     )) {
       darkProperties.set(name, value);
     }
@@ -468,35 +463,35 @@ describe("new UI neutral gray palette", () => {
 // The rail caption and the two composer placeholders draw their color through a
 // Tailwind opacity modifier, so the token alone says nothing about what a user
 // reads -- only the composite against the surface behind it does.
-describe("new UI opacity-modified text", () => {
+describe("opacity-modified text", () => {
   const cases = [
     {
       alpha: 0.8,
       background: "--card",
       foreground: "--muted-foreground",
       name: "light composer placeholder",
-      selector: ":root[data-new-ui]",
+      selector: ":root",
     },
     {
       alpha: 0.8,
       background: "--card",
       foreground: "--muted-foreground",
       name: "dark composer placeholder",
-      selector: ".dark[data-new-ui],",
+      selector: ".dark,",
     },
     {
       alpha: 0.7,
       background: "--sidebar-rail",
       foreground: "--sidebar-foreground",
       name: "light rail caption",
-      selector: ":root[data-new-ui]",
+      selector: ":root",
     },
     {
       alpha: 0.7,
       background: "--sidebar-rail",
       foreground: "--sidebar-foreground",
       name: "dark rail caption",
-      selector: ".dark[data-new-ui],",
+      selector: ".dark,",
     },
   ];
 
@@ -511,34 +506,18 @@ describe("new UI opacity-modified text", () => {
       expect(contrastRatio(text, surface)).toBeGreaterThanOrEqual(4.5);
     },
   );
-
-  // Those modifiers are tuned for this palette and are applied through the
-  // `new-ui:` variant, which has to gate on the same attribute the palette
-  // blocks do or the current brand silently picks the new values up.
-  it("gates the new-ui variant on the attribute the palette blocks use", () => {
-    expect(globalCss).toContain(
-      "@custom-variant new-ui (&:where([data-new-ui], [data-new-ui] *));",
-    );
-    expect(globalCss).toContain(":root[data-new-ui] {");
-  });
 });
 
 // The segment control is only legible when its track separates from the page
 // and the white selection separates from the track. Under the new palette both
 // gaps ran through `--muted`'s gray-100, which clears 1.06:1 against white, so
 // the whole control dissolved. The track owns its own token now.
-describe("new UI segment control track", () => {
-  it("gives the track a token the base theme resolves to muted", () => {
+describe("segment control track", () => {
+  it("gives the track a token that separates it from the page", () => {
     expect(globalCss).toContain(
       "--color-segment-track: hsl(var(--segment-track));",
     );
     expect(readRuleBody(globalCss, "  :root")).toMatch(
-      /--segment-track:\s*var\(--muted\);/,
-    );
-  });
-
-  it("steps the light track off muted so the control separates from the page", () => {
-    expect(readRuleBody(globalCss, ":root[data-new-ui]")).toMatch(
       /--segment-track:\s*var\(--gray-200\);/,
     );
   });
@@ -546,9 +525,9 @@ describe("new UI segment control track", () => {
   // Chrome keeps the ramp's warm Ink; only content goes neutral, so the two nav
   // columns must not follow the body copy off `--gray-950`.
   it("keeps body copy neutral while the sidebar stays on Ink", () => {
-    const newUiLight = readRuleBody(globalCss, ":root[data-new-ui]");
+    const lightTheme = readRuleBody(globalCss, ":root");
 
-    expect(newUiLight).toMatch(/--foreground:\s*0 0% 14\.1%;/);
-    expect(newUiLight).toMatch(/--sidebar-foreground:\s*var\(--gray-950\);/);
+    expect(lightTheme).toMatch(/--foreground:\s*0 0% 14\.1%;/);
+    expect(lightTheme).toMatch(/--sidebar-foreground:\s*var\(--gray-950\);/);
   });
 });

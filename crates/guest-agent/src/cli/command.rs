@@ -104,7 +104,7 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
 fn default_claude_effort_for_model(model: &str) -> Option<&'static str> {
     let bare = model.strip_prefix("anthropic/").unwrap_or(model);
     match bare {
-        "claude-fable-5-1" | "claude-fable-5.1" | "claude-fable-5" | "fable" => Some("max"),
+        "claude-fable-5-1" | "claude-fable-5.1" | "fable" => Some("max"),
         _ => None,
     }
 }
@@ -362,9 +362,9 @@ mod tests {
     fn build_claude_args_fable_defaults_effort_max() {
         for model in [
             "claude-fable-5-1",
+            "claude-fable-5.1",
+            "anthropic/claude-fable-5-1",
             "anthropic/claude-fable-5.1",
-            "claude-fable-5",
-            "anthropic/claude-fable-5",
             "fable",
         ] {
             let args = build_claude_args_for_model_test(model);

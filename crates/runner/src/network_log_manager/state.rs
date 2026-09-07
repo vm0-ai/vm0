@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use tracing::warn;
 
 #[derive(Default)]
@@ -22,15 +23,25 @@ enum SourceState {
         path: Arc<Path>,
         generation: u64,
         writer_backpressure_observed: bool,
+        writer_failed: Arc<AtomicBool>,
     },
     Draining {
         path: Arc<Path>,
         generation: u64,
         writer_backpressure_observed: bool,
+        writer_failed: Arc<AtomicBool>,
     },
 }
 
 impl SourceState {
+    fn writer_failed(&self) -> &Arc<AtomicBool> {
+        match self {
+            Self::Active { writer_failed, .. } | Self::Draining { writer_failed, .. } => {
+                writer_failed
+            }
+        }
+    }
+
     fn path(&self) -> &Arc<Path> {
         match self {
             Self::Active { path, .. } | Self::Draining { path, .. } => path,
@@ -79,16 +90,19 @@ pub(super) struct SourceRegistration {
     pub(super) source_ip: String,
     pub(super) path: Arc<Path>,
     pub(super) generation: u64,
+    pub(super) writer_failed: Arc<AtomicBool>,
 }
 
 pub(super) struct SourceSnapshot {
     pub(super) path: Arc<Path>,
     generation: u64,
+    writer_failed: Arc<AtomicBool>,
 }
 
 pub(super) struct AcceptedAppend {
     path: Arc<Path>,
     line: String,
+    completion: PendingWriteCompletion,
 }
 
 impl AcceptedAppend {
@@ -96,73 +110,108 @@ impl AcceptedAppend {
         self.line.len()
     }
 
-    pub(super) fn into_parts(self) -> (Arc<Path>, String) {
-        (self.path, self.line)
+    pub(super) fn into_parts(self) -> (Arc<Path>, String, PendingWriteCompletion) {
+        (self.path, self.line, self.completion)
     }
 }
 
-#[derive(Clone)]
+/// Follows an accepted row through the queue and into the blocking append.
+/// Drop records failure, never successful persistence.
 pub(super) struct PendingWriteCompletion {
     state: Weak<NetworkLogState>,
+    path: Arc<Path>,
+    writer_failed: Arc<AtomicBool>,
+    settled: bool,
 }
 
 impl PendingWriteCompletion {
-    pub(super) async fn complete_path(&self, path: Arc<Path>, count: usize) {
+    /// Preserve one accounting lock per normal path batch.
+    pub(super) fn complete_batch(mut completions: Vec<Self>, success: bool) {
+        let Some(first) = completions.first() else {
+            return;
+        };
+        let state = first.state.upgrade();
+        let path = Arc::clone(&first.path);
+        let count = completions.len();
+        for completion in &mut completions {
+            if !success {
+                completion.writer_failed.store(true, Ordering::Release);
+            }
+            completion.settled = true;
+        }
+        if let Some(state) = state {
+            state.complete_path(path, count);
+        }
+    }
+}
+
+impl Drop for PendingWriteCompletion {
+    fn drop(&mut self) {
+        if self.settled {
+            return;
+        }
+        if !self.writer_failed.swap(true, Ordering::AcqRel) {
+            warn!(path = %self.path.display(), "accepted network log write abandoned by its owner");
+        }
         if let Some(state) = self.state.upgrade() {
-            state.complete_path(path, count).await;
+            state.complete_path(Arc::clone(&self.path), 1);
         }
     }
 }
 
 impl NetworkLogState {
-    pub(super) fn completion_handle(self: &Arc<Self>) -> PendingWriteCompletion {
-        PendingWriteCompletion {
-            state: Arc::downgrade(self),
-        }
+    // Registry/accounting only: no I/O, await or nested work under this lock.
+    fn lock(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    pub(super) async fn register_source_ip(
+    pub(super) fn register_source_ip(
         &self,
         source_ip: String,
         path: PathBuf,
     ) -> SourceRegistration {
-        let mut state = self.state.lock().await;
+        let mut state = self.lock();
         state.next_generation += 1;
         let generation = state.next_generation;
         let path: Arc<Path> = path.into();
+        let writer_failed = Arc::new(AtomicBool::new(false));
         state.source_paths.insert(
             source_ip.clone(),
             SourceState::Active {
                 path: Arc::clone(&path),
                 generation,
                 writer_backpressure_observed: false,
+                writer_failed: Arc::clone(&writer_failed),
             },
         );
         SourceRegistration {
             source_ip,
             path,
             generation,
+            writer_failed,
         }
     }
 
     #[cfg(test)]
-    pub(super) async fn unregister_source_ip(&self, source_ip: &str) {
-        let mut state = self.state.lock().await;
+    pub(super) fn unregister_source_ip(&self, source_ip: &str) {
+        let mut state = self.lock();
         state.source_paths.remove(source_ip);
     }
 
     #[cfg(test)]
-    pub(super) async fn source_ip_registered(&self, source_ip: &str) -> bool {
-        self.state.lock().await.source_paths.contains_key(source_ip)
+    pub(super) fn source_ip_registered(&self, source_ip: &str) -> bool {
+        self.lock().source_paths.contains_key(source_ip)
     }
 
     #[cfg(test)]
-    pub(super) async fn source_and_pending_path_share_identity(
+    pub(super) fn source_and_pending_path_share_identity(
         &self,
         source_ip: &str,
         path: &Path,
     ) -> bool {
-        let state = self.state.lock().await;
+        let state = self.lock();
         let Some(source) = state.source_paths.get(source_ip) else {
             return false;
         };
@@ -172,24 +221,25 @@ impl NetworkLogState {
         Arc::ptr_eq(source.path(), pending_path)
     }
 
-    pub(super) async fn source_snapshot(&self, source_ip: &str) -> Option<SourceSnapshot> {
-        let state = self.state.lock().await;
+    pub(super) fn source_snapshot(&self, source_ip: &str) -> Option<SourceSnapshot> {
+        let state = self.lock();
         state
             .source_paths
             .get(source_ip)
             .map(|source| SourceSnapshot {
                 path: Arc::clone(source.path()),
                 generation: source.generation(),
+                writer_failed: Arc::clone(source.writer_failed()),
             })
     }
 
-    pub(super) async fn try_accept_snapshot(
-        &self,
+    pub(super) fn try_accept_snapshot(
+        self: &Arc<Self>,
         source_ip: &str,
         snapshot: &SourceSnapshot,
         line: String,
     ) -> Option<AcceptedAppend> {
-        let mut state = self.state.lock().await;
+        let mut state = self.lock();
         let source_state = state.source_paths.get(source_ip)?;
         if !source_state.matches(snapshot.path.as_ref(), snapshot.generation) {
             return None;
@@ -202,15 +252,17 @@ impl NetworkLogState {
         Some(AcceptedAppend {
             path: Arc::clone(&snapshot.path),
             line,
+            completion: PendingWriteCompletion {
+                state: Arc::downgrade(self),
+                path: Arc::clone(&snapshot.path),
+                writer_failed: Arc::clone(&snapshot.writer_failed),
+                settled: false,
+            },
         })
     }
 
-    pub(super) async fn mark_writer_backpressure(
-        &self,
-        source_ip: &str,
-        snapshot: &SourceSnapshot,
-    ) {
-        let mut state = self.state.lock().await;
+    pub(super) fn mark_writer_backpressure(&self, source_ip: &str, snapshot: &SourceSnapshot) {
+        let mut state = self.lock();
         let Some(source_state) = state.source_paths.get_mut(source_ip) else {
             return;
         };
@@ -229,13 +281,13 @@ impl NetworkLogState {
         }
     }
 
-    pub(super) async fn begin_session_drain(
+    pub(super) fn begin_session_drain(
         &self,
         source_ip: &str,
         path: &Path,
         generation: u64,
     ) -> bool {
-        let mut state = self.state.lock().await;
+        let mut state = self.lock();
         let Some(source_state) = state.source_paths.get(source_ip) else {
             return false;
         };
@@ -244,24 +296,21 @@ impl NetworkLogState {
         }
         let path = Arc::clone(source_state.path());
         let writer_backpressure_observed = source_state.writer_backpressure_observed();
+        let writer_failed = Arc::clone(source_state.writer_failed());
         state.source_paths.insert(
             source_ip.to_string(),
             SourceState::Draining {
                 path,
                 generation,
                 writer_backpressure_observed,
+                writer_failed,
             },
         );
         true
     }
 
-    pub(super) async fn finalize_session(
-        &self,
-        source_ip: &str,
-        path: &Path,
-        generation: u64,
-    ) -> bool {
-        let mut state = self.state.lock().await;
+    pub(super) fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
+        let mut state = self.lock();
         let Some(source_state) = state.source_paths.get(source_ip) else {
             return false;
         };
@@ -276,7 +325,7 @@ impl NetworkLogState {
     pub(super) async fn flush_path(&self, path: &Path) {
         loop {
             let notified = {
-                let state = self.state.lock().await;
+                let state = self.lock();
                 let Some(path_state) = state.pending_paths.get(path) else {
                     return;
                 };
@@ -289,7 +338,7 @@ impl NetworkLogState {
             notified.as_mut().enable();
 
             {
-                let state = self.state.lock().await;
+                let state = self.lock();
                 if !state.pending_paths.contains_key(path) {
                     return;
                 }
@@ -299,12 +348,12 @@ impl NetworkLogState {
         }
     }
 
-    async fn complete_path(&self, path: Arc<Path>, count: usize) {
+    fn complete_path(&self, path: Arc<Path>, count: usize) {
         if count == 0 {
             return;
         }
         let notify = {
-            let mut state = self.state.lock().await;
+            let mut state = self.lock();
             let Some(path_state) = state.pending_paths.get_mut(path.as_ref()) else {
                 warn!(path = %path.display(), "network log write completed for unknown path");
                 return;

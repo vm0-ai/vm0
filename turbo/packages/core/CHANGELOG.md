@@ -1,5 +1,46 @@
 # Changelog
 
+## [8.630.1](https://github.com/vm0-ai/vm0/compare/core-v8.630.0...core-v8.630.1) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.6
+
+## [8.630.0](https://github.com/vm0-ai/vm0/compare/core-v8.629.2...core-v8.630.0) (2026-09-07)
+
+
+### Features
+
+* enable presentation templates for all organizations ([#32089](https://github.com/vm0-ai/vm0/issues/32089)) ([7096061](https://github.com/vm0-ai/vm0/commit/7096061d5771379747e1da8d891b457f67a89850))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.5
+
+## [8.629.2](https://github.com/vm0-ai/vm0/compare/core-v8.629.1...core-v8.629.2) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.4
+
+## [8.629.1](https://github.com/vm0-ai/vm0/compare/core-v8.629.0...core-v8.629.1) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+
 ## [8.629.0](https://github.com/vm0-ai/vm0/compare/core-v8.628.0...core-v8.629.0) (2026-09-07)
 
 

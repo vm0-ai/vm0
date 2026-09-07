@@ -20,6 +20,7 @@ import { LanguageSettings } from "../language-settings.tsx";
 import { ColorThemeSettings } from "../color-theme-settings.tsx";
 import { PreferenceCardRow } from "../preference-card-row.tsx";
 import { SendModePreference } from "./chat-section.tsx";
+import type { ChatPreferenceActions } from "../chat-preference-actions.ts";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
@@ -94,7 +95,11 @@ function AppearanceBlock() {
   );
 }
 
-export function PreferenceSection() {
+export function PreferenceSection({
+  sendModeAction,
+}: {
+  sendModeAction: ChatPreferenceActions["sendMode"];
+}) {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
   const chatPreferenceEnabled =
@@ -135,7 +140,7 @@ export function PreferenceSection() {
               return $.settings.preferences.send.description;
             })}
           />
-          <SendModePreference />
+          <SendModePreference action={sendModeAction} />
         </section>
       ) : null}
 

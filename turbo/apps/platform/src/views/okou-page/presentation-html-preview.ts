@@ -1,19 +1,9 @@
 import { i18n } from "../../i18n/index.ts";
 
-// Surface: stored and externally authored deck HTML, not a deploy skew, so it
-// has no rollout window. The deck generator lives outside this repository and
-// decks are persisted, so the reader keeps accepting the pre-rename
-// `data-vm0-*` edit protocol alongside `data-okou-*`. Drop the legacy halves
-// once stored decks are migrated or regenerated and the generator emits only
-// `data-okou-*`; follow-up #31824.
-const EDITABLE_SELECTOR =
-  '[data-okou-editable="text"],[data-vm0-editable="text"]';
-const METADATA_SCRIPT_IDS = [
-  "okou-deck-metadata",
-  "vm0-deck-metadata",
-] as const;
+const EDITABLE_SELECTOR = '[data-okou-editable="text"]';
+const METADATA_SCRIPT_ID = "okou-deck-metadata";
 const SLIDE_SELECTORS = [
-  "[data-okou-slide],[data-vm0-slide]",
+  "[data-okou-slide]",
   "[data-slide]",
   "[data-slide-index]",
   "[data-page]",
@@ -87,13 +77,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function deckMetadataScript(doc: Document): HTMLScriptElement | null {
-  for (const id of METADATA_SCRIPT_IDS) {
-    const script = doc.getElementById(id);
-    if (script instanceof HTMLScriptElement && script.textContent) {
-      return script;
-    }
-  }
-  return null;
+  const script = doc.getElementById(METADATA_SCRIPT_ID);
+  return script instanceof HTMLScriptElement && script.textContent
+    ? script
+    : null;
 }
 
 function parseDeckMetadata(doc: Document): DeckMetadata {
@@ -143,12 +130,8 @@ function editIdForElement(editable: Element, index: number): string | null {
   }
   return (
     editable.dataset.okouEditId ??
-    // Legacy `data-vm0-edit-id` / `data-vm0-node-id`: drop once no stored deck
-    // HTML written before the okou rename remains.
-    editable.dataset.vm0EditId ??
     editable.dataset.editId ??
     editable.dataset.okouNodeId ??
-    editable.dataset.vm0NodeId ??
     editable.dataset.nodeId ??
     `text-${index + 1}`
   );
@@ -156,13 +139,7 @@ function editIdForElement(editable: Element, index: number): string | null {
 
 function ensureEditIdForElement(editable: Element, index: number): string {
   const editId = editIdForElement(editable, index) ?? `text-${index + 1}`;
-  if (
-    editable instanceof HTMLElement &&
-    !editable.dataset.okouEditId &&
-    // A legacy id already anchors this block; rewriting it would change the
-    // stored deck rather than annotate it.
-    !editable.dataset.vm0EditId
-  ) {
+  if (editable instanceof HTMLElement && !editable.dataset.okouEditId) {
     editable.dataset.okouEditId = editId;
   }
   return editId;
@@ -772,9 +749,6 @@ function materializePresentationThemeSwitcherDefaults(doc: Document): void {
   doc.head.append(style);
 }
 
-// The stage layout rules keep matching the legacy `[data-vm0-slide]` spelling so
-// decks authored before the okou rename still fill the stage. Same surface and
-// removal condition as the deck-protocol readers above; follow-up #31824.
 function appendPresentationPreviewStyle(previewDoc: Document): void {
   const style = previewDoc.createElement("style");
   style.textContent = `
@@ -810,7 +784,6 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
     [data-okou-editor-stage] > .slide-page,
     [data-okou-editor-stage] > section,
     [data-okou-editor-stage] > [data-okou-slide],
-    [data-okou-editor-stage] > [data-vm0-slide],
     [data-okou-editor-stage] > [data-slide],
     [data-okou-editor-stage] > [data-slide-index],
     [data-okou-editor-stage] > [data-page] {
@@ -833,7 +806,6 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
     [data-okou-editor-stage] > .slide-page > .stage,
     [data-okou-editor-stage] > section > .stage,
     [data-okou-editor-stage] > [data-okou-slide] > .stage,
-    [data-okou-editor-stage] > [data-vm0-slide] > .stage,
     [data-okou-editor-stage] > [data-slide] > .stage,
     [data-okou-editor-stage] > [data-slide-index] > .stage,
     [data-okou-editor-stage] > [data-page] > .stage {

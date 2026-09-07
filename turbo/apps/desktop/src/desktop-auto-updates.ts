@@ -1,4 +1,4 @@
-import { setInterval } from "node:timers";
+import { setInterval, setTimeout } from "node:timers";
 import { app, autoUpdater, dialog } from "electron";
 
 import type { DesktopConfig } from "./config";
@@ -11,6 +11,9 @@ import {
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
 
 const DESKTOP_UPDATE_INTERVAL_MS = 30 * 60 * 1000;
+// Electron 42.5.1's update-race fixture waits this long after
+// update-downloaded before invoking Squirrel's RACCommand again.
+const DESKTOP_UPDATE_NATIVE_SETTLE_MS = 1000;
 
 interface DesktopAutoUpdateOptions {
   readonly config: DesktopConfig;
@@ -62,12 +65,12 @@ function shouldDeferDownloadedUpdate(
 }
 
 type DesktopUpdateCheckOutcome =
-  | { readonly type: "update-available" }
   | { readonly type: "update-not-available" }
   | { readonly type: "error"; readonly error: unknown };
 
 interface ActiveDesktopUpdateCheck {
   manualDisplayName?: string;
+  phase: "checking" | "downloading" | "settling";
 }
 
 function createDesktopUpdateCheckCoordinator(): (
@@ -76,7 +79,7 @@ function createDesktopUpdateCheckCoordinator(): (
   let activeCheck: ActiveDesktopUpdateCheck | undefined;
 
   autoUpdater.on("error", (error) => {
-    if (!activeCheck) {
+    if (!activeCheck || activeCheck.phase === "settling") {
       console.error("Desktop auto-updater error", error);
     }
   });
@@ -92,14 +95,32 @@ function createDesktopUpdateCheckCoordinator(): (
       return true;
     }
 
-    const check: ActiveDesktopUpdateCheck = { manualDisplayName };
+    const check: ActiveDesktopUpdateCheck = {
+      manualDisplayName,
+      phase: "checking",
+    };
     activeCheck = check;
 
     const handleNoUpdate = (): void => {
       complete({ type: "update-not-available" });
     };
     const handleUpdateAvailable = (): void => {
-      complete({ type: "update-available" });
+      if (activeCheck === check && check.phase !== "settling") {
+        check.phase = "downloading";
+      }
+    };
+    const handleUpdateDownloaded = (): void => {
+      if (activeCheck !== check || check.phase === "settling") {
+        return;
+      }
+
+      cleanup();
+      check.phase = "settling";
+      setTimeout(() => {
+        if (activeCheck === check) {
+          activeCheck = undefined;
+        }
+      }, DESKTOP_UPDATE_NATIVE_SETTLE_MS);
     };
     const handleError = (error: Error): void => {
       complete({ type: "error", error });
@@ -108,11 +129,12 @@ function createDesktopUpdateCheckCoordinator(): (
     function cleanup(): void {
       autoUpdater.removeListener("update-not-available", handleNoUpdate);
       autoUpdater.removeListener("update-available", handleUpdateAvailable);
+      autoUpdater.removeListener("update-downloaded", handleUpdateDownloaded);
       autoUpdater.removeListener("error", handleError);
     }
 
     function complete(outcome: DesktopUpdateCheckOutcome): void {
-      if (activeCheck !== check) {
+      if (activeCheck !== check || check.phase === "settling") {
         return;
       }
 
@@ -146,6 +168,7 @@ function createDesktopUpdateCheckCoordinator(): (
 
     autoUpdater.once("update-not-available", handleNoUpdate);
     autoUpdater.once("update-available", handleUpdateAvailable);
+    autoUpdater.once("update-downloaded", handleUpdateDownloaded);
     autoUpdater.once("error", handleError);
 
     try {
