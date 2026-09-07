@@ -216,6 +216,71 @@ describe("Pi API first-turn handoff loader", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("accepts a sandbox-first manifest after the API budget but before coordination expires", async () => {
+    const sessionDir = await mkdtemp(join(tmpdir(), "pi-handoff-loader-"));
+    temporaryDirectories.push(sessionDir);
+    const apiDeadlineAt = 46_000;
+    const coordinationDeadlineAt = 56_000;
+    let now = 1_000;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (String(input).endsWith("manifest.json")) {
+        return now < apiDeadlineAt
+          ? new Response(null, { status: 404 })
+          : Response.json(
+              manifestV3(EMPTY_SESSION_JSONL, "sandbox-first", 1, null),
+            );
+      }
+      return new Response(EMPTY_SESSION_JSONL);
+    });
+    const runtime: HandoffRuntime = {
+      fetch: fetchMock as typeof fetch,
+      now: () => {
+        return now;
+      },
+      async sleep(milliseconds) {
+        now += milliseconds;
+      },
+    };
+
+    const restored = await resolvePiApiFirstTurnHandoff({
+      config: config(coordinationDeadlineAt, 1, null),
+      sessionDir,
+      sessionId: SESSION_ID,
+      runtime,
+    });
+
+    expect(now).toBeGreaterThanOrEqual(apiDeadlineAt);
+    expect(now).toBeLessThan(coordinationDeadlineAt);
+    expect(restored.ownershipTransferMode).toBe("sandbox-first");
+    expect(await readFile(restored.sessionFile, "utf8")).toBe(
+      EMPTY_SESSION_JSONL,
+    );
+  });
+
+  it("keeps accepting the previous 45-second wire deadline", async () => {
+    const sessionDir = await mkdtemp(join(tmpdir(), "pi-handoff-loader-"));
+    temporaryDirectories.push(sessionDir);
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      return String(input).endsWith("manifest.json")
+        ? Response.json(
+            manifestV3(EMPTY_SESSION_JSONL, "sandbox-first", 1, null),
+          )
+        : new Response(EMPTY_SESSION_JSONL);
+    });
+
+    const restored = await resolvePiApiFirstTurnHandoff({
+      config: config(46_000, 1, null),
+      sessionDir,
+      sessionId: SESSION_ID,
+      runtime: fixedRuntime(fetchMock as typeof fetch),
+    });
+
+    expect(restored.ownershipTransferMode).toBe("sandbox-first");
+    expect(await readFile(restored.sessionFile, "utf8")).toBe(
+      EMPTY_SESSION_JSONL,
+    );
+  });
+
   it.each([1, 2] as const)(
     "rejects retired manifest V%s before downloading a session",
     async (schemaVersion) => {
