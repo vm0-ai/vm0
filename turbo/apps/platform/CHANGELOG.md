@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.861.0](https://github.com/vm0-ai/vm0/compare/app-v0.860.0...app-v0.861.0) (2026-09-07)
+
+
+### Features
+
+* **app:** stream authenticated api prefetch responses ([#32364](https://github.com/vm0-ai/vm0/issues/32364)) ([88eda06](https://github.com/vm0-ai/vm0/commit/88eda06641dcf5b239f6274540f55ecc53d468ee))
+
+
+### Bug Fixes
+
+* **platform:** read annotated images through public urls ([#32356](https://github.com/vm0-ai/vm0/issues/32356)) ([8154ea3](https://github.com/vm0-ai/vm0/commit/8154ea36eb0625e909228d2d34e01b57e5286507))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.413.0
+    * @okouai/core bumped to 8.633.1
+
 ## [0.860.0](https://github.com/vm0-ai/vm0/compare/app-v0.859.0...app-v0.860.0) (2026-09-07)
 
 

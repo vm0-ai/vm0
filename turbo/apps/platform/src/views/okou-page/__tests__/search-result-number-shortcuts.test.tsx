@@ -523,10 +523,7 @@ test.each([
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth: workspace.auth,
-      featureSwitches: {
-        ...featureSwitches,
-        [FeatureSwitchKey.WorkspaceAgentSearch]: true,
-      },
+      featureSwitches,
     });
     const { dialog, search } = await openSearch();
     await fill(search, "budget");

@@ -34,11 +34,17 @@ ruby -e '
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
-  ["default-configuration", "Okou production", "PR preview"].each do |variant|
+  {"default-configuration" => "default", "Okou production" => "production", "PR preview" => "preview"}.each do |variant, lane|
     smoke = build.fetch("steps").find { |step| step["name"] == "Smoke test #{variant} artifact launch" }
     probe = build.fetch("steps").find { |step| step["name"] == "Probe embedded CUA in #{variant} artifact" }
     raise "Each packaged variant must run the real CUA probe" unless probe && probe.fetch("run").include?("--cua-probe --signed")
-    raise "CUA probe must use the same canonical environment and conditions as ordinary smoke" unless probe["env"] == smoke["env"] && probe["if"] == smoke["if"]
+    evidence_key = "OKOU_DESKTOP_SMOKE_EVIDENCE_PATH"
+    evidence_root = "${{ runner.temp }}/cua-evidence/#{lane}"
+    raise "Dormant evidence must stay outside the packaged app" unless smoke.fetch("env").fetch(evidence_key) == "#{evidence_root}/dormant.json"
+    raise "Probe evidence must stay separate from dormant evidence" unless probe.fetch("env").fetch(evidence_key) == "#{evidence_root}/probe.json"
+    smoke_environment = smoke.fetch("env").reject { |key, _| key == evidence_key }
+    probe_environment = probe.fetch("env").reject { |key, _| key == evidence_key }
+    raise "CUA probe must use the same canonical environment and conditions as ordinary smoke" unless probe_environment == smoke_environment && probe["if"] == smoke["if"]
   end
   deploy = desktop.fetch("deploy-desktop")
   raise "deploy-desktop must depend on version detection" unless deploy.fetch("needs") == "detect-desktop-version"

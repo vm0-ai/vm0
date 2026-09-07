@@ -120,6 +120,11 @@ jobs:
       - name: Test desktop
         run: pnpm -F @okouai/desktop test
 
+      # This is an existing Python integration suite, not one Vitest test.
+      # Let unittest own its cases and cleanup instead of blocking a JS worker.
+      - name: Test CUA distribution and package inspection
+        run: python3 apps/desktop/scripts/test-cua-distribution.py
+
       - name: Test native helper
         run: pnpm -F @okouai/desktop test:native
 
@@ -240,10 +245,24 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/dist/bootstrap.js"
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/assets/icon.png"
 
+      - name: Inspect default CUA package and archive without launching
+        env:
+          CUA_EVIDENCE_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/cua-evidence/default"
+          python3 apps/desktop/scripts/inspect-cua-package.py \
+            --app "apps/desktop/out/Okou-darwin-arm64/Okou.app" \
+            --archive "${{ steps.build-prod.outputs.path }}" \
+            > "$RUNNER_TEMP/cua-evidence/default/package.json"
+
       - name: Smoke test default-configuration artifact launch
+        env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/default/dormant.json
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Probe embedded CUA in default-configuration artifact
+        env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/default/probe.json
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
 
       - name: Upload unsigned default-configuration macOS artifact
@@ -389,14 +408,26 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/assets/icon.png"
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/desktop-runtime-config.json"
 
+      - name: Inspect production CUA package and archive without launching
+        env:
+          CUA_EVIDENCE_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/cua-evidence/production"
+          python3 apps/desktop/scripts/inspect-cua-package.py \
+            --app "apps/desktop/out/Okou-darwin-arm64/Okou.app" \
+            --archive "${{ steps.build-okou-prod.outputs.path }}" \
+            > "$RUNNER_TEMP/cua-evidence/production/package.json"
+
       - name: Smoke test Okou production artifact launch
         env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/production/dormant.json
           OKOU_DESKTOP_PRODUCT: okou
           OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Probe embedded CUA in Okou production artifact
         env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/production/probe.json
           OKOU_DESKTOP_PRODUCT: okou
           OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
@@ -548,15 +579,28 @@ jobs:
           unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/assets/icon.png"
           unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/desktop-runtime-config.json"
 
+      - name: Inspect preview CUA package and archive without launching
+        if: github.event_name == 'pull_request'
+        env:
+          CUA_EVIDENCE_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/cua-evidence/preview"
+          python3 apps/desktop/scripts/inspect-cua-package.py \
+            --app "apps/desktop/out/Okou Dev-darwin-arm64/Okou Dev.app" \
+            --archive "${{ steps.build-preview.outputs.path }}" \
+            > "$RUNNER_TEMP/cua-evidence/preview/package.json"
+
       - name: Smoke test PR preview artifact launch
         if: github.event_name == 'pull_request'
         env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/preview/dormant.json
           OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Probe embedded CUA in PR preview artifact
         if: github.event_name == 'pull_request'
         env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/preview/probe.json
           OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
 
@@ -566,6 +610,14 @@ jobs:
         with:
           name: okou-desktop-macos-arm64-preview-unsigned
           path: turbo/${{ steps.build-preview.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload CUA package verification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: okou-desktop-cua-verification
+          path: ${{ runner.temp }}/cua-evidence/
           if-no-files-found: error
           retention-days: 14
 

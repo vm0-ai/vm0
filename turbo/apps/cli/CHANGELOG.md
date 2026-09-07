@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.316.0](https://github.com/vm0-ai/vm0/compare/cli-v9.315.14...cli-v9.316.0) (2026-09-07)
+
+
+### Features
+
+* **cli:** diagnose admitted custom connector targets ([#32389](https://github.com/vm0-ai/vm0/issues/32389)) ([b183bd3](https://github.com/vm0-ai/vm0/commit/b183bd33b0bba400c6ebe5717953482c9aa52b89))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.413.0
+    * @okouai/core bumped to 8.633.1
+    * @okouai/pi-agent-runtime bumped to 1.21.19
+
 ## [9.315.14](https://github.com/vm0-ai/vm0/compare/cli-v9.315.13...cli-v9.315.14) (2026-09-07)
 
 

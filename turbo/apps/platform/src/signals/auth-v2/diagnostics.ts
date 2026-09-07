@@ -120,6 +120,9 @@ function signInErrorCategory(
       return "unknown";
     }
     case "clerk": {
+      if (error.clerkCode === "external_account_not_found") {
+        return "account-not-found";
+      }
       if (error.field === "code") {
         return "invalid-code";
       }
@@ -432,22 +435,28 @@ function createSignInFinishCommands(
       }
       const flowState = get(signals.state$);
       const error = get(signals.error$);
+      const oneTapStage = options.isBaseRoute
+        ? get(signals.googleOneTapStage$)
+        : null;
       const result = signInResult(
         flowState,
         error,
         get(options.continuationState$),
       );
-      if (result.outcome === "failure") {
-        const method =
-          options.isBaseRoute && error ? "google-one-tap" : attempt.method;
-        return diagnosticProperties(flow, { ...attempt, method }, result);
-      }
-      if (options.isBaseRoute && flowState.status === "complete") {
+      if (
+        oneTapStage &&
+        (result.outcome === "failure" ||
+          oneTapStage === "sign-up" ||
+          flowState.status === "complete")
+      ) {
         return diagnosticProperties(
-          flow,
-          { method: "google-one-tap", step: "initialize" },
+          oneTapStage === "sign-up" ? "sign-up" : flow,
+          { method: "google-one-tap", step: `one-tap-${oneTapStage}` },
           result,
         );
+      }
+      if (result.outcome === "failure") {
+        return diagnosticProperties(flow, attempt, result);
       }
       return null;
     },

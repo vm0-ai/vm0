@@ -1439,6 +1439,8 @@ interface DesktopSmokeBridgeState {
   readonly authCompletionRejected: boolean;
   readonly computerUse: boolean;
   readonly developerTools: boolean;
+  readonly driverControls: boolean;
+  readonly driver: unknown;
   readonly identity: DesktopIdentityInfo | null;
 }
 
@@ -1469,12 +1471,15 @@ function isDesktopSmokeBridgeState(
     typeof value.computerUse === "boolean" &&
     "developerTools" in value &&
     typeof value.developerTools === "boolean" &&
+    "driverControls" in value &&
+    typeof value.driverControls === "boolean" &&
+    "driver" in value &&
     "identity" in value &&
     (value.identity === null || isDesktopIdentityInfo(value.identity))
   );
 }
 
-async function verifyDesktopSmokeBridge(): Promise<void> {
+async function verifyDesktopSmokeBridge() {
   const window = await createMainWindow();
   const rawState: unknown = await window.webContents.executeJavaScript(
     `(async () => ({
@@ -1482,15 +1487,15 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
       authCompletionRejected: await window.vm0DesktopAuth.completeSignIn({ token: "smoke-test-token" }).then(() => false, () => true),
       computerUse: typeof window.vm0DesktopComputerUse === "object",
       developerTools: typeof window.vm0DesktopDeveloperTools === "object",
+      driverControls: ["setExperimentalCuaEnabled", "selectDriver", "start", "stop"].every(name => typeof window.vm0DesktopComputerUse[name] === "function"),
+      driver: (await window.vm0DesktopComputerUse.getState()).driver,
       identity: window.vm0DesktopIdentity ?? null,
     }))()`,
     true,
   );
 
   if (!isDesktopSmokeBridgeState(rawState)) {
-    throw new Error(
-      `Desktop renderer bridge returned an invalid result: ${JSON.stringify(rawState)}`,
-    );
+    throw new Error("Desktop renderer bridge returned an invalid result");
   }
 
   const state = rawState;
@@ -1499,15 +1504,24 @@ async function verifyDesktopSmokeBridge(): Promise<void> {
     !state.authCompletionRejected ||
     !state.computerUse ||
     !state.developerTools ||
+    !state.driverControls ||
     !state.identity ||
     state.identity.product !== desktopIdentity.product ||
     state.identity.brandName !== desktopIdentity.brandName ||
     state.identity.displayName !== desktopIdentity.displayName
   ) {
-    throw new Error(
-      `Desktop renderer bridge failed acceptance: ${JSON.stringify(state)}`,
-    );
+    throw new Error("Desktop renderer bridge failed acceptance");
   }
+  assertCuaDormant();
+  // Settle the real passive permission lifecycle, then read through IPC again.
+  // Neither read authorizes an experiment or starts a driver.
+  await refreshComputerUsePermissions();
+  const settledDriver: unknown = await window.webContents.executeJavaScript(
+    "window.vm0DesktopComputerUse.getState().then(state => state.driver)",
+    true,
+  );
+  assertCuaDormant();
+  return { ...state, settledDriver };
 }
 
 async function maybeStartComputerUseAfterAuth(
@@ -1662,7 +1676,15 @@ if (!hasSingleInstanceLock) {
           process.env.OKOU_DESKTOP_CUA_CAPTURE === "1",
           app.getPath("userData"),
         );
-        writeSync(1, `[cua-probe] ${JSON.stringify(result)}\n`);
+        writeSync(
+          1,
+          `[cua-probe] ${JSON.stringify({
+            ...result,
+            desktopVersion: app.getVersion(),
+            electronVersion: process.versions.electron,
+            bundleId: config.identity.bundleId,
+          })}\n`,
+        );
         app.exit(0);
       } catch {
         writeSync(
@@ -1697,7 +1719,19 @@ if (!hasSingleInstanceLock) {
       assertCuaDormant();
       desktopAuthSession.signOut();
       try {
-        await verifyDesktopSmokeBridge();
+        const bridge = await verifyDesktopSmokeBridge();
+        assertCuaDormant();
+        writeSync(
+          1,
+          `[smoke-test] evidence ${JSON.stringify({
+            schemaVersion: 1,
+            desktopVersion: app.getVersion(),
+            electronVersion: process.versions.electron,
+            bundleId: config.identity.bundleId,
+            bridge,
+            sdkLoadAttempted: false,
+          })}\n`,
+        );
       } catch (error) {
         console.error("[smoke-test] desktop renderer bridge failed", error);
         app.exit(1);

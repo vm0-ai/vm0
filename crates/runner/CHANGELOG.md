@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.188.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.4...runner-rs-v0.188.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** prevent premature network log drain acknowledgement ([#32388](https://github.com/vm0-ai/vm0/issues/32388)) ([9f6e74d](https://github.com/vm0-ai/vm0/commit/9f6e74d5b2a133a9f37ba9403efb29c42882bf34))
+
+
+### Refactoring
+
+* **runner:** retire legacy blank status readers ([#32385](https://github.com/vm0-ai/vm0/issues/32385)) ([61e1e61](https://github.com/vm0-ai/vm0/commit/61e1e61be1cd22759672773f3f7cd46571fd568b))
+
 ## [0.188.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.3...runner-rs-v0.188.4) (2026-09-07)
 
 

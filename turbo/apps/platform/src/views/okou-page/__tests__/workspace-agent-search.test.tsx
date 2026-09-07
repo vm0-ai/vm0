@@ -1,6 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   agentsByIdContract,
   type AgentResponse,
@@ -82,7 +81,6 @@ test("Find workspace agents by name and open their chat", async () => {
   await setupPage({
     context,
     path: `/agents/${DEFAULT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.WorkspaceAgentSearch]: true },
   });
   const { dialog, search } = await openSearch();
 
@@ -136,27 +134,6 @@ test("Find workspace agents by name and open their chat", async () => {
   expect(screen.queryByRole("dialog", { name: SEARCH_LABEL })).toBeNull();
 });
 
-test("Keep agents out of workspace search when the feature is disabled", async () => {
-  prepareAgents();
-  await setupPage({
-    context,
-    path: `/agents/${DEFAULT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.WorkspaceAgentSearch]: false },
-  });
-  const { dialog, search } = await openSearch();
-
-  await fill(search, "research");
-  await expect(
-    within(dialog).findByText("No results found"),
-  ).resolves.toBeVisible();
-  expect(within(dialog).queryByRole("option")).toBeNull();
-  expect(
-    queryAllByRoleFast("tab", dialog).map((tab) => {
-      return tab.textContent;
-    }),
-  ).not.toContain("Agents");
-});
-
 test("Limit matching agents to the workspace search result size", async () => {
   context.mocks.browser.userAgent(MAC_USER_AGENT);
   context.mocks.data.agents([
@@ -171,7 +148,6 @@ test("Limit matching agents to the workspace search result size", async () => {
   await setupPage({
     context,
     path: `/agents/${DEFAULT_AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.WorkspaceAgentSearch]: true },
   });
   const { dialog, search } = await openSearch();
 
