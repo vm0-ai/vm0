@@ -10,6 +10,7 @@ import {
   context,
   findEnabledButton,
   installRunChat,
+  queryButton,
   RUN_PATH,
 } from "./chat-run-test-fixtures.ts";
 
@@ -90,6 +91,93 @@ test("Keep saving audio after speech detection fails and prepare it again on Sto
   expect(audio).toStrictEqual([
     { duration: 75, final: false },
     { duration: 5, final: true },
+  ]);
+});
+
+test("Retry repeated preparation failures while preserving earlier transcription", async () => {
+  const capture = context.mocks.deferred<(samples: Float32Array) => void>();
+  const firstStarted = context.mocks.deferred<void>();
+  const firstReady = context.mocks.deferred<void>();
+  const finalStarted = context.mocks.deferred<void>();
+  const finalReady = context.mocks.deferred<void>();
+  const failures = [
+    context.mocks.deferred<void>(),
+    context.mocks.deferred<void>(),
+    context.mocks.deferred<void>(),
+  ] as const;
+  const createDetector = SileroV5.new;
+  const detector = vi.spyOn(SileroV5, "new");
+  detector.mockImplementationOnce(createDetector);
+  for (const failure of failures) {
+    detector.mockImplementationOnce(() => {
+      failure.resolve();
+      return Promise.reject(new Error("Speech detection unavailable"));
+    });
+  }
+  context.mocks.browser.voiceInput({
+    rms: 0.1,
+    onPcmCapture: capture.resolve,
+    finalPcmSamples: new Float32Array(0),
+  });
+  installRunChat();
+  const inputs: { prefix: string; duration: number }[] = [];
+  context.mocks.http.post(endpoint, async ({ request }) => {
+    const form = await request.formData();
+    const options = JSON.parse(String(form.get("options"))) as {
+      previousTranscript: string;
+      final: boolean;
+    };
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Expected retained audio");
+    }
+    inputs.push({
+      prefix: options.previousTranscript,
+      duration: (file.size - 44) / 32_000,
+    });
+    if (!options.previousTranscript) {
+      firstStarted.resolve();
+      await firstReady.promise;
+      return HttpResponse.json({ transcript: "Saved part.", language: "en" });
+    }
+    if (!options.final) {
+      return HttpResponse.json({ transcript: "Second part.", language: "en" });
+    }
+    finalStarted.resolve();
+    await finalReady.promise;
+    return HttpResponse.json({
+      transcript: "Last part.",
+      polishedText: "Saved part. Second part. Last part.",
+      language: "en",
+    });
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  const emit = await capture.promise;
+  emit(new Float32Array(75 * 16_000).fill(0.1));
+  await firstStarted.promise;
+  emit(new Float32Array(75 * 16_000).fill(0.2));
+  await failures[0].promise;
+  emit(new Float32Array(5 * 16_000).fill(0.3));
+  click(await findEnabledButton("Stop recording"));
+  firstReady.resolve();
+  await failures[1].promise;
+  click(await findEnabledButton("Retry"));
+  await failures[2].promise;
+  click(await findEnabledButton("Retry"));
+  await finalStarted.promise;
+  await screen.findByText("Transcribing...");
+  expect(queryButton("Retry")).toBeNull();
+  finalReady.resolve();
+  await waitFor(() => {
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
+      "Saved part. Second part. Last part.",
+    );
+  });
+  expect(inputs).toStrictEqual([
+    { prefix: "", duration: 75 },
+    { prefix: "Saved part.", duration: 75 },
+    { prefix: "Saved part. Second part.", duration: 5 },
   ]);
 });
 

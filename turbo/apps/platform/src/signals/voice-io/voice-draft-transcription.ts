@@ -33,6 +33,13 @@ interface VoiceDraftTranscriptionSession {
   readonly controller: AbortController;
 }
 
+interface VoiceDraftPreparation {
+  readonly previous: readonly VoiceDraftTranscriptionSegment[];
+  readonly segments$: Computed<
+    Promise<readonly VoiceDraftTranscriptionSegment[]>
+  >;
+}
+
 interface VoiceDraftTranscriptionSegment {
   readonly segment?: VoiceDraftSegment;
   readonly totalDurationSeconds: number;
@@ -73,10 +80,25 @@ function isFinalSegment(
 
 function createTranscriptionState() {
   const session$ = state<VoiceDraftTranscriptionSession | null>(null);
-  const segments$ = state<readonly VoiceDraftTranscriptionSegment[]>([]);
-  const preparationError$ = state<unknown>(null);
+  const preparation$ = state<VoiceDraftPreparation | null>(null);
+  const segments$ = computed(async (get) => {
+    const preparation = get(preparation$);
+    return preparation ? await get(preparation.segments$) : [];
+  });
   const result$ = computed(async (get) => {
-    const last = get(segments$).at(-1);
+    const preparation = get(preparation$);
+    if (!preparation) {
+      return;
+    }
+    const prepared = get(preparation.segments$);
+    const previous = preparation.previous.at(-1);
+    // Preparation can fail while its predecessor is still transcribing. Keep
+    // that request owned until it settles before propagating the preparation.
+    await Promise.allSettled([
+      prepared,
+      ...(previous ? [get(previous.result$)] : []),
+    ]);
+    const last = (await prepared).at(-1);
     return last ? await get(last.result$) : undefined;
   });
   const wake$ = state<ReturnType<typeof createDeferredPromise<void>> | null>(
@@ -89,7 +111,7 @@ function createTranscriptionState() {
     }
   });
 
-  return { session$, segments$, preparationError$, result$, wake$, notify$ };
+  return { session$, preparation$, segments$, result$, wake$, notify$ };
 }
 
 type TranscriptionState = ReturnType<typeof createTranscriptionState>;
@@ -98,7 +120,7 @@ function createInitialization(
   options: VoiceDraftTranscriptionOptions,
   state: TranscriptionState,
 ) {
-  const { session$, segments$, preparationError$, result$ } = state;
+  const { session$, preparation$, result$ } = state;
   const initialize$ = command(async ({ get, set }, signal: AbortSignal) => {
     const key = await get(options.storageKey$);
     signal.throwIfAborted();
@@ -138,56 +160,38 @@ function createInitialization(
       );
     }
     set(session$, session);
-    set(segments$, restored);
-    set(preparationError$, null);
+    set(
+      preparation$,
+      restored.length > 0
+        ? {
+            previous: restored,
+            segments$: computed(() => {
+              return Promise.resolve(restored);
+            }),
+          }
+        : null,
+    );
   });
 
   return initialize$;
 }
 
-function createSegmentPreparation(
-  options: VoiceDraftTranscriptionOptions,
-  state: TranscriptionState,
-) {
-  const { session$, segments$, preparationError$, notify$ } = state;
-  // The recorder's ordered PCM writes call this after saving audio. Preparing a
-  // new segment never waits for HTTP; Stop flushes those writes before sealing
-  // the tail through the same command.
-  const prepare$ = command(
-    async ({ get, set }, finished: boolean, signal: AbortSignal) => {
-      let session = get(session$);
-      if (!session) {
-        return;
-      }
-      const existing = get(segments$);
+function prepareSegments(
+  session: VoiceDraftTranscriptionSession,
+  existing: readonly VoiceDraftTranscriptionSegment[],
+  sampleCount: number,
+  finished: boolean,
+): VoiceDraftPreparation {
+  const signal = session.controller.signal;
+  return {
+    previous: existing,
+    segments$: computed(async () => {
       const entries = [...existing];
-      const last = entries.at(-1);
-      if (isFinalSegment(last)) {
-        return;
-      }
-      const recording = await readVoiceDraftRecording(session.key);
-      signal.throwIfAborted();
-      if (recording?.id !== session.recordingId) {
-        throw new Error("Voice recording changed during transcription");
-      }
-      let startSample = last?.segment?.endSample ?? 0;
-      const remaining = recording.sampleCount - startSample;
-      if (
-        !finished &&
-        remaining <
-          VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE
-      ) {
-        return;
-      }
-      if (!session.context) {
-        session = { ...session, context: set(options.readContext$) };
-        set(session$, session);
-      }
+      let startSample = entries.at(-1)?.segment?.endSample ?? 0;
       const audio = await readVoiceDraftAudio(session.key, session.recordingId);
       signal.throwIfAborted();
-      const totalDurationSeconds =
-        recording.sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE;
-      while (startSample < recording.sampleCount) {
+      const totalDurationSeconds = sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE;
+      while (startSample < sampleCount) {
         const segment = await nextVoiceDraftSegment(
           audio,
           startSample,
@@ -212,25 +216,67 @@ function createSegmentPreparation(
           ),
         );
       }
-      if (get(segments$) !== existing) {
-        return;
-      }
-      set(segments$, entries);
-      set(notify$);
-    },
-  );
+      return entries;
+    }),
+  };
+}
 
+function createSegmentPreparation(
+  options: VoiceDraftTranscriptionOptions,
+  state: TranscriptionState,
+) {
+  const { session$, preparation$, segments$, notify$ } = state;
+  // PCM writes wait only for local preparation, never HTTP. A preparation
+  // failure remains on its computed while the recorder keeps saving audio.
   const append$ = command(
     async ({ get, set }, finished: boolean, signal: AbortSignal) => {
+      let session = get(session$);
+      if (!session) {
+        return;
+      }
+      const current = get(preparation$);
+      const prepared = await settle(get(segments$), signal);
+      if (!prepared.ok) {
+        return;
+      }
+      const existing = prepared.value;
+      const last = existing.at(-1);
+      if (isFinalSegment(last)) {
+        return;
+      }
+      const recording = await readVoiceDraftRecording(session.key);
+      signal.throwIfAborted();
+      if (recording?.id !== session.recordingId) {
+        throw new Error("Voice recording changed during transcription");
+      }
+      const startSample = last?.segment?.endSample ?? 0;
+      if (
+        !finished &&
+        recording.sampleCount - startSample <
+          VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS * VOICE_DRAFT_PCM_SAMPLE_RATE
+      ) {
+        return;
+      }
+      if (!session.context) {
+        session = { ...session, context: set(options.readContext$) };
+        set(session$, session);
+      }
+      if (get(preparation$) !== current) {
+        return;
+      }
+      const preparation = prepareSegments(
+        session,
+        existing,
+        recording.sampleCount,
+        finished,
+      );
+      set(preparation$, preparation);
+      set(notify$);
       if (finished) {
-        await set(prepare$, true, signal);
-      } else if (!get(preparationError$)) {
-        const prepared = await settle(set(prepare$, false, signal), signal);
-        if (!prepared.ok) {
-          // A failed speech detector must not stop the recorder's PCM writes.
-          // Stop/Retry prepares the retained audio again.
-          set(preparationError$, prepared.error);
-        }
+        await get(preparation.segments$);
+        signal.throwIfAborted();
+      } else {
+        await settle(get(preparation.segments$), signal);
       }
     },
   );
@@ -239,19 +285,27 @@ function createSegmentPreparation(
 }
 
 function createCheckpointRetry(state: TranscriptionState) {
-  const { session$, segments$ } = state;
+  const { session$, preparation$, segments$ } = state;
   const retry$ = command(async ({ get, set }, signal: AbortSignal) => {
     const session = get(session$);
     if (!session) {
       return;
     }
-    const entries = get(segments$);
+    const preparation = get(preparation$);
+    if (!preparation) {
+      return;
+    }
+    const prepared = await settle(get(segments$), signal);
+    const entries = prepared.ok ? prepared.value : preparation.previous;
     const recording = await readVoiceDraftRecording(session.key);
     signal.throwIfAborted();
     if (recording?.id !== session.recordingId) {
       throw new Error("Voice recording changed during transcription");
     }
-    if (get(segments$) !== entries || recording.progress?.text !== undefined) {
+    if (
+      get(preparation$) !== preparation ||
+      recording.progress?.text !== undefined
+    ) {
       return;
     }
     const firstUnfinished = entries.findIndex(({ segment }) => {
@@ -262,11 +316,9 @@ function createCheckpointRetry(state: TranscriptionState) {
         })?.transcript === undefined
       );
     });
-    if (firstUnfinished === -1) {
-      return;
-    }
-    const retried = entries.slice(0, firstUnfinished);
-    for (const entry of entries.slice(firstUnfinished)) {
+    const completed = firstUnfinished === -1 ? entries.length : firstUnfinished;
+    const retried = entries.slice(0, completed);
+    for (const entry of entries.slice(completed)) {
       retried.push(
         createSegment(
           session,
@@ -276,7 +328,12 @@ function createCheckpointRetry(state: TranscriptionState) {
         ),
       );
     }
-    set(segments$, retried);
+    set(preparation$, {
+      previous: retried,
+      segments$: computed(() => {
+        return Promise.resolve(retried);
+      }),
+    });
   });
 
   return retry$;
@@ -287,14 +344,14 @@ export function createVoiceDraftTranscriptionSignals(
   options: VoiceDraftTranscriptionOptions,
 ) {
   const state = createTranscriptionState();
-  const { session$, segments$, result$, wake$ } = state;
+  const { session$, preparation$, result$, wake$ } = state;
   const initialize$ = createInitialization(options, state);
   const append$ = createSegmentPreparation(options, state);
   const retry$ = createCheckpointRetry(state);
   const transcribe$ = command(async ({ get, set }, signal: AbortSignal) => {
     const current = get(session$);
     const previous =
-      current && !current.controller.signal.aborted && get(segments$).length > 0
+      current && !current.controller.signal.aborted && get(preparation$)
         ? Promise.allSettled([get(result$)])
         : undefined;
     await set(initialize$, signal);
@@ -306,12 +363,13 @@ export function createVoiceDraftTranscriptionSignals(
       signal.throwIfAborted();
       if (outcome?.status === "rejected" || !outcome?.value) {
         await set(retry$, signal);
+        await set(append$, true, signal);
       }
     }
     const result = await get(result$);
     signal.throwIfAborted();
     if (!result) {
-      if (get(segments$).length > 0) {
+      if (get(preparation$)) {
         await set(openAudioInputQuotaRecovery$, signal);
       }
       return;
@@ -327,7 +385,7 @@ export function createVoiceDraftTranscriptionSignals(
     signal.throwIfAborted();
     if (get(session$) === session) {
       set(session$, null);
-      set(segments$, []);
+      set(preparation$, null);
     }
   });
 
@@ -338,9 +396,8 @@ export function createVoiceDraftTranscriptionSignals(
       const wake = createDeferredPromise<void>(signal);
       set(wake$, wake);
       const notified = Promise.allSettled([wake.promise]);
-      const last = get(segments$).at(-1);
-      if (last) {
-        const [outcome] = await Promise.allSettled([get(last.result$)]);
+      if (get(preparation$)) {
+        const [outcome] = await Promise.allSettled([get(result$)]);
         signal.throwIfAborted();
         if (outcome?.status === "fulfilled") {
           if (outcome.value) {
