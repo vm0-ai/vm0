@@ -288,17 +288,6 @@ pub(crate) fn captured_output_bytes(output: &ExecOwnedCapturedOutput) -> &[u8] {
     }
 }
 
-pub(crate) fn drop_idle_request_write_guard(host: &VsockHost) {
-    let guard = crate::RequestWriteGuard::new(Arc::clone(&host.shared));
-    drop(guard);
-}
-
-pub(crate) fn drop_started_request_write_guard(host: &VsockHost) {
-    let mut guard = crate::RequestWriteGuard::new(Arc::clone(&host.shared));
-    guard.mark_started();
-    drop(guard);
-}
-
 pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
     let mut header = [0u8; HEADER_SIZE];
     tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, stream.read_exact(&mut header))

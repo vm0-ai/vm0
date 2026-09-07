@@ -1,3 +1,4 @@
+mod frame;
 mod listener;
 mod request;
 
@@ -18,13 +19,14 @@ use crate::operation_tracker::{
 };
 use crate::{VsockHost, exec_operation};
 
+pub(crate) use frame::{FrameWriteDecision, FrameWriteTiming};
 pub(super) use request::{
     CompositeNormalOperation, normal_operation_transition_error,
     normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
 #[cfg(test)]
-pub(super) use request::{RequestWriteGuard, write_request_frame_with_builder};
+pub(super) use request::{request_on_shared, write_request_frame_with_builder};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 

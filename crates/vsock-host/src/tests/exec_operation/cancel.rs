@@ -3,8 +3,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use nix::sys::socket::{setsockopt, sockopt};
-use tokio::io::AsyncWriteExt;
+use nix::sys::socket::{Shutdown, setsockopt, shutdown, sockopt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::instrument::WithSubscriber;
+use tracing_subscriber::prelude::*;
+use tracing_test_support::CapturedEvents;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
@@ -14,7 +17,6 @@ use super::super::support::{
     read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
-use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ExecCaptureRequest, FrameWriteObserver};
 
@@ -690,10 +692,86 @@ async fn exec_cancel_result_timeout_poisons_connection() {
 }
 
 #[tokio::test]
-async fn exec_operation_frame_write_guard_started_drop_poisons_connection() {
+async fn exec_start_write_failure_poisons_connection_and_preserves_diagnostics() {
     let (host, _guest) = setup_host_and_guest().await;
-    exec_operation_impl::test_support::drop_started_frame_write_guard(Arc::clone(&host.shared));
-    host.wait_until_closed(Duration::from_secs(5))
+    shutdown(host.shared.fd, Shutdown::Write).unwrap();
+    assert!(is_connected(&host));
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+    let err = host
+        .exec_operation_capture(capture_request("write-error"))
+        .with_subscriber(subscriber)
         .await
-        .unwrap();
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    assert!(!is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
+    let events = captured.entries();
+    let failures: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event.fields.get("message").map(String::as_str)
+                == Some("exec operation frame write failed")
+        })
+        .collect();
+    assert_eq!(failures.len(), 1);
+    let failure = failures[0];
+    assert_eq!(failure.level, tracing::Level::WARN);
+    for (field, value) in [
+        ("seq", "2"),
+        ("label", "test-command"),
+        ("frame", "start"),
+        ("process_class", "contained_workload"),
+        ("operation_kind", "exec"),
+    ] {
+        assert_eq!(failure.fields.get(field).map(String::as_str), Some(value));
+    }
+    assert!(failure.fields["write_elapsed_ms"].parse::<u128>().is_ok());
+    assert_eq!(failure.fields["error"], err.to_string());
+}
+
+#[tokio::test]
+async fn exec_start_cancelled_during_write_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+    setsockopt(&host_stream, sockopt::SndBuf, &4096usize).unwrap();
+    let (host, ()) = tokio::join!(host_from_stream(host_stream), mock_handshake(&mut guest));
+    let host = Arc::new(host.unwrap());
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let stdin_bytes = vec![0xA5; vsock_proto::MAX_EXEC_STDIN_BYTES];
+            host.exec_operation_capture(ExecCaptureRequest {
+                stdin_bytes: Some(&stdin_bytes),
+                ..capture_request("cat")
+            })
+            .await
+        })
+    };
+    // Observe emitted bytes without draining enough to complete the start frame.
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        guest.read_exact(&mut [0u8; vsock_proto::HEADER_SIZE]),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!task.is_finished());
+    assert!(host.shared.writer.try_lock().is_err());
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+
+    assert!(!is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
 }

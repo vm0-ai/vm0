@@ -1,28 +1,15 @@
-//! Frame writes are serialized through the shared writer so that operation state and frame bytes
-//! cross their safety boundaries in a fixed order.
-//!
-//! ## Frame-write safety contract
-//!
-//! Each guarded frame write has three states:
-//!
-//! - `NOT_STARTED`: the writer lock is not held yet, or the pre-write decision is still running.
-//!   Dropping the write in this state means no frame bytes could have been emitted.
-//! - `STARTED`: the pre-write decision returned `Write` and the writer is about to, or is already,
-//!   awaiting `write_all`. The write may be partial, so a dropped future or write error poisons
-//!   the connection rather than allowing it to be reused.
-//! - `COMPLETED`: `write_all` returned successfully. Dropping the guard after this state does not
-//!   poison the connection.
+//! Exec admission and diagnostics around the connection layer's guarded frame writer.
 //!
 //! The pre-write callback runs after `Shared::writer` has been acquired and before the
-//! `STARTED` transition. It is therefore the serialized admission point for route and operation
+//! partial-write guard is armed. It is the serialized admission point for route and operation
 //! state changes, write observers, and cancellation decisions. A callback that returns `Skip`
-//! exits while the writer is still serialized, without crossing `STARTED`, emitting frame bytes,
+//! exits while the writer is still serialized, without arming the guard, emitting frame bytes,
 //! or publishing a write-start notification.
 //!
 //! `send_exec_cancel_frame_for_wait_with_write_start` uses that admission point to revalidate the
 //! route immediately before cancellation can be written. When the route is still cancellable, it
 //! marks the host cancellation and sends `write_started_tx` from the callback before returning
-//! `Write`; the generic writer has not yet stored `STARTED` or called `write_all`. When the
+//! `Write`; the shared writer has not yet armed the guard or called `write_all`. When the
 //! operation is already terminal, the callback returns `AlreadyTerminal` as `Skip`, so the stale
 //! cancel frame is not written. Moving either the route revalidation or this notification outside
 //! the writer lock would break the ordering against a terminal result or a reused wire sequence.
@@ -32,7 +19,7 @@
 //! `exec_cancel_writer_lock_timeout_before_write_does_not_poison_or_send_frame`,
 //! `exec_cancel_terminal_result_wins_while_cancel_write_is_blocked`,
 //! `exec_write_observer_fires_at_frame_write_boundary`, and
-//! `exec_operation_frame_write_guard_started_drop_poisons_connection`. Supervised cancellation
+//! `exec_start_cancelled_during_write_poisons_connection`. Supervised cancellation
 //! and route-reuse cases are covered in
 //! `crates/vsock-host/src/tests/exec_operation/supervised/cancel.rs`, including
 //! `supervised_exec_cancel_and_wait_terminal_result_wins_while_cancel_write_is_blocked`,
@@ -41,36 +28,19 @@
 
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
 
-use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
-use tokio::time::Instant;
 use vsock_proto::{ExecControlStatus, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
+use crate::connection::{FrameWriteDecision, FrameWriteTiming};
 use crate::{
     ConnectionState, FrameWriteObserver, RouteId, RouteReservation, Shared,
     normal_operation_transition_error,
 };
 
+use super::EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD;
 use super::diagnostics::{ExecOperationDiagnostic, ExecOperationFrameDiagnostic};
 use super::types::exec_control_status_error;
-use super::{
-    EXEC_OPERATION_FRAME_WRITE_COMPLETED, EXEC_OPERATION_FRAME_WRITE_NOT_STARTED,
-    EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD, EXEC_OPERATION_FRAME_WRITE_STARTED,
-};
-
-/// Poisons the connection if a frame write is dropped after its write boundary.
-///
-/// The guard is created before waiting for the serialized writer lock. The guarded operation
-/// stores `STARTED` immediately before `write_all` and `COMPLETED` only after a successful
-/// `write_all`. Its `Drop` implementation consequently treats a dropped `STARTED` write as
-/// potentially partial, while a write dropped before `STARTED` or after `COMPLETED` does not
-/// poison the connection.
-pub(in crate::exec_operation) struct ExecOperationFrameWriteGuard {
-    pub(in crate::exec_operation) shared: Arc<Shared>,
-    pub(in crate::exec_operation) state: Arc<AtomicU8>,
-}
 
 /// Admission result for a cancel frame.
 ///
@@ -81,31 +51,6 @@ pub(in crate::exec_operation) struct ExecOperationFrameWriteGuard {
 pub(in crate::exec_operation) enum ExecCancelFrameWriteOutcome {
     Sent,
     AlreadyTerminal,
-}
-
-/// Decision returned by the serialized pre-write callback.
-///
-/// `Skip` must be decided while the shared writer lock is held. It returns before the write-start
-/// state transition, so the frame-write guard can be dropped without poisoning and no bytes can be
-/// emitted by this frame attempt.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FrameWriteDecision {
-    Write,
-    Skip,
-}
-
-impl ExecOperationFrameWriteGuard {
-    pub(in crate::exec_operation) fn new(shared: Arc<Shared>, state: Arc<AtomicU8>) -> Self {
-        Self { shared, state }
-    }
-}
-
-impl Drop for ExecOperationFrameWriteGuard {
-    fn drop(&mut self) {
-        if self.state.load(Ordering::Acquire) == EXEC_OPERATION_FRAME_WRITE_STARTED {
-            self.shared.poison_connection();
-        }
-    }
 }
 
 pub(in crate::exec_operation) fn admit_exec_cancel_frame(
@@ -165,11 +110,11 @@ fn mark_exec_operation_host_cancel_requested_for_wait(
 /// The route reservation is followed by a serialized pre-write check. That check must remain
 /// inside the shared writer lock so a terminal result cannot be separated from the decision to
 /// write a cancel frame for the same route. `AlreadyTerminal` becomes `Skip`, which leaves the
-/// frame-write state at `NOT_STARTED` and emits no cancel frame.
+/// frame-write guard unarmed and emits no cancel frame.
 ///
 /// When cancellation is admitted, the callback marks the host cancellation and sends
 /// `write_started_tx` before returning `Write`. The notification therefore occurs before the
-/// generic writer stores `STARTED` and before `write_all` can emit bytes; it is not a completion
+/// shared writer arms the guard and before `write_all` can emit bytes; it is not a completion
 /// notification. The reservation, state transition, notification, and `Write` decision must keep
 /// this ordering.
 pub(in crate::exec_operation) async fn send_exec_cancel_frame_for_wait_with_write_start(
@@ -316,7 +261,7 @@ pub(in crate::exec_operation) async fn write_frame(
 /// Write an exec-start frame through the serialized frame-write lifecycle.
 ///
 /// Admission and write observers run in the pre-write callback while the writer lock is held and
-/// before the guarded write crosses `STARTED`. They therefore describe the write boundary rather
+/// before the partial-write guard is armed. They therefore describe the write boundary rather
 /// than successful completion.
 pub(in crate::exec_operation) async fn write_exec_start_frame(
     shared: &Arc<Shared>,
@@ -399,42 +344,30 @@ async fn write_frame_with_pre_write_decision(
     write_encoded_frame_with_pre_write_decision(shared, &data, diagnostic, pre_write).await
 }
 
-/// Perform the serialized frame write and enforce its cancellation safety boundaries.
-///
-/// The writer lock is acquired before `pre_write` is called. A `Skip` decision returns while that
-/// lock is held and before `STARTED` is stored. For a `Write` decision, `STARTED` is stored
-/// immediately before `write_all`; `COMPLETED` is stored only after `write_all` succeeds. Keep the
-/// frame-write guard alive across the whole operation so dropping a future during the possible
-/// partial-write window poisons the connection.
+/// Observe exec write timings without owning the connection's partial-write guard.
 async fn write_encoded_frame_with_pre_write_decision(
     shared: &Arc<Shared>,
     data: &[u8],
     diagnostic: Option<ExecOperationFrameDiagnostic>,
     pre_write: impl FnOnce() -> io::Result<FrameWriteDecision>,
 ) -> io::Result<FrameWriteDecision> {
-    let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_NOT_STARTED));
-    let guard = ExecOperationFrameWriteGuard::new(Arc::clone(shared), Arc::clone(&state));
+    shared
+        .write_frame(data, pre_write, |timing, result| {
+            log_frame_write(diagnostic.as_ref(), timing, result);
+        })
+        .await
+}
 
-    let wait_started_at = Instant::now();
-    let mut writer = shared.writer.lock().await;
-    let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
-    let decision = pre_write()?;
-    if decision == FrameWriteDecision::Skip {
-        return Ok(FrameWriteDecision::Skip);
-    }
-    state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
-    let write_started_at = Instant::now();
-    let result = writer.write_all(data).await;
-    let write_elapsed_ms = write_started_at.elapsed().as_millis();
-    if result.is_ok() {
-        state.store(EXEC_OPERATION_FRAME_WRITE_COMPLETED, Ordering::Release);
-    } else {
-        shared.poison_connection();
-    }
-    drop(writer);
+fn log_frame_write(
+    diagnostic: Option<&ExecOperationFrameDiagnostic>,
+    timing: FrameWriteTiming,
+    result: &io::Result<()>,
+) {
+    let wait_elapsed_ms = timing.wait.as_millis();
+    let write_elapsed_ms = timing.write.as_millis();
 
     if wait_elapsed_ms >= EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD.as_millis()
-        && let Some(diagnostic) = &diagnostic
+        && let Some(diagnostic) = diagnostic
     {
         tracing::warn!(
             seq = diagnostic.seq,
@@ -449,7 +382,7 @@ async fn write_encoded_frame_with_pre_write_decision(
 
     if write_elapsed_ms >= EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD.as_millis()
         && result.is_ok()
-        && let Some(diagnostic) = &diagnostic
+        && let Some(diagnostic) = diagnostic
     {
         tracing::warn!(
             seq = diagnostic.seq,
@@ -462,23 +395,18 @@ async fn write_encoded_frame_with_pre_write_decision(
         );
     }
 
-    if let Err(e) = result {
-        if let Some(diagnostic) = &diagnostic {
-            tracing::warn!(
-                seq = diagnostic.seq,
-                label = %diagnostic.label_log,
-                frame = diagnostic.frame,
-                process_class = diagnostic.process_class,
-                operation_kind = diagnostic.operation_kind,
-                write_elapsed_ms,
-                error = %e,
-                "exec operation frame write failed"
-            );
-        }
-        return Err(e);
+    if let Err(e) = result
+        && let Some(diagnostic) = diagnostic
+    {
+        tracing::warn!(
+            seq = diagnostic.seq,
+            label = %diagnostic.label_log,
+            frame = diagnostic.frame,
+            process_class = diagnostic.process_class,
+            operation_kind = diagnostic.operation_kind,
+            write_elapsed_ms,
+            error = %e,
+            "exec operation frame write failed"
+        );
     }
-
-    drop(guard);
-
-    Ok(FrameWriteDecision::Write)
 }

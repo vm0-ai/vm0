@@ -92,7 +92,7 @@ use connection::{
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
 #[cfg(test)]
-use connection::{RequestWriteGuard, write_request_frame_with_builder};
+use connection::{request_on_shared, write_request_frame_with_builder};
 use operation_tracker::NormalOperationFenceRejection as TrackerNormalOperationFenceRejection;
 
 pub use exec_operation::{
