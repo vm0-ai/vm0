@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.134](https://github.com/vm0-ai/vm0/compare/claude-mock-v0.21.133...claude-mock-v0.21.134) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.21.133](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.132...guest-mock-claude-v0.21.133) (2026-09-07)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.76](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.75...session-history-selector-v0.3.76) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.3.75](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.74...guest-session-prune-v0.3.75) (2026-09-07)
 
 ## [0.3.74](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.73...guest-session-prune-v0.3.74) (2026-09-05)

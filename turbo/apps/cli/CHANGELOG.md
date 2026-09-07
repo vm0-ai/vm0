@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.315.12](https://github.com/vm0-ai/vm0/compare/cli-v9.315.11...cli-v9.315.12) (2026-09-07)
+
+
+### Bug Fixes
+
+* **pi:** recover api first-turn deadlines in sandbox ([#32329](https://github.com/vm0-ai/vm0/issues/32329)) ([b701bf8](https://github.com/vm0-ai/vm0/commit/b701bf888ce2c4ad62e9cbf2dabbb763dbca8a4e))
+
+
+### Refactoring
+
+* remove presentationScreenshot feature switch ([#32349](https://github.com/vm0-ai/vm0/issues/32349)) ([ef1d8b4](https://github.com/vm0-ai/vm0/commit/ef1d8b4619552158928230379383b8ce3e00f0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+    * @okouai/pi-agent-runtime bumped to 1.21.17
+
 ## [9.315.11](https://github.com/vm0-ai/vm0/compare/cli-v9.315.10...cli-v9.315.11) (2026-09-07)
 
 

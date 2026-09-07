@@ -11,6 +11,21 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.858.3](https://github.com/vm0-ai/vm0/compare/app-v0.858.2...app-v0.858.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **platform:** expand desktop selection within ai replies ([#32338](https://github.com/vm0-ai/vm0/issues/32338)) ([c9f6e05](https://github.com/vm0-ai/vm0/commit/c9f6e05544a950b9df4e7734a32f7335cd210512))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+
 ## [0.858.2](https://github.com/vm0-ai/vm0/compare/app-v0.858.1...app-v0.858.2) (2026-09-07)
 
 

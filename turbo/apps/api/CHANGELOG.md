@@ -8,6 +8,29 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.563.3](https://github.com/vm0-ai/vm0/compare/api-v1.563.2...api-v1.563.3) (2026-09-07)
+
+
+### Bug Fixes
+
+* **calendar:** persist watch action-required state ([#32332](https://github.com/vm0-ai/vm0/issues/32332)) ([59b0106](https://github.com/vm0-ai/vm0/commit/59b0106dbcc0510a944f8cf68fd54f4871719a56))
+* **pi:** recover api first-turn deadlines in sandbox ([#32329](https://github.com/vm0-ai/vm0/issues/32329)) ([b701bf8](https://github.com/vm0-ai/vm0/commit/b701bf888ce2c4ad62e9cbf2dabbb763dbca8a4e))
+
+
+### Refactoring
+
+* remove presentationScreenshot feature switch ([#32349](https://github.com/vm0-ai/vm0/issues/32349)) ([ef1d8b4](https://github.com/vm0-ai/vm0/commit/ef1d8b4619552158928230379383b8ce3e00f0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+    * @okouai/core bumped to 8.631.5
+    * @okouai/db bumped to 1.245.5
+    * @okouai/pi-agent-runtime bumped to 1.21.17
+
 ## [1.563.2](https://github.com/vm0-ai/vm0/compare/api-v1.563.1...api-v1.563.2) (2026-09-07)
 
 

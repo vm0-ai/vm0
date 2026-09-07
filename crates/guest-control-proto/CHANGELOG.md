@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.49](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.18.48...guest-control-proto-v0.18.49) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.18.48](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.47...vsock-proto-v0.18.48) (2026-09-07)
 
 

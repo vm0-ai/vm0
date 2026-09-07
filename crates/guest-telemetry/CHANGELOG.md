@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.62](https://github.com/vm0-ai/vm0/compare/guest-telemetry-v0.3.61...guest-telemetry-v0.3.62) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.3.61](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.60...guest-common-v0.3.61) (2026-09-07)
 
 ## [0.3.60](https://github.com/vm0-ai/vm0/compare/guest-common-v0.3.59...guest-common-v0.3.60) (2026-09-05)

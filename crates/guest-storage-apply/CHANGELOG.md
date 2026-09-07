@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.66](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.65...guest-storage-apply-v0.23.66) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.23.65](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.64...guest-download-v0.23.65) (2026-09-07)
 
 ## [0.23.64](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.63...guest-download-v0.23.64) (2026-09-05)

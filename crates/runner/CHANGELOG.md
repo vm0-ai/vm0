@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.2...runner-rs-v0.188.3) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.188.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.1...runner-rs-v0.188.2) (2026-09-07)
 
 ## [0.188.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.0...runner-rs-v0.188.1) (2026-09-07)

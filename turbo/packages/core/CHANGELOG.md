@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.631.5](https://github.com/vm0-ai/vm0/compare/core-v8.631.4...core-v8.631.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* **platform:** expand desktop selection within ai replies ([#32338](https://github.com/vm0-ai/vm0/issues/32338)) ([c9f6e05](https://github.com/vm0-ai/vm0/commit/c9f6e05544a950b9df4e7734a32f7335cd210512))
+
+
+### Refactoring
+
+* remove presentationScreenshot feature switch ([#32349](https://github.com/vm0-ai/vm0/issues/32349)) ([ef1d8b4](https://github.com/vm0-ai/vm0/commit/ef1d8b4619552158928230379383b8ce3e00f0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.3
+
 ## [8.631.4](https://github.com/vm0-ai/vm0/compare/core-v8.631.3...core-v8.631.4) (2026-09-07)
 
 

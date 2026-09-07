@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.4](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.3...sandbox-firecracker-v0.39.4) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
 ## [0.39.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.39.2...sandbox-fc-v0.39.3) (2026-09-07)
 
 ## [0.39.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.39.1...sandbox-fc-v0.39.2) (2026-09-07)
