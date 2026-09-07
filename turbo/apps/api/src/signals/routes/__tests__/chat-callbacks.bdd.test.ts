@@ -4064,9 +4064,42 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
       [503],
     );
     expect(response.status).toBe(503);
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "EVENT_DELIVERY_UNAVAILABLE",
+        message: "Agent event delivery is temporarily unavailable",
+      },
+    });
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
+    const backpressureLogs = context.mocks.axiomLogging.info.mock.calls.filter(
+      ([message]) => {
+        return (
+          message === "Required database run output projection backpressured"
+        );
+      },
+    );
+    expect(backpressureLogs).toHaveLength(1);
+    const fields = backpressureLogs[0]?.[1];
+    if (!isRecord(fields)) {
+      throw new Error("Expected structured projection backpressure fields");
+    }
+    expect(fields).toMatchObject({
+      runId: run.runId,
+      firstSequence: 0,
+      lastSequence: 0,
+      errorCode: "55P03",
+      retryable: true,
+    });
+    expect(Object.keys(fields).sort()).toStrictEqual([
+      "context",
+      "errorCode",
+      "firstSequence",
+      "lastSequence",
+      "retryable",
+      "runId",
+    ]);
     expect(
       context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
         return (
@@ -4075,7 +4108,7 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
           fields.runId === run.runId
         );
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
     held.release();
     await held.done;
   }, 30_000);

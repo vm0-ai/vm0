@@ -269,6 +269,19 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/agent-webhook-events.service.ts"],
+    rules: {
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Required database run output projection backpressured",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: [
       "src/signals/services/pi-memory-stage1-worker.service.ts",
       "src/signals/services/pi-memory-phase2-worker.service.ts",
