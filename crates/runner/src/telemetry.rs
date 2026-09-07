@@ -740,26 +740,24 @@ async fn send_telemetry(
         Ok(resp) if !resp.status().is_success() => {
             warn!(run_id = %run_id, status = %resp.status(), "telemetry flush rejected");
         }
-        Err(RunnerError::ApiTransport(error)) => {
-            warn!(
+        Err(error) => match &error {
+            RunnerError::ApiTransport(api_error) => warn!(
                 run_id = %run_id,
                 error = %error,
-                endpoint = error.request.endpoint_label,
-                method = %error.request.method,
-                host = %error.request.host,
-                path = %error.request.path,
-                client_request_id = %error.request.client_request_id,
-                client_session_id = %error.request.client_session_id,
-                client_version = %error.request.client_version,
-                failure_kind = error.failure_kind.as_str(),
-                failure_cause = error.failure_cause.as_str(),
-                error_summary = %error.summary,
+                endpoint = api_error.request.endpoint_label,
+                method = %api_error.request.method,
+                host = %api_error.request.host,
+                path = %api_error.request.path,
+                client_request_id = %api_error.request.client_request_id,
+                client_session_id = %api_error.request.client_session_id,
+                client_version = %api_error.request.client_version,
+                failure_kind = api_error.failure_kind.as_str(),
+                failure_cause = api_error.failure_cause.as_str(),
+                error_summary = %api_error.summary,
                 "telemetry flush failed"
-            );
-        }
-        Err(error) => {
-            warn!(run_id = %run_id, error = %error, "telemetry flush failed");
-        }
+            ),
+            _ => warn!(run_id = %run_id, error = %error, "telemetry flush failed"),
+        },
         _ => {}
     }
 }
@@ -1376,6 +1374,7 @@ mod tests {
             .expect("telemetry transport failure should be logged");
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event.fields["endpoint"], "telemetry");
+        assert!(event.fields["error"].starts_with("api error: "));
         assert_eq!(event.fields["failure_kind"], "request");
         assert_eq!(event.fields["failure_cause"], "http_incomplete_message");
         let event_debug = format!("{event:#?}");

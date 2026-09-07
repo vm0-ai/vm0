@@ -694,6 +694,7 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
         })
         .expect("active-input transport failure should be logged");
     assert_eq!(event.fields["endpoint"], "reserve active inputs");
+    assert!(event.fields["error"].starts_with("api error: "));
     assert_eq!(event.fields["failure_kind"], "request");
     assert_eq!(event.fields["failure_cause"], "http_incomplete_message");
     let event_debug = format!("{event:#?}");

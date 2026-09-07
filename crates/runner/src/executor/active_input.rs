@@ -202,19 +202,19 @@ async fn run_forwarder(
             Err(error) => {
                 if !warned_source_read_failure {
                     match &error {
-                        RunnerError::ApiTransport(error) => warn!(
+                        RunnerError::ApiTransport(api_error) => warn!(
                             run_id = %run_id,
                             error = %error,
-                            endpoint = error.request.endpoint_label,
-                            method = %error.request.method,
-                            host = %error.request.host,
-                            path = %error.request.path,
-                            client_request_id = %error.request.client_request_id,
-                            client_session_id = %error.request.client_session_id,
-                            client_version = %error.request.client_version,
-                            failure_kind = error.failure_kind.as_str(),
-                            failure_cause = error.failure_cause.as_str(),
-                            error_summary = %error.summary,
+                            endpoint = api_error.request.endpoint_label,
+                            method = %api_error.request.method,
+                            host = %api_error.request.host,
+                            path = %api_error.request.path,
+                            client_request_id = %api_error.request.client_request_id,
+                            client_session_id = %api_error.request.client_session_id,
+                            client_version = %api_error.request.client_version,
+                            failure_kind = api_error.failure_kind.as_str(),
+                            failure_cause = api_error.failure_cause.as_str(),
+                            error_summary = %api_error.summary,
                             "active-input source read failed; retrying"
                         ),
                         _ => {
