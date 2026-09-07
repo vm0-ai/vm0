@@ -2232,7 +2232,6 @@
       "title": "Sostituire la bozza nell'editor?"
     },
     "run": {
-      "all": "Tutto",
       "automatedRun": "Esecuzione automatizzata",
       "collapseGroupedHistory": "Comprimi la cronologia delle esecuzioni raggruppate",
       "collapseHistoryMessage": "Comprimi il messaggio della cronologia: {{message}}",
@@ -2283,7 +2282,6 @@
       "keepGoingAt": "Continua · {{timestamp}}",
       "modelChangedTo": "Modello cambiato in {{model}}",
       "queueEllipsis": "in coda...",
-      "recent": "Recenti",
       "selectedModelAppliesAfterCurrentRun": "Il modello {{model}} selezionato entrerà in vigore dopo questa esecuzione",
       "thinking": {
         "assembling": "Assemblando i pezzi...",
@@ -2302,7 +2300,6 @@
       "waitingIn": "In attesa",
       "worked": "Ha funzionato",
       "workedFor": "Ha lavorato per {{duration}}",
-      "workHistoryRange": "Intervallo della cronologia lavorativa",
       "workingFor": "In lavorazione da {{duration}}"
     },
     "sharing": {

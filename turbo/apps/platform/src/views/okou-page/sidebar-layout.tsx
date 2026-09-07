@@ -32,14 +32,10 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/okou-page/mobile-breadcrumb.ts";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import {
-  closeSettingsModal$,
-  openSettingsDialogAt$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
+import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
 import {
   InstallBanner,
   IosInstallModal,
@@ -327,22 +323,6 @@ function MobileTopBar() {
       )}
       <MobileTopBarActions activeId={activeId} />
     </div>
-  );
-}
-
-function SettingsDialogMount() {
-  const dialogOpen = useGet(settingsDialogOpen$);
-  const closeSettingsModal = useSet(closeSettingsModal$);
-
-  return (
-    <SettingsDialog
-      open={dialogOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          closeSettingsModal();
-        }
-      }}
-    />
   );
 }
 

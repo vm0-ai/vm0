@@ -111,7 +111,6 @@ test("Enabling cloud browser replaces the Computer Use host", async () => {
   });
   await seedChatListCache(2, auth, [thread]);
   const remote = context.mocks.deferred<void>();
-  const configurationLoaded = context.mocks.deferred<void>();
   installChatListAgent(context);
   installChatListModelPolicies(context);
   installChatListStream(context, {
@@ -130,13 +129,11 @@ test("Enabling cloud browser replaces the Computer Use host", async () => {
     hosts: [onlineComputerUseHost(HOST_ID)],
   });
   context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
-    configurationLoaded.resolve();
     return respond(200, { hosts: [onlineComputerUseHost(HOST_ID)] });
   });
 
   await setupPage({ context, path: `/chats/${thread.id}`, auth });
 
-  await configurationLoaded.promise;
   await openComputerMenu();
   const selectedHost = await screen.findByRole("switch", {
     name: "Disconnect Studio Mac",

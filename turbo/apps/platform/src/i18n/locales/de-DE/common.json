@@ -2196,7 +2196,6 @@
       "title": "Composer-Entwurf ersetzen?"
     },
     "run": {
-      "all": "Alle",
       "automatedRun": "Automatisierte Ausführung",
       "collapseGroupedHistory": "Gruppierten Ausführungsverlauf einklappen",
       "collapseHistoryMessage": "Nachricht im Arbeitsverlauf einklappen: {{message}}",
@@ -2241,7 +2240,6 @@
       "keepGoingAt": "Fortsetzen · {{timestamp}}",
       "modelChangedTo": "Modell wurde auf {{model}} geändert",
       "queueEllipsis": "In Warteschlange...",
-      "recent": "Neueste",
       "selectedModelAppliesAfterCurrentRun": "Ihr ausgewähltes {{model}}-Modell wird nach dieser Ausführung wirksam",
       "thinking": {
         "assembling": "Teile werden zusammengesetzt...",
@@ -2260,7 +2258,6 @@
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
       "workedFor": "Ausgeführt in {{duration}}",
-      "workHistoryRange": "Umfang des Arbeitsverlaufs",
       "workingFor": "Seit {{duration}} in Arbeit"
     },
     "sharing": {

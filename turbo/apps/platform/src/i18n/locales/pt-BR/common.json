@@ -2232,7 +2232,6 @@
       "title": "Substituir rascunho do editor?"
     },
     "run": {
-      "all": "Tudo",
       "automatedRun": "Execução automatizada",
       "collapseGroupedHistory": "Recolher histórico de execuções agrupadas",
       "collapseHistoryMessage": "Recolher mensagem do histórico: {{message}}",
@@ -2283,7 +2282,6 @@
       "keepGoingAt": "Continuar · {{timestamp}}",
       "modelChangedTo": "Modelo alterado para {{model}}",
       "queueEllipsis": "fila...",
-      "recent": "Recentes",
       "selectedModelAppliesAfterCurrentRun": "O modelo {{model}} selecionado entrará em vigor após esta execução",
       "thinking": {
         "assembling": "Juntando as peças...",
@@ -2302,7 +2300,6 @@
       "waitingIn": "Aguardando na",
       "worked": "Trabalhou",
       "workedFor": "Trabalhou por {{duration}}",
-      "workHistoryRange": "Intervalo do histórico de trabalho",
       "workingFor": "Trabalhando há {{duration}}"
     },
     "sharing": {

@@ -2232,7 +2232,6 @@
       "title": "Remplacer le brouillon du compositeur ?"
     },
     "run": {
-      "all": "Tout",
       "automatedRun": "Exécution automatisée",
       "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
       "collapseHistoryMessage": "Réduire le message de l'historique : {{message}}",
@@ -2283,7 +2282,6 @@
       "keepGoingAt": "Continuez · {{timestamp}}",
       "modelChangedTo": "Le modèle a été changé en {{model}}",
       "queueEllipsis": "en file d'attente...",
-      "recent": "Récent",
       "selectedModelAppliesAfterCurrentRun": "Votre modèle sélectionné {{model}} entrera en vigueur après cette exécution",
       "thinking": {
         "assembling": "Assemblage des pièces...",
@@ -2302,7 +2300,6 @@
       "waitingIn": "En attente",
       "worked": "Fonctionné",
       "workedFor": "Fonctionné pendant {{duration}}",
-      "workHistoryRange": "Étendue de l'historique du travail",
       "workingFor": "En cours depuis {{duration}}"
     },
     "sharing": {

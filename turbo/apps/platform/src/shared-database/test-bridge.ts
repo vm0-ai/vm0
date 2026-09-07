@@ -34,6 +34,7 @@ import {
 } from "./computed-key.ts";
 import {
   parseSharedDatabaseQueryResult,
+  type ChatThreadEventQueryResult,
   type SharedDatabaseDataKey,
   type SharedDatabaseIdentity,
   type SharedDatabaseQuery,
@@ -72,6 +73,12 @@ export type SharedWorkerTestTransport = "direct" | "message-port";
 interface SetupSharedWorkerTestBootstrap {
   readonly afterRegistration?: () => Promise<void>;
   readonly appVersion: string;
+  /**
+   * A cache-only chat-thread projection for page-level UI tests. IndexedDB
+   * persistence belongs to worker-runtime tests; this fixture keeps page
+   * stories at the bridge/UI boundary.
+   */
+  readonly cachedChatThreadEvents?: ChatThreadEventQueryResult;
   readonly identity: SharedDatabaseIdentity | null;
   readonly transport: SharedWorkerTestTransport;
   readonly workerStore: Store;
@@ -129,6 +136,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     private readonly events: SharedDatabaseBridgeEvents,
     private readonly workerSignal: AbortSignal,
     private readonly getToken: SharedDatabaseTokenProvider,
+    private readonly cachedChatThreadEvents?: ChatThreadEventQueryResult,
   ) {}
 
   private readonly emit = onDomEventFn(
@@ -258,6 +266,16 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
+    if (
+      query.dataKey.kind === "chat-thread-event" &&
+      query.consistency === "cache-only" &&
+      this.cachedChatThreadEvents
+    ) {
+      return parseSharedDatabaseQueryResult(
+        query.dataKey,
+        structuredClone(this.cachedChatThreadEvents),
+      );
+    }
     const operation = this.workerStore.set(
       querySharedDatabaseWorker$,
       this.connectionId,
@@ -387,6 +405,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
             events,
             signal,
             getToken,
+            options.cachedChatThreadEvents,
           );
           bridge = directBridge;
         }

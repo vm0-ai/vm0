@@ -2193,7 +2193,6 @@
       "title": "コンポーザーの下書きを置き換えますか？"
     },
     "run": {
-      "all": "すべて",
       "automatedRun": "自動実行",
       "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
       "collapseHistoryMessage": "履歴メッセージを折りたたむ: {{message}}",
@@ -2238,7 +2237,6 @@
       "keepGoingAt": "続ける · {{timestamp}}",
       "modelChangedTo": "モデルを{{model}}に変更しました",
       "queueEllipsis": "行列...",
-      "recent": "最近",
       "selectedModelAppliesAfterCurrentRun": "選択した{{model}}モデルはこの実行後に適用されます",
       "thinking": {
         "assembling": "部品を組み立て中...",
@@ -2257,7 +2255,6 @@
       "waitingIn": "待機中",
       "worked": "働いた",
       "workedFor": "{{duration}} で働いていました",
-      "workHistoryRange": "作業履歴の範囲",
       "workingFor": "{{duration}} 作業中"
     },
     "sharing": {

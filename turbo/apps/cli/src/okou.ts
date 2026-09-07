@@ -71,17 +71,12 @@ const COMMAND_CAPABILITY_MAP: Record<
   "web-search": "web-search:read",
   social: "social:read",
   "image-recognition": "image-recognition:write",
-  recognize: "image-recognition:write",
   finance: "finance:read",
   seo: "seo:read",
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["mcp", "image-recognition", "recognize"]);
-
-// Keep this compatibility name directly lazy-loadable without presenting it as
-// a peer canonical command. Its rollout removal gate is tracked by #26929.
-const IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME = "recognize";
+const RUN_ONLY_COMMANDS = new Set(["mcp", "image-recognition"]);
 
 const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
@@ -388,14 +383,6 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
-    name: IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME,
-    description: "Compatibility command for okou image-recognition",
-    load: async () => {
-      return (await import("./commands/image-recognition"))
-        .imageRecognitionCompatibilityCommand;
-    },
-  },
-  {
     name: "finance",
     description: "Query financial instruments through managed Okou finance",
     load: async () => {
@@ -454,9 +441,7 @@ function addCommandWithVisibility(
   cmd: Command,
   payload: SandboxTokenPayload | undefined,
 ): void {
-  const hidden =
-    cmd.name() === IMAGE_RECOGNITION_COMPATIBILITY_COMMAND_NAME ||
-    shouldHideCommand(cmd.name(), payload);
+  const hidden = shouldHideCommand(cmd.name(), payload);
   prog.addCommand(cmd, hidden ? { hidden: true } : {});
 }
 
@@ -504,10 +489,23 @@ export async function registerRequestedCommand(
   prog: Command,
   argv: string[] = process.argv,
 ): Promise<void> {
-  const requestedCommand = await loadRequestedCommand(
-    getRequestedCommandName(argv),
-  );
+  const requestedCommandName = getRequestedCommandName(argv);
+  const requestedCommand = await loadRequestedCommand(requestedCommandName);
   registerCommands(prog, requestedCommand ? [requestedCommand] : undefined);
+
+  if (
+    getNonOptionArgs(argv)[0] === "help" &&
+    requestedCommandName !== undefined &&
+    requestedCommand === undefined
+  ) {
+    prog
+      .command("help <command>", { hidden: true })
+      .action((commandName: string) => {
+        prog.error(`error: unknown command '${commandName}'`, {
+          code: "commander.unknownCommand",
+        });
+      });
+  }
 }
 
 function commandExampleIfVisible(

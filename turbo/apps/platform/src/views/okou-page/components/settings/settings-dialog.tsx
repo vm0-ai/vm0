@@ -32,8 +32,10 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { billingPlansStandalone$ } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
+  closeSettingsModal$,
   resolveAvailableSettingsSection,
   settingsActiveSection$,
+  settingsDialogOpen$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
@@ -47,20 +49,11 @@ import { BillingSection } from "./sections/billing-section.tsx";
 import { CreditBalanceSection } from "./sections/credit-balance-section.tsx";
 import { UsageRecordsSection } from "./sections/usage-records-section.tsx";
 import { InvoicesSection } from "./sections/invoices-section.tsx";
-import {
-  useChatPreferenceActions,
-  type ChatPreferenceActions,
-} from "./chat-preference-actions.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 interface SettingsDialogProps {
-  open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-interface SettingsActionsProps {
-  actions: ChatPreferenceActions;
 }
 
 interface SidebarItem {
@@ -75,63 +68,46 @@ interface SidebarGroup {
 }
 
 const SECTION_COMPONENTS = {
-  preference: ({ actions }: SettingsActionsProps) => {
-    return <PreferenceSection sendModeAction={actions.sendMode} />;
-  },
-  chat: ({ actions }: SettingsActionsProps) => {
-    return <ChatSection actions={actions} />;
-  },
-  model: () => {
-    return <ModelSection />;
-  },
-  debug: () => {
-    return <DebugSection />;
-  },
-  general: () => {
-    return <GeneralSection />;
-  },
-  people: () => {
-    return <PeopleSection />;
-  },
+  preference: PreferenceSection,
+  chat: ChatSection,
+  model: ModelSection,
+  debug: DebugSection,
+  general: GeneralSection,
+  people: PeopleSection,
   billing: () => {
     return <BillingSection />;
   },
-  usage: () => {
-    return <CreditBalanceSection />;
-  },
-  "usage-records": () => {
-    return <UsageRecordsSection />;
-  },
-  invoices: () => {
-    return <InvoicesSection />;
-  },
-} as const satisfies Record<
-  SettingsSection,
-  (props: SettingsActionsProps) => ReactNode
->;
+  usage: CreditBalanceSection,
+  "usage-records": UsageRecordsSection,
+  invoices: InvoicesSection,
+} as const satisfies Record<SettingsSection, () => ReactNode>;
 
-function SectionContent({
-  section,
-  actions,
-}: SettingsActionsProps & { section: SettingsSection }) {
+function SectionContent({ section }: { section: SettingsSection }) {
   const Component = SECTION_COMPONENTS[section];
-  return <Component actions={actions} />;
+  return <Component />;
 }
 
-export function SettingsDialog(props: SettingsDialogProps) {
-  const actions = useChatPreferenceActions();
-  const standalonePlans = useGet(billingPlansStandalone$);
-  if (props.open && standalonePlans) {
-    return <BillingSection standalonePlans />;
+export function SettingsDialogMount() {
+  const open = useGet(settingsDialogOpen$);
+  const close = useSet(closeSettingsModal$);
+
+  if (!open) {
+    return null;
   }
-  return <SettingsDialogSurface {...props} actions={actions} />;
+
+  return (
+    <SettingsDialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          close();
+        }
+      }}
+    />
+  );
 }
 
-function SettingsDialogSurface({
-  open,
-  onOpenChange,
-  actions,
-}: SettingsDialogProps & SettingsActionsProps) {
+function SettingsDialog({ onOpenChange }: SettingsDialogProps) {
+  const standalonePlans = useGet(billingPlansStandalone$);
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -141,6 +117,11 @@ function SettingsDialogSurface({
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
   const showChat = features[FeatureSwitchKey.ChatPreference] ?? false;
+
+  if (standalonePlans) {
+    return <BillingSection standalonePlans />;
+  }
+
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -321,7 +302,7 @@ function SettingsDialogSurface({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         closeLabel={t(($) => {
           return $.settings.shared.close;
@@ -427,7 +408,7 @@ function SettingsDialogSurface({
               </p>
             </header>
             <div className="flex-1 overflow-y-auto px-4 sm:px-10 pb-10 pt-4 sm:pt-6 [scrollbar-gutter:stable]">
-              <SectionContent section={resolvedSection} actions={actions} />
+              <SectionContent section={resolvedSection} />
             </div>
           </div>
         </div>

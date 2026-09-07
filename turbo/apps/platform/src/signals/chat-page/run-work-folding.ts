@@ -39,6 +39,7 @@ export interface RunWorkSection {
   readonly runIds: readonly string[];
   readonly anchorEventId: string;
   readonly collapsible: boolean;
+  readonly stepCount: number;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
   readonly previewMessages: readonly EnrichedChatEvent[];
@@ -596,6 +597,7 @@ function foldRunWorkGroup(
       statusTail,
     };
   }
+  const stepCount = outputMessages.length - 1;
 
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
     return (
@@ -620,7 +622,8 @@ function foldRunWorkGroup(
       runGroupId: unit.runGroupId,
       runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
-      collapsible: outputMessages.length > 1,
+      collapsible: stepCount > 3,
+      stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
       previewMessages: outputMessages.slice(-4, -1),
