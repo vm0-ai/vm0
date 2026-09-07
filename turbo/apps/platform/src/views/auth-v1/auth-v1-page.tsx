@@ -66,7 +66,7 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
         )}
         <AuthV1Layout authBrand={authBrand} includeLegacyClerkStyles={false}>
           <div
-            className="relative z-10 flex w-[calc(100%+0.5rem)] max-w-[25rem] flex-col gap-3"
+            className="relative z-10 flex w-[calc(100%+0.5rem)] max-w-[25rem] shrink-0 flex-col gap-3"
             data-testid="app-sign-in"
             ref={authPageMountRef}
           >
