@@ -7029,7 +7029,7 @@ function AddConnectorsDialog({
   const filteredCustom = unconnectedCustom.filter((item) => {
     return matchesCustomConnectorSearch(search, item);
   });
-  const connectorCount = unconnected.length + unconnectedCustom.length;
+  const visibleConnectorCount = filtered.length + filteredCustom.length;
 
   return (
     <Dialog
@@ -7049,7 +7049,7 @@ function AddConnectorsDialog({
                 return $.chat.connectors.available;
               },
               {
-                count: connectorCount,
+                count: visibleConnectorCount,
               },
             )}
           </DialogTitle>

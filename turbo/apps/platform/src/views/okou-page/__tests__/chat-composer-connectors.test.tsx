@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import {
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -267,6 +268,71 @@ test("Keep connector actions available when search has no matches", async () => 
   expect(
     within(catalog).getByPlaceholderText("Find connectors..."),
   ).toBeVisible();
+});
+
+test("Show the filtered connector count in the add dialog", async () => {
+  const user = userEvent.setup({ delay: null });
+  installComposerConnectorFixture({
+    catalog: [
+      builtinConnector({
+        slug: GITHUB_SLUG,
+        label: "GitHub",
+        connected: false,
+      }),
+      builtinConnector({
+        slug: GMAIL_SLUG,
+        label: "Gmail",
+        connected: false,
+      }),
+    ],
+    customConnectors: [
+      httpConnector({
+        id: ACME_CONNECTOR_ID,
+        slug: "acme-search",
+        displayName: "Acme Search",
+        connected: false,
+      }),
+    ],
+  });
+
+  await setupPage({ context, path: `/agents/${SCOUT_AGENT_ID}/chat` });
+
+  await loadComposer();
+  await openConnectors(user);
+  const catalog = await openAddConnectors(user);
+  const search = within(catalog).getByPlaceholderText("Find connectors...");
+  expect(
+    within(catalog).getByRole("heading", {
+      name: "Available connectors to connect (3)",
+    }),
+  ).toBeVisible();
+
+  await fill(search, "Gmail");
+  await waitFor(() => {
+    expect(
+      within(catalog).getByRole("heading", {
+        name: "Available connectors to connect (1)",
+      }),
+    ).toBeVisible();
+  });
+
+  await fill(search, "Clueso");
+  await waitFor(() => {
+    expect(
+      within(catalog).getByRole("heading", {
+        name: "Available connectors to connect (0)",
+      }),
+    ).toBeVisible();
+  });
+
+  await fill(search, "");
+  await waitFor(() => {
+    expect(
+      within(catalog).getByRole("heading", {
+        name: "Available connectors to connect (3)",
+      }),
+    ).toBeVisible();
+  });
 });
 
 test("Configure connector permissions from the composer", async () => {
