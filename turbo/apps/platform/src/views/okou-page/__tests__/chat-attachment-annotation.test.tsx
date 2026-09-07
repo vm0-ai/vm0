@@ -163,18 +163,24 @@ test("A confirmed annotation blocks sending while its image uploads", async () =
   });
 });
 
-test("Attach marks after resolving and reading the original image", async () => {
+test("A user can attach marks to a private image through its public URL", async () => {
   const fileId = "a0000000-0000-4000-a000-000000000091";
-  const resolvedUrl = "https://private-files.example/annotated-billing.png";
+  const resourceUrl = "https://private-files.example/annotated-billing.png";
+  const shareUrl = "https://cdn.vm7.io/annotated-billing.png";
   const image = draftAttachment("annotated-billing.png", {
     id: fileId,
     url: privateAttachmentUrl(fileId),
   });
-  let imageReads = 0;
   mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
-  mockPrivateUrlSequence(context, { [fileId]: [resolvedUrl] });
-  context.mocks.http.get(resolvedUrl, () => {
-    imageReads += 1;
+  mockPrivateUrlSequence(
+    context,
+    { [fileId]: [resourceUrl] },
+    { [fileId]: shareUrl },
+  );
+  context.mocks.http.get(resourceUrl, () => {
+    return HttpResponse.error();
+  });
+  context.mocks.http.get(shareUrl, () => {
     return HttpResponse.arrayBuffer(new Uint8Array([1, 2, 3]).buffer, {
       headers: { "Content-Type": "image/png" },
     });
@@ -206,7 +212,6 @@ test("Attach marks after resolving and reading the original image", async () => 
     ).toHaveTextContent("1");
     expect(screen.getByLabelText("Send")).toBeEnabled();
   });
-  expect(imageReads).toBe(1);
   expect(
     screen.queryByLabelText(
       "Failed to upload annotated-billing.png. Try again.",

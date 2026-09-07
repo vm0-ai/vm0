@@ -25,7 +25,11 @@ import {
   buildConnectorUrlDiagnosticRequest,
   resolveConnectorCheckDiagnostic,
   type ResolvedDiagnostic,
-} from "./check";
+} from "./check-diagnostic";
+import {
+  customConnectorIdFromSelector,
+  customConnectorSettingsGuidance,
+} from "./custom-connector-guidance";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -335,6 +339,7 @@ Notes:
   - Use the exact permission-request command printed by connector check
   - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
+  - Custom connectors use Connectors > agent access > Permissions, not this builtin approval flow
   - Use --agent to request a permission for another agent; defaults to OKOU_AGENT_ID
   - The user chooses the permission duration on the confirmation page
 ${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
@@ -381,6 +386,16 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         }
 
         const agentId = opts.agent ?? getOkouAgentId();
+        const customConnectorId = customConnectorIdFromSelector(connectorSlug);
+        if (customConnectorId !== undefined) {
+          throw new Error(
+            customConnectorSettingsGuidance(
+              customConnectorId,
+              await getPlatformOrigin(),
+              opts.permission,
+            ),
+          );
+        }
         if (opts.url === undefined) {
           throw new Error(
             "--url is required for connector permission requests. Run okou connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",
@@ -390,13 +405,18 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         const diagnosticRequest = buildConnectorUrlDiagnosticRequest({
           url: opts.url,
           method: opts.method,
-          connectorSlug,
+          connector: connectorSlug,
         });
         const diagnostic = await diagnoseConnectorCheck(diagnosticRequest);
         const result = resolveConnectorCheckDiagnostic(
           diagnosticRequest,
           diagnostic,
         );
+        if (result.connector.target.kind !== "builtin") {
+          throw new Error(
+            "Builtin permission requests require a builtin diagnostic target.",
+          );
+        }
         const policy = permissionPolicyForDiagnostic({
           result,
           permission: opts.permission,
@@ -411,7 +431,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         });
 
         await outputPermissionRequestMessage(
-          result.connector.connectorSlug,
+          result.connector.target.connectorSlug,
           result.connector.label,
           opts.permission,
           agentId,

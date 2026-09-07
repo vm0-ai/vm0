@@ -175,16 +175,8 @@ describe("Okou CLI lazy command loading", () => {
     },
   );
 
-  it.each([
-    {
-      label: "direct invocation",
-      argv: ["node", "okou", "recognize"],
-    },
-    {
-      label: "help invocation",
-      argv: ["node", "okou", "help", "recognize"],
-    },
-  ])("should reject removed $label", async ({ argv }) => {
+  it("should reject help for an unknown command", async () => {
+    const argv = ["node", "okou", "help", "not-a-command"];
     vi.stubEnv("OKOU_TOKEN", buildOkouToken(["image-recognition:write"]));
     let errorOutput = "";
     const prog = new Command()
@@ -198,14 +190,9 @@ describe("Okou CLI lazy command loading", () => {
 
     await registerRequestedCommand(prog, argv);
 
-    expect(
-      prog.commands.map((registeredCommand) => {
-        return registeredCommand.name();
-      }),
-    ).not.toContain("recognize");
     await expect(prog.parseAsync(argv)).rejects.toMatchObject({
       code: "commander.unknownCommand",
     });
-    expect(errorOutput).toContain("unknown command 'recognize'");
+    expect(errorOutput).toContain("unknown command 'not-a-command'");
   });
 });

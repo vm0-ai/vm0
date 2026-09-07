@@ -242,8 +242,7 @@ blanks in `blank_sandboxes`, omitting each collection when empty. Exact entries
 contain `reuse_key` and `sandbox_id`; blank entries contain only `sandbox_id`,
 never a run ID or tenant reuse identity. Both collections are captured from one
 pool revision and applied together, including preparing/running ownership
-transitions. Older blank-enabled writers encode blanks in `idle_sandboxes`
-using `reuse_key: "__vm0_blank__:<sandbox_id>"`. The migration tracked by
+transitions. The migration tracked by
 [#32071](https://github.com/vm0-ai/vm0/issues/32071) separates these identities
 without changing shared pool lifecycle rules.
 
@@ -253,16 +252,14 @@ mutation revision; they are not independent pools. Exact lookup, exact-first
 restoration, blank-first pressure eviction and conditional exact aging retain
 their existing policies. Heartbeat reuse inventories contain exact entries only.
 
-The reader bridge ([#32082](https://github.com/vm0-ai/vm0/issues/32082)) lets doctor
-and the host collector also read `blank_sandboxes: [{"sandbox_id": "..."}]`.
-Missing collections default to empty; malformed present collections are invalid.
-Legacy recognition is confined to input normalization and requires the entire
-reuse key to match the reserved prefix plus that entry's sandbox ID. Other
-prefix-like reuse keys remain exact. Explicit blank IDs suppress same-file idle
-mirrors, and duplicate blank IDs count once. Doctor lists exact reuse keys under
-Idle and sandbox-ID-only entries under Blank, recognizes both as owned processes,
-and never treats an unclaimed blank as an active job. Active mappings take
-priority over duplicate blanks. The bridge release itself did not change the writer.
+Doctor and the host collector read `blank_sandboxes: [{"sandbox_id": "..."}]`
+directly. Missing collections default to empty, including exact-only historical
+statuses without `blank_sandboxes`; malformed present collections are invalid.
+Blank identity is never inferred from an idle reuse key. Explicit blank IDs
+suppress same-file idle mirrors, and duplicate blank IDs count once. Doctor lists
+exact reuse keys under Idle and sandbox-ID-only entries under Blank, recognizes
+both as owned processes, and never treats an unclaimed blank as an active job.
+Active mappings take priority over duplicate blanks.
 
 The collector exports `vm0_runner_sandboxes{state="blank"}` (including zero).
 `state="idle"` now counts exact inventory only; total parked inventory is the
@@ -278,31 +275,34 @@ only `idle` will now show exact inventory; this change does not edit dashboards.
 
 The collector is installed by host provisioning, independently of Runner
 releases. Both its systemd timer and Alloy textfile scrape run every 15 seconds.
-Before merging/releasing the explicit-only writer in
-[#32083](https://github.com/vm0-ai/vm0/issues/32083), record the following evidence
-on its PR:
 
-- Every supported host has the bridge-capable doctor and collector installed;
-  record the Runner release/commit and installed collector revision or checksum.
-- A successfully deployed reader release contains commit
-  `febec8a3399be74b0f14a89cb9f42e39dd5ce69f` (PR #32092).
-- Supported rollback targets include that reader. The production rollback
-  resolver checks ancestry for both the target commit and the resolved Runner
-  artifact tag, because a newer API release can reuse an older Runner artifact.
+The reader-first rollout delivered doctor and collector support in
+[#32092](https://github.com/vm0-ai/vm0/pull/32092), followed by the explicit writer in
+[#32269](https://github.com/vm0-ai/vm0/pull/32269). The first explicit-writer release
+is `runner-rs-v0.188.0`, commit `f4b9a172cf76e04b845f2337c14cf87831c82adb`.
+Legacy blank input recognition is retired by
+[#32084](https://github.com/vm0-ai/vm0/issues/32084), based on read-only production
+verification on 2026-09-07 at 14:20 UTC:
 
-These are deployment gates, not claims established by repository tests. The
-target Runner's doctor runs during rollback, so old-reader/new-writer is not a
-supported combination. Bridge readers support old, new and mixed writers
-during draining. Neither merging the bridge nor releasing Runner proves the
-independent collector is installed. Keep the writer PR unmerged until the fleet
-evidence is recorded; no production rollout is authorized by the implementation.
+- `prod-11.gcp.vm3.ai`, `prod-12.gcp.vm3.ai` and `prod-13.gcp.vm3.ai` each had
+  `v0.188.3` running and `v0.188.2` draining. Both releases contain explicit-writer
+  commit `bd9cddcf6719c90848ed4ec497baca8cfd3191ea`. The remaining draining release
+  therefore does not require legacy input recognition.
+- The legacy writers were stopped. All 18 retained versioned status files parsed
+  successfully and contained no synthetic blank entries.
+- Each installed collector matched repository SHA-256
+  `560cb9b86e29357249582273253716f48be63df93cd6f04f12dabb4ffa499f42`, and each
+  collector timer was active. This is the pre-cleanup, bridge-capable collector
+  checksum, not the checksum of the retired-reader implementation.
 
-Remove legacy prefix recognition only under
-[#32084](https://github.com/vm0-ai/vm0/issues/32084), after all supported live and
-rollback writers publish explicit blanks, old versions have drained, and relevant
-retained non-stopped status files no longer contain synthetic entries. Record
-deployment/file evidence and enforce rollback eligibility before removing it.
-Keep absent-collection support for genuinely exact-only historical status files.
+The explicit retirement decision excludes rollback compatibility with legacy
+writers; this cleanup does not change rollback resolution or promise that those
+writers remain readable as blank inventory. Current explicit writers work with
+both bridge and post-cleanup readers during deployment. No production process or
+status file was modified to establish the evidence. Verify the final doctor and
+independently provisioned collector rollout before closing delivery parent
+[#32071](https://github.com/vm0-ai/vm0/issues/32071); a merged PR alone does not
+establish that deployment.
 
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and

@@ -408,20 +408,16 @@ function createAttachmentAnnotationSignals(args: {
           if (!original) {
             throw new Error("Original image is unavailable");
           }
-          // Read the address the editor just proved loadable, not the stored
-          // one. A persisted attachment's canonical URL answers only to an
-          // Authorization header, so it has to be exchanged for a presigned
-          // object URL before anything can fetch it — which is exactly what
-          // the editor's `useResolvedAttachmentUrl` does to display the same
-          // image. Deriving the URL a second way here meant the picture the
-          // user had just drawn on could still be refused at attach time.
+          // A presigned resource URL can render in an image element while its
+          // response remains unreadable to fetch because of CORS. Flattening
+          // needs the bytes, so use the public CDN URL for the same attachment.
           const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
           const resolved = await get(
             resolveResourceUrl(publicAttachmentUrl(original.url)),
           );
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
-            resolved.resourceUrl,
+            resolved.shareUrl,
             annotations,
             args.filename,
             signal,

@@ -22,7 +22,7 @@ import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.h
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch-state";
 import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
-import { detach, Reason } from "../signals/utils";
+import { createDeferredPromise, detach, Reason } from "../signals/utils";
 import {
   setupSharedWorkerTestBootstrap$,
   type SharedWorkerTestTransport,
@@ -264,34 +264,33 @@ function resolveAuth(options: SetupPageOptions): {
 
 async function setupPageAsync(
   options: SetupPageOptions,
+  signal: AbortSignal,
   pageRendered: () => void,
 ): Promise<void> {
   ensureTestLocalStorage();
-  applyPageEnvironment(options.env, options.context.signal);
+  applyPageEnvironment(options.env, signal);
   await initializeI18nWithResources(
-    await loadInitialLocaleResources(options.locale ?? DEFAULT_LOCALE),
+    await loadInitialLocaleResources(options.locale ?? DEFAULT_LOCALE, signal),
+    signal,
   );
+  signal.throwIfAborted();
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.
-  void options.context.mocks;
+  const { mocks, store, workerStore } = options.context;
   if (options.locale) {
-    options.context.mocks.data.userPreferences({
+    mocks.data.userPreferences({
       locale: options.locale,
       supportedLocales: [...SUPPORTED_LOCALES],
     });
   }
   const initialUrl = initialPageUrl(options.path, options.host ?? "localhost");
-  options.context.mocks.browser.url(initialUrl.toString());
-  createPushStateMock(options.context.signal, initialUrl);
-  installClerkBootstrap(
-    initialUrl,
-    options.primaryAppDomain,
-    options.context.signal,
-  );
+  mocks.browser.url(initialUrl.toString());
+  createPushStateMock(signal, initialUrl);
+  installClerkBootstrap(initialUrl, options.primaryAppDomain, signal);
 
   if (options.debugLoggers) {
-    options.context.store.set(
+    store.set(
       setDebugLoggerLocalStorage$,
       JSON.stringify(options.debugLoggers ?? []),
     );
@@ -303,14 +302,14 @@ async function setupPageAsync(
   // Reading featureSwitch$ is synchronous, so the cache must be in place
   // before bootstrap starts its SWR refresh.
   const auth = resolveAuth(options);
-  const clerk = options.context.mocks.clerk();
+  const clerk = mocks.clerk();
   const activeOrgId = auth.organization.activeOrg?.id ?? null;
   const featureSwitchOverrides = { ...options.featureSwitches };
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
   if (!options.preserveFeatureSwitchCache) {
-    options.context.store.set(clearFeatureSwitchCacheForTest$);
+    store.set(clearFeatureSwitchCacheForTest$);
     const cachedFeatureSwitchOverrides = {
       ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
     };
@@ -318,17 +317,14 @@ async function setupPageAsync(
       orgId: activeOrgId ?? undefined,
       overrides: cachedFeatureSwitchOverrides,
     });
-    options.context.store.set(
-      setFeatureSwitchCacheForTest$,
-      cachedFeatureSwitches,
-    );
+    store.set(setFeatureSwitchCacheForTest$, cachedFeatureSwitches);
   }
   clerk.sessionSignedOut(auth.signedOut);
   clerk.user(auth.user, auth.session);
   clerk.organization(auth.organization);
   const user = auth.user;
   if (user) {
-    options.context.mocks.api(authContract.me, ({ respond }) => {
+    mocks.api(authContract.me, ({ respond }) => {
       return respond(200, {
         userId: user.id,
         email: user.email ?? "test@example.com",
@@ -336,11 +332,11 @@ async function setupPageAsync(
       });
     });
   }
-  options.context.store.set(
+  store.set(
     setupSharedWorkerTestBootstrap$,
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
-      workerStore: options.context.workerStore,
+      workerStore,
       cachedChatThreadEvents: options.cachedChatThreadEvents,
       identity:
         auth.user && activeOrgId
@@ -348,9 +344,9 @@ async function setupPageAsync(
           : null,
       transport: options.sharedWorkerTestTransport ?? "direct",
     },
-    options.context.signal,
+    signal,
   );
-  options.context.signal.addEventListener(
+  signal.addEventListener(
     "abort",
     () => {
       toast.dismiss();
@@ -361,20 +357,20 @@ async function setupPageAsync(
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
-  options.context.signal.throwIfAborted();
-  const runtime = options.context.store.set(
+  signal.throwIfAborted();
+  const runtime = store.set(
     bootstrap$,
     options.appVersion ?? TEST_APP_VERSION,
     () => {
-      setupRouter(options.context.store, (element) => {
+      setupRouter(store, (element) => {
         const { unmount } = render(element);
         pageRendered();
-        options.context.signal.addEventListener("abort", unmount, {
+        signal.addEventListener("abort", unmount, {
           once: true,
         });
       });
     },
-    options.context.signal,
+    signal,
   );
   detach(
     runtime.sharedDatabaseDaemon,
@@ -395,25 +391,21 @@ function waitForFirstPageContent(signal: AbortSignal): {
 } {
   let pageHasRendered = false;
   let skeletonHasMounted = false;
-  let settled = false;
-  let resolveReady = (): void => {};
-  const ready = new Promise<void>((resolve) => {
-    resolveReady = resolve;
-  });
+  // Some startPage callers inspect blocked startup without awaiting ready.
+  // The deferred owns their cancellation rejection as well as awaited ones.
+  const ready = createDeferredPromise<void>(signal);
 
   const observer = new MutationObserver(checkPageContent);
 
-  function settle(): void {
-    if (settled) {
-      return;
-    }
-    settled = true;
+  function dispose(): void {
     observer.disconnect();
-    signal.removeEventListener("abort", settle);
-    resolveReady();
+    signal.removeEventListener("abort", dispose);
   }
 
   function checkPageContent(): void {
+    if (ready.settled()) {
+      return;
+    }
     const skeleton = document.querySelector('[data-testid="app-skeleton"]');
     skeletonHasMounted ||= skeleton !== null;
     if (
@@ -421,7 +413,8 @@ function waitForFirstPageContent(signal: AbortSignal): {
       skeletonHasMounted &&
       (skeleton === null || skeleton.getAttribute("aria-hidden") === "true")
     ) {
-      settle();
+      dispose();
+      ready.resolve();
     }
   }
 
@@ -431,7 +424,7 @@ function waitForFirstPageContent(signal: AbortSignal): {
     childList: true,
     subtree: true,
   });
-  signal.addEventListener("abort", settle, { once: true });
+  signal.addEventListener("abort", dispose, { once: true });
   checkPageContent();
 
   return {
@@ -439,7 +432,7 @@ function waitForFirstPageContent(signal: AbortSignal): {
       pageHasRendered = true;
       checkPageContent();
     },
-    ready,
+    ready: ready.promise,
   };
 }
 
@@ -450,14 +443,21 @@ interface StartedPage {
 export async function startPage(
   options: SetupPageOptions,
 ): Promise<StartedPage> {
-  const content = waitForFirstPageContent(options.context.signal);
-  await setupPageAsync(options, content.pageRendered);
+  // testContext rotates its signal at teardown; async startup belongs to the
+  // lifetime that initiated it, never the next test's context.
+  const signal = options.context.signal;
+  signal.throwIfAborted();
+  const content = waitForFirstPageContent(signal);
+  await setupPageAsync(options, signal, content.pageRendered);
+  signal.throwIfAborted();
   return { ready: content.ready };
 }
 
 export async function setupPage(options: SetupPageOptions): Promise<void> {
+  const signal = options.context.signal;
   const page = await startPage(options);
   await page.ready;
+  signal.throwIfAborted();
 }
 
 // Helper to create a browser history mock that updates mockLocation.

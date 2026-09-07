@@ -125,6 +125,39 @@ describe("okou connector permission-request command", () => {
     mockConsoleError.mockClear();
   });
 
+  it("rejects a custom UUID target with settings guidance instead of a builtin approval link", async () => {
+    const customId = "33333333-3333-4333-8333-333333333333";
+    vi.stubEnv("OKOU_AGENT_ID", "agent-1");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-1");
+    let diagnosticCalls = 0;
+    stubDiagnostic(resolvedUrlDiagnostic(), "https://app.vm0.ai", () => {
+      diagnosticCalls += 1;
+    });
+
+    await expect(
+      permissionRequestCommand.parseAsync([
+        "node",
+        "okou",
+        `custom:${customId}`,
+        "--permission",
+        "items:write",
+        "--url",
+        "https://api.acme.test/items",
+        "--callback-prompt",
+        "Continue after approval",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const message = mockConsoleError.mock.calls.flat().join("\n");
+    expect(message).toContain(customId);
+    expect(message).toContain("[Connectors](https://app.vm0.ai/connectors)");
+    expect(message).toContain("review Permissions");
+    expect(message).not.toMatch(/connectorSlug=|action=allow|callbackPrompt=/);
+    expect(mockConsoleLog).not.toHaveBeenCalled();
+    expect(diagnosticCalls).toBe(0);
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("OKOU_AGENT_ID", "agent-abc-123");

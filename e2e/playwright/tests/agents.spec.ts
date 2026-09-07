@@ -1,5 +1,6 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
+import { omitAppApiPrefetch } from "../lib/app-api-prefetch";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -18,6 +19,8 @@ test.describe("pinned-agent loading transition", () => {
   });
 
   test("keeps the label frame on the same device pixels", async ({ page }) => {
+    await omitAppApiPrefetch(page, appUrl);
+
     let releasePreferences = () => {};
     const preferencesGate = new Promise<void>((resolve) => {
       releasePreferences = resolve;
