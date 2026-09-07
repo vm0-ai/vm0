@@ -8,6 +8,29 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.560.0](https://github.com/vm0-ai/vm0/compare/api-v1.559.1...api-v1.560.0) (2026-09-07)
+
+
+### Features
+
+* enable presentation templates for all organizations ([#32089](https://github.com/vm0-ai/vm0/issues/32089)) ([7096061](https://github.com/vm0-ai/vm0/commit/7096061d5771379747e1da8d891b457f67a89850))
+
+
+### Bug Fixes
+
+* set terra reasoning effort to max ([#32194](https://github.com/vm0-ai/vm0/issues/32194)) ([bb60e20](https://github.com/vm0-ai/vm0/commit/bb60e2013f34f2d836a6839dda1c912091620ce5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.5
+    * @okouai/connectors bumped to 3.7.0
+    * @okouai/core bumped to 8.630.0
+    * @okouai/db bumped to 1.244.6
+    * @okouai/pi-agent-runtime bumped to 1.21.10
+
 ## [1.559.1](https://github.com/vm0-ai/vm0/compare/api-v1.559.0...api-v1.559.1) (2026-09-07)
 
 

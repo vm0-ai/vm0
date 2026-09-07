@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.3...guest-agent-v0.86.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* set terra reasoning effort to max ([#32194](https://github.com/vm0-ai/vm0/issues/32194)) ([bb60e20](https://github.com/vm0-ai/vm0/commit/bb60e2013f34f2d836a6839dda1c912091620ce5))
+
 ## [0.86.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.2...guest-agent-v0.86.3) (2026-09-07)
 
 

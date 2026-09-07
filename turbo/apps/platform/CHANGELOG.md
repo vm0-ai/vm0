@@ -11,6 +11,33 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.855.0](https://github.com/vm0-ai/vm0/compare/app-v0.854.2...app-v0.855.0) (2026-09-07)
+
+
+### Features
+
+* enable presentation templates for all organizations ([#32089](https://github.com/vm0-ai/vm0/issues/32089)) ([7096061](https://github.com/vm0-ai/vm0/commit/7096061d5771379747e1da8d891b457f67a89850))
+
+
+### Bug Fixes
+
+* derive chat preference progress from shared invocations ([#32189](https://github.com/vm0-ai/vm0/issues/32189)) ([b8b8331](https://github.com/vm0-ai/vm0/commit/b8b8331aec0727c7fba8ef36148ae1c88fd440e3))
+
+
+### Refactoring
+
+* **platform:** drop legacy data-vm0 readers ([#32187](https://github.com/vm0-ai/vm0/issues/32187)) ([5e65ca1](https://github.com/vm0-ai/vm0/commit/5e65ca1da74e6216f0be7dc68286a65006296cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.5
+    * @okouai/connectors bumped to 3.7.0
+    * @okouai/core bumped to 8.630.0
+    * @okouai/ui bumped to 1.6.1
+
 ## [0.854.2](https://github.com/vm0-ai/vm0/compare/app-v0.854.1...app-v0.854.2) (2026-09-07)
 
 
