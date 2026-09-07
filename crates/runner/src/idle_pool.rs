@@ -523,6 +523,9 @@ pub enum ParkResult {
 mod destroy_tests;
 
 #[cfg(test)]
+mod reclamation_tests;
+
+#[cfg(test)]
 mod park_transition_tests;
 
 #[cfg(test)]

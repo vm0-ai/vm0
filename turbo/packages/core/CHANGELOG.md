@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.631.0](https://github.com/vm0-ai/vm0/compare/core-v8.630.1...core-v8.631.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** find agents by name in workspace search ([#32208](https://github.com/vm0-ai/vm0/issues/32208)) ([d64a34e](https://github.com/vm0-ai/vm0/commit/d64a34e75a1a1429922679d32905b2c1d6519f10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.410.0
+
 ## [8.630.1](https://github.com/vm0-ai/vm0/compare/core-v8.630.0...core-v8.630.1) (2026-09-07)
 
 

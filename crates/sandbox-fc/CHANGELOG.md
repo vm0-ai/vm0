@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.39.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.17...sandbox-fc-v0.39.0) (2026-09-07)
+
+
+### Features
+
+* **rpc:** add generic guest-to-runner transport and sandbox fencing ([#32161](https://github.com/vm0-ai/vm0/issues/32161)) ([847d733](https://github.com/vm0-ai/vm0/commit/847d733315462a73b0aae20f992737b9df289bf9))
+
+
+### Bug Fixes
+
+* **sandbox:** extend healthy balloon settling ([#32196](https://github.com/vm0-ai/vm0/issues/32196)) ([0d871eb](https://github.com/vm0-ai/vm0/commit/0d871ebefa1c9973b35ed2fa14cfac746cd8b3cf))
+
 ## [0.38.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.16...sandbox-fc-v0.38.17) (2026-09-05)
 
 ## [0.38.16](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.15...sandbox-fc-v0.38.16) (2026-09-05)

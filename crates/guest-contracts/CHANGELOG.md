@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.35...guest-contracts-v0.13.0) (2026-09-07)
+
+
+### Features
+
+* **rpc:** add generic guest-to-runner transport and sandbox fencing ([#32161](https://github.com/vm0-ai/vm0/issues/32161)) ([847d733](https://github.com/vm0-ai/vm0/commit/847d733315462a73b0aae20f992737b9df289bf9))
+
 ## [0.12.35](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.34...guest-contracts-v0.12.35) (2026-09-05)
 
 ## [0.12.34](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.33...guest-contracts-v0.12.34) (2026-09-05)

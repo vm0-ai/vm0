@@ -10,7 +10,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
-import { resetSignal } from "../utils.ts";
+import { onRejection, resetSignal } from "../utils.ts";
 
 const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 /** Keep account search responsive while coalescing normal typing bursts. */
@@ -303,7 +303,17 @@ export function createConnectorAccountListSignals(
           : page;
       });
       set(querySignals.lastPage$, nextPage$);
-      const result = await get(nextPage$);
+      const result = await onRejection(get(nextPage$), () => {
+        if (
+          get(querySignals.query$) === query &&
+          get(querySignals.lastPage$) === nextPage$
+        ) {
+          set(
+            querySignals.lastPage$,
+            previousPage$ === firstPage$ ? null : previousPage$,
+          );
+        }
+      });
       signal.throwIfAborted();
       pageSignal.throwIfAborted();
       if (!result.available) {

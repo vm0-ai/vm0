@@ -13,6 +13,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import type { ChatTranslationLanguage } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
@@ -20,7 +21,7 @@ import type {
   FeedbackSource,
 } from "../okou-page/chat-feedback.ts";
 import { writeToClipboard } from "../okou-page/clipboard.ts";
-import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
+import { clearChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
   ChatForwardTarget,
@@ -366,7 +367,8 @@ function createSelectionState(threadId: string) {
     set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
   });
-  const capture$ = command(({ get, set }) => {
+  const capture$ = command(({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
     const selection = readFeedbackSelection();
     if (!selection || selection.threadId !== threadId) {
       set(close$);
@@ -609,14 +611,14 @@ function createForwardState(closeSelection$: Command<void, []>) {
   );
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
-      set(setChatListQuery$, "");
+      set(clearChatListQuery$);
       set(internalForwardSelection$, selection);
       set(resetForwardTarget$);
       set(closeSelection$);
     },
   );
   const closeForward$ = command(({ set }): void => {
-    set(setChatListQuery$, "");
+    set(clearChatListQuery$);
     set(internalForwardSelection$, null);
     set(resetForwardTarget$);
   });
@@ -729,21 +731,17 @@ function createListenersRef({
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
-  capture$: Command<void, []>;
+  capture$: Command<void, [AbortSignal]>;
   reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const deferredCaptureSignal$ = resetSignal();
+  const debouncedCapture$ = debounceCommand(capture$, 0);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
       let mouseSelectionInProgress = false;
       let selectionInteractionInProgress = false;
       let scrollReconciliationScheduled = false;
-      const captureDeferred = async () => {
-        await delay(0, { signal: set(deferredCaptureSignal$, signal) });
-        set(capture$);
-      };
       doc.addEventListener(
         "pointerdown",
         (event) => {
@@ -797,21 +795,22 @@ function createListenersRef({
       );
       doc.addEventListener(
         "mouseup",
-        onDomEventFn(async () => {
+        onDomEventFn(() => {
           if (!mouseSelectionInProgress) {
             return;
           }
           mouseSelectionInProgress = false;
-          await captureDeferred();
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );
       doc.addEventListener(
         "selectionchange",
-        onDomEventFn(async () => {
-          if (!mouseSelectionInProgress && !selectionInteractionInProgress) {
-            await captureDeferred();
+        onDomEventFn(() => {
+          if (mouseSelectionInProgress || selectionInteractionInProgress) {
+            return;
           }
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );

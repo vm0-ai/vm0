@@ -1783,12 +1783,20 @@ function AttachmentChip({
                           url: previewUrl,
                           annotations,
                           commit: async (next, signal) => {
-                            const confirmation = confirmAnnotations(
-                              next,
-                              signal,
+                            // Persist once, after the annotated copy exists or
+                            // has definitively failed. Saving while the upload
+                            // was still in flight wrote a draft carrying marks
+                            // with no copy for them to render into, and a draft
+                            // in that shape restores as `failed` — a failure
+                            // the user is shown for something that was merely
+                            // unfinished. The chip already reflects the marks
+                            // from `annotations$`, which this sets
+                            // synchronously, so nothing visible waits on the
+                            // save.
+                            await withCleanup(
+                              confirmAnnotations(next, signal),
+                              onAnnotationChange,
                             );
-                            onAnnotationChange();
-                            await withCleanup(confirmation, onAnnotationChange);
                           },
                         });
                       },

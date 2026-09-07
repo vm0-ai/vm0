@@ -499,17 +499,31 @@ impl IdleDestroyPayload {
             factory,
             workspace_promotion,
         } = self.resources;
-        let prepared_promotion = match self.workspace_promotion_policy {
-            WorkspacePromotionPolicy::Promote => {
-                prepare_workspace_image_from_parked_sandbox(
-                    sandbox.as_mut(),
-                    workspace_promotion,
-                    context,
-                )
-                .await
+        // Waiting reclamation jobs must remain parked. The export-only gate is
+        // too late to bound resumed guests and their memory recovery work.
+        let mut reclamation_permit = None;
+        let prepared_promotion = match (self.workspace_promotion_policy, workspace_promotion) {
+            (WorkspacePromotionPolicy::Promote, Some(promotion)) => {
+                match promotion.acquire_idle_workspace_reclamation_permit().await {
+                    Ok(permit) => {
+                        reclamation_permit = Some(permit);
+                        prepare_workspace_image_from_parked_sandbox(
+                            sandbox.as_mut(),
+                            Some(promotion),
+                            context,
+                        )
+                        .await
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "idle workspace reclamation admission failed");
+                        abandon_unpublished_workspace_promotion(Some(promotion), context).await;
+                        None
+                    }
+                }
             }
-            WorkspacePromotionPolicy::AbandonUnpublished(reason) => {
-                abandon_unpublished_workspace_promotion(workspace_promotion, reason).await;
+            (WorkspacePromotionPolicy::Promote, None) => None,
+            (WorkspacePromotionPolicy::AbandonUnpublished(reason), promotion) => {
+                abandon_unpublished_workspace_promotion(promotion, reason).await;
                 None
             }
         };
@@ -526,6 +540,11 @@ impl IdleDestroyPayload {
                 false
             }
         };
+        if stopped {
+            // The guest is no longer running; host publication and destruction
+            // need not hold up the next parked sandbox's reclamation.
+            drop(reclamation_permit.take());
+        }
         let workspace_cache_promoted = match (prepared_promotion, stopped) {
             (Some(promotion), true) => promotion.publish().await,
             (Some(promotion), false) => {
@@ -542,6 +561,8 @@ impl IdleDestroyPayload {
             tracing::warn!("idle sandbox destroy panicked");
             uncertain = true;
         }
+        // A failed stop may leave the guest running until factory destruction.
+        drop(reclamation_permit);
         if uncertain {
             IdleDestroyResult {
                 outcome: DestroyOutcome::Uncertain,

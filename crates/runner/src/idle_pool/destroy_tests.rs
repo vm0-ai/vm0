@@ -21,7 +21,7 @@ async fn make_idle_destroy_payload(overrides: Arc<MockSandboxOverrides>) -> Idle
     make_idle_destroy_payload_for(SandboxId::new_v4(), overrides, None).await
 }
 
-async fn make_idle_destroy_payload_for(
+pub(super) async fn make_idle_destroy_payload_for(
     sandbox_id: SandboxId,
     overrides: Arc<MockSandboxOverrides>,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
@@ -59,7 +59,7 @@ async fn make_idle_destroy_job(
     make_idle_destroy_job_for(SandboxId::new_v4(), overrides, budget_lease, None).await
 }
 
-async fn make_idle_destroy_job_for(
+pub(super) async fn make_idle_destroy_job_for(
     sandbox_id: SandboxId,
     overrides: Arc<MockSandboxOverrides>,
     budget_lease: BudgetLease,

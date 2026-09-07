@@ -265,3 +265,55 @@ test("Retry attaching marks when the original image cannot be read", async () =>
   });
   expect(imageReads).toBe(2);
 });
+
+/**
+ * A draft that carries marks but no annotated copy is missing a derivative, not
+ * a failure — nothing was ever attempted for it. Reporting `failed` put a retry
+ * badge on it, and committing wrote exactly that shape by saving before the
+ * copy finished uploading.
+ *
+ * Restoring rebuilds the copy instead. This enters through the chat-thread page
+ * load, which reaches `seed$` rather than `restoreAttachments$`: the state is
+ * set for every restored attachment, so the rebuild has to cover every path
+ * that restores one. Asserting only that no badge appears would pass on a
+ * permanently pending attachment that can never be sent, so this pins the
+ * composer becoming sendable.
+ */
+test("A draft with marks but no annotated copy rebuilds it and can send", async () => {
+  const image = draftAttachment("restored-marks.png", {
+    annotations: boxAnnotation([{ id: "restored-mark", ordinal: 1 }]),
+  });
+  let imageReads = 0;
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+  context.mocks.http.get(image.url, () => {
+    imageReads += 1;
+    return HttpResponse.arrayBuffer(new Uint8Array([1, 2, 3]).buffer, {
+      headers: { "Content-Type": "image/png" },
+    });
+  });
+  context.mocks.browser.imageDimensions({ width: 800, height: 500 });
+  context.mocks.browser.canvasRendering();
+  context.mocks.upload.success({
+    id: "a0000000-0000-4000-a000-000000000093",
+    filename: "restored-marks.annotated.png",
+    contentType: "image/png",
+    size: 11,
+    url: "https://files.example.test/restored-marks.annotated.png",
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("composer-attachment-mark-count"),
+    ).toHaveTextContent("1");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
+  });
+  // Rebuilt from the original rather than presented as a failure.
+  expect(imageReads).toBe(1);
+  expect(screen.queryByLabelText(/Try again/)).toBeNull();
+});

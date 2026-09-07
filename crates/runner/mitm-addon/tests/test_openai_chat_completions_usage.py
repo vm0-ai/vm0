@@ -150,6 +150,39 @@ def test_canonical_sse_deltas_skip_selective_extraction_across_framing_variants(
     ]
 
 
+def test_discarded_failure_event_emits_invalid_evidence_and_recovers():
+    observer = _RecordingFailureObserver()
+    scanner, parsed_usage = (
+        openai_chat_completions.create_openai_chat_completions_sse_usage_extractor(
+            failure_observer=observer
+        )
+    )
+
+    scanner(
+        b"event: chunk\n"
+        b'data: {"object":"chat.completion.chunk","padding":"'
+        + b"x" * openai_chat_completions._CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES
+        + b"\n"
+        + b"x" * 4097
+        + b"\n\n"
+        b"event: chunk\n"
+        b'data: {"object":"chat.completion.chunk","choices":[{'
+        b'"error":{"metadata":{"error_type":"provider_overloaded"}}}]}\n\n'
+    )
+
+    assert parsed_usage == {}
+    assert observer.observed == [
+        ModelHttpFailureEvidence(event_name="chunk"),
+        ModelHttpFailureEvidence(
+            event_name="chunk",
+            failure_codes=("provider_overloaded",),
+            has_error=True,
+            has_choices=True,
+            is_valid=True,
+        ),
+    ]
+
+
 def test_sse_fast_path_bound_is_inclusive_and_overflow_replays_once():
     finish_calls, tracked_finish = _track_chat_extractor_finishes()
     exact = _canonical_delta_with_size(

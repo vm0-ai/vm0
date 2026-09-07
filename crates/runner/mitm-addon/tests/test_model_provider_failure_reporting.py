@@ -1867,6 +1867,40 @@ def test_sse_failure_is_reported_before_response_hook(
         mitm_addon.response(flow)
 
 
+def test_discarded_sse_failure_settles_unknown_before_later_failure(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    model_provider_failure_api,
+):
+    body = (
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{\n' + b"x" * 4097 + b"\n\n"
+        b"event: response.failed\n"
+        b'data: {"type":"response.failed","response":{'
+        b'"error":{"code":"server_error"}}}\n\n'
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        request_path="/v1/responses",
+        response_body=body,
+        response_headers=header_map({"content-type": "text/event-stream"}),
+    )
+    model_provider_failure.admit_flow(flow)
+    mitm_addon.responseheaders(flow)
+    stream = response_stream(flow)
+    stream(body)
+    stream(b"")
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == []
+
+
 def test_json_failure_is_reported_at_stream_end_before_response_hook(
     tmp_path,
     real_flow,
