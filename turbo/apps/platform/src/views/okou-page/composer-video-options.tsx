@@ -478,7 +478,7 @@ function InlineVideoOption<Value extends string>({
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         aria-label={label}
-        className="h-8 w-auto min-w-20 gap-2 text-xs"
+        className="h-8 w-auto min-w-16 gap-2 px-2 text-xs"
       >
         <SelectValue />
       </SelectTrigger>
@@ -498,9 +498,11 @@ function InlineVideoOption<Value extends string>({
 export function ComposerInlineVideoOptions({
   signals,
   videoModelSignals,
+  children,
 }: {
   readonly signals: ComposerSignals;
   readonly videoModelSignals: ComposerVideoModelSignals;
+  readonly children: ReactNode;
 }) {
   const patch = useGet(signals.videoOptions.videoRunOptions$);
   const setPatch = useSet(signals.videoOptions.setVideoRunOptions$);
@@ -509,7 +511,7 @@ export function ComposerInlineVideoOptions({
   const setOpen = useSet(signals.model.setModelPickerOpen$);
   const { t } = useTranslation();
   if (model === undefined) {
-    return null;
+    return <>{children}</>;
   }
   const resolved = resolveVideoRunOptions(patch, model);
   const config = VIDEO_MODEL_CONFIGS[model];
@@ -578,10 +580,11 @@ export function ComposerInlineVideoOptions({
             }}
           />
           {t(($) => {
-            return $.chat.templates.videoOptionsAudio;
+            return $.artifacts.kinds.audio;
           })}
         </div>
       )}
+      {children}
     </div>
   );
 }

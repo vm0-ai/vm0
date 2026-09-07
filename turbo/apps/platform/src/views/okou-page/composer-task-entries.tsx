@@ -324,35 +324,41 @@ export function ComposerTaskOptions({
   if (!enabled || task === null) {
     return null;
   }
+  const templateButton = (
+    <Button
+      variant="quiet"
+      size="sm"
+      onClick={() => {
+        openTemplates({
+          kind: "insert",
+          category: task === "image" ? "illustration" : task,
+        });
+      }}
+    >
+      <LayoutTemplate />
+      {t(($) => {
+        return $.chat.taskEntries.templates;
+      })}
+      <ChevronDown />
+    </Button>
+  );
   return (
     <div className="mx-3 mb-2 flex flex-wrap items-center gap-1 rounded-xl bg-gray-50 p-1.5">
-      {task === "video" && signals.videoModel && (
+      {task === "video" && signals.videoModel ? (
         <ComposerInlineVideoOptions
           signals={signals}
           videoModelSignals={signals.videoModel}
-        />
-      )}
-      <div className="flex flex-wrap items-center gap-1">
-        {task === "image" && signals.imageModel && (
-          <ImageTaskModel signals={signals} imageModel={signals.imageModel} />
-        )}
-        <Button
-          variant="quiet"
-          size="sm"
-          onClick={() => {
-            openTemplates({
-              kind: "insert",
-              category: task === "image" ? "illustration" : task,
-            });
-          }}
         >
-          <LayoutTemplate />
-          {t(($) => {
-            return $.chat.taskEntries.templates;
-          })}
-          <ChevronDown />
-        </Button>
-      </div>
+          {templateButton}
+        </ComposerInlineVideoOptions>
+      ) : (
+        <>
+          {task === "image" && signals.imageModel && (
+            <ImageTaskModel signals={signals} imageModel={signals.imageModel} />
+          )}
+          {templateButton}
+        </>
+      )}
     </div>
   );
 }
