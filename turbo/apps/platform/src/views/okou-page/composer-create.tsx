@@ -91,12 +91,12 @@ function MediaModelSelect<Model extends string>({
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         aria-label={label}
-        className="h-8 w-8 shrink-0 gap-1 border-transparent bg-transparent px-0 text-sm text-muted-foreground hover:bg-state-hover sm:w-auto sm:max-w-[11rem] sm:px-2 [&>[data-slot=select-icon]]:hidden sm:[&>[data-slot=select-icon]]:block"
+        className="h-8 w-8 shrink-0 gap-1 border-transparent bg-transparent px-0 text-sm text-muted-foreground hover:bg-state-hover @min-[600px]/composer:w-auto @min-[600px]/composer:max-w-[11rem] @min-[600px]/composer:px-2 [&>[data-slot=select-icon]]:hidden @min-[600px]/composer:[&>[data-slot=select-icon]]:block"
       >
         <SelectValue>
-          <span className="flex min-w-0 items-center justify-center gap-1.5 sm:justify-start">
+          <span className="flex min-w-0 items-center justify-center gap-1.5 @min-[600px]/composer:justify-start">
             {modelIcon(value)}
-            <span className="hidden truncate sm:block">
+            <span className="hidden truncate @min-[600px]/composer:block">
               {modelLabel(value)}
             </span>
           </span>
