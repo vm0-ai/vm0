@@ -461,7 +461,7 @@ async function dispatchTeamsRun(args: {
     orgId: args.fixture.orgId,
     orgRole: "org:admin",
   });
-  return await runIdForPrompt(actor, args.text);
+  return await runIdForPrompt(actor, `@Zero ${args.text}`);
 }
 
 async function postTeamsPersonalMessage(args: {
@@ -1074,7 +1074,7 @@ describe("Teams chat callbacks", () => {
         userMessage: {
           version: 1,
           parts: [
-            { type: "text", text: "finish the task" },
+            { type: "text", text: "@Zero finish the task" },
             {
               type: "source",
               kind: "teams",
