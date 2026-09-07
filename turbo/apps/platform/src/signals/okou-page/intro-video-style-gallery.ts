@@ -80,7 +80,8 @@ function createIntroVideoStyleGallerySignals() {
             return;
           }
           // The active group is the last heading that has reached the top edge.
-          const edge = scroll.getBoundingClientRect().top + 8;
+          // The tolerance covers the scroll padding an anchored jump leaves.
+          const edge = scroll.getBoundingClientRect().top + 32;
           const reached = sections.filter((section) => {
             return section.getBoundingClientRect().top <= edge;
           });
