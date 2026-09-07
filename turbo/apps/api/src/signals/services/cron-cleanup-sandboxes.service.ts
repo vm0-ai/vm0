@@ -1,10 +1,21 @@
 import { command } from "ccstate";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { exportJobs } from "@okouai/db/schema/export-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
-import { and, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -51,6 +62,13 @@ const DEBUG_HEARTBEAT_TIMEOUT_MS = 60 * 60 * 1000;
 const PENDING_TIMEOUT_MS = 5 * 60 * 1000;
 const DEBUG_COMPOSE_PREFIX = "debug-";
 const EXPORT_JOB_TIMEOUT_MS = 10 * 60 * 1000;
+const CONNECTOR_DIAGNOSTIC_REGISTRATION_CLEANUP_BATCH_SIZE = 20;
+const TERMINAL_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+] as const;
 
 interface CleanupResult {
   readonly runId: string;
@@ -605,6 +623,48 @@ async function cleanupExpiredRunnerJobs(
   return deletedCount;
 }
 
+async function cleanupConnectorDiagnosticRegistrations(
+  db: Db,
+  runIds: readonly string[] | null,
+  signal: AbortSignal,
+): Promise<number> {
+  const candidates = db
+    .select({ runId: agentRunConnectorDiagnosticRegistrations.runId })
+    .from(agentRunConnectorDiagnosticRegistrations)
+    .leftJoin(
+      agentRuns,
+      eq(agentRuns.id, agentRunConnectorDiagnosticRegistrations.runId),
+    )
+    .where(
+      and(
+        or(
+          isNull(agentRuns.id),
+          inArray(agentRuns.status, TERMINAL_RUN_STATUSES),
+        ),
+        runIds === null
+          ? undefined
+          : inArray(agentRunConnectorDiagnosticRegistrations.runId, runIds),
+      ),
+    )
+    .orderBy(
+      agentRunConnectorDiagnosticRegistrations.createdAt,
+      agentRunConnectorDiagnosticRegistrations.runId,
+    )
+    .limit(CONNECTOR_DIAGNOSTIC_REGISTRATION_CLEANUP_BATCH_SIZE);
+  const deleted = await db
+    .delete(agentRunConnectorDiagnosticRegistrations)
+    .where(inArray(agentRunConnectorDiagnosticRegistrations.runId, candidates))
+    .returning({ runId: agentRunConnectorDiagnosticRegistrations.runId });
+  signal.throwIfAborted();
+
+  if (deleted.length > 0) {
+    L.debug("Cleaned up terminal connector diagnostic registrations", {
+      count: deleted.length,
+    });
+  }
+  return deleted.length;
+}
+
 function logQueueMaintenance(args: {
   readonly expired: number;
   readonly expiredTimedOut: number;
@@ -738,6 +798,8 @@ export const cleanupSandboxes$ = command(
       runIds,
       signal,
     );
+    signal.throwIfAborted();
+    await cleanupConnectorDiagnosticRegistrations(db, runIds, signal);
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, orgIds, signal);
     signal.throwIfAborted();

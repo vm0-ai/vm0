@@ -309,6 +309,13 @@ export const connectorRuntimeTargetsSchema = z
   .array(connectorRuntimeTargetRegistrationSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 
+export const agentRunConnectorDiagnosticRegistrationPayloadSchema = z
+  .object({
+    version: z.literal(1),
+    targets: connectorRuntimeTargetsSchema,
+  })
+  .strict();
+
 const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
   .min(1)
   .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
@@ -1824,6 +1831,9 @@ export type ConnectorRuntimeTarget = z.infer<
 >;
 export type ConnectorRuntimeTargetRegistration = z.infer<
   typeof connectorRuntimeTargetRegistrationSchema
+>;
+export type AgentRunConnectorDiagnosticRegistrationPayload = z.infer<
+  typeof agentRunConnectorDiagnosticRegistrationPayloadSchema
 >;
 export type ConnectorRuntimeCustomUnresolvedReason = z.infer<
   typeof connectorRuntimeCustomUnresolvedReasonSchema

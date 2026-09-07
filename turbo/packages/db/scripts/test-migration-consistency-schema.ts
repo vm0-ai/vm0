@@ -1246,6 +1246,13 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
+      "CREATE TRIGGER agent_runs_delete_terminal_connector_diagnostic_registration AFTER UPDATE OF status ON public.agent_runs FOR EACH ROW WHEN (((new.status)::text = ANY ((ARRAY['completed'::character varying, 'failed'::character varying, 'timeout'::character varying, 'cancelled'::character varying])::text[]))) EXECUTE FUNCTION delete_terminal_run_connector_diagnostic_registration()",
+    schemaName: "public",
+    tableName: "agent_runs",
+    triggerName: "agent_runs_delete_terminal_connector_diagnostic_registration",
+  },
+  {
+    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -1413,6 +1420,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "3506554504d6ccad1b34008dab9a9e9a",
     functionName: "canonicalize_hosted_site_scope_0753",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "ec0728e3e4a543817f4a116fa997c611",
+    functionName: "delete_terminal_run_connector_diagnostic_registration",
     identityArguments: "",
     kind: "f",
     schemaName: "public",

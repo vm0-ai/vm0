@@ -6,6 +6,7 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
   type PiMemoryRecallSelection,
   type PiMemoryPhase2Maintenance,
   type PiLaunchConfig,
@@ -128,6 +129,7 @@ import { connectors } from "@okouai/db/schema/connector";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import type {
   AgentRunLaunchSnapshot,
@@ -7673,6 +7675,25 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   );
   ctes.push(insertedRun);
 
+  const diagnosticRegistrationPayload =
+    agentRunConnectorDiagnosticRegistrationPayloadSchema.parse({
+      version: 1,
+      targets: args.payload.executionContext.connectorRuntimeTargets,
+    });
+  const insertedDiagnosticRegistration = args.tx
+    .$with("inserted_launch_connector_diagnostic_registration")
+    .as(
+      args.tx
+        .insert(agentRunConnectorDiagnosticRegistrations)
+        .values({
+          runId: returnedCteId(insertedRun),
+          payload: diagnosticRegistrationPayload,
+          createdAt,
+        })
+        .returning({ id: agentRunConnectorDiagnosticRegistrations.runId }),
+    );
+  ctes.push(insertedDiagnosticRegistration);
+
   appendLaunchCallbackCte({
     tx: args.tx,
     ctes,
@@ -7687,7 +7708,14 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     insertedRun,
     validatedThreadSession: args.validatedThreadSession,
   });
-  return { rowsArgs, createdAt, ctes, insertedRun, updatedThread };
+  return {
+    rowsArgs,
+    createdAt,
+    ctes,
+    insertedRun,
+    insertedDiagnosticRegistration,
+    updatedThread,
+  };
 }
 
 type AtomicLaunchCteContext = ReturnType<typeof buildAtomicLaunchCteContext>;
@@ -7754,7 +7782,11 @@ async function persistPendingAtomicLaunch(
       ),
     })
     .from(context.insertedRun)
-    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id));
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .innerJoin(
+      context.insertedDiagnosticRegistration,
+      eq(context.insertedDiagnosticRegistration.id, context.insertedRun.id),
+    );
   if (!row || (context.updatedThread && !row.boundThreadId)) {
     throw new Error("Atomic pending launch persistence returned no row");
   }
@@ -7819,6 +7851,10 @@ async function persistQueuedAtomicLaunch(
     })
     .from(context.insertedRun)
     .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .innerJoin(
+      context.insertedDiagnosticRegistration,
+      eq(context.insertedDiagnosticRegistration.id, context.insertedRun.id),
+    )
     .crossJoin(visibleQueueDepth);
   if (!row || (context.updatedThread && !row.boundThreadId)) {
     throw new Error("Atomic queued launch persistence returned no row");

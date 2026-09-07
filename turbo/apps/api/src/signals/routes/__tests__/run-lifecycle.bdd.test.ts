@@ -15,11 +15,13 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   DEFAULT_PROFILE,
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
   type ConnectorRuntimeSyncResult,
   type ExecutionContext,
   type Job as RunnerJob,
   type PiModelConfig,
 } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
@@ -173,6 +175,7 @@ import {
   type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
 import { testCustomConnectorSkillVersionAssociationRoutes } from "../test-custom-connector-skill-version-association";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -935,6 +938,30 @@ function expectCanonicalOkouRunEnvironment(args: {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readConnectorDiagnosticRegistration(runId: string) {
+  const response = await accept(
+    setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+      testCronCleanupSandboxesStateContract,
+    ).action({
+      body: {
+        action: "get-connector-diagnostic-registration",
+        run_id: runId,
+      },
+    }),
+    [200],
+  );
+  const registration = response.body["connector_diagnostic_registration"];
+  if (registration === null) {
+    return null;
+  }
+  if (!isRecord(registration)) {
+    throw new Error("Expected connector diagnostic registration state");
+  }
+  return agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
+    registration["payload"],
+  );
 }
 
 function runContextSnapshotsForRun(
@@ -7546,7 +7573,14 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     }
     expect(new Date(stored.createdAt).getTime()).toBe(payloadPreparedAt);
 
+    await expect(
+      readConnectorDiagnosticRegistration(run.runId),
+    ).resolves.toStrictEqual({ version: 1, targets: [] });
+
     await api.requestCancelRun(actor, run.runId, [200]);
+    await expect(
+      readConnectorDiagnosticRegistration(run.runId),
+    ).resolves.toBeNull();
   });
 
   it("keeps runner expiry on the database clock", async () => {
@@ -7569,7 +7603,13 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       throw new Error("Expected runner expiry poll to succeed");
     }
     expect(poll.body.job?.runId).toBe(run.runId);
-    await api.claimRunnerJob(run.runId);
+    const claim = await api.claimRunnerJob(run.runId);
+    await expect(
+      readConnectorDiagnosticRegistration(run.runId),
+    ).resolves.toStrictEqual({
+      version: 1,
+      targets: claim.connectorRuntimeTargets,
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -7880,6 +7920,10 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(queued.status).toBe("queued");
+    const queuedRegistration = await readConnectorDiagnosticRegistration(
+      queued.runId,
+    );
+    expect(queuedRegistration).not.toBeNull();
 
     mockNow(now() + 16 * 60_000);
     await api.requestCancelRun(actor, first.runId, [200]);
@@ -7890,6 +7934,9 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       "pending",
     );
     expect(promoted.status).toBe("pending");
+    await expect(
+      readConnectorDiagnosticRegistration(queued.runId),
+    ).resolves.toStrictEqual(queuedRegistration);
 
     const fresh = await api.createRun(actor, {
       agentId,
@@ -8005,6 +8052,9 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: failed.runId }),
     );
+    await expect(
+      readConnectorDiagnosticRegistration(failed.runId),
+    ).resolves.toBeNull();
 
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
@@ -11213,6 +11263,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(customFirewall.customConnectorId).toBe(custom.id);
     const target = customConnectorRuntimeRegistration(claim, custom.id);
     expect(customFirewall.sourceId).toBe(target.sourceId);
+    await expect(
+      readConnectorDiagnosticRegistration(run.runId),
+    ).resolves.toStrictEqual({
+      version: 1,
+      targets: claim.connectorRuntimeTargets,
+    });
 
     const targetIdentity = {
       kind: "custom" as const,

@@ -5,12 +5,16 @@ import {
   testCronCleanupSandboxesStateContract,
 } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
-import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
+import {
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
+  MIN_EPOCH_MS_TIMESTAMP,
+} from "@okouai/api-contracts/contracts/runners";
 import { agents } from "@okouai/db/schema/agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { browserSessions } from "@okouai/db/schema/browser-session";
 import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -205,6 +209,61 @@ async function seedRunForAction(
     compose_id: agent.id,
     org_id: orgId,
     user_id: userId,
+  });
+}
+
+async function seedConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const payload =
+    agentRunConnectorDiagnosticRegistrationPayloadSchema.safeParse(
+      body["payload"],
+    );
+  if (!payload.success) {
+    return actionBadRequest("payload is invalid");
+  }
+  await db.insert(agentRunConnectorDiagnosticRegistrations).values({
+    runId,
+    payload: payload.data,
+    createdAt: readDate(body, "created_at") ?? undefined,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function getConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const [registration] = await db
+    .select({
+      payload: agentRunConnectorDiagnosticRegistrations.payload,
+      createdAt: agentRunConnectorDiagnosticRegistrations.createdAt,
+    })
+    .from(agentRunConnectorDiagnosticRegistrations)
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    connector_diagnostic_registration: registration
+      ? {
+          payload: agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
+            registration.payload,
+          ),
+          created_at: registration.createdAt.toISOString(),
+        }
+      : null,
   });
 }
 
@@ -985,6 +1044,10 @@ const cronCleanupSandboxesActionHandlers = {
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
+  "seed-connector-diagnostic-registration":
+    seedConnectorDiagnosticRegistrationForAction,
+  "get-connector-diagnostic-registration":
+    getConnectorDiagnosticRegistrationForAction,
   "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,
