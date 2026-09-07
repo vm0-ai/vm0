@@ -42,6 +42,7 @@ Proxy CONNECT response headers and h11 incomplete events are bounded at 64 KiB. 
 body is bounded at ``MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES`` (256 KiB). One monotonic
 ``FIREWALL_AUTH_FETCH_DEADLINE_SECONDS`` deadline (10 seconds by default) covers DNS, connection
 racing, proxy CONNECT, TLS, request writing, response headers, and the bounded response body.
+Deadline errors retain the active phase from that closed transport vocabulary.
 """
 
 import asyncio
@@ -59,6 +60,7 @@ import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from email.message import Message
+from enum import StrEnum
 from typing import NamedTuple, Protocol, TypeGuard
 
 import h11
@@ -105,8 +107,24 @@ class FirewallAuthResponseTooLargeError(Exception):
     """Raised when /firewall/auth returns a response body above the local cap."""
 
 
+class FirewallAuthFetchPhase(StrEnum):
+    """Bounded transport phase active when a firewall auth fetch deadline expires."""
+
+    DNS = "dns"
+    CONNECT = "connect"
+    PROXY_CONNECT = "proxy_connect"
+    TLS = "tls"
+    REQUEST_WRITE = "request_write"
+    RESPONSE_HEADERS = "response_headers"
+    RESPONSE_BODY = "response_body"
+
+
 class FirewallAuthDeadlineExceededError(Exception):
     """Raised when one /firewall/auth request exceeds its total lifetime."""
+
+    def __init__(self, phase: FirewallAuthFetchPhase):
+        super().__init__(f"Firewall auth fetch deadline exceeded during {phase.value}")
+        self.phase = phase
 
 
 class FirewallAuthApiError(Exception):
@@ -149,6 +167,11 @@ class _ConnectedStream(NamedTuple):
     reader: asyncio.StreamReader
     writer: asyncio.StreamWriter
     socket: socket.socket
+
+
+@dataclass
+class _FirewallAuthFetchProgress:
+    phase: FirewallAuthFetchPhase = FirewallAuthFetchPhase.DNS
 
 
 @dataclass(frozen=True)
@@ -588,13 +611,20 @@ async def _establish_proxy_tunnel(
         raise ValueError("Firewall auth HTTP proxy sent data before TLS")
 
 
-async def _open_stream(plan: _ConnectionPlan) -> _ConnectedStream:
+async def _open_stream(
+    plan: _ConnectionPlan,
+    progress: _FirewallAuthFetchProgress,
+) -> _ConnectedStream:
+    progress.phase = FirewallAuthFetchPhase.DNS
     addresses = await _resolve_addresses(plan.connect_host, plan.connect_port)
+    progress.phase = FirewallAuthFetchPhase.CONNECT
     sock = await _open_connected_socket(addresses)
     try:
         if plan.use_proxy_tunnel:
+            progress.phase = FirewallAuthFetchPhase.PROXY_CONNECT
             await _establish_proxy_tunnel(sock, plan)
         if plan.origin_scheme == "https":
+            progress.phase = FirewallAuthFetchPhase.TLS
             reader, writer = await asyncio.open_connection(
                 sock=sock,
                 limit=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
@@ -645,9 +675,11 @@ def _response_headers(event: h11.Response | h11.InformationalResponse) -> Messag
 async def _read_http_response(
     reader: asyncio.StreamReader,
     connection: h11.Connection,
+    progress: _FirewallAuthFetchProgress,
 ) -> _HttpResponse:
     response_event: h11.Response | h11.InformationalResponse | None = None
     body = bytearray()
+    progress.phase = FirewallAuthFetchPhase.RESPONSE_HEADERS
     while True:
         event = connection.next_event()
         if event is h11.NEED_DATA:
@@ -666,6 +698,7 @@ async def _read_http_response(
             continue
         if isinstance(event, h11.Response):
             response_event = event
+            progress.phase = FirewallAuthFetchPhase.RESPONSE_BODY
             continue
         if isinstance(event, h11.Data):
             if response_event is None:
@@ -692,13 +725,15 @@ async def _perform_http_request(
     req: urllib.request.Request,
     plan: _ConnectionPlan,
     body: bytes,
+    progress: _FirewallAuthFetchProgress,
 ) -> _HttpResponse:
-    stream = await _open_stream(plan)
+    stream = await _open_stream(plan, progress)
     connection = h11.Connection(
         h11.CLIENT,
         max_incomplete_event_size=_MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES,
     )
     try:
+        progress.phase = FirewallAuthFetchPhase.REQUEST_WRITE
         stream.writer.write(
             connection.send(
                 h11.Request(
@@ -711,7 +746,7 @@ async def _perform_http_request(
         stream.writer.write(connection.send(h11.Data(data=body)))
         stream.writer.write(connection.send(h11.EndOfMessage()))
         await stream.writer.drain()
-        response = await _read_http_response(stream.reader, connection)
+        response = await _read_http_response(stream.reader, connection, progress)
         stream.writer.close()
         with suppress(OSError):
             await stream.writer.wait_closed()
@@ -987,15 +1022,14 @@ async def fetch_firewall_headers(
     )
     req = platform_api.make_api_request(url, body, request.sandbox_token)
     plan = _build_connection_plan(req)
+    progress = _FirewallAuthFetchProgress()
     timeout = asyncio.timeout(FIREWALL_AUTH_FETCH_DEADLINE_SECONDS)
     try:
         async with timeout:
-            response = await _perform_http_request(req, plan, body)
+            response = await _perform_http_request(req, plan, body, progress)
     except TimeoutError:
         if timeout.expired():
-            raise FirewallAuthDeadlineExceededError(
-                "Firewall auth fetch deadline exceeded"
-            ) from None
+            raise FirewallAuthDeadlineExceededError(progress.phase) from None
         raise
     except h11.ProtocolError:
         raise ValueError("Firewall auth HTTP protocol error") from None
