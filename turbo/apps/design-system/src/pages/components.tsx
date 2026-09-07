@@ -113,69 +113,123 @@ function VariantMatrix({ entry }: { entry: ComponentEntry }) {
   );
 }
 
-function ComponentBlock({ entry }: { entry: ComponentEntry }) {
+function variantCount(entry: ComponentEntry) {
+  return Object.values(entry.variants).reduce((total, values) => {
+    return total + values.length;
+  }, 0);
+}
+
+function ComponentDetail({ entry }: { entry: ComponentEntry }) {
   const demo = DEMOS.find((d) => {
     return d.id === entry.id;
   });
 
   return (
-    <Section
-      title={demo?.title ?? entry.id}
-      blurb={demo?.usage}
-      aside={
-        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {entry.module.replace("./", "@okouai/ui/")}
-          </span>
-          {entry.usesBaseUi ? <Label>Base UI</Label> : null}
-        </div>
-      }
-    >
-      <Stage>
-        <div className="flex flex-col gap-8">
-          {demo ? <demo.Demo /> : null}
-          <VariantMatrix entry={entry} />
-        </div>
-      </Stage>
+    <Page title={demo?.title ?? entry.id} lede={demo?.usage}>
+      <Section title="Live">
+        <Stage>
+          <div className="flex flex-col gap-8">
+            {demo ? <demo.Demo /> : null}
+            <VariantMatrix entry={entry} />
+          </div>
+        </Stage>
+      </Section>
 
-      {entry.exports.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {entry.exports.map((name) => {
-            return <Mono key={name}>{name}</Mono>;
-          })}
+      <Section title="Import">
+        <div className="flex flex-col gap-3 rounded-xl bg-muted/60 px-5 py-4">
+          <Mono>{`import { ${entry.exports[0] ?? "…"} } from "@okouai/ui${entry.module.replace(".", "")}";`}</Mono>
+          {entry.exports.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {entry.exports.map((name) => {
+                return <Mono key={name}>{name}</Mono>;
+              })}
+            </div>
+          ) : (
+            <Note>
+              {
+                "Not re-exported from @okouai/ui's barrel — call sites deep-import it."
+              }
+            </Note>
+          )}
+          {entry.types.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {entry.types.map((name) => {
+                return <Mono key={name}>{name}</Mono>;
+              })}
+            </div>
+          ) : null}
+          {entry.usesBaseUi ? <Label>Built on Base UI</Label> : null}
         </div>
-      ) : (
-        <Note>
-          {
-            "Not re-exported from @okouai/ui's barrel — call sites deep-import it."
-          }
-        </Note>
-      )}
+      </Section>
 
-      {entry.doc ? <Note>{entry.doc}</Note> : null}
-    </Section>
+      {entry.doc ? (
+        <Section title="From the source">
+          <Note>{entry.doc}</Note>
+        </Section>
+      ) : null}
+    </Page>
   );
 }
 
-export function ComponentsPage() {
-  // Demo order, not file order: button carries the most of the system and
-  // belongs at the top, where an alphabetical list puts alert.
-  const documented = DEMOS.map((demo) => {
-    return components.components.find((entry) => {
-      return entry.id === demo.id;
-    });
-  }).filter((entry) => {
-    return entry !== undefined;
-  });
-
+function ComponentIndex({
+  onNavigate,
+}: {
+  onNavigate: (route: string) => void;
+}) {
   return (
     <Page
       title="Components"
-      lede={`${components.totals.files} components ship in @okouai/ui. Each block below imports the real component and the real stylesheet — nothing here is a copy.`}
+      lede={`${components.totals.files} components ship in @okouai/ui. Each one opens on its own page, rendering the real component under the real stylesheet — nothing here is a copy.`}
     >
-      {documented.map((entry) => {
-        return <ComponentBlock key={entry.id} entry={entry} />;
-      })}
+      <Section title="All components">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+          {DEMOS.map((demo) => {
+            const entry = components.components.find((candidate) => {
+              return candidate.id === demo.id;
+            });
+            if (!entry) return null;
+            const variants = variantCount(entry);
+            return (
+              <button
+                key={demo.id}
+                type="button"
+                onClick={() => {
+                  return onNavigate(`components/${demo.id}`);
+                }}
+                className="flex flex-col gap-1.5 rounded-xl bg-muted/60 px-4 py-3.5 text-left transition-colors hover:bg-state-hover"
+              >
+                <span className="text-sm font-medium text-foreground">
+                  {demo.title}
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {entry.file}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {entry.exports.length > 0
+                    ? `${String(entry.exports.length)} exports`
+                    : "deep import only"}
+                  {variants > 0 ? ` · ${String(variants)} variants` : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
     </Page>
   );
+}
+
+export function ComponentsPage({
+  componentId,
+  onNavigate,
+}: {
+  componentId: string | null;
+  onNavigate: (route: string) => void;
+}) {
+  const entry = components.components.find((candidate) => {
+    return candidate.id === componentId;
+  });
+
+  if (!entry) return <ComponentIndex onNavigate={onNavigate} />;
+  return <ComponentDetail entry={entry} />;
 }

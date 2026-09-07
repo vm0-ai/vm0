@@ -90,7 +90,7 @@ const SECTIONS = [
     id: "segment",
     title: "Segment control",
     blurb:
-      "The selected segment needs its own pair: in dark, `--card` sits below the track, so a card-filled segment reads recessed instead of selected.",
+      "The selected segment needs its own pair: in dark, --card sits below the track, so a card-filled segment reads recessed instead of selected.",
     match: (n) => {
       return /^--(segment-|shadow-segment)/.test(n);
     },
@@ -145,7 +145,7 @@ const SECTIONS = [
     id: "alias",
     title: "Tailwind aliases",
     blurb:
-      "`@theme` entries that expose the tokens above to Tailwind as utility classes. These carry no value of their own.",
+      "@theme entries that expose the tokens above to Tailwind as utility classes. These carry no value of their own.",
     match: (n) => {
       return n.startsWith("--color-");
     },

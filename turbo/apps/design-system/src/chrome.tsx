@@ -15,7 +15,7 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-5xl px-8 pb-32 pt-12">
+    <div className="mx-auto max-w-5xl px-8 pb-32 pt-6">
       <h1 className="text-3xl font-semibold tracking-tight text-foreground">
         {title}
       </h1>

@@ -7,46 +7,93 @@ import {
   SelectValue,
 } from "@okouai/ui/components/ui/select";
 import { Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { tokens } from "./manifest";
+import { components, tokens } from "./manifest";
 import { ColorPage } from "./pages/color";
 import { ComponentsPage } from "./pages/components";
 import { OverviewPage } from "./pages/overview";
 import { ShapePage } from "./pages/shape";
 import { ThemesPage } from "./pages/themes";
 import { TypographyPage } from "./pages/typography";
+import { DEMOS } from "./demos";
 
 type Theme = "light" | "dark";
 
-const PAGES = [
+const FOUNDATIONS = [
   { id: "overview", label: "Overview" },
   { id: "color", label: "Colour" },
   { id: "typography", label: "Typography" },
   { id: "shape", label: "Shape & icons" },
   { id: "themes", label: "Workspace themes" },
-  { id: "components", label: "Components" },
 ];
 
 const NO_THEME = "none";
 
-function currentPage() {
+/**
+ * Component routes are `components/<file-name>`, which keeps a deep link to one
+ * component stable across renames of its display title.
+ */
+const COMPONENT_ROUTES = DEMOS.map((demo) => {
+  return {
+    id: `components/${demo.id}`,
+    label: demo.title,
+    componentId: demo.id,
+  };
+});
+
+const ROUTES = new Set([
+  ...FOUNDATIONS.map((entry) => {
+    return entry.id;
+  }),
+  "components",
+  ...COMPONENT_ROUTES.map((entry) => {
+    return entry.id;
+  }),
+]);
+
+function currentRoute() {
   const id = window.location.hash.replace("#", "");
-  return PAGES.some((page) => {
-    return page.id === id;
-  })
-    ? id
-    : "overview";
+  return ROUTES.has(id) ? id : "overview";
+}
+
+function NavButton({
+  active,
+  label,
+  indent = false,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  indent?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-lg py-2 text-left text-sm transition-colors ${
+        indent ? "pl-6 pr-3" : "px-3"
+      } ${
+        active
+          ? "bg-state-selected text-foreground"
+          : "text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      }`}
+    >
+      {label}
+    </button>
+  );
 }
 
 export function App() {
-  const [page, setPage] = useState(currentPage);
+  const [route, setRoute] = useState(currentRoute);
   const [theme, setTheme] = useState<Theme>("light");
   const [colorTheme, setColorTheme] = useState<string | null>(null);
+  const scrollport = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const onHashChange = () => {
-      return setPage(currentPage());
+      return setRoute(currentRoute());
     };
     window.addEventListener("hashchange", onHashChange);
     return () => {
@@ -68,48 +115,79 @@ export function App() {
     }
   }, [theme, colorTheme]);
 
+  // The product's stylesheet locks html/body/#root to the viewport, so the
+  // page never scrolls -- main is the scrollport, and a new route has to be
+  // returned to its top by hand.
+  useEffect(() => {
+    scrollport.current?.scrollTo({ top: 0 });
+  }, [route]);
+
   const navigate = (id: string) => {
     // pushState rather than assigning location.hash: the hash is only a
     // deep link into the catalogue, not a source of truth for what renders.
     window.history.pushState(null, "", `#${id}`);
-    setPage(id);
+    setRoute(id);
   };
 
+  const componentRoute = COMPONENT_ROUTES.find((entry) => {
+    return entry.id === route;
+  });
+
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <nav className="sticky top-0 flex h-screen w-60 shrink-0 flex-col gap-1 bg-sidebar px-3 py-6">
-        <div className="px-3 pb-6">
+    <div className="flex h-full bg-background text-foreground">
+      <nav className="flex h-full w-60 shrink-0 flex-col bg-sidebar">
+        <div className="shrink-0 px-6 pb-5 pt-6">
           <div className="text-sm font-semibold text-foreground">Okou</div>
           <div className="text-sm text-muted-foreground">Design system</div>
         </div>
 
-        {PAGES.map((entry) => {
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => {
-                return navigate(entry.id);
-              }}
-              className={`rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                page === entry.id
-                  ? "bg-state-selected text-foreground"
-                  : "text-muted-foreground hover:bg-state-hover hover:text-foreground"
-              }`}
-            >
-              {entry.label}
-            </button>
-          );
-        })}
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
+          {FOUNDATIONS.map((entry) => {
+            return (
+              <NavButton
+                key={entry.id}
+                active={route === entry.id}
+                label={entry.label}
+                onClick={() => {
+                  return navigate(entry.id);
+                }}
+              />
+            );
+          })}
 
-        <div className="mt-auto flex flex-col gap-3 px-1">
+          <NavButton
+            active={route === "components"}
+            label={`Components · ${String(components.totals.files)}`}
+            onClick={() => {
+              return navigate("components");
+            }}
+          />
+
+          {COMPONENT_ROUTES.map((entry) => {
+            return (
+              <NavButton
+                key={entry.id}
+                active={route === entry.id}
+                label={entry.label}
+                indent
+                onClick={() => {
+                  return navigate(entry.id);
+                }}
+              />
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-end gap-3 px-8 pt-6">
           <Select
             value={colorTheme ?? NO_THEME}
             onValueChange={(next) => {
               return setColorTheme(next === NO_THEME ? null : String(next));
             }}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -126,27 +204,35 @@ export function App() {
 
           <Button
             variant="outline"
-            className="w-full justify-start"
+            size="icon"
+            showTooltip
+            aria-label={
+              theme === "light" ? "Switch to dark" : "Switch to light"
+            }
             onClick={() => {
               return setTheme(theme === "light" ? "dark" : "light");
             }}
           >
             {theme === "light" ? <Sun /> : <Moon />}
-            {theme === "light" ? "Light" : "Dark"}
           </Button>
-        </div>
-      </nav>
+        </header>
 
-      <main className="min-w-0 flex-1">
-        {page === "overview" ? <OverviewPage onNavigate={navigate} /> : null}
-        {page === "color" ? <ColorPage theme={theme} /> : null}
-        {page === "typography" ? <TypographyPage /> : null}
-        {page === "shape" ? <ShapePage /> : null}
-        {page === "themes" ? (
-          <ThemesPage active={colorTheme} onSelect={setColorTheme} />
-        ) : null}
-        {page === "components" ? <ComponentsPage /> : null}
-      </main>
+        <main ref={scrollport} className="min-w-0 flex-1 overflow-y-auto">
+          {route === "overview" ? <OverviewPage onNavigate={navigate} /> : null}
+          {route === "color" ? <ColorPage theme={theme} /> : null}
+          {route === "typography" ? <TypographyPage /> : null}
+          {route === "shape" ? <ShapePage /> : null}
+          {route === "themes" ? (
+            <ThemesPage active={colorTheme} onSelect={setColorTheme} />
+          ) : null}
+          {route === "components" || componentRoute ? (
+            <ComponentsPage
+              componentId={componentRoute?.componentId ?? null}
+              onNavigate={navigate}
+            />
+          ) : null}
+        </main>
+      </div>
     </div>
   );
 }
