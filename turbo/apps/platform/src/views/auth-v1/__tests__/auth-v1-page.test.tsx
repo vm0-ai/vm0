@@ -33,11 +33,13 @@ function clerkProviderConfig(): HTMLElement {
 test("The hosted sign-in form renders with Google One Tap on the base route", async () => {
   context.mocks.browser.matchMedia(false);
   const clerk = context.mocks.clerk();
-  await setupSignedOutPage("/sign-in");
+  await setupSignedOutPage("/v1/sign-in");
 
   const signIn = screen.getByTestId("clerk-sign-in");
   expect(signIn).toHaveAttribute("data-clerk-routing", "path");
-  expect(signIn).toHaveTextContent("/sign-in");
+  expect(signIn).toHaveTextContent("/v1/sign-in");
+  expect(signIn).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
+  expect(signIn).toHaveAttribute("data-clerk-sign-up-url", "/v1/sign-up");
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
     "https://app.vm0.ai",
@@ -65,9 +67,9 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
 });
 
 test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
-  await setupSignedOutPage("/sign-in/tasks/choose-organization");
+  await setupSignedOutPage("/v1/sign-in/tasks/choose-organization");
 
-  expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+  expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/v1/sign-in");
   expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
   expect(document.title).toBe("Sign in | VM0");
 });
@@ -75,12 +77,14 @@ test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
 test("The hosted sign-up form renders with an allowed redirect URL", async () => {
   const redirectUrl = PRESENTATION_ONBOARDING_URL;
   await setupSignedOutPage(
-    `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    `/v1/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
 
   const signUp = screen.getByTestId("clerk-sign-up");
   expect(signUp).toHaveAttribute("data-clerk-routing", "path");
-  expect(signUp).toHaveTextContent("/sign-up");
+  expect(signUp).toHaveTextContent("/v1/sign-up");
+  expect(signUp).toHaveAttribute("data-clerk-sign-in-url", "/v1/sign-in");
+  expect(signUp).not.toHaveAttribute("data-clerk-sign-up-url");
   expect(signUp).toHaveAttribute(
     "data-clerk-fallback-redirect-url",
     redirectUrl,
@@ -91,6 +95,14 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-sign-in-start-action-link",
     "Sign up",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-provider-sign-in-url",
+    "https://app.vm0.ai/v1/sign-in",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-provider-sign-up-url",
+    "https://app.vm0.ai/v1/sign-up",
   );
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-user-banned-error",
@@ -107,7 +119,7 @@ test("The hosted form waits behind the skeleton until Clerk mounts it", async ()
     auth: null,
     context,
     host: "app.vm0.ai",
-    path: "/sign-up",
+    path: "/v1/sign-up",
   });
 
   const appSkeleton = await screen.findByTestId("app-skeleton");
@@ -131,7 +143,7 @@ test("The hosted form waits behind the skeleton until Clerk mounts it", async ()
   });
   await page.ready;
 
-  expect(screen.getByTestId("clerk-sign-up")).toHaveTextContent("/sign-up");
+  expect(screen.getByTestId("clerk-sign-up")).toHaveTextContent("/v1/sign-up");
   expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
   expect(screen.queryByTestId("clerk-auth-loading")).not.toBeInTheDocument();
 });
@@ -140,7 +152,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   context.mocks.browser.matchMedia(false);
   const redirectUrl = "https://app.okou.ai/_/skeleton";
   await setupSignedOutPage(
-    `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    `/v1/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
 
   const signIn = screen.getByTestId("clerk-sign-in");
@@ -171,7 +183,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
 test("Okou auth intent survives Clerk moving the redirect into the hash", async () => {
   const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
   await setupSignedOutPage(
-    `/sign-up#/?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    `/v1/sign-up#/?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
 
   expect(screen.getByTestId("clerk-sign-up")).toHaveAttribute(
@@ -186,7 +198,7 @@ test("An untrusted redirect URL does not control the auth brand", async () => {
   context.mocks.browser.matchMedia(false);
   const redirectUrl = "https://app.okou.ai.evil.example/sign-in";
   await setupSignedOutPage(
-    `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    `/v1/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
 
   expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
@@ -203,7 +215,7 @@ test("An untrusted redirect URL does not control the auth brand", async () => {
 
 test("Ad-attributed sign-ups continue to onboarding with their attribution", async () => {
   await setupSignedOutPage(
-    "/sign-up?gclid=click-123&utm_campaign=summer#/verify?step=code",
+    "/v1/sign-up?gclid=click-123&utm_campaign=summer#/verify?step=code",
   );
 
   const redirectUrl = new URL(
@@ -219,7 +231,7 @@ test("Ad-attributed sign-ups continue to onboarding with their attribution", asy
 test("Sign-up redirects to sibling origins of the current host are kept", async () => {
   const redirectUrl = "https://www.vm0.ai/connector/success?vm0_theme=light";
   await setupSignedOutPage(
-    `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    `/v1/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
 
   expect(
@@ -229,7 +241,7 @@ test("Sign-up redirects to sibling origins of the current host are kept", async 
 
 test("Sign-up redirects to other environments fall back to onboarding", async () => {
   await setupSignedOutPage(
-    "/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fconnector%2Fsuccess",
+    "/v1/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fconnector%2Fsuccess",
   );
 
   expect(
@@ -239,7 +251,7 @@ test("Sign-up redirects to other environments fall back to onboarding", async ()
 
 test("Hosted auth pages scroll inside the root safe area", async () => {
   context.mocks.browser.matchMedia(false);
-  await setupSignedOutPage("/sign-up");
+  await setupSignedOutPage("/v1/sign-up");
 
   const layout = screen.getByTestId("app-auth-layout");
   expect(layout).toHaveClass("h-full");
@@ -260,7 +272,7 @@ test("Hosted auth pages scroll inside the root safe area", async () => {
 });
 
 test("Clerk checkboxes keep their native size inside the styled card", async () => {
-  await setupSignedOutPage("/sign-in");
+  await setupSignedOutPage("/v1/sign-in");
 
   const clerkSurface = screen.getByTestId("clerk-sign-in");
   const card = document.createElement("div");
@@ -277,7 +289,7 @@ test("Clerk checkboxes keep their native size inside the styled card", async () 
 });
 
 test("The Clerk passkey action renders as a full-width outline control", async () => {
-  await setupSignedOutPage("/sign-in");
+  await setupSignedOutPage("/v1/sign-in");
 
   const clerkSurface = screen.getByTestId("clerk-sign-in");
   const action = document.createElement("div");

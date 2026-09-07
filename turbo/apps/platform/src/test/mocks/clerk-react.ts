@@ -38,6 +38,7 @@ function subscribeToClerkAuthComponent(listener: () => void): () => void {
 }
 
 interface ClerkProviderProps {
+  afterSignOutUrl?: string;
   children: ReactNode;
   allowedRedirectOrigins?: readonly (string | RegExp)[];
   localization?: {
@@ -56,7 +57,13 @@ interface ClerkProviderProps {
   signUpUrl?: string;
 }
 
-export function ClerkProvider({ children, localization }: ClerkProviderProps) {
+export function ClerkProvider({
+  afterSignOutUrl,
+  children,
+  localization,
+  signInUrl,
+  signUpUrl,
+}: ClerkProviderProps) {
   return createElement(
     Fragment,
     null,
@@ -68,6 +75,9 @@ export function ClerkProvider({ children, localization }: ClerkProviderProps) {
       "data-clerk-sign-in-start-title": localization?.signIn?.start?.title,
       "data-clerk-access-not-allowed-error":
         localization?.unstable__errors?.not_allowed_access,
+      "data-clerk-after-sign-out-url": afterSignOutUrl,
+      "data-clerk-provider-sign-in-url": signInUrl,
+      "data-clerk-provider-sign-up-url": signUpUrl,
       "data-clerk-user-banned-error":
         localization?.unstable__errors?.user_banned,
       "data-testid": "clerk-provider-config",
@@ -89,6 +99,8 @@ interface ClerkAuthComponentProps {
   forceRedirectUrl?: string;
   path?: string;
   routing?: string;
+  signInUrl?: string;
+  signUpUrl?: string;
 }
 
 function ClerkAuthComponent({
@@ -99,6 +111,8 @@ function ClerkAuthComponent({
   forceRedirectUrl,
   path,
   routing,
+  signInUrl,
+  signUpUrl,
   testId,
 }: ClerkAuthComponentProps & {
   componentName: string;
@@ -122,6 +136,8 @@ function ClerkAuthComponent({
         "data-clerk-logo-image-url": appearance?.options?.logoImageUrl,
         "data-clerk-logo-placement": appearance?.options?.logoPlacement,
         "data-clerk-routing": routing,
+        "data-clerk-sign-in-url": signInUrl,
+        "data-clerk-sign-up-url": signUpUrl,
         "data-testid": testId,
       },
       mounted ? createElement("span", null, path) : null,

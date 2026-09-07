@@ -180,6 +180,16 @@ export function isNonArrayRecord(
   return isRecord(value) && !Array.isArray(value);
 }
 
+export function stringProperty(
+  value: Record<string, unknown>,
+  property: string,
+): string | undefined {
+  const candidate = value[property];
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : undefined;
+}
+
 export function jsonParseOr<T>(value: string, fallback: T): T {
   // We must use this approach to silence the exception here. This is because
   // the function itself is designed to help the caller avoid having to handle

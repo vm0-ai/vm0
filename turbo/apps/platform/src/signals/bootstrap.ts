@@ -77,7 +77,14 @@ import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callbac
 import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
+import {
+  setupSignInV2Page$,
+  setupSignUpV2Page$,
+} from "./auth-v2-page-setup.ts";
+import {
+  setupSignInV1Page$,
+  setupSignUpV1Page$,
+} from "./auth-v1-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
@@ -192,19 +199,35 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signIn,
-    setup: setupPageWrapper(setupSignInPage$),
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signInCatchAll,
-    setup: setupPageWrapper(setupSignInPage$),
+    setup: setupPageWrapper(setupSignInV2Page$),
   },
   {
     path: ROUTES.signUp,
-    setup: setupPageWrapper(setupSignUpPage$),
+    setup: setupPageWrapper(setupSignUpV2Page$),
   },
   {
     path: ROUTES.signUpCatchAll,
-    setup: setupPageWrapper(setupSignUpPage$),
+    setup: setupPageWrapper(setupSignUpV2Page$),
+  },
+  {
+    path: ROUTES.signInV1,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signInV1CatchAll,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1,
+    setup: setupPageWrapper(setupSignUpV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1CatchAll,
+    setup: setupPageWrapper(setupSignUpV1Page$),
   },
 
   // --- New routes ---
@@ -534,6 +557,7 @@ const completeBootstrap$ = command(
     render();
 
     // These public protocol pages also run before an embedded Clerk session exists.
+    // Auth v2 task continuations retain the same ownership via redirect_url.
     if (isDesktopAuthFlow()) {
       await Promise.all([
         set(setupClerk$, signal),

@@ -1,18 +1,18 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
+import {
+  authV2Input,
+  authV2Root,
+  openAuthV2,
+  signInMethodButton,
+  submitSignInIdentifier,
+} from "./auth-v2-ui";
 import { waitForClerkReadiness } from "./clerk-readiness";
 
 const CLERK_TEST_EMAIL_CODE = "424242";
-const CLERK_UI_READY_TIMEOUT_MS = 30_000;
-const CLERK_OTP_INPUT_SELECTOR =
-  'input[autocomplete="one-time-code"], input[name="code"], input[inputmode="numeric"]';
 
 export interface ClerkEmailCodeSignInOptions {
   readonly activeOrganizationId: string;
-}
-
-function hostedSignIn(page: Page): Locator {
-  return page.locator(".cl-signIn-root");
 }
 
 export async function signInWithClerkEmailCode(
@@ -22,7 +22,7 @@ export async function signInWithClerkEmailCode(
   options: ClerkEmailCodeSignInOptions,
 ): Promise<string> {
   const signInUrl = new URL("/sign-in", appUrl);
-  await openHostedSignIn(page, signInUrl.toString());
+  await openAuthV2(page, signInUrl.toString());
   await submitSignInIdentifier(page, email);
   await submitClerkEmailCode(page);
   await page.waitForURL(
@@ -49,8 +49,8 @@ export async function signInWithClerkEmailCode(
         (organizationId) => {
           return Boolean(
             window.Clerk?.loaded &&
-            window.Clerk.session &&
-            window.Clerk.organization?.id === organizationId,
+              window.Clerk.session &&
+              window.Clerk.organization?.id === organizationId,
           );
         },
         options.activeOrganizationId,
@@ -64,37 +64,28 @@ export async function signInWithClerkEmailCode(
   return token;
 }
 
-/**
- * The hosted Clerk form mounts once the core, the hosted UI script, and the
- * environment have all loaded, so readiness is the identifier field itself.
- */
-async function openHostedSignIn(page: Page, url: string): Promise<void> {
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("app-auth-layout")).toBeVisible({
-    timeout: CLERK_UI_READY_TIMEOUT_MS,
-  });
-  await expect(
-    hostedSignIn(page).locator('input[name="identifier"]'),
-  ).toBeVisible({ timeout: CLERK_UI_READY_TIMEOUT_MS });
-}
-
-async function submitSignInIdentifier(
-  page: Page,
-  identifier: string,
-): Promise<void> {
-  const input = hostedSignIn(page).locator('input[name="identifier"]');
-  await input.fill(identifier);
-  await input.press("Enter");
-}
-
 async function submitClerkEmailCode(page: Page): Promise<void> {
-  const root = hostedSignIn(page);
-  const codeInput = root.locator(CLERK_OTP_INPUT_SELECTOR).first();
+  const root = authV2Root(page);
+  const codeInput = authV2Input(page, "code");
+  const emailCodeButton = signInMethodButton(page, "email-code");
+  const useAnotherMethodButton = root.getByRole("button", {
+    name: /use another method/i,
+  });
 
-  await expect(codeInput).toBeVisible({ timeout: CLERK_UI_READY_TIMEOUT_MS });
-  // Clerk verifies the code as soon as the last digit arrives.
-  await codeInput.click();
-  await page.keyboard.type(CLERK_TEST_EMAIL_CODE);
+  await expect(
+    codeInput.or(emailCodeButton).or(useAnotherMethodButton),
+  ).toBeVisible({ timeout: 30_000 });
+  if (!(await codeInput.isVisible())) {
+    if (await useAnotherMethodButton.isVisible()) {
+      await useAnotherMethodButton.click();
+    }
+    await expect(emailCodeButton).toBeVisible({ timeout: 30_000 });
+    await emailCodeButton.click();
+  }
+
+  await expect(codeInput).toBeVisible({ timeout: 30_000 });
+  await codeInput.fill(CLERK_TEST_EMAIL_CODE);
+  await root.getByRole("button", { exact: true, name: "Continue" }).click();
 }
 
 async function activateClerkOrganization(

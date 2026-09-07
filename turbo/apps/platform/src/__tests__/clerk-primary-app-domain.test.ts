@@ -77,9 +77,7 @@ test("An explicitly requested app.vm0.ai still owns primary authentication", asy
     primaryAppDomain: "app.vm0.ai",
   });
 
-  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
-    "/sign-in",
-  );
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
   expect(clerk.resourceRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);
@@ -122,17 +120,29 @@ interface InlineBootstrapWindow {
 }
 
 interface InlineBootstrapScript {
+  async: boolean;
+  crossOrigin: string;
   dataset: Record<string, string>;
   onerror: (() => void) | null;
   onload: (() => void) | null;
   remove: () => void;
+  src: string;
 }
 
 type InlineBootstrap = (
   window: InlineBootstrapWindow,
-  document: { getElementById: (id: string) => InlineBootstrapScript },
-  location: { hostname: string; origin: string },
+  document: {
+    readonly head: { appendChild: (script: InlineBootstrapScript) => void };
+    createElement: (tagName: string) => InlineBootstrapScript;
+    getElementById: (id: string) => InlineBootstrapScript;
+  },
+  location: { hostname: string; origin: string; pathname: string },
 ) => void;
+
+interface InlineBootstrapResult {
+  readonly appendedScripts: readonly InlineBootstrapScript[];
+  readonly bootstrap: InlineBootstrapConfiguration;
+}
 
 function inlineBootstrapSource(): string {
   const page = new DOMParser().parseFromString(indexHtml, "text/html");
@@ -148,7 +158,8 @@ function inlineBootstrapSource(): string {
 function runInlineBootstrap(
   injectedPrimaryAppDomain: string,
   hostname: string,
-): InlineBootstrapConfiguration {
+  pathname = "/",
+): InlineBootstrapResult {
   const source = inlineBootstrapSource().replaceAll(
     PRIMARY_APP_DOMAIN_MARKER,
     injectedPrimaryAppDomain,
@@ -160,28 +171,50 @@ function runInlineBootstrap(
     source,
   ) as InlineBootstrap;
   const script: InlineBootstrapScript = {
+    async: false,
+    crossOrigin: "",
     dataset: {},
     onerror: null,
     onload: null,
     remove: () => {
       return;
     },
+    src: "",
   };
+  const appendedScripts: InlineBootstrapScript[] = [];
   const bootstrapWindow: InlineBootstrapWindow = {};
   runBootstrap(
     bootstrapWindow,
     {
+      head: {
+        appendChild: (appendedScript) => {
+          appendedScripts.push(appendedScript);
+        },
+      },
+      createElement: () => {
+        return {
+          async: false,
+          crossOrigin: "",
+          dataset: {},
+          onerror: null,
+          onload: null,
+          remove: () => {
+            return;
+          },
+          src: "",
+        };
+      },
       getElementById: () => {
         return script;
       },
     },
-    { hostname, origin: `https://${hostname}` },
+    { hostname, origin: `https://${hostname}`, pathname },
   );
   const bootstrap = bootstrapWindow.__okouClerkBootstrap;
   if (!bootstrap) {
     throw new Error("The inline Clerk bootstrap published no configuration");
   }
-  return bootstrap;
+  return { appendedScripts, bootstrap };
 }
 
 const INJECTED_PRIMARY_APP_DOMAINS = [
@@ -214,7 +247,10 @@ const PAGE_HOSTNAMES = [
 test("The inline Clerk bootstrap and the topology module agree", () => {
   for (const injectedPrimaryAppDomain of INJECTED_PRIMARY_APP_DOMAINS) {
     for (const hostname of PAGE_HOSTNAMES) {
-      const bootstrap = runInlineBootstrap(injectedPrimaryAppDomain, hostname);
+      const { bootstrap } = runInlineBootstrap(
+        injectedPrimaryAppDomain,
+        hostname,
+      );
       const satelliteDomain = resolveClerkProductionSatelliteDomain(
         hostname,
         injectedPrimaryAppDomain,
@@ -243,4 +279,33 @@ test("The inline Clerk bootstrap and the topology module agree", () => {
       });
     }
   }
+});
+
+test("The inline bootstrap preloads hosted UI only for primary v1 auth routes", () => {
+  const stablePaths = ["/agents", "/sign-in", "/sign-up", "/v1/sign-invader"];
+  for (const pathname of stablePaths) {
+    expect(
+      runInlineBootstrap("app.vm0.ai", "app.vm0.ai", pathname).appendedScripts,
+    ).toStrictEqual([]);
+  }
+
+  for (const pathname of [
+    "/v1/sign-in",
+    "/v1/sign-in/tasks/choose-organization",
+    "/v1/sign-up",
+    "/v1/sign-up/tasks/choose-organization",
+  ]) {
+    const { appendedScripts } = runInlineBootstrap(
+      "app.vm0.ai",
+      "app.vm0.ai",
+      pathname,
+    );
+    expect(appendedScripts).toHaveLength(1);
+    expect(appendedScripts[0]?.src).toBe("__OKOU_CLERK_UI_SCRIPT_URL__");
+  }
+
+  expect(
+    runInlineBootstrap("app.vm0.ai", "app.okou.ai", "/v1/sign-in")
+      .appendedScripts,
+  ).toStrictEqual([]);
 });

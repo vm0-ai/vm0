@@ -47,4 +47,4 @@ const hideAppSkeletonWhenAuthMounts$ = command(
   },
 );
 
-export const authPageMountRef$ = onRef(hideAppSkeletonWhenAuthMounts$);
+export const authV1PageMountRef$ = onRef(hideAppSkeletonWhenAuthMounts$);

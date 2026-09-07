@@ -2,13 +2,14 @@ import { Button, cn } from "@okouai/ui";
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-export function DesktopAuthChoiceRow({
+export function AuthV2ChoiceRow({
   actionLabel,
   busy,
   disabled,
   leading,
   onSelect,
   primary,
+  secondary,
 }: {
   readonly actionLabel: string;
   readonly busy: boolean;
@@ -16,6 +17,7 @@ export function DesktopAuthChoiceRow({
   readonly leading: ReactNode;
   readonly onSelect: () => void;
   readonly primary: string;
+  readonly secondary?: string;
 }) {
   return (
     <Button
@@ -41,6 +43,11 @@ export function DesktopAuthChoiceRow({
         <span className="block truncate text-sm font-medium text-foreground">
           {primary}
         </span>
+        {secondary ? (
+          <span className="block truncate text-xs text-muted-foreground">
+            {secondary}
+          </span>
+        ) : null}
       </span>
     </Button>
   );

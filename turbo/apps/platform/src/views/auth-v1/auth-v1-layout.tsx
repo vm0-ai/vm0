@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AuthBrandContext } from "../../signals/auth.ts";
-import { AuthShell } from "./auth-shell.tsx";
+import { AuthShell } from "../auth/auth-shell.tsx";
 
 const CLERK_CSS = `
 /* Remove shadows from Clerk components */
@@ -382,12 +382,12 @@ a[class*="resendCode"] {
 }
 `;
 
-interface AuthLayoutProps {
+interface AuthV1LayoutProps {
   authBrand: AuthBrandContext;
   children: ReactNode;
 }
 
-export function AuthLayout({ authBrand, children }: AuthLayoutProps) {
+export function AuthV1Layout({ authBrand, children }: AuthV1LayoutProps) {
   return (
     <>
       <style suppressHydrationWarning>{CLERK_CSS}</style>

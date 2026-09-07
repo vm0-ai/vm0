@@ -2,7 +2,7 @@ import {
   loadClerkJSScript,
   loadClerkUIScript,
 } from "@clerk/shared/loadClerkJsScript";
-import type { BrowserClerk } from "@clerk/shared/types";
+import type { BrowserClerk, EnvironmentResource } from "@clerk/shared/types";
 import type { ClerkUIConstructor } from "@clerk/shared/ui";
 import { createDeferredPromise } from "../signals/utils.ts";
 import { CLERK_JS_VERSION, CLERK_UI_VERSION } from "./clerk-versions.ts";
@@ -30,7 +30,7 @@ interface ClerkBrowserRuntime {
   readonly clerk: PlatformClerk;
   /**
    * Loads the hosted Clerk UI and hands its constructor to the shared core.
-   * Only auth surfaces request it, so the rest of the app keeps the core-only
+   * Only v1 comparison routes request it, so stable routes keep the core-only
    * download.
    */
   readonly ensureUiLoaded: () => Promise<void>;
@@ -40,7 +40,9 @@ interface ClerkBrowserRuntime {
 type EarlyClerkBootstrap = NonNullable<Window["__okouClerkBootstrap"]>;
 type ResolveClerkUI = EarlyClerkBootstrap["resolveClerkUI"];
 
-export type PlatformClerk = BrowserClerk;
+export type PlatformClerk = BrowserClerk & {
+  readonly __internal_environment?: EnvironmentResource;
+};
 
 function isBrowserClerk(value: unknown): value is PlatformClerk {
   return (

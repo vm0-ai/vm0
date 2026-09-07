@@ -13,15 +13,15 @@ import {
   resolveAppUrl,
   resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
-import { getClerkLocalization } from "../auth/clerk-localization.ts";
-import { getClerkAppearance } from "./clerk-appearance.ts";
+import { getClerkLocalization } from "./clerk-localization.ts";
+import { getAuthV1ProviderAppearance } from "./provider-appearance.ts";
 
 interface ClerkProviderProps {
   readonly children: ReactNode;
   readonly clerk: BrowserClerk;
 }
 
-export function OkouClerkProvider({ children, clerk }: ClerkProviderProps) {
+export function AuthV1ClerkProvider({ children, clerk }: ClerkProviderProps) {
   const { t } = useTranslation();
   const clerkLocalizations = useGet(clerkLocalizations$);
   const locale = useGet(locale$);
@@ -34,9 +34,9 @@ export function OkouClerkProvider({ children, clerk }: ClerkProviderProps) {
 
   const providerProps = {
     Clerk: clerk,
-    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+    afterSignOutUrl: resolveAppAuthUrl("/v1/sign-in"),
     allowedRedirectOrigins,
-    appearance: getClerkAppearance(),
+    appearance: getAuthV1ProviderAppearance(),
     localization: getClerkLocalization(
       clerkBrandName,
       locale,
@@ -45,9 +45,9 @@ export function OkouClerkProvider({ children, clerk }: ClerkProviderProps) {
     ),
     publishableKey,
     signInFallbackRedirectUrl: appUrl,
-    signInUrl: resolveAppAuthUrl("/sign-in"),
+    signInUrl: resolveAppAuthUrl("/v1/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
-    signUpUrl: resolveAppAuthUrl("/sign-up"),
+    signUpUrl: resolveAppAuthUrl("/v1/sign-up"),
   };
   return satelliteConfig ? (
     <BaseClerkProvider {...providerProps} {...satelliteConfig}>

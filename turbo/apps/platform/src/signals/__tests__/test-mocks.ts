@@ -240,7 +240,7 @@ interface ClerkMock {
   readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
   readonly localizationRequests: ClerkLocalizationLocale[];
   readonly resourceRequests: ClerkResourceRequest[];
-  /** Hosted UI script requests; only auth surfaces should add one. */
+  /** Hosted UI script requests; only v1 comparison routes should add one. */
   readonly uiRequests: ClerkResourceRequest[];
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;

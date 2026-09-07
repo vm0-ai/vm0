@@ -270,9 +270,8 @@
           loadOptions.satelliteAutoSync = true;
         }
 
-        // Hosted Clerk UI mounts the sign-in and sign-up forms. Clerk accepts
-        // the constructor as a promise, so the core starts now and the app
-        // resolves the UI only where it is needed.
+        // Clerk accepts its hosted UI constructor as a promise, so the core
+        // starts now and only the v1 comparison routes resolve the UI.
         var resolveClerkUI;
         var clerkUI = new Promise(function (resolve) {
           resolveClerkUI = resolve;
@@ -291,8 +290,8 @@
           return value === domain || value.endsWith("." + domain);
         }
 
-        function isAuthRoute(pathname) {
-          return /^\/sign-(?:in|up)(?:\/|$)/.test(pathname || "");
+        function isAuthV1Route(pathname) {
+          return /^\/v1\/sign-(?:in|up)(?:\/|$)/.test(pathname || "");
         }
 
         function startClerk() {
@@ -328,11 +327,11 @@
           );
         }
 
-        // Auth routes need the hosted UI before they can paint. Satellite
-        // hosts hand authentication to the primary app instead, so they keep
-        // the core-only download.
+        // Direct v1 route entries start the hosted UI alongside the app.
+        // Stable auth routes keep the platform-owned UI and satellite hosts
+        // hand authentication to the primary app without this download.
         function startClerkUI() {
-          if (satellite || !isAuthRoute(location.pathname)) return;
+          if (satellite || !isAuthV1Route(location.pathname)) return;
           var uiScript = document.createElement("script");
           uiScript.src = "__OKOU_CLERK_UI_SCRIPT_URL__";
           uiScript.crossOrigin = "anonymous";

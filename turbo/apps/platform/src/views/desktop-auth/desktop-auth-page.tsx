@@ -7,8 +7,8 @@ import type { DesktopAuthSignals } from "../../signals/desktop-auth/desktop-auth
 import type { DesktopAuthRoute } from "../../signals/desktop-auth/protocol.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { DesktopAuthChoiceRow } from "./desktop-auth-choice-row.tsx";
-import { DesktopAuthShell } from "./desktop-auth-shell.tsx";
+import { AuthV2Shell } from "../auth-v2/auth-v2-shell.tsx";
+import { AuthV2ChoiceRow } from "../auth-v2/auth-v2-choice-row.tsx";
 
 export function DesktopAuthPage({
   signals,
@@ -59,7 +59,7 @@ export function DesktopAuthPage({
       className="flex min-h-full items-center justify-center bg-background p-6"
       data-testid="desktop-auth"
     >
-      <DesktopAuthShell
+      <AuthV2Shell
         authBrand={authBrand}
         focusKey={phase}
         title={title}
@@ -103,7 +103,7 @@ export function DesktopAuthPage({
             </Button>
           ) : null}
         </div>
-      </DesktopAuthShell>
+      </AuthV2Shell>
     </main>
   );
 }
@@ -120,7 +120,7 @@ function DesktopWorkspaces({
   const memberships = useLastResolved(signals.memberships$) ?? [];
   return memberships.map(({ organization }) => {
     return (
-      <DesktopAuthChoiceRow
+      <AuthV2ChoiceRow
         key={organization.id}
         actionLabel={organization.name}
         primary={organization.name}

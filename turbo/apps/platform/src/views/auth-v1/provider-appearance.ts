@@ -12,13 +12,11 @@ type ElementStyle = string | Record<string, unknown>;
 type Elements = Record<string, ElementStyle>;
 
 /**
- * Clerk appearance for hosted UI surfaces (UserProfile modal, sign-in drawer,
- * org switcher, etc.). All colors resolve via CSS custom properties from the
- * VM0 design system in `@okouai/ui/styles/globals.css`, so the same config
- * automatically tracks light/dark themes via the `data-theme` attribute on
- * `<html>` — no JS-side theme listening needed.
+ * Shared appearance inherited by Clerk's hosted v1 comparison routes. All
+ * colors resolve through the platform design tokens and track light/dark
+ * themes through the `data-theme` attribute on `<html>`.
  */
-export function getClerkAppearance(): Appearance {
+export function getAuthV1ProviderAppearance(): Appearance {
   const elements: Elements = {
     ...cardElements(),
     ...navbarElements(),
@@ -39,11 +37,11 @@ function clerkVariables(): Record<string, string> {
     colorPrimary: "hsl(var(--primary))",
     colorBackground: "hsl(var(--card))",
     colorNeutral: "hsl(var(--foreground))",
-    colorText: "hsl(var(--foreground))",
-    colorTextSecondary: "hsl(var(--muted-foreground))",
-    colorTextOnPrimaryBackground: "hsl(var(--primary-foreground))",
-    colorInputBackground: "hsl(var(--input))",
-    colorInputText: "hsl(var(--foreground))",
+    colorForeground: "hsl(var(--foreground))",
+    colorMutedForeground: "hsl(var(--muted-foreground))",
+    colorPrimaryForeground: "hsl(var(--primary-foreground))",
+    colorInput: "hsl(var(--input))",
+    colorInputForeground: "hsl(var(--foreground))",
     colorDanger: "hsl(var(--destructive))",
     colorSuccess: "hsl(142 71% 45%)",
     colorWarning: "hsl(38 92% 50%)",

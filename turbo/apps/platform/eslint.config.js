@@ -397,7 +397,7 @@ export default [
             {
               name: "@clerk/ui",
               message:
-                "Use ensureClerkUiLoaded() so hosted Clerk UI stays route-scoped.",
+                "Use ensureClerkUiLoaded$ so hosted Clerk UI stays scoped to v1 routes.",
             },
             {
               name: "@solana/web3.js",

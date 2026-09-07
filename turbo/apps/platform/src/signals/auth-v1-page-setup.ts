@@ -1,7 +1,10 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../i18n/index.ts";
-import { AuthPage, type AuthPageMode } from "../views/auth/auth-page.tsx";
+import {
+  AuthV1Page,
+  type AuthV1PageMode,
+} from "../views/auth-v1/auth-v1-page.tsx";
 import {
   clerk$,
   clerkInstance$,
@@ -12,7 +15,7 @@ import {
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 
-function setupAuthPage(mode: AuthPageMode) {
+function setupAuthV1Page(mode: AuthV1PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     if (await set(navigateSatelliteAuthRoute$, mode, signal)) {
       return;
@@ -32,15 +35,15 @@ function setupAuthPage(mode: AuthPageMode) {
     );
     const clerk = await get(clerkInstance$);
     signal.throwIfAborted();
-    // Clerk UI itself remains route-scoped even though application modules are
-    // statically linked into the single JavaScript bundle.
+    // Only the v1 comparison routes request Clerk's hosted UI. Stable auth
+    // routes continue to use the platform-owned auth v2 implementation.
     await set(ensureClerkUiLoaded$, signal);
     signal.throwIfAborted();
-    set(updatePage$, createElement(AuthPage, { clerk, mode }));
+    set(updatePage$, createElement(AuthV1Page, { clerk, mode }));
     await get(clerk$);
     signal.throwIfAborted();
   });
 }
 
-export const setupSignInPage$ = setupAuthPage("sign-in");
-export const setupSignUpPage$ = setupAuthPage("sign-up");
+export const setupSignInV1Page$ = setupAuthV1Page("sign-in");
+export const setupSignUpV1Page$ = setupAuthV1Page("sign-up");

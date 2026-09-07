@@ -156,7 +156,7 @@ export function resolveAppUrl(): string {
 }
 
 export function resolveAppAuthUrl(
-  path: `/sign-${string}`,
+  path: `/sign-${string}` | `/v1/sign-${string}`,
   options: { redirectUrl?: string } = {},
 ): string {
   const appOrigin = resolveAuthOrigin();
@@ -454,8 +454,8 @@ export const clerk$ = computed(async (get) => {
 });
 
 /**
- * Hosted Clerk UI stays route-scoped: auth pages and the account switcher
- * request it, and every other route keeps the core-only download.
+ * Hosted Clerk UI stays route-scoped: only v1 comparison pages request it,
+ * while stable auth and application routes keep the core-only download.
  */
 export const ensureClerkUiLoaded$ = command(
   async ({ get }, signal: AbortSignal): Promise<void> => {

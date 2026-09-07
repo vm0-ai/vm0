@@ -33,11 +33,7 @@ import {
   DropdownMenuSubContent,
   cn,
 } from "@okouai/ui";
-import {
-  clerk$,
-  currentUserInfo$,
-  ensureClerkUiLoaded$,
-} from "../../signals/auth.ts";
+import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -80,6 +76,7 @@ import {
   okouDebugRealtimeIndicator$,
   type OkouDebugRealtimeIndicator,
 } from "../../signals/okou-page/realtime-status.ts";
+import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -675,7 +672,7 @@ export function AccountDropdown({
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
-  const ensureClerkUiLoaded = useSet(ensureClerkUiLoaded$);
+  const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -729,19 +726,10 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
-    if (!clerk) {
-      return;
-    }
     detach(
-      (async () => {
-        await ensureClerkUiLoaded(pageSignal);
-        await clerk.openSignIn({
-          fallbackRedirectUrl: "/",
-          forceRedirectUrl: "/",
-        });
-      })(),
+      openAuthV2AddAccountDialog(pageSignal),
       Reason.DomCallback,
-      "open clerk add account sign-in",
+      "open auth v2 add account dialog",
     );
   };
 

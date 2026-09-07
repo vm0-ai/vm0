@@ -15,9 +15,7 @@ const PRIMARY_LOAD_OPTIONS = {
 } as const;
 
 async function waitForReadySignIn(): Promise<void> {
-  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
-    "/sign-in",
-  );
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
 }
 
 function installEarlyBootstrap(options: {
@@ -80,7 +78,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeInTheDocument();
-  expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
   expect(queryAllByRoleFast("link").length).toBeGreaterThan(0);
 });
 
@@ -124,10 +122,8 @@ test("Authentication startup retries after an early failure", async () => {
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([]);
   expect(clerk.loads).toHaveLength(1);
+  expect(clerk.uiRequests).toStrictEqual([]);
   expect(window.__okouClerkBootstrap?.loaded).toBeUndefined();
-  expect(clerk.uiRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
-  ]);
 });
 
 test("Startup onboarding follows the current account and workspace", async () => {
@@ -185,10 +181,31 @@ test("VM0 production uses production authentication", async () => {
   expect(clerk.resourceRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);
-  expect(clerk.uiRequests).toStrictEqual([
+  expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
+  expect(clerk.uiRequests).toStrictEqual([]);
+  expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+});
+
+test("V1 comparison authentication loads the hosted Clerk UI", async () => {
+  const clerk = context.mocks.clerk();
+  await setupPage({
+    context,
+    host: "app.vm0.ai",
+    path: "/v1/sign-in",
+    auth: null,
+  });
+
+  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
+    "/v1/sign-in",
+  );
+  expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
+  expect(clerk.resourceRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
+  expect(clerk.uiRequests).toStrictEqual([
+    { domain: undefined, publishableKey: "test_production_key" },
+  ]);
 });
 
 test("Authorized preview hosts use preview authentication", async () => {

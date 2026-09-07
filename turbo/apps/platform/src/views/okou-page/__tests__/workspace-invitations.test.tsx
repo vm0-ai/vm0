@@ -1,13 +1,15 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockedClerk,
+  mockSignInResource,
   type MockedMembership,
 } from "../../../__tests__/mock-auth.ts";
 import { search } from "../../../signals/location.ts";
@@ -52,6 +54,14 @@ function actionByName(
   return action;
 }
 
+function containingForm(element: HTMLElement): HTMLFormElement {
+  const form = element.closest("form");
+  if (!(form instanceof HTMLFormElement)) {
+    throw new Error("Expected form control to be inside a form");
+  }
+  return form;
+}
+
 function completedInvitationPath(ticket: string): string {
   const params = new URLSearchParams([
     ["utm_campaign", "workspace-invite"],
@@ -88,17 +98,14 @@ test("An invitation accepted for another account offers account switching", asyn
   );
   expect(acceptedNotice).toBeVisible();
 
-  const clerk = context.mocks.clerk();
-  expect(clerk.uiRequests).toStrictEqual([]);
   click(actionByName("button", "Switch account"));
 
-  await waitFor(() => {
-    expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
-      fallbackRedirectUrl: "/",
-      forceRedirectUrl: "/",
-    });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Sign in to VM0",
   });
-  expect(clerk.uiRequests).toHaveLength(1);
+  const emailAddress = within(dialog).getByLabelText("Email address");
+  expect(emailAddress).toBeVisible();
+  expect(emailAddress).toHaveValue("");
 });
 
 test("An unfinished invitation remains with authentication", async () => {
@@ -108,6 +115,14 @@ test("An unfinished invitation remains with authentication", async () => {
     ["__clerk_status", "sign_in"],
     ["__clerk_ticket", ticket],
   ]);
+  mockSignInResource({ status: "needs_identifier" });
+  mockedClerk.clientSignInCreate.mockImplementation(() => {
+    mockSignInResource({
+      status: "needs_first_factor",
+      supportedFirstFactors: [{ strategy: "password" }],
+    });
+    return Promise.resolve(mockedClerk.client.signIn);
+  });
   await setupPage({
     context,
     path: `/sign-in?${params.toString()}`,
@@ -115,7 +130,12 @@ test("An unfinished invitation remains with authentication", async () => {
     auth: null,
   });
 
-  expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+  const emailAddress = await screen.findByLabelText("Email address");
+  await fill(emailAddress, "invitee@example.com");
+  fireEvent.submit(containingForm(emailAddress));
+
+  const password = await screen.findByLabelText("Password");
+  expect(password).toBeVisible();
   const remainingParams = new URLSearchParams(search());
   expect(remainingParams.get("__clerk_status")).toBe("sign_in");
   expect(remainingParams.get("__clerk_ticket")).toBe(ticket);

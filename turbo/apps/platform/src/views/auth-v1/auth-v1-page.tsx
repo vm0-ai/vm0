@@ -9,17 +9,17 @@ import {
   buildSignupRedirectUrl,
   resolveAuthBrandContext,
 } from "../../signals/auth.ts";
-import { authPageMountRef$ } from "../../signals/auth-page-mount.ts";
+import { authV1PageMountRef$ } from "../../signals/auth-v1-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
-import { AuthLayout } from "./auth-layout.tsx";
-import { getClerkAppearance } from "./auth-clerk-appearance.ts";
-import { OkouClerkProvider } from "../clerk/clerk-provider.tsx";
+import { AuthV1Layout } from "./auth-v1-layout.tsx";
+import { AuthV1ClerkProvider } from "./clerk-provider.tsx";
+import { getAuthV1ComponentAppearance } from "./component-appearance.ts";
 
-export type AuthPageMode = "sign-in" | "sign-up";
+export type AuthV1PageMode = "sign-in" | "sign-up";
 
-interface AuthPageProps {
+interface AuthV1PageProps {
   readonly clerk: BrowserClerk;
-  readonly mode: AuthPageMode;
+  readonly mode: AuthV1PageMode;
 }
 
 function AuthLoadingFallback() {
@@ -40,8 +40,8 @@ function AuthLoadingFallback() {
   );
 }
 
-function AuthPageContent({ mode }: Pick<AuthPageProps, "mode">) {
-  const authPageMountRef = useSet(authPageMountRef$);
+function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
+  const authPageMountRef = useSet(authV1PageMountRef$);
   const activeRoute = useGet(activeRoute$);
   const theme = useGet(theme$);
   const authBrand = resolveAuthBrandContext();
@@ -55,28 +55,33 @@ function AuthPageContent({ mode }: Pick<AuthPageProps, "mode">) {
 
     return (
       <>
-        {activeRoute === "signIn" && (
+        {activeRoute === "signInV1" && (
           <GoogleOneTap
             signInForceRedirectUrl={redirectUrl}
             signUpForceRedirectUrl={redirectUrl}
           />
         )}
-        <AuthLayout authBrand={authBrand}>
+        <AuthV1Layout authBrand={authBrand}>
           <div
             className="relative z-10 flex w-full max-w-md flex-col gap-3"
             data-testid="app-sign-in"
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getClerkAppearance(theme, authBrand.brandName)}
+              appearance={getAuthV1ComponentAppearance(
+                theme,
+                authBrand.brandName,
+              )}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
-              path="/sign-in"
+              path="/v1/sign-in"
               routing="path"
+              signInUrl="/v1/sign-in"
+              signUpUrl="/v1/sign-up"
             />
           </div>
-        </AuthLayout>
+        </AuthV1Layout>
       </>
     );
   }
@@ -88,25 +93,26 @@ function AuthPageContent({ mode }: Pick<AuthPageProps, "mode">) {
   );
 
   return (
-    <AuthLayout authBrand={authBrand}>
+    <AuthV1Layout authBrand={authBrand}>
       <div data-testid="app-sign-up" ref={authPageMountRef}>
         <SignUp
-          appearance={getClerkAppearance(theme, authBrand.brandName)}
+          appearance={getAuthV1ComponentAppearance(theme, authBrand.brandName)}
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
           forceRedirectUrl={redirectUrl}
-          path="/sign-up"
+          path="/v1/sign-up"
           routing="path"
+          signInUrl="/v1/sign-in"
         />
       </div>
-    </AuthLayout>
+    </AuthV1Layout>
   );
 }
 
-export function AuthPage({ clerk, mode }: AuthPageProps) {
+export function AuthV1Page({ clerk, mode }: AuthV1PageProps) {
   return (
-    <OkouClerkProvider clerk={clerk}>
-      <AuthPageContent mode={mode} />
-    </OkouClerkProvider>
+    <AuthV1ClerkProvider clerk={clerk}>
+      <AuthV1PageContent mode={mode} />
+    </AuthV1ClerkProvider>
   );
 }

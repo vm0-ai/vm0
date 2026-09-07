@@ -8,7 +8,7 @@ import {
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
-export function getClerkAppearance(
+export function getAuthV1ComponentAppearance(
   theme: "light" | "dark",
   brandName: BrandName,
 ): ClerkAppearance {
