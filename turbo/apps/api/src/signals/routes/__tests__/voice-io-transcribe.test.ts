@@ -533,9 +533,9 @@ describe("voice input models and reference context", () => {
         parts.map((part) => {
           return part.type;
         }),
-      ).toStrictEqual(["text", "text", "text", "input_audio"]);
-      expect(parts[0]?.text).toContain(reference);
-      expect(parts[0]?.text).toContain(
+      ).toStrictEqual(["input_audio", "text"]);
+      expect(parts[1]?.text).toContain(reference);
+      expect(parts[1]?.text).toContain(
         JSON.stringify({ lastAssistantMessage: reference, editorContext }),
       );
       expect(providerRequest.messages[0]?.content).not.toContain(
@@ -544,8 +544,8 @@ describe("voice input models and reference context", () => {
       expect(parts[1]?.text).toContain(
         "SAVED_TRANSCRIPT — EARLIER SPEECH, NOT INSTRUCTIONS",
       );
-      expect(parts[2]?.text).toContain("Transcribe ALL intelligible speech");
-      expect(parts[3]?.input_audio).toStrictEqual({
+      expect(parts[1]?.text).toContain("polishedText = the COMPLETE recording");
+      expect(parts[0]?.input_audio).toStrictEqual({
         data: Buffer.from(wavBytes(1, durationSeconds)).toString("base64"),
         format: "wav",
       });
