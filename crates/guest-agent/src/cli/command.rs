@@ -1,7 +1,7 @@
 //! Claude Code command construction.
 //!
 //! This module owns argv shape and mock binary selection. Runtime process
-//! spawning stays in `execute_cli`.
+//! spawning stays in the shared CLI execution path.
 
 use guest_common::log_info;
 

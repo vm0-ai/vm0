@@ -267,9 +267,10 @@ pub struct ActiveInputController {
 
 /// Single-consumer CLI follow-up side of active input for one guest-agent run.
 ///
-/// `execute_cli_with_active_input` consumes this writer for the lifetime of one
-/// CLI execution. It yields accepted follow-up input frames and observes the
-/// same terminal close signal as the paired [`ActiveInputController`].
+/// [`crate::cli::execute_cli_with_active_input_for_config`] consumes this writer
+/// for the lifetime of one CLI execution. It yields accepted follow-up input
+/// frames and observes the same terminal close signal as the paired
+/// [`ActiveInputController`].
 #[derive(Debug)]
 pub struct ActiveInputWriter {
     controller: ActiveInputController,

@@ -747,6 +747,25 @@ class TestAnthropicModelJsonResponseInspector:
             "tokens.output": 100,
         }
 
+    def test_large_discarded_utf8_content_stays_within_work_limit(self) -> None:
+        content_bytes = 3 * 1024 * 1024
+        body = (
+            b'{"id":"msg_bulk","model":"claude-sonnet-4-6",'
+            b'"content":[{"type":"text","text":"'
+            + b"\xe2\x98\x83" * (content_bytes // 3)
+            + b'"}],"usage":{"input_tokens":50,"output_tokens":100}}'
+        )
+
+        result, error = _inspect_anthropic_json(body)
+
+        assert error is None
+        assert result == {
+            "message_id": "msg_bulk",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 50,
+            "tokens.output": 100,
+        }
+
     def test_invalid_json_returns_error(self):
         usage, error = _inspect_anthropic_json(b"not json")
         assert usage is None

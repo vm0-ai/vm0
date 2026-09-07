@@ -1,13 +1,16 @@
+import { setInterval } from "node:timers";
 import { app, autoUpdater, dialog } from "electron";
-import { UpdateSourceType, updateElectronApp } from "update-electron-app";
 
 import type { DesktopConfig } from "./config";
 import { shouldDeferDesktopUpdate } from "./desktop-auto-update-policy";
+import type { DesktopAutoUpdatesController } from "./desktop-main-module";
 import {
   desktopUpdateFeedBaseUrl,
   shouldInstallDesktopAutoUpdates,
 } from "./desktop-update-feed";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
+
+const DESKTOP_UPDATE_INTERVAL_MS = 30 * 60 * 1000;
 
 interface DesktopAutoUpdateOptions {
   readonly config: DesktopConfig;
@@ -37,7 +40,6 @@ async function notifyDesktopUpdateCheckFailed(
   displayName: string,
   error: unknown,
 ): Promise<void> {
-  console.error("Desktop update check failed", error);
   await dialog.showMessageBox({
     type: "error",
     buttons: ["OK"],
@@ -59,9 +61,108 @@ function shouldDeferDownloadedUpdate(
   }
 }
 
+type DesktopUpdateCheckOutcome =
+  | { readonly type: "update-available" }
+  | { readonly type: "update-not-available" }
+  | { readonly type: "error"; readonly error: unknown };
+
+interface ActiveDesktopUpdateCheck {
+  manualDisplayName?: string;
+}
+
+function createDesktopUpdateCheckCoordinator(): (
+  manualDisplayName?: string,
+) => boolean {
+  let activeCheck: ActiveDesktopUpdateCheck | undefined;
+
+  autoUpdater.on("error", (error) => {
+    if (!activeCheck) {
+      console.error("Desktop auto-updater error", error);
+    }
+  });
+
+  const requestUpdateCheck = (manualDisplayName?: string): boolean => {
+    if (activeCheck) {
+      if (
+        manualDisplayName !== undefined &&
+        activeCheck.manualDisplayName === undefined
+      ) {
+        activeCheck.manualDisplayName = manualDisplayName;
+      }
+      return true;
+    }
+
+    const check: ActiveDesktopUpdateCheck = { manualDisplayName };
+    activeCheck = check;
+
+    const handleNoUpdate = (): void => {
+      complete({ type: "update-not-available" });
+    };
+    const handleUpdateAvailable = (): void => {
+      complete({ type: "update-available" });
+    };
+    const handleError = (error: Error): void => {
+      complete({ type: "error", error });
+    };
+
+    function cleanup(): void {
+      autoUpdater.removeListener("update-not-available", handleNoUpdate);
+      autoUpdater.removeListener("update-available", handleUpdateAvailable);
+      autoUpdater.removeListener("error", handleError);
+    }
+
+    function complete(outcome: DesktopUpdateCheckOutcome): void {
+      if (activeCheck !== check) {
+        return;
+      }
+
+      cleanup();
+      activeCheck = undefined;
+
+      if (outcome.type === "error") {
+        console.error("Desktop update check failed", outcome.error);
+        if (check.manualDisplayName !== undefined) {
+          void notifyDesktopUpdateCheckFailed(
+            check.manualDisplayName,
+            outcome.error,
+          ).catch((dialogError) => {
+            console.error("Desktop update failure dialog failed", dialogError);
+          });
+        }
+        return;
+      }
+
+      if (
+        outcome.type === "update-not-available" &&
+        check.manualDisplayName !== undefined
+      ) {
+        void notifyNoDesktopUpdatesFound(check.manualDisplayName).catch(
+          (error) => {
+            console.error("Desktop update status dialog failed", error);
+          },
+        );
+      }
+    }
+
+    autoUpdater.once("update-not-available", handleNoUpdate);
+    autoUpdater.once("update-available", handleUpdateAvailable);
+    autoUpdater.once("error", handleError);
+
+    try {
+      autoUpdater.checkForUpdates();
+      return true;
+    } catch (error) {
+      complete({ type: "error", error });
+      return false;
+    }
+  };
+
+  return requestUpdateCheck;
+}
+
 export function installDesktopAutoUpdates(
   options: DesktopAutoUpdateOptions,
-): boolean {
+): DesktopAutoUpdatesController | null {
   if (
     !shouldInstallDesktopAutoUpdates({
       environment: options.config.environment,
@@ -70,7 +171,7 @@ export function installDesktopAutoUpdates(
       arch: process.arch,
     })
   ) {
-    return false;
+    return null;
   }
 
   const baseUrl = desktopUpdateFeedBaseUrl(
@@ -79,7 +180,7 @@ export function installDesktopAutoUpdates(
   );
   if (new URL(baseUrl).protocol !== "https:") {
     console.warn("Desktop auto-updates require an HTTPS feed URL");
-    return false;
+    return null;
   }
 
   let downloadedUpdatePending = false;
@@ -110,61 +211,21 @@ export function installDesktopAutoUpdates(
   };
 
   autoUpdater.on("checking-for-update", tryInstallPendingUpdate);
-
-  updateElectronApp({
-    updateSource: {
-      type: UpdateSourceType.StaticStorage,
-      baseUrl,
-    },
-    updateInterval: "30 minutes",
-    notifyUser: true,
-    onNotifyUser: () => {
-      downloadedUpdatePending = true;
-      tryInstallPendingUpdate();
-    },
+  autoUpdater.on("update-downloaded", () => {
+    downloadedUpdatePending = true;
+    tryInstallPendingUpdate();
   });
-  return true;
-}
 
-export function checkForDesktopUpdates(displayName: string): boolean {
-  const handleNoUpdate = (): void => {
-    cleanup();
-    void notifyNoDesktopUpdatesFound(displayName).catch((error) => {
-      console.error("Desktop update status dialog failed", error);
-    });
+  autoUpdater.setFeedURL({
+    url: `${baseUrl}/RELEASES.json`,
+    serverType: "json",
+  });
+
+  const requestUpdateCheck = createDesktopUpdateCheckCoordinator();
+  requestUpdateCheck();
+  setInterval(requestUpdateCheck, DESKTOP_UPDATE_INTERVAL_MS);
+
+  return {
+    checkForUpdates: (displayName) => requestUpdateCheck(displayName),
   };
-  const handleUpdateAvailable = (): void => {
-    cleanup();
-  };
-  const handleError = (error: Error): void => {
-    cleanup();
-    void notifyDesktopUpdateCheckFailed(displayName, error).catch(
-      (dialogError) => {
-        console.error("Desktop update failure dialog failed", dialogError);
-      },
-    );
-  };
-
-  function cleanup(): void {
-    autoUpdater.removeListener("update-not-available", handleNoUpdate);
-    autoUpdater.removeListener("update-available", handleUpdateAvailable);
-    autoUpdater.removeListener("error", handleError);
-  }
-
-  autoUpdater.once("update-not-available", handleNoUpdate);
-  autoUpdater.once("update-available", handleUpdateAvailable);
-  autoUpdater.once("error", handleError);
-
-  try {
-    autoUpdater.checkForUpdates();
-    return true;
-  } catch (error) {
-    cleanup();
-    void notifyDesktopUpdateCheckFailed(displayName, error).catch(
-      (dialogError) => {
-        console.error("Desktop update failure dialog failed", dialogError);
-      },
-    );
-    return false;
-  }
 }

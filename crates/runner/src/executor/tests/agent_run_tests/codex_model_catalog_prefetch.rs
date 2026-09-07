@@ -18,7 +18,7 @@ use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
     spawn_run_in_sandbox_test, test_executor_config, test_telemetry,
 };
-use crate::types::{ExecutionContext, FirewallEntry, SandboxReuseResult};
+use crate::types::{ExecutionContext, Firewall, FirewallEntry, SandboxReuseResult};
 
 const PREFETCH_ACTION: &str = "runner_codex_model_catalog_prefetch";
 
@@ -505,6 +505,10 @@ async fn assert_codex_catalog_prefetch_skipped(
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1, "{scenario}");
     assert!(
+        overrides.start_process_calls().is_empty(),
+        "{scenario}: ineligible runs must not start a prefetch process"
+    );
+    assert!(
         prefetch_ops(&telemetry).is_empty(),
         "{scenario}: ineligible runs must not record prefetch telemetry"
     );
@@ -518,8 +522,31 @@ async fn codex_catalog_prefetch_skips_ineligible_runs() {
     let mut missing_secrets = codex_oauth_context();
     missing_secrets.encrypted_secrets = None;
 
+    let mut empty_secrets = codex_oauth_context();
+    empty_secrets.encrypted_secrets = Some(String::new());
+
     let mut missing_firewall = codex_oauth_context();
     missing_firewall.firewalls = None;
+
+    let mut empty_firewalls = codex_oauth_context();
+    empty_firewalls.firewalls = Some(Vec::new());
+
+    let mut unrelated_builtin_firewall = codex_oauth_context();
+    unrelated_builtin_firewall.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "zendesk".into(),
+        base_url_vars: None,
+        source_id: None,
+    }]);
+
+    let mut matching_inline_firewall = codex_oauth_context();
+    matching_inline_firewall.firewalls = Some(vec![FirewallEntry::Inline {
+        firewall: Firewall {
+            name: "model-provider:codex-oauth-token".into(),
+            apis: Vec::new(),
+        },
+        custom_connector_id: None,
+        source_id: None,
+    }]);
 
     let mut custom_runtime = codex_oauth_context();
     custom_runtime.codex_runtime_config = Some(CodexRuntimeConfig {
@@ -546,9 +573,29 @@ async fn codex_catalog_prefetch_skips_ineligible_runs() {
             "missing encrypted secrets",
         ),
         (
+            empty_secrets,
+            SandboxReuseResult::PoolMiss,
+            "empty encrypted secrets",
+        ),
+        (
             missing_firewall,
             SandboxReuseResult::PoolMiss,
             "missing Codex OAuth firewall",
+        ),
+        (
+            empty_firewalls,
+            SandboxReuseResult::PoolMiss,
+            "empty firewall collection",
+        ),
+        (
+            unrelated_builtin_firewall,
+            SandboxReuseResult::PoolMiss,
+            "unrelated builtin firewall",
+        ),
+        (
+            matching_inline_firewall,
+            SandboxReuseResult::PoolMiss,
+            "matching inline firewall",
         ),
         (
             custom_runtime,

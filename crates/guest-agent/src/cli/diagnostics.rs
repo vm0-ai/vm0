@@ -1,7 +1,7 @@
 //! Raw CLI stderr diagnostic tail collection.
 //!
 //! This module keeps stderr collection bounded and intentionally leaves final
-//! secret masking to the `execute_cli` caller.
+//! secret masking to the shared CLI execution path.
 
 use guest_contracts::cli_stderr_diagnostics::{
     CLI_STDERR_OMITTED_LONG_LINE, CLI_STDERR_RESULT_MAX_LINE_BYTES, CLI_STDERR_RESULT_MAX_LINES,

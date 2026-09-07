@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.186.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.11...runner-rs-v0.186.12) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** keep shared reactor work independently scheduled ([#32055](https://github.com/vm0-ai/vm0/issues/32055)) ([7b89f33](https://github.com/vm0-ai/vm0/commit/7b89f334da0b1cd8b14eeee723761f88ee9962bb))
+* **runner:** warn on unacknowledged promotion drains ([#32058](https://github.com/vm0-ai/vm0/issues/32058)) ([132e942](https://github.com/vm0-ai/vm0/commit/132e94205bc0e182d6c5696f3b1c6aff86318b9f))
+
 ## [0.186.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.186.10...runner-rs-v0.186.11) (2026-09-07)
 
 

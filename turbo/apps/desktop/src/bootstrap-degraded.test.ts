@@ -6,6 +6,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopConfig } from "./config";
 
 const mocks = vi.hoisted(() => {
+  type AutoUpdaterListener = (...args: readonly unknown[]) => void;
+  const autoUpdaterListeners = new Map<string, Set<AutoUpdaterListener>>();
+
+  function addAutoUpdaterListener(
+    eventName: string,
+    listener: AutoUpdaterListener,
+  ): void {
+    const listeners = autoUpdaterListeners.get(eventName) ?? new Set();
+    listeners.add(listener);
+    autoUpdaterListeners.set(eventName, listeners);
+  }
+
   return {
     app: {
       isPackaged: true,
@@ -15,39 +27,33 @@ const mocks = vi.hoisted(() => {
       getPath: vi.fn<(name: string) => string>(),
     },
     autoUpdater: {
+      checkForUpdates: vi.fn(),
       quitAndInstall: vi.fn(),
-      on: vi.fn(),
+      setFeedURL: vi.fn(),
+      on: vi.fn(addAutoUpdaterListener),
       once: vi.fn(),
       removeListener: vi.fn(),
     },
+    autoUpdaterListeners,
     dialog: {
       showMessageBox: vi.fn<
         (options: { detail?: string }) => Promise<{ response: number }>
       >(async () => ({ response: 0 })),
     },
-    updateElectronApp:
-      vi.fn<
-        (options: {
-          updateSource: { baseUrl: string };
-          onNotifyUser: (info: { releaseName: string }) => void;
-        }) => void
-      >(),
+    setInterval: vi.fn(),
     sentryInit: vi.fn(),
     sentryCaptureException: vi.fn<(error: unknown) => string>(() => "event"),
   };
 });
 
+vi.mock("node:timers", () => ({
+  setInterval: mocks.setInterval,
+}));
+
 vi.mock("electron", () => ({
   app: mocks.app,
   autoUpdater: mocks.autoUpdater,
   dialog: mocks.dialog,
-}));
-
-vi.mock("update-electron-app", () => ({
-  UpdateSourceType: {
-    StaticStorage: "staticStorage",
-  },
-  updateElectronApp: mocks.updateElectronApp,
 }));
 
 vi.mock("@sentry/electron/main", () => ({
@@ -96,8 +102,15 @@ async function enterDegradedMode(error: unknown): Promise<void> {
   });
 }
 
+function emitAutoUpdaterEvent(eventName: string): void {
+  for (const listener of mocks.autoUpdaterListeners.get(eventName) ?? []) {
+    listener();
+  }
+}
+
 beforeEach(() => {
   vi.resetModules();
+  mocks.autoUpdaterListeners.clear();
   setPlatform("darwin");
   Object.defineProperty(process, "arch", { value: "arm64" });
   mocks.app.isPackaged = true;
@@ -122,22 +135,17 @@ describe("enterDegradedDesktopMode", () => {
     });
 
     expect(mocks.app.quit).toHaveBeenCalled();
-    expect(mocks.updateElectronApp).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
   it("installs auto-updates and tells the user an update will self-heal", async () => {
     await enterDegradedMode(new Error("boom"));
 
-    expect(mocks.updateElectronApp).toHaveBeenCalledWith(
-      expect.objectContaining({
-        updateSource: expect.objectContaining({
-          baseUrl:
-            "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/" +
-            process.arch,
-        }),
-      }),
-    );
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledWith({
+      url: `https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/${process.arch}/RELEASES.json`,
+      serverType: "json",
+    });
     const dialogOptions = mocks.dialog.showMessageBox.mock.calls[0]?.[0];
     expect(dialogOptions?.detail).toContain("installed automatically");
   });
@@ -145,8 +153,7 @@ describe("enterDegradedDesktopMode", () => {
   it("installs a downloaded update without prompting the user", async () => {
     await enterDegradedMode(new Error("boom"));
 
-    const updateOptions = mocks.updateElectronApp.mock.calls[0]?.[0];
-    updateOptions?.onNotifyUser({ releaseName: "v0.22.6" });
+    emitAutoUpdaterEvent("update-downloaded");
 
     await vi.waitFor(() => {
       expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalled();
@@ -160,7 +167,7 @@ describe("enterDegradedDesktopMode", () => {
 
     await enterDegradedMode(new Error("boom"));
 
-    expect(mocks.updateElectronApp).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
     const dialogOptions = mocks.dialog.showMessageBox.mock.calls[0]?.[0];
     expect(dialogOptions?.detail).toContain("reinstall");
   });
