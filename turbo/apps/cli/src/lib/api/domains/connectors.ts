@@ -26,6 +26,7 @@ import {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorCheckContract,
+  connectorCheckDiagnosticResultSchema,
   type ConnectorCheckDiagnosticResult,
   type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
@@ -220,7 +221,7 @@ export async function diagnoseConnectorCheck(
   const result = await client.check({ body: request });
 
   if (result.status === 200) {
-    return result.body;
+    return connectorCheckDiagnosticResultSchema.parse(result.body);
   }
 
   handleError(result, "Failed to diagnose connector");

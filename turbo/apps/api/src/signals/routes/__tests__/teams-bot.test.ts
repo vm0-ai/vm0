@@ -1743,7 +1743,7 @@ describe("POST /api/webhooks/teams/bot", () => {
               filenameSnapshot: "spec.png",
               contentType: "image/png",
             },
-            { type: "text", text: "please inspect this" },
+            { type: "text", text: "@Zero please inspect this" },
             {
               type: "source",
               kind: "teams",
@@ -2882,7 +2882,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       activity: teamsMessageActivity(fixture, {
         id: channelContextActivityId,
         replyToId: null,
-        text: "<at>Zero</at> start another topic",
+        text: "<at>Zero</at>",
       }),
       token: teamsToken(),
     });
@@ -2900,10 +2900,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         reactionType: "1f4ad_thoughtballoon",
       },
     ]);
-    const channelContextRunId = await runIdForPrompt(
-      actor,
-      "start another topic",
-    );
+    const channelContextRunId = await runIdForPrompt(actor, "@Zero");
     await runsApi.heartbeatRunner(runnerGroup);
     const channelContextClaim =
       await runsApi.claimRunnerJob(channelContextRunId);
@@ -2913,7 +2910,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       channelContextAppendSystemPrompt,
       "# Recent Channel Messages",
     );
-    expect(channelContextClaim.prompt).toBe("start another topic");
+    expect(channelContextClaim.prompt).toBe("@Zero");
     expect(graphRequests).toContain("channel-messages");
     expect(recentChannelContext).toContain("api channel planning");
     expect(recentChannelContext).not.toContain("start another topic");

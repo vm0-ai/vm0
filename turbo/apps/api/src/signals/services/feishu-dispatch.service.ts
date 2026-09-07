@@ -19,6 +19,7 @@ import {
   buildFeishuNoticeMessage,
 } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 import {
   addFeishuMessageReaction,
   listFeishuChatMessages,
@@ -77,6 +78,7 @@ export interface FeishuInboundMessage {
   readonly threadId: string | null;
   readonly openId: string;
   readonly text: string;
+  readonly promptText: string;
   readonly file: FeishuPromptFile | null;
 }
 
@@ -531,9 +533,6 @@ function formatFeishuContextMessage(
 const FEISHU_CONTEXT_PREAMBLE = [
   "The messages below are from a Feishu conversation. When responding:",
   "- Messages closer to RELATIVE_INDEX 0 are more recent — prioritize them.",
-  "- Match the tone of the conversation — casual messages deserve casual replies.",
-  "- Only provide technical analysis when explicitly asked a technical question.",
-  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function formatFeishuContext(
@@ -671,6 +670,8 @@ export function buildFeishuSystemPrompt(args: {
     ? ""
     : `Group ID: ${args.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`okou feishu message send\`)`;
   return [
+    CONVERSATION_GUIDANCE,
+    "",
     "# Current Integration",
     "You are currently running inside: Feishu",
     `Scope: ${typeLabel}`,

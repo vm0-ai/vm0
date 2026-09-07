@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
@@ -18,17 +17,13 @@ use crate::operation_tracker::{
 };
 use crate::{FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, VsockHost};
 
-use super::{ConnectionState, PendingNormalOperation, PendingResponse, RouteId, Shared};
+use super::{
+    ConnectionState, FrameWriteDecision, PendingNormalOperation, PendingResponse, RouteId, Shared,
+};
 
 struct PendingRequestGuard {
     shared: Arc<Shared>,
     route_id: RouteId,
-}
-
-pub(crate) struct RequestWriteGuard {
-    shared: Arc<Shared>,
-    write_started: bool,
-    write_returned: bool,
 }
 
 #[derive(Debug, Default)]
@@ -68,32 +63,6 @@ impl PendingRequestGuard {
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
         self.shared.remove_pending(self.route_id);
-    }
-}
-
-impl RequestWriteGuard {
-    pub(crate) fn new(shared: Arc<Shared>) -> Self {
-        Self {
-            shared,
-            write_started: false,
-            write_returned: false,
-        }
-    }
-
-    pub(crate) fn mark_started(&mut self) {
-        self.write_started = true;
-    }
-
-    fn mark_returned(&mut self) {
-        self.write_returned = true;
-    }
-}
-
-impl Drop for RequestWriteGuard {
-    fn drop(&mut self) {
-        if self.write_started && !self.write_returned {
-            self.shared.poison_connection();
-        }
     }
 }
 
@@ -141,7 +110,7 @@ impl CompositeNormalOperation {
 }
 
 /// Send a request and wait for a response with matching sequence number.
-async fn request_on_shared(
+pub(crate) async fn request_on_shared(
     shared: &Arc<Shared>,
     msg_type: u8,
     payload: &[u8],
@@ -163,18 +132,18 @@ async fn write_request_frame(
     before_write: impl FnOnce() -> io::Result<()>,
     progress: &RequestWriteProgress,
 ) -> io::Result<()> {
-    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    before_write()?;
-    progress.mark_frame_write();
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
+    shared
+        .write_frame(
+            data,
+            || {
+                before_write()?;
+                progress.mark_frame_write();
+                Ok(FrameWriteDecision::Write)
+            },
+            |_, _| {},
+        )
+        .await?;
     progress.mark_awaiting_terminal_response();
-    write_guard.mark_returned();
     Ok(())
 }
 
@@ -197,29 +166,13 @@ async fn write_request_frame_with_builder_and_progress(
     before_write: impl FnOnce() -> io::Result<()>,
     progress: &RequestWriteProgress,
 ) -> io::Result<()> {
-    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
     let frame_builder_guard = shared.frame_builder.lock().await;
     let mut frame = Vec::new();
     build_frame(seq, &mut frame)?;
-    let mut writer = shared.writer.lock().await;
-    before_write()?;
-    progress.mark_frame_write();
-    write_guard.mark_started();
-    let result = writer.write_all(&frame).await;
-    if let Err(error) = result {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        drop(writer);
-        drop(frame);
-        drop(frame_builder_guard);
-        return Err(error);
-    }
-    drop(writer);
+    let result = write_request_frame(shared, &frame, before_write, progress).await;
     drop(frame);
     drop(frame_builder_guard);
-    progress.mark_awaiting_terminal_response();
-    write_guard.mark_returned();
-    Ok(())
+    result
 }
 
 fn encode_request_frame(msg_type: u8, seq: u32, payload: &[u8]) -> io::Result<Vec<u8>> {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.18.1...vsock-host-v0.18.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire sandbox after prefetch start timeout ([#32308](https://github.com/vm0-ai/vm0/issues/32308)) ([984a47b](https://github.com/vm0-ai/vm0/commit/984a47b8744fea46ceb63c03d43fcd19970ef31d))
+
 ## [0.18.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.18.0...vsock-host-v0.18.1) (2026-09-07)
 
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.140...vsock-host-v0.18.0) (2026-09-07)

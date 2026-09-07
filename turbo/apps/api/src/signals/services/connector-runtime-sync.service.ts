@@ -43,10 +43,96 @@ interface CustomTargetSnapshot {
   readonly grant: AgentCustomConnectorGrant | undefined;
 }
 
+type ConnectorRuntimeBuiltinSyncResult = Extract<
+  ConnectorRuntimeSyncResult,
+  { readonly target: { readonly kind: "builtin" } }
+>;
+
+type ConnectorRuntimeCustomSyncResult = Extract<
+  ConnectorRuntimeSyncResult,
+  { readonly target: { readonly kind: "custom" } }
+>;
+
+type ResolvedConnectorRuntimeTarget =
+  | {
+      readonly kind: "builtin";
+      readonly result: ConnectorRuntimeBuiltinSyncResult;
+    }
+  | {
+      readonly kind: "custom";
+      readonly result: ConnectorRuntimeCustomSyncResult;
+      readonly customSnapshot: CustomTargetSnapshot | undefined;
+    };
+
+interface ConnectorRuntimeDiagnosticApi {
+  readonly base: string;
+  readonly permissions: readonly {
+    readonly name: string;
+    readonly rules: readonly string[];
+  }[];
+}
+
+export type ConnectorRuntimeDiagnosticResult =
+  | {
+      readonly target: Extract<
+        ConnectorRuntimeTarget,
+        { readonly kind: "builtin" }
+      >;
+      readonly state: "available";
+      readonly networkPolicy: Extract<
+        ConnectorRuntimeSyncResult,
+        {
+          readonly target: { readonly kind: "builtin" };
+          readonly state: "available";
+        }
+      >["networkPolicy"];
+    }
+  | {
+      readonly target: Extract<
+        ConnectorRuntimeTarget,
+        { readonly kind: "builtin" }
+      >;
+      readonly state: "unresolved";
+      readonly reason: "connector-unavailable";
+    }
+  | {
+      readonly target: Extract<
+        ConnectorRuntimeTarget,
+        { readonly kind: "custom" }
+      >;
+      readonly state: "available";
+      readonly label: string;
+      readonly credentialResolution: "network-boundary" | "none";
+      readonly apis: readonly ConnectorRuntimeDiagnosticApi[];
+      readonly networkPolicy: Extract<
+        ConnectorRuntimeSyncResult,
+        {
+          readonly target: { readonly kind: "custom" };
+          readonly state: "available";
+        }
+      >["networkPolicy"];
+    }
+  | {
+      readonly target: Extract<
+        ConnectorRuntimeTarget,
+        { readonly kind: "custom" }
+      >;
+      readonly state: "unresolved";
+      readonly reason: ConnectorRuntimeCustomUnresolvedReason;
+    }
+  | {
+      readonly target: Extract<
+        ConnectorRuntimeTarget,
+        { readonly kind: "custom" }
+      >;
+      readonly state: "absent";
+      readonly reason: ConnectorRuntimeCustomAbsentReason;
+    };
+
 function customAbsentResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
   reason: ConnectorRuntimeCustomAbsentReason,
-): ConnectorRuntimeSyncResult {
+): ConnectorRuntimeCustomSyncResult {
   return {
     target,
     state: "absent",
@@ -57,7 +143,7 @@ function customAbsentResult(
 function customUnresolvedResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
   reason: ConnectorRuntimeCustomUnresolvedReason,
-): ConnectorRuntimeSyncResult {
+): ConnectorRuntimeCustomSyncResult {
   return {
     target,
     state: "unresolved",
@@ -67,7 +153,7 @@ function customUnresolvedResult(
 
 function builtinUnresolvedResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "builtin" }>,
-): ConnectorRuntimeSyncResult {
+): ConnectorRuntimeBuiltinSyncResult {
   return {
     target,
     state: "unresolved",
@@ -194,7 +280,7 @@ async function resolveCustomTarget(args: {
     { readonly kind: "custom" }
   >;
   readonly snapshot: Awaited<ReturnType<typeof loadCustomSnapshot>>;
-}): Promise<ConnectorRuntimeSyncResult> {
+}): Promise<ConnectorRuntimeCustomSyncResult> {
   const target = {
     kind: "custom" as const,
     customConnectorId: args.registration.customConnectorId,
@@ -277,11 +363,11 @@ async function resolveCustomTarget(args: {
   };
 }
 
-export async function resolveConnectorRuntimeTargets(args: {
+async function resolveConnectorRuntimeTargetStates(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
   readonly targets: readonly ConnectorRuntimeTargetRegistration[];
-}): Promise<readonly ConnectorRuntimeSyncResult[]> {
+}): Promise<readonly ResolvedConnectorRuntimeTarget[]> {
   const builtinConnectorSlugs = args.targets.flatMap((target) => {
     return target.kind === "builtin" ? [target.connectorSlug] : [];
   });
@@ -343,15 +429,22 @@ export async function resolveConnectorRuntimeTargets(args: {
     }),
   );
 
-  const results: ConnectorRuntimeSyncResult[] = [];
+  const resolvedTargets: ResolvedConnectorRuntimeTarget[] = [];
   for (const registration of args.targets) {
     if (registration.kind === "custom") {
       if (!customSnapshot) {
         throw new Error("Custom connector runtime snapshot is unavailable");
       }
-      results.push(
-        await resolveCustomTarget({ registration, snapshot: customSnapshot }),
-      );
+      resolvedTargets.push({
+        kind: "custom",
+        result: await resolveCustomTarget({
+          registration,
+          snapshot: customSnapshot,
+        }),
+        customSnapshot: customSnapshot.customTargets.get(
+          registration.customConnectorId,
+        ),
+      });
       continue;
     }
     const target = {
@@ -376,30 +469,144 @@ export async function resolveConnectorRuntimeTargets(args: {
           })
         : undefined;
     const refresh = builtinByTarget.get(connectorRuntimeTargetKey(target));
-    results.push(
-      refresh && credentialAccess?.kind === "ok"
-        ? {
-            target,
-            state: "available",
-            networkPolicy: refresh.networkPolicy,
-            ...(refresh.nextRefreshAt
-              ? { nextSyncAt: refresh.nextRefreshAt }
-              : {}),
-          }
-        : builtinUnresolvedResult(target),
-    );
+    resolvedTargets.push({
+      kind: "builtin",
+      result:
+        refresh && credentialAccess?.kind === "ok"
+          ? {
+              target,
+              state: "available",
+              networkPolicy: refresh.networkPolicy,
+              ...(refresh.nextRefreshAt
+                ? { nextSyncAt: refresh.nextRefreshAt }
+                : {}),
+            }
+          : builtinUnresolvedResult(target),
+    });
   }
+  logResolvedConnectorRuntimeTargets(args.targets, resolvedTargets);
+  return resolvedTargets;
+}
+
+function logResolvedConnectorRuntimeTargets(
+  targets: readonly ConnectorRuntimeTargetRegistration[],
+  resolvedTargets: readonly ResolvedConnectorRuntimeTarget[],
+): void {
   const stateCounts = { available: 0, absent: 0, unresolved: 0 };
-  for (const result of results) {
-    stateCounts[result.state] += 1;
+  for (const target of resolvedTargets) {
+    stateCounts[target.result.state] += 1;
   }
   L.debug("Resolved connector runtime targets", {
-    targetCount: args.targets.length,
-    builtinTargetCount: builtinConnectorSlugs.length,
-    customTargetCount: customRegistrations.length,
+    targetCount: targets.length,
+    builtinTargetCount: targets.filter((target) => {
+      return target.kind === "builtin";
+    }).length,
+    customTargetCount: targets.filter((target) => {
+      return target.kind === "custom";
+    }).length,
     availableCount: stateCounts.available,
     absentCount: stateCounts.absent,
     unresolvedCount: stateCounts.unresolved,
   });
-  return results;
+}
+
+export async function resolveConnectorRuntimeTargets(args: {
+  readonly db: Db;
+  readonly scope: ConnectorRuntimeScope;
+  readonly targets: readonly ConnectorRuntimeTargetRegistration[];
+}): Promise<readonly ConnectorRuntimeSyncResult[]> {
+  const resolvedTargets = await resolveConnectorRuntimeTargetStates(args);
+  return resolvedTargets.map((target) => {
+    return target.result;
+  });
+}
+
+function diagnosticCustomApis(
+  result: Extract<
+    ConnectorRuntimeSyncResult,
+    {
+      readonly target: { readonly kind: "custom" };
+      readonly state: "available";
+    }
+  >,
+): readonly ConnectorRuntimeDiagnosticApi[] {
+  return result.firewall.firewall.apis.map((api) => {
+    return {
+      base: api.base,
+      permissions: (api.permissions ?? []).map((permission) => {
+        return { name: permission.name, rules: [...permission.rules] };
+      }),
+    };
+  });
+}
+
+function diagnosticCustomCredentialResolution(
+  result: Extract<
+    ConnectorRuntimeSyncResult,
+    {
+      readonly target: { readonly kind: "custom" };
+      readonly state: "available";
+    }
+  >,
+): "network-boundary" | "none" {
+  return result.firewall.firewall.apis.some((api) => {
+    return (
+      Object.keys(api.auth.headers ?? {}).length > 0 ||
+      Object.keys(api.auth.query ?? {}).length > 0
+    );
+  })
+    ? "network-boundary"
+    : "none";
+}
+
+export async function resolveConnectorRuntimeDiagnosticTargets(args: {
+  readonly db: Db;
+  readonly scope: ConnectorRuntimeScope;
+  readonly targets: readonly ConnectorRuntimeTargetRegistration[];
+}): Promise<readonly ConnectorRuntimeDiagnosticResult[]> {
+  const resolvedTargets = await resolveConnectorRuntimeTargetStates(args);
+  return resolvedTargets.map((resolved): ConnectorRuntimeDiagnosticResult => {
+    if (resolved.kind === "builtin") {
+      const { result } = resolved;
+      return result.state === "available"
+        ? {
+            target: result.target,
+            state: result.state,
+            networkPolicy: result.networkPolicy,
+          }
+        : {
+            target: result.target,
+            state: result.state,
+            reason: result.reason,
+          };
+    }
+    const { result } = resolved;
+    if (result.state === "absent") {
+      return {
+        target: result.target,
+        state: result.state,
+        reason: result.reason,
+      };
+    }
+    if (result.state === "unresolved") {
+      return {
+        target: result.target,
+        state: result.state,
+        reason: result.reason,
+      };
+    }
+    if (!resolved.customSnapshot) {
+      throw new Error(
+        `Missing custom connector diagnostic metadata: ${result.target.customConnectorId}`,
+      );
+    }
+    return {
+      target: result.target,
+      state: result.state,
+      label: resolved.customSnapshot.row.connector.displayName,
+      credentialResolution: diagnosticCustomCredentialResolution(result),
+      apis: diagnosticCustomApis(result),
+      networkPolicy: result.networkPolicy,
+    };
+  });
 }

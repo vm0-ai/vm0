@@ -2,20 +2,26 @@ import { randomUUID } from "node:crypto";
 
 import {
   type ConnectorCheckRequest,
+  type ConnectorCheckRequestBody,
   connectorCheckContract,
 } from "@okouai/api-contracts/contracts/connector-check";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { createStore } from "ccstate";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { now } from "../../../lib/time";
+import { mockNow, now, withMockNowForTest } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import {
   seedConnectorStorageRow,
   setConnectorDefaultState,
@@ -29,8 +35,12 @@ import {
 } from "./helpers/org-membership";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 import { connectorCheckRoutes } from "../connector-check";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 
-const TEST_APP_ROUTES = Object.freeze([...connectorCheckRoutes]);
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorCheckRoutes,
+  ...testCronCleanupSandboxesStateRoutes,
+]);
 
 const context = testContext();
 const mocks = createRouteMocks(context);
@@ -42,7 +52,11 @@ const store = createStore();
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
-  readonly connectorSlug: "github" | "reap" | "removed-connector";
+  readonly connectorSlug:
+    | "cloudflare"
+    | "github"
+    | "reap"
+    | "removed-connector";
 }
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
@@ -60,8 +74,12 @@ const trackOrgMembershipFixture = createFixtureTracker<OrgMembershipFixture>(
 );
 
 function client() {
-  return setupApp({ context, routes: connectorCheckRoutes })(
-    connectorCheckContract,
+  return setupApp({ context, routes: TEST_APP_ROUTES })(connectorCheckContract);
+}
+
+function stateClient() {
+  return setupApp({ context, routes: TEST_APP_ROUTES })(
+    testCronCleanupSandboxesStateContract,
   );
 }
 
@@ -90,7 +108,7 @@ async function checkWithSession(
   );
 }
 
-async function checkWithToken(token: string, body: ConnectorCheckRequest) {
+async function checkWithToken(token: string, body: ConnectorCheckRequestBody) {
   return await accept(
     client().check({
       headers: { authorization: `Bearer ${token}` },
@@ -166,7 +184,13 @@ async function connectReap(
   return connector.id;
 }
 
-async function createOwnedRun(actor: ApiTestUser): Promise<string> {
+async function createOwnedRun(
+  actor: ApiTestUser,
+  options: {
+    readonly builtinConnectorSlugs?: readonly string[];
+    readonly customConnectorIds?: readonly string[];
+  } = {},
+): Promise<{ readonly runId: string; readonly agentId: string }> {
   bdd.acceptAgentStorageWrites();
   runsApi.acceptStorageDownloads();
   runsApi.acceptTelemetryIngest();
@@ -177,12 +201,26 @@ async function createOwnedRun(actor: ApiTestUser): Promise<string> {
     displayName: `Connector check ${randomUUID()}`,
     visibility: "private",
   });
+  if (options.builtinConnectorSlugs) {
+    await runsApi.enableAgentConnectors(
+      actor,
+      agent.agentId,
+      options.builtinConnectorSlugs,
+    );
+  }
+  if (options.customConnectorIds) {
+    await connectorsApi.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      options.customConnectorIds,
+    );
+  }
   const run = await runsApi.createRun(actor, {
     agentId: agent.agentId,
     prompt: "Create a connector check fixture",
     modelProvider: "anthropic-api-key",
   });
-  return run.runId;
+  return { runId: run.runId, agentId: agent.agentId };
 }
 
 beforeEach(() => {
@@ -194,10 +232,11 @@ beforeEach(() => {
 
 describe("POST /api/connectors/diagnostics/check", () => {
   it("requires organization auth and both agent capabilities", async () => {
+    const runBase = "https://prod.api.reap.global/v1";
     const body = {
       mode: "url" as const,
-      method: "POST",
-      url: "https://slack.com/api/chat.postMessage",
+      method: "GET",
+      url: `${runBase}/users`,
     };
     const unauthenticated = await accept(
       client().check({ headers: {}, body }),
@@ -217,7 +256,10 @@ describe("POST /api/connectors/diagnostics/check", () => {
 
     const actor = bdd.user();
     await seedAdminMembership(actor);
-    const runId = await createOwnedRun(actor);
+    await connectReap(actor, runBase);
+    const { runId } = await createOwnedRun(actor, {
+      builtinConnectorSlugs: ["reap"],
+    });
     const withoutConnectorRead = await accept(
       client().check({
         headers: {
@@ -246,23 +288,9 @@ describe("POST /api/connectors/diagnostics/check", () => {
       message: "Missing required capability: agent-run:read",
     });
 
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        runId,
-        firewalls: [{ kind: "builtin", name: "slack" }],
-        networkPolicyEntries: [
-          {
-            name: "slack",
-            policy: {
-              allow: [],
-              deny: ["chat:write"],
-              ask: [],
-              unknownPolicy: "ask",
-            },
-          },
-        ],
-      },
-    ]);
+    context.mocks.axiom.query.mockRejectedValue(
+      new Error("Axiom connector diagnostics must not be queried"),
+    );
     const allowed = await checkWithToken(
       okouToken(actor, runId, ["connector:read", "agent-run:read"]),
       body,
@@ -271,21 +299,21 @@ describe("POST /api/connectors/diagnostics/check", () => {
       outcome: "resolved",
       mode: "url",
       connector: {
-        connectorSlug: "slack",
-        label: "Slack",
+        connectorSlug: "reap",
+        label: "Reap",
       },
       run: { status: "configured" },
       permission: {
         kind: "matched",
         permissions: [
           {
-            name: "chat:write",
-            policy: { outcome: "deny", basis: "deny-list" },
+            name: "read",
+            policy: { outcome: "allow", basis: "allow-list" },
           },
         ],
       },
     });
-    expect(context.mocks.axiom.query).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
   it("enforces strict bodies and returns sanitized unsafe-input outcomes", async () => {
@@ -695,351 +723,503 @@ describe("POST /api/connectors/diagnostics/check", () => {
     }
   });
 
-  it("uses only an owned agent run snapshot, including dynamic bases and final policies", async () => {
-    const owner = bdd.user();
-    const runId = await createOwnedRun(owner);
-    await seedAdminMembership(owner);
-    const token = okouToken(owner, runId, ["connector:read", "agent-run:read"]);
-    const runBase = "https://prod.api.reap.global/v1";
-    const secondRunBase = "https://sandbox.api.reap.global/v1";
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        runId,
-        firewalls: [
-          {
-            kind: "builtin",
-            name: "reap",
-            baseUrlVars: { REAP_API_BASE_URL: runBase },
-          },
-          {
-            kind: "builtin",
-            name: "reap",
-            baseUrlVars: { REAP_API_BASE_URL: secondRunBase },
-          },
-        ],
-        networkPolicyEntries: [
-          {
-            name: "reap",
-            policy: {
-              allow: [],
-              deny: [],
-              ask: ["read"],
-              unknownPolicy: "deny",
+  it("uses pinned builtin registration state with current permission and account authority", async () => {
+    await withMockNowForTest(new Date("2026-09-07T08:00:00.000Z"), async () => {
+      const owner = bdd.user();
+      await seedAdminMembership(owner);
+      const runBase = "https://prod.api.reap.global/v1";
+      const changedBase = "https://changed.api.reap.global/v1";
+      const connectorId = await connectReap(owner, runBase);
+      const firewallApi = createFirewallApi(context);
+      await firewallApi.provisionRunReadyOrg(owner);
+      await firewallApi.seedTestConnector(owner, {
+        connectorSlug: "cloudflare",
+        authMethod: "oauth",
+        accessToken: "cloudflare-test-access-token",
+      });
+      await trackConnectedFixture(
+        Promise.resolve({ actor: owner, connectorSlug: "cloudflare" }),
+      );
+      const { runId, agentId } = await createOwnedRun(owner, {
+        builtinConnectorSlugs: ["reap", "cloudflare"],
+      });
+      const request = {
+        mode: "url" as const,
+        method: "GET",
+        url: `${runBase}/users`,
+      };
+      context.mocks.axiom.query.mockRejectedValue(
+        new Error("Axiom connector diagnostics must not be queried"),
+      );
+
+      await runsApi.applyUserPermissionGrant(owner, {
+        agentId,
+        connectorSlug: "reap",
+        permission: "read",
+        action: "deny",
+      });
+
+      const initial = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        request,
+      );
+      expect(initial.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "reap" },
+        run: { status: "configured", bases: [runBase] },
+        base: runBase,
+        permission: {
+          kind: "matched",
+          permissions: [
+            {
+              name: "read",
+              policy: { outcome: "deny", basis: "deny-list" },
             },
-          },
-        ],
-      },
-    ]);
-
-    const urlResult = await checkWithToken(token, {
-      mode: "url",
-      method: "GET",
-      url: `${runBase}/users`,
-    });
-    expect(urlResult.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "reap" },
-      run: { status: "configured", bases: [runBase, secondRunBase] },
-      base: runBase,
-      permission: {
-        kind: "matched",
-        permissions: [
-          {
-            name: "read",
-            policy: { outcome: "ask", basis: "ask-list" },
-          },
-        ],
-      },
-    });
-
-    const environmentResult = await checkWithToken(token, {
-      mode: "environment",
-      environmentName: "REAP_API_KEY",
-      permission: "write",
-    });
-    expect(environmentResult.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "reap" },
-      run: { status: "configured", bases: [runBase, secondRunBase] },
-      permission: { outcome: "allow", basis: "not-blocked" },
-    });
-
-    const unknownEndpoint = await checkWithToken(token, {
-      mode: "url",
-      method: "OPTIONS",
-      url: `${runBase}/not-a-real-endpoint`,
-    });
-    expect(unknownEndpoint.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "reap" },
-      permission: {
-        kind: "unknown-endpoint",
-        policy: { outcome: "deny", basis: "unknown-policy" },
-      },
-    });
-
-    const notConfiguredEnvironment = await checkWithToken(token, {
-      mode: "environment",
-      environmentName: "GH_TOKEN",
-      permission: "contents:read",
-    });
-    expect(notConfiguredEnvironment.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "github" },
-      run: { status: "not-configured" },
-      permission: {
-        outcome: "unavailable",
-        basis: "connector-not-configured",
-      },
-    });
-
-    const globalFallbackDenied = await checkWithToken(token, {
-      mode: "url",
-      method: "GET",
-      url: "https://api.github.com/repos/vm0-ai/vm0",
-    });
-    expect(globalFallbackDenied.body).toStrictEqual({
-      outcome: "no-match",
-      scope: "run",
-    });
-
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        runId,
-        firewalls: [
-          {
-            kind: "builtin",
-            name: "reap",
-            baseUrlVars: { REAP_API_BASE_URL: "http://127.0.0.1" },
-          },
-        ],
-      },
-    ]);
-    const rejectedDynamicBase = await checkWithToken(token, {
-      mode: "url",
-      method: "GET",
-      url: "http://127.0.0.1/users",
-      connectorSlug: "reap",
-    });
-    expect(rejectedDynamicBase.body).toMatchObject({
-      outcome: "unresolved-dynamic-base",
-      connector: { connectorSlug: "reap" },
-    });
-
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        runId,
-        firewalls: [
-          {
-            kind: "builtin",
-            name: "reap",
-            baseUrlVars: { REAP_API_BASE_URL: runBase },
-          },
-        ],
-      },
-    ]);
-    const unavailablePolicies = await checkWithToken(token, {
-      mode: "environment",
-      environmentName: "REAP_API_KEY",
-      permission: "read",
-    });
-    expect(unavailablePolicies.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "reap" },
-      run: { status: "configured", bases: [runBase] },
-      permission: {
-        outcome: "unavailable",
-        basis: "policies-unavailable",
-      },
-    });
-
-    context.mocks.axiom.query.mockResolvedValue([]);
-    const missingSnapshot = await checkWithToken(token, {
-      mode: "environment",
-      environmentName: "REAP_API_KEY",
-    });
-    expect(missingSnapshot.body).toStrictEqual({
-      outcome: "run-context-unavailable",
-    });
-
-    const intruder = bdd.user({ orgId: requireOrgId(owner) });
-    await seedAdminMembership(intruder);
-    const wrongOwner = await accept(
-      client().check({
-        headers: {
-          authorization: `Bearer ${okouToken(intruder, runId, [
-            "connector:read",
-            "agent-run:read",
-          ])}`,
+          ],
         },
-        body: {
-          mode: "environment",
-          environmentName: "REAP_API_KEY",
+      });
+
+      await runsApi.applyUserPermissionGrant(owner, {
+        agentId,
+        connectorSlug: "cloudflare",
+        permission: "dns-firewall.write",
+        action: "allow",
+        expiresIn: "1h",
+      });
+      const expiringRequest = {
+        mode: "url" as const,
+        method: "POST",
+        url: "https://api.cloudflare.com/client/v4/accounts/test/dns_firewall/rules",
+      };
+      const allowed = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        expiringRequest,
+      );
+      expect(allowed.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "cloudflare" },
+        permission: {
+          permissions: [
+            {
+              name: "dns-firewall.write",
+              policy: { outcome: "allow", basis: "allow-list" },
+            },
+          ],
         },
-      }),
-      [404],
-    );
-    expect(wrongOwner.body.error).toStrictEqual({
-      code: "NOT_FOUND",
-      message: "Agent run not found",
+      });
+
+      mockNow(new Date("2026-09-07T09:00:00.000Z"));
+      const expired = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        expiringRequest,
+      );
+      expect(expired.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "cloudflare" },
+        permission: {
+          permissions: [
+            {
+              name: "dns-firewall.write",
+              policy: { outcome: "deny", basis: "deny-list" },
+            },
+          ],
+        },
+      });
+
+      await connectorsApi.connectManualGrant(
+        owner,
+        "reap",
+        "api-token",
+        {
+          apiKey: "reap-updated-api-key",
+          apiBaseUrl: changedBase,
+        },
+        undefined,
+        { intent: "reconnect", connectionId: connectorId },
+      );
+      await setConnectorDefaultState(context, {
+        orgId: requireOrgId(owner),
+        userId: owner.userId,
+        connectorId,
+        isDefault: false,
+      });
+
+      const pinned = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        request,
+      );
+      expect(pinned.body).toMatchObject({
+        outcome: "resolved",
+        base: runBase,
+        run: { status: "configured", bases: [runBase] },
+      });
+      const changed = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        { ...request, url: `${changedBase}/users` },
+      );
+      expect(changed.body).toStrictEqual({ outcome: "no-match", scope: "run" });
+
+      await setConnectorCredentialStorageState(context, {
+        connectorSlug: "reap",
+        orgId: requireOrgId(owner),
+        storageVersion: 2,
+        userId: owner.userId,
+      });
+      const unavailable = await checkWithToken(
+        okouToken(owner, runId, ["connector:read", "agent-run:read"]),
+        request,
+      );
+      expect(unavailable.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "reap" },
+        run: { status: "configured", bases: [runBase] },
+        permission: {
+          permissions: [
+            {
+              name: "read",
+              policy: {
+                outcome: "unavailable",
+                basis: "policies-unavailable",
+              },
+            },
+          ],
+        },
+      });
+
+      const intruder = bdd.user({ orgId: requireOrgId(owner) });
+      await seedAdminMembership(intruder);
+      const wrongOwner = await accept(
+        client().check({
+          headers: {
+            authorization: `Bearer ${okouToken(intruder, runId, [
+              "connector:read",
+              "agent-run:read",
+            ])}`,
+          },
+          body: request,
+        }),
+        [404],
+      );
+      expect(wrongOwner.body.error).toStrictEqual({
+        code: "NOT_FOUND",
+        message: "Agent run not found",
+      });
+      expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+      await setConnectorCredentialStorageState(context, {
+        connectorSlug: "reap",
+        orgId: requireOrgId(owner),
+        storageVersion: 1,
+        userId: owner.userId,
+      });
+      await setConnectorDefaultState(context, {
+        orgId: requireOrgId(owner),
+        userId: owner.userId,
+        connectorId,
+        isDefault: true,
+      });
     });
   });
 
-  it("diagnoses historical and execution inline entries without exposing their source snapshot", async () => {
+  it("keeps legacy requests builtin-only and resolves admitted custom targets on explicit requests", async () => {
     const actor = bdd.user();
-    const runId = await createOwnedRun(actor);
     await seedAdminMembership(actor);
-    const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
-    const inlineBase = "https://legacy-github.example.com";
-    context.mocks.axiom.query.mockResolvedValue([
-      {
-        runId,
-        firewalls: [
-          {
-            name: "github",
-            apis: [
-              {
-                base: inlineBase,
-                permissions: [
-                  {
-                    name: "repository.read",
-                    rules: ["GET /repos/{owner}/{repo}"],
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            kind: "inline",
-            name: "github",
-            apis: [
-              {
-                id: "github:inline:0",
-                base: inlineBase,
-                hostPolicy: { kind: "publicDestination" },
-                auth: {
-                  headerEntries: [
-                    {
-                      name: "Authorization",
-                      value: `Bearer \${{ secrets.GITHUB_TOKEN }}`,
-                    },
-                  ],
-                },
-                permissions: [
-                  {
-                    name: "issues.write",
-                    rules: ["POST /repos/{owner}/{repo}/issues"],
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            name: "github",
-            apis: [
-              {
-                base: "https://api.github.com",
-                permissions: [
-                  {
-                    name: "repository.read",
-                    rules: ["GET /repos/{owner}/{repo}"],
-                  },
-                ],
-              },
-            ],
-          },
-          { kind: "builtin", name: "unknown-non-connector" },
-        ],
-        networkPolicyEntries: [
-          {
-            name: "github",
-            policy: {
-              allow: ["repository.read"],
-              deny: [],
-              ask: ["issues.write"],
-              unknownPolicy: "deny",
-            },
-          },
-        ],
-      },
-    ]);
+    const pinnedHost = "prod.api.reap.global";
+    const changedHost = "changed.api.reap.global";
+    const runBase = `https://${pinnedHost}/v1`;
+    await connectReap(actor, runBase);
 
-    const result = await checkWithToken(token, {
+    const customBody = manualHttpCustomConnectorCreateBody({
+      displayName: "Run Reap Overlay",
+      slug: `_run-reap-overlay-${randomUUID().slice(0, 8)}`,
+      prefixTemplates: ["https://{{variables.host}}/v1/"],
+      permissionBundleRef: "builtin:slack@1",
+    });
+    const custom = await connectorsApi.createCustomConnector(actor, {
+      ...customBody,
+      fields: [
+        ...customBody.fields,
+        {
+          key: "host",
+          label: "Host",
+          kind: "variable",
+          required: true,
+        },
+      ],
+    });
+    const connectedCustom = await connectorsApi.setCustomConnectorValues(
+      actor,
+      custom.id,
+      [
+        { key: "secret", kind: "secret", value: "custom-secret-before" },
+        { key: "host", kind: "variable", value: pinnedHost },
+      ],
+    );
+    if (!connectedCustom.connectedAccountId) {
+      throw new Error("Expected a connected custom connector account");
+    }
+    const customConnectionId = connectedCustom.connectedAccountId;
+    const { runId, agentId } = await createOwnedRun(actor, {
+      builtinConnectorSlugs: ["reap"],
+      customConnectorIds: [custom.id],
+    });
+    const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
+    const url = `${runBase}/chat.postMessage`;
+    context.mocks.axiom.query.mockRejectedValue(
+      new Error("Axiom connector diagnostics must not be queried"),
+    );
+
+    const legacy = await checkWithToken(token, {
       mode: "url",
       method: "POST",
-      url: `${inlineBase}/repos/vm0-ai/vm0/issues?query-private=1#fragment-private`,
-      connectorSlug: "github",
+      url,
     });
-    expect(result.body).toMatchObject({
+    expect(legacy.body).toMatchObject({
       outcome: "resolved",
-      connector: { connectorSlug: "github" },
-      environmentNames: null,
-      run: {
-        status: "configured",
-        bases: ["https://api.github.com", inlineBase],
+      connector: { connectorSlug: "reap" },
+    });
+    expect(JSON.stringify(legacy.body)).not.toContain(custom.id);
+
+    const customRequest = {
+      mode: "url" as const,
+      method: "POST",
+      url,
+      target: { kind: "custom" as const, customConnectorId: custom.id },
+    };
+    const selected = await checkWithToken(token, customRequest);
+    expect(selected.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        target: { kind: "custom", customConnectorId: custom.id },
+        label: "Run Reap Overlay",
+        visibility: "available",
+        credentialResolution: "network-boundary",
       },
-      relativePath: "/repos/vm0-ai/vm0/issues",
+      run: { status: "configured", bases: [runBase] },
+      base: runBase,
+      relativePath: "/chat.postMessage",
       permission: {
         kind: "matched",
         permissions: [
           {
-            name: "issues.write",
-            policy: { outcome: "ask", basis: "ask-list" },
+            name: "chat:write",
+            policy: { outcome: "deny", basis: "deny-list" },
           },
         ],
       },
     });
-    const serialized = JSON.stringify(result.body);
+    const serialized = JSON.stringify(selected.body);
     for (const forbidden of [
-      "query-private",
-      "fragment-private",
-      "runId",
-      "networkPolicies",
-      '"allow":',
-      '"deny":',
-      '"ask":',
-      "repository.read",
-      "unknown-non-connector",
+      "custom-secret-before",
+      customConnectionId,
       "Authorization",
-      "secrets.GITHUB_TOKEN",
+      "sourceId",
+      "baseUrlVars",
+      "networkPolicy",
+      "secrets.secret",
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
 
-    const recoveredEnvironment = await checkWithToken(token, {
-      mode: "url",
-      method: "GET",
-      url: "https://api.github.com/repos/vm0-ai/vm0",
-      connectorSlug: "github",
-    });
-    expect(recoveredEnvironment.body).toMatchObject({
-      outcome: "resolved",
-      connector: { connectorSlug: "github" },
-      environmentNames: ["GITHUB_TOKEN"],
+    const grantResponse =
+      await connectorsApi.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agentId,
+        [
+          {
+            customConnectorId: custom.id,
+            permissionNames: ["chat:write"],
+          },
+        ],
+        [200],
+      );
+    expect(grantResponse.status).toBe(200);
+    const allowed = await checkWithToken(token, customRequest);
+    expect(allowed.body).toMatchObject({
       permission: {
-        kind: "matched",
         permissions: [
           {
-            name: "repository.read",
+            name: "chat:write",
+            policy: { outcome: "allow", basis: "allow-list" },
+          },
+        ],
+      },
+    });
+    await runsApi.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorSlug: "reap",
+      permission: "write",
+      action: "deny",
+    });
+    const includedCustom = await checkWithToken(token, {
+      mode: "url",
+      method: "POST",
+      url,
+      includeCustomConnectors: true,
+    });
+    expect(includedCustom.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        target: { kind: "custom", customConnectorId: custom.id },
+        label: "Run Reap Overlay",
+      },
+      permission: {
+        permissions: [
+          {
+            name: "chat:write",
             policy: { outcome: "allow", basis: "allow-list" },
           },
         ],
       },
     });
 
-    const inlineUnknownEndpoint = await checkWithToken(token, {
-      mode: "url",
-      method: "OPTIONS",
-      url: `${inlineBase}/not-a-real-endpoint`,
-      connectorSlug: "github",
+    await connectorsApi.setCustomConnectorValues(
+      actor,
+      custom.id,
+      [
+        { key: "secret", kind: "secret", value: "custom-secret-after" },
+        { key: "host", kind: "variable", value: changedHost },
+      ],
+      { intent: "reconnect", connectionId: customConnectionId },
+    );
+    await connectorsApi.updateCustomConnector(actor, custom.id, {
+      displayName: "Updated Run Reap Overlay",
+      prefixTemplates: ["https://{{variables.host}}/v2/"],
+      fields: connectedCustom.fields,
+      headerInjections: customBody.headerInjections,
+      queryInjections: customBody.queryInjections,
+      permissionBundleRef: customBody.permissionBundleRef,
     });
-    expect(inlineUnknownEndpoint.body).toMatchObject({
+    const updatedCustomRequest = {
+      ...customRequest,
+      url: `https://${pinnedHost}/v2/chat.postMessage`,
+    };
+    const pinned = await checkWithToken(token, updatedCustomRequest);
+    expect(pinned.body).toMatchObject({
       outcome: "resolved",
-      connector: { connectorSlug: "github" },
-      permission: {
-        kind: "unknown-endpoint",
-        policy: { outcome: "deny", basis: "unknown-policy" },
+      connector: { label: "Updated Run Reap Overlay" },
+      base: `https://${pinnedHost}/v2`,
+      run: {
+        status: "configured",
+        bases: [`https://${pinnedHost}/v2`],
       },
     });
+    const changedBase = await checkWithToken(token, {
+      ...updatedCustomRequest,
+      url: `https://${changedHost}/v2/chat.postMessage`,
+    });
+    expect(changedBase.body).toStrictEqual({
+      outcome: "no-match",
+      scope: "run",
+    });
+
+    const addedAfterLaunch = await connectorsApi.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "Added After Launch",
+        slug: `_added-after-launch-${randomUUID().slice(0, 8)}`,
+        prefixTemplates: ["https://after-launch.example.test/"],
+      }),
+    );
+    const notAdmitted = await checkWithToken(token, {
+      mode: "url",
+      method: "GET",
+      url: "https://after-launch.example.test/items",
+      target: {
+        kind: "custom",
+        customConnectorId: addedAfterLaunch.id,
+      },
+    });
+    expect(notAdmitted.body).toStrictEqual({
+      outcome: "target-unavailable",
+      target: { kind: "custom", customConnectorId: addedAfterLaunch.id },
+      reason: "not-admitted",
+    });
+
+    await connectorsApi.deleteCustomConnector(actor, custom.id);
+    const deleted = await checkWithToken(token, updatedCustomRequest);
+    expect(deleted.body).toStrictEqual({
+      outcome: "target-unavailable",
+      target: { kind: "custom", customConnectorId: custom.id },
+      reason: "connector-unavailable",
+    });
+    await connectorsApi.deleteCustomConnector(actor, addedAfterLaunch.id);
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("propagates malformed registration and distinguishes missing from terminal state", async () => {
+    const actor = bdd.user();
+    await seedAdminMembership(actor);
+    const { runId } = await createOwnedRun(actor);
+    const token = okouToken(actor, runId, ["connector:read", "agent-run:read"]);
+
+    await accept(
+      stateClient().action({
+        body: {
+          action: "corrupt-connector-diagnostic-registration",
+          run_id: runId,
+        },
+      }),
+      [200],
+    );
+    const malformed = await accept(
+      client().check({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          mode: "environment",
+          environmentName: "GH_TOKEN",
+        },
+      }),
+      [500],
+    );
+    expect(malformed.body).toStrictEqual({ error: "Internal server error" });
+
+    await accept(
+      stateClient().action({
+        body: {
+          action: "delete-connector-diagnostic-registration",
+          run_id: runId,
+        },
+      }),
+      [200],
+    );
+
+    const legacy = await checkWithToken(token, {
+      mode: "environment",
+      environmentName: "GH_TOKEN",
+    });
+    expect(legacy.body).toStrictEqual({ outcome: "run-context-unavailable" });
+
+    await accept(
+      stateClient().action({
+        body: {
+          action: "transition-run-terminal",
+          run_id: runId,
+          status: "completed",
+        },
+      }),
+      [200],
+    );
+    const terminal = await accept(
+      client().check({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          mode: "environment",
+          environmentName: "GH_TOKEN",
+        },
+      }),
+      [404],
+    );
+    expect(terminal.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message: "Agent run not found",
+    });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+
+    await accept(
+      stateClient().action({
+        body: { action: "delete-run", run_id: runId },
+      }),
+      [200],
+    );
   });
 });

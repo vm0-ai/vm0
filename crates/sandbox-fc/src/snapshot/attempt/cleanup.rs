@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use nbd_cow::KeptCow;
-use nbd_cow::PooledNbdCowDevice;
 use nbd_cow::pool::DevicePoolHandle;
 
 use crate::network::{NetnsLease, NetnsPool};
 
 use super::super::SnapshotError;
 use super::super::cow::{
-    destroy_snapshot_cow_after_error, destroy_snapshot_cow_and_cleanup_attempt_dir,
+    SnapshotCowDevice, destroy_snapshot_cow_after_error,
+    destroy_snapshot_cow_and_cleanup_attempt_dir,
 };
 use super::super::output::cleanup_workspace_image_file_sync;
 use super::super::publish::SnapshotPublishAttempt;
@@ -24,7 +24,7 @@ async fn release_snapshot_netns(
     }
 }
 
-async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevice) {
+async fn destroy_snapshot_cow_after_workflow_error(cow_device: SnapshotCowDevice) {
     if let Err(e) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
         tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
     }
@@ -124,7 +124,7 @@ impl SnapshotCleanupPresence {
 pub(super) struct SnapshotCleanupResources {
     pub(super) netns_pool: Option<NetnsPool>,
     pub(super) device_pool: Option<DevicePoolHandle>,
-    pub(super) cow_device: Option<PooledNbdCowDevice>,
+    pub(super) cow_device: Option<SnapshotCowDevice>,
     pub(super) workspace_image: AttemptWorkspaceImage,
     pub(super) publish_attempt: Option<SnapshotPublishAttempt>,
     pub(super) network: Option<NetnsLease>,
@@ -133,13 +133,11 @@ pub(super) struct SnapshotCleanupResources {
 
 impl SnapshotCleanupResources {
     pub(super) fn new(
-        netns_pool: NetnsPool,
         device_pool: DevicePoolHandle,
-        cow_device: PooledNbdCowDevice,
+        cow_device: SnapshotCowDevice,
         workspace_image_path: PathBuf,
     ) -> Self {
         Self {
-            netns_pool: Some(netns_pool),
             device_pool: Some(device_pool),
             cow_device: Some(cow_device),
             workspace_image: AttemptWorkspaceImage::new(workspace_image_path),
@@ -207,7 +205,7 @@ impl SnapshotCleanupResources {
         let cow_device = self.cow_device.take().ok_or_else(|| {
             SnapshotError::Teardown("snapshot attempt missing COW device before publish".into())
         })?;
-        self.publish_attempt = Some(SnapshotPublishAttempt::new(cow_device));
+        self.publish_attempt = Some(SnapshotPublishAttempt::new(cow_device.into_pooled()));
         let kept_cow = match self.resolve_success_publish().await {
             Ok(kept_cow) => kept_cow,
             Err(err) => {

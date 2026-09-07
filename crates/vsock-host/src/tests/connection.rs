@@ -3,19 +3,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use nix::sys::socket::{Shutdown, setsockopt, shutdown, sockopt};
+use tokio::io::AsyncReadExt;
 use tokio::net::UnixStream;
 use vsock_proto::{
     ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MemorySnapshot,
 };
 
 use super::support::{
-    MockGuest, await_mock_guest, captured_output_bytes, drop_idle_request_write_guard,
-    drop_started_request_write_guard, exec_capture_default, fence_normal_operations,
-    host_from_stream, is_connected, make_pair, normal_operation_readiness, pending_request_count,
-    poison_connection, set_next_route_id, setup_host_and_mock_guest,
-    wait_for_pending_request_count,
+    MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, captured_output_bytes,
+    exec_capture_default, fence_normal_operations, host_from_stream, is_connected, make_pair,
+    mock_handshake, normal_operation_readiness, pending_request_count, poison_connection,
+    set_next_route_id, setup_host_and_mock_guest, wait_for_pending_request_count,
 };
 use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
@@ -993,30 +994,112 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
 
 #[tokio::test]
 async fn cancelled_request_before_frame_write_does_not_poison_connection() {
-    let (host, _guest) = setup_host_and_mock_guest().await;
-
-    drop_idle_request_write_guard(&host);
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let writer = host.shared.writer.lock().await;
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(5)).await })
+    };
+    wait_for_pending_request_count(&host, 1).await;
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
 
     assert!(is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer);
+    assert_connection_accepts_exec_operation(&host, guest.stream_mut()).await;
 }
 
 #[tokio::test]
 async fn cancelled_request_frame_write_poisons_connection() {
-    let (host, _guest) = setup_host_and_mock_guest().await;
+    let (host_stream, mut guest) = make_pair();
+    setsockopt(&host_stream, sockopt::SndBuf, &4096usize).unwrap();
+    let (host, ()) = tokio::join!(host_from_stream(host_stream), mock_handshake(&mut guest));
+    let host = Arc::new(host.unwrap());
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let payload = vsock_proto::encode_write_file(
+                "/tmp/partial.bin",
+                &vec![0xAB; 1024 * 1024],
+                false,
+                false,
+            )
+            .unwrap();
+            crate::request_on_shared(
+                &host.shared,
+                MSG_WRITE_FILE,
+                &payload,
+                Duration::from_secs(5),
+            )
+            .await
+        })
+    };
+    // Read only the header: the large payload cannot fit in the send buffer.
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        guest.read_exact(&mut [0u8; vsock_proto::HEADER_SIZE]),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(!task.is_finished());
+    assert!(host.shared.writer.try_lock().is_err());
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
 
-    drop_started_request_write_guard(&host);
-
-    host.wait_until_closed(Duration::from_secs(5))
-        .await
-        .unwrap();
+    assert!(!is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+    assert!(host.shared.writer.try_lock().is_ok());
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
+}
+
+#[tokio::test]
+async fn cancelled_request_after_complete_frame_preserves_connection() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(5)).await })
+    };
+    guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+    drop(host.shared.writer.lock().await);
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+
+    assert!(is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+    assert_connection_accepts_exec_operation(&host, guest.stream_mut()).await;
+}
+
+#[tokio::test]
+async fn request_write_failure_poisons_connection_and_cleans_pending() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    // Fail the write without first closing the host's reader/registration state.
+    shutdown(host.shared.fd, Shutdown::Write).unwrap();
+    assert!(is_connected(&host));
+    let err = host
+        .quiesce_operations(Duration::from_secs(5))
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    assert!(!is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
+    guest.expect_eof().await;
 }
 
 /// Two concurrent exec calls get the correct response matched by seq.

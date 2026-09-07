@@ -8,6 +8,30 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.563.1](https://github.com/vm0-ai/vm0/compare/api-v1.563.0...api-v1.563.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **api:** retain sanitized Fal webhook failure diagnostics ([#32322](https://github.com/vm0-ai/vm0/issues/32322)) ([216faf6](https://github.com/vm0-ai/vm0/commit/216faf6f93990752eae36e29c32dc67c3233ca46))
+* **intro-video:** support managed native video agent generation ([#32305](https://github.com/vm0-ai/vm0/issues/32305)) ([f6c13bf](https://github.com/vm0-ai/vm0/commit/f6c13bf47c6995bd8c65f753741488231c6ae980))
+
+
+### Refactoring
+
+* **api:** rename residual observability values ([#32328](https://github.com/vm0-ai/vm0/issues/32328)) ([30dd5da](https://github.com/vm0-ai/vm0/commit/30dd5da77c569d6305fca05811fbf6d7a330a1bc)), closes [#32242](https://github.com/vm0-ai/vm0/issues/32242)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.1
+    * @okouai/connectors bumped to 3.8.1
+    * @okouai/core bumped to 8.631.3
+    * @okouai/db bumped to 1.245.3
+    * @okouai/pi-agent-runtime bumped to 1.21.15
+
 ## [1.563.0](https://github.com/vm0-ai/vm0/compare/api-v1.562.0...api-v1.563.0) (2026-09-07)
 
 

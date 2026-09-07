@@ -1193,31 +1193,6 @@ function parseBotCommand(
   return undefined;
 }
 
-function stripBotMention(text: string, botUsername: string | null): string {
-  if (!botUsername) {
-    return text;
-  }
-  const mention = `@${botUsername}`;
-  const mentionLower = mention.toLowerCase();
-  const lower = text.toLowerCase();
-  let result = "";
-  let cursor = 0;
-  for (;;) {
-    const idx = lower.indexOf(mentionLower, cursor);
-    if (idx === -1) {
-      result += text.slice(cursor);
-      break;
-    }
-    result += text.slice(cursor, idx).trimEnd();
-    result += " ";
-    cursor = idx + mention.length;
-    while (cursor < text.length && /\s/u.test(text.charAt(cursor))) {
-      cursor += 1;
-    }
-  }
-  return result.trim();
-}
-
 function hasBotMention(
   message: TelegramMessage,
   botUsername: string | null,
@@ -1720,20 +1695,15 @@ function rootMessageIdForAgentMessage(args: {
 function buildTelegramAgentPrompt(args: {
   readonly message: TelegramMessage;
   readonly botId: string;
-  readonly botUsername: string | null;
-  readonly isDM: boolean;
 }): {
   readonly prompt: string;
   readonly userInfoExtras: TelegramUserInfoExtras;
 } {
   const enriched = enrichTelegramPrompt(args.message);
-  const promptBase = args.isDM
-    ? enriched.prompt
-    : stripBotMention(enriched.prompt, args.botUsername);
   const replyQuote = formatReplyQuote(args.message.reply_to_message);
   const promptWithReply = replyQuote
-    ? `${replyQuote}\n\n${promptBase}`
-    : promptBase;
+    ? `${replyQuote}\n\n${enriched.prompt}`
+    : enriched.prompt;
   return {
     prompt: appendTelegramMessageContext(
       promptWithReply,

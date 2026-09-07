@@ -48,9 +48,6 @@ const EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_milli
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 const EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
-const EXEC_OPERATION_FRAME_WRITE_NOT_STARTED: u8 = 0;
-const EXEC_OPERATION_FRAME_WRITE_STARTED: u8 = 1;
-const EXEC_OPERATION_FRAME_WRITE_COMPLETED: u8 = 2;
 
 fn exec_operation_guest_error(message: String) -> io::Error {
     io::Error::other(message)
@@ -65,23 +62,16 @@ pub(crate) mod test_support {
     use std::future::Future;
     use std::io;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicU8;
     use std::time::Duration;
 
     use crate::{FrameWriteObserver, Shared};
 
-    use super::frame::ExecOperationFrameWriteGuard;
+    use super::MAX_EXEC_STREAM_CAPACITY;
     use super::handle::SupervisedExecHandle;
     use super::start::start_supervised_exec_on_shared_with_after_start_write_and_cancel_timeout;
     use super::types::SupervisedExecRequest;
-    use super::{EXEC_OPERATION_FRAME_WRITE_STARTED, MAX_EXEC_STREAM_CAPACITY};
 
     pub(crate) const MAX_STREAM_CAPACITY: usize = MAX_EXEC_STREAM_CAPACITY;
-
-    pub(crate) fn drop_started_frame_write_guard(shared: Arc<Shared>) {
-        let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_STARTED));
-        drop(ExecOperationFrameWriteGuard::new(shared, state));
-    }
 
     pub(crate) fn set_exec_output_before_copy_hook(
         shared: &Arc<Shared>,

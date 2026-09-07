@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { connectorRuntimeTargetSchema } from "./runners";
 
 const c = initContract();
 
@@ -33,6 +34,38 @@ export const connectorCheckRequestSchema = z.discriminatedUnion("mode", [
 
 export type ConnectorCheckRequest = z.infer<typeof connectorCheckRequestSchema>;
 
+export const connectorCheckTargetAwareUrlRequestSchema = z
+  .object({
+    mode: z.literal("url"),
+    method: z.string().min(1).max(16),
+    url: z.string().min(1).max(8192),
+    environmentName: boundedNameSchema.optional(),
+    includeCustomConnectors: z.literal(true).optional(),
+    target: connectorRuntimeTargetSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (request) => {
+      return (
+        request.includeCustomConnectors === true || request.target !== undefined
+      );
+    },
+    { message: "Target-aware connector checks require custom scope or target" },
+  );
+
+export const connectorCheckRequestBodySchema = z.union([
+  connectorCheckUrlRequestSchema,
+  connectorCheckTargetAwareUrlRequestSchema,
+  connectorCheckEnvironmentRequestSchema,
+]);
+
+export type ConnectorCheckTargetAwareUrlRequest = z.infer<
+  typeof connectorCheckTargetAwareUrlRequestSchema
+>;
+export type ConnectorCheckRequestBody = z.infer<
+  typeof connectorCheckRequestBodySchema
+>;
+
 const connectorCheckIdentitySchema = z.object({
   connectorSlug: connectorSlugSchema,
   label: z.string().min(1),
@@ -44,6 +77,22 @@ const connectorCheckCandidateSchema = z.object({
   connectorSlug: connectorSlugSchema,
   label: z.string().min(1),
 });
+
+const connectorCheckTargetIdentitySchema = z
+  .object({
+    target: connectorRuntimeTargetSchema,
+    label: z.string().min(1),
+    visibility: z.enum(["available", "unavailable"]),
+    credentialResolution: z.enum(["network-boundary", "none"]),
+  })
+  .strict();
+
+const connectorCheckTargetCandidateSchema = z
+  .object({
+    target: connectorRuntimeTargetSchema,
+    label: z.string().min(1),
+  })
+  .strict();
 
 const connectorCheckNotScopedRunSchema = z
   .object({ status: z.literal("not-scoped") })
@@ -220,6 +269,51 @@ const connectorCheckRunContextUnavailableSchema = z
   .object({ outcome: z.literal("run-context-unavailable") })
   .strict();
 
+const connectorCheckTargetResolvedUrlSchema = connectorCheckResolvedUrlSchema
+  .extend({ connector: connectorCheckTargetIdentitySchema })
+  .strict();
+
+const connectorCheckTargetResolvedEnvironmentSchema =
+  connectorCheckResolvedEnvironmentSchema
+    .extend({ connector: connectorCheckTargetIdentitySchema })
+    .strict();
+
+const connectorCheckTargetAmbiguousSchema = connectorCheckAmbiguousSchema
+  .extend({ candidates: z.array(connectorCheckTargetCandidateSchema).min(2) })
+  .strict();
+
+const connectorCheckTargetMismatchSchema = connectorCheckMismatchSchema
+  .extend({ connector: connectorCheckTargetIdentitySchema })
+  .strict();
+
+const connectorCheckTargetEnvironmentNotOwnedSchema =
+  connectorCheckEnvironmentNotOwnedSchema
+    .extend({ connector: connectorCheckTargetIdentitySchema })
+    .strict();
+
+const connectorCheckTargetEnvironmentNotUsedSchema =
+  connectorCheckEnvironmentNotUsedSchema
+    .extend({ connector: connectorCheckTargetIdentitySchema })
+    .strict();
+
+const connectorCheckTargetUnresolvedDynamicBaseSchema =
+  connectorCheckUnresolvedDynamicBaseSchema
+    .extend({ connector: connectorCheckTargetIdentitySchema })
+    .strict();
+
+const connectorCheckTargetUnavailableSchema = z
+  .object({
+    outcome: z.literal("target-unavailable"),
+    target: connectorRuntimeTargetSchema,
+    reason: z.enum([
+      "not-admitted",
+      "connector-unavailable",
+      "permission-bundle-unavailable",
+      "runtime-configuration-unavailable",
+    ]),
+  })
+  .strict();
+
 export const connectorCheckDiagnosticResultSchema = z.union([
   connectorCheckResolvedUrlSchema,
   connectorCheckResolvedEnvironmentSchema,
@@ -239,14 +333,42 @@ export type ConnectorCheckDiagnosticResult = z.infer<
   typeof connectorCheckDiagnosticResultSchema
 >;
 
+export const connectorCheckTargetAwareDiagnosticResultSchema = z.union([
+  connectorCheckTargetResolvedUrlSchema,
+  connectorCheckTargetResolvedEnvironmentSchema,
+  connectorCheckUnsafeInputSchema,
+  connectorCheckUnknownConnectorSchema,
+  connectorCheckUnknownEnvironmentSchema,
+  connectorCheckNoMatchSchema,
+  connectorCheckTargetAmbiguousSchema,
+  connectorCheckTargetMismatchSchema,
+  connectorCheckTargetEnvironmentNotOwnedSchema,
+  connectorCheckTargetEnvironmentNotUsedSchema,
+  connectorCheckTargetUnresolvedDynamicBaseSchema,
+  connectorCheckTargetUnavailableSchema,
+  connectorCheckRunContextUnavailableSchema,
+]);
+
+export const connectorCheckResponseBodySchema = z.union([
+  connectorCheckDiagnosticResultSchema,
+  connectorCheckTargetAwareDiagnosticResultSchema,
+]);
+
+export type ConnectorCheckTargetAwareDiagnosticResult = z.infer<
+  typeof connectorCheckTargetAwareDiagnosticResultSchema
+>;
+export type ConnectorCheckResponseBody = z.infer<
+  typeof connectorCheckResponseBodySchema
+>;
+
 export const connectorCheckContract = c.router({
   check: {
     method: "POST",
     path: "/api/connectors/diagnostics/check",
     headers: authHeadersSchema,
-    body: connectorCheckRequestSchema,
+    body: connectorCheckRequestBodySchema,
     responses: {
-      200: connectorCheckDiagnosticResultSchema,
+      200: connectorCheckResponseBodySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,

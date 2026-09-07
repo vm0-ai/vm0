@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::future::{Future, poll_fn};
 use std::io;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
+use std::task::Poll;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
@@ -15,11 +17,16 @@ use vsock_proto::{
     RawMessage,
 };
 
-use crate::tests::support::read_guest_message;
-use crate::{ConnectionState, RouteId, Shared};
+use crate::operation_tracker::NormalOperationReadiness;
+use crate::tests::support::{
+    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
+    read_guest_message, route_reservation_count, send_exec_result, setup_host_and_guest,
+};
+use crate::{ConnectionState, ExecOperationRequest, RouteId, Shared};
 
 use super::diagnostics::*;
 use super::dispatch::dispatch_result;
+use super::frame::{ExecCancelFrameWriteOutcome, send_exec_cancel_frame_for_wait_with_write_start};
 use super::handle::{ExecOperationHandle, ExecWaitCore, ExecWaitLifecycle, send_exec_cancel_frame};
 use super::state::*;
 use super::types::ExecOperationResult;
@@ -54,6 +61,78 @@ fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
         host_cancel_requested: false,
         pending_controls: HashMap::new(),
     }
+}
+
+#[tokio::test]
+async fn cancel_frame_skips_terminal_operation_after_waiting_for_writer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let handle = host
+        .start_exec_operation(ExecOperationRequest {
+            timeout_ms: 5000,
+            start_write_timeout: Duration::from_secs(5),
+            command: "echo done",
+            env: &[],
+            sudo: false,
+            label: "cancel-skip",
+            stdout: vsock_proto::ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: vsock_proto::ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            stream_queue_capacity: None,
+        })
+        .await
+        .unwrap();
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
+    let route_id = handle.wait_core.active_route_id().unwrap();
+    let diagnostic = handle.wait_core.diagnostic().clone();
+    let writer = host.shared.writer.lock().await;
+    let (write_started_tx, mut write_started_rx) = oneshot::channel();
+    // Drive the real cancel transport independently of cancel_and_wait's biased
+    // result selection, so terminal delivery cannot bypass serialized admission.
+    let cancel = send_exec_cancel_frame_for_wait_with_write_start(
+        &host.shared,
+        route_id,
+        &diagnostic,
+        Some(write_started_tx),
+    );
+    tokio::pin!(cancel);
+    poll_fn(|cx| {
+        assert!(cancel.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    assert_eq!(route_reservation_count(&host), 1);
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"done",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    drop(writer);
+
+    let outcome = tokio::time::timeout(Duration::from_secs(5), cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(outcome, ExecCancelFrameWriteOutcome::AlreadyTerminal);
+    assert_eq!(
+        write_started_rx.try_recv(),
+        Err(oneshot::error::TryRecvError::Closed)
+    );
+    assert_eq!(route_reservation_count(&host), 0);
+    assert!(is_connected(&host));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 fn clean_terminal_result() -> vsock_proto::DecodedExecResult<'static> {

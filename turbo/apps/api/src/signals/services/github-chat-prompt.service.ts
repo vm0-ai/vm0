@@ -1,4 +1,5 @@
 import { optionalEnv } from "../../lib/env";
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 import {
   githubAppBotUsername,
   resolveGithubAppIdentity,
@@ -47,7 +48,11 @@ export function buildGitHubPrompt(args: {
   readonly appId: string | null;
   readonly appSlug: string | null;
 }): string {
-  return [buildIntegrationPrompt(args), args.issueContext]
+  return [
+    CONVERSATION_GUIDANCE,
+    buildIntegrationPrompt(args),
+    args.issueContext,
+  ]
     .filter((part): part is string => {
       return Boolean(part);
     })

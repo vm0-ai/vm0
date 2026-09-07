@@ -84,6 +84,7 @@ type FeishuEventMention = NonNullable<FeishuEventMessage["mentions"]>[number];
 
 interface FeishuInboundContent {
   readonly text: string;
+  readonly promptText: string;
   readonly file: FeishuPromptFile | null;
 }
 
@@ -176,16 +177,20 @@ function inboundMessageContent(
       messageType: message.message_type,
       content: message.content,
     });
-    return {
-      text: file ? formatFeishuFileContext(file) : "",
-      file,
-    };
+    const text = file ? formatFeishuFileContext(file) : "";
+    return { text, promptText: text, file };
   }
   const content = textContentSchema.safeParse(safeJsonParse(message.content));
   if (!content.success) {
-    return { text: "", file: null };
+    return { text: "", promptText: "", file: null };
   }
   return {
+    promptText: botMention
+      ? content.data.text.replaceAll(
+          botMention.key,
+          botMention.name ? `@${botMention.name}` : botMention.key,
+        )
+      : content.data.text,
     text: botMention
       ? content.data.text.replaceAll(botMention.key, "")
       : content.data.text,
@@ -223,7 +228,7 @@ function inboundMessage(
   }
   const content = inboundMessageContent(event.data.message, botMention);
   const text = content.text.trim();
-  if (!text) {
+  if (!content.promptText.trim()) {
     return null;
   }
   return {
@@ -239,6 +244,7 @@ function inboundMessage(
     threadId: event.data.message.thread_id ?? null,
     openId: event.data.sender.sender_id.open_id,
     text,
+    promptText: content.promptText.trim(),
     file: content.file,
   };
 }

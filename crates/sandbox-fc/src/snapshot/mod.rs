@@ -21,9 +21,7 @@ use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
 use crate::runtime_dirs::checked_runtime_sock_dir;
 
-use self::attempt::{
-    SnapshotAttempt, cleanup_after_netns_pool_failure, cleanup_existing_snapshot_sock_dir,
-};
+use self::attempt::{SnapshotAttempt, cleanup_existing_snapshot_sock_dir};
 use self::cow::{
     SnapshotAttemptDirGuard, create_sparse_cow_file, snapshot_attempt_cow_file,
     snapshot_attempt_dir, snapshot_attempt_token, snapshot_attempt_workspace_image_file,
@@ -132,7 +130,7 @@ async fn create_uncommitted_snapshot(
     tokio::fs::create_dir_all(&attempt_dir)
         .await
         .map_err(|e| SnapshotError::Setup(format!("create snapshot attempt dir: {e}")))?;
-    let mut attempt_dir_guard = SnapshotAttemptDirGuard::new(attempt_dir);
+    let attempt_dir_guard = SnapshotAttemptDirGuard::new(attempt_dir);
     let cow_file = snapshot_attempt_cow_file(paths.workspace(), &attempt_token);
     let workspace_image_file =
         snapshot_attempt_workspace_image_file(paths.workspace(), &attempt_token);
@@ -147,25 +145,25 @@ async fn create_uncommitted_snapshot(
 
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
-    // 3. Initialize a pre-warmed network namespace pool (index auto-allocated via flock).
-    let netns_pool = match NetnsPool::create_checked(netns_config).await {
-        Ok(pool) => pool,
-        Err(e) => {
-            cleanup_after_netns_pool_failure(cow_device, &device_pool, &sock_dir).await;
-            return Err(SnapshotError::Setup(format!("netns pool: {e}")));
-        }
-    };
-
+    // Transfer cleanup ownership before the first post-acquisition await.
     let mut attempt = SnapshotAttempt::new(
         paths,
         sock_paths,
         output,
-        netns_pool,
         device_pool,
-        cow_device,
+        cow_device.into(),
         workspace_image_file,
+        attempt_dir_guard,
     );
-    attempt_dir_guard.disarm();
+
+    // 3. Initialize a pre-warmed network namespace pool (index auto-allocated via flock).
+    attempt
+        .initialize_netns_pool(async {
+            NetnsPool::create_checked(netns_config)
+                .await
+                .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))
+        })
+        .await?;
     let result = run_snapshot_workflow(&config, &mut attempt).await;
     let result = match result {
         Ok(snapshot_config) => attempt.prepare_success_publish().await.map(|kept_cow| {

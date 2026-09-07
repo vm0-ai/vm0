@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 
-use nix::sys::socket::{setsockopt, sockopt};
+use nix::sys::socket::{Shutdown, setsockopt, shutdown, sockopt};
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{
     MSG_ERROR, MSG_EXEC_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE_RESULT,
@@ -1145,6 +1145,30 @@ async fn write_file_frame_builder_request_blocked_write_poisons_connection() {
     );
     assert!(host.shared.writer.try_lock().is_ok());
     assert!(host.shared.frame_builder.try_lock().is_ok());
+}
+
+#[tokio::test]
+async fn write_file_frame_failure_poisons_connection_and_releases_gates() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    shutdown(host.shared.fd, Shutdown::Write).unwrap();
+    assert!(is_connected(&host));
+
+    let err = host
+        .write_file("/tmp/write-error.txt", b"content", false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    assert!(!is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(host.shared.writer.try_lock().is_ok());
+    assert!(host.shared.frame_builder.try_lock().is_ok());
+    assert!(host.shared.file_write_gate.try_lock().is_ok());
+    guest.expect_eof().await;
 }
 
 #[tokio::test]

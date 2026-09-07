@@ -2142,6 +2142,61 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
 
+  it("preserves a mention-only Slack request with the preceding link and image", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      { installerSlackUserId: slackUserId },
+    );
+    const threadTs = "2900.000100";
+    const messageTs = "2900.000200";
+    context.mocks.slack.conversations.replies.mockResolvedValue({
+      ok: true,
+      messages: [
+        {
+          ts: threadTs,
+          user: slackUserId,
+          text: "This article is still broken: https://example.com/article",
+          files: [
+            {
+              id: "F_ARTICLE_SCREENSHOT",
+              name: "article.png",
+              mimetype: "image/png",
+            },
+          ],
+        },
+        { ts: messageTs, user: slackUserId, text: `<@${botUserId}>` },
+      ],
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: `<@${botUserId}>`,
+      channel: "C_BDD_MENTION_CONTEXT",
+      thread_ts: threadTs,
+      ts: messageTs,
+    });
+    const runId = await pollSlackRun(runnerGroup);
+    const claim = await runs.claimRunnerJob(runId);
+    expect(claim.prompt).toBe(`@Slack User (${botUserId})`);
+    expect(claim.appendSystemPrompt).toContain("https://example.com/article");
+    expect(claim.appendSystemPrompt).toContain("[ID] F_ARTICLE_SCREENSHOT");
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: claim.cliAgentType,
+      assistantText: "Investigating the article and screenshot",
+    });
+  });
+
   it("deduplicates canonical Slack retries", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
@@ -2287,7 +2342,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       requireCanonicalSlackInputAssetId(visibleMessages);
     const canonicalInputMessage = slackInputMessageByText(
       visibleMessages,
-      "admit this event once with @Slack User",
+      "@Slack User admit this event once with @Slack User",
     );
     if (!canonicalInputMessage) {
       throw new Error("Expected the canonical Slack input message");
@@ -2300,7 +2355,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).resolves.toMatchObject({
       slackBotUserId: botUserId,
       slackPublicBrand: "vm0",
-      slackMessageText: `admit this event once with <@${mentionedSlackUserId}>`,
+      slackMessageText: `<@${botUserId}> admit this event once with <@${mentionedSlackUserId}>`,
       slackMessageAssets: [
         {
           assetId: canonicalInputAssetId,
@@ -2328,7 +2383,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
                 filenameSnapshot: "source-notes.txt",
                 contentType: "text/plain",
               },
-              { type: "text", text: "admit this event once with @Slack User" },
+              {
+                type: "text",
+                text: "@Slack User admit this event once with @Slack User",
+              },
               {
                 type: "source",
                 kind: "slack",
@@ -2357,7 +2415,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toBe(
-      `admit this event once with @Slack User (${mentionedSlackUserId})\n\n[Web file] source-notes.txt (text/plain)\n   [ID] ${canonicalInputAssetId}`,
+      `@Slack User (${botUserId}) admit this event once with @Slack User (${mentionedSlackUserId})\n\n[Web file] source-notes.txt (text/plain)\n   [ID] ${canonicalInputAssetId}`,
     );
     expect(canonicalInputRun.appendSystemPrompt).toContain(
       `# Current Integration\nYou are currently running inside: Slack\nYour bot user ID: ${botUserId}\nChannel ID: ${channelId}\nChannel type: Channel\nThread ID: ${threadTs}`,
@@ -3395,7 +3453,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
             parts: [
               {
                 type: "text",
-                text: "recover this event after admission conflict",
+                text: "@Slack User recover this event after admission conflict",
               },
               {
                 type: "source",
