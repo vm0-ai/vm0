@@ -268,7 +268,6 @@ interface MockAdminBillingStatusOptions {
     readonly onStarted: () => void;
     readonly waitUntil: Promise<void>;
   };
-  readonly onRequest?: () => void;
 }
 
 function mockAdminBillingStatus(
@@ -280,7 +279,6 @@ function mockAdminBillingStatus(
     billingStatusContract.get,
     async ({ respond, withSignal }) => {
       requestCount += 1;
-      options.onRequest?.();
       if (requestCount === 1 && options.firstRequestGate) {
         options.firstRequestGate.onStarted();
         await withSignal(options.firstRequestGate.waitUntil);
@@ -705,15 +703,9 @@ test("Refresh account balances when the menu opens", async () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  const refreshRequested = context.mocks.deferred<void>();
-  mockAdminBillingStatus(250, {
-    onRequest: () => {
-      refreshRequested.resolve(undefined);
-    },
-  });
+  mockAdminBillingStatus(250);
 
   menu = await openAccountMenu();
-  await refreshRequested.promise;
   await waitFor(() => {
     expect(within(menu).getByText("250 credits")).toBeInTheDocument();
   });

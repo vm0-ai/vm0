@@ -27,6 +27,7 @@ import {
   setupSharedWorkerTestBootstrap$,
   type SharedWorkerTestTransport,
 } from "../shared-database/test-bridge.ts";
+import type { ChatThreadEventQueryResult } from "../shared-database/data-key.ts";
 import {
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
@@ -126,6 +127,11 @@ interface SetupPageOptions {
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly preserveFeatureSwitchCache?: boolean;
   readonly sharedWorkerAppVersion?: string;
+  /**
+   * Supplies the shared worker's cache-only chat-thread projection to a
+   * page-level story without coupling its UI assertion to IndexedDB startup.
+   */
+  readonly cachedChatThreadEvents?: ChatThreadEventQueryResult;
   readonly sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
 
@@ -335,6 +341,7 @@ async function setupPageAsync(
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
       workerStore: options.context.workerStore,
+      cachedChatThreadEvents: options.cachedChatThreadEvents,
       identity:
         auth.user && activeOrgId
           ? { userId: auth.user.id, orgId: activeOrgId }
