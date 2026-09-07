@@ -11,6 +11,16 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.858.2](https://github.com/vm0-ai/vm0/compare/app-v0.858.1...app-v0.858.2) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+
 ## [0.858.1](https://github.com/vm0-ai/vm0/compare/app-v0.858.0...app-v0.858.1) (2026-09-07)
 
 

@@ -8,6 +8,28 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.563.2](https://github.com/vm0-ai/vm0/compare/api-v1.563.1...api-v1.563.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **api:** preserve mention context across chat integrations ([#32335](https://github.com/vm0-ai/vm0/issues/32335)) ([6158eb5](https://github.com/vm0-ai/vm0/commit/6158eb586bd781310547cc76c91174e68845a66c))
+
+
+### Refactoring
+
+* resolve connector diagnostics from active runtime state ([#32318](https://github.com/vm0-ai/vm0/issues/32318)) ([0445891](https://github.com/vm0-ai/vm0/commit/0445891e02f4bfd3e5db62a17e88fa877daa2cb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+    * @okouai/db bumped to 1.245.4
+    * @okouai/pi-agent-runtime bumped to 1.21.16
+
 ## [1.563.1](https://github.com/vm0-ai/vm0/compare/api-v1.563.0...api-v1.563.1) (2026-09-07)
 
 

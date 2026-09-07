@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.18.2...vsock-host-v0.18.3) (2026-09-07)
+
+
+### Refactoring
+
+* **vsock-host:** centralize frame-write safety ([#32339](https://github.com/vm0-ai/vm0/issues/32339)) ([2274f06](https://github.com/vm0-ai/vm0/commit/2274f069d91d5cde246b8a9d792d7bbf93eb5228))
+
 ## [0.18.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.18.1...vsock-host-v0.18.2) (2026-09-07)
 
 

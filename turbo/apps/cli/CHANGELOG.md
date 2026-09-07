@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.315.11](https://github.com/vm0-ai/vm0/compare/cli-v9.315.10...cli-v9.315.11) (2026-09-07)
+
+
+### Refactoring
+
+* resolve connector diagnostics from active runtime state ([#32318](https://github.com/vm0-ai/vm0/issues/32318)) ([0445891](https://github.com/vm0-ai/vm0/commit/0445891e02f4bfd3e5db62a17e88fa877daa2cb8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.412.2
+    * @okouai/core bumped to 8.631.4
+    * @okouai/pi-agent-runtime bumped to 1.21.16
+
 ## [9.315.10](https://github.com/vm0-ai/vm0/compare/cli-v9.315.9...cli-v9.315.10) (2026-09-07)
 
 
