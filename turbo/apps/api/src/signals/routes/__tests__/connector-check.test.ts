@@ -21,6 +21,7 @@ import {
   manualHttpCustomConnectorCreateBody,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import {
   seedConnectorStorageRow,
   setConnectorDefaultState,
@@ -51,7 +52,11 @@ const store = createStore();
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
-  readonly connectorSlug: "github" | "reap" | "removed-connector";
+  readonly connectorSlug:
+    | "cloudflare"
+    | "github"
+    | "reap"
+    | "removed-connector";
 }
 
 const trackConnectedFixture = createFixtureTracker<ConnectedFixture>(
@@ -725,8 +730,18 @@ describe("POST /api/connectors/diagnostics/check", () => {
       const runBase = "https://prod.api.reap.global/v1";
       const changedBase = "https://changed.api.reap.global/v1";
       const connectorId = await connectReap(owner, runBase);
+      const firewallApi = createFirewallApi(context);
+      await firewallApi.provisionRunReadyOrg(owner);
+      await firewallApi.seedTestConnector(owner, {
+        connectorSlug: "cloudflare",
+        authMethod: "oauth",
+        accessToken: "cloudflare-test-access-token",
+      });
+      await trackConnectedFixture(
+        Promise.resolve({ actor: owner, connectorSlug: "cloudflare" }),
+      );
       const { runId, agentId } = await createOwnedRun(owner, {
-        builtinConnectorSlugs: ["reap"],
+        builtinConnectorSlugs: ["reap", "cloudflare"],
       });
       const request = {
         mode: "url" as const,
@@ -766,37 +781,46 @@ describe("POST /api/connectors/diagnostics/check", () => {
 
       await runsApi.applyUserPermissionGrant(owner, {
         agentId,
-        connectorSlug: "reap",
-        permission: "read",
+        connectorSlug: "cloudflare",
+        permission: "dns-firewall.write",
         action: "allow",
         expiresIn: "1h",
       });
+      const expiringRequest = {
+        mode: "url" as const,
+        method: "POST",
+        url: "https://api.cloudflare.com/client/v4/accounts/test/dns_firewall/rules",
+      };
       const allowed = await checkWithToken(
         okouToken(owner, runId, ["connector:read", "agent-run:read"]),
-        request,
+        expiringRequest,
       );
       expect(allowed.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "cloudflare" },
         permission: {
           permissions: [
             {
-              name: "read",
+              name: "dns-firewall.write",
               policy: { outcome: "allow", basis: "allow-list" },
             },
           ],
         },
       });
 
-      mockNow(new Date("2026-09-07T10:00:00.000Z"));
+      mockNow(new Date("2026-09-07T09:00:00.000Z"));
       const expired = await checkWithToken(
         okouToken(owner, runId, ["connector:read", "agent-run:read"]),
-        request,
+        expiringRequest,
       );
       expect(expired.body).toMatchObject({
+        outcome: "resolved",
+        connector: { connectorSlug: "cloudflare" },
         permission: {
           permissions: [
             {
-              name: "read",
-              policy: { outcome: "allow", basis: "allow-list" },
+              name: "dns-firewall.write",
+              policy: { outcome: "deny", basis: "deny-list" },
             },
           ],
         },
