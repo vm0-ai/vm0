@@ -424,46 +424,52 @@ where
             }
         }
         _ = time::sleep_until(deadline) => {
-            let Some(_reservation) = admit_exec_cancel_frame(shared, route_id)? else {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "supervised exec route was replaced before start-timeout cancel",
-                ));
-            };
-            shared.remove_operation(route_id);
-            registration_guard.disarm();
             let seq = route_id.wire_seq();
-            let payload = vsock_proto::encode_exec_cancel();
-            let cancel_result = tokio::time::timeout(
-                start_timeout_cancel_write_timeout,
-                write_frame(
-                    shared,
-                    MSG_EXEC_CANCEL,
-                    seq,
-                    &payload,
-                    Some(diagnostic.frame("start-timeout-cancel")),
-                    None,
-                    FrameWriteObserver::default(),
-                ),
-            )
-            .await
-            .unwrap_or_else(|_| {
+            let cancel_result = async {
+                let Some(_reservation) = admit_exec_cancel_frame(shared, route_id)? else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "supervised exec route was replaced before start-timeout cancel",
+                    ));
+                };
+                shared.remove_operation(route_id);
+                registration_guard.disarm();
+                let payload = vsock_proto::encode_exec_cancel();
+                tokio::time::timeout(
+                    start_timeout_cancel_write_timeout,
+                    write_frame(
+                        shared,
+                        MSG_EXEC_CANCEL,
+                        seq,
+                        &payload,
+                        Some(diagnostic.frame("start-timeout-cancel")),
+                        None,
+                        FrameWriteObserver::default(),
+                    ),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    shared.poison_connection();
+                    Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "supervised exec start timeout cancel write timed out",
+                    ))
+                })
+            }
+            .await;
+            start_cancel_on_drop.disarm();
+            // Cleanup failure must not erase the post-write timeout classification.
+            if let Err(error) = cancel_result {
                 tracing::warn!(
                     seq = seq,
                     label = %diagnostic.label_log,
                     process_class = diagnostic.process_class,
                     operation_kind = diagnostic.operation_kind,
                     elapsed_ms = diagnostic.elapsed_ms(),
-                    "supervised exec start timeout cancel write timed out"
+                    error = %error,
+                    "supervised exec start timeout cancellation failed"
                 );
-                shared.poison_connection();
-                Err(supervised_start_timeout_error(
-                    RequestTimeoutStage::AwaitingTerminalResponse,
-                    request.start_timeout,
-                ))
-            });
-            start_cancel_on_drop.disarm();
-            cancel_result?;
+            }
             return Err(supervised_start_timeout_error(
                 RequestTimeoutStage::AwaitingTerminalResponse,
                 request.start_timeout,

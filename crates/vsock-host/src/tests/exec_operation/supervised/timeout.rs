@@ -1,9 +1,10 @@
 use std::io;
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use nix::sys::socket::{setsockopt, sockopt};
+use nix::sys::socket::{Shutdown, setsockopt, shutdown, sockopt};
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{
     ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
@@ -502,6 +503,44 @@ async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
         Ok(n) => panic!("bounded cancel write must not send after timing out; read {n} bytes"),
         Err(err) => panic!("unexpected read error after bounded cancel timeout: {err}"),
     }
+}
+
+#[tokio::test]
+async fn supervised_exec_start_ack_timeout_preserves_stage_when_cancel_write_fails() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let result = exec_operation_impl::test_support::start_supervised_exec_after_start_write(
+        &host.shared,
+        SupervisedExecRequest {
+            start_timeout: START_ACK_TEST_TIMEOUT,
+            ..supervised_request("start-timeout-broken-cancel")
+        },
+        async {
+            let start = read_guest_message(&mut guest).await;
+            assert_eq!(start.msg_type, MSG_EXEC_START);
+            // Keep the guest-to-host side open so only the cancel write fails.
+            shutdown(guest.as_raw_fd(), Shutdown::Read).unwrap();
+        },
+        Duration::from_secs(1),
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("unacknowledged start should time out"),
+        Err(error) => error,
+    };
+
+    assert_request_timeout(
+        &error,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        START_ACK_TEST_TIMEOUT,
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]
