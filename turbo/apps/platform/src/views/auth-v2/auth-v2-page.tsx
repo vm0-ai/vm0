@@ -1,8 +1,6 @@
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { Command } from "ccstate";
-import { Button } from "@okouai/ui";
-import { useTranslation } from "react-i18next";
 
 import { authV2InvitationError$ } from "../../signals/auth-v2/invitation.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -17,7 +15,7 @@ import { AuthV2SignInCard } from "./sign-in/sign-in-card.tsx";
 import { AuthV2SignUpCard } from "./sign-up/sign-up-card.tsx";
 import { AuthV2Shell } from "./auth-v2-shell.tsx";
 import { useAuthV2ContinuationCopy } from "./continuation/continuation-copy.ts";
-import { AUTH_V2_PRIMARY_ACTION_CLASS } from "./auth-v2-action-styles.ts";
+import { AuthV2SubmitButton } from "./auth-v2-submit-button.tsx";
 
 export type AuthV2PageMode = "sign-in" | "sign-up";
 
@@ -45,7 +43,6 @@ export function AuthV2Page(props: AuthV2PageProps) {
   const copy = useAuthV2ContinuationCopy(
     props.platformContext.authBrand.brandName,
   );
-  const { t } = useTranslation();
   return (
     <AuthShell authBrand={props.platformContext.authBrand}>
       {invitationError ? (
@@ -55,11 +52,9 @@ export function AuthV2Page(props: AuthV2PageProps) {
           description={copy.invitationError}
           focusKey="invitation-error"
         >
-          <Button
-            className={AUTH_V2_PRIMARY_ACTION_CLASS}
-            disabled={retryLoadable.state === "loading"}
-            aria-busy={retryLoadable.state === "loading"}
-            onClick={() => {
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
               detach(
                 retry(signal),
                 Reason.DomCallback,
@@ -67,10 +62,11 @@ export function AuthV2Page(props: AuthV2PageProps) {
               );
             }}
           >
-            {t(($) => {
-              return $.auth.v2.signUp.retry;
-            })}
-          </Button>
+            <AuthV2SubmitButton
+              busy={retryLoadable.state === "loading"}
+              label={copy.retry}
+            />
+          </form>
         </AuthV2Shell>
       ) : continuationState.status !== "inactive" ? (
         <AuthV2ContinuationCard
