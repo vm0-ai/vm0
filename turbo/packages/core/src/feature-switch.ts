@@ -277,6 +277,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
     enabledEmailHashes: ["6490c77f", "9fd4ee92"], // bingjie@okou.ai, bingjie@vm0.ai
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatPreference]: {
     maintainer: "lancy@vm0.ai",
