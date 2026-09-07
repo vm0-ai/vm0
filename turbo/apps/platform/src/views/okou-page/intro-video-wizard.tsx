@@ -396,7 +396,12 @@ function StylePickerHeader() {
   const close = useSet(introVideoWizardSignals.setPicker$);
   return (
     <div className="shrink-0">
-      <div className="grid px-3 pt-3 sm:px-6 sm:pt-6">
+      <div className="grid gap-3 px-3 pb-3 pt-3 sm:px-6 sm:pb-4 sm:pt-6">
+        <p className="text-sm leading-6 text-muted-foreground">
+          {t(($) => {
+            return $.chat.introVideo.style.description;
+          })}
+        </p>
         <UtilityOption
           title={t(($) => {
             return $.chat.introVideo.style.auto;
@@ -426,11 +431,6 @@ function StylePicker() {
   const reload = useSet(introVideoStyleGallerySignals.reload$);
   return (
     <div className="grid gap-3">
-      <p className="text-sm leading-6 text-muted-foreground">
-        {t(($) => {
-          return $.chat.introVideo.style.description;
-        })}
-      </p>
       {catalog.state === "hasError" ? (
         <CatalogError onRetry={reload} />
       ) : catalog.state === "loading" ? (

@@ -48,7 +48,7 @@ export function IntroVideoStyleTagNavigation() {
       aria-label={t(($) => {
         return $.chat.introVideo.style.browseGroups;
       })}
-      className="flex shrink-0 flex-wrap gap-2 border-b border-border px-3 py-3 sm:px-6"
+      className="flex shrink-0 flex-wrap gap-2 border-y border-border px-3 py-3 sm:px-6"
     >
       {tags.map((tag) => {
         const id = styleGroupId(tag);

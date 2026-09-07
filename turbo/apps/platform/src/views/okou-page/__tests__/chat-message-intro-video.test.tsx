@@ -434,6 +434,18 @@ test("Style groups include every catalog page and exclude portrait references", 
   const cinematic = await within(picker).findByRole("region", {
     name: "Film and photography",
   });
+  const styleOrder = [
+    within(picker).getByText(/The style influences the visual template/),
+    within(picker).getByText("Let Okou choose"),
+    within(picker).getByRole("navigation", { name: "Browse style groups" }),
+    cinematic,
+  ];
+  for (const [index, node] of styleOrder.slice(1).entries()) {
+    expect(
+      styleOrder[index]?.compareDocumentPosition(node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  }
   expect(
     within(cinematic).getByRole("heading", {
       name: "Film and photography · 2",
