@@ -32,6 +32,14 @@ const EMPTY_RESOURCE_SNAPSHOT = {
   skills: [],
 };
 
+const INTERMEDIATE_COMMENTARY_PROMPT = `## Intermediate commentary
+
+As you work, provide brief intermediate text messages to the user. These messages are how you collaborate with the user while working - stating assumptions and sharing updates. Keep them concise and easy to scan. Their purpose is to make your work easy for the user to understand and verify.
+
+If the user's request requires calling tools, start with a brief intermediate message before the first tool call. During longer work, provide additional updates at meaningful points.
+
+Do not put a final response, such as a blocking or clarifying question, in an intermediate message. Intermediate messages are only for partial updates, partial results, or non-blocking context that can provide value while you continue working. An intermediate update does not end the task; continue working when more work remains. The final answer must always be fully self-contained.`;
+
 const MEMORY_TOOL_SCHEMAS = [
   {
     name: "memories_list",
@@ -433,6 +441,49 @@ async function startResponsesProvider(
 }
 
 describe("official Pi AgentSession runtime", () => {
+  it.each(["api-first", "sandbox"] as const)(
+    "appends intermediate commentary guidance in %s sessions",
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), "pi-commentary-prompt-"));
+      onTestFinished(async () => {
+        await rm(root, { recursive: true });
+      });
+      const callerPrompt = "Caller instructions stay authoritative.";
+      const discoveredPrompt = "Discovered Sandbox instructions remain loaded.";
+      if (mode === "sandbox") {
+        await writeFile(join(root, "APPEND_SYSTEM.md"), discoveredPrompt);
+      }
+      const appendedPrompt =
+        mode === "api-first" ? callerPrompt : discoveredPrompt;
+      const created = await createPiAgentSessionForRuntime({
+        cwd: join(root, "workspace"),
+        agentDir: root,
+        sessionManager: SessionManager.inMemory(join(root, "workspace"), {
+          id: randomUUID(),
+        }),
+        model: TERRA_MODEL,
+        appendSystemPrompt: mode === "api-first" ? callerPrompt : null,
+        resourceSnapshot:
+          mode === "api-first" ? EMPTY_RESOURCE_SNAPSHOT : undefined,
+      });
+
+      try {
+        expect(created.session.systemPrompt).toContain(
+          INTERMEDIATE_COMMENTARY_PROMPT,
+        );
+        expect(
+          created.session.systemPrompt.match(/## Intermediate commentary/gu),
+        ).toHaveLength(1);
+        expect(
+          created.session.systemPrompt.indexOf(INTERMEDIATE_COMMENTARY_PROMPT),
+        ).toBeLessThan(created.session.systemPrompt.indexOf(appendedPrompt));
+        expect(created.session.systemPrompt).toContain(appendedPrompt);
+      } finally {
+        created.session.dispose();
+      }
+    },
+  );
+
   it.each([
     {
       name: "standard subscription",
