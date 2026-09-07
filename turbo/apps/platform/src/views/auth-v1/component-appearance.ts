@@ -35,6 +35,18 @@ const authV1OtpInputClass = cn(
   AUTH_FIELD_INPUT_CLASS,
   "h-9 w-9 p-0 text-center text-base font-medium uppercase",
 );
+const authV1CheckboxInputClass =
+  "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary focus-visible:ring-2 focus-visible:ring-ring";
+const authV1SignOutCheckboxInputClass = cn(
+  authV1CheckboxInputClass,
+  "min-h-4 min-w-4 max-h-4 max-w-4 p-0 outline-none",
+);
+const authV1CheckboxLabelClass =
+  "text-sm font-medium leading-5 text-foreground";
+const authV1SignOutCheckboxLabelClass = cn(
+  authV1CheckboxLabelClass,
+  "min-w-0 flex-1 p-0 text-left",
+);
 const authV1PasswordToggleClass = cn(
   buttonVariants({ size: "icon", variant: "ghost" }),
   "p-0 text-foreground",
@@ -120,6 +132,7 @@ export function getAuthV1ComponentAppearance(
               backgroundRepeat: "no-repeat",
               backgroundSize: "contain",
               height: "var(--okou-auth-card-logo-height)",
+              justifySelf: "center",
               marginBottom: "var(--okou-auth-card-logo-gap)",
               padding: 0,
               width: "fit-content",
@@ -147,6 +160,12 @@ export function getAuthV1ComponentAppearance(
       formFieldInput: cn(inputClassName, AUTH_FIELD_INPUT_CLASS, "shadow-none"),
       formFieldInput__password:
         "font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal",
+      // Clerk renders this native checkbox through the generic formFieldInput
+      // slot. Its public field modifier keeps the shared input width and height
+      // from stretching the control without relying on Clerk's DOM structure.
+      formFieldInput__signOutOfOtherSessions: authV1SignOutCheckboxInputClass,
+      formFieldRadioLabel__signOutOfOtherSessions:
+        authV1SignOutCheckboxLabelClass,
       formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",
       formButtonPrimary: authV1PrimaryActionClass,
@@ -185,9 +204,8 @@ export function getAuthV1ComponentAppearance(
       footerPages: "border-t border-border bg-card",
       footerPagesLink: AUTH_LINK_ACTION_CLASS,
       passkeyIcon__firstFactor: "size-4",
-      formFieldCheckboxInput:
-        "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary focus-visible:ring-2 focus-visible:ring-ring",
-      formFieldCheckboxLabel: "text-sm font-medium leading-5 text-foreground",
+      formFieldCheckboxInput: authV1CheckboxInputClass,
+      formFieldCheckboxLabel: authV1CheckboxLabelClass,
     },
   };
 }

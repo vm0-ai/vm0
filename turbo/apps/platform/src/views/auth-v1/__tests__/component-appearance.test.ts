@@ -128,6 +128,15 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(elementClasses(appearance, "formFieldCheckboxLabel")).toContain(
     "leading-5",
   );
+  expect(
+    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
+  ).toContain("max-w-4");
+  expect(
+    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
+  ).toContain("focus-visible:ring-2");
+  expect(
+    elementClasses(appearance, "formFieldRadioLabel__signOutOfOtherSessions"),
+  ).toContain("flex-1");
 
   const serializedAppearance = JSON.stringify(appearance);
   expect(serializedAppearance).not.toContain("!important");
@@ -153,6 +162,7 @@ test("Preview origins retain the CORS-safe logo fallback", () => {
   expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
     platformOkouWordmarkDarkImg,
   );
+  expect(elementStyles(appearance, "logoBox").justifySelf).toBe("center");
 });
 
 test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
