@@ -52,15 +52,22 @@ set -euo pipefail
 printf 'BENTOML_API_KEY=%s\n' "$BENTO_CLOUD_API_KEY"
 printf 'BENTOML_ENDPOINT_SHA256='
 printf '%s' "$BENTO_CLOUD_API_ENDPOINT" | sha256sum | cut -d' ' -f1
-curl --silent --show-error --max-time 5 \
+# Raw DNS has dedicated runner coverage. Keep this connector-refresh probe on
+# IPv4 so an unavailable AAAA response cannot block an otherwise valid request.
+if curl --ipv4 --silent --show-error --max-time 5 \
     --output /dev/null \
-    "${BENTO_CLOUD_API_ENDPOINT}/" || true
-printf '__OUTPUT_MARKER__\n'
+    "${BENTO_CLOUD_API_ENDPOINT}/"; then
+    printf '__OUTPUT_PREFIX__SENT\n'
+else
+    curl_status=$?
+    printf '__OUTPUT_PREFIX__FAILED=%s\n' "$curl_status"
+    exit "$curl_status"
+fi
 EOF
 )
 
-    local first_output_marker="BENTOML_INITIAL_REQUEST_SENT_${TEST_ID}"
-    local first_prompt="${probe_template//__OUTPUT_MARKER__/$first_output_marker}"
+    local first_output_prefix="BENTOML_INITIAL_REQUEST_${TEST_ID}_"
+    local first_prompt="${probe_template//__OUTPUT_PREFIX__/$first_output_prefix}"
     run runner_e2e_start_chat_run "$AGENT_ID" "$first_prompt"
     echo "$output"
     assert_success
@@ -83,14 +90,17 @@ EOF
         '.result.agentSessionId | select(type == "string" and length > 0)' \
         <<<"$first_run_response")
 
+    # Both outcomes share a prefix so transport failures surface before the
+    # firewall-log wait rather than timing out on a success-only marker.
     run runner_e2e_wait_for_chat_text \
         "$THREAD_ID" \
         "$first_run_id" \
-        "$first_output_marker"
+        "$first_output_prefix"
     echo "$output"
     assert_success
     local first_agent_text="$output"
     public_surfaces+="$first_agent_text"$'\n'
+    assert_output --partial "${first_output_prefix}SENT"
     assert_output --partial \
         "BENTOML_API_KEY=cur7hCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe"
     assert_output --partial "BENTOML_ENDPOINT_SHA256=${initial_endpoint_digest}"
@@ -133,8 +143,8 @@ EOF
     assert_success
     public_surfaces+="$output"$'\n'
 
-    local updated_output_marker="BENTOML_UPDATED_REQUEST_SENT_${TEST_ID}"
-    local updated_prompt="${probe_template//__OUTPUT_MARKER__/$updated_output_marker}"
+    local updated_output_prefix="BENTOML_UPDATED_REQUEST_${TEST_ID}_"
+    local updated_prompt="${probe_template//__OUTPUT_PREFIX__/$updated_output_prefix}"
     run runner_e2e_continue_chat_run \
         "$AGENT_ID" \
         "$THREAD_ID" \
@@ -166,11 +176,12 @@ EOF
     run runner_e2e_wait_for_chat_text \
         "$THREAD_ID" \
         "$RUN_ID" \
-        "$updated_output_marker"
+        "$updated_output_prefix"
     echo "$output"
     assert_success
     local updated_agent_text="$output"
     public_surfaces+="$updated_agent_text"$'\n'
+    assert_output --partial "${updated_output_prefix}SENT"
     assert_output --partial \
         "BENTOML_API_KEY=cur7hCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe"
     assert_output --partial "BENTOML_ENDPOINT_SHA256=${updated_endpoint_digest}"
