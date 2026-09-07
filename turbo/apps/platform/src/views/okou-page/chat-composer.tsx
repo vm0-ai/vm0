@@ -6820,19 +6820,17 @@ function TemplatePickerButton({
               onPointerDown={prewarmPicker}
               onClick={() => {
                 prewarmPicker();
-                if (singleTemplate && !singleTemplate.legacy) {
-                  signals.editor.editor.commands.setNodeSelection(
-                    singleTemplate.position,
-                  );
-                }
-                openTemplatePicker({
-                  kind: singleTemplate
+                openTemplatePicker(
+                  singleTemplate
                     ? singleTemplate.legacy
-                      ? "edit-legacy"
-                      : "edit-selected"
-                    : "insert",
-                  category: selectedCategory,
-                });
+                      ? { kind: "edit-legacy", category: selectedCategory }
+                      : {
+                          kind: "edit-selected",
+                          category: selectedCategory,
+                          position: singleTemplate.position,
+                        }
+                    : { kind: "insert", category: selectedCategory },
+                );
               }}
             >
               {templateMode ? (
