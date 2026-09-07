@@ -19,12 +19,14 @@ import {
 import { findHexRgbColors } from "./hex-rgb-color.ts";
 import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
+const UNDERLINE_TOKEN_TYPE = "underline";
+
 // Tiptap registers editor-only tokenizers on the default Marked instance.
 // Display parsing owns its extensions so mounting an editor cannot change it.
 const markdownParser: Readonly<Marked> = new Marked({
   extensions: [
     {
-      name: "underline",
+      name: UNDERLINE_TOKEN_TYPE,
       level: "inline",
       start(source) {
         return source.indexOf("++");
@@ -59,7 +61,7 @@ const markdownParser: Readonly<Marked> = new Marked({
               continue;
             }
             return {
-              type: "underline",
+              type: UNDERLINE_TOKEN_TYPE,
               raw: source.slice(0, index + 2),
               tokens: this.lexer.inlineTokens(content),
             };
