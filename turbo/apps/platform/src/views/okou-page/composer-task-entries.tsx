@@ -22,7 +22,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@okouai/ui";
-import { FeatureSwitchKey, WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { WORKFLOW_TEMPLATE_ITEMS } from "@okouai/core/workflow-template-items";
 import { IMAGE_MODEL_CONFIGS } from "@okouai/core/image-model-catalog";
 import type {
   ComposerSignals,
