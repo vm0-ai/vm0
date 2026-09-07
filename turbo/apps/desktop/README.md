@@ -220,7 +220,7 @@ working for those builds:
   path and neither branded form took any, including from the Zero installs that
   have been polling this API since the policy went `hard`. #31088 removed those
   rows, so the neutral path above is the one that has to keep resolving.
-  #26364 tracks the Zero install base itself.
+  #26368 tracks the installed Zero drain and retirement of these dependencies.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's

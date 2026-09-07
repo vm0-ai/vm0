@@ -73,7 +73,7 @@ export const desktopUpdatesContract = c.router({
     responses: {
       200: desktopZeroMigrationPolicySchema,
     },
-    summary: "Get the remotely controlled Zero Desktop migration policy",
+    summary: "Get the Zero Desktop migration policy for installed clients",
   },
   releasePage: {
     method: "GET",

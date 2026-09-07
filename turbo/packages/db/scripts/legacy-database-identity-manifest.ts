@@ -81,10 +81,10 @@ const publicBrandDisposition = {
 const desktopDisposition = {
   classification: "retain",
   reason:
-    "Zero remains a supported Desktop product identity during the measured Computer Use migration and rollback window.",
-  ownerIssue: "#26364",
+    "Zero remains an installed Desktop product identity during the measured Computer Use drain and retirement window.",
+  ownerIssue: "#26368",
   writerStopCondition:
-    "The #26370 hard stop is production-accepted and no supported Zero Desktop version can register or refresh a Computer Use host.",
+    "The Zero hard stop remains production-active and #26368 verifies that no supported Zero Desktop version can register or refresh a Computer Use host.",
   drainEvidence:
     "Aggregate host telemetry has zero Zero-product heartbeats and commands for 14 consecutive days after the hard stop, with zero active rollback dependency.",
   removalGate:

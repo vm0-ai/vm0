@@ -134,7 +134,7 @@ export const RESIDUAL_BRAND_BOUNDARY_FILE_RULES = [
     id: "desktop-identity/desktop-app",
     paths: /^turbo\/apps\/desktop\//u,
     reason:
-      "Desktop keeps a supported Zero product identity during the Computer Use migration and rollback window, owned by #26364, #26368, and #26370.",
+      "Desktop keeps the installed Zero product identity through the measured drain and retirement window owned by #26368.",
   },
   {
     category: "external-identity",
@@ -497,7 +497,7 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     category: "desktop-identity",
     id: "desktop-identity/desktop-product-line",
     reason:
-      "Desktop product and update-line identities are matched by installed clients; #26364, #26368, and #26370 own the hard stop.",
+      "Desktop product and update-line identities are matched by installed clients; #26368 owns their retention and retirement gates.",
     tokenPattern:
       /^(?:DESKTOP_[A-Z0-9_]*ZERO(?:_[A-Z0-9_]+)?|[Dd]esktopZero[A-Za-z0-9]*)$/u,
   },
@@ -1041,7 +1041,7 @@ export const RESIDUAL_BRAND_BOUNDARY_OCCURRENCE_RULES = [
     id: "desktop-identity/desktop-release-artifact",
     paths: TEST_AND_FIXTURE_PATHS,
     reason:
-      "Zero-darwin-arm64-1.2.3.zip is the published Desktop release artifact attached to a GitHub release, and desktop-updates.test.ts uses it to prove the final Okou feed refuses to serve a Zero artifact. The asset exists under that filename on a release this repository cannot rewrite, and #26364, #26368, and #26370 own Desktop identity.",
+      "Zero-darwin-arm64-1.2.3.zip is the published Desktop release artifact attached to a GitHub release, and desktop-updates.test.ts uses it to prove the final Okou feed refuses to serve a Zero artifact. The asset exists under that filename on a release this repository cannot rewrite, and #26368 owns the retained Desktop identity and artifact evidence.",
     tokens: ["Zero-darwin-arm64-1"],
   },
   {
