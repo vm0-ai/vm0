@@ -1554,11 +1554,17 @@ interface SelectedThreadConnectorFixture extends EntitledChatActor {
 async function selectedThreadConnectorFixture(
   title: string,
 ): Promise<SelectedThreadConnectorFixture> {
-  const entitled = await entitledChatActor();
+  // A unique version still shares the active source with other test files.
+  // Own the source so their catalog setup cannot invalidate this projection.
+  mockEnv(
+    "R2_USER_STORAGES_BUCKET_NAME",
+    `test-thread-runtime-context-${randomUUID()}`,
+  );
   await installApiTestConnectorCatalog({
     catalogVersion: `api-test-thread-runtime-overlap-${randomUUID()}`,
     runtimeProjection: true,
   });
+  const entitled = await entitledChatActor();
   const connection = await connectors.connectManualGrant(
     entitled.actor,
     "openai",
