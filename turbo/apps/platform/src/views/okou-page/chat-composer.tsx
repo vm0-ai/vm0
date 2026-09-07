@@ -8532,11 +8532,9 @@ function MicButton({
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
 
   const signal = useGet(pageSignal$);
-  const disabled =
-    starting ||
-    transcribing ||
-    (voiceInputV2Enabled && voiceDraftStatus === undefined) ||
-    (!recording && !quotaResolved);
+  const draftLoading = voiceInputV2Enabled && voiceDraftStatus === undefined;
+  const actionDisabled =
+    starting || transcribing || (!recording && !quotaResolved);
   const status = {
     recording,
     starting,
@@ -8561,14 +8559,15 @@ function MicButton({
             variant="quiet"
             size="icon-sm"
             iconSize="md"
-            className={cn(
-              "relative shrink-0",
-              (recording || starting || transcribing) &&
-                "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
-            )}
+            className={cn("relative shrink-0", {
+              // Background draft checks should not dim the mic on thread switches.
+              "disabled:opacity-100": draftLoading && !actionDisabled,
+              "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white":
+                recording || starting || transcribing,
+            })}
             data-composer-voice-toggle
             onClick={handleClick}
-            disabled={disabled}
+            disabled={actionDisabled || draftLoading}
             aria-label={micButtonAriaLabel(status)}
             aria-busy={starting || transcribing}
             aria-keyshortcuts={
