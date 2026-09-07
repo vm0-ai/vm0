@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
 import { and, eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
@@ -53,7 +54,8 @@ function parseWorkflowAutomationPayload(
  * Advance a workflow schedule automation after its run completes: cron advances to
  * the next occurrence from the completion time, loop by its interval; a
  * disabled automation (e.g. a claimed one-time automation) does not recur. Consecutive
- * failures auto-disable the automation after three. It is keyed on
+ * unexpected failures auto-disable the automation after three. Insufficient
+ * credits leave the schedule enabled for its next occurrence. It is keyed on
  * `workflow_automations`.
  */
 export async function handleWorkflowAutomationInternalCallback(
@@ -85,11 +87,27 @@ export async function handleWorkflowAutomationInternalCallback(
   }
 
   const completedAt = nowDate();
+  const [failedRun] =
+    input.callback.status === "failed"
+      ? await db
+          .select({ failureReason: agentRuns.failureReason })
+          .from(agentRuns)
+          .where(
+            and(
+              eq(agentRuns.id, input.callback.runId),
+              eq(agentRuns.orgId, automation.orgId),
+            ),
+          )
+          .limit(1)
+      : [];
+  signal?.throwIfAborted();
+  const isCreditError = failedRun?.failureReason === "insufficient_credits";
   const consecutiveFailures =
     input.callback.status === "completed"
       ? 0
-      : automation.consecutiveFailures + 1;
-  const shouldDisable = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+      : automation.consecutiveFailures + (isCreditError ? 0 : 1);
+  const shouldDisable =
+    !isCreditError && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
   const nextRunAt = advanceTimeAutomationAfterCompletion({
     scheduleType: payload.kind,
     cronExpression:

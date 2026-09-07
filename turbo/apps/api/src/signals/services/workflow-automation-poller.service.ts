@@ -194,14 +194,17 @@ async function recordPreRunFailure(
     error: failureMessage(error),
   };
   if (isCreditError) {
-    log.warn("Workflow automation skipped: insufficient credits", context);
+    log.debug("Workflow automation skipped: insufficient credits", context);
   } else {
     log.error("Workflow automation pre-run failed", context);
   }
 
   const failureTime = nowDate();
-  const newFailureCount = automation.consecutiveFailures + 1;
-  const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
+  const newFailureCount = isCreditError
+    ? automation.consecutiveFailures
+    : automation.consecutiveFailures + 1;
+  const shouldDisable =
+    !isCreditError && newFailureCount >= MAX_CONSECUTIVE_FAILURES;
   const nextRunAt = advanceAfterPreRunFailure(
     automation,
     failureTime,
