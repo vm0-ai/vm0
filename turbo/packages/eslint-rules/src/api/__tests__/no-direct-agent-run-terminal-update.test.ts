@@ -8,8 +8,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 
 const ruleTester = new RuleTester();
+const agentRunSchemaModule = "@okouai" + "/db/schema/agent-run";
 const preamble = `
-  import { agentRuns } from "@okouai/db/schema/agent-run";
+  import { agentRuns } from "${agentRunSchemaModule}";
   declare const tx: {
     update(table: unknown): {
       set(values: unknown): unknown;
@@ -96,7 +97,7 @@ ruleTester.run(
       {
         name: "aliased table and values are rejected",
         code: `
-          import { agentRuns as runs } from "@okouai/db/schema/agent-run";
+          import { agentRuns as runs } from "${agentRunSchemaModule}";
           declare const tx: {
             update(table: unknown): {
               set(values: unknown): unknown;
