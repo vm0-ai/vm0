@@ -1169,7 +1169,7 @@ test("Mount only the sidebar for the current viewport", async () => {
   expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
 });
 
-test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
+test("Keep pin management usable with many pinned agents", async () => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents();
   const preferencesGate = context.mocks.deferred<void>();
   context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
@@ -1203,7 +1203,6 @@ test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: large },
   });
 
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
@@ -1239,22 +1238,17 @@ test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   if (!pinAgent) {
     throw new Error("Pin agent button not found");
   }
-  // Pin closes the first row at either avatar size; remaining agents wrap.
-  const beforePin = pinnedAgentLink(
-    grid,
-    large ? "Research Agent" : "Operations Agent",
-  );
-  const afterPin = pinnedAgentLink(
-    grid,
-    large ? "Support Agent" : "Analytics Agent",
-  );
+  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+  // Billing, so Pin closes the first row and the rest wrap after it.
+  const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
+  const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
 
   expect(
-    beforePin.compareDocumentPosition(pinAgent) &
+    fourthAgent.compareDocumentPosition(pinAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
-    pinAgent.compareDocumentPosition(afterPin) &
+    pinAgent.compareDocumentPosition(fifthAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
@@ -2439,11 +2433,7 @@ test("Search, pin, and open an agent from the pin manager", async () => {
     return [researchThread];
   });
 
-  await setupSidebarPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: true },
-  });
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
   const grid = await screen.findByTestId("pinned-agents-grid");
   click(screen.getByLabelText("Pin an agent"));

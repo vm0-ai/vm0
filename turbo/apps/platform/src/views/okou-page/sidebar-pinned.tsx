@@ -7,7 +7,6 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { Plus, ChevronRight, Pin, PinOff, CheckCheck } from "lucide-react";
 import {
   Tooltip,
@@ -48,7 +47,6 @@ import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { refreshSidebarChatThreadLayoutOnRef$ } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
@@ -68,11 +66,7 @@ const pinnedAgentGridCardFrameClassName =
 // baseline onto different device pixels.
 const pinnedAgentGridLabelFrameClassName = "h-3.5 leading-[14px]";
 
-function PinnedAgentGridSkeletonCard({
-  avatarClassName,
-}: {
-  readonly avatarClassName: string;
-}) {
+function PinnedAgentGridSkeletonCard() {
   const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   return (
     <div
@@ -81,7 +75,7 @@ function PinnedAgentGridSkeletonCard({
       data-testid="pinned-agent-skeleton"
       className={pinnedAgentGridCardFrameClassName}
     >
-      <span className={`flex shrink-0 ${avatarClassName}`}>
+      <span className="flex h-9 w-9 shrink-0">
         <Skeleton className="h-full w-full rounded-full" />
       </span>
       <Skeleton
@@ -250,21 +244,20 @@ function PinnedAgentDragHandle() {
 }
 
 /**
- * Grid tiles truncate agent names to fit the sidebar. Each carries a tooltip with
+ * A grid tile is only a fifth of the sidebar wide, so almost every agent name
+ * is truncated down to a few characters. The tile carries a hover tooltip with
  * the full name — a native `title` is too slow and too easy to miss for a label
  * that is unreadable by default. The tooltip is disabled while a reorder drag
  * is in flight so it never floats over the drop carets.
  */
 function PinnedAgentGridCard({
   agent,
-  avatarClassName,
   isPrimarySelected,
   hasUnread,
   isReorderable,
   dropSide,
 }: {
   readonly agent: PinnedGridAgent;
-  readonly avatarClassName: string;
   readonly isPrimarySelected: boolean;
   readonly hasUnread: boolean;
   readonly isReorderable: boolean;
@@ -365,7 +358,7 @@ function PinnedAgentGridCard({
         />
       )}
       <span
-        className={`relative flex shrink-0 ${avatarClassName} ${
+        className={`relative flex h-9 w-9 shrink-0 ${
           isDragging ? "opacity-0" : ""
         }`}
       >
@@ -463,8 +456,6 @@ export function PinnedAgentListSection({
 }: {
   layout?: "vertical" | "horizontal";
 }) {
-  const largeAvatars =
-    useGet(featureSwitch$)[FeatureSwitchKey.PinnedAgentAvatar64];
   const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const { t } = useTranslation("agents");
   const activeRoute = useGet(activeRoute$);
@@ -500,18 +491,11 @@ export function PinnedAgentListSection({
   const selectedAgentId = routeAgentId ?? sidebarAgentId;
 
   if (layout === "horizontal") {
-    const avatarClassName = largeAvatars ? "h-16 w-16" : "h-9 w-9";
-    const agentsBeforePin = largeAvatars ? 2 : 4;
     const horizontalPinnedAgents =
       pinnedAgentsLoadable.state === "loading" ? null : displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
-        ? [
-            <PinnedAgentGridSkeletonCard
-              key="loading"
-              avatarClassName={avatarClassName}
-            />,
-          ]
+        ? [<PinnedAgentGridSkeletonCard key="loading" />]
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
@@ -528,7 +512,6 @@ export function PinnedAgentListSection({
               >
                 <PinnedAgentGridCard
                   agent={agent}
-                  avatarClassName={avatarClassName}
                   isPrimarySelected={isPrimarySelected}
                   hasUnread={hasUnread}
                   isReorderable={isPinned && !isDefaultAgent}
@@ -551,12 +534,10 @@ export function PinnedAgentListSection({
           })}
         </span>
         <div
-          className={`grid min-w-0 items-start gap-x-1 gap-y-2.5 ${
-            largeAvatars ? "grid-cols-3" : "grid-cols-5"
-          }`}
+          className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2.5"
           data-testid="pinned-agents-grid"
         >
-          {pinnedAgentCards.slice(0, agentsBeforePin)}
+          {pinnedAgentCards.slice(0, 4)}
           {horizontalPinnedAgents !== null && (
             <button
               type="button"
@@ -568,9 +549,7 @@ export function PinnedAgentListSection({
               })}
               className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
             >
-              <span
-                className={`flex shrink-0 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))] ${avatarClassName}`}
-              >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
                 <Plus size={18} />
               </span>
               <span
@@ -583,7 +562,7 @@ export function PinnedAgentListSection({
               </span>
             </button>
           )}
-          {pinnedAgentCards.slice(agentsBeforePin)}
+          {pinnedAgentCards.slice(4)}
         </div>
       </div>
     );
