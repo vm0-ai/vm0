@@ -735,6 +735,28 @@ impl FirecrackerSandbox {
         error: io::Error,
         backend_crashed: bool,
     ) -> SandboxError {
+        if let Some(write) = error
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<guest_control_client::RequestWriteError>())
+        {
+            let stage = match write.stage() {
+                guest_control_client::RequestWriteStage::BeforeFrameWrite => {
+                    if backend_crashed {
+                        return Self::backend_crashed_error(operation);
+                    }
+                    sandbox::SandboxOperationWriteStage::BeforeFrameWrite
+                }
+                guest_control_client::RequestWriteStage::FrameWrite => {
+                    sandbox::SandboxOperationWriteStage::FrameWrite
+                }
+            };
+            // A coincident backend crash must not hide a possibly partial frame.
+            return SandboxError::OperationWrite {
+                operation,
+                stage,
+                source: error,
+            };
+        }
         if backend_crashed {
             return Self::backend_crashed_error(operation);
         }

@@ -23,7 +23,8 @@ use super::support::{
     send_write_files_success, spawn_write_file, spawn_write_files, spawn_write_private_files,
 };
 use crate::{
-    FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, WriteFileEntry,
+    FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, RequestWriteError,
+    RequestWriteStage, WriteFileEntry,
     file::test_support::{
         WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT,
         write_private_files_with_small_limits,
@@ -1159,6 +1160,14 @@ async fn write_file_frame_failure_poisons_connection_and_releases_gates() {
         .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        err.get_ref()
+            .unwrap()
+            .downcast_ref::<RequestWriteError>()
+            .unwrap()
+            .stage(),
+        RequestWriteStage::FrameWrite,
+    );
     assert!(!is_connected(&host));
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
@@ -1691,6 +1700,14 @@ async fn write_file_observer_error_cleans_pending_without_sending_frame() {
         .unwrap_err();
 
     assert!(err.to_string().contains("observer failed"));
+    assert_eq!(
+        err.get_ref()
+            .unwrap()
+            .downcast_ref::<RequestWriteError>()
+            .unwrap()
+            .stage(),
+        RequestWriteStage::BeforeFrameWrite,
+    );
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),

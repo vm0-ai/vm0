@@ -18,7 +18,7 @@ use super::super::support::{
 };
 use super::start_capture_operation;
 use crate::operation_tracker::NormalOperationReadiness;
-use crate::{ExecCaptureRequest, FrameWriteObserver};
+use crate::{ExecCaptureRequest, FrameWriteObserver, RequestWriteError, RequestWriteStage};
 
 const EXEC_START_WRITE_TEST_TIMEOUT: Duration = Duration::from_millis(50);
 
@@ -343,6 +343,14 @@ async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
     .unwrap_err();
 
     assert!(err.to_string().contains("observer failed"));
+    assert_eq!(
+        err.get_ref()
+            .unwrap()
+            .downcast_ref::<RequestWriteError>()
+            .unwrap()
+            .stage(),
+        RequestWriteStage::BeforeFrameWrite,
+    );
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("observer error must not send exec frame; read {n} bytes"),
@@ -358,7 +366,7 @@ async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
 
 #[tokio::test]
 async fn exec_write_admission_error_releases_unused_reservation_without_sending_frame() {
-    let (host, guest) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = exec_capture_with_write_admission(
@@ -370,6 +378,15 @@ async fn exec_write_admission_error_releases_unused_reservation_without_sending_
     .unwrap_err();
 
     assert!(err.to_string().contains("admission failed"));
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(
+        err.get_ref()
+            .unwrap()
+            .downcast_ref::<RequestWriteError>()
+            .unwrap()
+            .stage(),
+        RequestWriteStage::BeforeFrameWrite,
+    );
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("admission error must not send exec frame; read {n} bytes"),
@@ -381,6 +398,7 @@ async fn exec_write_admission_error_releases_unused_reservation_without_sending_
         NormalOperationReadiness::Idle
     );
     assert!(is_connected(&host));
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]

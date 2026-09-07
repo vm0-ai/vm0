@@ -576,6 +576,106 @@ async fn execute_new_sandbox_suppresses_prefetch_replacement_after_uncertain_cle
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_handles_ordinary_prefetch_write_failures() {
+    use sandbox::SandboxOperationWriteStage;
+    use std::io;
+
+    for (stage, kind, cleanup_uncertain) in [
+        (
+            SandboxOperationWriteStage::BeforeFrameWrite,
+            io::ErrorKind::PermissionDenied,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::BrokenPipe,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::TimedOut,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::BrokenPipe,
+            true,
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_error(SandboxError::OperationWrite {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage,
+            source: io::Error::new(kind, "prefetch write failed"),
+        });
+        if cleanup_uncertain {
+            overrides.push_destroy_panic("destroy failed");
+        }
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let context = codex_oauth_context();
+        let mut telemetry = test_telemetry(&config, &context);
+        let result = execute_new_sandbox(
+            &factory,
+            &context,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(
+            overrides.start_process_calls().len(),
+            1,
+            "replacement must not prefetch again"
+        );
+        let unsafe_write = stage == SandboxOperationWriteStage::FrameWrite;
+        assert_eq!(overrides.destroy_call_count(), u32::from(unsafe_write));
+        assert_eq!(
+            overrides.create_configs().len(),
+            1 + usize::from(unsafe_write && !cleanup_uncertain)
+        );
+        if cleanup_uncertain {
+            assert!(matches!(
+                result,
+                Err(RunnerError::Sandbox(SandboxError::OperationWrite {
+                    stage: SandboxOperationWriteStage::FrameWrite,
+                    ..
+                }))
+            ));
+            assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+            assert!(overrides.storage_manifest_calls().is_empty());
+            assert!(overrides.start_agent_process_calls().is_empty());
+        } else {
+            assert_eq!(result.unwrap().exit_code(), 0);
+            assert_eq!(overrides.workspace_drive_mount_calls(), 1);
+            assert_eq!(overrides.start_agent_process_calls().len(), 1);
+        }
+        assert_telemetry_action(
+            &telemetry,
+            "runner_codex_model_catalog_prefetch",
+            false,
+            Some("start_failed"),
+        );
+        if unsafe_write {
+            assert_telemetry_action(
+                &telemetry,
+                "runner_fresh_sandbox_retry_without_codex_prefetch",
+                !cleanup_uncertain,
+                cleanup_uncertain.then_some("cleanup_uncertain"),
+            );
+        }
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+}
+
+#[tokio::test]
 async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -617,6 +717,56 @@ async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification
     assert!(error.to_string().contains("status publication failed"));
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(overrides.start_agent_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn prefetch_partial_write_cannot_spend_a_second_preparation_retry() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "first attachment failed",
+    )));
+    overrides.push_start_process_error(SandboxError::OperationWrite {
+        operation: sandbox::SandboxOperation::StartProcess,
+        stage: sandbox::SandboxOperationWriteStage::FrameWrite,
+        source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "partial write"),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+    let result = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(RunnerError::Sandbox(SandboxError::OperationWrite { .. }))
+    ));
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 2);
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+    assert!(overrides.storage_manifest_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_codex_model_catalog_prefetch",
+        false,
+        Some("start_failed"),
+    );
     assert_proxy_registry_empty(dir.path()).await;
 }
 

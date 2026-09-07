@@ -6,7 +6,7 @@ use futures_util::FutureExt;
 use sandbox::{
     ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, GuestProcessHandle, ProcessExit,
     ProcessOutputMode, Sandbox, SandboxError, SandboxOperation, SandboxOperationTimeoutStage,
-    StartProcessRequest,
+    SandboxOperationWriteStage, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -64,6 +64,7 @@ pub(super) enum CodexModelCatalogPrefetchStart {
 pub(super) struct UnusableCodexModelCatalogPrefetchStart {
     error: SandboxError,
     started_at: Instant,
+    outcome: &'static str,
 }
 
 pub(super) struct StartedCodexModelCatalogPrefetch {
@@ -149,7 +150,27 @@ impl StartedCodexModelCatalogPrefetch {
             Err(error) if is_unusable_sandbox_start_timeout(&error) => {
                 warn!(error = %error, "Codex model catalog prefetch start timed out after write boundary");
                 CodexModelCatalogPrefetchStart::SandboxUnusable(
-                    UnusableCodexModelCatalogPrefetchStart { error, started_at },
+                    UnusableCodexModelCatalogPrefetchStart {
+                        error,
+                        started_at,
+                        outcome: "start_timed_out",
+                    },
+                )
+            }
+            Err(
+                error @ SandboxError::OperationWrite {
+                    operation: SandboxOperation::StartProcess,
+                    stage: SandboxOperationWriteStage::FrameWrite,
+                    ..
+                },
+            ) => {
+                warn!(error = %error, "Codex model catalog prefetch start write failed after write boundary");
+                CodexModelCatalogPrefetchStart::SandboxUnusable(
+                    UnusableCodexModelCatalogPrefetchStart {
+                        error,
+                        started_at,
+                        outcome: "start_failed",
+                    },
                 )
             }
             Err(error) => {
@@ -213,7 +234,7 @@ impl UnusableCodexModelCatalogPrefetchStart {
             PREFETCH_ACTION,
             self.started_at.elapsed(),
             false,
-            Some("start_timed_out"),
+            Some(self.outcome),
         );
         self.error
     }

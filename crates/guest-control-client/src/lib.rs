@@ -152,6 +152,48 @@ impl fmt::Display for RequestTimeoutError {
 
 impl std::error::Error for RequestTimeoutError {}
 
+/// Byte-emission boundary for an ordinary guarded request-write failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequestWriteStage {
+    /// This frame emitted no bytes; this does not assert connection health.
+    BeforeFrameWrite,
+    /// The frame write failed after admission and may be partial.
+    FrameWrite,
+}
+
+/// Ordinary write failure carried inside an [`io::Error`] of the original kind.
+///
+/// Unlike [`RequestTimeoutError`], this does not represent a request deadline,
+/// even when the underlying writer returns [`io::ErrorKind::TimedOut`].
+#[derive(Debug)]
+pub struct RequestWriteError {
+    stage: RequestWriteStage,
+    source: io::Error,
+}
+
+impl RequestWriteError {
+    pub(crate) fn into_io_error(stage: RequestWriteStage, source: io::Error) -> io::Error {
+        io::Error::new(source.kind(), Self { stage, source })
+    }
+
+    /// Return the stage observed by the serialized frame writer.
+    pub const fn stage(&self) -> RequestWriteStage {
+        self.stage
+    }
+}
+
+impl fmt::Display for RequestWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.source.fmt(f)
+    }
+}
+
+impl std::error::Error for RequestWriteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
 /// Observer called when a request frame reaches the guest-write boundary.
 ///
 /// The callback is synchronous because it runs while the shared writer lock is
