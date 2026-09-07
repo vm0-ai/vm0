@@ -1,5 +1,11 @@
 import type { FormEvent, ReactNode } from "react";
-import { useGet, useLoadable, useSet, type Loadable } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLoadable,
+  useSet,
+  type Loadable,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { EllipsisVertical } from "lucide-react";
@@ -607,7 +613,7 @@ export function ConnectorAccountManagerDialog({
   onReviewScopes,
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
-  const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
+  const accountsLoadable = useLastLoadable(settingsConnectorAccounts.accounts$);
   const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
