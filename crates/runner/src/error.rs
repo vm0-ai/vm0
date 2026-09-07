@@ -170,10 +170,56 @@ impl ApiFailureKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiTransportCause {
+    Timeout,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    NetworkUnreachable,
+    HostUnreachable,
+    NotConnected,
+    BrokenPipe,
+    UnexpectedEof,
+    HttpIncompleteMessage,
+    HttpCanceled,
+    HttpClosed,
+    HttpParse,
+    HttpBodyWriteAborted,
+    HttpShutdown,
+    Io,
+    Unknown,
+}
+
+impl ApiTransportCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::ConnectionRefused => "connection_refused",
+            Self::ConnectionReset => "connection_reset",
+            Self::ConnectionAborted => "connection_aborted",
+            Self::NetworkUnreachable => "network_unreachable",
+            Self::HostUnreachable => "host_unreachable",
+            Self::NotConnected => "not_connected",
+            Self::BrokenPipe => "broken_pipe",
+            Self::UnexpectedEof => "unexpected_eof",
+            Self::HttpIncompleteMessage => "http_incomplete_message",
+            Self::HttpCanceled => "http_canceled",
+            Self::HttpClosed => "http_closed",
+            Self::HttpParse => "http_parse",
+            Self::HttpBodyWriteAborted => "http_body_write_aborted",
+            Self::HttpShutdown => "http_shutdown",
+            Self::Io => "io",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiTransportError {
     pub request: ApiRequestContext,
     pub failure_kind: ApiFailureKind,
+    pub failure_cause: ApiTransportCause,
     pub summary: String,
 }
 
@@ -181,8 +227,10 @@ impl std::fmt::Display for ApiTransportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}: send API request failed: {}",
-            self.request.endpoint_label, self.summary
+            "{}: send API request failed: {}; cause={}",
+            self.request.endpoint_label,
+            self.summary,
+            self.failure_cause.as_str()
         )
     }
 }

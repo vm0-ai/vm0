@@ -32,6 +32,7 @@ tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
+hyper = { workspace = true }
 reqwest = { workspace = true }
 rustix = { workspace = true, features = ["process", "time"] }
 hex = { workspace = true }
