@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Deployed VM0 built-in fallback completion after a trusted exact-route cooldown.
+# Deployed built-in fallback completion after a trusted exact-route cooldown.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'

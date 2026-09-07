@@ -34,14 +34,14 @@ const chat = createChatFilesBddApi(context);
 const runs = createRunsApi(context);
 const reads = createRunReadsApi(context);
 
-interface ClaimedVm0Run {
+interface ClaimedBuiltInRun {
   readonly actor: ReturnType<typeof bdd.user>;
   readonly agentId: string;
   readonly runId: string;
   readonly selectedModel: string;
 }
 
-async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
+async function createClaimedBuiltInRun(): Promise<ClaimedBuiltInRun> {
   const keyFixture = await seedBuiltInModelCandidateKeys(
     context,
     DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -79,7 +79,7 @@ async function createClaimedVm0Run(): Promise<ClaimedVm0Run> {
 }
 
 describe("POST /api/test/runtime-state/action", () => {
-  it("keeps overlapping VM0 built-in model-key fixtures independently releasable", async () => {
+  it("keeps overlapping built-in model-key fixtures independently releasable", async () => {
     const first = await seedBuiltInModelKey(context, "gpt-5.6-terra");
     const second = await seedBuiltInModelKey(context, "gpt-5.6-terra");
 
@@ -145,7 +145,7 @@ describe("POST /api/test/runtime-state/action", () => {
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "disables Codex apply patch for the VM0 %s OpenRouter fallback",
+    "disables Codex apply patch for the built-in %s OpenRouter fallback",
     async (selectedModel) => {
       await seedBuiltInModelCandidateKeys(context, selectedModel);
       const startedAt = Date.UTC(2026, 7, 23, 0, 0, 0);
@@ -463,7 +463,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     async ({ body, source, cooldownSeconds }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 0, 0);
       await withMockNowForTest(startedAt, async () => {
-        const claimed = await createClaimedVm0Run();
+        const claimed = await createClaimedBuiltInRun();
         const primary = await resolveBuiltInModelRouteFixture(
           context,
           claimed.selectedModel,
@@ -541,8 +541,8 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("requires an inclusive 60-second upstream transport streak", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 15, 0);
-    const claimed = await createClaimedVm0Run();
-    const secondClaimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
+    const secondClaimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -601,7 +601,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("keeps an observation-only route selectable to an in-flight resolver", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 16, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -637,7 +637,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("does not extend an active cooldown for one transport observation", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 17, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -678,7 +678,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("restarts after a gap greater than 60 seconds", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 20, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -713,7 +713,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("keeps an active longer cooldown and clears transport evidence silently", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 25, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -791,7 +791,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("merges connected receipts when body processing is reversed", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 35, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -842,7 +842,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
 
   it("ignores an older disjoint receipt without replacing newer evidence", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 45, 0);
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     const primary = await resolveBuiltInModelRouteFixture(
       context,
       claimed.selectedModel,
@@ -892,7 +892,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
     "uses receipt time across a route lock wait at $elapsedMs ms",
     async ({ cooldownExpiresAfterMs, elapsedMs, followupOutcome, outcome }) => {
       const startedAt = Date.UTC(2026, 7, 21, 0, 55, 0) + elapsedMs;
-      const claimed = await createClaimedVm0Run();
+      const claimed = await createClaimedBuiltInRun();
       const primary = await resolveBuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
@@ -959,7 +959,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
   it("writes a reported cooldown to the built-in table", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 0, 30, 0);
     await withMockNowForTest(startedAt, async () => {
-      const claimed = await createClaimedVm0Run();
+      const claimed = await createClaimedBuiltInRun();
       const primary = await resolveBuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
@@ -997,7 +997,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
   });
 
   it("records failure cooldowns for the canonical built-in discriminator", async () => {
-    const claimed = await createClaimedVm0Run();
+    const claimed = await createClaimedBuiltInRun();
     await setRunModelProviderFixture({
       runId: claimed.runId,
       modelProvider: "built-in",
@@ -1041,7 +1041,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
   it("monotonically extends concurrent bounded reports from receipt time", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 1, 0, 0);
     await withMockNowForTest(startedAt, async () => {
-      const claimed = await createClaimedVm0Run();
+      const claimed = await createClaimedBuiltInRun();
       const primary = await resolveBuiltInModelRouteFixture(
         context,
         claimed.selectedModel,
@@ -1102,7 +1102,7 @@ describe("POST /api/runners/runs/:runId/model-provider-failures", () => {
   it("rejects untrusted or invalid reports and ignores ineligible runs", async () => {
     const startedAt = Date.UTC(2026, 7, 21, 2, 0, 0);
     await withMockNowForTest(startedAt, async () => {
-      const claimed = await createClaimedVm0Run();
+      const claimed = await createClaimedBuiltInRun();
       const primary = await resolveBuiltInModelRouteFixture(
         context,
         claimed.selectedModel,

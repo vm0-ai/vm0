@@ -1476,12 +1476,12 @@ function frameworkForProviderSelection(
   if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
-  const vm0Model =
+  const builtInModel =
     selectedModel ?? MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-  if (!vm0Model) {
+  if (!builtInModel) {
     return null;
   }
-  return getFrameworkForType(getBuiltInConcreteProviderType(vm0Model));
+  return getFrameworkForType(getBuiltInConcreteProviderType(builtInModel));
 }
 
 async function resolveRequestedRunFramework(
@@ -2434,7 +2434,7 @@ async function multiAuthModelProviderEnvironment(
   };
 }
 
-async function vm0ModelProviderEnvironment(
+async function builtInModelProviderEnvironment(
   db: Db,
   selectedModel: string,
   resolvedRoute?: BuiltInModelRuntimeRoute,
@@ -2842,7 +2842,7 @@ async function resolveCandidateModelProviderEnvironment(
       args.selectedModelOverride ??
       row.selectedModel ??
       MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       selectedModel,
       args.builtInModelRuntimeRoute,
@@ -2913,7 +2913,7 @@ async function resolveModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (isBuiltInModelProviderType(args.modelProviderType)) {
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       args.selectedModelOverride ??
         MODEL_PROVIDER_TYPES["built-in"].defaultModel,

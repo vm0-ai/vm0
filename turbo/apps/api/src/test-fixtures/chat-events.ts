@@ -72,12 +72,12 @@ import { createUserMessageDocument } from "../signals/services/chat-user-message
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
- * BDD-scoped vm0 built-in model key prefixes. Fixture acquisition below only accepts
- * keys carrying one of these prefixes.
+ * BDD-scoped built-in model key prefixes. Fixture acquisition below only
+ * accepts keys carrying one of these prefixes.
  */
-const VM0_BDD_API_KEY_PREFIXES = [
-  "vm0-key-bdd-fake-",
-  "vm0-key-bdd-dev-seed-",
+const BDD_BUILT_IN_MODEL_KEY_PREFIXES = [
+  "built-in-key-bdd-fake-",
+  "built-in-key-bdd-dev-seed-",
 ] as const;
 const databasePidRowSchema = z.object({ pid: z.int() });
 const databaseConnectionOwnerRowSchema = z.object({
@@ -1889,27 +1889,27 @@ async function pidIsDirectlyBlockedBy(
 }
 
 /**
- * Acquires bdd-scoped ownership of the platform-managed vm0 API key pool for
- * one vendor.
+ * Acquires bdd-scoped ownership of the platform-managed built-in model key
+ * pool for one vendor.
  *
- * Why product APIs cannot construct this state: vm0_api_keys is a
+ * Why product APIs cannot construct this state: built_in_model_keys is a
  * platform-operations table with no product write surface — keys are
  * provisioned out of band. Keys passed here must carry a
- * VM0_BDD_API_KEY_PREFIXES prefix. The shared fixture service atomically
+ * BDD_BUILT_IN_MODEL_KEY_PREFIXES prefix. The shared fixture service atomically
  * arbitrates the vendor-unique row and prevents one test owner from deleting
  * another owner's key.
  */
-export async function acquireBddVm0ApiKey(args: {
+export async function acquireBddBuiltInModelKey(args: {
   readonly fixtureId: string;
   readonly vendor: string;
   readonly apiKey: string;
 }): Promise<string> {
-  const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
+  const scoped = BDD_BUILT_IN_MODEL_KEY_PREFIXES.some((prefix) => {
     return args.apiKey.length > prefix.length && args.apiKey.startsWith(prefix);
   });
   if (!scoped) {
     throw new Error(
-      `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
+      `acquireBddBuiltInModelKey: api key must start with one of ${BDD_BUILT_IN_MODEL_KEY_PREFIXES.join(", ")}`,
     );
   }
   const [acquired] = await acquireBuiltInModelKeyFixture(db(), args.fixtureId, [
@@ -1919,13 +1919,13 @@ export async function acquireBddVm0ApiKey(args: {
     },
   ]);
   if (!acquired) {
-    throw new Error(`Expected VM0 built-in key for vendor: ${args.vendor}`);
+    throw new Error(`Expected built-in model key for vendor: ${args.vendor}`);
   }
   return acquired.apiKey;
 }
 
 /** Releases only this bdd fixture's ownership of its vendor key. */
-export async function releaseBddVm0ApiKey(args: {
+export async function releaseBddBuiltInModelKey(args: {
   readonly fixtureId: string;
 }): Promise<void> {
   await releaseBuiltInModelKeyFixture(db(), args.fixtureId);

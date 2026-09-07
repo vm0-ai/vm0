@@ -83,7 +83,7 @@ interface BuiltInModelKeyFixture {
   release(): Promise<void>;
 }
 
-function vm0BuiltInModelKeyFixture(
+function builtInModelKeyFixture(
   context: TestContext,
   fixtureId: string,
   selectedModel: string,
@@ -94,7 +94,7 @@ function vm0BuiltInModelKeyFixture(
       return;
     }
     await postAction(context, {
-      action: "delete-vm0-built-in-model-key",
+      action: "delete-built-in-model-key",
       fixture_id: fixtureId,
     });
     released = true;
@@ -108,13 +108,13 @@ export async function seedBuiltInDefaultModelKey(
 ): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-built-in-default-model-key",
+    action: "seed-built-in-default-model-key",
     fixture_id: fixtureId,
   });
   if (!response.selected_model) {
     throw new Error("seedBuiltInDefaultModelKey missing selected_model");
   }
-  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
+  return builtInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function seedBuiltInModelKey(
@@ -123,14 +123,14 @@ export async function seedBuiltInModelKey(
 ): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-built-in-model-key",
+    action: "seed-built-in-model-key",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
     throw new Error("seedBuiltInModelKey missing selected_model");
   }
-  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
+  return builtInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function seedBuiltInModelCandidateKeys(
@@ -139,14 +139,14 @@ export async function seedBuiltInModelCandidateKeys(
 ): Promise<BuiltInModelKeyFixture> {
   const fixtureId = randomUUID();
   const response = await postAction(context, {
-    action: "seed-vm0-built-in-model-candidate-keys",
+    action: "seed-built-in-model-candidate-keys",
     fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
     throw new Error("seedBuiltInModelCandidateKeys missing selected_model");
   }
-  return vm0BuiltInModelKeyFixture(context, fixtureId, response.selected_model);
+  return builtInModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 type BuiltInModelRuntimeRouteFixture = NonNullable<
@@ -158,7 +158,7 @@ export async function resolveBuiltInModelRouteFixture(
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRouteFixture | null> {
   const response = await postAction(context, {
-    action: "resolve-vm0-built-in-model-route",
+    action: "resolve-built-in-model-route",
     selected_model: selectedModel,
   });
   return response.built_in_model_route ?? null;
@@ -171,7 +171,7 @@ export async function setBuiltInCandidateCooldownFixture(
   unavailableUntil: Date,
 ): Promise<void> {
   await postAction(context, {
-    action: "set-vm0-built-in-candidate-cooldown",
+    action: "set-built-in-candidate-cooldown",
     selected_model: selectedModel,
     provider_type: route.provider_type,
     upstream_model: route.upstream_model,
@@ -186,7 +186,7 @@ export async function deleteBuiltInCandidateCooldownFixture(
   route: BuiltInModelRuntimeRouteFixture,
 ): Promise<void> {
   await postAction(context, {
-    action: "delete-vm0-built-in-candidate-cooldown",
+    action: "delete-built-in-candidate-cooldown",
     selected_model: selectedModel,
     provider_type: route.provider_type,
     upstream_model: route.upstream_model,

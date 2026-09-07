@@ -185,7 +185,7 @@ import {
   holdAgentRunPiExecutionSnapshotFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
-  acquireBddVm0ApiKey,
+  acquireBddBuiltInModelKey,
   completeRunWithoutCallbacksFixture,
   deletePiApiFirstTurnUsageEventsFixture,
   holdAgentRunRowLockFixture,
@@ -203,7 +203,7 @@ import {
   readRunOutputLegacyPiEventsFixture,
   readRunOutputMaterializationFixture,
   readRunUsageEventsFixture,
-  releaseBddVm0ApiKey,
+  releaseBddBuiltInModelKey,
   removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replacePiSessionHistoryJsonlFixture,
@@ -5974,7 +5974,8 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const orgId = requireOrgId(actor);
-    // External model admission depends on plan capabilities, not VM0 credits.
+    // External model admission depends on plan capabilities, not built-in
+    // model credit admission.
     await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
@@ -6082,28 +6083,28 @@ describe("CHAT-02: model-first provider policies", () => {
     // Restore spendable credits before exercising the built-in branch.
     await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
 
-    // A vm0 provider pin in an entitled org passes the spendable-credits
+    // A built-in provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
-    // database: 503 when no vm0 execution key exists (no public provisioning
+    // database: 503 when no built-in model key exists (no public provisioning
     // surface), 201 when another suite's alive legacy test has seeded a
-    // global vm0 key. Both prove the credits-ok admission arm.
+    // global built-in model key. Both prove the credits-ok admission arm.
     await setOrgModelPolicyProviderTypeFixture({
       orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
-    const vm0Prompt = "vm0-backed admission with spendable credits";
-    const vm0Send = await requestSendEventRaw(actor, {
+    const builtInPrompt = "built-in admission with spendable credits";
+    const builtInSend = await requestSendEventRaw(actor, {
       agentId,
-      prompt: vm0Prompt,
+      prompt: builtInPrompt,
       userMessage: {
         version: 1,
-        parts: [{ type: "text", text: vm0Prompt }],
+        parts: [{ type: "text", text: builtInPrompt }],
       },
       model: "claude-sonnet-5",
       hasTextContent: true,
     });
-    expect([201, 503]).toContain(vm0Send.status);
+    expect([201, 503]).toContain(builtInSend.status);
     type BuiltInAdmissionObservation =
       | {
           readonly outcome: "route-unavailable";
@@ -6121,15 +6122,15 @@ describe("CHAT-02: model-first provider policies", () => {
           };
           readonly cleanup: { readonly status: number } | null;
         };
-    let vm0Observation: BuiltInAdmissionObservation;
+    let builtInObservation: BuiltInAdmissionObservation;
     let expectedBuiltInObservation: BuiltInAdmissionObservation;
-    if (vm0Send.status === 503) {
-      expectApiError(vm0Send.body);
-      vm0Observation = {
+    if (builtInSend.status === 503) {
+      expectApiError(builtInSend.body);
+      builtInObservation = {
         outcome: "route-unavailable",
         response: {
           status: 503,
-          errorMessage: vm0Send.body.error.message,
+          errorMessage: builtInSend.body.error.message,
         },
         cleanup: null,
       };
@@ -6143,21 +6144,22 @@ describe("CHAT-02: model-first provider policies", () => {
         cleanup: null,
       };
     } else {
-      if (vm0Send.status !== 201) {
+      if (builtInSend.status !== 201) {
         throw new Error("Expected a legal built-in admission outcome");
       }
       if (
-        typeof vm0Send.body !== "object" ||
-        vm0Send.body === null ||
-        !("runId" in vm0Send.body) ||
-        (vm0Send.body.runId !== null && typeof vm0Send.body.runId !== "string")
+        typeof builtInSend.body !== "object" ||
+        builtInSend.body === null ||
+        !("runId" in builtInSend.body) ||
+        (builtInSend.body.runId !== null &&
+          typeof builtInSend.body.runId !== "string")
       ) {
         throw new Error("Expected a built-in admission response body");
       }
-      const runId = vm0Send.body.runId;
+      const runId = builtInSend.body.runId;
       const cancellation =
         runId === null ? null : await api.requestCancelRun(actor, runId, [200]);
-      vm0Observation = {
+      builtInObservation = {
         outcome: "run-created",
         response: { status: 201, runId },
         cleanup: cancellation === null ? null : { status: cancellation.status },
@@ -6168,7 +6170,7 @@ describe("CHAT-02: model-first provider policies", () => {
         cleanup: runId === null ? null : { status: 200 },
       };
     }
-    expect(vm0Observation).toStrictEqual(expectedBuiltInObservation);
+    expect(builtInObservation).toStrictEqual(expectedBuiltInObservation);
   }, 90_000);
 
   it("preserves persisted external model plan-state outcomes", async () => {
@@ -7825,7 +7827,7 @@ describe("CHAT-02: model-first provider policies", () => {
       upstreamModel: "company-terra-production",
     },
   ] as const)(
-    "runs custom Responses gateway $selectedModel through Pi without vm0 model billing",
+    "runs custom Responses gateway $selectedModel through Pi without built-in model billing",
     async ({ selectedModel, upstreamModel }) => {
       const { actor, agentId } = await entitledChatActor();
       const orgId = requireOrgId(actor);
@@ -14424,15 +14426,15 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("runs vm0 DeepSeek through the native Pi API credential", async () => {
+  it("runs built-in DeepSeek through the native Pi API credential", async () => {
     const { actor, agentId } = await entitledChatActor();
     const keyFixtureId = randomUUID();
-    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    const requestedApiKey = `built-in-key-bdd-dev-seed-${keyFixtureId}`;
 
     // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
     await seedBuiltInModelKey("deepseek-v4-flash");
-    const selectedApiKey = await acquireBddVm0ApiKey({
+    const selectedApiKey = await acquireBddBuiltInModelKey({
       fixtureId: keyFixtureId,
       vendor: "deepseek",
       apiKey: requestedApiKey,
@@ -14447,11 +14449,11 @@ describe("CHAT-02: model-first provider policies", () => {
         }
       }
     };
-    const releaseVm0DeepSeekKey = async () => {
-      await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
+    const releaseBuiltInDeepSeekKey = async () => {
+      await releaseBddBuiltInModelKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseBuiltInDeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
@@ -14487,7 +14489,10 @@ describe("CHAT-02: model-first provider policies", () => {
             body: await request.json(),
           });
           return new HttpResponse(
-            piResponsesTextSse("vm0 Pi API response", modelRequests.length),
+            piResponsesTextSse(
+              "built-in Pi API response",
+              modelRequests.length,
+            ),
             { headers: { "content-type": "text/event-stream" } },
           );
         }),
@@ -14495,7 +14500,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
       const run = await sendChatRun(actor, {
         agentId,
-        prompt: "run with the selected vm0 DeepSeek provider",
+        prompt: "run with the selected built-in DeepSeek provider",
         model: "deepseek-v4-flash",
       });
       runId = run.runId;
@@ -14520,19 +14525,19 @@ describe("CHAT-02: model-first provider policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
-    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    const requestedApiKey = `built-in-key-bdd-dev-seed-${keyFixtureId}`;
     await seedBuiltInModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        releaseBddVm0ApiKey({ fixtureId: keyFixtureId }),
+        releaseBddBuiltInModelKey({ fixtureId: keyFixtureId }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    const acquiredApiKey = await acquireBddVm0ApiKey({
+    const acquiredApiKey = await acquireBddBuiltInModelKey({
       fixtureId: keyFixtureId,
       vendor: "anthropic",
       apiKey: requestedApiKey,
@@ -14559,7 +14564,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected vm0 provider",
+      prompt: "run with the selected built-in provider",
       model: "claude-opus-4-8",
     });
     runId = run.runId;
@@ -14581,7 +14586,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
 
     if (!claim.encryptedSecrets) {
-      throw new Error("Expected vm0 claim to carry encrypted secrets");
+      throw new Error("Expected the built-in claim to carry encrypted secrets");
     }
     const resolved = await fw.requestFirewallAuth(
       sandboxHeaders,
@@ -14594,7 +14599,7 @@ describe("CHAT-02: model-first provider policies", () => {
       [200],
     );
     if (resolved.status !== 200) {
-      throw new Error("Expected vm0 firewall auth to resolve");
+      throw new Error("Expected built-in firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
     expect(authorization?.startsWith("Bearer ")).toBeTruthy();
@@ -14801,7 +14806,7 @@ describe("CHAT-02: run-level model overrides", () => {
     { name: "Fast", tier: "fast", generation: 3, outcome: "failed" },
     { name: "Fast", tier: "fast", generation: 3, outcome: "cancelled" },
   ] as const)(
-    "hands native $name subscription Terra tools to a generation-$generation Sandbox with $outcome outcome and no VM0 billing",
+    "hands native $name subscription Terra tools to a generation-$generation Sandbox with $outcome outcome and no built-in billing",
     async ({ tier, generation, outcome }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const firewall = createFirewallApi(context);
@@ -16959,7 +16964,7 @@ describe("CHAT-02: run-level model overrides", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "use an unsupported vm0 model",
+        prompt: "use an unsupported model",
         clientThreadId: invalidModelThreadId,
         model: "codex" as never,
       },
@@ -22747,7 +22752,7 @@ describe("CHAT-02: run image model snapshot", () => {
 
     const globalDefault = await sendChatRun(actor, {
       agentId,
-      prompt: "image model comes from the vm0 global default",
+      prompt: "image model comes from the global default",
     });
     await expect(
       readRunImageModelSnapshotFixture(globalDefault.runId),
@@ -22871,7 +22876,7 @@ describe("CHAT-02: run image model snapshot", () => {
     const retiredEverywhere = await sendChatRun(actor, {
       agentId,
       threadId: anchor.threadId,
-      prompt: "retired image defaults fall through to the vm0 default",
+      prompt: "retired image defaults fall through to the global default",
     });
     await expect(
       readRunImageModelSnapshotFixture(retiredEverywhere.runId),

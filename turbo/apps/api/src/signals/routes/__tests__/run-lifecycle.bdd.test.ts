@@ -7492,7 +7492,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       visibility: "private",
     });
     const byokPrompt = `suspended BYOK ${randomUUID()}`;
-    const vm0Prompt = `suspended VM0 ${randomUUID()}`;
+    const builtInPrompt = `suspended built-in ${randomUUID()}`;
     await seedOrgMetadata({
       orgId: actor.orgId,
       tier: "pro-suspend",
@@ -7511,18 +7511,18 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
-    // The suspension applies to vm0-built-in runs as well.
-    const vm0Rejected = await api.requestCreateRun(
+    // The suspension applies to built-in model runs as well.
+    const builtInRejected = await api.requestCreateRun(
       actor,
       {
         agentId: agent.agentId,
-        prompt: vm0Prompt,
+        prompt: builtInPrompt,
         modelProvider: "built-in",
       },
       [402],
     );
-    expectApiError(vm0Rejected.body);
-    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expectApiError(builtInRejected.body);
+    expect(builtInRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -7530,7 +7530,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     });
     expect(
       runs.runs.filter((run) => {
-        return run.prompt === byokPrompt || run.prompt === vm0Prompt;
+        return run.prompt === byokPrompt || run.prompt === builtInPrompt;
       }),
     ).toHaveLength(0);
     const queue = await api.readRunQueue(actor);
@@ -8168,13 +8168,13 @@ describe("RUN-01: agent run authorization and session boundaries", () => {
   });
 });
 
-describe("RUN-02: model provider selection and vm0 admission", () => {
-  it("gates vm0 runs on billing state and on unexpired credit grants", async () => {
+describe("RUN-02: model provider selection and built-in admission", () => {
+  it("gates built-in model runs on billing state and on unexpired credit grants", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
 
     // An org that never went through onboarding has no billing state at all,
-    // so vm0 runs are refused before provider resolution.
+    // so built-in model runs are refused before provider resolution.
     const uninitialized = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
@@ -8186,7 +8186,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       uninitialized,
       {
         agentId: bareAgent.agentId,
-        prompt: "vm0 run",
+        prompt: "built-in model run",
         modelProvider: "built-in",
       },
       [402],
@@ -8196,7 +8196,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     // The credit expiry is the subscription period end plus one month, so a
     // period that ended two months ago grants credits that are already
-    // expired and never settled — vm0 admission fails whether or not a
+    // expired and never settled — built-in admission fails whether or not a
     // built-in model key happens to resolve.
     const actor = bdd.user();
     await api.grantProEntitlement(actor, {
@@ -8210,7 +8210,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "vm0 run",
+        prompt: "built-in model run",
         modelProvider: "built-in",
       },
       [402],
@@ -8288,7 +8288,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     });
 
     const byokPrompt = `staff suspended BYOK ${randomUUID()}`;
-    const vm0Prompt = `staff suspended VM0 ${randomUUID()}`;
+    const builtInPrompt = `staff suspended built-in ${randomUUID()}`;
     const byokRejected = await api.requestCreateRun(
       actor,
       {
@@ -8300,17 +8300,17 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     expectApiError(byokRejected.body);
     expect(byokRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
-    const vm0Rejected = await api.requestCreateRun(
+    const builtInRejected = await api.requestCreateRun(
       actor,
       {
         agentId: agent.agentId,
-        prompt: vm0Prompt,
+        prompt: builtInPrompt,
         modelProvider: "built-in",
       },
       [402],
     );
-    expectApiError(vm0Rejected.body);
-    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expectApiError(builtInRejected.body);
+    expect(builtInRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
     const runs = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -8319,7 +8319,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(
       runs.runs.filter((candidate) => {
         return (
-          candidate.prompt === byokPrompt || candidate.prompt === vm0Prompt
+          candidate.prompt === byokPrompt || candidate.prompt === builtInPrompt
         );
       }),
     ).toHaveLength(0);
@@ -8405,7 +8405,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("claims vm0 runs with billable model firewall and usage provider", async () => {
+  it("claims built-in model runs with billable model firewall and usage provider", async () => {
     const api = createRunsApi(context);
     const selectedModel = await seedBuiltInDefaultModelKey();
     const concreteProvider = getBuiltInConcreteProviderType(selectedModel);
@@ -8419,7 +8419,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "vm0 built-in model provider",
+      prompt: "built-in model provider",
       modelProvider: "built-in",
     });
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
@@ -8453,7 +8453,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("claims vm0 GPT 5.6 runs with the selected OpenAI runtime model", async () => {
+  it("claims built-in GPT 5.6 runs with the selected OpenAI runtime model", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "gpt-5.6-sol";
@@ -8474,7 +8474,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 built-in GPT 5.6 model provider",
+        prompt: "built-in GPT 5.6 model provider",
         model: selectedModel,
       },
       [201],
@@ -8522,7 +8522,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it("keeps VM0 DeepSeek admission after a Slack fixture releases its shared key", async () => {
+  it("keeps built-in DeepSeek admission after a Slack fixture releases its shared key", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const selectedModel = "deepseek-v4-flash";
@@ -8569,7 +8569,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 DeepSeek admission after shared fixture release",
+        prompt: "built-in DeepSeek admission after shared fixture release",
         model: selectedModel,
       },
       [201],
@@ -8583,7 +8583,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
-    "claims vm0 %s runs with the Responses adapter",
+    "claims built-in %s runs with the Responses adapter",
     async (selectedModel) => {
       const api = createRunsApi(context);
       const chat = createChatFilesBddApi(context);
@@ -8604,7 +8604,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         actor,
         {
           agentId,
-          prompt: "vm0 built-in DeepSeek Responses model provider",
+          prompt: "built-in DeepSeek Responses model provider",
           model: selectedModel,
         },
         [201],
@@ -15688,7 +15688,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
     expect(claim.userTimezone).toBe("America/Los_Angeles");
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
@@ -15789,7 +15788,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );
@@ -16042,7 +16040,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
     expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_AGENT_RUN_DISALLOWED_TOOLS,
     );

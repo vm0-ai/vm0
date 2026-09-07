@@ -533,7 +533,7 @@ export {
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 built-in provider
+  // Built-in provider
   BUILT_IN_MODEL_TO_PROVIDER,
   BUILT_IN_MODEL_ROUTE_PROVIDERS,
   BUILT_IN_MODEL_ALIAS_TO_MODEL,

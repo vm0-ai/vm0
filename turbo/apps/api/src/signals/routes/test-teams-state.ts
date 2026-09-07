@@ -257,11 +257,11 @@ async function seedBuiltInModelKeys(db: Db, agentId: string): Promise<void> {
   await db.delete(builtInModelKeys).where(eq(builtInModelKeys.label, agentId));
   await db
     .insert(builtInModelKeys)
-    .values(vm0BuiltInModelKeyRows(agentId))
+    .values(builtInModelKeyRows(agentId))
     .onConflictDoNothing({ target: builtInModelKeys.vendor });
 }
 
-function vm0BuiltInModelKeyRows(agentId: string) {
+function builtInModelKeyRows(agentId: string) {
   return [
     {
       vendor: getBuiltInVendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
@@ -294,7 +294,7 @@ async function deleteBuiltInModelKeysForSeededDefaultAgent(
     return;
   }
 
-  const apiKeys = vm0BuiltInModelKeyRows(agent.id).map((row) => {
+  const apiKeys = builtInModelKeyRows(agent.id).map((row) => {
     return row.apiKey;
   });
   await db

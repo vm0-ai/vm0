@@ -483,7 +483,7 @@ async function seedBuiltInDefaultModelKey(
 ): Promise<string> {
   const selectedModel = MODEL_PROVIDER_TYPES["built-in"].defaultModel;
   if (!selectedModel) {
-    throw new Error("Expected vm0 to define a default model");
+    throw new Error("Expected the built-in provider to define a default model");
   }
   return await seedBuiltInModelKey(db, fixtureId, selectedModel, signal);
 }
@@ -551,13 +551,13 @@ type BuiltInModelAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "seed-vm0-built-in-default-model-key"
-      | "seed-vm0-built-in-model-key"
-      | "seed-vm0-built-in-model-candidate-keys"
-      | "delete-vm0-built-in-model-key"
-      | "resolve-vm0-built-in-model-route"
-      | "set-vm0-built-in-candidate-cooldown"
-      | "delete-vm0-built-in-candidate-cooldown";
+      | "seed-built-in-default-model-key"
+      | "seed-built-in-model-key"
+      | "seed-built-in-model-candidate-keys"
+      | "delete-built-in-model-key"
+      | "resolve-built-in-model-route"
+      | "set-built-in-candidate-cooldown"
+      | "delete-built-in-candidate-cooldown";
   }
 >;
 
@@ -565,19 +565,19 @@ function isBuiltInModelAction(
   body: TestRuntimeStateActionBody,
 ): body is BuiltInModelAction {
   return [
-    "seed-vm0-built-in-default-model-key",
-    "seed-vm0-built-in-model-key",
-    "seed-vm0-built-in-model-candidate-keys",
-    "delete-vm0-built-in-model-key",
-    "resolve-vm0-built-in-model-route",
-    "set-vm0-built-in-candidate-cooldown",
-    "delete-vm0-built-in-candidate-cooldown",
+    "seed-built-in-default-model-key",
+    "seed-built-in-model-key",
+    "seed-built-in-model-candidate-keys",
+    "delete-built-in-model-key",
+    "resolve-built-in-model-route",
+    "set-built-in-candidate-cooldown",
+    "delete-built-in-candidate-cooldown",
   ].includes(body.action);
 }
 
 type SetBuiltInCandidateCooldownAction = Extract<
   BuiltInModelAction,
-  { action: "set-vm0-built-in-candidate-cooldown" }
+  { action: "set-built-in-candidate-cooldown" }
 >;
 
 async function setBuiltInCandidateCooldown(
@@ -605,7 +605,7 @@ async function setBuiltInCandidateCooldown(
 
 type DeleteBuiltInCandidateCooldownAction = Extract<
   BuiltInModelAction,
-  { action: "delete-vm0-built-in-candidate-cooldown" }
+  { action: "delete-built-in-candidate-cooldown" }
 >;
 
 async function deleteBuiltInCandidateCooldown(
@@ -623,13 +623,13 @@ async function deleteBuiltInCandidateCooldown(
     );
 }
 
-async function vm0BuiltInModelActionResponse(
+async function builtInModelActionResponse(
   db: Db,
   body: BuiltInModelAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
-    case "seed-vm0-built-in-default-model-key": {
+    case "seed-built-in-default-model-key": {
       return {
         status: 200 as const,
         body: {
@@ -642,7 +642,7 @@ async function vm0BuiltInModelActionResponse(
         },
       };
     }
-    case "seed-vm0-built-in-model-key": {
+    case "seed-built-in-model-key": {
       return {
         status: 200 as const,
         body: {
@@ -656,7 +656,7 @@ async function vm0BuiltInModelActionResponse(
         },
       };
     }
-    case "seed-vm0-built-in-model-candidate-keys": {
+    case "seed-built-in-model-candidate-keys": {
       return {
         status: 200 as const,
         body: {
@@ -670,11 +670,11 @@ async function vm0BuiltInModelActionResponse(
         },
       };
     }
-    case "delete-vm0-built-in-model-key": {
+    case "delete-built-in-model-key": {
       await deleteBuiltInModelKey(db, body.fixture_id, signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "resolve-vm0-built-in-model-route": {
+    case "resolve-built-in-model-route": {
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
         body.selected_model,
@@ -690,12 +690,12 @@ async function vm0BuiltInModelActionResponse(
         },
       };
     }
-    case "set-vm0-built-in-candidate-cooldown": {
+    case "set-built-in-candidate-cooldown": {
       await setBuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
     }
-    case "delete-vm0-built-in-candidate-cooldown": {
+    case "delete-built-in-candidate-cooldown": {
       await deleteBuiltInCandidateCooldown(db, body);
       signal.throwIfAborted();
       return { status: 200 as const, body: { ok: true as const } };
@@ -2590,7 +2590,7 @@ const postRuntimeStateAction$ = command(
       return await compatibilityFixtureActionResponse(db, body, signal);
     }
     if (isBuiltInModelAction(body)) {
-      return await vm0BuiltInModelActionResponse(db, body, signal);
+      return await builtInModelActionResponse(db, body, signal);
     }
     const specializedFixture = await set(
       specializedRuntimeFixtureAction$,

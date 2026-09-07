@@ -138,7 +138,7 @@ test("keeps Agent Draft runtime writes free of relation-specific conflict SQL", 
   expect(runtimeSource).not.toMatch(
     /\bonConflict(?:DoNothing|DoUpdate)\b|\bON\s+CONFLICT\b|\bMERGE\b/i,
   );
-  expect(runtimeSource).not.toMatch(/\b(?:zero_agent_drafts|agent_drafts)\b/);
+  expect(runtimeSource).not.toMatch(/\bagent_drafts\b/);
 });
 
 describe.each([

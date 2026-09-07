@@ -261,7 +261,7 @@ export function getDefaultOrgModelPolicySeed(
 }
 
 /**
- * Mapping from VM0 built-in model names to their concrete provider type and vendor.
+ * Mapping from built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
  */
 export const BUILT_IN_MODEL_ROUTE_PROVIDERS = {
@@ -413,7 +413,7 @@ export interface BuiltInModelRouteTarget {
   readonly vendor: string;
 }
 
-function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
+function builtInPrimaryCandidate(model: string): BuiltInModelRouteCandidate {
   if (!isActiveRunModel(model)) {
     throw new Error(
       `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
@@ -548,7 +548,7 @@ export function modelSupportsImageInput(
 }
 
 /**
- * Return the VM0 built-in models visible to callers.
+ * Return the built-in models visible to callers.
  */
 export function getBuiltInVisibleModels(): string[] {
   return [...ACTIVE_RUN_MODELS];
@@ -1100,7 +1100,7 @@ export function getProviderRuntimeModel(
     return model;
   }
   if (isBuiltInModelProviderType(type)) {
-    return vm0PrimaryCandidate(canonical).apiModel ?? canonical;
+    return builtInPrimaryCandidate(canonical).apiModel ?? canonical;
   }
   return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
 }
@@ -1142,30 +1142,30 @@ export const modelProviderWriteTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
- * Get the concrete provider type for a VM0 built-in model.
- * Throws if the model is not in the VM0 model mapping.
+ * Get the concrete provider type for a built-in model.
+ * Throws if the model is not in the built-in model mapping.
  */
 export function getBuiltInConcreteProviderType(
   model: string,
 ): BuiltInModelRouteProviderType {
-  return vm0PrimaryCandidate(model).concreteType;
+  return builtInPrimaryCandidate(model).concreteType;
 }
 
 /**
- * Get the vendor name for a VM0 built-in model.
+ * Get the vendor name for a built-in model.
  * Used for key pool lookup.
  */
 export function getBuiltInVendor(model: string): string {
-  const providerType = vm0PrimaryCandidate(model).concreteType;
+  const providerType = builtInPrimaryCandidate(model).concreteType;
   return BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
- * Get the upstream API model identifier for a VM0 built-in model.
+ * Get the upstream API model identifier for a built-in model.
  * Falls back to the display name when no override is configured.
  */
 export function getBuiltInApiModel(model: string): string {
-  return vm0PrimaryCandidate(model).apiModel ?? model;
+  return builtInPrimaryCandidate(model).apiModel ?? model;
 }
 
 /**
@@ -1264,7 +1264,7 @@ export function getModelProviderEnvBindings(
 }
 
 /**
- * Get VM0-owned Codex provider metadata for a static model provider.
+ * Get built-in Codex provider metadata for a static model provider.
  */
 export function getModelProviderCodexRuntimeConfig(
   type: ModelProviderType,
