@@ -60,6 +60,7 @@ export enum FeatureSwitchKey {
   StableChatThreadNavigation = "stableChatThreadNavigation",
   ChatThreadPinShortcut = "chatThreadPinShortcut",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
+  PinnedAgentAvatar64 = "pinnedAgentAvatar64",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
