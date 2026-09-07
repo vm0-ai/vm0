@@ -2725,6 +2725,21 @@ mod tests {
                 "path={path:?}"
             );
             assert_eq!(event_field(recovery, "was_degraded"), "true");
+            match path {
+                DegradationPath::Poll => {
+                    assert_eq!(event_field(recovery, "runner_id"), TEST_RUNNER_ID);
+                    assert_eq!(event_field(recovery, "runner_group"), "default");
+                    assert_eq!(event_field(recovery, "poll_reason"), "wakeup_retry");
+                }
+                DegradationPath::Heartbeat => {
+                    assert_eq!(event_field(recovery, "runner_id"), "runner-heartbeat-test");
+                    assert_eq!(event_field(recovery, "runner_group"), "vm0/test");
+                    assert_eq!(event_field(recovery, "mode"), "running");
+                    assert_eq!(event_field(recovery, "running"), "1");
+                    assert_eq!(event_field(recovery, "reusable_sandboxes"), "1");
+                    assert_eq!(event_field(recovery, "workspace_states"), "1");
+                }
+            }
 
             let later_started_at = started_at + degraded_after + Duration::from_secs(3);
             let (_, later_events) = capture_api_provider_events(async {
