@@ -105,8 +105,8 @@ COMMIT_SHA_META_NAME = "okou-app-git-commit-sha"
 VERSION_META_NAME = "okou-app-version"
 RUNTIME_META_NAMES = {COMMIT_SHA_META_NAME, VERSION_META_NAME}
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-MAIN_STYLESHEET_ID = "vm0-main-stylesheet"
-MAIN_STYLESHEET_LOADER_SCRIPT_ID = "vm0-main-stylesheet-loader"
+MAIN_STYLESHEET_ID = "okou-main-stylesheet"
+MAIN_STYLESHEET_LOADER_SCRIPT_ID = "okou-main-stylesheet-loader"
 
 
 class AppDocumentParser(HTMLParser):

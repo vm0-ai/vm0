@@ -365,7 +365,7 @@ export function WorkflowPreviewDiagram({
         ) : null}
         <WorkflowDiagramNode
           label=""
-          className="owf-diagram-node-zero"
+          className="owf-diagram-node-okou"
           iconClassName="owf-diagram-avatar"
         >
           <span className="owf-diagram-okou-icon" aria-hidden="true">
