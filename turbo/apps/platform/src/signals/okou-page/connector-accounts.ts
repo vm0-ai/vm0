@@ -1,5 +1,4 @@
 import { command, computed, state, type Command, type State } from "ccstate";
-import { delay } from "signal-timers";
 import {
   connectorAccountTargetKey,
   connectorAccountsContract,
@@ -11,6 +10,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { onRejection, resetSignal } from "../utils.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 
 const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 /** Keep account search responsive while coalescing normal typing bursts. */
@@ -152,16 +152,12 @@ function createConnectorAccountFirstPageQuery(
       { get, set },
       target: ConnectorAccountTarget,
       search: string,
-      debounce: boolean,
       signal: AbortSignal,
     ): Promise<ConnectorAccountPage> => {
-      if (debounce) {
-        await delay(CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS, { signal });
-      }
       signal.throwIfAborted();
       set(effectiveSearch$, search);
       set(resetPages$);
-      return fetchConnectorAccountPage(
+      return await fetchConnectorAccountPage(
         {
           createClient: get(apiClient$),
           target,
@@ -202,6 +198,11 @@ function createConnectorAccountFirstPageSignals(
     includeBuiltinScopeMismatch,
   );
 
+  const debouncedQueryFirstPage$ = debounceCommand(
+    queryFirstPage$,
+    CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS,
+  );
+
   const startFirstPageQuery$ = command(
     (
       { set },
@@ -210,7 +211,12 @@ function createConnectorAccountFirstPageSignals(
       debounce: boolean,
       signal: AbortSignal,
     ): void => {
-      const request = set(queryFirstPage$, target, search, debounce, signal);
+      const request = set(
+        debounce ? debouncedQueryFirstPage$ : queryFirstPage$,
+        target,
+        search,
+        signal,
+      );
       set(firstPage$, request);
     },
   );

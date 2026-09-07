@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
-import { delay } from "signal-timers";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { hideKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 import { resetSignal } from "../utils.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -20,10 +20,13 @@ export const debouncedChatListQuery$ = computed((get) => {
   return get(internalDebouncedChatListQuery$);
 });
 
-const debounceChatListQuery$ = command(async ({ get }, signal: AbortSignal) => {
-  await delay(CHAT_LIST_QUERY_DEBOUNCE_MS, { signal });
+const readChatListQuery$ = command(({ get }, _signal: AbortSignal) => {
   return get(chatListQuery$).trim().toLowerCase();
 });
+const debounceChatListQuery$ = debounceCommand(
+  readChatListQuery$,
+  CHAT_LIST_QUERY_DEBOUNCE_MS,
+);
 
 export const setChatListQuery$ = command(
   ({ set }, query: string, signal: AbortSignal) => {
