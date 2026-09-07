@@ -1912,7 +1912,6 @@
       "accountForThread": "इस थ्रेड के लिए खाता",
       "add": "{{connectorName}} जोड़ें",
       "addConnectors": "कनेक्टर्स जोड़ें",
-      "authorizationFailed": "{{connectorName}} कनेक्ट हुआ लेकिन {{agentName}} के लिए अधिकृत नहीं किया जा सका",
       "authorized": "{{connectorName}} जुड़ा हुआ है और {{agentName}} के लिए अधिकृत है",
       "available_one": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",

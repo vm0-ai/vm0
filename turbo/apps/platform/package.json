@@ -18,7 +18,7 @@
     "lint:localized-ui": "node --test scripts/check-localized-ui.node.mjs && node scripts/check-localized-ui.mjs",
     "lint:static-assets": "node scripts/check-static-assets.mjs",
     "lint": "pnpm lint:static-assets && pnpm lint:emoji-data && pnpm lint:localized-ui && pnpm lint:build-config && pnpm lint:i18n && oxlint --deny-warnings && oxlint --type-aware -c ../../.oxlintrc.typeaware.json --deny-warnings && eslint . --max-warnings 0 --cache --cache-strategy content --cache-location .eslintcache",
-    "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
+    "check-types": "tsc -p tsconfig.production.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.tests.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.build-config.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs)"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",

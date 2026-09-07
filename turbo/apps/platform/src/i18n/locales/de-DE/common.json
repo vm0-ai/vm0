@@ -1912,7 +1912,6 @@
       "accountForThread": "Konto für diesen Thread",
       "add": "{{connectorName}} hinzufügen",
       "addConnectors": "Integrationen hinzufügen",
-      "authorizationFailed": "{{connectorName}} verbunden, konnte aber nicht für {{agentName}} autorisiert werden",
       "authorized": "{{connectorName}} verbunden und autorisiert für {{agentName}}",
       "available_one": "Verfügbare Integration ({{count}})",
       "available_other": "Verfügbare Integrationen ({{count}})",

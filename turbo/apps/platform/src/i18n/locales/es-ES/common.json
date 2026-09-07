@@ -1941,7 +1941,6 @@
       "accountForThread": "Cuenta para este hilo",
       "add": "Añadir {{connectorName}}",
       "addConnectors": "Añadir conectores",
-      "authorizationFailed": "{{connectorName}} está conectado, pero no se pudo autorizar para {{agentName}}",
       "authorized": "{{connectorName}} está conectado y autorizado para {{agentName}}",
       "available_one": "Conectores disponibles para conectar ({{count}})",
       "available_many": "Conectores disponibles para conectar ({{count}})",

@@ -615,8 +615,8 @@ export function buildHelpText(
       payload,
     ),
     ...commandExampleIfVisible(
-      "recognize",
-      '  Recognize an image?    okou recognize --file ./image.png --prompt "Describe it"',
+      "image-recognition",
+      '  Recognize an image?    okou image-recognition --file ./image.png --prompt "Describe it"',
       payload,
     ),
     ...commandExampleIfVisible(

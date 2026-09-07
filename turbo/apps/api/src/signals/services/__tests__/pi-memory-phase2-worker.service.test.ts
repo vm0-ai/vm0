@@ -4,13 +4,15 @@ import { PI_MEMORY_ROOT } from "@okouai/api-contracts/contracts/runners";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { conversations } from "@okouai/db/schema/agent-run-session-conversation";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -19,7 +21,6 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { withMockNowForTest } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { seedBuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
-import { DEFAULT_AGENT_NAME } from "../default-agent-profile";
 import { failPiMemoryPhase2Job } from "../pi-memory-phase2-job.service";
 import { handlePiMemoryPhase2MaintenanceCallback } from "../pi-memory-phase2-maintenance.service";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
@@ -33,6 +34,30 @@ import {
   readPhase2Job,
   setPhase2StorageHead,
 } from "./pi-memory-phase2-job.test-fixture";
+
+async function deleteRunSessionsForScope(scope: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<void> {
+  const sessions = await db()
+    .select({ id: agentRuns.sessionId })
+    .from(agentRuns)
+    .where(
+      and(eq(agentRuns.orgId, scope.orgId), eq(agentRuns.userId, scope.userId)),
+    );
+  if (sessions.length > 0) {
+    await db()
+      .delete(agentSessions)
+      .where(
+        inArray(
+          agentSessions.id,
+          sessions.map((session) => {
+            return session.id;
+          }),
+        ),
+      );
+  }
+}
 
 describe("Pi memory Phase 2 sandbox dispatcher", () => {
   it("does not claim when no control job is ready", async () => {
@@ -49,11 +74,20 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     expect(result).toStrictEqual({ outcome: "no_work" });
   });
 
-  it("preserves candidates when first-party run admission cannot be resolved", async () => {
+  it("retries a due maintenance_agent_missing job without creating an Agent", async () => {
     const now = new Date("2026-09-05T02:00:00.000Z");
-    const scope = await createPhase2TestScope("sandbox-admission-failure", {
+    const scope = await createPhase2TestScope("sandbox-missing-agent-retry", {
       emptyBase: true,
     });
+    onTestFinished(async () => {
+      await deleteRunSessionsForScope(scope);
+    });
+    await seedOrgMetadata({
+      orgId: scope.orgId,
+      tier: "pro",
+      credits: 100_000,
+    });
+    await seedBuiltInModelKey(testContext(), "gpt-5.6-terra");
     const sessionId = randomUUID();
     await insertPhase2Candidates(scope, [
       {
@@ -62,7 +96,14 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
         rolloutSummary: "bounded private evidence",
       },
     ]);
-    await insertPendingPhase2Job(scope, { updatedAt: now });
+    await insertPendingPhase2Job(scope, {
+      status: "retryable_failure",
+      retryCount: 1,
+      retryAt: new Date(now.getTime() - 1),
+      lastErrorClass: "maintenance_agent_missing",
+      updatedAt: new Date(now.getTime() - 1),
+    });
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const store = createStore();
 
     const result = await withMockNowForTest(now, async () => {
@@ -73,16 +114,51 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       );
     });
 
-    expect(result).toStrictEqual({
-      outcome: "failed",
-      errorClass: "maintenance_agent_missing",
-    });
-    const job = await readPhase2Job(scope);
-    expect(job).toMatchObject({
-      status: "retryable_failure",
-      maintenanceRunId: null,
-      sandboxLeaseToken: null,
+    expect(result.outcome).toBe("dispatched");
+    if (result.outcome !== "dispatched") {
+      throw new Error("Expected due retry dispatch");
+    }
+    await expect(
+      store.set(
+        executePiMemoryPhase2Work$,
+        { scope, currentTime: new Date(now.getTime() + 1) },
+        testContext().signal,
+      ),
+    ).resolves.toStrictEqual({ outcome: "dispatched", runId: result.runId });
+    await expect(
+      db()
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.orgId, scope.orgId),
+            eq(agentRuns.userId, scope.userId),
+          ),
+        ),
+    ).resolves.toStrictEqual([{ id: result.runId }]);
+    const [run] = await db()
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, result.runId));
+    const [maintenanceSession] = run
+      ? await db()
+          .select({ agentId: agentSessions.agentId })
+          .from(agentSessions)
+          .where(eq(agentSessions.id, run.sessionId))
+      : [];
+    expect(maintenanceSession?.agentId).toBeNull();
+    await expect(
+      db()
+        .select({ id: agents.id })
+        .from(agents)
+        .where(eq(agents.orgId, scope.orgId)),
+    ).resolves.toStrictEqual([]);
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "leased",
+      maintenanceRunId: result.runId,
       retryCount: 1,
+      retryAt: null,
+      lastErrorClass: null,
     });
     const [candidate] = await db()
       .select({ rawMemory: piMemoryStage1Candidates.rawMemory })
@@ -146,24 +222,8 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       tier: "pro",
       credits: 100_000,
     });
-    const agentId = randomUUID();
-    await db().insert(agents).values({
-      id: agentId,
-      orgId: scope.orgId,
-      owner: scope.userId,
-      name: DEFAULT_AGENT_NAME,
-      visibility: "public",
-    });
     onTestFinished(async () => {
-      await db()
-        .delete(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.orgId, scope.orgId),
-            eq(agentRuns.userId, scope.userId),
-          ),
-        );
-      await db().delete(agents).where(eq(agents.id, agentId));
+      await deleteRunSessionsForScope(scope);
     });
     await seedBuiltInModelKey(testContext(), "gpt-5.6-terra");
     await insertPhase2Candidates(scope, [
@@ -225,7 +285,7 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     );
   });
 
-  it("dispatches one isolated threadless run with the exact private claim", async () => {
+  it("dispatches one isolated threadless run after a shared public Agent source", async () => {
     const now = new Date("2026-09-05T02:00:00.000Z");
     const scope = await createPhase2TestScope("sandbox-dispatch", {
       emptyBase: true,
@@ -236,20 +296,50 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
       credits: 100_000,
     });
     const agentId = randomUUID();
+    const sourceSessionId = randomUUID();
+    const sourceThreadId = randomUUID();
+    const sourceRunId = randomUUID();
+    const agentOwnerId = `${scope.userId}-agent-owner`;
     await db().insert(agents).values({
       id: agentId,
       orgId: scope.orgId,
-      owner: scope.userId,
-      name: DEFAULT_AGENT_NAME,
+      owner: agentOwnerId,
+      name: "shared-pi-agent",
       visibility: "public",
     });
-    const cleanup = { maintenanceRunId: undefined as string | undefined };
+    await db().insert(agentSessions).values({
+      id: sourceSessionId,
+      orgId: scope.orgId,
+      userId: scope.userId,
+      agentId,
+    });
+    await db().insert(chatThreads).values({
+      id: sourceThreadId,
+      userId: scope.userId,
+      agentId,
+      title: "Shared Pi source",
+    });
+    await db().insert(agentRuns).values({
+      id: sourceRunId,
+      sessionId: sourceSessionId,
+      orgId: scope.orgId,
+      userId: scope.userId,
+      status: "completed",
+      prompt: "Remember this from a shared public Agent.",
+      triggerSource: "agent",
+      autonomyBudget: 0,
+      chatThreadId: sourceThreadId,
+      completedAt: now,
+    });
+    await db()
+      .update(chatThreads)
+      .set({
+        agentSessionId: sourceSessionId,
+        agentSessionRunId: sourceRunId,
+      })
+      .where(eq(chatThreads.id, sourceThreadId));
     onTestFinished(async () => {
-      if (cleanup.maintenanceRunId) {
-        await db()
-          .delete(agentRuns)
-          .where(eq(agentRuns.id, cleanup.maintenanceRunId));
-      }
+      await deleteRunSessionsForScope(scope);
       await db().delete(agents).where(eq(agents.id, agentId));
     });
     await seedBuiltInModelKey(testContext(), "gpt-5.6-terra");
@@ -257,6 +347,7 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     const [sourceHistoryHash] = await insertPhase2Candidates(scope, [
       {
         piSessionId: sessionId,
+        sourceRunId,
         rawMemory: "candidate stays inside the private launch payload",
         rolloutSummary: "evidence stays inside the private launch payload",
       },
@@ -277,9 +368,9 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
     if (result.outcome !== "dispatched") {
       throw new Error("Expected maintenance run dispatch");
     }
-    cleanup.maintenanceRunId = result.runId;
     const [run] = await db()
       .select({
+        sessionId: agentRuns.sessionId,
         status: agentRuns.status,
         error: agentRuns.error,
         triggerSource: agentRuns.triggerSource,
@@ -301,6 +392,29 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
         writeback: true,
         missingRootPolicy: "fail",
       }),
+    ]);
+    const [maintenanceSession] = run
+      ? await db()
+          .select({ agentId: agentSessions.agentId })
+          .from(agentSessions)
+          .where(eq(agentSessions.id, run.sessionId))
+      : [];
+    expect(maintenanceSession?.agentId).toBeNull();
+    await expect(
+      db()
+        .select({ id: agents.id })
+        .from(agents)
+        .where(
+          and(eq(agents.orgId, scope.orgId), eq(agents.owner, scope.userId)),
+        ),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      db()
+        .select({ id: agents.id, name: agents.name, owner: agents.owner })
+        .from(agents)
+        .where(eq(agents.orgId, scope.orgId)),
+    ).resolves.toStrictEqual([
+      { id: agentId, name: "shared-pi-agent", owner: agentOwnerId },
     ]);
     const [callback] = await db()
       .select({

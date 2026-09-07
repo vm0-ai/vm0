@@ -506,7 +506,7 @@ pub(crate) struct RetainedIdleDestroyResult {
 }
 
 impl IdleDestroyPayload {
-    /// Stop the sandbox and destroy it via its factory.
+    /// Finalize the idle sandbox and destroy it via its factory.
     #[cfg(test)]
     pub(crate) async fn stop_and_destroy(self) -> DestroyOutcome {
         self.finalize_workspace_and_destroy("idle_destroy")
@@ -552,27 +552,27 @@ impl IdleDestroyPayload {
             }
         };
         let mut uncertain = false;
-        let stopped = match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+        let terminated = match AssertUnwindSafe(sandbox.kill()).catch_unwind().await {
             Ok(Ok(())) => true,
             Ok(Err(e)) => {
-                tracing::warn!(error = %e, "failed to stop idle sandbox");
+                tracing::warn!(error = %e, "failed to kill idle sandbox");
                 false
             }
             Err(_) => {
-                tracing::warn!("idle sandbox stop panicked");
+                tracing::warn!("idle sandbox kill panicked");
                 uncertain = true;
                 false
             }
         };
-        if stopped {
+        if terminated {
             // The guest is no longer running; host publication and destruction
             // need not hold up the next parked sandbox's reclamation.
             drop(reclamation_permit.take());
         }
-        let workspace_cache_promoted = match (prepared_promotion, stopped) {
+        let workspace_cache_promoted = match (prepared_promotion, terminated) {
             (Some(promotion), true) => promotion.publish().await,
             (Some(promotion), false) => {
-                promotion.abandon("idle_sandbox_stop_failed").await;
+                promotion.abandon("idle_sandbox_kill_failed").await;
                 false
             }
             (None, _) => false,
@@ -585,7 +585,7 @@ impl IdleDestroyPayload {
             tracing::warn!("idle sandbox destroy panicked");
             uncertain = true;
         }
-        // A failed stop may leave the guest running until factory destruction.
+        // A failed kill may leave the guest running until factory destruction.
         drop(reclamation_permit);
         if uncertain {
             IdleDestroyResult {

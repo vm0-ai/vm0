@@ -8742,7 +8742,10 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       );
     }
     expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
-      'okou recognize --file <image-path> --prompt "<instruction>"',
+      'okou image-recognition --file <image-path> --prompt "<instruction>"',
+    );
+    expect(unsupported.claim.appendSystemPrompt ?? "").not.toContain(
+      "okou recognize",
     );
     expect(verifyOkouToken(unsupportedToken)?.capabilities).toContain(
       "image-recognition:write",
@@ -8755,7 +8758,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       throw new Error("Expected the supported-model run to expose OKOU_TOKEN");
     }
     expect(supported.claim.appendSystemPrompt ?? "").not.toContain(
-      "okou recognize",
+      "okou image-recognition",
     );
     expect(verifyOkouToken(supportedToken)?.capabilities).not.toContain(
       "image-recognition:write",
@@ -8768,7 +8771,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       throw new Error("Expected the unknown-model run to expose OKOU_TOKEN");
     }
     expect(unknown.claim.appendSystemPrompt ?? "").not.toContain(
-      "okou recognize",
+      "okou image-recognition",
     );
     expect(verifyOkouToken(unknownToken)?.capabilities).not.toContain(
       "image-recognition:write",

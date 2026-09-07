@@ -981,6 +981,7 @@ function buildCreateAgentRunArgs(args: {
     args.featureSwitchContext,
   );
   const productAgentExecutionPlan = {
+    identity: "agent" as const,
     content: buildAgentExecutionConfig(args.agent.name),
   };
   return {

@@ -10,12 +10,16 @@ const c = initContract();
 export const VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS = 8_000;
 export const VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS = 1_000;
 export const VOICE_IO_TRANSCRIBE_MAX_SEGMENT_SECONDS = 75;
+const VOICE_IO_TRANSCRIBE_MAX_RECORDING_SECONDS = 60 * 60;
 
 export const voiceIoTranscribeSegmentOptionsSchema = z.object({
   previousTranscript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
   final: z.boolean(),
   overlapDurationSeconds: z.number().min(0).max(2).default(0),
-  totalDurationSeconds: z.number().nonnegative().max(300),
+  totalDurationSeconds: z
+    .number()
+    .nonnegative()
+    .max(VOICE_IO_TRANSCRIBE_MAX_RECORDING_SECONDS),
 });
 
 export type VoiceIoTranscribeSegmentOptions = z.infer<

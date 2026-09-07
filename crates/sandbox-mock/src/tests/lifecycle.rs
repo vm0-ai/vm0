@@ -165,9 +165,11 @@ async fn overrides_count_park_and_unpark_calls_across_factory_sandboxes() {
 
     first.unpark().await.unwrap();
     second.unpark().await.unwrap();
+    first.unpark_for_terminal_operations().await.unwrap();
 
     assert_eq!(overrides.park_call_count(), 3);
-    assert_eq!(overrides.unpark_call_count(), 2);
+    assert_eq!(overrides.unpark_call_count(), 3);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
 }
 
 #[tokio::test]
@@ -225,6 +227,21 @@ async fn lifecycle_behaviors_are_consumed_fifo_and_default_to_success() {
         .stop()
         .await
         .expect("empty stop behavior queue should default to success");
+    assert_eq!(overrides.stop_call_count(), 3);
+
+    overrides.push_kill_result(Err(SandboxError::Start {
+        message: "queued kill failure".into(),
+    }));
+    let err = sandbox
+        .kill()
+        .await
+        .expect_err("queued kill behavior should fail");
+    assert!(err.to_string().contains("queued kill failure"));
+    sandbox
+        .kill()
+        .await
+        .expect("empty kill behavior queue should default to success");
+    assert_eq!(overrides.kill_call_count(), 2);
 }
 
 #[tokio::test]

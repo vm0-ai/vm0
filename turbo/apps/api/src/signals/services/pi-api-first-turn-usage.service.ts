@@ -12,6 +12,13 @@ import type { Db } from "../external/db";
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
 const TERRA_MODEL = "gpt-5.6-terra";
+const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
+const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
+
+type PiApiFirstTurnUsageProvider =
+  | typeof TERRA_MODEL
+  | typeof DEEPSEEK_FLASH_MODEL
+  | typeof DEEPSEEK_PRO_MODEL;
 
 function terraLongContextMinimumInputTokens(): number {
   const minimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[TERRA_MODEL];
@@ -69,7 +76,7 @@ function idempotencyKey(namespace: string, parts: readonly string[]): string {
   return uuidv5(JSON.stringify(parts), namespace);
 }
 
-function piApiFirstTurnUsageEntries(
+function terraApiFirstTurnUsageEntries(
   turn: PiApiFirstTurnResult,
   fast: boolean,
 ): readonly PiApiFirstTurnUsageEntry[] {
@@ -105,6 +112,51 @@ function piApiFirstTurnUsageEntries(
   });
 }
 
+/** DeepSeek pricing uses only base token categories, independent of Pi tiers. */
+function deepSeekApiFirstTurnUsageEntries(
+  turn: PiApiFirstTurnResult,
+): readonly PiApiFirstTurnUsageEntry[] {
+  const usage = turn.assistantMessage.usage;
+  return (
+    [
+      {
+        category: "tokens.input",
+        quantity: usageQuantity(usage.input, "input"),
+      },
+      {
+        category: "tokens.output",
+        quantity: usageQuantity(usage.output, "output"),
+      },
+      {
+        category: "tokens.cache_read",
+        quantity: usageQuantity(usage.cacheRead, "cache-read"),
+      },
+      {
+        category: "tokens.cache_creation",
+        quantity: usageQuantity(usage.cacheWrite, "cache-creation"),
+      },
+    ] satisfies readonly {
+      readonly category: PiUsageCategoryBase;
+      readonly quantity: number;
+    }[]
+  ).filter((entry) => {
+    return entry.quantity > 0;
+  });
+}
+
+function piApiFirstTurnUsageProvider(
+  provider: string | undefined,
+): PiApiFirstTurnUsageProvider | null {
+  if (
+    provider === TERRA_MODEL ||
+    provider === DEEPSEEK_FLASH_MODEL ||
+    provider === DEEPSEEK_PRO_MODEL
+  ) {
+    return provider;
+  }
+  return null;
+}
+
 function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
   if (args.piProvider === "openrouter") {
     return (
@@ -117,9 +169,9 @@ function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
 }
 
 /**
- * Persist API-owned Terra billing usage before any lifecycle commit. The
- * response identity keeps retries and late cancellation observers converged on
- * the same immutable ledger rows. Sandbox provider calls keep their independent
+ * Persist API-owned billing usage before any lifecycle commit. The response
+ * identity keeps retries and late cancellation observers converged on the same
+ * immutable ledger rows. Sandbox provider calls keep their independent
  * MITM-owned delivery identities.
  */
 export async function recordPiApiFirstTurnUsage(
@@ -129,14 +181,15 @@ export async function recordPiApiFirstTurnUsage(
   const hasBillableModelProvider = args.billableFirewalls.some((firewall) => {
     return firewall.startsWith("model-provider:");
   });
-  if (!hasBillableModelProvider || args.modelUsageProvider !== TERRA_MODEL) {
+  const provider = piApiFirstTurnUsageProvider(args.modelUsageProvider);
+  if (!hasBillableModelProvider || provider === null) {
     return;
   }
   const responseSourceId = sourceId(args.turn);
-  const entries = piApiFirstTurnUsageEntries(
-    args.turn,
-    isFastPiApiFirstTurn(args),
-  );
+  const entries =
+    provider === TERRA_MODEL
+      ? terraApiFirstTurnUsageEntries(args.turn, isFastPiApiFirstTurn(args))
+      : deepSeekApiFirstTurnUsageEntries(args.turn);
   const usageRows = entries.map((entry) => {
     return {
       runId: args.runId,
@@ -148,7 +201,7 @@ export async function recordPiApiFirstTurnUsage(
       orgId: args.orgId,
       userId: args.userId,
       kind: "model",
-      provider: TERRA_MODEL,
+      provider,
       category: entry.category,
       quantity: entry.quantity,
     } as const;
