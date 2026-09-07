@@ -6,6 +6,7 @@ use crate::error::{self, Result};
 use crate::{netlink, pool};
 
 use super::create_timing::{NbdNetlinkConnectStage, NbdNetlinkConnectTiming};
+use super::kernel::{CreateKernel, NativeKernel};
 
 struct NetlinkCriticalSectionResult<T> {
     queue_duration: Duration,
@@ -81,38 +82,52 @@ impl Drop for DeferredLease {
     }
 }
 
-pub(super) struct ConnectDeviceOutcome {
+pub(super) struct ConnectDeviceOutcome<K: CreateKernel = NativeKernel> {
     device_index: u32,
     lease: DeferredLease,
     result: Option<std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>>,
+    kernel: K,
 }
 
-pub(super) struct ConnectDeviceCriticalSectionResult {
+pub(super) struct ConnectDeviceCriticalSectionResult<K: CreateKernel> {
     timing: NbdNetlinkConnectTiming,
-    result: std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError>,
+    result: std::result::Result<ConnectDeviceOutcome<K>, netlink::ConnectDeviceError>,
 }
 
-impl ConnectDeviceCriticalSectionResult {
+impl<K: CreateKernel> ConnectDeviceCriticalSectionResult<K> {
     pub(super) fn into_parts(
         self,
     ) -> (
         NbdNetlinkConnectTiming,
-        std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError>,
+        std::result::Result<ConnectDeviceOutcome<K>, netlink::ConnectDeviceError>,
     ) {
         (self.timing, self.result)
     }
 }
 
+#[cfg(test)]
 impl ConnectDeviceOutcome {
     fn new(
         device_index: u32,
         lease: DeferredLease,
         result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
     ) -> Self {
+        Self::with_kernel(device_index, lease, result, NativeKernel)
+    }
+}
+
+impl<K: CreateKernel> ConnectDeviceOutcome<K> {
+    fn with_kernel(
+        device_index: u32,
+        lease: DeferredLease,
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+        kernel: K,
+    ) -> Self {
         Self {
             device_index,
             lease,
             result: Some(result),
+            kernel,
         }
     }
 
@@ -178,31 +193,31 @@ impl ConnectDeviceOutcome {
     }
 }
 
-impl Drop for ConnectDeviceOutcome {
+impl<K: CreateKernel> Drop for ConnectDeviceOutcome<K> {
     fn drop(&mut self) {
-        self.cleanup_unobserved_with(device_ownership, netlink::disconnect);
+        let kernel = self.kernel.clone();
+        self.cleanup_unobserved_with(
+            |index, id| kernel.ownership(index, id),
+            |index| kernel.disconnect(index),
+        );
     }
 }
 
-pub(super) async fn connect_device_with_state_critical_section(
+pub(super) async fn connect_device_with_state_critical_section<K: CreateKernel>(
     device_index: u32,
     client_fds: Vec<std::os::fd::OwnedFd>,
     size: u64,
     block_size: u64,
     pool: pool::DevicePoolHandle,
     lease: pool::DeviceLease,
-) -> ConnectDeviceCriticalSectionResult {
+    kernel: K,
+) -> ConnectDeviceCriticalSectionResult<K> {
     let deferred_lease = DeferredLease::new(pool, lease);
     let critical_section =
         run_netlink_critical_section_with_queue_timing("NBD connect", move || {
-            let (result, timing) = netlink::connect_device_with_state_timing(
-                device_index,
-                &client_fds,
-                size,
-                block_size,
-            );
+            let (result, timing) = kernel.connect(device_index, &client_fds, size, block_size);
             (
-                ConnectDeviceOutcome::new(device_index, deferred_lease, result),
+                ConnectDeviceOutcome::with_kernel(device_index, deferred_lease, result, kernel),
                 timing,
             )
         })
@@ -271,8 +286,19 @@ impl Drop for OwnedDisconnectResultOutcome {
 pub(super) async fn disconnect_connected_if_owned_result_critical_section(
     connected: ConnectedDevice,
 ) -> Result<OwnedDisconnectState> {
+    disconnect_connected_if_owned_result_with_kernel(connected, NativeKernel).await
+}
+
+pub(super) async fn disconnect_connected_if_owned_result_with_kernel(
+    connected: ConnectedDevice,
+    kernel: impl CreateKernel,
+) -> Result<OwnedDisconnectState> {
     run_netlink_critical_section("owned NBD disconnect", move || {
-        disconnect_connected_if_owned_result_with(connected, device_ownership, netlink::disconnect)
+        disconnect_connected_if_owned_result_with(
+            connected,
+            |index, id| kernel.ownership(index, id),
+            |index| kernel.disconnect(index),
+        )
     })
     .await?
 }
@@ -282,6 +308,16 @@ pub(super) async fn disconnect_connected_if_owned_result_with_lease_critical_sec
     pool: pool::DevicePoolHandle,
     lease: pool::DeviceLease,
 ) -> Result<OwnedDisconnectResultOutcome> {
+    disconnect_connected_if_owned_result_with_lease_and_kernel(connected, pool, lease, NativeKernel)
+        .await
+}
+
+pub(super) async fn disconnect_connected_if_owned_result_with_lease_and_kernel(
+    connected: ConnectedDevice,
+    pool: pool::DevicePoolHandle,
+    lease: pool::DeviceLease,
+    kernel: impl CreateKernel,
+) -> Result<OwnedDisconnectResultOutcome> {
     let deferred_lease = DeferredLease::new(pool, lease);
     run_netlink_critical_section("owned NBD disconnect", move || {
         OwnedDisconnectResultOutcome::new(
@@ -289,8 +325,8 @@ pub(super) async fn disconnect_connected_if_owned_result_with_lease_critical_sec
             deferred_lease,
             disconnect_connected_if_owned_result_with(
                 connected,
-                device_ownership,
-                netlink::disconnect,
+                |index, id| kernel.ownership(index, id),
+                |index| kernel.disconnect(index),
             ),
         )
     })
@@ -353,8 +389,15 @@ fn device_ownership_from_backend_contents(connection_id: Uuid, contents: &str) -
     }
 }
 
-pub(super) fn disconnect_connected_if_owned(connected: ConnectedDevice) -> bool {
-    disconnect_connected_if_owned_with(connected, device_ownership, netlink::disconnect)
+pub(super) fn disconnect_connected_if_owned_with_kernel(
+    connected: ConnectedDevice,
+    kernel: &impl CreateKernel,
+) -> bool {
+    disconnect_connected_if_owned_with(
+        connected,
+        |index, id| kernel.ownership(index, id),
+        |index| kernel.disconnect(index),
+    )
 }
 
 fn disconnect_connected_if_owned_result_with(
