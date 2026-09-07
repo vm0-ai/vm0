@@ -299,8 +299,9 @@ const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+const okouTitle = "AI Teammate for Real Work — More Done, Same Team | Okou";
 const okouDescription =
-  "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+  "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.";
 
 function publishableKey(environment, host) {
   return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
@@ -528,16 +529,28 @@ assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(vm0Page.html), expectedClerkBootstrap);
 
 const okouPage = await requestAppPage("https://app.okou.ai");
-assert.equal(
-  documentTitle(okouPage.html),
-  "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
-);
+assert.equal(documentTitle(okouPage.html), okouTitle);
 assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
+assert.equal(
+  metaContent(okouPage.html, "name", "description"),
+  okouDescription,
+);
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
+assert.equal(metaContent(okouPage.html, "property", "og:title"), okouTitle);
+assert.equal(
+  metaContent(okouPage.html, "property", "og:description"),
+  okouDescription,
+);
+assert.equal(metaContent(okouPage.html, "property", "og:image:alt"), okouTitle);
 assert.equal(
   metaContent(okouPage.html, "property", "og:image"),
   "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(metaContent(okouPage.html, "name", "twitter:title"), okouTitle);
+assert.equal(
+  metaContent(okouPage.html, "name", "twitter:description"),
+  okouDescription,
 );
 assert.equal(
   metaContent(okouPage.html, "name", "twitter:image"),
@@ -897,10 +910,7 @@ for (const [productionOrigin, publicBrand] of [
       assert.equal(telemetry?.disabled, true);
       return {
         authenticateRequest(request, options) {
-          assert.equal(
-            request.url,
-            `${productionEdgeUrl}?__bootstrap=1`,
-          );
+          assert.equal(request.url, `${productionEdgeUrl}?__bootstrap=1`);
           assert.equal(options.acceptsToken, "session_token");
           assert.deepEqual(options.authorizedParties, [productionOrigin]);
           return Promise.resolve({

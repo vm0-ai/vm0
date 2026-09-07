@@ -58,14 +58,13 @@ const OKOU_APP_METADATA = {
   brandName: "Okou",
   canonicalUrl: "https://app.okou.ai/",
   description:
-    "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
-  documentTitle:
-    "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
-  openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+    "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
+  documentTitle: "AI Teammate for Real Work — More Done, Same Team | Okou",
+  openGraphTitle: "AI Teammate for Real Work — More Done, Same Team | Okou",
   socialImagePath: "web/okou-og-image-373c892e.png",
   staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
-    "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
+    "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
 };
 
 function appMetadata(hostname, configuredPublicBrand) {
