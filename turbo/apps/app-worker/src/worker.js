@@ -6,7 +6,15 @@ const SHARED_THREAD_PATH =
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
-const APP_BOOTSTRAP_API_PATH = "/api/bootstrap";
+const APP_API_PREFETCH_PATHS = [
+  "/api/feature-switches",
+  "/api/user-preferences",
+  "/api/agents",
+];
+const APP_API_PREFETCH_MARKER = "<!--okou-app-api-prefetch-->";
+// The deferred app module waits for HTML EOF, so prefetch must not extend the
+// navigation indefinitely.
+const APP_API_PREFETCH_BUDGET_MS = 500;
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
   "If-Modified-Since",
@@ -122,14 +130,14 @@ function noIndexResponse(response, cacheControl) {
   });
 }
 
-function serializeClerkEdgeSession(session) {
-  return JSON.stringify(session)
+function serializeJsonForScript(value) {
+  return JSON.stringify(value)
     .replaceAll("<", "\\u003c")
     .replaceAll("\u2028", "\\u2028")
     .replaceAll("\u2029", "\\u2029");
 }
 
-function appBootstrapRequestHeaders(request, requestUrl) {
+function appApiPrefetchRequestHeaders(request, requestUrl) {
   const headers = new Headers({
     Accept: "application/json",
     Origin: requestUrl.origin,
@@ -147,38 +155,13 @@ function appBootstrapRequestHeaders(request, requestUrl) {
   return headers;
 }
 
-function parseAppBootstrap(value) {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !Array.isArray(value.responses)
-  ) {
-    return null;
-  }
-  for (const entry of value.responses) {
-    if (
-      typeof entry !== "object" ||
-      entry === null ||
-      entry.method !== "GET" ||
-      typeof entry.path !== "string" ||
-      !entry.path.startsWith("/api/") ||
-      entry.contentType !== "application/json" ||
-      !Object.hasOwn(entry, "body")
-    ) {
-      return null;
-    }
-  }
-  return value.responses;
-}
-
-async function fetchAppBootstrap(request, requestUrl, fetcher) {
-  const url = new URL(APP_BOOTSTRAP_API_PATH, apiOrigin(requestUrl));
-  url.searchParams.set("path", `${requestUrl.pathname}${requestUrl.search}`);
-
+async function fetchAppApiJson(path, origin, headers, fetcher, signal) {
   let response;
   try {
-    response = await fetcher(url, {
-      headers: appBootstrapRequestHeaders(request, requestUrl),
+    response = await fetcher(new URL(path, origin), {
+      headers,
+      method: "GET",
+      signal,
     });
   } catch {
     return null;
@@ -193,12 +176,136 @@ async function fetchAppBootstrap(request, requestUrl, fetcher) {
   } catch {
     return null;
   }
-  return parseAppBootstrap(body);
+  return { body };
 }
 
-function appBootstrapScript(entry) {
-  const path = encodeURIComponent(entry.path);
-  return `<script type="application/json" data-okou-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
+function appApiPrefetchScript(path, body) {
+  return `<script type="application/json" data-okou-api-bootstrap="" data-method="GET" data-path="${encodeURIComponent(path)}" data-content-type="application/json">${serializeJsonForScript(body)}</script>`;
+}
+
+function appApiPrefetchStream(request, requestUrl, fetcher) {
+  const encoder = new globalThis.TextEncoder();
+  const origin = apiOrigin(requestUrl);
+  const headers = appApiPrefetchRequestHeaders(request, requestUrl);
+  return new globalThis.ReadableStream({
+    async start(controller) {
+      const abortController = new globalThis.AbortController();
+      let acceptingResults = true;
+      const requests = Promise.all(
+        APP_API_PREFETCH_PATHS.map(async (path) => {
+          const result = await fetchAppApiJson(
+            path,
+            origin,
+            headers,
+            fetcher,
+            abortController.signal,
+          );
+          if (result === null || !acceptingResults) {
+            return;
+          }
+          controller.enqueue(
+            encoder.encode(appApiPrefetchScript(path, result.body)),
+          );
+        }),
+      );
+      let timeoutId;
+      const deadline = new Promise((resolve) => {
+        timeoutId = globalThis.setTimeout(() => {
+          acceptingResults = false;
+          abortController.abort();
+          resolve();
+        }, APP_API_PREFETCH_BUDGET_MS);
+      });
+      await Promise.race([requests, deadline]);
+      acceptingResults = false;
+      globalThis.clearTimeout(timeoutId);
+      controller.close();
+    },
+  });
+}
+
+function byteSequenceIndex(bytes, sequence) {
+  const lastStart = bytes.length - sequence.length;
+  for (let start = 0; start <= lastStart; start += 1) {
+    let matches = true;
+    for (let offset = 0; offset < sequence.length; offset += 1) {
+      if (bytes[start + offset] !== sequence[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return start;
+    }
+  }
+  return -1;
+}
+
+// HTMLRewriter drains replacement streams before flushing its outer buffer.
+// Splice into the top-level response so each API result can reach the browser.
+function appApiPrefetchResponse(response, prefetchState) {
+  const sourceReader = response.body.getReader();
+  const marker = new globalThis.TextEncoder().encode(APP_API_PREFETCH_MARKER);
+  const body = new globalThis.ReadableStream({
+    async start(controller) {
+      let pending = new Uint8Array();
+      let injected = false;
+      while (true) {
+        const source = await sourceReader.read();
+        if (source.done) {
+          break;
+        }
+        if (injected) {
+          controller.enqueue(source.value);
+          continue;
+        }
+
+        const combined = new Uint8Array(pending.length + source.value.length);
+        combined.set(pending);
+        combined.set(source.value, pending.length);
+        const markerIndex = byteSequenceIndex(combined, marker);
+        if (markerIndex === -1) {
+          const writeLength = Math.max(0, combined.length - marker.length + 1);
+          if (writeLength > 0) {
+            controller.enqueue(combined.slice(0, writeLength));
+          }
+          pending = combined.slice(writeLength);
+          continue;
+        }
+
+        if (markerIndex > 0) {
+          controller.enqueue(combined.slice(0, markerIndex));
+        }
+        const prefetchStream = prefetchState.stream;
+        if (prefetchStream === null) {
+          throw new Error("App API prefetch stream is unavailable");
+        }
+        const prefetchReader = prefetchStream.getReader();
+        while (true) {
+          const prefetched = await prefetchReader.read();
+          if (prefetched.done) {
+            break;
+          }
+          controller.enqueue(prefetched.value);
+        }
+        const remaining = combined.slice(markerIndex + marker.length);
+        if (remaining.length > 0) {
+          controller.enqueue(remaining);
+        }
+        pending = new Uint8Array();
+        injected = true;
+      }
+      if (pending.length > 0) {
+        controller.enqueue(pending);
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
 
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
@@ -261,7 +368,7 @@ async function clerkEdgeSession(
       return null;
     }
 
-    const { userId, sessionId } = requestState.toAuth();
+    const { orgId, userId, sessionId } = requestState.toAuth();
     if (
       typeof userId !== "string" ||
       userId.length === 0 ||
@@ -270,7 +377,10 @@ async function clerkEdgeSession(
     ) {
       return null;
     }
-    return { userId, sessionId };
+    return {
+      orgId: typeof orgId === "string" && orgId.length > 0 ? orgId : null,
+      session: { userId, sessionId },
+    };
   } catch {
     // Clerk must never affect availability of the existing app shell.
     return null;
@@ -286,9 +396,9 @@ function rewriteAppPage(
   edgeSessionPromise,
   request,
   requestUrl,
-  bootstrapFetcher,
+  apiFetcher,
 ) {
-  const bootstrapState = { available: false };
+  const prefetchState = { stream: null };
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(OKOU_APP_METADATA.brandName))
     .on("title", {
@@ -364,41 +474,34 @@ function rewriteAppPage(
       },
     });
   if (edgeSessionPromise !== null) {
-    rewriter
-      .on("body", {
-        async element(element) {
-          const edgeSession = await edgeSessionPromise;
-          if (edgeSession === null) {
-            return;
-          }
-          const bootstrap = await fetchAppBootstrap(
+    rewriter.on("body", {
+      async element(element) {
+        const edgeAuth = await edgeSessionPromise;
+        if (edgeAuth === null) {
+          return;
+        }
+        if (edgeAuth.orgId !== null) {
+          prefetchState.stream = appApiPrefetchStream(
             request,
             requestUrl,
-            bootstrapFetcher,
+            apiFetcher,
           );
-          if (bootstrap !== null && bootstrap.length > 0) {
-            bootstrapState.available = true;
-            element.prepend(bootstrap.map(appBootstrapScript).join(""), {
-              html: true,
-            });
-          }
-          element.append(
-            `<script type="application/json" id="okou-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
-            { html: true },
-          );
-        },
-      })
-      .on("#app-bootstrap-skeleton", {
-        element(element) {
-          if (bootstrapState.available) {
-            element.remove();
-          }
-        },
-      });
+          element.append(APP_API_PREFETCH_MARKER, { html: true });
+        }
+        element.append(
+          `<script type="application/json" id="okou-clerk-edge-session">${serializeJsonForScript(edgeAuth.session)}</script>`,
+          { html: true },
+        );
+      },
+    });
   }
   const rewrittenResponse = rewriter.transform(response);
+  const responseWithPrefetch =
+    edgeSessionPromise === null
+      ? rewrittenResponse
+      : appApiPrefetchResponse(rewrittenResponse, prefetchState);
   return noIndexResponse(
-    rewrittenResponse,
+    responseWithPrefetch,
     edgeSessionPromise === null
       ? "public, max-age=0, must-revalidate"
       : "private, no-store",
@@ -682,7 +785,7 @@ async function handleRequest(
   requestUrl,
   embeddedShell,
   clerkClientFactory,
-  bootstrapFetcher,
+  apiFetcher,
 ) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -783,14 +886,14 @@ async function handleRequest(
     edgeSessionPromise,
     request,
     requestUrl,
-    bootstrapFetcher,
+    apiFetcher,
   );
 }
 
 export function createWorker(
   embeddedShell,
   clerkClientFactory = createClerkClient,
-  bootstrapFetcher = fetch,
+  apiFetcher = fetch,
 ) {
   return {
     async fetch(request, env) {
@@ -801,7 +904,7 @@ export function createWorker(
         requestUrl,
         embeddedShell,
         clerkClientFactory,
-        bootstrapFetcher,
+        apiFetcher,
       );
       return withAppHeaders(response, requestUrl);
     },

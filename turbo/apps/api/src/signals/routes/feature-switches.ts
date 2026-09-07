@@ -36,7 +36,7 @@ function featureSwitchResponseBody(params: {
   };
 }
 
-export const featureSwitchesResponse$ = computed(
+const featureSwitchesResponse$ = computed(
   async (
     get,
   ): Promise<{
