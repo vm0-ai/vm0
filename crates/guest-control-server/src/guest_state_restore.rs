@@ -24,9 +24,9 @@ pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as Guest
 use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
-const THREAD_WORKER: &str = "vsock-guest-state-restore";
-const THREAD_STDIN: &str = "vsock-guest-state-stdin";
-const THREAD_STDERR: &str = "vsock-guest-state-stderr";
+const THREAD_WORKER: &str = "gctl-state";
+const THREAD_STDIN: &str = "gctl-state-in";
+const THREAD_STDERR: &str = "gctl-state-err";
 const MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 
 #[derive(Clone)]
@@ -46,7 +46,7 @@ impl GuestStateRestoreProgram {
 
     fn path(&self) -> &Path {
         match self {
-            Self::Production => Path::new(guest_contracts::guest_binary::RESEED_PATH),
+            Self::Production => Path::new(guest_contracts::guest_binary::STATE_RESTORE_PATH),
             Self::Test(path) => path,
         }
     }

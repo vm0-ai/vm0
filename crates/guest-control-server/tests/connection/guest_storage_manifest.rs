@@ -11,7 +11,7 @@ use super::support::*;
 
 fn create_program(body: &str) -> (tempfile::TempDir, PathBuf) {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("guest-download-test");
+    let path = directory.path().join("guest-storage-apply-test");
     std::fs::write(&path, format!("#!/bin/sh\nset -eu\n{body}\n")).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     (directory, path)

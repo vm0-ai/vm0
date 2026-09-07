@@ -18,7 +18,7 @@ fn binary_reads_manifest_from_stdin() {
     );
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[INFO] [sandbox:download] Download completed"),
+        content.contains("[INFO] [sandbox:guest-storage-apply] Download completed"),
         "unexpected system log: {content:?}"
     );
     let actions = fixture.action_types().unwrap();
@@ -41,7 +41,7 @@ fn binary_reads_manifest_from_path() {
     );
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[INFO] [sandbox:download] Download completed"),
+        content.contains("[INFO] [sandbox:guest-storage-apply] Download completed"),
         "unexpected system log: {content:?}"
     );
     let actions = fixture.action_types().unwrap();
@@ -60,7 +60,7 @@ fn binary_path_mode_rejects_extra_args_before_telemetry() {
     assert!(!output.status.success());
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[ERROR] [sandbox:download] Usage: guest-download"),
+        content.contains("[ERROR] [sandbox:guest-storage-apply] Usage: guest-storage-apply"),
         "unexpected system log: {content:?}"
     );
     assert!(!fixture.logs.ops_log.exists());
@@ -75,7 +75,7 @@ fn binary_manifest_stdin_rejects_extra_args_before_telemetry() {
     assert!(!output.status.success());
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[ERROR] [sandbox:download] Usage: guest-download"),
+        content.contains("[ERROR] [sandbox:guest-storage-apply] Usage: guest-storage-apply"),
         "unexpected system log: {content:?}"
     );
     assert!(!fixture.logs.ops_log.exists());
@@ -93,7 +93,7 @@ fn binary_invalid_stdin_manifest_logs_parse_failure_without_body() {
     assert!(!stderr.contains("super-secret-body"));
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[ERROR] [sandbox:download] Failed to parse manifest"),
+        content.contains("[ERROR] [sandbox:guest-storage-apply] Failed to parse manifest"),
         "unexpected system log: {content:?}"
     );
     assert!(!content.contains("super-secret-body"));
@@ -106,18 +106,18 @@ fn binary_writes_system_log_on_manifest_read_failure() {
     let fixture = BinaryLoggingFixture::new("missing-manifest").unwrap();
 
     let output = fixture
-        .run_manifest_path("/tmp/nonexistent-guest-download-manifest.json")
+        .run_manifest_path("/tmp/nonexistent-guest-storage-apply-manifest.json")
         .unwrap();
 
     assert!(!output.status.success());
 
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[ERROR] [sandbox:download] Failed to read manifest"),
+        content.contains("[ERROR] [sandbox:guest-storage-apply] Failed to read manifest"),
         "unexpected system log: {content:?}"
     );
     assert!(
-        content.contains("[ERROR] [sandbox:download] Download failed"),
+        content.contains("[ERROR] [sandbox:guest-storage-apply] Download failed"),
         "unexpected system log: {content:?}"
     );
     let ops = fixture.ops_entries().unwrap();
@@ -133,12 +133,16 @@ fn binary_without_manifest_path_logs_usage() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("[ERROR] [sandbox:download] Usage: guest-download <manifest_path>"),
+        stderr.contains(
+            "[ERROR] [sandbox:guest-storage-apply] Usage: guest-storage-apply <manifest_path>"
+        ),
         "unexpected stderr: {stderr}"
     );
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[ERROR] [sandbox:download] Usage: guest-download <manifest_path>"),
+        content.contains(
+            "[ERROR] [sandbox:guest-storage-apply] Usage: guest-storage-apply <manifest_path>"
+        ),
         "unexpected system log: {content:?}"
     );
     assert!(

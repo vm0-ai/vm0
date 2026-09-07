@@ -3,7 +3,7 @@
 //! Executes the prompt as a bash command and outputs Claude-compatible JSONL.
 //! This is the Rust equivalent of `mock-claude.ts` for Firecracker VMs.
 //!
-//! Usage: `guest-mock-claude [options] <prompt>`
+//! Usage: `claude-mock [options] <prompt>`
 //!
 //! Special test prefixes:
 //!

@@ -47,8 +47,8 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX: &str = "-workload-placement";
 const TOOL_PLACEMENT_ENDPOINT_SUFFIX: &str = "-tool-placement";
 const TOOL_PLACEMENT_IO_TIMEOUT: Duration = Duration::from_secs(5);
-const THREAD_WORKLOAD_BOOTSTRAP: &str = "vsock-workload-bootstrap";
-const THREAD_TOOL_PLACEMENT: &str = "vsock-tool-placement";
+const THREAD_WORKLOAD_BOOTSTRAP: &str = "gctl-workload";
+const THREAD_TOOL_PLACEMENT: &str = "gctl-tool-place";
 const MEMORY_SUBTREE_CONTROL: &str = "+memory";
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);

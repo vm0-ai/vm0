@@ -7,14 +7,14 @@
 /// Production path of the Guest Agent executable.
 pub const AGENT_PATH: &str = "/usr/local/bin/guest-agent";
 
-/// Production path of the guest storage-download executable.
-pub const DOWNLOAD_PATH: &str = "/usr/local/bin/guest-download";
+/// Production path of the guest storage-manifest application executable.
+pub const STORAGE_APPLY_PATH: &str = "/usr/local/bin/guest-storage-apply";
 
 /// Production path of the guest init executable.
 pub const INIT_PATH: &str = "/sbin/guest-init";
 
-/// Production path of the guest state-reseed executable.
-pub const RESEED_PATH: &str = "/sbin/guest-reseed";
+/// Production path of the guest state-restoration executable.
+pub const STATE_RESTORE_PATH: &str = "/sbin/guest-state-restore";
 
 /// Production path of the privileged guest file-writer executable.
 pub const WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
@@ -23,10 +23,10 @@ pub const WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 pub const TOOL_EXEC_PATH: &str = "/usr/local/bin/guest-tool-exec";
 
 /// Production path of the one-shot Guest-to-Runner RPC helper.
-pub const GUEST_RPC_PATH: &str = "/usr/local/bin/guest-rpc";
+pub const RUNNER_RPC_CLIENT_PATH: &str = "/usr/local/bin/runner-rpc-client";
 
 /// Production path of the shipped Claude mock executable.
-pub const MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
+pub const CLAUDE_MOCK_PATH: &str = "/usr/local/bin/claude-mock";
 
 /// Production path of the shipped Codex mock executable.
-pub const MOCK_CODEX_PATH: &str = "/usr/local/bin/guest-mock-codex";
+pub const CODEX_MOCK_PATH: &str = "/usr/local/bin/codex-mock";

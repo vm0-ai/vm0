@@ -1,4 +1,4 @@
-//! Integration coverage for the guest-download slot scheduler.
+//! Integration coverage for the guest-storage-apply slot scheduler.
 //!
 //! The scheduler may run up to four downloads at once, but archives whose
 //! mount paths are equal or have an ancestor/descendant relationship must not
@@ -496,7 +496,7 @@ impl GuestDownloadExecution {
         match self.child.wait_with_timeout(timeout) {
             Ok(status) if status.success() => Ok(()),
             Ok(status) => Err(format!(
-                "{scenario} guest-download exited with {status}; {}",
+                "{scenario} guest-storage-apply exited with {status}; {}",
                 observations.snapshot().describe()
             )),
             Err(error) => {
@@ -515,7 +515,7 @@ impl GuestDownloadExecution {
     }
 }
 
-fn spawn_guest_download(
+fn spawn_guest_storage_apply(
     scenario: &str,
     dir: &tempfile::TempDir,
     storages: &[(String, String)],
@@ -560,7 +560,7 @@ fn completion_timeout_terminates_child_and_releases_responder() {
         path_to_string(&mount).unwrap(),
         server.url("/blocked.tar.gz"),
     )];
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(completion_timeout_terminates_child_and_releases_responder),
         &dir,
         &storages,
@@ -578,7 +578,7 @@ fn completion_timeout_terminates_child_and_releases_responder() {
     started.unwrap();
     let error = completion.unwrap_err();
     assert!(error.contains(
-        "completion_timeout_terminates_child_and_releases_responder guest-download timed out"
+        "completion_timeout_terminates_child_and_releases_responder guest-storage-apply timed out"
     ));
     assert!(error.contains("started=[\"blocked request\"], active=1, max_active=1"));
     assert!(error.contains("kill=signal sent"));
@@ -615,7 +615,7 @@ fn dropping_unconsumed_execution_terminates_child_and_releases_responder() {
         path_to_string(&mount).unwrap(),
         server.url("/blocked.tar.gz"),
     )];
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(dropping_unconsumed_execution_terminates_child_and_releases_responder),
         &dir,
         &storages,
@@ -648,7 +648,7 @@ fn queued_independent_download_starts_when_slot_frees() {
         observations.clone(),
     )
     .unwrap();
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(queued_independent_download_starts_when_slot_frees),
         &dir,
         &numbered.storages,
@@ -704,7 +704,7 @@ fn download_concurrency_cap_limits_initial_starts() {
         observations.clone(),
     )
     .unwrap();
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(download_concurrency_cap_limits_initial_starts),
         &dir,
         &numbered.storages,
@@ -806,7 +806,7 @@ fn retry_backoff_releases_attempt_slot_but_retains_mount_reservation() {
         overlapping_server.url("/overlapping.tar.gz"),
     ));
 
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(retry_backoff_releases_attempt_slot_but_retains_mount_reservation),
         &dir,
         &storages,
@@ -950,7 +950,7 @@ fn queued_conflict_does_not_block_later_independent_download() {
             url_independent,
         ),
     ];
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(queued_conflict_does_not_block_later_independent_download),
         &dir,
         &storages,
@@ -1046,7 +1046,7 @@ fn parent_child_mount_paths_are_serialized_for_overlapping_archives() {
         (parent_mount.to_str().unwrap().to_owned(), url_parent),
         (child_mount.to_str().unwrap().to_owned(), url_child),
     ];
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(parent_child_mount_paths_are_serialized_for_overlapping_archives),
         &dir,
         &storages,
@@ -1162,7 +1162,7 @@ fn symlink_aliased_mount_paths_are_serialized_without_blocking_independent_downl
             independent_server.url("/independent.tar.gz"),
         ),
     ];
-    let execution = spawn_guest_download(
+    let execution = spawn_guest_storage_apply(
         stringify!(
             symlink_aliased_mount_paths_are_serialized_without_blocking_independent_download
         ),

@@ -1213,7 +1213,7 @@ fn retry_or_fail(failure: ReconnectFailure, attempts: u32) -> io::Result<()> {
 /// Includes reconnection logic for snapshot restore scenarios where
 /// the connection is lost when VM is paused and resumed.
 pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
-    log("INFO", "Starting vsock guest...");
+    log("INFO", "Starting guest-control-server...");
 
     let mut attempts = 0u32;
     // The Unix transport exists for host-side integration tests and does not

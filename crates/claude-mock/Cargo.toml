@@ -15,7 +15,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "guest-mock-claude"
-path = "src/main.rs"

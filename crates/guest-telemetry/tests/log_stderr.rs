@@ -9,7 +9,8 @@ const CHILD_TEST_NAME: &str = "system_log_append_failure_preserves_stderr_child"
 const CHILD_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(2);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
-const APPEND_FAILURE_MARKER: &str = "] [WARN] [sandbox:guest-common] failed to append system log:";
+const APPEND_FAILURE_MARKER: &str =
+    "] [WARN] [sandbox:guest-telemetry] failed to append system log:";
 const ORIGINAL_LINE_MARKER: &str = "] [WARN] [sandbox:guest-agent] system log path is not writable";
 
 #[test]

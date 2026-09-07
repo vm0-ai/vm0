@@ -73,7 +73,7 @@ impl Fixture {
         coordinator.bind_run_control("run-a").unwrap();
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
         let mut fixture = Self {
-            path: dir.path().join("guest-rpc.sock"),
+            path: dir.path().join("runner-rpc-client.sock"),
             _dir: dir,
             host,
             _guest_peer: peer,

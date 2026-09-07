@@ -44,7 +44,7 @@ use plan::{EmptyArtifactPreparation, RunPlan};
 use std::fs;
 use std::time::Instant;
 
-const LOG_TAG: &str = "sandbox:download";
+const LOG_TAG: &str = "sandbox:guest-storage-apply";
 
 /// Apply the manifest read from `manifest_path`.
 ///
@@ -92,7 +92,7 @@ fn run_manifest(manifest: Manifest) -> bool {
     let plan_start = Instant::now();
     let plan = RunPlan::from_manifest(&manifest);
     record_sandbox_op(
-        "guest_download_plan_build",
+        "guest_storage_apply_plan_build",
         plan_start.elapsed(),
         true,
         None,
@@ -117,7 +117,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         instructions::cleanup_instruction_files(&instruction_cleanups);
     }
     record_sandbox_op(
-        "guest_download_cleanup",
+        "guest_storage_apply_cleanup",
         cleanup_start.elapsed(),
         true,
         None,
@@ -129,7 +129,7 @@ fn run_manifest(manifest: Manifest) -> bool {
     let download_tasks = match download::prepare_download_tasks(download_tasks) {
         Ok(download_tasks) => {
             record_sandbox_op(
-                "guest_download_target_prepare",
+                "guest_storage_apply_target_prepare",
                 target_prepare_start.elapsed(),
                 true,
                 None,
@@ -138,7 +138,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         }
         Err(e) => {
             record_sandbox_op(
-                "guest_download_target_prepare",
+                "guest_storage_apply_target_prepare",
                 target_prepare_start.elapsed(),
                 false,
                 None,
@@ -156,7 +156,7 @@ fn run_manifest(manifest: Manifest) -> bool {
     let scheduler_start = Instant::now();
     let success = download::download_all_parallel(download_tasks);
     record_sandbox_op(
-        "guest_download_archive_scheduler",
+        "guest_storage_apply_archive_scheduler",
         scheduler_start.elapsed(),
         success,
         None,
@@ -165,7 +165,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         let normalize_start = Instant::now();
         instructions::normalize_instruction_files(&instruction_files);
         record_sandbox_op(
-            "guest_download_instruction_normalize",
+            "guest_storage_apply_instruction_normalize",
             normalize_start.elapsed(),
             true,
             None,

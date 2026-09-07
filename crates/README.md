@@ -58,22 +58,20 @@ package, binary, build environment key and installed path.
 
 ### Source, executable and release identities
 
-Cargo package/directory/import names describe source responsibilities. Existing
-executable names, installed paths, CLI flags and bootstrap environment variables
-remain stable. The following renamed executable packages retain their binary contracts:
+Cargo package/directory/import names describe source responsibilities. Executable
+packages use the same name for their binary and runner build flag; their build
+environment variables use the uppercase underscore form. For example,
+`cargo build -p runner-rpc-client` produces `runner-rpc-client`, installed at
+`/usr/local/bin/runner-rpc-client`, with build flag `--runner-rpc-client` and
+build environment key `RUNNER_RPC_CLIENT_PATH`.
 
-| Cargo package       | Executable        |
-| ------------------- | ----------------- |
-| runner-rpc-client   | guest-rpc         |
-| guest-storage-apply | guest-download    |
-| guest-state-restore | guest-reseed      |
-| claude-mock         | guest-mock-claude |
-| codex-mock          | guest-mock-codex  |
+The inventory records all installation directories and build environment keys.
+Privileged helpers keep their `/sbin` placement; other helpers stay under
+`/usr/local/bin`. API-owned mock selection settings such as
+`OKOU_MOCK_CLAUDE_PATH` remain separate from these build-time identities.
 
-For example, `cargo build -p runner-rpc-client` still produces `guest-rpc`,
-installed at `/usr/local/bin/guest-rpc`. The five renamed guest executable
-packages declare explicit Cargo binary targets. Release configuration and
-workflow output keys use the new directory paths. Renamed crates use their new
+Release configuration and workflow output keys use the new directory paths.
+Renamed crates use their new
 Cargo names as default release components and future tag prefixes, without
 old-name component overrides. Manifest path keys move with unchanged numeric
 versions; Release Please continues from those versions when new-name tags do not
@@ -82,9 +80,20 @@ under a new name may have a comparison link to a nonexistent new-name prior tag.
 Existing unrelated component overrides (such as runner-rs and api-contracts-rs)
 remain unchanged.
 
-Explicit runtime log tags and operation labels remain stable. Implicit Rust
-tracing targets follow the new underscore-form crate names; local filters that
-name those modules must use the new names.
+Component-specific log tags, operation labels and test fixtures use the current
+component names. Guest-control worker threads use `gctl-` plus their task, with
+names limited to 15 bytes for Linux thread-name visibility. Rust tracing targets
+use their underscore form.
+External log/metric queries and local tracing filters must use the new identifiers.
+No old-name aliases or duplicate telemetry are emitted.
+
+Runner and its bundled guest helpers are built together. Local rootfs hashes
+include binary installation destinations and contents, and snapshot hashes include
+the rootfs hash. Binary cache digests include the source tree and guest inventory.
+Changing executable identities therefore creates distinct artifacts; existing
+instances drain on their existing artifacts while new builds use the new paths.
+Shared templates do not contain the injected helpers. Build scripts and explicit
+binary overrides must use flags and environment keys matching the runner revision.
 
 ## Runner Operations
 
@@ -152,14 +161,14 @@ cargo build --target "$TARGET_TRIPLE" \
 
 # Step 2: build runner with embedded guests
 GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
-GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
+GUEST_STORAGE_APPLY_PATH="target/$TARGET_TRIPLE/ci/guest-storage-apply" \
 GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
-GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
-GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
-GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+CLAUDE_MOCK_PATH="target/$TARGET_TRIPLE/ci/claude-mock" \
+CODEX_MOCK_PATH="target/$TARGET_TRIPLE/ci/codex-mock" \
+GUEST_STATE_RESTORE_PATH="target/$TARGET_TRIPLE/ci/guest-state-restore" \
 GUEST_TOOL_EXEC_PATH="target/$TARGET_TRIPLE/ci/guest-tool-exec" \
 GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
-GUEST_RPC_PATH="target/$TARGET_TRIPLE/ci/guest-rpc" \
+RUNNER_RPC_CLIENT_PATH="target/$TARGET_TRIPLE/ci/runner-rpc-client" \
 cargo build --target "$TARGET_TRIPLE" -p runner --profile ci
 ```
 

@@ -48,7 +48,7 @@ impl BinaryLoggingFixture {
     }
 
     pub(super) fn command(&self) -> Command {
-        let mut command = guest_download_command();
+        let mut command = guest_storage_apply_command();
         command
             .env(guest_contracts::env::RUN_ID_ENV, &self.run_id)
             .env(
@@ -100,8 +100,8 @@ impl BinaryLoggingFixture {
     }
 }
 
-pub(super) fn guest_download_command() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-download"));
+pub(super) fn guest_storage_apply_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-storage-apply"));
     command.env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV);
     command
 }
@@ -142,16 +142,16 @@ pub(super) fn assert_default_zero_task_attribution(actions: &[String]) {
     assert_action_types_present(
         actions,
         &[
-            "guest_download_task_count_0",
-            "guest_download_remote_url_count_0",
-            "guest_download_file_url_count_0",
-            "guest_download_skill_child_task_count_0",
-            "guest_download_framework_home_instructions_task_absent",
-            "guest_download_potential_parent_child_overlap_count_0",
-            "guest_download_mount_conflict_deferral_count_0",
-            "guest_download_instructions_skill_conflict_deferral_count_0",
-            "guest_download_exact_path_conflict_deferral_count_0",
-            "guest_download_other_parent_child_conflict_deferral_count_0",
+            "guest_storage_apply_task_count_0",
+            "guest_storage_apply_remote_url_count_0",
+            "guest_storage_apply_file_url_count_0",
+            "guest_storage_apply_skill_child_task_count_0",
+            "guest_storage_apply_framework_home_instructions_task_absent",
+            "guest_storage_apply_potential_parent_child_overlap_count_0",
+            "guest_storage_apply_mount_conflict_deferral_count_0",
+            "guest_storage_apply_instructions_skill_conflict_deferral_count_0",
+            "guest_storage_apply_exact_path_conflict_deferral_count_0",
+            "guest_storage_apply_other_parent_child_conflict_deferral_count_0",
         ],
     );
 }

@@ -24,21 +24,20 @@ use std::process::Command;
 use std::thread;
 use uuid::Uuid;
 
-const HANG_ON_TURN_START_READY_FILE: &str = ".guest-mock-codex-turn-start-ready";
-const HANG_ON_TURN_START_READY_EVENT: &str = "guest_mock_codex_turn_start_ready";
+const HANG_ON_TURN_START_READY_FILE: &str = ".codex-mock-turn-start-ready";
+const HANG_ON_TURN_START_READY_EVENT: &str = "codex_mock_turn_start_ready";
 const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
-    ".guest-mock-codex-turn-complete-before-heartbeat-ready";
+    ".codex-mock-turn-complete-before-heartbeat-ready";
 const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_EVENT: &str =
-    "guest_mock_codex_turn_complete_before_heartbeat_ready";
-const SESSION_HISTORY_READY_FILE: &str = ".guest-mock-codex-session-history-ready";
-const SESSION_HISTORY_READY_EVENT: &str = "guest_mock_codex_session_history_ready";
-const WAIT_ON_TURN_STEER_READY_FILE: &str = ".guest-mock-codex-turn-steer-ready";
-const WAIT_ON_TURN_STEER_READY_EVENT: &str = "guest_mock_codex_turn_steer_ready";
-const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".guest-mock-codex-turn-steer-release.sock";
-const EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
-    ".guest-mock-codex-event-delivery-large-release.sock";
-const TURN_INTERRUPT_READY_FILE: &str = ".guest-mock-codex-turn-interrupt-ready";
-const TURN_INTERRUPT_READY_EVENT: &str = "guest_mock_codex_turn_interrupt_ready";
+    "codex_mock_turn_complete_before_heartbeat_ready";
+const SESSION_HISTORY_READY_FILE: &str = ".codex-mock-session-history-ready";
+const SESSION_HISTORY_READY_EVENT: &str = "codex_mock_session_history_ready";
+const WAIT_ON_TURN_STEER_READY_FILE: &str = ".codex-mock-turn-steer-ready";
+const WAIT_ON_TURN_STEER_READY_EVENT: &str = "codex_mock_turn_steer_ready";
+const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".codex-mock-turn-steer-release.sock";
+const EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str = ".codex-mock-event-delivery-large-release.sock";
+const TURN_INTERRUPT_READY_FILE: &str = ".codex-mock-turn-interrupt-ready";
+const TURN_INTERRUPT_READY_EVENT: &str = "codex_mock_turn_interrupt_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
@@ -185,7 +184,7 @@ impl AppServerState {
                 let request_id = if self.scenario == Scenario::NullIdServerRequestBeforeResponse {
                     Value::Null
                 } else {
-                    json!("guest-mock-codex-server-request-1")
+                    json!("codex-mock-server-request-1")
                 };
                 write_json_line(output, &server_request(request_id))?;
                 self.pending_response = Some(PendingResponse { id, result });
@@ -417,7 +416,7 @@ impl AppServerState {
         if self.scenario.waits_for_turn_interrupt() {
             write_json_line(
                 output,
-                &server_request(json!("guest-mock-codex-active-turn-ready")),
+                &server_request(json!("codex-mock-active-turn-ready")),
             )?;
         }
         if matches!(
@@ -859,7 +858,7 @@ fn write_secondary_thread_notifications<W: Write>(
         &assistant_item_completed_notification(
             SECONDARY_THREAD_ID,
             turn_id,
-            "guest-mock-codex secondary app-server response",
+            "codex-mock secondary app-server response",
         ),
     )?;
     write_json_line(
@@ -906,7 +905,7 @@ fn mock_turn_output<'a>(inputs: impl IntoIterator<Item = &'a str>) -> io::Result
         return shell_response_text(script).map(MockTurnOutput::Complete);
     }
     Ok(MockTurnOutput::Complete(format!(
-        "guest-mock-codex app-server response: {prompt}"
+        "codex-mock app-server response: {prompt}"
     )))
 }
 

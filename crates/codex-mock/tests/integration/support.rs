@@ -10,7 +10,7 @@ use std::os::unix::process::CommandExt as _;
 use codex_mock::find_session_file;
 use serde_json::Value;
 
-pub(crate) const BIN: &str = env!("CARGO_BIN_EXE_guest-mock-codex");
+pub(crate) const BIN: &str = env!("CARGO_BIN_EXE_codex-mock");
 const CLI_RUN_TIMEOUT: Duration = Duration::from_secs(10);
 const CLI_RUN_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
@@ -117,11 +117,11 @@ fn output_with_timeout_before_kill(
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| std::io::Error::other("guest-mock-codex CLI stdout pipe missing"))?;
+        .ok_or_else(|| std::io::Error::other("codex-mock CLI stdout pipe missing"))?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| std::io::Error::other("guest-mock-codex CLI stderr pipe missing"))?;
+        .ok_or_else(|| std::io::Error::other("codex-mock CLI stderr pipe missing"))?;
     let stdout_reader = OutputReader::spawn(stdout);
     let stderr_reader = OutputReader::spawn(stderr);
     let output_deadline = Instant::now() + run_timeout + kill_timeout;
@@ -148,7 +148,7 @@ fn output_with_timeout_before_kill(
         ChildWaitOutcome::KillFailed(error) => Err(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
             format!(
-                "guest-mock-codex CLI timed out after {run_timeout:?} and failed to kill the \
+                "codex-mock CLI timed out after {run_timeout:?} and failed to kill the \
                  child: args={args:?}; error={error}"
             ),
         )),
@@ -159,7 +159,7 @@ fn output_with_timeout_before_kill(
             Err(cli_run_timeout_error(args, run_timeout, None, Some(&error)))
         }
         ChildWaitOutcome::WaitFailed(error) => Err(std::io::Error::other(format!(
-            "guest-mock-codex CLI child wait failed: args={args:?}; error={error}"
+            "codex-mock CLI child wait failed: args={args:?}; error={error}"
         ))),
     }
 }
@@ -170,8 +170,7 @@ fn cli_run_timeout_error(
     output: Option<&Output>,
     cleanup_error: Option<&std::io::Error>,
 ) -> std::io::Error {
-    let mut message =
-        format!("guest-mock-codex CLI timed out after {run_timeout:?}: args={args:?}");
+    let mut message = format!("codex-mock CLI timed out after {run_timeout:?}: args={args:?}");
     if let Some(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -194,7 +193,7 @@ fn cli_run_timeout_error_after_kill(
     std::io::Error::new(
         std::io::ErrorKind::TimedOut,
         format!(
-            "guest-mock-codex CLI timed out after {run_timeout:?} and did not exit within \
+            "codex-mock CLI timed out after {run_timeout:?} and did not exit within \
              {kill_timeout:?} after SIGKILL: args={args:?}"
         ),
     )

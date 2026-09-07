@@ -23,7 +23,7 @@ use super::{
 const _: () = assert!(
     guest_control_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES
         == process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES,
-    "vsock exec-control payload limit must match process-control IPC at the guest bridge",
+    "guest-control exec-control payload limit must match process-control IPC at the guest bridge",
 );
 
 pub(super) struct OwnedExecControlRequest {

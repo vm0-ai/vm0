@@ -8,7 +8,7 @@ execution, Agent/UI and activation slices are complete.
 
 ## Guest boundary
 
-`/usr/local/bin/guest-rpc` takes no arguments. Its stdin is one JSON envelope
+`/usr/local/bin/runner-rpc-client` takes no arguments. Its stdin is one JSON envelope
 terminated by EOF:
 
 ```json

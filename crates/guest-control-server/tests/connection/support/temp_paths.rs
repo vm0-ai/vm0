@@ -23,7 +23,7 @@ pub(crate) fn unique_tmp_path(label: &str, suffix: &str) -> TempPathGuard {
         .unwrap()
         .as_nanos();
     TempPathGuard::new(format!(
-        "/tmp/vsock-test-{label}-{}-{nonce}{suffix}",
+        "/tmp/guest-control-tests-{label}-{}-{nonce}{suffix}",
         std::process::id(),
     ))
 }

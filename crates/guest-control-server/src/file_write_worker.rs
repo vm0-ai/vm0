@@ -15,7 +15,7 @@ use crate::worker_ownership::{
 };
 use crate::writer::GuestWriter;
 
-const THREAD_FILE_WRITE: &str = "vsock-file-write";
+const THREAD_FILE_WRITE: &str = "gctl-file-write";
 
 #[derive(Clone, Copy)]
 pub(crate) enum FileWriteKind {

@@ -79,7 +79,7 @@ MOUNT_DIR=""
 unmount_with_retries() {
   local target="$1"
   local attempt
-  for attempt in 1 2 3; do
+  for ((attempt = 0; attempt < 3; attempt++)); do
     if sudo umount "$target" 2>/dev/null; then
       return 0
     fi
@@ -297,7 +297,7 @@ check_required_executable "/bin/bash" "bash"
 check_required_executable "/usr/bin/su" "su"
 check_required_executable "/usr/bin/rmdir" "rmdir"
 
-# Guest state and timezone repair. /sbin/guest-reseed is rootfs-only and is
+# Guest state and timezone repair. /sbin/guest-state-restore is rootfs-only and is
 # checked with the guest binaries above when verifying a rootfs image.
 check_required_executable "/usr/bin/date" "date"
 check_required_executable "/usr/bin/ln" "ln"

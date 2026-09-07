@@ -10,10 +10,10 @@
 //! optionally applies the guest timezone.
 //!
 //! ```text
-//! guest-reseed < entropy-bytes
-//! guest-reseed --restore-state <seconds> <nanoseconds>
+//! guest-state-restore < entropy-bytes
+//! guest-state-restore --restore-state <seconds> <nanoseconds>
 //!   <none|best-effort|required> [timezone] < entropy-bytes
-//! guest-reseed --sync-timezone <timezone>
+//! guest-state-restore --sync-timezone <timezone>
 //! ```
 //!
 //! Entropy-only mode accepts no arguments and reads 1 through 65,536 raw bytes

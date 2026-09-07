@@ -310,7 +310,7 @@ impl Drop for FencedNormalOperationGuard {
     }
 }
 
-/// Host-side vsock endpoint.
+/// Runner-side guest-control endpoint.
 ///
 /// Maintains a persistent connection to the guest agent and provides
 /// high-level methods for command execution, file operations, and

@@ -28,7 +28,7 @@ fn unique_vsock_paths(label: &str) -> (String, PathBuf) {
         .unwrap()
         .as_nanos();
     let base = std::env::temp_dir().join(format!(
-        "vsock-host-{label}-{}-{unique}",
+        "guest-control-client-{label}-{}-{unique}",
         std::process::id()
     ));
     let listener = PathBuf::from(format!(

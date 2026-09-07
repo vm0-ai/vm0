@@ -19,7 +19,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "guest-download"
-path = "src/main.rs"

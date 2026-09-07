@@ -15,7 +15,3 @@ tokio = { workspace = true, features = ["macros", "test-util"] }
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "guest-rpc"
-path = "src/main.rs"

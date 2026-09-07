@@ -17,7 +17,7 @@ use tokio::io::unix::AsyncFd;
 
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
-const BLOCKING_WRITE_SUFFIX: &str = ".vm0-vsock-test-block";
+const BLOCKING_WRITE_SUFFIX: &str = ".vm0-guest-control-tests-block";
 const GUEST_FINISH_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn install_write_file_helper() {
@@ -234,7 +234,7 @@ impl Harness {
     pub(crate) async fn new() -> Self {
         install_write_file_helper();
 
-        let dir_guard = create_temp_dir("vsock-test");
+        let dir_guard = create_temp_dir("guest-control-tests");
         let dir = dir_guard.path().to_path_buf();
         let base_path = dir.join("vsock").to_string_lossy().to_string();
         let listener_path = format!("{base_path}_1000");
@@ -424,8 +424,8 @@ fn cleanup_guest_returns_after_timeout_for_stalled_guest() {
 
 #[test]
 fn create_temp_dir_returns_distinct_direct_temp_children() {
-    let first = create_temp_dir("vsock-test-unique");
-    let second = create_temp_dir("vsock-test-unique");
+    let first = create_temp_dir("guest-control-tests-unique");
+    let second = create_temp_dir("guest-control-tests-unique");
 
     assert_ne!(first.path(), second.path());
     assert_eq!(first.path().parent(), Some(std::env::temp_dir().as_path()));

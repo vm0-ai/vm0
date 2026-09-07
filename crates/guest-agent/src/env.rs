@@ -75,11 +75,11 @@ impl From<Framework> for CliFramework {
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
 /// mock Claude path aliases are absent or non-Unicode.
-pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::MOCK_CLAUDE_PATH;
+pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::CLAUDE_MOCK_PATH;
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
-pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::MOCK_CODEX_PATH;
+pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::CODEX_MOCK_PATH;
 
 fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {

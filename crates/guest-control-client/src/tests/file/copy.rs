@@ -122,7 +122,7 @@ async fn copy_file_rejects_max_bytes_above_stream_budget() {
 
 #[tokio::test]
 async fn copy_file_streams_to_temp_then_renames() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy", "system.log").await;
+    let mut fixture = CopyFileFixture::new("guest-control-client-copy", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     std::fs::set_permissions(&fixture.host_path, std::fs::Permissions::from_mode(0o640)).unwrap();
     let mut old_file = std::fs::File::open(&fixture.host_path).unwrap();
@@ -196,7 +196,7 @@ async fn copy_file_streams_to_temp_then_renames() {
 
 #[tokio::test]
 async fn copy_file_empty_guest_file_publishes_empty_host_file() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-empty", "empty.log").await;
+    let mut fixture = CopyFileFixture::new("guest-control-client-copy-empty", "empty.log").await;
     let copy_task = fixture.spawn_copy("/tmp/empty.log", default_copy_options());
 
     let start = fixture.expect_start().await;
@@ -217,7 +217,8 @@ async fn copy_file_empty_guest_file_publishes_empty_host_file() {
 
 #[tokio::test]
 async fn copy_file_allows_exact_max_bytes() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-exact-max", "exact.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-exact-max", "exact.log").await;
     let copy_task = fixture.spawn_copy("/tmp/exact.log", copy_options(4, 5000, false));
 
     let start = fixture.expect_start().await;
@@ -255,7 +256,7 @@ async fn copy_file_allows_exact_max_bytes() {
 async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_parent() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
-    let temp_path = HostTempPath::new("vsock-host-copy-invalid");
+    let temp_path = HostTempPath::new("guest-control-client-copy-invalid");
     let host_path = temp_path.join("nested/system.log");
 
     let err = host
@@ -311,7 +312,7 @@ async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_par
 #[tokio::test]
 async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
     let (host, mut guest) = setup_host_and_guest().await;
-    let temp_path = HostTempPath::new("vsock-host-copy-parent-quote");
+    let temp_path = HostTempPath::new("guest-control-client-copy-parent-quote");
     let host_path = temp_path.join("nested/system.log");
     let copy_path = host_path.clone();
 
@@ -355,7 +356,8 @@ async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
 
 #[tokio::test]
 async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-truncated", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-truncated", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -389,7 +391,8 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
 
 #[tokio::test]
 async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_result() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-cancel-terminal", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-cancel-terminal", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -426,7 +429,7 @@ async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_resul
 #[tokio::test]
 async fn copy_file_stream_error_releases_tracker_when_cancel_sees_guest_error() {
     let mut fixture =
-        CopyFileFixture::new("vsock-host-copy-cancel-guest-error", "system.log").await;
+        CopyFileFixture::new("guest-control-client-copy-cancel-guest-error", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -461,8 +464,11 @@ async fn copy_file_stream_error_releases_tracker_when_cancel_sees_guest_error() 
 
 #[tokio::test]
 async fn copy_file_stream_error_keeps_tracker_fail_closed_when_cancel_loses_connection() {
-    let mut fixture =
-        CopyFileFixture::new("vsock-host-copy-cancel-connection-close", "system.log").await;
+    let mut fixture = CopyFileFixture::new(
+        "guest-control-client-copy-cancel-connection-close",
+        "system.log",
+    )
+    .await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -491,7 +497,8 @@ async fn copy_file_stream_error_keeps_tracker_fail_closed_when_cancel_loses_conn
 
 #[tokio::test]
 async fn copy_file_malformed_error_removes_temp_and_keeps_tracker_fail_closed() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-malformed-error", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-malformed-error", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -511,7 +518,8 @@ async fn copy_file_malformed_error_removes_temp_and_keeps_tracker_fail_closed() 
 
 #[tokio::test]
 async fn copy_file_error_response_releases_tracker_after_temp_cleanup() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-error-response", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-error-response", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -531,7 +539,7 @@ async fn copy_file_error_response_releases_tracker_after_temp_cleanup() {
 async fn copy_file_connection_close_after_request_removes_temp_and_marks_not_parkable() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-connection-close");
+    let temp_dir = HostTempDir::new("guest-control-client-copy-connection-close");
     let host_path = temp_dir.join("system.log");
     let copy_path = host_path.clone();
 
@@ -564,7 +572,7 @@ async fn copy_file_connection_close_after_request_removes_temp_and_marks_not_par
 async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
-    let temp_dir = HostTempDir::new("vsock-host-copy-terminal-close");
+    let temp_dir = HostTempDir::new("guest-control-client-copy-terminal-close");
     let host_path = temp_dir.join("system.log");
     let copy_path = host_path.clone();
 
@@ -609,7 +617,8 @@ async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed(
 
 #[tokio::test]
 async fn copy_file_rename_failure_removes_temp_and_releases_tracker() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-rename-failure", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-rename-failure", "system.log").await;
     std::fs::create_dir_all(&fixture.host_path).unwrap();
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -639,7 +648,7 @@ async fn copy_file_rename_failure_removes_temp_and_releases_tracker() {
 
 #[tokio::test]
 async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-nonzero", "system.log").await;
+    let mut fixture = CopyFileFixture::new("guest-control-client-copy-nonzero", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -669,7 +678,8 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
 
 #[tokio::test]
 async fn copy_file_rejects_success_result_with_stderr() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-success-stderr", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-success-stderr", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
@@ -701,7 +711,7 @@ async fn copy_file_rejects_success_result_with_stderr() {
 
 #[tokio::test]
 async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing", "system.log").await;
+    let mut fixture = CopyFileFixture::new("guest-control-client-copy-missing", "system.log").await;
     let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
     let msg = read_guest_message(&mut fixture.guest).await;
@@ -726,7 +736,8 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
 
 #[tokio::test]
 async fn copy_file_missing_ok_preserves_existing_host_file() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-existing", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-missing-existing", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
@@ -747,7 +758,8 @@ async fn copy_file_missing_ok_preserves_existing_host_file() {
 
 #[tokio::test]
 async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-output", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-missing-output", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
@@ -779,7 +791,8 @@ async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
 
 #[tokio::test]
 async fn copy_file_rejects_missing_ok_result_with_stderr() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-stderr", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-missing-stderr", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", copy_options(1024, 5000, true));
 
@@ -802,7 +815,8 @@ async fn copy_file_rejects_missing_ok_result_with_stderr() {
 
 #[tokio::test]
 async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_removes_temp() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-missing-error", "system.log").await;
+    let mut fixture =
+        CopyFileFixture::new("guest-control-client-copy-missing-error", "system.log").await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
@@ -826,8 +840,11 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
 
 #[tokio::test]
 async fn copy_file_rejects_missing_without_missing_ok_after_streamed_output() {
-    let mut fixture =
-        CopyFileFixture::new("vsock-host-copy-missing-error-output", "system.log").await;
+    let mut fixture = CopyFileFixture::new(
+        "guest-control-client-copy-missing-error-output",
+        "system.log",
+    )
+    .await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
@@ -859,8 +876,11 @@ async fn copy_file_rejects_missing_without_missing_ok_after_streamed_output() {
 
 #[tokio::test]
 async fn copy_file_rejects_missing_without_missing_ok_with_stderr() {
-    let mut fixture =
-        CopyFileFixture::new("vsock-host-copy-missing-error-stderr", "system.log").await;
+    let mut fixture = CopyFileFixture::new(
+        "guest-control-client-copy-missing-error-stderr",
+        "system.log",
+    )
+    .await;
     fixture.write_host_bytes(b"old host log");
     let copy_task = fixture.spawn_copy("/tmp/missing.log", default_copy_options());
 
@@ -883,7 +903,7 @@ async fn copy_file_rejects_missing_without_missing_ok_with_stderr() {
 
 #[tokio::test]
 async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() {
-    let mut fixture = CopyFileFixture::new("vsock-host-copy-cancel", "system.log").await;
+    let mut fixture = CopyFileFixture::new("guest-control-client-copy-cancel", "system.log").await;
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
     let start = fixture.expect_start().await;

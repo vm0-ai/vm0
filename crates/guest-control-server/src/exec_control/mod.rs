@@ -35,8 +35,8 @@ const EXEC_CONTROL_CLONE_SINK_ERROR_PREFIX: &str = "failed to clone exec control
 const EXEC_CONTROL_WORKER_START_ERROR_PREFIX: &str = "failed to start exec control worker";
 const EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX: &str = "exec control sink message id mismatch";
 
-const THREAD_EXEC_CONTROL_ACCEPT: &str = "vsock-exec-control-accept";
-const THREAD_EXEC_CONTROL_FORWARD: &str = "vsock-exec-control-forward";
+const THREAD_EXEC_CONTROL_ACCEPT: &str = "gctl-accept";
+const THREAD_EXEC_CONTROL_FORWARD: &str = "gctl-forward";
 
 fn request_deadline(request_timeout_ms: u32) -> Instant {
     Instant::now()

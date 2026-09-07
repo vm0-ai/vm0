@@ -27,7 +27,7 @@ const RESTORE_ENTROPY_BYTES: usize = 256;
 const RESTORE_MODE_ARG: &str = "--restore-state";
 const TIMEZONE_MODE_ARG: &str = "--sync-timezone";
 const CLOCK_SYNC_FAILED_MARKER: &str = "guest clock sync failed";
-const RESEED_FAILED_MARKER: &str = "guest-reseed failed";
+const RESEED_FAILED_MARKER: &str = "guest-state-restore failed";
 const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
 const TIMEZONE_UNAVAILABLE_MARKER: &str = "guest timezone unavailable";
 
@@ -242,26 +242,26 @@ fn parse_timezone_args(args: &[OsString]) -> Result<&str, &'static str> {
         .ok_or("timezone is missing or invalid")
 }
 
-/// Runs the `guest-reseed` CLI.
+/// Runs the `guest-state-restore` CLI.
 ///
 /// `args` must contain the command-line arguments after the executable name,
 /// matching `std::env::args_os().skip(1)`. Entropy-only mode uses:
 ///
 /// ```text
-/// guest-reseed < entropy-bytes
+/// guest-state-restore < entropy-bytes
 /// ```
 ///
 /// The fixed guest-state operation uses:
 ///
 /// ```text
-/// guest-reseed --restore-state <seconds> <nanoseconds> \
+/// guest-state-restore --restore-state <seconds> <nanoseconds> \
 ///   <none|best-effort|required> [timezone] < entropy-bytes
 /// ```
 ///
 /// The timezone-only operation uses:
 ///
 /// ```text
-/// guest-reseed --sync-timezone <timezone>
+/// guest-state-restore --sync-timezone <timezone>
 /// ```
 ///
 /// Entropy-only input must contain between 1 and 65,536 bytes. Restore input
@@ -320,8 +320,11 @@ where
         let timezone = match parse_timezone_args(&args) {
             Ok(timezone) => timezone,
             Err(error) => {
-                let _ = writeln!(stderr, "guest-reseed: {error}");
-                let _ = writeln!(stderr, "usage: guest-reseed --sync-timezone <timezone>");
+                let _ = writeln!(stderr, "guest-state-restore: {error}");
+                let _ = writeln!(
+                    stderr,
+                    "usage: guest-state-restore --sync-timezone <timezone>"
+                );
                 return 1;
             }
         };
@@ -331,10 +334,10 @@ where
     let restore = match parse_restore_args(&args) {
         Ok(restore) => restore,
         Err(error) => {
-            let _ = writeln!(stderr, "guest-reseed: {error}");
+            let _ = writeln!(stderr, "guest-state-restore: {error}");
             let _ = writeln!(
                 stderr,
-                "usage: guest-reseed --restore-state <seconds> <nanoseconds> <none|best-effort|required> [timezone] < entropy-bytes"
+                "usage: guest-state-restore --restore-state <seconds> <nanoseconds> <none|best-effort|required> [timezone] < entropy-bytes"
             );
             return 1;
         }
@@ -342,7 +345,7 @@ where
     let entropy = match read_restore_entropy(input) {
         Ok(entropy) => entropy,
         Err(error) => {
-            let _ = writeln!(stderr, "guest-reseed: {error}");
+            let _ = writeln!(stderr, "guest-state-restore: {error}");
             return 1;
         }
     };
@@ -387,7 +390,7 @@ fn run_entropy_only(
     let entropy = match read_entropy(input) {
         Ok(entropy) => entropy,
         Err(e) => {
-            let _ = writeln!(stderr, "guest-reseed: {e}");
+            let _ = writeln!(stderr, "guest-state-restore: {e}");
             return 1;
         }
     };
@@ -395,7 +398,7 @@ fn run_entropy_only(
     match reseed_fn(&entropy) {
         Ok(()) => 0,
         Err(e) => {
-            let _ = writeln!(stderr, "guest-reseed: {e}");
+            let _ = writeln!(stderr, "guest-state-restore: {e}");
             1
         }
     }
@@ -413,7 +416,7 @@ where
     let args = args.into_iter().collect::<Vec<_>>();
     if !args.is_empty() {
         let mut stderr = stderr;
-        let _ = writeln!(stderr, "usage: guest-reseed < entropy-bytes");
+        let _ = writeln!(stderr, "usage: guest-state-restore < entropy-bytes");
         return 1;
     }
     run_entropy_only(input, stderr, reseed_fn)
@@ -487,7 +490,7 @@ mod tests {
         assert!(!called.get());
         assert_eq!(
             String::from_utf8(stderr).unwrap(),
-            "guest-reseed: empty entropy\n"
+            "guest-state-restore: empty entropy\n"
         );
     }
 
@@ -504,7 +507,7 @@ mod tests {
         assert_eq!(code, 1);
         assert_eq!(
             String::from_utf8(stderr).unwrap(),
-            "guest-reseed: ioctl denied\n"
+            "guest-state-restore: ioctl denied\n"
         );
     }
 
@@ -521,7 +524,7 @@ mod tests {
         assert!(!called.get());
         assert_eq!(
             String::from_utf8(stderr).unwrap(),
-            "usage: guest-reseed < entropy-bytes\n"
+            "usage: guest-state-restore < entropy-bytes\n"
         );
     }
 

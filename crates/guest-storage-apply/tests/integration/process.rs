@@ -41,7 +41,7 @@ impl ChildExecution {
                 Err(error) => {
                     let cleanup = terminate_and_reap(child);
                     return Err(io::Error::other(format!(
-                        "failed to observe guest-download completion: {error}; cleanup: {cleanup}"
+                        "failed to observe guest-storage-apply completion: {error}; cleanup: {cleanup}"
                     )));
                 }
             }
@@ -56,7 +56,7 @@ impl ChildExecution {
         let cleanup = terminate_and_reap(child);
         Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            format!("guest-download timed out after {timeout:?}; cleanup: {cleanup}"),
+            format!("guest-storage-apply timed out after {timeout:?}; cleanup: {cleanup}"),
         ))
     }
 }

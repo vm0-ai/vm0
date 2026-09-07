@@ -129,7 +129,7 @@ fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
 
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
-        // Local vsock tests run without the production rootfs user account.
+        // Local guest-control tests run without the production rootfs user account.
         // Production release builds below resolve and drop to the sandbox user.
         Ok(TargetIdentity::Current)
     }

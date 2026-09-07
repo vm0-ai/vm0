@@ -1,6 +1,7 @@
 use crate::support::{
     TarEntry, TcpTestServer, create_tar_gz, create_tar_gz_entries, manifest_json,
-    read_http_request_path, run_guest_download, run_guest_download_manifest_json, write_manifest,
+    read_http_request_path, run_guest_storage_apply, run_guest_storage_apply_manifest_json,
+    write_manifest,
 };
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
@@ -81,7 +82,7 @@ fn run_storage_download(
     archive_url: Option<&str>,
 ) -> std::io::Result<bool> {
     let manifest = write_storage_manifest(dir, mount, archive_url)?;
-    Ok(run_guest_download(path_to_str(&manifest)?))
+    Ok(run_guest_storage_apply(path_to_str(&manifest)?))
 }
 
 fn run_artifact_download(
@@ -90,7 +91,7 @@ fn run_artifact_download(
     archive_url: Option<&str>,
 ) -> std::io::Result<bool> {
     let manifest = write_artifact_manifest(dir, mount, archive_url)?;
-    Ok(run_guest_download(path_to_str(&manifest)?))
+    Ok(run_guest_storage_apply(path_to_str(&manifest)?))
 }
 
 fn path_to_str(path: &Path) -> std::io::Result<&str> {
@@ -227,7 +228,7 @@ fn six_storages_parallel() {
         .collect();
 
     let manifest = write_manifest(&dir, &storage_refs, None).unwrap();
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(result);
 
@@ -274,7 +275,7 @@ fn parent_child_mount_paths_download_successfully() {
     ];
 
     let manifest = write_manifest(&dir, &storages, None).unwrap();
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(result);
     m_parent.assert();
@@ -422,13 +423,13 @@ fn null_and_missing_urls_skip_download() {
     )
     .unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
     assert!(result);
 }
 
 #[test]
 fn manifest_file_not_found() {
-    let result = run_guest_download("/tmp/nonexistent-manifest-path.json");
+    let result = run_guest_storage_apply("/tmp/nonexistent-manifest-path.json");
     assert!(!result);
 }
 
@@ -438,7 +439,7 @@ fn manifest_json_invalid() {
     let manifest_path = dir.path().join("manifest.json");
     std::fs::write(&manifest_path, "{{not valid json").unwrap();
 
-    let result = run_guest_download(manifest_path.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest_path.to_str().unwrap());
     assert!(!result);
 }
 
@@ -446,14 +447,14 @@ fn manifest_json_invalid() {
 fn manifest_json_from_stdin_valid() {
     let json = manifest_json(&[], None).unwrap();
 
-    let result = run_guest_download_manifest_json(&json);
+    let result = run_guest_storage_apply_manifest_json(&json);
 
     assert!(result);
 }
 
 #[test]
 fn manifest_json_from_stdin_invalid() {
-    let result = run_guest_download_manifest_json(b"{{not valid json secret-body");
+    let result = run_guest_storage_apply_manifest_json(b"{{not valid json secret-body");
 
     assert!(!result);
 }
@@ -515,7 +516,7 @@ fn storages_partial_failure() {
     )
     .unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(!result);
     // The successful storage should still have extracted its file

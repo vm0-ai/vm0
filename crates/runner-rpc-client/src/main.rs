@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     if std::env::args_os().len() != 1 {
-        eprintln!("guest-rpc takes no arguments; provide one JSON request on stdin");
+        eprintln!("runner-rpc-client takes no arguments; provide one JSON request on stdin");
         return ExitCode::FAILURE;
     }
     let runtime = match tokio::runtime::Builder::new_current_thread()

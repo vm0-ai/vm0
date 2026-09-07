@@ -88,10 +88,10 @@ use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_cancelled_either};
 use crate::writer::GuestWriter;
 
-const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
-const THREAD_EXEC_OPERATION_STDIN: &str = "vsock-exec-operation-stdin";
-const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
-const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
+const THREAD_EXEC_OPERATION_WORKER: &str = "gctl-exec";
+const THREAD_EXEC_OPERATION_STDIN: &str = "gctl-exec-in";
+const THREAD_EXEC_OPERATION_STDOUT: &str = "gctl-exec-out";
+const THREAD_EXEC_OPERATION_STDERR: &str = "gctl-exec-err";
 const STDIN_WRITE_CANCELLED: &str = "stdin write cancelled";
 const FRAME_BODY_HEADER_LEN: usize = 1 + 4; // message type + sequence
 const EXEC_OUTPUT_PAYLOAD_OVERHEAD: usize = 1 + 4 + 1 + 4;

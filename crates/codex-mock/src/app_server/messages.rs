@@ -84,7 +84,7 @@ const SECONDARY_USAGE: MockTokenUsage = MockTokenUsage {
 
 pub(super) fn initialize_response() -> Value {
     json!({
-        "userAgent": format!("guest-mock-codex-app-server/{}", env!("CARGO_PKG_VERSION")),
+        "userAgent": format!("codex-mock-app-server/{}", env!("CARGO_PKG_VERSION")),
         "codexHome": session::codex_home(),
         "platformFamily": std::env::consts::FAMILY,
         "platformOs": std::env::consts::OS,
@@ -123,7 +123,7 @@ pub(super) fn server_notification_with_index(index: usize) -> Value {
     json!({
         "method": "experimental/server-notification",
         "params": {
-            "message": "guest-mock-codex notification",
+            "message": "codex-mock notification",
             "index": index
         }
     })
@@ -648,7 +648,7 @@ pub(super) fn warning_notification(thread_id: &str, index: usize) -> Value {
         "method": "warning",
         "params": {
             "threadId": thread_id,
-            "message": format!("guest-mock-codex warning {index}")
+            "message": format!("codex-mock warning {index}")
         }
     })
 }
@@ -825,7 +825,7 @@ pub(super) fn server_request(id: Value) -> Value {
         "id": id,
         "method": "experimental/server-request",
         "params": {
-            "message": "guest-mock-codex server request"
+            "message": "codex-mock server request"
         }
     })
 }
@@ -836,7 +836,7 @@ fn thread(thread_id: &str) -> Value {
         "sessionId": thread_id,
         "forkedFromId": null,
         "parentThreadId": null,
-        "preview": "guest-mock-codex app-server thread",
+        "preview": "codex-mock app-server thread",
         "ephemeral": false,
         "modelProvider": "openai",
         "createdAt": 1,
@@ -847,7 +847,7 @@ fn thread(thread_id: &str) -> Value {
         },
         "path": null,
         "cwd": "/tmp",
-        "cliVersion": "guest-mock-codex",
+        "cliVersion": "codex-mock",
         "source": "appServer",
         "threadSource": null,
         "agentNickname": null,

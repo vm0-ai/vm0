@@ -16,7 +16,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "guest-mock-codex"
-path = "src/main.rs"

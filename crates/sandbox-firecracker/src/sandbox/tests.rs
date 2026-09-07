@@ -146,7 +146,7 @@ struct ExecProcessControlFixture {
 
 fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
     let id = sandbox::SandboxId::new_v4();
-    let base_dir = std::env::temp_dir().join("sandbox-fc-operation-entrypoint-test");
+    let base_dir = std::env::temp_dir().join("sandbox-firecracker-operation-entrypoint-test");
     let (state_tx, _) = watch::channel(state);
 
     FirecrackerSandbox {

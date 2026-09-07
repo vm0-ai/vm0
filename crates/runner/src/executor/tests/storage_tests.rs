@@ -3,7 +3,7 @@ use sandbox::{ExecResult, ExecTermination};
 use sandbox_mock::MockSandbox;
 
 use super::super::storage::{
-    download_storages, guest_download_command, guest_download_env,
+    download_storages, guest_storage_apply_command, guest_storage_apply_env,
     guest_storage_manifest_cleanup_command,
 };
 use super::super::{DEFAULT_EXEC_TIMEOUT, guest_runtime_dir};
@@ -71,11 +71,11 @@ async fn download_storages_uses_fixed_manifest_operation() {
 }
 
 #[test]
-fn guest_download_env_contains_run_identity_values() {
+fn guest_storage_apply_env_contains_run_identity_values() {
     let context = minimal_context();
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id).unwrap();
-    let env = guest_download_env(&run_id, &runtime_dir);
+    let env = guest_storage_apply_env(&run_id, &runtime_dir);
 
     assert_eq!(
         env,
@@ -125,7 +125,7 @@ async fn oversized_manifest_uses_shared_fallback_path() {
     let calls = sandbox.exec_calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].cmd, guest_storage_manifest_cleanup_command());
-    assert_eq!(calls[1].cmd, guest_download_command());
+    assert_eq!(calls[1].cmd, guest_storage_apply_command());
     assert!(calls.iter().all(|call| call.stdin_bytes.is_none()));
 }
 
@@ -170,7 +170,7 @@ async fn fallback_exec_error_triggers_cleanup() {
     let calls = sandbox.exec_calls();
     assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].cmd, guest_storage_manifest_cleanup_command());
-    assert_eq!(calls[1].cmd, guest_download_command());
+    assert_eq!(calls[1].cmd, guest_storage_apply_command());
     assert_eq!(calls[2].cmd, guest_storage_manifest_cleanup_command());
 }
 
@@ -197,7 +197,7 @@ async fn fallback_helper_failure_triggers_cleanup() {
     sandbox.push_exec_result(Ok(ExecResult::new(
         127,
         Vec::new(),
-        b"guest-download: not found".to_vec(),
+        b"guest-storage-apply: not found".to_vec(),
     )));
     let context = minimal_context();
     let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);

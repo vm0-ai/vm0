@@ -8,10 +8,10 @@
   },
   {
     "package": "guest-storage-apply",
-    "binary": "guest-download",
-    "pathEnv": "GUEST_DOWNLOAD_PATH",
-    "bundledEnv": "BUNDLED_GUEST_DOWNLOAD",
-    "destination": "/usr/local/bin/guest-download"
+    "binary": "guest-storage-apply",
+    "pathEnv": "GUEST_STORAGE_APPLY_PATH",
+    "bundledEnv": "BUNDLED_GUEST_STORAGE_APPLY",
+    "destination": "/usr/local/bin/guest-storage-apply"
   },
   {
     "package": "guest-init",
@@ -22,10 +22,10 @@
   },
   {
     "package": "guest-state-restore",
-    "binary": "guest-reseed",
-    "pathEnv": "GUEST_RESEED_PATH",
-    "bundledEnv": "BUNDLED_GUEST_RESEED",
-    "destination": "/sbin/guest-reseed"
+    "binary": "guest-state-restore",
+    "pathEnv": "GUEST_STATE_RESTORE_PATH",
+    "bundledEnv": "BUNDLED_GUEST_STATE_RESTORE",
+    "destination": "/sbin/guest-state-restore"
   },
   {
     "package": "guest-write-file",
@@ -43,23 +43,23 @@
   },
   {
     "package": "runner-rpc-client",
-    "binary": "guest-rpc",
-    "pathEnv": "GUEST_RPC_PATH",
-    "bundledEnv": "BUNDLED_GUEST_RPC",
-    "destination": "/usr/local/bin/guest-rpc"
+    "binary": "runner-rpc-client",
+    "pathEnv": "RUNNER_RPC_CLIENT_PATH",
+    "bundledEnv": "BUNDLED_RUNNER_RPC_CLIENT",
+    "destination": "/usr/local/bin/runner-rpc-client"
   },
   {
     "package": "claude-mock",
-    "binary": "guest-mock-claude",
-    "pathEnv": "GUEST_MOCK_CLAUDE_PATH",
-    "bundledEnv": "BUNDLED_GUEST_MOCK_CLAUDE",
-    "destination": "/usr/local/bin/guest-mock-claude"
+    "binary": "claude-mock",
+    "pathEnv": "CLAUDE_MOCK_PATH",
+    "bundledEnv": "BUNDLED_CLAUDE_MOCK",
+    "destination": "/usr/local/bin/claude-mock"
   },
   {
     "package": "codex-mock",
-    "binary": "guest-mock-codex",
-    "pathEnv": "GUEST_MOCK_CODEX_PATH",
-    "bundledEnv": "BUNDLED_GUEST_MOCK_CODEX",
-    "destination": "/usr/local/bin/guest-mock-codex"
+    "binary": "codex-mock",
+    "pathEnv": "CODEX_MOCK_PATH",
+    "bundledEnv": "BUNDLED_CODEX_MOCK",
+    "destination": "/usr/local/bin/codex-mock"
   }
 ]

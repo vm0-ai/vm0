@@ -12,7 +12,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "guest-reseed"
-path = "src/main.rs"

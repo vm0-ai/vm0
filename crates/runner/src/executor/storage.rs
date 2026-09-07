@@ -15,15 +15,15 @@ use crate::types::ExecutionContext;
 
 const STORAGE_MANIFEST_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub(super) fn guest_download_command() -> String {
-    format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
+pub(super) fn guest_storage_apply_command() -> String {
+    format!("{} {}", guest::STORAGE_APPLY_BIN, guest::STORAGE_MANIFEST)
 }
 
 pub(super) fn guest_storage_manifest_cleanup_command() -> String {
     format!("rm -f -- {}", guest::STORAGE_MANIFEST)
 }
 
-pub(super) fn guest_download_env<'a>(
+pub(super) fn guest_storage_apply_env<'a>(
     run_id: &'a str,
     runtime_dir: &'a str,
 ) -> [(&'static str, &'a str); 2] {
@@ -71,8 +71,8 @@ pub(super) async fn download_storages(
             cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
             return Err(error.into());
         }
-        let download_cmd = guest_download_command();
-        let download_env = guest_download_env(&run_id, &runtime_dir);
+        let download_cmd = guest_storage_apply_command();
+        let download_env = guest_storage_apply_env(&run_id, &runtime_dir);
         sandbox
             .exec_with_diagnostic_label(
                 &ExecRequest {
@@ -102,7 +102,7 @@ pub(super) async fn download_storages(
         if !use_dedicated {
             cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
         }
-        return Err(RunnerError::Internal(format_guest_download_failure(
+        return Err(RunnerError::Internal(format_guest_storage_apply_failure(
             &result,
         )));
     }
@@ -152,6 +152,6 @@ async fn remove_fallback_storage_manifest(sandbox: &dyn Sandbox) -> RunnerResult
     Ok(())
 }
 
-pub(super) fn format_guest_download_failure(result: &sandbox::ExecResult) -> String {
+pub(super) fn format_guest_storage_apply_failure(result: &sandbox::ExecResult) -> String {
     format_helper_exec_failure("storage download", result)
 }

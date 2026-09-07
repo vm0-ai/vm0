@@ -674,7 +674,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "vsock-host-copy-temp-{}-{unique}",
+            "guest-control-client-copy-temp-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -707,7 +707,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "vsock-host-copy-temp-cancellation-{}-{unique}",
+            "guest-control-client-copy-temp-cancellation-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -749,7 +749,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "vsock-host-copy-temp-validation-{}-{unique}",
+            "guest-control-client-copy-temp-validation-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();
@@ -785,7 +785,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "vsock-host-temp-guard-{}-{unique}",
+            "guest-control-client-temp-guard-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();

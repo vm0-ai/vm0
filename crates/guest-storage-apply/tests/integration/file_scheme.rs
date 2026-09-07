@@ -1,5 +1,5 @@
 use crate::support::{
-    TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_download, write_manifest,
+    TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_storage_apply, write_manifest,
 };
 use serde_json::json;
 
@@ -23,7 +23,7 @@ fn file_scheme_extraction_success() {
     let url = format!("file://{}", staged.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -62,7 +62,7 @@ fn file_scheme_malicious_entries_are_skipped_while_safe_entries_extract() {
     let url = format!("file://{}", staged.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -119,7 +119,7 @@ fn file_scheme_staged_instructions_promote_without_touching_skill_child() {
     });
     std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
 
-    let result = run_guest_download(manifest_path.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest_path.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -159,7 +159,7 @@ fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
     let url = format!("file://{}", staged.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
 
     assert!(result);
     assert_eq!(
@@ -190,7 +190,7 @@ fn file_scheme_missing_storage_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
     assert!(!result);
 }
 
@@ -206,6 +206,6 @@ fn file_scheme_missing_artifact_fatal() {
     let url = format!("file://{}", missing.display());
     let manifest = write_manifest(&dir, &[], Some((mount.to_str().unwrap(), Some(&url)))).unwrap();
 
-    let result = run_guest_download(manifest.to_str().unwrap());
+    let result = run_guest_storage_apply(manifest.to_str().unwrap());
     assert!(!result);
 }

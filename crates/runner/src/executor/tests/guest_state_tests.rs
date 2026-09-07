@@ -302,7 +302,7 @@ async fn restore_guest_state_reports_reseed_failure_marker() {
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
-        b"guest-reseed failed\nRNDRESEEDCRNG failed".to_vec(),
+        b"guest-state-restore failed\nRNDRESEEDCRNG failed".to_vec(),
     )));
     let ctx = minimal_context();
 
@@ -313,7 +313,10 @@ async fn restore_guest_state_reports_reseed_failure_marker() {
         message.contains("guest state restore failed (exit code 1)"),
         "got: {message}"
     );
-    assert!(message.contains("guest-reseed failed"), "got: {message}");
+    assert!(
+        message.contains("guest-state-restore failed"),
+        "got: {message}"
+    );
 }
 
 #[tokio::test]
@@ -334,7 +337,7 @@ async fn sync_guest_timezone_accepts_common_timezone_name_shapes() {
         assert_eq!(calls.len(), 1, "timezone {tz:?} should call guest exec");
         assert_eq!(
             calls[0].cmd,
-            format!("/sbin/guest-reseed --sync-timezone {tz}")
+            format!("/sbin/guest-state-restore --sync-timezone {tz}")
         );
         assert!(!calls[0].cmd.contains("/etc/timezone"));
     }

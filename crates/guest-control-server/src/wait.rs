@@ -10,7 +10,7 @@ use crate::process::{kill_and_reap_child, kill_owned_child_process_group, proces
 use crate::threading::spawn_scoped_named;
 
 const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
-const THREAD_WAIT_OBSERVER: &str = "vsock-wait-observer";
+const THREAD_WAIT_OBSERVER: &str = "gctl-wait";
 
 /// Outcome of child wait helpers.
 pub(crate) enum WaitOutcome {

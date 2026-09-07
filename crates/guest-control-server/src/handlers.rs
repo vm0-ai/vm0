@@ -24,8 +24,8 @@ use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
 
-const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
-const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
+const THREAD_WRITE_STDERR: &str = "gctl-write-err";
+const THREAD_WRITE_STDIN: &str = "gctl-write-in";
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -531,7 +531,7 @@ mod tests {
     fn write_file_kills_lingering_process_group_after_parent_exit() {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let fifo_path = std::env::temp_dir().join(format!(
-            "vsock-write-file-stdin-{}-{}.fifo",
+            "guest-control-write-file-stdin-{}-{}.fifo",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)

@@ -1,4 +1,4 @@
-//! Production telemetry emitted while applying a `guest-download` manifest.
+//! Production telemetry emitted while applying a `guest-storage-apply` manifest.
 //!
 //! This module owns a fixed-cardinality sandbox-operation contract. The action
 //! names, dimensions, and emission rules are consumed by production dashboards
@@ -11,20 +11,20 @@
 //! `DownloadRunTelemetry` records metrics about the prepared tasks and the
 //! scheduler. The nine count families are:
 //!
-//! - `guest_download_task_count_*`: all prepared download tasks.
-//! - `guest_download_remote_url_count_*`: tasks with an HTTP(S) URL.
-//! - `guest_download_file_url_count_*`: tasks with a `file://` URL.
-//! - `guest_download_skill_child_task_count_*`: tasks mounted below the
+//! - `guest_storage_apply_task_count_*`: all prepared download tasks.
+//! - `guest_storage_apply_remote_url_count_*`: tasks with an HTTP(S) URL.
+//! - `guest_storage_apply_file_url_count_*`: tasks with a `file://` URL.
+//! - `guest_storage_apply_skill_child_task_count_*`: tasks mounted below the
 //!   framework skill directories.
-//! - `guest_download_potential_parent_child_overlap_count_*`: matching
+//! - `guest_storage_apply_potential_parent_child_overlap_count_*`: matching
 //!   ancestor occurrences among normalized mount paths.
-//! - `guest_download_mount_conflict_deferral_count_*`: all scheduler conflict
+//! - `guest_storage_apply_mount_conflict_deferral_count_*`: all scheduler conflict
 //!   deferral observations.
-//! - `guest_download_instructions_skill_conflict_deferral_count_*`: deferrals
+//! - `guest_storage_apply_instructions_skill_conflict_deferral_count_*`: deferrals
 //!   between the framework home-instructions task and a skill-child task.
-//! - `guest_download_exact_path_conflict_deferral_count_*`: deferrals for equal
+//! - `guest_storage_apply_exact_path_conflict_deferral_count_*`: deferrals for equal
 //!   mount paths.
-//! - `guest_download_other_parent_child_conflict_deferral_count_*`: other
+//! - `guest_storage_apply_other_parent_child_conflict_deferral_count_*`: other
 //!   ancestor/descendant mount-path deferrals.
 //!
 //! Every `*_count_*` family uses the same buckets: `0`, `1`, `2`, `3..=4`,
@@ -43,7 +43,7 @@
 //! exactly one of the three classified conflict families.
 //!
 //! The run also emits
-//! `guest_download_framework_home_instructions_task_{present,absent}`. This is
+//! `guest_storage_apply_framework_home_instructions_task_{present,absent}`. This is
 //! a successful zero-duration presence flag, not a count bucket.
 //!
 //! # Task totals and dimensions
@@ -554,85 +554,85 @@ impl CountMetric {
     fn actions(self) -> CountMetricActions {
         match self {
             Self::Task => CountMetricActions {
-                zero: "guest_download_task_count_0",
-                one: "guest_download_task_count_1",
-                two: "guest_download_task_count_2",
-                three_to_four: "guest_download_task_count_3_4",
-                five_to_eight: "guest_download_task_count_5_8",
-                nine_to_sixteen: "guest_download_task_count_9_16",
-                seventeen_plus: "guest_download_task_count_17_plus",
+                zero: "guest_storage_apply_task_count_0",
+                one: "guest_storage_apply_task_count_1",
+                two: "guest_storage_apply_task_count_2",
+                three_to_four: "guest_storage_apply_task_count_3_4",
+                five_to_eight: "guest_storage_apply_task_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_task_count_9_16",
+                seventeen_plus: "guest_storage_apply_task_count_17_plus",
             },
             Self::RemoteUrl => CountMetricActions {
-                zero: "guest_download_remote_url_count_0",
-                one: "guest_download_remote_url_count_1",
-                two: "guest_download_remote_url_count_2",
-                three_to_four: "guest_download_remote_url_count_3_4",
-                five_to_eight: "guest_download_remote_url_count_5_8",
-                nine_to_sixteen: "guest_download_remote_url_count_9_16",
-                seventeen_plus: "guest_download_remote_url_count_17_plus",
+                zero: "guest_storage_apply_remote_url_count_0",
+                one: "guest_storage_apply_remote_url_count_1",
+                two: "guest_storage_apply_remote_url_count_2",
+                three_to_four: "guest_storage_apply_remote_url_count_3_4",
+                five_to_eight: "guest_storage_apply_remote_url_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_remote_url_count_9_16",
+                seventeen_plus: "guest_storage_apply_remote_url_count_17_plus",
             },
             Self::FileUrl => CountMetricActions {
-                zero: "guest_download_file_url_count_0",
-                one: "guest_download_file_url_count_1",
-                two: "guest_download_file_url_count_2",
-                three_to_four: "guest_download_file_url_count_3_4",
-                five_to_eight: "guest_download_file_url_count_5_8",
-                nine_to_sixteen: "guest_download_file_url_count_9_16",
-                seventeen_plus: "guest_download_file_url_count_17_plus",
+                zero: "guest_storage_apply_file_url_count_0",
+                one: "guest_storage_apply_file_url_count_1",
+                two: "guest_storage_apply_file_url_count_2",
+                three_to_four: "guest_storage_apply_file_url_count_3_4",
+                five_to_eight: "guest_storage_apply_file_url_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_file_url_count_9_16",
+                seventeen_plus: "guest_storage_apply_file_url_count_17_plus",
             },
             Self::SkillChildTask => CountMetricActions {
-                zero: "guest_download_skill_child_task_count_0",
-                one: "guest_download_skill_child_task_count_1",
-                two: "guest_download_skill_child_task_count_2",
-                three_to_four: "guest_download_skill_child_task_count_3_4",
-                five_to_eight: "guest_download_skill_child_task_count_5_8",
-                nine_to_sixteen: "guest_download_skill_child_task_count_9_16",
-                seventeen_plus: "guest_download_skill_child_task_count_17_plus",
+                zero: "guest_storage_apply_skill_child_task_count_0",
+                one: "guest_storage_apply_skill_child_task_count_1",
+                two: "guest_storage_apply_skill_child_task_count_2",
+                three_to_four: "guest_storage_apply_skill_child_task_count_3_4",
+                five_to_eight: "guest_storage_apply_skill_child_task_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_skill_child_task_count_9_16",
+                seventeen_plus: "guest_storage_apply_skill_child_task_count_17_plus",
             },
             Self::PotentialParentChildOverlap => CountMetricActions {
-                zero: "guest_download_potential_parent_child_overlap_count_0",
-                one: "guest_download_potential_parent_child_overlap_count_1",
-                two: "guest_download_potential_parent_child_overlap_count_2",
-                three_to_four: "guest_download_potential_parent_child_overlap_count_3_4",
-                five_to_eight: "guest_download_potential_parent_child_overlap_count_5_8",
-                nine_to_sixteen: "guest_download_potential_parent_child_overlap_count_9_16",
-                seventeen_plus: "guest_download_potential_parent_child_overlap_count_17_plus",
+                zero: "guest_storage_apply_potential_parent_child_overlap_count_0",
+                one: "guest_storage_apply_potential_parent_child_overlap_count_1",
+                two: "guest_storage_apply_potential_parent_child_overlap_count_2",
+                three_to_four: "guest_storage_apply_potential_parent_child_overlap_count_3_4",
+                five_to_eight: "guest_storage_apply_potential_parent_child_overlap_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_potential_parent_child_overlap_count_9_16",
+                seventeen_plus: "guest_storage_apply_potential_parent_child_overlap_count_17_plus",
             },
             Self::MountConflictDeferral => CountMetricActions {
-                zero: "guest_download_mount_conflict_deferral_count_0",
-                one: "guest_download_mount_conflict_deferral_count_1",
-                two: "guest_download_mount_conflict_deferral_count_2",
-                three_to_four: "guest_download_mount_conflict_deferral_count_3_4",
-                five_to_eight: "guest_download_mount_conflict_deferral_count_5_8",
-                nine_to_sixteen: "guest_download_mount_conflict_deferral_count_9_16",
-                seventeen_plus: "guest_download_mount_conflict_deferral_count_17_plus",
+                zero: "guest_storage_apply_mount_conflict_deferral_count_0",
+                one: "guest_storage_apply_mount_conflict_deferral_count_1",
+                two: "guest_storage_apply_mount_conflict_deferral_count_2",
+                three_to_four: "guest_storage_apply_mount_conflict_deferral_count_3_4",
+                five_to_eight: "guest_storage_apply_mount_conflict_deferral_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_mount_conflict_deferral_count_9_16",
+                seventeen_plus: "guest_storage_apply_mount_conflict_deferral_count_17_plus",
             },
             Self::InstructionsSkillConflictDeferral => CountMetricActions {
-                zero: "guest_download_instructions_skill_conflict_deferral_count_0",
-                one: "guest_download_instructions_skill_conflict_deferral_count_1",
-                two: "guest_download_instructions_skill_conflict_deferral_count_2",
-                three_to_four: "guest_download_instructions_skill_conflict_deferral_count_3_4",
-                five_to_eight: "guest_download_instructions_skill_conflict_deferral_count_5_8",
-                nine_to_sixteen: "guest_download_instructions_skill_conflict_deferral_count_9_16",
-                seventeen_plus: "guest_download_instructions_skill_conflict_deferral_count_17_plus",
+                zero: "guest_storage_apply_instructions_skill_conflict_deferral_count_0",
+                one: "guest_storage_apply_instructions_skill_conflict_deferral_count_1",
+                two: "guest_storage_apply_instructions_skill_conflict_deferral_count_2",
+                three_to_four: "guest_storage_apply_instructions_skill_conflict_deferral_count_3_4",
+                five_to_eight: "guest_storage_apply_instructions_skill_conflict_deferral_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_instructions_skill_conflict_deferral_count_9_16",
+                seventeen_plus: "guest_storage_apply_instructions_skill_conflict_deferral_count_17_plus",
             },
             Self::ExactPathConflictDeferral => CountMetricActions {
-                zero: "guest_download_exact_path_conflict_deferral_count_0",
-                one: "guest_download_exact_path_conflict_deferral_count_1",
-                two: "guest_download_exact_path_conflict_deferral_count_2",
-                three_to_four: "guest_download_exact_path_conflict_deferral_count_3_4",
-                five_to_eight: "guest_download_exact_path_conflict_deferral_count_5_8",
-                nine_to_sixteen: "guest_download_exact_path_conflict_deferral_count_9_16",
-                seventeen_plus: "guest_download_exact_path_conflict_deferral_count_17_plus",
+                zero: "guest_storage_apply_exact_path_conflict_deferral_count_0",
+                one: "guest_storage_apply_exact_path_conflict_deferral_count_1",
+                two: "guest_storage_apply_exact_path_conflict_deferral_count_2",
+                three_to_four: "guest_storage_apply_exact_path_conflict_deferral_count_3_4",
+                five_to_eight: "guest_storage_apply_exact_path_conflict_deferral_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_exact_path_conflict_deferral_count_9_16",
+                seventeen_plus: "guest_storage_apply_exact_path_conflict_deferral_count_17_plus",
             },
             Self::OtherParentChildConflictDeferral => CountMetricActions {
-                zero: "guest_download_other_parent_child_conflict_deferral_count_0",
-                one: "guest_download_other_parent_child_conflict_deferral_count_1",
-                two: "guest_download_other_parent_child_conflict_deferral_count_2",
-                three_to_four: "guest_download_other_parent_child_conflict_deferral_count_3_4",
-                five_to_eight: "guest_download_other_parent_child_conflict_deferral_count_5_8",
-                nine_to_sixteen: "guest_download_other_parent_child_conflict_deferral_count_9_16",
-                seventeen_plus: "guest_download_other_parent_child_conflict_deferral_count_17_plus",
+                zero: "guest_storage_apply_other_parent_child_conflict_deferral_count_0",
+                one: "guest_storage_apply_other_parent_child_conflict_deferral_count_1",
+                two: "guest_storage_apply_other_parent_child_conflict_deferral_count_2",
+                three_to_four: "guest_storage_apply_other_parent_child_conflict_deferral_count_3_4",
+                five_to_eight: "guest_storage_apply_other_parent_child_conflict_deferral_count_5_8",
+                nine_to_sixteen: "guest_storage_apply_other_parent_child_conflict_deferral_count_9_16",
+                seventeen_plus: "guest_storage_apply_other_parent_child_conflict_deferral_count_17_plus",
             },
         }
     }
@@ -669,9 +669,9 @@ fn record_count_metric(metric: CountMetric, count: usize) {
 
 fn framework_home_instructions_task_action(present: bool) -> &'static str {
     if present {
-        "guest_download_framework_home_instructions_task_present"
+        "guest_storage_apply_framework_home_instructions_task_present"
     } else {
-        "guest_download_framework_home_instructions_task_absent"
+        "guest_storage_apply_framework_home_instructions_task_absent"
     }
 }
 
@@ -803,71 +803,71 @@ mod tests {
         0, 1, 65_536, 262_144, 1_048_576, 4_194_304, 16_777_216, 67_108_864,
     ];
     const EXPECTED_ACTION_SCHEMA: [&str; 95] = [
-        "guest_download_task_count_0",
-        "guest_download_task_count_1",
-        "guest_download_task_count_2",
-        "guest_download_task_count_3_4",
-        "guest_download_task_count_5_8",
-        "guest_download_task_count_9_16",
-        "guest_download_task_count_17_plus",
-        "guest_download_remote_url_count_0",
-        "guest_download_remote_url_count_1",
-        "guest_download_remote_url_count_2",
-        "guest_download_remote_url_count_3_4",
-        "guest_download_remote_url_count_5_8",
-        "guest_download_remote_url_count_9_16",
-        "guest_download_remote_url_count_17_plus",
-        "guest_download_file_url_count_0",
-        "guest_download_file_url_count_1",
-        "guest_download_file_url_count_2",
-        "guest_download_file_url_count_3_4",
-        "guest_download_file_url_count_5_8",
-        "guest_download_file_url_count_9_16",
-        "guest_download_file_url_count_17_plus",
-        "guest_download_skill_child_task_count_0",
-        "guest_download_skill_child_task_count_1",
-        "guest_download_skill_child_task_count_2",
-        "guest_download_skill_child_task_count_3_4",
-        "guest_download_skill_child_task_count_5_8",
-        "guest_download_skill_child_task_count_9_16",
-        "guest_download_skill_child_task_count_17_plus",
-        "guest_download_potential_parent_child_overlap_count_0",
-        "guest_download_potential_parent_child_overlap_count_1",
-        "guest_download_potential_parent_child_overlap_count_2",
-        "guest_download_potential_parent_child_overlap_count_3_4",
-        "guest_download_potential_parent_child_overlap_count_5_8",
-        "guest_download_potential_parent_child_overlap_count_9_16",
-        "guest_download_potential_parent_child_overlap_count_17_plus",
-        "guest_download_mount_conflict_deferral_count_0",
-        "guest_download_mount_conflict_deferral_count_1",
-        "guest_download_mount_conflict_deferral_count_2",
-        "guest_download_mount_conflict_deferral_count_3_4",
-        "guest_download_mount_conflict_deferral_count_5_8",
-        "guest_download_mount_conflict_deferral_count_9_16",
-        "guest_download_mount_conflict_deferral_count_17_plus",
-        "guest_download_instructions_skill_conflict_deferral_count_0",
-        "guest_download_instructions_skill_conflict_deferral_count_1",
-        "guest_download_instructions_skill_conflict_deferral_count_2",
-        "guest_download_instructions_skill_conflict_deferral_count_3_4",
-        "guest_download_instructions_skill_conflict_deferral_count_5_8",
-        "guest_download_instructions_skill_conflict_deferral_count_9_16",
-        "guest_download_instructions_skill_conflict_deferral_count_17_plus",
-        "guest_download_exact_path_conflict_deferral_count_0",
-        "guest_download_exact_path_conflict_deferral_count_1",
-        "guest_download_exact_path_conflict_deferral_count_2",
-        "guest_download_exact_path_conflict_deferral_count_3_4",
-        "guest_download_exact_path_conflict_deferral_count_5_8",
-        "guest_download_exact_path_conflict_deferral_count_9_16",
-        "guest_download_exact_path_conflict_deferral_count_17_plus",
-        "guest_download_other_parent_child_conflict_deferral_count_0",
-        "guest_download_other_parent_child_conflict_deferral_count_1",
-        "guest_download_other_parent_child_conflict_deferral_count_2",
-        "guest_download_other_parent_child_conflict_deferral_count_3_4",
-        "guest_download_other_parent_child_conflict_deferral_count_5_8",
-        "guest_download_other_parent_child_conflict_deferral_count_9_16",
-        "guest_download_other_parent_child_conflict_deferral_count_17_plus",
-        "guest_download_framework_home_instructions_task_absent",
-        "guest_download_framework_home_instructions_task_present",
+        "guest_storage_apply_task_count_0",
+        "guest_storage_apply_task_count_1",
+        "guest_storage_apply_task_count_2",
+        "guest_storage_apply_task_count_3_4",
+        "guest_storage_apply_task_count_5_8",
+        "guest_storage_apply_task_count_9_16",
+        "guest_storage_apply_task_count_17_plus",
+        "guest_storage_apply_remote_url_count_0",
+        "guest_storage_apply_remote_url_count_1",
+        "guest_storage_apply_remote_url_count_2",
+        "guest_storage_apply_remote_url_count_3_4",
+        "guest_storage_apply_remote_url_count_5_8",
+        "guest_storage_apply_remote_url_count_9_16",
+        "guest_storage_apply_remote_url_count_17_plus",
+        "guest_storage_apply_file_url_count_0",
+        "guest_storage_apply_file_url_count_1",
+        "guest_storage_apply_file_url_count_2",
+        "guest_storage_apply_file_url_count_3_4",
+        "guest_storage_apply_file_url_count_5_8",
+        "guest_storage_apply_file_url_count_9_16",
+        "guest_storage_apply_file_url_count_17_plus",
+        "guest_storage_apply_skill_child_task_count_0",
+        "guest_storage_apply_skill_child_task_count_1",
+        "guest_storage_apply_skill_child_task_count_2",
+        "guest_storage_apply_skill_child_task_count_3_4",
+        "guest_storage_apply_skill_child_task_count_5_8",
+        "guest_storage_apply_skill_child_task_count_9_16",
+        "guest_storage_apply_skill_child_task_count_17_plus",
+        "guest_storage_apply_potential_parent_child_overlap_count_0",
+        "guest_storage_apply_potential_parent_child_overlap_count_1",
+        "guest_storage_apply_potential_parent_child_overlap_count_2",
+        "guest_storage_apply_potential_parent_child_overlap_count_3_4",
+        "guest_storage_apply_potential_parent_child_overlap_count_5_8",
+        "guest_storage_apply_potential_parent_child_overlap_count_9_16",
+        "guest_storage_apply_potential_parent_child_overlap_count_17_plus",
+        "guest_storage_apply_mount_conflict_deferral_count_0",
+        "guest_storage_apply_mount_conflict_deferral_count_1",
+        "guest_storage_apply_mount_conflict_deferral_count_2",
+        "guest_storage_apply_mount_conflict_deferral_count_3_4",
+        "guest_storage_apply_mount_conflict_deferral_count_5_8",
+        "guest_storage_apply_mount_conflict_deferral_count_9_16",
+        "guest_storage_apply_mount_conflict_deferral_count_17_plus",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_0",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_1",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_2",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_3_4",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_5_8",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_9_16",
+        "guest_storage_apply_instructions_skill_conflict_deferral_count_17_plus",
+        "guest_storage_apply_exact_path_conflict_deferral_count_0",
+        "guest_storage_apply_exact_path_conflict_deferral_count_1",
+        "guest_storage_apply_exact_path_conflict_deferral_count_2",
+        "guest_storage_apply_exact_path_conflict_deferral_count_3_4",
+        "guest_storage_apply_exact_path_conflict_deferral_count_5_8",
+        "guest_storage_apply_exact_path_conflict_deferral_count_9_16",
+        "guest_storage_apply_exact_path_conflict_deferral_count_17_plus",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_0",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_1",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_2",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_3_4",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_5_8",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_9_16",
+        "guest_storage_apply_other_parent_child_conflict_deferral_count_17_plus",
+        "guest_storage_apply_framework_home_instructions_task_absent",
+        "guest_storage_apply_framework_home_instructions_task_present",
         "storage_download",
         "storage_download_remote_request_to_response_headers",
         "storage_download_remote_body_read",
@@ -1037,16 +1037,16 @@ mod tests {
         assert_eq!(
             [0, 1, 2, 3, 4, 5, 8, 9, 16, 17].map(|count| CountMetric::Task.actions().action(count)),
             [
-                "guest_download_task_count_0",
-                "guest_download_task_count_1",
-                "guest_download_task_count_2",
-                "guest_download_task_count_3_4",
-                "guest_download_task_count_3_4",
-                "guest_download_task_count_5_8",
-                "guest_download_task_count_5_8",
-                "guest_download_task_count_9_16",
-                "guest_download_task_count_9_16",
-                "guest_download_task_count_17_plus",
+                "guest_storage_apply_task_count_0",
+                "guest_storage_apply_task_count_1",
+                "guest_storage_apply_task_count_2",
+                "guest_storage_apply_task_count_3_4",
+                "guest_storage_apply_task_count_3_4",
+                "guest_storage_apply_task_count_5_8",
+                "guest_storage_apply_task_count_5_8",
+                "guest_storage_apply_task_count_9_16",
+                "guest_storage_apply_task_count_9_16",
+                "guest_storage_apply_task_count_17_plus",
             ]
         );
     }

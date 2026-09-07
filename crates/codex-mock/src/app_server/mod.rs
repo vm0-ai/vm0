@@ -15,8 +15,8 @@ use std::thread;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
-const ACTIVE_TURN_READY_FILE: &str = ".guest-mock-codex-active-turn-ready";
-const ACTIVE_TURN_READY_EVENT: &str = "guest_mock_codex_active_turn_ready";
+const ACTIVE_TURN_READY_FILE: &str = ".codex-mock-active-turn-ready";
+const ACTIVE_TURN_READY_EVENT: &str = "codex_mock_active_turn_ready";
 
 /// Run the mock Codex app server over process stdio.
 ///
@@ -42,7 +42,7 @@ pub fn run_app_server(listen: &str) -> io::Result<()> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
-                "guest-mock-codex app-server only supports stdio transport, got {:?}",
+                "codex-mock app-server only supports stdio transport, got {:?}",
                 listen
             ),
         ));

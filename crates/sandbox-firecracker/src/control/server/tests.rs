@@ -933,7 +933,7 @@ async fn control_server_shutdown_cancels_in_flight_vsock_exec() {
             fixture.vsock.try_fence_normal_operations(),
             Err(NormalOperationFenceRejection::NotParkable | NormalOperationFenceRejection::Closed)
         ),
-        "cancelled in-flight control exec should leave vsock-host not parkable"
+        "cancelled in-flight control exec should leave guest-control-client not parkable"
     );
 
     fixture.guest_task.abort();
@@ -1187,7 +1187,7 @@ async fn control_exec_transport_error_makes_vsock_not_parkable() {
             fixture.vsock.try_fence_normal_operations(),
             Err(NormalOperationFenceRejection::NotParkable | NormalOperationFenceRejection::Closed)
         ),
-        "transport error after command write should leave vsock-host not parkable"
+        "transport error after command write should leave guest-control-client not parkable"
     );
 
     handle.shutdown().await;

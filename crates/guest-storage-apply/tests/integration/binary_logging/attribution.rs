@@ -119,19 +119,19 @@ fn binary_records_download_scheduler_attribution() {
     assert_action_types_present(
         &actions,
         &[
-            "guest_download_plan_build",
-            "guest_download_cleanup",
-            "guest_download_target_prepare",
-            "guest_download_task_count_2",
-            "guest_download_remote_url_count_1",
-            "guest_download_file_url_count_1",
-            "guest_download_skill_child_task_count_0",
-            "guest_download_framework_home_instructions_task_absent",
-            "guest_download_potential_parent_child_overlap_count_1",
-            "guest_download_mount_conflict_deferral_count_1",
-            "guest_download_instructions_skill_conflict_deferral_count_0",
-            "guest_download_exact_path_conflict_deferral_count_0",
-            "guest_download_other_parent_child_conflict_deferral_count_1",
+            "guest_storage_apply_plan_build",
+            "guest_storage_apply_cleanup",
+            "guest_storage_apply_target_prepare",
+            "guest_storage_apply_task_count_2",
+            "guest_storage_apply_remote_url_count_1",
+            "guest_storage_apply_file_url_count_1",
+            "guest_storage_apply_skill_child_task_count_0",
+            "guest_storage_apply_framework_home_instructions_task_absent",
+            "guest_storage_apply_potential_parent_child_overlap_count_1",
+            "guest_storage_apply_mount_conflict_deferral_count_1",
+            "guest_storage_apply_instructions_skill_conflict_deferral_count_0",
+            "guest_storage_apply_exact_path_conflict_deferral_count_0",
+            "guest_storage_apply_other_parent_child_conflict_deferral_count_1",
             "storage_download",
             "storage_download_remote_request_to_response_headers",
             "storage_download_remote_body_read",
@@ -139,8 +139,8 @@ fn binary_records_download_scheduler_attribution() {
             "storage_download_remote_compressed_bytes_consumed_lt_64_kib",
             "storage_download_remote_attempt_count_1",
             "artifact_download",
-            "guest_download_archive_scheduler",
-            "guest_download_instruction_normalize",
+            "guest_storage_apply_archive_scheduler",
+            "guest_storage_apply_instruction_normalize",
             "download_total",
         ],
     );
@@ -153,11 +153,11 @@ fn binary_records_download_scheduler_attribution() {
     assert_eq!(artifact_total["success"], true);
     assert!(artifact_total.get("error").is_none());
     for phase in [
-        "guest_download_plan_build",
-        "guest_download_cleanup",
-        "guest_download_target_prepare",
-        "guest_download_archive_scheduler",
-        "guest_download_instruction_normalize",
+        "guest_storage_apply_plan_build",
+        "guest_storage_apply_cleanup",
+        "guest_storage_apply_target_prepare",
+        "guest_storage_apply_archive_scheduler",
+        "guest_storage_apply_instruction_normalize",
     ] {
         let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
         assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
@@ -169,29 +169,33 @@ fn binary_records_download_scheduler_attribution() {
     assert!(
         action_precedes(
             &actions,
-            "guest_download_plan_build",
-            "guest_download_cleanup"
+            "guest_storage_apply_plan_build",
+            "guest_storage_apply_cleanup"
         ),
         "expected plan build before cleanup in {actions:?}"
     );
     assert!(
         action_precedes(
             &actions,
-            "guest_download_cleanup",
-            "guest_download_target_prepare"
+            "guest_storage_apply_cleanup",
+            "guest_storage_apply_target_prepare"
         ),
         "expected cleanup before target preparation in {actions:?}"
     );
     assert!(
         action_precedes(
             &actions,
-            "guest_download_target_prepare",
-            "guest_download_task_count_2"
+            "guest_storage_apply_target_prepare",
+            "guest_storage_apply_task_count_2"
         ),
         "expected target preparation before batch attribution in {actions:?}"
     );
     assert!(
-        action_precedes(&actions, "guest_download_task_count_2", "storage_download"),
+        action_precedes(
+            &actions,
+            "guest_storage_apply_task_count_2",
+            "storage_download"
+        ),
         "expected batch attribution before task attribution in {actions:?}"
     );
     assert!(
@@ -206,7 +210,7 @@ fn binary_records_download_scheduler_attribution() {
         action_precedes(
             &actions,
             "storage_download_remote_attempt_count_1",
-            "guest_download_mount_conflict_deferral_count_1"
+            "guest_storage_apply_mount_conflict_deferral_count_1"
         ),
         "expected remote attribution before conflict totals in {actions:?}"
     );
@@ -214,30 +218,30 @@ fn binary_records_download_scheduler_attribution() {
         action_precedes(
             &actions,
             "artifact_download",
-            "guest_download_mount_conflict_deferral_count_1"
+            "guest_storage_apply_mount_conflict_deferral_count_1"
         ),
         "expected task attribution before conflict totals in {actions:?}"
     );
     assert!(
         action_precedes(
             &actions,
-            "guest_download_mount_conflict_deferral_count_1",
-            "guest_download_archive_scheduler"
+            "guest_storage_apply_mount_conflict_deferral_count_1",
+            "guest_storage_apply_archive_scheduler"
         ),
         "expected conflict totals before scheduler total in {actions:?}"
     );
     assert!(
         action_precedes(
             &actions,
-            "guest_download_archive_scheduler",
-            "guest_download_instruction_normalize"
+            "guest_storage_apply_archive_scheduler",
+            "guest_storage_apply_instruction_normalize"
         ),
         "expected scheduler total before instruction normalization in {actions:?}"
     );
     assert!(
         action_precedes(
             &actions,
-            "guest_download_instruction_normalize",
+            "guest_storage_apply_instruction_normalize",
             "download_total"
         ),
         "expected instruction normalization before run total in {actions:?}"
@@ -288,9 +292,9 @@ fn binary_records_scheduler_attribution_for_failed_download() {
 
     let ops = fixture.ops_entries().unwrap();
     for phase in [
-        "guest_download_plan_build",
-        "guest_download_cleanup",
-        "guest_download_target_prepare",
+        "guest_storage_apply_plan_build",
+        "guest_storage_apply_cleanup",
+        "guest_storage_apply_target_prepare",
     ] {
         let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
         assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
@@ -299,23 +303,24 @@ fn binary_records_scheduler_attribution_for_failed_download() {
             "unexpected {phase}: {entry:?}"
         );
     }
-    let scheduler = operation(&ops, "guest_download_archive_scheduler")
+    let scheduler = operation(&ops, "guest_storage_apply_archive_scheduler")
         .unwrap_or_else(|| panic!("missing scheduler total in {ops:?}"));
     assert_eq!(scheduler["success"], false);
     assert!(scheduler.get("error").is_none());
     assert!(
-        operation(&ops, "guest_download_instruction_normalize").is_none(),
+        operation(&ops, "guest_storage_apply_instruction_normalize").is_none(),
         "failed download normalized instructions: {ops:?}"
     );
     let conflict = ops
         .iter()
-        .find(|entry| entry["action_type"] == "guest_download_mount_conflict_deferral_count_1")
+        .find(|entry| entry["action_type"] == "guest_storage_apply_mount_conflict_deferral_count_1")
         .unwrap_or_else(|| panic!("missing mount conflict count in {ops:?}"));
     assert_eq!(conflict["success"], true);
     let other_parent_child_conflict = ops
         .iter()
         .find(|entry| {
-            entry["action_type"] == "guest_download_other_parent_child_conflict_deferral_count_1"
+            entry["action_type"]
+                == "guest_storage_apply_other_parent_child_conflict_deferral_count_1"
         })
         .unwrap_or_else(|| panic!("missing other parent/child conflict count in {ops:?}"));
     assert_eq!(other_parent_child_conflict["success"], true);
@@ -383,7 +388,10 @@ fn binary_records_redacted_target_preparation_failure() {
         "sandbox operations leaked target path: {ops_log}"
     );
     let ops = fixture.ops_entries().unwrap();
-    for phase in ["guest_download_plan_build", "guest_download_cleanup"] {
+    for phase in [
+        "guest_storage_apply_plan_build",
+        "guest_storage_apply_cleanup",
+    ] {
         let entry = operation(&ops, phase).unwrap_or_else(|| panic!("missing {phase} in {ops:?}"));
         assert_eq!(entry["success"], true, "unexpected {phase}: {entry:?}");
         assert!(
@@ -393,12 +401,12 @@ fn binary_records_redacted_target_preparation_failure() {
     }
     assert_eq!(
         ops.iter()
-            .filter(|entry| entry["action_type"] == "guest_download_target_prepare")
+            .filter(|entry| entry["action_type"] == "guest_storage_apply_target_prepare")
             .count(),
         1,
         "unexpected target preparation operations: {ops:?}"
     );
-    let target_prepare = operation(&ops, "guest_download_target_prepare")
+    let target_prepare = operation(&ops, "guest_storage_apply_target_prepare")
         .unwrap_or_else(|| panic!("missing target preparation in {ops:?}"));
     assert_eq!(target_prepare["success"], false);
     assert!(target_prepare.get("error").is_none());
@@ -406,12 +414,12 @@ fn binary_records_redacted_target_preparation_failure() {
     assert!(
         !actions
             .iter()
-            .any(|action| action.starts_with("guest_download_task_count_")),
+            .any(|action| action.starts_with("guest_storage_apply_task_count_")),
         "target preparation failure reached scheduler attribution: {actions:?}"
     );
     for absent in [
-        "guest_download_archive_scheduler",
-        "guest_download_instruction_normalize",
+        "guest_storage_apply_archive_scheduler",
+        "guest_storage_apply_instruction_normalize",
     ] {
         assert!(
             !actions.iter().any(|action| action == absent),
@@ -643,7 +651,7 @@ fn binary_records_opened_file_size_around_bucket_boundary() {
         "unexpected task totals: {ops:?}"
     );
     assert_eq!(
-        operation(&ops, "guest_download_archive_scheduler").unwrap()["success"],
+        operation(&ops, "guest_storage_apply_archive_scheduler").unwrap()["success"],
         false
     );
     assert_eq!(operation(&ops, "download_total").unwrap()["success"], false);
@@ -693,7 +701,7 @@ fn binary_records_framework_home_instructions_role() {
     assert_eq!(task["success"], true);
     assert!(task.get("error").is_none());
     assert_eq!(
-        operation(&ops, "guest_download_instruction_normalize").unwrap()["success"],
+        operation(&ops, "guest_storage_apply_instruction_normalize").unwrap()["success"],
         true
     );
     assert_eq!(operation(&ops, "download_total").unwrap()["success"], true);

@@ -419,12 +419,12 @@ fn binary_timeout_terminates_child_and_connection_responder() {
 
     assert_eq!(error.kind(), io::ErrorKind::TimedOut);
     let message = error.to_string();
-    assert!(message.contains("guest-download timed out after 0ns"));
+    assert!(message.contains("guest-storage-apply timed out after 0ns"));
     assert!(message.contains("kill=signal sent"));
     assert!(message.contains("reap=completed with"));
     assert!(message.contains("stdout="));
     assert!(message.contains("stderr="));
-    assert!(message.contains("[INFO] [sandbox:download] Downloading 1 items"));
+    assert!(message.contains("[INFO] [sandbox:guest-storage-apply] Downloading 1 items"));
     assert_eq!(accepted, 1);
     process::verify_child_reaped(child_id).unwrap();
 }

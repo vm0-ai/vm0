@@ -145,7 +145,7 @@ pub fn emit(level: &str, tag: &str, args: std::fmt::Arguments<'_>) {
     let line = format!("[{}] [{level}] [{tag}] {args}", timestamp());
     if let Err(e) = append_system_log_line(&line) {
         write_stderr_line(&format!(
-            "[{}] [WARN] [sandbox:guest-common] failed to append system log: {e}",
+            "[{}] [WARN] [sandbox:guest-telemetry] failed to append system log: {e}",
             timestamp()
         ));
     }

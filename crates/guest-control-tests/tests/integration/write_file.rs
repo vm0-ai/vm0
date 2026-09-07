@@ -299,7 +299,7 @@ async fn test_write_file() {
 
     let file_path = h.dir.join("testfile.txt");
     let file_path_str = file_path.to_string_lossy().to_string();
-    let content = b"hello from vsock-test";
+    let content = b"hello from guest-control-tests";
 
     h.host()
         .write_file(&file_path_str, content, false)

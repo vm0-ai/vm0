@@ -78,9 +78,9 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     let target_prepare_index = ops
         .iter()
         .position(|entry| {
-            entry["action_type"] == "guest_download_target_prepare" && entry["success"] == true
+            entry["action_type"] == "guest_storage_apply_target_prepare" && entry["success"] == true
         })
-        .expect("missing successful guest_download_target_prepare operation");
+        .expect("missing successful guest_storage_apply_target_prepare operation");
     let failed_artifact_index = ops
         .iter()
         .position(|entry| {
@@ -113,7 +113,7 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     assert!(empty_artifact_ops.next().is_none());
     assert!(
         !ops.iter()
-            .any(|entry| entry["action_type"] == "guest_download_archive_scheduler"),
+            .any(|entry| entry["action_type"] == "guest_storage_apply_archive_scheduler"),
         "archive scheduler should not run: {ops:?}"
     );
 }

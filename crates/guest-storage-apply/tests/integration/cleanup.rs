@@ -1,4 +1,4 @@
-use crate::support::run_guest_download_manifest_json;
+use crate::support::run_guest_storage_apply_manifest_json;
 use serde_json::json;
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -42,7 +42,7 @@ fn selective_cleanup_skips_symlinked_root_and_continues() {
     symlink(&target, &cleanup_root).unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_root, &later_cleanup], Some(&preserved)).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert!(
@@ -81,7 +81,7 @@ fn whole_root_cleanup_skips_symlinked_intermediate_component() {
     symlink(&target, &alias).unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_path], None).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert!(
@@ -107,7 +107,7 @@ fn whole_root_cleanup_removes_final_symlink_without_touching_target() {
     symlink(&target, &cleanup_root).unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_root], None).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert!(fs::symlink_metadata(&cleanup_root).is_err());
@@ -130,7 +130,7 @@ fn selective_cleanup_preserves_cached_child_in_real_directory() {
     fs::write(cleanup_root.join("stale.txt"), "remove").unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_root], Some(&preserved)).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert_eq!(
@@ -153,7 +153,7 @@ fn cleanup_preserves_cached_path_across_equivalent_manifest_spellings() {
     fs::write(cached.join("content.txt"), "keep").unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_path], Some(&cached)).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert_eq!(
@@ -175,7 +175,7 @@ fn cleanup_preserves_path_nested_below_cached_root() {
     fs::write(nested.join("content.txt"), "keep").unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_path], Some(&cached)).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert_eq!(
@@ -199,7 +199,7 @@ fn selective_cleanup_preserves_cached_child_across_equivalent_parent_spelling() 
     fs::write(cleanup_root.join("stale/content.txt"), "remove").unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_path], Some(&preserved)).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert_eq!(
@@ -223,7 +223,7 @@ fn cleanup_normalization_does_not_bypass_intermediate_symlink() {
     symlink(&target, &alias).unwrap();
 
     let manifest = cleanup_manifest(&[&cleanup_path], None).unwrap();
-    let success = run_guest_download_manifest_json(&manifest);
+    let success = run_guest_storage_apply_manifest_json(&manifest);
 
     assert!(success);
     assert_eq!(

@@ -347,7 +347,7 @@ async fn partial_stdout_backpressure_or_broken_pipe_never_appends_another_termin
 fn executable_rejects_bad_input_without_files_or_payload_logs() {
     use std::io::Write;
     let dir = tempfile::tempdir().unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_guest-rpc"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_runner-rpc-client"))
         .current_dir(dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -372,7 +372,7 @@ fn executable_rejects_bad_input_without_files_or_payload_logs() {
     );
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_guest-rpc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_runner-rpc-client"))
         .args(["--socket", "/untrusted"])
         .output()
         .unwrap();

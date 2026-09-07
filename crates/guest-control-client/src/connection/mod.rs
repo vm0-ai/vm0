@@ -145,7 +145,7 @@ impl Shared {
                 let route_id = RouteId(*next_route_id);
                 *next_route_id = next_route_id
                     .checked_add(1)
-                    .ok_or_else(|| io::Error::other("vsock route identity exhausted"))?;
+                    .ok_or_else(|| io::Error::other("guest-control route identity exhausted"))?;
                 let seq = route_id.wire_seq();
                 if seq != 0
                     && !route_reservations.contains_key(&seq)

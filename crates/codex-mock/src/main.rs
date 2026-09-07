@@ -12,7 +12,7 @@ use codex_mock::run_app_server;
 use std::io;
 
 #[derive(Parser, Debug)]
-#[command(name = "guest-mock-codex", version)]
+#[command(name = "codex-mock", version)]
 struct Cli {
     /// Codex config override (accepted, ignored).
     #[arg(short = 'c', long = "config", global = true)]

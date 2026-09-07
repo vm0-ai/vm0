@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-const BLOCKING_PATH_SUFFIX: &str = ".vm0-vsock-test-block";
+const BLOCKING_PATH_SUFFIX: &str = ".vm0-guest-control-tests-block";
 const RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 fn main() {

@@ -27,9 +27,9 @@ use crate::writer::GuestWriter;
 const WORKSPACE_DIR: &str = "/home/user/workspace";
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
 const WORKSPACE_MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
-const THREAD_WORKER: &str = "vsock-workspace-drive-mount";
-const THREAD_STDOUT: &str = "vsock-workspace-mount-stdout";
-const THREAD_STDERR: &str = "vsock-workspace-mount-stderr";
+const THREAD_WORKER: &str = "gctl-mount";
+const THREAD_STDOUT: &str = "gctl-mount-out";
+const THREAD_STDERR: &str = "gctl-mount-err";
 const MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 
 #[derive(Clone)]

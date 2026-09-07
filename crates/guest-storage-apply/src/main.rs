@@ -6,9 +6,9 @@ use std::fs::OpenOptions;
 use std::io::{self, ErrorKind, Read as _};
 use std::time::Instant;
 
-const LOG_TAG: &str = "sandbox:download";
+const LOG_TAG: &str = "sandbox:guest-storage-apply";
 const MANIFEST_STDIN_ARG: &str = "--manifest-stdin";
-const USAGE: &str = "Usage: guest-download <manifest_path> | --manifest-stdin";
+const USAGE: &str = "Usage: guest-storage-apply <manifest_path> | --manifest-stdin";
 
 enum ManifestInput {
     Path(String),
@@ -42,19 +42,19 @@ fn main() {
 fn install_runtime_log_paths() -> Result<(), String> {
     let run_id = std::env::var(env::RUN_ID_ENV).map_err(|_| {
         format!(
-            "{} is required for guest-download runtime paths",
+            "{} is required for guest-storage-apply runtime paths",
             env::RUN_ID_ENV
         )
     })?;
     if run_id.is_empty() {
         return Err(format!(
-            "{} is required for guest-download runtime paths",
+            "{} is required for guest-storage-apply runtime paths",
             env::RUN_ID_ENV
         ));
     }
 
     let run_dir = runtime_paths::run_dir_from_env(&run_id)
-        .map_err(|error| format!("failed to resolve guest-download runtime paths: {error}"))?;
+        .map_err(|error| format!("failed to resolve guest-storage-apply runtime paths: {error}"))?;
     guest_telemetry::log::set_system_log_file(runtime_paths::system_log_file(&run_dir));
     guest_telemetry::telemetry::set_sandbox_ops_log_file(runtime_paths::sandbox_ops_log_file(
         run_dir,

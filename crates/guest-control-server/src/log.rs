@@ -11,5 +11,5 @@
 /// function. Callers that need one physical log line should avoid embedding
 /// newlines in `msg`.
 pub fn log(level: &str, msg: &str) {
-    eprintln!("[vsock-guest] [{level}] {msg}");
+    eprintln!("[guest-control-server] [{level}] {msg}");
 }

@@ -27,10 +27,10 @@ pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as Guest
 use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
-const THREAD_WORKER: &str = "vsock-guest-storage-manifest";
-const THREAD_STDIN: &str = "vsock-guest-storage-stdin";
-const THREAD_STDOUT: &str = "vsock-guest-storage-stdout";
-const THREAD_STDERR: &str = "vsock-guest-storage-stderr";
+const THREAD_WORKER: &str = "gctl-store";
+const THREAD_STDIN: &str = "gctl-store-in";
+const THREAD_STDOUT: &str = "gctl-store-out";
+const THREAD_STDERR: &str = "gctl-store-err";
 const MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 
 #[derive(Clone)]
@@ -50,7 +50,7 @@ impl GuestStorageManifestProgram {
 
     fn path(&self) -> &Path {
         match self {
-            Self::Production => Path::new(guest_contracts::guest_binary::DOWNLOAD_PATH),
+            Self::Production => Path::new(guest_contracts::guest_binary::STORAGE_APPLY_PATH),
             Self::Test(path) => path,
         }
     }

@@ -27,7 +27,7 @@ use std::path::Path;
 /// preventing such races requires OS primitives (e.g. `openat`/`O_PATH`) that
 /// this crate does not use. Exposure is reduced by lifecycle assumptions owned
 /// by callers: the runner applies storage before spawning the guest agent, and
-/// the guest-download scheduler serializes logically or physically overlapping
+/// the guest-storage-apply scheduler serializes logically or physically overlapping
 /// targets within this process. Callers that permit concurrent access to an
 /// extraction target must not rely on this function for containment.
 ///

@@ -287,12 +287,12 @@ fn manifest_entry(mount_path: &str, archive_url: Option<&str>, writeback: bool) 
     Value::Object(entry)
 }
 
-pub(crate) fn run_guest_download(manifest_path: &str) -> bool {
+pub(crate) fn run_guest_storage_apply(manifest_path: &str) -> bool {
     guest_telemetry::log::clear_system_log_file();
     guest_storage_apply::run(manifest_path)
 }
 
-pub(crate) fn run_guest_download_manifest_json(manifest_json: &[u8]) -> bool {
+pub(crate) fn run_guest_storage_apply_manifest_json(manifest_json: &[u8]) -> bool {
     guest_telemetry::log::clear_system_log_file();
     guest_storage_apply::run_manifest_bytes(manifest_json)
 }
@@ -308,7 +308,7 @@ pub(crate) fn assert_does_not_contain_any(haystack_name: &str, haystack: &str, f
 
 pub(crate) fn unique_run_id(test_name: &str) -> String {
     format!(
-        "guest-download-{test_name}-{}-{}",
+        "guest-storage-apply-{test_name}-{}-{}",
         std::process::id(),
         RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
     )

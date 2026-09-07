@@ -122,13 +122,13 @@ SH
         runnerSizeBytes: $size,
         guestSha256: {
           "guest-agent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "guest-download": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "guest-storage-apply": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "guest-init": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "guest-mock-claude": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-          "guest-mock-codex": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-          "guest-reseed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "claude-mock": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "codex-mock": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "guest-state-restore": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
           "guest-tool-exec": "2222222222222222222222222222222222222222222222222222222222222222",
-          "guest-rpc": "2222222222222222222222222222222222222222222222222222222222222222",
+          "runner-rpc-client": "2222222222222222222222222222222222222222222222222222222222222222",
           "guest-write-file": "1111111111111111111111111111111111111111111111111111111111111111"
         }
       }

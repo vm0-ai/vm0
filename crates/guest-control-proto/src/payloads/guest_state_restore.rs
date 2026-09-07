@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn result_round_trip_requires_empty_stdout_and_bounded_stderr() {
         let stderr = ExecCapturedOutput::Captured {
-            bytes: b"guest-reseed failed",
+            bytes: b"guest-state-restore failed",
             truncated: false,
         };
         let payload = encode_guest_state_restore_result(

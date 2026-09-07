@@ -1,6 +1,6 @@
 use super::{
     BinaryLoggingFixture, RuntimeLogPaths, assert_default_zero_task_attribution,
-    assert_single_download_total_success, guest_download_command, process,
+    assert_single_download_total_success, guest_storage_apply_command, process,
 };
 use crate::support::{unique_run_id, write_manifest};
 use std::ffi::OsStr;
@@ -34,14 +34,14 @@ fn binary_writes_system_log_to_explicit_runtime_path() {
 
     let content = fixture.read_system_log().unwrap();
     assert!(
-        content.contains("[INFO] [sandbox:download] Download completed"),
+        content.contains("[INFO] [sandbox:guest-storage-apply] Download completed"),
         "unexpected system log: {content:?}"
     );
     assert_eq!(content.matches("Download completed").count(), 1);
     assert!(!content.contains(fixture.logs.runtime_dir.to_string_lossy().as_ref()));
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("[INFO] [sandbox:download] Download completed"));
+    assert!(stderr.contains("[INFO] [sandbox:guest-storage-apply] Download completed"));
     let actions = fixture.action_types().unwrap();
     assert_default_zero_task_attribution(&actions);
     let ops = fixture.ops_entries().unwrap();
@@ -67,7 +67,7 @@ fn binary_preserves_the_canonical_runtime_override() {
         } else {
             &fallback_dir
         };
-        let mut command = guest_download_command();
+        let mut command = guest_storage_apply_command();
         command
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, &run_id)
@@ -113,7 +113,7 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
     let override_dir = dir
         .path()
         .join(OsString::from_vec(b"override-\xff".to_vec()));
-    let mut override_command = guest_download_command();
+    let mut override_command = guest_storage_apply_command();
     override_command
         .arg(&override_manifest)
         .env(guest_contracts::env::RUN_ID_ENV, "invalid/run-id");
@@ -130,7 +130,7 @@ fn binary_accepts_non_unicode_runtime_override_and_home_fallback() {
     let home = dir.path().join(OsString::from_vec(b"home-\xfe".to_vec()));
     let run_id = unique_run_id("non-unicode-home");
     let fallback_dir = guest_contracts::runtime_paths::run_dir_for_home(&home, &run_id).unwrap();
-    let mut fallback_command = guest_download_command();
+    let mut fallback_command = guest_storage_apply_command();
     fallback_command
         .arg(&fallback_manifest)
         .env(guest_contracts::env::RUN_ID_ENV, &run_id)
@@ -151,7 +151,7 @@ fn binary_fails_without_run_id_for_runtime_log_setup() {
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
 
     let output = process::run(
-        guest_download_command()
+        guest_storage_apply_command()
             .arg(&manifest_path)
             .env_remove(guest_contracts::env::RUN_ID_ENV),
     )
@@ -160,7 +160,7 @@ fn binary_fails_without_run_id_for_runtime_log_setup() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("OKOU_RUN_ID is required for guest-download runtime paths"),
+        stderr.contains("OKOU_RUN_ID is required for guest-storage-apply runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }
@@ -171,7 +171,7 @@ fn binary_fails_with_empty_run_id_for_runtime_log_setup() {
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
 
     let output = process::run(
-        guest_download_command()
+        guest_storage_apply_command()
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, ""),
     )
@@ -180,7 +180,7 @@ fn binary_fails_with_empty_run_id_for_runtime_log_setup() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("OKOU_RUN_ID is required for guest-download runtime paths"),
+        stderr.contains("OKOU_RUN_ID is required for guest-storage-apply runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }
@@ -190,7 +190,7 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
     let run_id = unique_run_id("relative-runtime-dir");
-    let mut command = guest_download_command();
+    let mut command = guest_storage_apply_command();
     command
         .arg(&manifest_path)
         .env(guest_contracts::env::RUN_ID_ENV, run_id);
@@ -202,7 +202,7 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "failed to resolve guest-download runtime paths: OKOU_GUEST_RUNTIME_DIR must be an absolute path"
+            "failed to resolve guest-storage-apply runtime paths: OKOU_GUEST_RUNTIME_DIR must be an absolute path"
         ),
         "unexpected stderr: {stderr}"
     );
@@ -215,7 +215,7 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
 
     let output = process::run(
-        guest_download_command()
+        guest_storage_apply_command()
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, "invalid/run/id"),
     )
@@ -225,7 +225,7 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "failed to resolve guest-download runtime paths: OKOU_RUN_ID must be a single safe path segment"
+            "failed to resolve guest-storage-apply runtime paths: OKOU_RUN_ID must be a single safe path segment"
         ),
         "unexpected stderr: {stderr}"
     );
@@ -238,7 +238,7 @@ fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() 
     let logs = RuntimeLogPaths::new(&dir);
 
     let output = process::run(
-        guest_download_command()
+        guest_storage_apply_command()
             .arg(&manifest_path)
             .env(
                 guest_contracts::env::RUN_ID_ENV,
@@ -258,7 +258,7 @@ fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() 
     );
     let content = std::fs::read_to_string(&logs.system_log).unwrap();
     assert!(
-        content.contains("[INFO] [sandbox:download] Download completed"),
+        content.contains("[INFO] [sandbox:guest-storage-apply] Download completed"),
         "unexpected system log: {content:?}"
     );
 }
@@ -270,7 +270,7 @@ fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
     let run_id = unique_run_id("missing-home");
 
     let output = process::run(
-        guest_download_command()
+        guest_storage_apply_command()
             .arg(&manifest_path)
             .env(guest_contracts::env::RUN_ID_ENV, run_id)
             .env_remove("HOME"),
@@ -280,7 +280,7 @@ fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("failed to resolve guest-download runtime paths: HOME is required for guest runtime paths"),
+        stderr.contains("failed to resolve guest-storage-apply runtime paths: HOME is required for guest runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }

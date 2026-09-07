@@ -1,4 +1,4 @@
-//! Shared harness for guest-mock-claude integration tests.
+//! Shared harness for claude-mock integration tests.
 
 #[cfg(target_os = "linux")]
 use std::fs;
@@ -86,7 +86,7 @@ impl Drop for StreamJsonChild {
 }
 
 pub fn mock_claude() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_claude-mock"));
     command.env_remove("CLAUDE_CONFIG_DIR");
     command
 }

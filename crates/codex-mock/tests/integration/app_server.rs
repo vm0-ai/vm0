@@ -252,7 +252,7 @@ pub(crate) fn text_input(text: &str) -> Value {
 pub(crate) fn initialize_params() -> Value {
     json!({
         "clientInfo": {
-            "name": "guest-mock-codex-tests",
+            "name": "codex-mock-tests",
             "title": null,
             "version": "0.1.0"
         },
@@ -1088,10 +1088,7 @@ fn app_server_interleaved_notification_scenario_emits_before_response() -> std::
 
     let notification = server.read_required()?;
     assert_eq!(notification["method"], "experimental/server-notification");
-    assert_eq!(
-        notification["params"]["message"],
-        "guest-mock-codex notification"
-    );
+    assert_eq!(notification["params"]["message"], "codex-mock notification");
 
     let response = server.read_required()?;
     assert_eq!(response["id"], 2);
@@ -1146,11 +1143,11 @@ fn app_server_server_request_scenario_waits_for_client_response() -> std::io::Re
     }))?;
 
     let server_request = server.read_required()?;
-    assert_eq!(server_request["id"], "guest-mock-codex-server-request-1");
+    assert_eq!(server_request["id"], "codex-mock-server-request-1");
     assert_eq!(server_request["method"], "experimental/server-request");
 
     server.send(&json!({
-        "id": "guest-mock-codex-server-request-1",
+        "id": "codex-mock-server-request-1",
         "error": {
             "code": -32601,
             "message": "unsupported server request"

@@ -29,9 +29,9 @@ const PRODUCTION_PROGRAM: &str = "/usr/bin/getent";
 const RESOLVER_DATABASE: &str = "ahostsv4";
 const RESOLVER_OPTIONS: &str = "attempts:1 timeout:1";
 const OUTPUT_DRAIN_DEADLINE: Duration = Duration::from_secs(1);
-const THREAD_WORKER: &str = "vsock-guest-dns-readiness";
-const THREAD_STDOUT: &str = "vsock-guest-dns-stdout";
-const THREAD_STDERR: &str = "vsock-guest-dns-stderr";
+const THREAD_WORKER: &str = "gctl-dns-ready";
+const THREAD_STDOUT: &str = "gctl-dns-stdout";
+const THREAD_STDERR: &str = "gctl-dns-stderr";
 
 #[derive(Clone)]
 pub(crate) enum GuestDnsReadinessProgram {

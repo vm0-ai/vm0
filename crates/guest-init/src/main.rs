@@ -92,12 +92,12 @@ fn main() {
     }
 
     // === Parent process (PID 1) ===
-    eprintln!("[guest-init] vsock-guest forked as pid={child_pid}");
+    eprintln!("[guest-init] guest-control-server forked as pid={child_pid}");
 
     // Step 5: Wait for child and shutdown events while reaping orphans.
     match pid1::supervise(&signal_context, child_pid, SHUTDOWN_GRACE_PERIOD) {
         Ok(exit_code) => {
-            eprintln!("[guest-init] vsock-guest exited with code {exit_code}");
+            eprintln!("[guest-init] guest-control-server exited with code {exit_code}");
             std::process::exit(exit_code);
         }
         Err(error) => {
