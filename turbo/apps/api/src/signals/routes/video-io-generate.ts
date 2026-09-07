@@ -21,6 +21,7 @@ import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
+import { badRequestMessage } from "../../lib/error";
 import { db$, type ReadonlyDb } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import {
@@ -446,6 +447,25 @@ const submitVideoProviderWebhookJob$ = command(
   },
 );
 
+function parseVideoSubmissionOptions(body: VideoIoGenerateRequest) {
+  const options = parseVideoOptions(body);
+  if ("status" in options) {
+    return options;
+  }
+  if (
+    videoProviderForModel(options.model) === "byteplus" &&
+    (options.firstFrameImageUrl || options.lastFrameImageUrl) &&
+    (options.referenceImageUrls.length > 0 ||
+      options.inputVideoUrls.length > 0 ||
+      options.referenceAudioUrls.length > 0)
+  ) {
+    return badRequestMessage(
+      "BytePlus frame images and reference media cannot be combined. Choose either first/last frames or reference images, videos, and audio.",
+    );
+  }
+  return options;
+}
+
 const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
@@ -470,7 +490,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   // The run's model is a default, not an override: it applies only when the
   // request names no model of its own. A caller that asks for a specific model
   // — because the user asked for it in the prompt — gets that model.
-  const options = parseVideoOptions(
+  const options = parseVideoSubmissionOptions(
     runVideoModel === null || namesVideoModel(bodyResult.data)
       ? bodyResult.data
       : withDefaultRunVideoModel(bodyResult.data, runVideoModel),

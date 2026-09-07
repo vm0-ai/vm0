@@ -584,6 +584,97 @@ describe("POST /api/video-io/generate", () => {
     expect(calledBytePlus).toBeFalsy();
   });
 
+  it.each([
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      videoUrls: ["https://example.com/reference.mp4"],
+    },
+    {
+      firstFrameImageUrl: "https://example.com/first.png",
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      videoUrls: ["https://example.com/reference.mp4"],
+    },
+    {
+      lastFrameImageUrl: "https://example.com/last.png",
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      first_frame_image_url: " https://example.com/first.png ",
+      reference_video_urls: ["https://example.com/reference.mp4"],
+    },
+    {
+      model: "dreamina-seedance-2.5",
+      firstFrameImageUrl: "https://example.com/first.png",
+      lastFrameImageUrl: "https://example.com/last.png",
+      imageUrls: ["https://example.com/reference.png"],
+      videoUrls: ["https://example.com/reference.mp4"],
+      audioUrls: ["https://example.com/reference.mp3"],
+    },
+    {
+      model: "dreamina-seedance-2.0-fast",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      model: "dreamina-seedance-2.0-mini",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+    {
+      model: "seedance-1.5-pro",
+      firstFrameImageUrl: "https://example.com/first.png",
+      imageUrls: ["https://example.com/reference.png"],
+    },
+  ])(
+    "rejects conflicting BytePlus frame and reference inputs %# before starting a job",
+    async (inputs) => {
+      const fixture = await seedVideoFixture({ credits: 0 });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let calledBytePlus = false;
+      server.use(
+        http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+          calledBytePlus = true;
+          return HttpResponse.json({ id: "unexpected-byteplus-task" });
+        }),
+      );
+
+      const app = createVideoIoTestApp(fixture.pricingResolution);
+      const response = await app.request("/api/video-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          prompt: "animate the supplied media",
+          ...inputs,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          code: "BAD_REQUEST",
+          message:
+            "BytePlus frame images and reference media cannot be combined. Choose either first/last frames or reference images, videos, and audio.",
+        },
+      });
+      expect(calledBytePlus).toBeFalsy();
+      expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+      expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+      expect(context.mocks.s3.send).not.toHaveBeenCalled();
+      await expect(orgCredits(fixture)).resolves.toBe(0);
+    },
+  );
+
   it("returns 402 when the org has no spendable credits", async () => {
     const fixture = await seedVideoFixture({ credits: 0 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -1757,16 +1848,74 @@ describe("POST /api/video-io/generate", () => {
     expect(asRecord(content[1]).role).toBeUndefined();
   });
 
+  it("submits Dreamina first and last frames without reference media", async () => {
+    const fixture = await seedVideoFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const firstFrame = ownedArtifactReference(fixture.userId, "first.png");
+    const lastFrame = ownedArtifactReference(fixture.userId, "last.png");
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "dreamina-frame-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const response = await createVideoIoTestApp(
+      fixture.pricingResolution,
+    ).request("/api/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "animate between the opening and closing frames",
+        firstFrameImageUrl: firstFrame.url,
+        lastFrameImageUrl: lastFrame.url,
+        imageUrls: [],
+        videoUrls: [],
+        audioUrls: [],
+        generateAudio: true,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      generate_audio: true,
+      content: [
+        {
+          type: "text",
+          text: "animate between the opening and closing frames",
+        },
+        {
+          type: "image_url",
+          image_url: { url: expect.any(String) },
+          role: "first_frame",
+        },
+        {
+          type: "image_url",
+          image_url: { url: expect.any(String) },
+          role: "last_frame",
+        },
+      ],
+    });
+    const content = asRecord(observedBody).content;
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expectPresignedArtifactReference(
+      asRecord(asRecord(content[1]).image_url).url,
+      firstFrame.key,
+    );
+    expectPresignedArtifactReference(
+      asRecord(asRecord(content[2]).image_url).url,
+      lastFrame.key,
+    );
+  });
+
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await seedVideoFixture({ credits: 10_000 });
-    const firstFrameReference = ownedArtifactReference(
-      fixture.userId,
-      "first.png",
-    );
-    const lastFrameReference = ownedArtifactReference(
-      fixture.userId,
-      "last.png",
-    );
     const imageReference = ownedArtifactReference(
       fixture.userId,
       "reference.png",
@@ -1829,8 +1978,6 @@ describe("POST /api/video-io/generate", () => {
         imageUrls: [imageReference.url],
         videoUrls: [videoReference.url],
         audioUrls: [audioReference.url],
-        firstFrameImageUrl: firstFrameReference.url,
-        lastFrameImageUrl: lastFrameReference.url,
         seed: 42,
       }),
     });
@@ -1873,16 +2020,6 @@ describe("POST /api/video-io/generate", () => {
         {
           type: "image_url",
           image_url: { url: expect.any(String) },
-          role: "first_frame",
-        },
-        {
-          type: "image_url",
-          image_url: { url: expect.any(String) },
-          role: "last_frame",
-        },
-        {
-          type: "image_url",
-          image_url: { url: expect.any(String) },
           role: "reference_image",
         },
         {
@@ -1903,22 +2040,14 @@ describe("POST /api/video-io/generate", () => {
     }
     expectPresignedArtifactReference(
       asRecord(asRecord(providerContent[1]).image_url).url,
-      firstFrameReference.key,
-    );
-    expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[2]).image_url).url,
-      lastFrameReference.key,
-    );
-    expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[3]).image_url).url,
       imageReference.key,
     );
     expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[4]).video_url).url,
+      asRecord(asRecord(providerContent[2]).video_url).url,
       videoReference.key,
     );
     expectPresignedArtifactReference(
-      asRecord(asRecord(providerContent[5]).audio_url).url,
+      asRecord(asRecord(providerContent[3]).audio_url).url,
       audioReference.key,
     );
 
