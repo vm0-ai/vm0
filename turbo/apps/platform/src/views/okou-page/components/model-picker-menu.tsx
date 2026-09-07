@@ -220,7 +220,7 @@ function ModelPickerOverview({
             selectedOption?.fastAvailable && value
               ? () => {
                   mediaModelPanel?.onActiveCategoryChange(null);
-                  editSettings(value, "overview");
+                  editSettings();
                 }
               : undefined
           }
@@ -251,16 +251,12 @@ function ChatModelSettings({
   signals,
   options,
   selection,
-  from,
   onChange,
 }: Pick<ModelPickerMenuContentProps, "signals" | "options" | "onChange"> & {
   selection: ModelProviderSelection;
-  from: "overview" | "models";
 }) {
   const { t } = useTranslation();
-  const reset = useSet(signals.reset$);
-  const back = useSet(signals.back$);
-  const setFast = useSet(signals.setFast$);
+  const back = useSet(signals.reset$);
   const option = options.find((candidate) => {
     return candidate.model === selection.selectedModel;
   });
@@ -271,15 +267,9 @@ function ChatModelSettings({
           return $.settings.models.picker.menu.chatSettings;
         })}
         onBack={back}
-        backLabel={
-          from === "models"
-            ? t(($) => {
-                return $.settings.models.picker.menu.backToChatModels;
-              })
-            : t(($) => {
-                return $.settings.models.picker.menu.backToModels;
-              })
-        }
+        backLabel={t(($) => {
+          return $.settings.models.picker.menu.backToModels;
+        })}
       />
       <div className="border-b border-border/60 px-2 py-2.5 text-sm">
         {option?.content ??
@@ -304,33 +294,14 @@ function ChatModelSettings({
             return $.settings.models.picker.fast;
           })}
           checked={selection.codexServiceTier === "fast"}
-          onCheckedChange={setFast}
-          disabled={!option?.fastAvailable}
-        />
-      </div>
-      <div className="flex items-center justify-between border-t border-border/60 px-2 pb-1.5 pt-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={reset}
-        >
-          {t(($) => {
-            return $.settings.models.picker.menu.cancel;
-          })}
-        </Button>
-        <Button
-          size="sm"
-          disabled={!option?.fastAvailable || option.disabled}
-          onClick={() => {
-            onChange(selection);
-            reset();
+          onCheckedChange={(fast) => {
+            onChange({
+              selectedModel: selection.selectedModel,
+              ...(fast ? { codexServiceTier: "fast" } : {}),
+            });
           }}
-        >
-          {t(($) => {
-            return $.settings.models.picker.menu.confirm;
-          })}
-        </Button>
+          disabled={!option?.fastAvailable || option.disabled}
+        />
       </div>
     </>
   );
@@ -346,21 +317,14 @@ function ChatModelList({
   "signals" | "options" | "value" | "onChange"
 >) {
   const { t } = useTranslation();
-  const back = useSet(signals.back$);
   const reset = useSet(signals.reset$);
-  const editSettings = useSet(signals.editSettings$);
   const chooseChat = (option: ModelPickerMenuOption) => {
-    if (option.fastAvailable) {
-      editSettings(
-        value?.selectedModel === option.model
-          ? value
-          : { selectedModel: option.model },
-        "models",
-      );
-    } else {
-      onChange({ selectedModel: option.model });
-      reset();
-    }
+    onChange(
+      value?.selectedModel === option.model
+        ? value
+        : { selectedModel: option.model },
+    );
+    reset();
   };
   return (
     <>
@@ -368,7 +332,7 @@ function ChatModelList({
         label={t(($) => {
           return $.settings.models.picker.chatModels;
         })}
-        onBack={back}
+        onBack={reset}
         backLabel={t(($) => {
           return $.settings.models.picker.menu.backToModels;
         })}
@@ -418,7 +382,6 @@ function MediaModelList({
   categoryId: "image" | "video";
 }) {
   const { t } = useTranslation();
-  const back = useSet(signals.back$);
   const reset = useSet(signals.reset$);
   const category = mediaModelPanel?.categories.find((candidate) => {
     return candidate.id === categoryId;
@@ -432,7 +395,7 @@ function MediaModelList({
             return $.settings.models.picker.models;
           })
         }
-        onBack={back}
+        onBack={reset}
         backLabel={t(($) => {
           return $.settings.models.picker.menu.backToModels;
         })}
@@ -476,7 +439,7 @@ function MediaModelList({
 export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {
   const { t } = useTranslation();
   const page = useGet(props.signals.page$);
-  const back = useSet(props.signals.back$);
+  const back = useSet(props.signals.reset$);
   const focusPanel = useSet(props.signals.focusPanelRef$);
   let content: ReactNode;
   let label: string;
@@ -489,12 +452,8 @@ export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {
     label = t(($) => {
       return $.settings.models.picker.menu.chatSettings;
     });
-    content = (
-      <ChatModelSettings
-        {...props}
-        selection={page.selection}
-        from={page.from}
-      />
+    content = props.value && (
+      <ChatModelSettings {...props} selection={props.value} />
     );
   } else if (page.category === "chat") {
     label = t(($) => {
@@ -518,7 +477,7 @@ export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {
       ref={focusPanel}
       role="region"
       aria-label={label}
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150"
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-offset-0"
       onKeyDown={(event) => {
         if (event.key === "Escape" && page.kind !== "overview") {
           event.preventDefault();

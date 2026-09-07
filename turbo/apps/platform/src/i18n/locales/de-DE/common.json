@@ -4953,12 +4953,9 @@
         "loading": "Modelle werden geladen...",
         "menu": {
           "adjustSettings": "Einstellungen für {{model}} anpassen",
-          "backToChatModels": "Zurück zu Chatmodellen",
           "backToModels": "Zurück zu Modellen",
-          "cancel": "Abbrechen",
           "changeModel": "{{category}}-Modell ändern, {{model}}",
-          "chatSettings": "Chateinstellungen",
-          "confirm": "Bestätigen"
+          "chatSettings": "Chateinstellungen"
         },
         "models": "Modelle",
         "noConfiguredModels": "Keine konfigurierten Modelle",

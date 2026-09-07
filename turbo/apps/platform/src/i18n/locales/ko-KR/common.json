@@ -4945,12 +4945,9 @@
         "loading": "모델 불러오는 중...",
         "menu": {
           "adjustSettings": "{{model}} 설정 조정",
-          "backToChatModels": "채팅 모델로 돌아가기",
           "backToModels": "모델로 돌아가기",
-          "cancel": "취소",
           "changeModel": "{{category}} 모델 변경, {{model}}",
-          "chatSettings": "채팅 설정",
-          "confirm": "확인"
+          "chatSettings": "채팅 설정"
         },
         "models": "모델",
         "noConfiguredModels": "구성된 모델 없음",

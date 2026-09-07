@@ -5007,12 +5007,9 @@
         "loading": "Carregando modelos...",
         "menu": {
           "adjustSettings": "Ajustar configurações de {{model}}",
-          "backToChatModels": "Voltar aos modelos de chat",
           "backToModels": "Voltar aos modelos",
-          "cancel": "Cancelar",
           "changeModel": "Alterar modelo de {{category}}, {{model}}",
-          "chatSettings": "Configurações de chat",
-          "confirm": "Confirmar"
+          "chatSettings": "Configurações de chat"
         },
         "models": "Modelos",
         "noConfiguredModels": "Nenhum modelo configurado",

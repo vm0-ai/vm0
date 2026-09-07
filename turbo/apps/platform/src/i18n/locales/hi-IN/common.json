@@ -4953,12 +4953,9 @@
         "loading": "मॉडल लोड हो रहे हैं...",
         "menu": {
           "adjustSettings": "{{model}} की सेटिंग समायोजित करें",
-          "backToChatModels": "चैट मॉडल पर वापस जाएँ",
           "backToModels": "मॉडल पर वापस जाएँ",
-          "cancel": "रद्द करें",
           "changeModel": "{{category}} मॉडल बदलें, {{model}}",
-          "chatSettings": "चैट सेटिंग",
-          "confirm": "पुष्टि करें"
+          "chatSettings": "चैट सेटिंग"
         },
         "models": "मॉडल",
         "noConfiguredModels": "कोई कॉन्फ़िगर मॉडल नहीं",
