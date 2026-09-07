@@ -58,6 +58,7 @@ function mockThreads(count: number): void {
           selectedModel: null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
         };
       }),
       latestEventId: null,
