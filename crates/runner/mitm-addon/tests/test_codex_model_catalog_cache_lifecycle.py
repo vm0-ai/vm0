@@ -1,8 +1,10 @@
 """Integration coverage for Codex model catalog cache entry lifecycle."""
 
+import asyncio
 import json
 from unittest.mock import patch
 
+from mitmproxy import http
 from mitmproxy.flow import Error
 
 import codex_model_catalog_cache as catalog_cache
@@ -11,6 +13,8 @@ from tests.codex_model_catalog_cache_helpers import (
     CATALOG_BODY,
     CATALOG_ETAG,
     catalog_flow,
+    catalog_response,
+    finish_response,
     install_catalog,
     prepare_miss,
     responses_flow,
@@ -148,6 +152,73 @@ async def test_failed_responses_etag_does_not_invalidate_catalog(real_flow):
     telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(failed_response, telemetry)
     assert telemetry == {}
+
+
+async def test_non_utf8_authenticated_models_etag_does_not_change_entry(real_flow):
+    with patch.object(catalog_cache.time, "monotonic", return_value=100.0) as monotonic:
+        await install_catalog(catalog_flow(real_flow))
+
+        monotonic.return_value = 150.0
+        signal = responses_flow(real_flow)
+        assert signal.response is not None
+        signal.response.headers = http.Headers(
+            [
+                (b"Content-Type", b"text/event-stream"),
+                (b"x-models-etag", b'"\xff"'),
+            ]
+        )
+
+        mitm_addon.responseheaders(signal)
+
+        signal_telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(signal, signal_telemetry)
+        assert signal_telemetry == {}
+        preserved_hit = catalog_flow(real_flow)
+        await catalog_cache.prepare_request(preserved_hit, request_end_stream=True)
+        assert preserved_hit.response is not None
+        assert preserved_hit.response.content == CATALOG_BODY
+
+        monotonic.return_value = 161.0
+        expired = catalog_flow(real_flow)
+        await prepare_miss(expired)
+        catalog_cache.handle_error(expired)
+
+
+async def test_non_utf8_authenticated_models_etag_does_not_change_in_flight_owner(real_flow):
+    owner = catalog_flow(real_flow, version="invalid-signal-owner")
+    await prepare_miss(owner)
+    follower = catalog_flow(real_flow, version="invalid-signal-owner")
+    follower_prepare = asyncio.create_task(
+        catalog_cache.prepare_request(follower, request_end_stream=True)
+    )
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+
+    signal = responses_flow(real_flow)
+    assert signal.response is not None
+    signal.response.headers = http.Headers(
+        [
+            (b"Content-Type", b"text/event-stream"),
+            (b"x-models-etag", b'"\xff"'),
+        ]
+    )
+
+    mitm_addon.responseheaders(signal)
+
+    await asyncio.sleep(0)
+    assert not follower_prepare.done()
+    signal_telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(signal, signal_telemetry)
+    assert signal_telemetry == {}
+
+    owner_body = b'{"models":[{"slug":"unaffected-owner"}]}'
+    owner.response = catalog_response(body=owner_body)
+    assert (await finish_response(owner))["model_catalog_cache_status"] == (
+        "model_catalog_cold_stored"
+    )
+    await asyncio.wait_for(follower_prepare, timeout=0.1)
+    assert follower.response is not None
+    assert follower.response.content == owner_body
 
 
 async def test_fresh_hit_changes_count_bound_eviction_order(real_flow):

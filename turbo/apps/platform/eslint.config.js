@@ -159,7 +159,6 @@ export default [
       "ccstate/no-manual-mock-cleanup": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
-      "ccstate/no-raw-msw-http": "error",
       "ccstate/no-mockapi-raw-async": "error",
       "no-restricted-syntax": [
         "error",
@@ -244,16 +243,6 @@ export default [
     ],
     rules: {
       "ccstate/no-direct-fetch": "off",
-    },
-  },
-  // Allow raw http.* in the fetch$ wrapper self-tests. The file exercises the
-  // wrapper against synthetic URLs (`/test`, `/api/zero/items`) that do not
-  // correspond to any typed contract — see the file-level comment in
-  // src/signals/__tests__/fetch.test.ts for the full rationale.
-  {
-    files: ["src/signals/__tests__/fetch.test.ts"],
-    rules: {
-      "ccstate/no-raw-msw-http": "off",
     },
   },
   // Allow direct localStorage in the abstraction layer only

@@ -1,8 +1,10 @@
 import { isDesktopAuthFlow } from "./desktop-auth-flow.ts";
 import * as Sentry from "@sentry/browser";
 import type { BrowserOptions, Contexts, User } from "@sentry/browser";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 
 import { setLogErrorHandler } from "../signals/log.ts";
+import { SharedDatabaseHttpError } from "../shared-database/http-error.ts";
 import { ApiError } from "./api-error.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
@@ -34,6 +36,52 @@ export function sentryLogContext(
   context: SentryLoggerContext,
 ): SentryLogContextArgument {
   return { [SENTRY_LOG_CONTEXT]: context };
+}
+
+const EXPECTED_ERROR_MESSAGES: ReadonlySet<string> = new Set([
+  // Ably already owns reconnect, resubscribe, and catch-up.
+  "Connection to server unavailable",
+  "Channel attach timed out",
+  // Some browser/SDK paths stringify the original permission error.
+  "NotAllowedError: Permission denied",
+  "NotAllowedError: Permission denied by system",
+  "NotAllowedError: The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.",
+  // WebKit's native media controls, outside application recording code.
+  "this.mediaController.media.addEventListener is not a function",
+  "this.mediaController.media.addEventListener is not a function. (In 'this.mediaController.media.addEventListener(eventType,this,true)', 'this.mediaController.media.addEventListener' is undefined)",
+]);
+
+function isExpectedErrorDescription(
+  name: string | undefined,
+  message: string | undefined,
+): boolean {
+  return (
+    name === "NotAllowedError" ||
+    (message !== undefined && EXPECTED_ERROR_MESSAGES.has(message))
+  );
+}
+
+function isExpectedError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  while (
+    (error instanceof Error || error instanceof DOMException) &&
+    !seen.has(error)
+  ) {
+    seen.add(error);
+    if (
+      (error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500) ||
+      (error instanceof SharedDatabaseHttpError &&
+        (error.status === 401 ||
+          error.status === CLIENT_FORCE_UPGRADE_STATUS)) ||
+      isExpectedErrorDescription(error.name, error.message)
+    ) {
+      return true;
+    }
+    error = "cause" in error ? error.cause : undefined;
+  }
+  return false;
 }
 
 export function createPlatformSentryOptions(
@@ -90,10 +138,14 @@ export function createPlatformSentryOptions(
         return null;
       }
 
-      // ApiError thrown by accept() — surfaced through toast notifications and
-      // not actionable in Sentry.
-      const original = hint?.originalException;
-      if (original instanceof ApiError) {
+      // Preserve classification through logger wrappers and MessagePort errors.
+      if (
+        isExpectedError(hint?.originalException) ||
+        isExpectedErrorDescription(undefined, event.message) ||
+        event.exception?.values?.some((exception) => {
+          return isExpectedErrorDescription(exception.type, exception.value);
+        })
+      ) {
         return null;
       }
 
@@ -155,8 +207,8 @@ export function captureSentryLogError(
   const capturedArgs = args.filter((arg) => {
     return !isSentryLogContextArgument(arg);
   });
-  const error = capturedArgs.find((arg): arg is Error => {
-    return arg instanceof Error;
+  const error = capturedArgs.find((arg): arg is Error | DOMException => {
+    return arg instanceof Error || arg instanceof DOMException;
   });
   if (error) {
     Sentry.captureException(error, captureContext);

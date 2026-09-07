@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.86.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.4...guest-agent-v0.86.5) (2026-09-07)
+
+
+### Refactoring
+
+* remove retired fable 5 runtime definitions ([#32210](https://github.com/vm0-ai/vm0/issues/32210)) ([785a8f8](https://github.com/vm0-ai/vm0/commit/785a8f86e9f531445c1c25ffc46509d59dbddc58))
+
+## [0.86.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.3...guest-agent-v0.86.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* set terra reasoning effort to max ([#32194](https://github.com/vm0-ai/vm0/issues/32194)) ([bb60e20](https://github.com/vm0-ai/vm0/commit/bb60e2013f34f2d836a6839dda1c912091620ce5))
+
+## [0.86.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.2...guest-agent-v0.86.3) (2026-09-07)
+
+
+### Documentation
+
+* **rust:** correct HeartbeatStatus summary ([#32129](https://github.com/vm0-ai/vm0/issues/32129)) ([4777169](https://github.com/vm0-ai/vm0/commit/477716997ffd789b1cf19b370759445ef4f2bd34))
+* **rust:** update stale guest-agent CLI entrypoint references ([#32159](https://github.com/vm0-ai/vm0/issues/32159)) ([1c29468](https://github.com/vm0-ai/vm0/commit/1c29468fc6c57c90555052aee734a0dd5027962d))
+
+
+### Performance Improvements
+
+* **guest-agent:** reuse maintenance content hash ([#32093](https://github.com/vm0-ai/vm0/issues/32093)) ([9774746](https://github.com/vm0-ai/vm0/commit/97747462008167a2a494bdfeeb4dbcd9ba83fadc))
+
 ## [0.86.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.1...guest-agent-v0.86.2) (2026-09-06)
 
 

@@ -8,7 +8,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { cronOfficialWorkflowCatalogContract } from "@okouai/api-contracts/contracts/cron";
-import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   OFFICIAL_WORKFLOW_CATALOG_SCHEMA_VERSION,
   type OfficialWorkflowBlueprint,
@@ -93,7 +93,7 @@ import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automati
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowsRoutes } from "../workflows";
-import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import {
   acknowledgeDetachedForTest,
   createDeferredPromise,
@@ -1184,16 +1184,21 @@ function storageClient() {
   })(testSystemStoragePresignedUrlCacheStateContract);
 }
 
-function staleQueueReconcileClient() {
-  return setupApp({ context, routes: testBrowserReconcileRoutes })(
-    testBrowserReconcileContract,
+function staleQueueCleanupClient() {
+  return setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+    testCronCleanupSandboxesStateContract,
   );
 }
 
 async function reconcileStaleQueuedMessages(threadId: string): Promise<void> {
   await accept(
-    staleQueueReconcileClient().reconcile({
-      body: { chat_thread_ids: [threadId] },
+    staleQueueCleanupClient().cleanup({
+      body: {
+        chatThreadIds: [threadId],
+        runIds: [],
+        orgIds: [],
+        exportJobIds: [],
+      },
     }),
     [200],
   );

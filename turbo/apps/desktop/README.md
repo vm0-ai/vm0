@@ -209,18 +209,10 @@ working for those builds:
   bridge falls back to `soft` on any request failure, so deleting or breaking
   the endpoint would silently release users the hard stop is holding.
 - **The Okou DMG route must keep resolving.** `Download Okou` opens
-  `https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`, the neutral
-  path #28278 moved that route to. The API served the branded forms alongside it
-  through the branded compatibility table in
-  `apps/api/src/signals/route-entry.ts`, on the reading that a build published
-  before the move opens
-  `https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg` instead.
-  Measurement did not support it: across 2026-09-01 07:00Z to 2026-09-02 07:30Z
-  every one of the 1,445 update requests, from 144 addresses, was on the neutral
-  path and neither branded form took any, including from the Zero installs that
-  have been polling this API since the policy went `hard`. #31088 removed those
-  rows, so the neutral path above is the one that has to keep resolving.
-  #26364 tracks the Zero install base itself.
+  `https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`. Installed
+  Zero migration bridges poll this neutral route after the policy goes `hard`,
+  so it must continue returning the current Okou installer. #26364 tracks the
+  Zero install base itself.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's

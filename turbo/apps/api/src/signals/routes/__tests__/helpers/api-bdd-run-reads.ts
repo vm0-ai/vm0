@@ -235,7 +235,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    /** Lists logs with a raw bearer credential (run-scoped zero token). */
+    /** Lists logs with a raw bearer credential (Okou run token). */
     async requestListLogsAs<TStatus extends 200 | 401 | 403>(
       authorization: string,
       query: LogsListQuery,
@@ -264,7 +264,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    /** Reads one log detail with a raw bearer credential (zero token). */
+    /** Reads one log detail with a raw bearer credential (Okou run token). */
     async requestReadLogByIdAs<TStatus extends 200 | 401 | 403 | 404>(
       authorization: string,
       runId: string,

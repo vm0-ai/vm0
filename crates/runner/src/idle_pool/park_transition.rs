@@ -327,6 +327,7 @@ impl IdleParkRequest {
         } = self.parts;
 
         let metadata = IdleSandboxMetadata {
+            kind: super::entry::IdleSandboxKind::Exact,
             reuse_key,
             sandbox_id,
             profile_name,

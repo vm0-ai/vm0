@@ -5,6 +5,7 @@ import type {
   DesktopComputerUseState,
 } from "./computer-use-types";
 import type { DesktopAuthState } from "./desktop-bridge";
+import { DesktopAuthWindow } from "./desktop-auth-window";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
 import { DESKTOP_RECORDER_CHANNELS } from "./desktop-recorder-ipc-channels";
@@ -62,7 +63,6 @@ interface MockBrowserWindow {
 
 const rendererUrl = "vm0-desktop://renderer/index.html";
 const recorderUrl = "vm0-desktop://renderer/recorder.html?mode=bar";
-const allowedAppUrl = "https://app.vm0.ai/desktop-auth/callback";
 const blockedAppUrl = "https://evil.example/desktop-auth/callback";
 
 beforeEach(() => {
@@ -336,7 +336,12 @@ describe("Desktop IPC boundary", () => {
 
     installDesktopAuthIpc(api, {
       rendererUrl,
-      allowedAppOrigins: new Set(["https://app.vm0.ai"]),
+      authWindow: new DesktopAuthWindow({
+        authOrigin: "https://app.vm0.ai",
+        partition: "persist:desktop-test",
+        windowOptions: () => ({}),
+        openExternal: () => {},
+      }),
     });
 
     for (const channel of [
@@ -354,38 +359,6 @@ describe("Desktop IPC boundary", () => {
     expect(api.openSignIn).not.toHaveBeenCalled();
     expect(api.openOrgSelection).not.toHaveBeenCalled();
     expect(api.signOut).not.toHaveBeenCalled();
-  });
-
-  it("protects auth handlers by renderer URL, allowed app origins, and token payloads", async () => {
-    const { installDesktopAuthIpc } = await import("./desktop-auth-electron");
-    const api = createDesktopAuthApi();
-
-    installDesktopAuthIpc(api, {
-      rendererUrl,
-      allowedAppOrigins: new Set(["https://app.vm0.ai"]),
-    });
-
-    await expect(
-      invokeIpc(DESKTOP_AUTH_CHANNELS.getState, allowedAppUrl),
-    ).rejects.toThrow("Desktop auth is unavailable on this page");
-    await expect(
-      invokeIpc(DESKTOP_AUTH_CHANNELS.completeSignIn, blockedAppUrl, {
-        token: "desktop_token",
-      }),
-    ).rejects.toThrow("Desktop auth completion is unavailable on this page");
-    await expect(
-      invokeIpc(DESKTOP_AUTH_CHANNELS.completeSignIn, allowedAppUrl, {
-        token: "",
-      }),
-    ).rejects.toThrow("Desktop auth completion requires a token");
-
-    await invokeIpc(DESKTOP_AUTH_CHANNELS.getState, rendererUrl);
-    await invokeIpc(DESKTOP_AUTH_CHANNELS.completeSignIn, allowedAppUrl, {
-      token: "desktop_token",
-    });
-
-    expect(api.getState).toHaveBeenCalledOnce();
-    expect(api.completeSignIn).toHaveBeenCalledWith("desktop_token");
   });
 
   it("protects developer tools handlers by renderer URL and validates payloads", async () => {
@@ -537,7 +510,6 @@ function createDesktopAuthApi(): {
   readonly openSignIn: ReturnType<typeof vi.fn<() => void>>;
   readonly openOrgSelection: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly signOut: ReturnType<typeof vi.fn<() => Promise<void>>>;
-  readonly completeSignIn: ReturnType<typeof vi.fn<(token: string) => void>>;
 } {
   return {
     getState: vi.fn(() => {
@@ -550,7 +522,6 @@ function createDesktopAuthApi(): {
     openSignIn: vi.fn(() => {}),
     openOrgSelection: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
-    completeSignIn: vi.fn(() => {}),
   };
 }
 

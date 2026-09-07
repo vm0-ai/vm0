@@ -629,7 +629,7 @@ describe("Pi memory Stage 1 worker", () => {
       expect(serialized).not.toContain(fixtures[0]?.pi_session_id);
       expect(invocation.request).toMatchObject({
         model: "gpt-5.6-terra",
-        reasoning: { effort: "low" },
+        reasoning: { effort: "max" },
         text: {
           format: {
             type: "json_schema",

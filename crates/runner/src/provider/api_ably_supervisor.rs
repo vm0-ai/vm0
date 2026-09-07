@@ -16,11 +16,11 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant as StdInstant};
 
 use futures_util::{StreamExt, stream::FuturesUnordered};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -107,7 +107,9 @@ impl PollRecord {
 /// - Generations prevent an HTTP poll result from clearing wakeups that arrived
 ///   after that poll started.
 pub(super) struct PollWakeups {
-    inner: Mutex<PollWakeupsInner>,
+    // State-only critical sections must not enqueue an async waiter retained
+    // inside discover(): an inline reactor callback also updates this state.
+    inner: StdMutex<PollWakeupsInner>,
     notify: Notify,
 }
 
@@ -144,7 +146,7 @@ struct ScheduledPoll {
 impl PollWakeups {
     pub(super) fn new(ably_connected: bool) -> Self {
         Self {
-            inner: Mutex::new(PollWakeupsInner {
+            inner: StdMutex::new(PollWakeupsInner {
                 ably_connected,
                 poll_now: true,
                 deferred_poll_at: None,
@@ -156,41 +158,43 @@ impl PollWakeups {
         }
     }
 
-    pub(super) async fn mark_ably_connected(&self) {
-        self.inner.lock().await.ably_connected = true;
+    fn lock_inner(&self) -> MutexGuard<'_, PollWakeupsInner> {
+        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    pub(super) fn mark_ably_connected(&self) {
+        self.lock_inner().ably_connected = true;
         self.notify.notify_waiters();
     }
 
-    pub(super) async fn mark_ably_disconnected(&self) {
-        self.inner.lock().await.ably_connected = false;
+    pub(super) fn mark_ably_disconnected(&self) {
+        self.lock_inner().ably_connected = false;
         self.notify.notify_waiters();
     }
 
-    pub(super) async fn request_immediate_poll(&self) {
-        let mut inner = self.inner.lock().await;
+    pub(super) fn request_immediate_poll(&self) {
+        let mut inner = self.lock_inner();
         inner.poll_now = true;
         inner.bump_generation();
         self.notify.notify_waiters();
     }
 
-    pub(super) async fn request_deferred_poll_after(&self, delay: Duration) {
+    pub(super) fn request_deferred_poll_after(&self, delay: Duration) {
         let now = tokio::time::Instant::now();
-        self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX)
-            .await;
+        self.request_deferred_poll_capped_at(now + delay, now + DEFERRED_POLL_MAX);
     }
 
-    pub(super) async fn request_deferred_poll_until(&self, deadline: StdInstant) {
+    pub(super) fn request_deferred_poll_until(&self, deadline: StdInstant) {
         let now = tokio::time::Instant::now();
-        self.request_deferred_poll_capped_at(deadline.into(), now + DEFERRED_POLL_MAX)
-            .await;
+        self.request_deferred_poll_capped_at(deadline.into(), now + DEFERRED_POLL_MAX);
     }
 
-    async fn request_deferred_poll_capped_at(
+    fn request_deferred_poll_capped_at(
         &self,
         at: tokio::time::Instant,
         cap_at: tokio::time::Instant,
     ) {
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.lock_inner();
         let cap_at = *inner.deferred_poll_cap_at.get_or_insert(cap_at);
         let at = at.min(cap_at);
         if inner.deferred_poll_at.is_none_or(|existing| at > existing) {
@@ -202,23 +206,23 @@ impl PollWakeups {
     }
 
     #[cfg(test)]
-    async fn request_deferred_poll_at(&self, at: tokio::time::Instant) {
-        self.request_deferred_poll_capped_at(at, at).await;
+    fn request_deferred_poll_at(&self, at: tokio::time::Instant) {
+        self.request_deferred_poll_capped_at(at, at);
     }
 
     #[cfg(test)]
-    pub(super) async fn request_deferred_poll_after_for_test(&self, delay: Duration) {
-        self.request_deferred_poll_after(delay).await;
+    pub(super) fn request_deferred_poll_after_for_test(&self, delay: Duration) {
+        self.request_deferred_poll_after(delay);
     }
 
-    pub(super) async fn record_poll_result(
+    pub(super) fn record_poll_result(
         &self,
         due: PollDue,
         outcome: PollOutcome,
         wakeup_retry_delay: Duration,
     ) -> PollRecord {
         let mut should_notify = false;
-        let mut inner = self.inner.lock().await;
+        let mut inner = self.lock_inner();
         let has_new_wakeup = inner.generation != due.generation;
         // A deferred wakeup that arrives while an HTTP poll is in flight
         // must be honored before returning a newly found job to this runner.
@@ -271,7 +275,7 @@ impl PollWakeups {
             notified.as_mut().enable();
 
             let scheduled = {
-                let mut inner = self.inner.lock().await;
+                let mut inner = self.lock_inner();
                 let now = tokio::time::Instant::now();
                 if inner.deferred_poll_at.is_some_and(|at| at <= now) {
                     inner.deferred_poll_at = None;
@@ -309,7 +313,7 @@ impl PollWakeups {
                 }
                 () = &mut notified => {}
                 () = tokio::time::sleep_until(scheduled.at) => {
-                    if let Some(due) = self.consume_scheduled(scheduled).await {
+                    if let Some(due) = self.consume_scheduled(scheduled) {
                         return Some(due);
                     }
                 }
@@ -354,8 +358,8 @@ impl PollWakeups {
         scheduled
     }
 
-    async fn consume_scheduled(&self, scheduled: ScheduledPoll) -> Option<PollDue> {
-        let mut inner = self.inner.lock().await;
+    fn consume_scheduled(&self, scheduled: ScheduledPoll) -> Option<PollDue> {
+        let mut inner = self.lock_inner();
         let now = tokio::time::Instant::now();
 
         let is_due = match scheduled.reason {
@@ -405,8 +409,8 @@ impl PollWakeups {
     }
 
     #[cfg(test)]
-    pub(super) async fn snapshot(&self) -> PollWakeupsSnapshot {
-        let inner = self.inner.lock().await;
+    pub(super) fn snapshot(&self) -> PollWakeupsSnapshot {
+        let inner = self.lock_inner();
         PollWakeupsSnapshot {
             ably_connected: inner.ably_connected,
             poll_now: inner.poll_now,
@@ -576,25 +580,25 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                             info!("ably reconnected");
                         }
                         disconnect.mark_connected();
-                        config.poll_wakeups.mark_ably_connected().await;
+                        config.poll_wakeups.mark_ably_connected();
                     }
                     Some(ably_subscriber::Event::Disconnected { reason }) => {
                         let reason = reason.unwrap_or_else(|| "unknown".to_string());
                         disconnect.record_disconnected(reason.clone());
-                        config.poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected();
                         info!(reason = %reason, "ably disconnected, switching to fast poll");
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
                         error!(code, message = %message, "ably fatal error, will reconnect");
                         disconnect.record_disconnected(message.clone());
-                        config.poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
                     None => {
                         warn!("ably subscription closed, will reconnect");
                         disconnect.record_disconnected("subscription closed".to_string());
-                        config.poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected();
                         ably = None;
                         ably_retry.schedule();
                     }
@@ -605,11 +609,11 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                 match handle_ably_connect_result(result, &mut ably, &mut ably_retry) {
                     Ok(()) => {
                         disconnect.mark_connected();
-                        config.poll_wakeups.mark_ably_connected().await;
+                        config.poll_wakeups.mark_ably_connected();
                     }
                     Err(reason) => {
                         disconnect.record_disconnected(reason);
-                        config.poll_wakeups.mark_ably_disconnected().await;
+                        config.poll_wakeups.mark_ably_disconnected();
                     }
                 }
             }
@@ -733,7 +737,7 @@ async fn handle_ably_message_with_connector_runtime_sync(
 
     match action {
         JobNotificationAction::WakeNow => {
-            poll_wakeups.request_immediate_poll().await;
+            poll_wakeups.request_immediate_poll();
         }
         JobNotificationAction::Direct(candidate) => {
             enqueue_direct_candidate(*candidate, direct_candidates, poll_wakeups).await;
@@ -811,7 +815,7 @@ async fn enqueue_direct_candidate(
                 fallback_poll_requested = true,
                 "ably: direct candidate inbox full, waking poll"
             );
-            poll_wakeups.request_immediate_poll().await;
+            poll_wakeups.request_immediate_poll();
         }
     }
 }
@@ -1206,7 +1210,7 @@ mod tests {
             .await;
 
         assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert!(snapshot.ably_connected);
         assert!(!snapshot.poll_now);
     }
@@ -1223,10 +1227,8 @@ mod tests {
             .await
             .unwrap();
 
-        wakeups
-            .record_poll_result(reason, PollOutcome::Failure, Duration::from_secs(5))
-            .await;
-        let snapshot = wakeups.snapshot().await;
+        wakeups.record_poll_result(reason, PollOutcome::Failure, Duration::from_secs(5));
+        let snapshot = wakeups.snapshot();
         assert!(snapshot.wakeup_retry_at.is_some());
 
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -1251,9 +1253,7 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
         tokio::time::sleep(Duration::from_secs(5)).await;
         let due = wakeups
@@ -1266,10 +1266,8 @@ mod tests {
             .unwrap();
         assert_eq!(due.reason(), PollReason::Fast);
 
-        wakeups
-            .record_poll_result(due, PollOutcome::Failure, Duration::from_secs(5))
-            .await;
-        assert!(wakeups.snapshot().await.wakeup_retry_at.is_none());
+        wakeups.record_poll_result(due, PollOutcome::Failure, Duration::from_secs(5));
+        assert!(wakeups.snapshot().wakeup_retry_at.is_none());
     }
 
     #[tokio::test(start_paused = true)]
@@ -1283,9 +1281,7 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
         let wakeups_for_wait = Arc::clone(&wakeups);
         let cancel = CancellationToken::new();
@@ -1310,9 +1306,7 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
         let wakeups_for_wait = Arc::clone(&wakeups);
         let cancel = CancellationToken::new();
@@ -1337,9 +1331,7 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
         let wakeups_for_wait = Arc::clone(&wakeups);
         let cancel = CancellationToken::new();
@@ -1351,7 +1343,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(4)).await;
         assert!(!wait.is_finished());
 
-        wakeups.mark_ably_disconnected().await;
+        wakeups.mark_ably_disconnected();
         tokio::time::sleep(Duration::from_secs(4)).await;
         assert!(!wait.is_finished());
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1370,9 +1362,7 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
         let wakeups_for_wait = Arc::clone(&wakeups);
         let cancel = CancellationToken::new();
@@ -1384,7 +1374,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(4)).await;
         assert!(!wait.is_finished());
 
-        wakeups.mark_ably_connected().await;
+        wakeups.mark_ably_connected();
         tokio::time::sleep(Duration::from_secs(29)).await;
         assert!(!wait.is_finished());
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1404,11 +1394,9 @@ mod tests {
             .await
             .unwrap();
 
-        wakeups
-            .record_poll_result(reason, PollOutcome::JobFound, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(reason, PollOutcome::JobFound, Duration::from_secs(5));
 
-        assert!(wakeups.snapshot().await.poll_now);
+        assert!(wakeups.snapshot().poll_now);
         let reason = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
@@ -1430,21 +1418,15 @@ mod tests {
             )
             .await;
 
-        wakeups
-            .request_deferred_poll_after(Duration::from_secs(2))
-            .await;
+        wakeups.request_deferred_poll_after(Duration::from_secs(2));
         let first_deadline = wakeups
             .snapshot()
-            .await
             .deferred_poll_at
             .expect("first defer deadline");
         tokio::time::sleep(Duration::from_secs(1)).await;
-        wakeups
-            .request_deferred_poll_after(Duration::from_secs(2))
-            .await;
+        wakeups.request_deferred_poll_after(Duration::from_secs(2));
         let extended_deadline = wakeups
             .snapshot()
-            .await
             .deferred_poll_at
             .expect("extended defer deadline");
 
@@ -1471,12 +1453,9 @@ mod tests {
         let wakeups = PollWakeups::new(true);
         let deadline = StdInstant::now() + Duration::from_secs(2);
 
-        wakeups.request_deferred_poll_until(deadline).await;
+        wakeups.request_deferred_poll_until(deadline);
 
-        assert_eq!(
-            wakeups.snapshot().await.deferred_poll_at,
-            Some(deadline.into())
-        );
+        assert_eq!(wakeups.snapshot().deferred_poll_at, Some(deadline.into()));
     }
 
     #[tokio::test(start_paused = true)]
@@ -1490,22 +1469,14 @@ mod tests {
             )
             .await;
 
-        wakeups
-            .request_deferred_poll_after(Duration::from_secs(2))
-            .await;
-        let cap = wakeups
-            .snapshot()
-            .await
-            .deferred_poll_cap_at
-            .expect("defer cap");
+        wakeups.request_deferred_poll_after(Duration::from_secs(2));
+        let cap = wakeups.snapshot().deferred_poll_cap_at.expect("defer cap");
         for _ in 0..9 {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            wakeups
-                .request_deferred_poll_after(Duration::from_secs(2))
-                .await;
+            wakeups.request_deferred_poll_after(Duration::from_secs(2));
         }
 
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert_eq!(snapshot.deferred_poll_at, Some(cap));
         assert_eq!(snapshot.deferred_poll_cap_at, Some(cap));
         tokio::time::sleep_until(cap).await;
@@ -1530,19 +1501,14 @@ mod tests {
             )
             .await;
 
-        wakeups
-            .request_deferred_poll_after(Duration::from_secs(2))
-            .await;
+        wakeups.request_deferred_poll_after(Duration::from_secs(2));
         let initial_cap = wakeups
             .snapshot()
-            .await
             .deferred_poll_cap_at
             .expect("initial defer cap");
         for _ in 0..9 {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            wakeups
-                .request_deferred_poll_after(Duration::from_secs(2))
-                .await;
+            wakeups.request_deferred_poll_after(Duration::from_secs(2));
         }
 
         tokio::time::sleep_until(initial_cap).await;
@@ -1554,14 +1520,12 @@ mod tests {
             )
             .await;
         assert_eq!(poll_reason(reason), Some(PollReason::Deferred));
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert!(snapshot.deferred_poll_at.is_none());
         assert!(snapshot.deferred_poll_cap_at.is_none());
 
-        wakeups
-            .request_deferred_poll_after(Duration::from_secs(2))
-            .await;
-        let snapshot = wakeups.snapshot().await;
+        wakeups.request_deferred_poll_after(Duration::from_secs(2));
+        let snapshot = wakeups.snapshot();
         let next_deadline = snapshot
             .deferred_poll_at
             .expect("next defer deadline should be scheduled");
@@ -1583,14 +1547,10 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial, PollOutcome::JobFound, Duration::from_secs(5))
-            .await;
-        assert!(wakeups.snapshot().await.poll_now);
+        wakeups.record_poll_result(initial, PollOutcome::JobFound, Duration::from_secs(5));
+        assert!(wakeups.snapshot().poll_now);
 
-        wakeups
-            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
-            .await;
+        wakeups.request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2));
 
         let wakeups_for_wait = Arc::clone(&wakeups);
         let cancel = CancellationToken::new();
@@ -1607,7 +1567,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Deferred));
-        assert!(!wakeups.snapshot().await.poll_now);
+        assert!(!wakeups.snapshot().poll_now);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1621,12 +1581,8 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial, PollOutcome::Failure, Duration::from_secs(1))
-            .await;
-        wakeups
-            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
-            .await;
+        wakeups.record_poll_result(initial, PollOutcome::Failure, Duration::from_secs(1));
+        wakeups.request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2));
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         let wakeups_for_wait = Arc::clone(&wakeups);
@@ -1659,12 +1615,10 @@ mod tests {
             .unwrap();
 
         let deferred_at = tokio::time::Instant::now() + Duration::from_secs(2);
-        wakeups.request_deferred_poll_at(deferred_at).await;
-        wakeups
-            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.request_deferred_poll_at(deferred_at);
+        wakeups.record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5));
 
-        assert_eq!(wakeups.snapshot().await.deferred_poll_at, Some(deferred_at));
+        assert_eq!(wakeups.snapshot().deferred_poll_at, Some(deferred_at));
     }
 
     #[tokio::test(start_paused = true)]
@@ -1679,15 +1633,11 @@ mod tests {
             .await
             .unwrap();
 
-        wakeups
-            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
-            .await;
-        let record = wakeups
-            .record_poll_result(due, PollOutcome::JobFound, Duration::from_secs(5))
-            .await;
+        wakeups.request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2));
+        let record = wakeups.record_poll_result(due, PollOutcome::JobFound, Duration::from_secs(5));
 
         assert!(record.defer_job_return());
-        assert!(wakeups.snapshot().await.deferred_poll_at.is_some());
+        assert!(wakeups.snapshot().deferred_poll_at.is_some());
     }
 
     #[tokio::test(start_paused = true)]
@@ -1701,12 +1651,8 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
-        wakeups
-            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
-            .await;
+        wakeups.record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5));
+        wakeups.request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2));
         tokio::time::sleep(Duration::from_secs(2)).await;
         let due = wakeups
             .wait_for_poll_due(
@@ -1717,9 +1663,7 @@ mod tests {
             .await
             .unwrap();
 
-        let record = wakeups
-            .record_poll_result(due, PollOutcome::JobFound, Duration::from_secs(5))
-            .await;
+        let record = wakeups.record_poll_result(due, PollOutcome::JobFound, Duration::from_secs(5));
 
         assert!(!record.defer_job_return());
     }
@@ -1735,13 +1679,9 @@ mod tests {
             )
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5));
 
-        wakeups
-            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
-            .await;
+        wakeups.request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2));
         tokio::time::sleep(Duration::from_secs(2)).await;
         let deferred = wakeups
             .wait_for_poll_due(
@@ -1752,11 +1692,9 @@ mod tests {
             .await
             .unwrap();
 
-        wakeups
-            .record_poll_result(deferred, PollOutcome::Empty, Duration::from_secs(5))
-            .await;
+        wakeups.record_poll_result(deferred, PollOutcome::Empty, Duration::from_secs(5));
 
-        assert!(wakeups.snapshot().await.deferred_poll_at.is_none());
+        assert!(wakeups.snapshot().deferred_poll_at.is_none());
     }
 
     #[test]
@@ -2059,7 +1997,7 @@ mod tests {
             Some(super::super::RunnerPreferenceClaimState::Active)
         );
         assert_no_direct_candidate(&direct_candidates).await;
-        assert!(!wakeups.snapshot().await.poll_now);
+        assert!(!wakeups.snapshot().poll_now);
     }
 
     #[tokio::test]
@@ -2161,7 +2099,7 @@ mod tests {
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert_no_direct_candidate(&direct_candidates).await;
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
@@ -2190,7 +2128,7 @@ mod tests {
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert_no_direct_candidate(&direct_candidates).await;
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());
     }
@@ -2218,7 +2156,7 @@ mod tests {
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert_no_direct_candidate(&direct_candidates).await;
-        assert!(wakeups.snapshot().await.poll_now);
+        assert!(wakeups.snapshot().poll_now);
     }
 
     #[tokio::test]
@@ -2245,7 +2183,7 @@ mod tests {
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert_no_direct_candidate(&direct_candidates).await;
-        assert!(wakeups.snapshot().await.poll_now);
+        assert!(wakeups.snapshot().poll_now);
     }
 
     #[tokio::test]
@@ -2288,7 +2226,7 @@ mod tests {
 
         let candidate = pop_direct_candidate(&direct_candidates).await;
         assert_eq!(candidate.profile_name(), "vm0/default");
-        assert!(wakeups.snapshot().await.poll_now);
+        assert!(wakeups.snapshot().poll_now);
     }
 
     #[tokio::test]
@@ -2332,7 +2270,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap()
         );
-        assert!(!wakeups.snapshot().await.poll_now);
+        assert!(!wakeups.snapshot().poll_now);
     }
 
     #[tokio::test]
@@ -2352,7 +2290,7 @@ mod tests {
 
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
-        let snapshot = wakeups.snapshot().await;
+        let snapshot = wakeups.snapshot();
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_none());

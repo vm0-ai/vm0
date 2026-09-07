@@ -159,7 +159,7 @@ async def test_streamed_api_allow_injects_runner_preview_bypass_before_body(
         client_ip="10.200.0.5",
         host="preview-api.vm6.ai",
         method="POST",
-        path="/api/zero/chat/events",
+        path="/api/chat/events",
         request_headers=headers(
             ("Host", "preview-api.vm6.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
@@ -260,7 +260,7 @@ async def test_streamed_wrong_scheme_does_not_receive_runner_preview_bypass(
         scheme="http",
         port=443,
         method="POST",
-        path="/api/zero/chat/events",
+        path="/api/chat/events",
         request_headers=headers(
             ("Host", "preview-api.vm6.ai:443"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
@@ -294,7 +294,7 @@ async def test_cached_api_allow_revalidates_scheme_before_final_bypass_injection
         client_ip="10.200.0.5",
         host="preview-api.vm6.ai",
         method="POST",
-        path="/api/zero/chat/events",
+        path="/api/chat/events",
         request_headers=headers(
             ("Host", "preview-api.vm6.ai"),
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),

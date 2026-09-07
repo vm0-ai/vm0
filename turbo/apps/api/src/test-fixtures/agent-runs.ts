@@ -90,7 +90,7 @@ export async function setRunLaunchSnapshotFixture(
 export async function setRunPiMemoryAdmissionInputsFixture(
   runId: string,
   inputs: {
-    readonly triggerSource?: "agent" | "web";
+    readonly triggerSource?: TriggerSource;
     readonly chatThreadId?: string | null;
   },
 ): Promise<void> {

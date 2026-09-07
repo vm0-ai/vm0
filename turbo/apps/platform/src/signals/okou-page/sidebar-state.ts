@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { hideKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -153,6 +152,7 @@ export type ThreeColumnSearchFilter =
   | "all"
   | "chats"
   | "messages"
+  | "agents"
   | "workflows"
   | "artifacts";
 
@@ -161,9 +161,6 @@ export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
-  if (!open) {
-    set(hideKeyboardShortcutHints$);
-  }
   set(internalThreeColumnSearchOpen$, open);
 });
 
@@ -178,7 +175,6 @@ export const setThreeColumnSearchFilter$ = command(
 );
 
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
-  set(hideKeyboardShortcutHints$);
   set(internalChatListQuery$, "");
   set(internalThreeColumnSearchFilter$, "all");
   set(internalThreeColumnSearchOpen$, true);

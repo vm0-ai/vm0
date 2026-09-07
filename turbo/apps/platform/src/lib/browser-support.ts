@@ -16,9 +16,7 @@ function supportsAppleVersion(match: RegExpExecArray): boolean {
   return major > 16 || (major === 16 && minor >= 4);
 }
 
-export function browserUpgradeForUserAgent(
-  userAgent: string,
-): BrowserUpgrade | null {
+function browserUpgradeForUserAgent(userAgent: string): BrowserUpgrade | null {
   const iosMatch = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/.exec(
     userAgent,
   );
@@ -68,5 +66,19 @@ export function browserUpgradeForUserAgent(
         };
   }
 
+  return null;
+}
+
+export function browserUpgradeRequired(): BrowserUpgrade | null {
+  const versionUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
+  if (versionUpgrade) {
+    return versionUpgrade;
+  }
+  if (typeof SharedWorker !== "function") {
+    return {
+      actionUrl: "https://www.google.com/chrome/",
+      target: "browser",
+    };
+  }
   return null;
 }

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
-use tracing::{error, info, warn};
+use tracing::{Instrument, error, info, warn};
 
 use super::flush::{
     MitmJsonlFlushHandle, UsageFlushTarget, new_usage_state_id, usage_flush_state_guard,
@@ -501,9 +501,8 @@ impl MitmProxy {
         }
     }
 
-    /// Prepare for restart: kill any lingering child, permanently silence
-    /// its stdout monitor, and return fresh parameters for
-    /// [`spawn_mitmdump`].
+    /// Transfer any lingering child and fresh parameters to the restart owner,
+    /// permanently silencing the old monitor without waiting for process I/O.
     ///
     /// `stopping` is scoped to a single child. The old flag is set to
     /// `true` (so the old monitor task, which may observe the stdout
@@ -513,37 +512,14 @@ impl MitmProxy {
     /// the incoming process. The new child's monitor starts from a
     /// clean slate and will detect real crashes.
     ///
-    /// The caller should spawn the mitmdump process (potentially in a
-    /// background task) and then call `complete_restart` with the result.
-    pub async fn begin_restart(&mut self) -> RunnerResult<MitmRestartParams> {
-        // Silence the old monitor permanently: after this call, no one
-        // else holds a handle that could reset its `Arc<AtomicBool>`
-        // back to `false`, so the monitor is guaranteed to read `true`
-        // regardless of scheduling order between `kill().await` and
-        // the stdout-pipe drain.
+    /// The caller drives `MitmRestartParams::spawn` in a background task. It
+    /// finishes old-child cleanup before starting the replacement; the caller
+    /// then adopts the result with `complete_restart`.
+    pub fn begin_restart(&mut self) -> MitmRestartParams {
+        // Each monitor keeps its own flag: an old child's delayed EOF must
+        // never be interpreted as a crash of the replacement.
         self.stopping.store(true, Ordering::Release);
-        if let Some(mut child) = self.child.take() {
-            match child.try_wait() {
-                Ok(Some(_status)) => {}
-                Ok(None) => error!(
-                    r#type = "usage_underbilling",
-                    reason = "mitm_restart_in_memory_usage_risk",
-                    underbilling_class = "risk",
-                    component = "runner",
-                    "restarting mitmdump by killing live child; in-memory usage may be lost"
-                ),
-                Err(e) => error!(
-                    r#type = "usage_underbilling",
-                    reason = "mitm_restart_in_memory_usage_risk",
-                    underbilling_class = "risk",
-                    component = "runner",
-                    error = %e,
-                    "failed to query mitmdump status before restart kill; in-memory usage may be lost"
-                ),
-            }
-            child.force_stop().await?;
-        }
-        // Fresh flag for the incoming process's monitor.
+        let old_child = self.child.take();
         let new_stopping = Arc::new(AtomicBool::new(false));
         self.stopping = Arc::clone(&new_stopping);
         let (usage_state_id, usage_state_started_at_ms) = new_usage_state_id();
@@ -553,14 +529,15 @@ impl MitmProxy {
             expected_usage_state_id: usage_state_id.clone(),
             usage_state_started_at_ms,
         };
-        Ok(MitmRestartParams {
+        MitmRestartParams {
+            old_child,
             config: self.config.clone(),
             runtime: self.runtime.clone(),
             port: self.port,
             crash_tx: self.crash_tx.clone(),
             stopping: new_stopping,
             usage_state_id,
-        })
+        }
     }
 
     /// Finish a restart by storing the newly spawned child process.
@@ -638,6 +615,13 @@ impl MitmProxy {
         self.child = Some(ManagedMitmdump::unmanaged(child));
     }
 
+    pub fn set_reap_gate_for_test(&mut self, gate: crate::child_cleanup::ReapGate) {
+        self.child
+            .as_mut()
+            .expect("test child installed")
+            .set_reap_gate(gate);
+    }
+
     pub fn set_addon_dir_for_test(&mut self, addon_dir: PathBuf) {
         self.config.addon_dir = addon_dir;
     }
@@ -654,6 +638,7 @@ impl Drop for MitmProxy {
 /// [`MitmProxy::begin_restart`]. All fields are owned/cloned so the spawn
 /// can happen in a background task without borrowing `MitmProxy`.
 pub(crate) struct MitmRestartParams {
+    old_child: Option<ManagedMitmdump>,
     config: ProxyConfig,
     runtime: Option<Arc<MitmdumpRuntime>>,
     port: u16,
@@ -662,9 +647,38 @@ pub(crate) struct MitmRestartParams {
     usage_state_id: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum MitmRestartError {
+    #[error("old mitmdump cleanup failed: {0}")]
+    Cleanup(RunnerError),
+    #[error(transparent)]
+    Startup(#[from] RunnerError),
+}
+
 impl MitmRestartParams {
     /// Spawn mitmdump using these parameters. Suitable for `tokio::spawn`.
-    pub(crate) async fn spawn(self) -> RunnerResult<ManagedMitmdump> {
+    pub(crate) async fn spawn(self) -> Result<ManagedMitmdump, MitmRestartError> {
+        if let Some(mut child) = self.old_child {
+            let pid = child.id();
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                result => error!(
+                    r#type = "usage_underbilling",
+                    reason = "mitm_restart_in_memory_usage_risk",
+                    underbilling_class = "risk",
+                    component = "runner",
+                    ?result,
+                    "restarting mitmdump without confirmed exit; in-memory usage may be lost"
+                ),
+            }
+            // Includes reaping and launch-directory cleanup. A replacement
+            // must not start while the old process tree is still owned.
+            child
+                .force_stop()
+                .instrument(tracing::info_span!("mitm_old_child_cleanup", pid))
+                .await
+                .map_err(MitmRestartError::Cleanup)?;
+        }
         let runtime = self
             .runtime
             .ok_or_else(|| RunnerError::Internal("missing mitmdump runtime owner".to_string()))?;
@@ -677,7 +691,7 @@ impl MitmRestartParams {
             &self.usage_state_id,
         )
         .await
-        .map_err(MitmdumpStartupFailure::into_runner_error)
+        .map_err(|failure| MitmRestartError::Startup(failure.into_runner_error()))
     }
 }
 
@@ -2123,16 +2137,31 @@ exit 42
         let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
         let old_launch = PathBuf::from(environment.lines().next().unwrap());
 
-        let restart = proxy.begin_restart().await.unwrap();
+        let gate = crate::child_cleanup::ReapGate::new();
+        proxy.set_reap_gate_for_test(gate.clone());
+        let restart = proxy.begin_restart();
+        let restart_task = tokio::spawn(restart.spawn());
+        tokio::time::timeout(Duration::from_secs(2), gate.entered.notified())
+            .await
+            .unwrap();
+        assert!(!restart_task.is_finished());
+        assert!(
+            old_launch.exists(),
+            "old launch must remain owned until reaping completes"
+        );
+        assert_eq!(
+            std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap(),
+            environment,
+            "replacement must not start before old-child cleanup completes"
+        );
+        gate.release.add_permits(1);
+        let child = restart_task.await.unwrap().unwrap();
 
         assert!(
             wait_for_pid_absent(old_descendant_pid).await,
             "restart left forked descendant {old_descendant_pid} alive"
         );
         assert!(!old_launch.exists(), "restart left old launch directory");
-        assert_no_launch_dirs(&runtime_dir).await;
-
-        let child = restart.spawn().await.unwrap();
         proxy.complete_restart(child);
         proxy.kill_now().await.unwrap();
         assert_no_launch_dirs(&runtime_dir).await;
@@ -2448,7 +2477,7 @@ while True:
         let (mut proxy, _crash_rx) = MitmProxy::noop();
         let old_stopping = Arc::clone(&proxy.stopping);
 
-        let params = proxy.begin_restart().await.unwrap();
+        let params = proxy.begin_restart();
 
         // Old flag is now permanently `true`; any task still holding
         // `old_stopping` (the old monitor) will observe graceful
@@ -2474,9 +2503,9 @@ while True:
     async fn repeated_begin_restart_produces_independent_flags() {
         let (mut proxy, _crash_rx) = MitmProxy::noop();
 
-        let first = proxy.begin_restart().await.unwrap();
-        let second = proxy.begin_restart().await.unwrap();
-        let third = proxy.begin_restart().await.unwrap();
+        let first = proxy.begin_restart();
+        let second = proxy.begin_restart();
+        let third = proxy.begin_restart();
 
         // Every handed-out Arc is distinct.
         assert!(!Arc::ptr_eq(&first.stopping, &second.stopping));
@@ -2499,7 +2528,7 @@ while True:
     #[tokio::test]
     async fn stop_after_begin_restart_targets_current_flag() {
         let (mut proxy, _crash_rx) = MitmProxy::noop();
-        let params = proxy.begin_restart().await.unwrap();
+        let params = proxy.begin_restart();
         let current = Arc::clone(&params.stopping);
         assert!(!current.load(Ordering::Acquire));
 

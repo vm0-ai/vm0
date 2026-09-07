@@ -3,12 +3,38 @@ import { describe, expect, it } from "vitest";
 import {
   IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
   IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionContract,
   imageRecognitionMimeTypeSchema,
   imageRecognitionRequestSchema,
   imageRecognitionResponseSchema,
 } from "../image-recognition";
 
 describe("image recognition contract", () => {
+  it("declares the canonical and compatibility API paths", () => {
+    expect({
+      canonical: {
+        method: imageRecognitionContract.imageRecognition.method,
+        path: imageRecognitionContract.imageRecognition.path,
+      },
+      compatibility: {
+        method: imageRecognitionContract.recognize.method,
+        path: imageRecognitionContract.recognize.path,
+      },
+    }).toStrictEqual({
+      canonical: { method: "POST", path: "/api/image-recognition" },
+      compatibility: { method: "POST", path: "/api/recognize" },
+    });
+    expect(imageRecognitionContract.recognize.headers).toBe(
+      imageRecognitionContract.imageRecognition.headers,
+    );
+    expect(imageRecognitionContract.recognize.body).toBe(
+      imageRecognitionContract.imageRecognition.body,
+    );
+    expect(imageRecognitionContract.recognize.responses).toBe(
+      imageRecognitionContract.imageRecognition.responses,
+    );
+  });
+
   it("accepts one owned file id and a trimmed prompt", () => {
     expect(
       imageRecognitionRequestSchema.parse({

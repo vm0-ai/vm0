@@ -2636,7 +2636,6 @@ function routeQueuedMessagePiExecution(args: {
     selectedModel: args.modelRoute.modelPin.selectedModel,
     codexServiceTier: args.modelRoute.codexServiceTier,
     builtInModelRuntimeRoute: args.modelRoute.builtInModelRuntimeRoute,
-    triggerSource,
     featureSwitchContext: args.featureSwitchContext,
   });
   return {

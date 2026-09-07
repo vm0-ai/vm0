@@ -60,7 +60,6 @@ export type AuthV2ContinuationState =
 
 export interface AuthV2ContinuationSignals {
   readonly completeSession$: Command<Promise<void>, [string, AbortSignal]>;
-  readonly failClosed$: Command<void, [AuthV2ContinuationUnknownReason]>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly recover$: Command<Promise<void>, [AbortSignal]>;
   readonly restart$: Command<Promise<void>, [AbortSignal]>;
@@ -70,7 +69,7 @@ export interface AuthV2ContinuationSignals {
 
 export type AuthV2ContinuationFlowHandoff = Pick<
   AuthV2ContinuationSignals,
-  "completeSession$" | "failClosed$" | "recover$"
+  "completeSession$" | "recover$"
 >;
 
 interface AuthV2ContinuationDependencies {
@@ -468,9 +467,6 @@ export function createAuthV2ContinuationSignals(
       runtime,
       applySession$,
     ),
-    failClosed$: command(({ set }, reason) => {
-      set(atoms.state$, { reason, status: "unknown" });
-    }),
     initialize$: recover$,
     recover$,
     restart$: createRestartCommand(atoms, runtime, dependencies),

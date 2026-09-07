@@ -822,11 +822,9 @@ test("Find conversations by title in workspace search", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
-  const search = within(dialog).getByPlaceholderText(
-    "Search chats, messages, workflows, and artifacts...",
-  );
+  const search = within(dialog).getByPlaceholderText("Search workspace...");
 
   await fill(search, "research");
 
@@ -850,7 +848,7 @@ test("Find conversations by title in workspace search", async () => {
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Support escalation | VM0");
@@ -894,13 +892,13 @@ test("Hide and show the chat list without losing workspace search", async () => 
 
   expect(searchEvent.defaultPrevented).toBeTruthy();
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
   });
@@ -1030,7 +1028,7 @@ test("Mount only the sidebar for the current viewport", async () => {
   expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
 });
 
-test("Keep pin management usable with many pinned agents", async () => {
+test.each([false, true])("Keep pin overflow usable (%s)", async (large) => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents();
   const preferencesGate = context.mocks.deferred<void>();
   context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
@@ -1064,6 +1062,7 @@ test("Keep pin management usable with many pinned agents", async () => {
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: large },
   });
 
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
@@ -1099,17 +1098,22 @@ test("Keep pin management usable with many pinned agents", async () => {
   if (!pinAgent) {
     throw new Error("Pin agent button not found");
   }
-  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
-  // Billing, so Pin closes the first row and the rest wrap after it.
-  const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
-  const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
+  // Pin closes the first row at either avatar size; remaining agents wrap.
+  const beforePin = pinnedAgentLink(
+    grid,
+    large ? "Research Agent" : "Operations Agent",
+  );
+  const afterPin = pinnedAgentLink(
+    grid,
+    large ? "Support Agent" : "Analytics Agent",
+  );
 
   expect(
-    fourthAgent.compareDocumentPosition(pinAgent) &
+    beforePin.compareDocumentPosition(pinAgent) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(
-    pinAgent.compareDocumentPosition(fifthAgent) &
+    pinAgent.compareDocumentPosition(afterPin) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
@@ -1175,11 +1179,6 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
     expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
   });
 });
-
-// The new shell parks the workspace card's eight-pixel gutter, painted in the
-// sidebar colour, immediately right of this column. Keeping the full inset here
-// as well stacks the two, so the rows sit twice as far from the card's border
-// as from the rail.
 
 test("Route New chat to the current agent and Chat to the default agent", async () => {
   prepareAgents();
@@ -1701,11 +1700,9 @@ test("Open and use workspace search with the keyboard", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
-  const search = within(dialog).getByPlaceholderText(
-    "Search chats, messages, workflows, and artifacts...",
-  );
+  const search = within(dialog).getByPlaceholderText("Search workspace...");
 
   await fill(search, "support");
 
@@ -1719,7 +1716,7 @@ test("Open and use workspace search with the keyboard", async () => {
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Support escalation | VM0");
@@ -1766,7 +1763,7 @@ test("Show current shortcuts without stacking help over workspace search", async
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
 
   fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
@@ -1802,7 +1799,7 @@ test("Open workspace search once from a focused composer shortcut", async () => 
   expect(repeatedEvent.defaultPrevented).toBeFalsy();
   expect(
     screen.queryByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
+      name: "Search workspace...",
     }),
   ).not.toBeInTheDocument();
 
@@ -1818,7 +1815,7 @@ test("Open workspace search once from a focused composer shortcut", async () => 
 
   expect(event.defaultPrevented).toBeTruthy();
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   expect(dialog).toBeInTheDocument();
 });
@@ -1845,7 +1842,7 @@ test("Open workspace search from a mobile viewport", async () => {
   });
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   expect(dialog).toBeInTheDocument();
 });
@@ -2310,7 +2307,11 @@ test("Search, pin, and open an agent from the pin manager", async () => {
     return [researchThread];
   });
 
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.PinnedAgentAvatar64]: true },
+  });
 
   const grid = await screen.findByTestId("pinned-agents-grid");
   click(screen.getByLabelText("Pin an agent"));
@@ -2416,12 +2417,10 @@ test("Search workspace chats and messages", async () => {
   click(within(list).getByLabelText("Search workspace"));
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "deploy",
   );
 
@@ -2441,9 +2440,7 @@ test("Search workspace chats and messages", async () => {
   expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "missing",
   );
   await waitFor(() => {
@@ -2452,9 +2449,7 @@ test("Search workspace chats and messages", async () => {
   });
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "deploy",
   );
   click(buttonByText("Chats", dialog));
@@ -2470,7 +2465,7 @@ test("Search workspace chats and messages", async () => {
     expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
     expect(
       screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
+        name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
   });
@@ -2577,7 +2572,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
   click(within(list).getByLabelText("Search workspace"));
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Search chats, messages, workflows, and artifacts...",
+    name: "Search workspace...",
   });
 
   const rowFor = async (title: string): Promise<HTMLElement> => {
@@ -2605,9 +2600,7 @@ test("Show useful search-result ages and an illustrated empty state", async () =
   expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
 
   await fill(
-    within(dialog).getByPlaceholderText(
-      "Search chats, messages, workflows, and artifacts...",
-    ),
+    within(dialog).getByPlaceholderText("Search workspace..."),
     "nothing matches this",
   );
 

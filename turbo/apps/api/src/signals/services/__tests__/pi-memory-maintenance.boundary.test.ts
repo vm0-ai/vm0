@@ -778,6 +778,41 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
         expect(run.checkpointRows).toHaveLength(1);
         expect(run.run?.status).toBe("completed");
       }
+      expect(run.run).toMatchObject({
+        triggerSource: "agent",
+        chatThreadId: null,
+      });
+      await expect(
+        db()
+          .select({ sourceRunId: piMemoryStage1Candidates.sourceRunId })
+          .from(piMemoryStage1Candidates)
+          .where(eq(piMemoryStage1Candidates.sourceRunId, run.runId)),
+      ).resolves.toStrictEqual([]);
+      if (fault === "none") {
+        const terminal = run.requests.find((request) => {
+          return request.path.endsWith("/complete") && request.status === 200;
+        });
+        if (!terminal) {
+          throw new Error("Missing actual maintenance terminal request");
+        }
+        for (let retry = 0; retry < 2; retry++) {
+          const replay = await run.app.request(terminal.path, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${run.token}`,
+              "content-type": "application/json",
+            },
+            body: terminal.body,
+          });
+          expect(replay.status).toBe(200);
+        }
+        await expect(
+          db()
+            .select({ sourceRunId: piMemoryStage1Candidates.sourceRunId })
+            .from(piMemoryStage1Candidates)
+            .where(eq(piMemoryStage1Candidates.sourceRunId, run.runId)),
+        ).resolves.toStrictEqual([]);
+      }
       if (fault === "observer") {
         expect(run.job?.lastMaintenanceCheckpointId).toBeNull();
         await run.releaseObserver();

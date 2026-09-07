@@ -80,6 +80,11 @@ export type MockedSignInFactor =
       readonly strategy: "email_code" | "reset_password_email_code";
     }
   | { readonly strategy: "oauth_apple" | "oauth_google" | "passkey" }
+  | {
+      readonly phoneNumberId: string;
+      readonly safeIdentifier: string;
+      readonly strategy: "phone_code";
+    }
   | { readonly strategy: string };
 
 export interface MockedSignInResourceState {

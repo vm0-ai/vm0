@@ -93,7 +93,7 @@ function metadataClient() {
 }
 
 describe("POST /api/chat-threads/:id/rename", () => {
-  it("renames a thread with ZERO_TOKEN chat-thread:write capability", async () => {
+  it("renames a thread with an Okou run token carrying chat-thread:write", async () => {
     const fixture = await seedChatThread("Original title");
     const token = okouToken({
       userId: fixture.userId,
@@ -138,7 +138,7 @@ describe("POST /api/chat-threads/:id/rename", () => {
     });
   });
 
-  it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
+  it("rejects an Okou run token without chat-thread:write", async () => {
     const fixture = await seedChatThread("Original title");
     const token = okouToken({
       userId: fixture.userId,

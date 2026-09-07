@@ -208,7 +208,8 @@ function shouldSuppressKnownFailureLog(
   failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
-    case "input_too_large": {
+    case "input_too_large":
+    case "execution_timeout": {
       return true;
     }
     case "insufficient_credits":
@@ -231,7 +232,6 @@ function shouldSuppressKnownFailureLog(
       );
     }
     case "session_history_limit":
-    case "execution_timeout":
     case "unsupported_model": {
       return false;
     }
@@ -248,6 +248,24 @@ function shouldSuppressFailureLog(
     return false;
   }
   return shouldSuppressKnownFailureLog(run, knownFailureReason.data);
+}
+
+function logRunFailure(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): void {
+  const isCreditError =
+    commit.transitionFailureReason === "insufficient_credits";
+  const logFailure = isCreditError ? L.debug : L.warn;
+  logFailure(
+    isCreditError ? "Run stopped: insufficient credits" : "Run failed",
+    {
+      runId: input.body.runId,
+      exitCode: input.body.exitCode,
+      error: commit.transitionError,
+      failureReason: commit.transitionFailureReason,
+    },
+  );
 }
 
 function checkpointInputForCompletion(
@@ -993,12 +1011,7 @@ export const completeAgentRun$ = command(
       } else if (
         !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
       ) {
-        L.warn("Run failed", {
-          runId: input.body.runId,
-          exitCode: input.body.exitCode,
-          error: commit.transitionError,
-          failureReason: commit.transitionFailureReason,
-        });
+        logRunFailure(input, commit);
       }
     } else if (
       commit.run.status === "completed" ||

@@ -18,6 +18,7 @@ export type AuthV2DiagnosticFlow = (typeof AUTH_V2_DIAGNOSTIC_FLOWS)[number];
 
 const AUTH_V2_DIAGNOSTIC_METHODS = [
   "apple-oauth",
+  "backup-code",
   "email-code",
   "google-oauth",
   "google-one-tap",
@@ -26,7 +27,9 @@ const AUTH_V2_DIAGNOSTIC_METHODS = [
   "passkey",
   "password",
   "password-reset",
+  "phone-code",
   "session",
+  "totp",
   "unknown",
 ] as const;
 export type AuthV2DiagnosticMethod =
@@ -46,6 +49,7 @@ const AUTH_V2_DIAGNOSTIC_STEPS = [
   "password-reset-code",
   "recovery",
   "restart",
+  "second-factor",
   "unknown",
 ] as const;
 export type AuthV2DiagnosticStep = (typeof AUTH_V2_DIAGNOSTIC_STEPS)[number];

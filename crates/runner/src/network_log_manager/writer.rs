@@ -38,11 +38,14 @@ impl Default for WriterConfig {
 
 pub(super) struct WriterPool {
     shards: Vec<mpsc::Sender<AcceptedAppend>>,
+    #[cfg(test)]
+    pub(super) tasks: Vec<tokio::task::AbortHandle>,
 }
 
 struct PathWriteBatch {
     path: Arc<Path>,
     lines: Vec<String>,
+    completions: Vec<PendingWriteCompletion>,
 }
 
 impl WriterConfig {
@@ -57,24 +60,30 @@ impl WriterConfig {
 }
 
 impl WriterPool {
-    pub(super) fn start(
-        completion: PendingWriteCompletion,
-        config: WriterConfig,
-        #[cfg(test)] write_gate: Option<WriteGate>,
-    ) -> Self {
+    pub(super) fn start(config: WriterConfig, #[cfg(test)] write_gate: Option<WriteGate>) -> Self {
         let mut shards = Vec::with_capacity(config.shards);
+        #[cfg(test)]
+        let mut tasks = Vec::with_capacity(config.shards);
         for _ in 0..config.shards {
             let (tx, rx) = mpsc::channel(config.queue_capacity);
             shards.push(tx);
-            std::mem::drop(tokio::spawn(run_writer_shard(
-                completion.clone(),
+            let task = tokio::spawn(run_writer_shard(
                 rx,
                 config,
                 #[cfg(test)]
                 write_gate.clone(),
-            )));
+            ));
+            #[cfg(test)]
+            tasks.push(task.abort_handle());
+            // Channel closure owns normal shard completion; accepted-write
+            // guards own accounting even if the shard unwinds or is cancelled.
+            drop(task);
         }
-        Self { shards }
+        Self {
+            shards,
+            #[cfg(test)]
+            tasks,
+        }
     }
 
     pub(super) fn sender_for_path(&self, path: &Path) -> Option<mpsc::Sender<AcceptedAppend>> {
@@ -90,7 +99,6 @@ impl WriterPool {
 }
 
 async fn run_writer_shard(
-    completion: PendingWriteCompletion,
     mut rx: mpsc::Receiver<AcceptedAppend>,
     config: WriterConfig,
     #[cfg(test)] write_gate: Option<WriteGate>,
@@ -125,7 +133,6 @@ async fn run_writer_shard(
 
         for batch in batches {
             write_path_batch(
-                completion.clone(),
                 batch,
                 #[cfg(test)]
                 write_gate.clone(),
@@ -143,44 +150,58 @@ fn push_accepted_append(
 ) {
     *row_count += 1;
     *byte_count += item.line_len();
-    let (path, line) = item.into_parts();
+    let (path, line, completion) = item.into_parts();
     if let Some(batch) = batches.iter_mut().find(|batch| batch.path == path) {
         batch.lines.push(line);
+        batch.completions.push(completion);
     } else {
         batches.push(PathWriteBatch {
             path,
             lines: vec![line],
+            completions: vec![completion],
         });
     }
 }
 
-async fn write_path_batch(
-    completion: PendingWriteCompletion,
-    batch: PathWriteBatch,
-    #[cfg(test)] write_gate: Option<WriteGate>,
-) {
+async fn write_path_batch(batch: PathWriteBatch, #[cfg(test)] write_gate: Option<WriteGate>) {
     #[cfg(test)]
-    if let Some(gate) = write_gate {
+    if let Some(gate) = &write_gate
+        && !gate.blocking
+    {
         gate.started.notify_one();
         let permit = gate.release.acquire().await.expect("write gate closed");
         permit.forget();
     }
 
     let path = batch.path;
-    let count = batch.lines.len();
     let write_path = Arc::clone(&path);
-    let result =
-        tokio::task::spawn_blocking(move || append_lines(write_path.as_ref(), &batch.lines)).await;
+    let result = tokio::task::spawn_blocking(move || {
+        #[cfg(test)]
+        if let Some(gate) = write_gate
+            && gate.blocking
+        {
+            gate.started.notify_one();
+            tokio::runtime::Handle::current()
+                .block_on(gate.release.acquire())
+                .expect("blocking write gate closed")
+                .forget();
+        }
+        let result = append_lines(write_path.as_ref(), &batch.lines);
+        if let Err(error) = &result {
+            warn!(path = %write_path.display(), %error, "failed to write network log");
+        }
+        // This closure can outlive the async shard. Settle only after physical
+        // I/O completes; unwinding also drops the owned completion guards.
+        PendingWriteCompletion::complete_batch(batch.completions, result.is_ok());
+        result
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => {
-            warn!(path = %path.display(), error = %e, "failed to write network log")
-        }
+        Ok(Err(_)) => {}
         Err(e) => {
             warn!(path = %path.display(), error = %e, "network log writer task failed");
         }
     }
-
-    completion.complete_path(path, count).await;
 }

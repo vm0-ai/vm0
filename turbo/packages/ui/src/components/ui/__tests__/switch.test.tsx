@@ -53,9 +53,7 @@ function installSwitchStyles(segmentTrack: string): () => void {
   const style = document.createElement("style");
   style.textContent = `${compiledSwitchCss}
     :root {
-      --color-primary: rgb(237, 78, 1);
       --color-primary-400: rgb(225, 145, 0);
-      --color-muted: rgb(231, 235, 240);
       --color-segment-track: ${segmentTrack};
     }
   `;
@@ -73,44 +71,20 @@ describe("Switch", () => {
   it.each([
     { name: "light", segmentTrack: "rgb(240, 236, 234)" },
     { name: "dark", segmentTrack: "rgb(62, 61, 60)" },
-  ])(
-    "renders the new UI $name track and checked Amber",
-    async ({ segmentTrack }) => {
-      const removeStyles = installSwitchStyles(segmentTrack);
-      try {
-        const user = userEvent.setup();
-        render(<Switch data-new-ui aria-label="Notifications" />);
-        const toggle = screen.getByRole("switch", { name: "Notifications" });
-
-        expect(toggle).not.toBeChecked();
-        expect(getComputedStyle(toggle).backgroundColor).toBe(segmentTrack);
-
-        await user.click(toggle);
-
-        expect(toggle).toBeChecked();
-        expect(getComputedStyle(toggle).backgroundColor).toBe(
-          "rgb(225, 145, 0)",
-        );
-      } finally {
-        removeStyles();
-      }
-    },
-  );
-
-  it("preserves the legacy switch colors", async () => {
-    const removeStyles = installSwitchStyles("rgb(240, 236, 234)");
+  ])("renders the $name track and checked Amber", async ({ segmentTrack }) => {
+    const removeStyles = installSwitchStyles(segmentTrack);
     try {
       const user = userEvent.setup();
       render(<Switch aria-label="Notifications" />);
       const toggle = screen.getByRole("switch", { name: "Notifications" });
 
-      expect(getComputedStyle(toggle).backgroundColor).toBe(
-        "rgb(231, 235, 240)",
-      );
+      expect(toggle).not.toBeChecked();
+      expect(getComputedStyle(toggle).backgroundColor).toBe(segmentTrack);
 
       await user.click(toggle);
 
-      expect(getComputedStyle(toggle).backgroundColor).toBe("rgb(237, 78, 1)");
+      expect(toggle).toBeChecked();
+      expect(getComputedStyle(toggle).backgroundColor).toBe("rgb(225, 145, 0)");
     } finally {
       removeStyles();
     }

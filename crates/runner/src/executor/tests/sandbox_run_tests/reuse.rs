@@ -297,7 +297,12 @@ async fn execute_reused_sandbox_drains_archive_when_guest_state_restore_fails() 
             &source_ip,
             &context,
             &config,
-            &previous_storage,
+            RunStart {
+                restore_guest_state: true,
+                reuse_result: crate::types::SandboxReuseResult::Reused,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
+                prev_storage: Some(&previous_storage),
+            },
             &mut telemetry,
             PreparedRunInputs::new(
                 RunControls::new(CancellationToken::new(), None),

@@ -9,7 +9,13 @@ export interface DesktopUpdateHooks {
   readonly prepareForQuitAndInstall: () => Promise<void>;
 }
 
+export interface DesktopAutoUpdatesController {
+  readonly checkForUpdates: (displayName: string) => boolean;
+}
+
 export interface DesktopMainModule {
   readonly desktopUpdateHooks: () => DesktopUpdateHooks;
-  readonly notifyDesktopAutoUpdatesInstalled: (installed: boolean) => void;
+  readonly notifyDesktopAutoUpdatesInstalled: (
+    autoUpdates: DesktopAutoUpdatesController | null,
+  ) => void;
 }

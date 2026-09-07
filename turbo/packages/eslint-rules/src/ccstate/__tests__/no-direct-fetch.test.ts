@@ -36,7 +36,7 @@ ruleTester.run("no-direct-fetch", rule, {
       errors: [{ messageId: "noDirectFetch" }],
     },
     {
-      code: `const result = await get(fetch$)("/api/zero/something", { method: "POST" });`,
+      code: `const result = await get(fetch$)("/api/chat/events", { method: "POST" });`,
       errors: [{ messageId: "noDirectFetch" }],
     },
     {

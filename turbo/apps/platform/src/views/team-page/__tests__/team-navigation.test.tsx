@@ -209,11 +209,13 @@ test("The agent header opens avatar customization on the current avatar", async 
   click(labelledButton("Customize avatar"));
 
   const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-  expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 4)).toStrictEqual([
+  expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 6)).toStrictEqual([
+    expect.stringContaining("/neck/deep.svg"),
     expect.stringContaining("/hairs/oval/rounded-crop-green-rear.svg"),
     expect.stringContaining("/faces/oval-deep.svg"),
     expect.stringContaining("/hairs/oval/rounded-crop-green-front.svg"),
     expect.stringContaining("/expressions/neutral-smile-oval.svg"),
+    expect.stringContaining("/sweater/lime.svg"),
   ]);
 });
 

@@ -94,6 +94,8 @@ import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-sw
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
 import { netsuiteProvider } from "./connectors/netsuite/provider";
+import { optimizelyCmpProvider } from "./connectors/optimizely-cmp/provider";
+import { otoProvider } from "./connectors/oto/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
 import { resourceGuruProvider } from "./connectors/resource-guru/provider";
@@ -114,6 +116,7 @@ import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
 import { paypalProvider } from "./connectors/paypal/provider";
+import { procountorProvider } from "./connectors/procountor/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
 import { rampProvider } from "./connectors/ramp/provider";
 import { reckonProvider } from "./connectors/reckon/provider";
@@ -1046,6 +1049,12 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     nintendoSwitchParentalControlsProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
+  authCodeRefreshTokenRevokeProviderEntry(
+    "optimizely-cmp",
+    "oauth",
+    optimizelyCmpProvider,
+  ),
+  refreshProviderEntry("oto", "api-token", otoProvider),
   authCodeRefreshProviderEntry("resource-guru", "oauth", resourceGuruProvider),
   authCodeRefreshProviderEntry(
     "outlook-calendar",
@@ -1055,6 +1064,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("outlook-mail", "oauth", outlookMailProvider),
   authCodeRefreshProviderEntry("posthog", "oauth", posthogProvider),
   refreshProviderEntry("paypal", "api-token", paypalProvider),
+  refreshProviderEntry("procountor", "api-token", procountorProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
   refreshProviderEntry("ramp", "api-token", rampProvider),

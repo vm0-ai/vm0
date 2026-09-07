@@ -618,8 +618,9 @@
     "resultCount_other": "{{count}} results",
     "searchAgents": "Search agents...",
     "searching": "Searching...",
-    "searchWorkspace": "Search chats, messages, workflows, and artifacts...",
+    "searchWorkspace": "Search workspace...",
     "sections": {
+      "agents": "Agents",
       "artifacts": "Artifacts",
       "chats": "Chats",
       "messages": "Messages",

@@ -83,7 +83,7 @@ function client() {
 }
 
 describe("GET /api/chat-threads/:id/metadata", () => {
-  it("returns thread metadata with ZERO_TOKEN chat-thread:read capability", async () => {
+  it("returns thread metadata with an Okou run token carrying chat-thread:read", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = okouToken({
       userId: fixture.userId,
@@ -113,7 +113,7 @@ describe("GET /api/chat-threads/:id/metadata", () => {
     });
   });
 
-  it("rejects ZERO_TOKEN without chat-thread:read capability", async () => {
+  it("rejects an Okou run token without chat-thread:read", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = okouToken({
       userId: fixture.userId,

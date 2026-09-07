@@ -23,7 +23,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
 
-describe("GET /api/zero/integrations/slack", () => {
+describe("GET /api/integrations/slack", () => {
   const track = createFixtureTracker<SlackIntegrationFixture>((fixture) => {
     return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
   });

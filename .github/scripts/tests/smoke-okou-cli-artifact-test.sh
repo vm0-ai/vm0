@@ -57,10 +57,6 @@ case "$entrypoint:$*" in
   "okou:__unsupported-command")
     exit 1
     ;;
-  "zero:--help")
-    echo "unsupported entrypoint" >&2
-    exit 1
-    ;;
   *)
     echo "unexpected invocation: $entrypoint $*" >&2
     exit 1
@@ -73,8 +69,7 @@ chmod +x "${fixture_bin}/node" "${fixture_bin}/npx"
 output="$({
   PATH="${fixture_bin}:${PATH}" bash "$smoke_script" "$package_path"
 } 2>&1)"
-grep -Fq "Smoke-tested the canonical okou CLI and unsupported zero boundary" \
-  <<<"$output"
+grep -Fq "Smoke-tested the canonical okou CLI" <<<"$output"
 
 failure_output="${tmp_dir}/failure-output.txt"
 if PATH="${fixture_bin}:${PATH}" \

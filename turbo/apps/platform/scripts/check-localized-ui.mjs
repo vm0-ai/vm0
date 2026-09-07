@@ -266,7 +266,7 @@ function getLocaleIndependentShellAllowedLiterals() {
       "locale-independent accessibility label for the copy-free app skeleton",
     ],
     [
-      "src/views/unsupported-browser-page.tsx\u0000Update your browser to continue",
+      "src/views/unsupported-browser-page.tsx\u0000Use a supported browser to continue",
       "English-only browser compatibility shell outside localized app bootstrap",
     ],
     [
@@ -287,6 +287,10 @@ function getLocaleIndependentShellAllowedLiterals() {
     ],
     [
       "src/views/unsupported-browser-page.tsx\u0000does not support your current browser version. Update your browser to continue.",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000does not support this browser on your device. Update your browser, or try another browser or device.",
       "English-only browser compatibility shell outside localized app bootstrap",
     ],
   ];

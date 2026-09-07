@@ -123,7 +123,7 @@ export function enterDegradedDesktopMode(options: {
   void app.whenReady().then(async () => {
     // No hooks from the main bundle in degraded mode: report an idle host so
     // a downloaded update installs and relaunches without prompting.
-    const autoUpdatesInstalled = installDesktopAutoUpdates({
+    const autoUpdates = installDesktopAutoUpdates({
       config: options.config,
       apiBaseUrl: options.apiBaseUrl,
       getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
@@ -131,7 +131,7 @@ export function enterDegradedDesktopMode(options: {
     });
     await reportDesktopBootstrapFailure(options.error);
     await showDegradedStartupDialog(
-      autoUpdatesInstalled,
+      autoUpdates !== null,
       options.config.identity.displayName,
     );
   });

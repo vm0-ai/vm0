@@ -230,19 +230,15 @@ test("Selecting a slide preserves its authored layout", async () => {
   );
 });
 
-test("A deck authored with the legacy vm0 attributes still previews", async () => {
-  // `div` matches no other slide selector and `strong` matches no fallback
-  // editable selector, so the deck only splits into slides and annotates an
-  // editable block when the legacy `data-vm0-*` readers still apply.
+test("A generically authored deck still previews", async () => {
   const objectUrls = arrangePresentation(`<!doctype html>
     <html>
       <body>
-        <script type="application/json" id="vm0-deck-metadata">{"editProtocolVersion":1,"kind":"deck","slides":{"slide-two":{"speakerNotes":"Legacy notes"}}}</script>
-        <div data-vm0-slide data-slide-id="slide-one">
-          <strong data-vm0-editable="text">Legacy first</strong>
+        <div data-slide data-slide-id="slide-one">
+          <p>Generic first</p>
         </div>
-        <div data-vm0-slide data-slide-id="slide-two">
-          <strong data-vm0-editable="text">Legacy second</strong>
+        <div data-slide data-slide-id="slide-two">
+          <p>Generic second</p>
         </div>
       </body>
     </html>`);
@@ -264,13 +260,10 @@ test("A deck authored with the legacy vm0 attributes still previews", async () =
     objectUrls,
   );
 
-  expect(frameDocument.querySelectorAll("[data-vm0-slide]")).toHaveLength(1);
+  expect(frameDocument.querySelectorAll("[data-slide]")).toHaveLength(1);
   expect(frameDocument.querySelector('[data-slide-id="slide-one"]')).toBeNull();
-  const editable = elementBySelector(
-    frameDocument,
-    '[data-vm0-editable="text"]',
-  );
-  expect(editable).toHaveTextContent("Legacy second");
+  const editable = elementBySelector(frameDocument, "p");
+  expect(editable).toHaveTextContent("Generic second");
   expect(editable).toHaveAttribute("data-okou-editor-slide-id", "slide-two");
   expect(editable).toHaveAttribute("data-okou-editor-edit-id");
 });

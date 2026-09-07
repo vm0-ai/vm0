@@ -58,7 +58,7 @@ pub(crate) use session_history_restore_plan::{
 };
 
 use crate::active_input::ActiveInputSource;
-use agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls};
+use agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls, RunStart};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
@@ -150,7 +150,7 @@ const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::idle_pool::{ReusableIdleSandbox, ReusableIdleSandboxParts};
+use crate::idle_pool::{IdleSandboxKind, ReusableIdleSandbox, ReusableIdleSandboxParts};
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
@@ -697,6 +697,7 @@ pub async fn execute_job_reuse(
 ) -> (ExecuteOutcome, JobTelemetry) {
     execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         config,
         params,
@@ -708,6 +709,7 @@ pub async fn execute_job_reuse(
 
 pub(crate) async fn execute_job_reuse_with_hooks(
     idle_sandbox: ReusableIdleSandbox,
+    reuse_result: SandboxReuseResult,
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
@@ -733,12 +735,17 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         .storage_baseline_observer
         .record(&context, params, &mut telemetry);
 
-    record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
+    let idle_kind = idle_sandbox.kind();
+    record_reuse_result(&mut telemetry, reuse_result);
+    if idle_kind == IdleSandboxKind::Blank {
+        telemetry.record("sandbox_blank_pool_hit", Duration::ZERO, true, None);
+    }
     record_api_latency("api_to_sandbox_start", &context, &mut telemetry);
 
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {
         sandbox,
+        kind,
         reuse_key: idle_reuse_key,
         source_ip,
         storage_fingerprints: prev_storage,
@@ -812,7 +819,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         &context,
         &config.api_url,
         &sandbox_id_string,
-        SandboxReuseResult::Reused,
+        reuse_result,
     ) {
         Err(error) => ExecuteOutcome::reused_sandbox_failure(
             ExecutionFailure::from_error(error),
@@ -826,7 +833,18 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                 &source_ip,
                 &context,
                 config,
-                &prev_storage,
+                RunStart {
+                    restore_guest_state: match kind {
+                        IdleSandboxKind::Exact => true,
+                        IdleSandboxKind::Blank => params.restore_guest_state,
+                    },
+                    reuse_result,
+                    workspace_reuse_result: match kind {
+                        IdleSandboxKind::Exact => WorkspaceReuseResult::SandboxReused,
+                        IdleSandboxKind::Blank => blank_workspace_reuse_result(&context, config),
+                    },
+                    prev_storage: (kind == IdleSandboxKind::Exact).then_some(&prev_storage),
+                },
                 &mut telemetry,
                 PreparedRunInputs::new(
                     RunControls::from_cancellation(cancellation, active_input_source)
@@ -843,6 +861,19 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     };
 
     (outcome, telemetry)
+}
+
+fn blank_workspace_reuse_result(
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+) -> WorkspaceReuseResult {
+    if config.workspace_cache.is_none() {
+        WorkspaceReuseResult::NotConfigured
+    } else if context.reuse_key().is_some() {
+        WorkspaceReuseResult::CacheMiss
+    } else {
+        WorkspaceReuseResult::NoReuseKey
+    }
 }
 
 async fn resolve_reused_workspace_promotion(

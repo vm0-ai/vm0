@@ -617,8 +617,9 @@
     "resultCount_other": "{{count}} hasil",
     "searchAgents": "Cari agen...",
     "searching": "Mencari...",
-    "searchWorkspace": "Cari chat, pesan, alur kerja, dan artefak...",
+    "searchWorkspace": "Cari di ruang kerja...",
     "sections": {
+      "agents": "Agen",
       "artifacts": "Artefak",
       "chats": "Chat",
       "messages": "Pesan",

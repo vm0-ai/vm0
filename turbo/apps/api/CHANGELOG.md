@@ -8,6 +8,123 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.560.1](https://github.com/vm0-ai/vm0/compare/api-v1.560.0...api-v1.560.1) (2026-09-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.6
+    * @okouai/core bumped to 8.630.1
+    * @okouai/db bumped to 1.244.7
+    * @okouai/pi-agent-runtime bumped to 1.21.11
+
+## [1.560.0](https://github.com/vm0-ai/vm0/compare/api-v1.559.1...api-v1.560.0) (2026-09-07)
+
+
+### Features
+
+* enable presentation templates for all organizations ([#32089](https://github.com/vm0-ai/vm0/issues/32089)) ([7096061](https://github.com/vm0-ai/vm0/commit/7096061d5771379747e1da8d891b457f67a89850))
+
+
+### Bug Fixes
+
+* set terra reasoning effort to max ([#32194](https://github.com/vm0-ai/vm0/issues/32194)) ([bb60e20](https://github.com/vm0-ai/vm0/commit/bb60e2013f34f2d836a6839dda1c912091620ce5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.5
+    * @okouai/connectors bumped to 3.7.0
+    * @okouai/core bumped to 8.630.0
+    * @okouai/db bumped to 1.244.6
+    * @okouai/pi-agent-runtime bumped to 1.21.10
+
+## [1.559.1](https://github.com/vm0-ai/vm0/compare/api-v1.559.0...api-v1.559.1) (2026-09-07)
+
+
+### Refactoring
+
+* **image-recognition:** add the canonical API route ([#32183](https://github.com/vm0-ai/vm0/issues/32183)) ([5ed8c24](https://github.com/vm0-ai/vm0/commit/5ed8c247e132d1c40698b03436bcf186b1924656))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.4
+    * @okouai/core bumped to 8.629.2
+    * @okouai/db bumped to 1.244.5
+    * @okouai/pi-agent-runtime bumped to 1.21.9
+
+## [1.559.0](https://github.com/vm0-ai/vm0/compare/api-v1.558.0...api-v1.559.0) (2026-09-07)
+
+
+### Features
+
+* **connectors:** add oto auth provider ([#32087](https://github.com/vm0-ai/vm0/issues/32087)) ([13fac04](https://github.com/vm0-ai/vm0/commit/13fac0448e15095aa9f13649cbee96ea2d92be14))
+* **pi:** learn memory from agent chat threads ([#32177](https://github.com/vm0-ai/vm0/issues/32177)) ([6a0fedf](https://github.com/vm0-ai/vm0/commit/6a0fedf3804833fddfbe407e73d62189f790fb18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.3
+    * @okouai/connectors bumped to 3.6.0
+    * @okouai/core bumped to 8.629.1
+    * @okouai/db bumped to 1.244.4
+    * @okouai/pi-agent-runtime bumped to 1.21.8
+
+## [1.558.0](https://github.com/vm0-ai/vm0/compare/api-v1.557.1...api-v1.558.0) (2026-09-07)
+
+
+### Features
+
+* **core:** enable the compact model menu for staff ([#32068](https://github.com/vm0-ai/vm0/issues/32068)) ([13b4f23](https://github.com/vm0-ai/vm0/commit/13b4f2301cfb9af727edf63d99cdfd698b722a94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.629.0
+    * @okouai/db bumped to 1.244.3
+
+## [1.557.1](https://github.com/vm0-ai/vm0/compare/api-v1.557.0...api-v1.557.1) (2026-09-07)
+
+
+### Performance Improvements
+
+* **api:** avoid duplicate global chat queue sweeps ([#32054](https://github.com/vm0-ai/vm0/issues/32054)) ([6bbfbe8](https://github.com/vm0-ai/vm0/commit/6bbfbe864b1a0c09759359aa2030795a5ce2f013))
+
+## [1.557.0](https://github.com/vm0-ai/vm0/compare/api-v1.556.0...api-v1.557.0) (2026-09-07)
+
+
+### Features
+
+* **connectors:** add Procountor M2M token provider ([#32057](https://github.com/vm0-ai/vm0/issues/32057)) ([98c9ce9](https://github.com/vm0-ai/vm0/commit/98c9ce91c46d07b3732ded53af686553eb77f0b1))
+* **connectors:** add reckon oauth refresh provider ([#32047](https://github.com/vm0-ai/vm0/issues/32047)) ([4ae3498](https://github.com/vm0-ai/vm0/commit/4ae3498b78b5929feaa40380ada13ca6471e9c7d))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#32060](https://github.com/vm0-ai/vm0/issues/32060)) ([7a92520](https://github.com/vm0-ai/vm0/commit/7a9252039ee467efca9bdc1878e5bf7aa74c96cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.409.2
+    * @okouai/connectors bumped to 3.5.0
+    * @okouai/core bumped to 8.628.0
+    * @okouai/db bumped to 1.244.2
+    * @okouai/pi-agent-runtime bumped to 1.21.7
+
 ## [1.556.0](https://github.com/vm0-ai/vm0/compare/api-v1.555.0...api-v1.556.0) (2026-09-06)
 
 

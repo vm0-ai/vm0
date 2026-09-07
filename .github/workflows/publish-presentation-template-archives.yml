@@ -36,7 +36,7 @@ jobs:
       - name: Normalize GitHub App private key
         id: source-private-key
         env:
-          SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_GITHUB_APP_PRIVATE_KEY }}
+          SOURCE_PRIVATE_KEY_PEM: ${{ secrets.OKOU_CI_APP_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           private_key="$(
@@ -50,7 +50,7 @@ jobs:
         id: source-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.OKOU_GITHUB_APP_ID }}
+          app-id: ${{ vars.OKOU_CI_APP_ID }}
           private-key: ${{ steps.source-private-key.outputs.private-key }}
           owner: vm0-ai
           repositories: Template-artifact

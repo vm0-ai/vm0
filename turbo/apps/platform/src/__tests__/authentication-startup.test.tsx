@@ -71,6 +71,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   clerkLoad.resolve();
   await pageReady;
 
+  expect(skeleton).toHaveAttribute("aria-hidden", "true");
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeInTheDocument();

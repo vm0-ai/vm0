@@ -54,7 +54,7 @@ export function AuthV2SignInCard({
   const signUpHref = navigation.href("sign-up");
   const focusKey =
     flowState.status === "incomplete"
-      ? `sign-in:${flowState.status}:${flowState.step}`
+      ? `sign-in:${flowState.status}:${flowState.step}:${flowState.selectedFactor?.id ?? ""}`
       : `sign-in:${flowState.status}`;
   return (
     <AuthV2Shell

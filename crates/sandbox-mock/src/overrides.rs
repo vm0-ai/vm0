@@ -120,6 +120,8 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
+    /// Optional gate that records and blocks every `start()` entry until released.
+    pub(crate) start_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) stop_behaviors: LifecycleBehaviors<()>,
@@ -258,6 +260,8 @@ pub(crate) struct FactoryOverrideState {
     pub(crate) create_results: Mutex<VecDeque<Result<()>>>,
     /// Sandbox create configs observed across factories built with these overrides.
     pub(crate) create_configs: Mutex<Vec<SandboxConfig>>,
+    /// Optional gate that records and blocks every factory `create()` entry until released.
+    pub(crate) create_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
@@ -771,6 +775,11 @@ impl MockSandboxOverrides {
         self.factory.create_configs.lock_ignoring_poison().clone()
     }
 
+    /// Block every factory `create()` call with a durable lifecycle gate.
+    pub fn set_create_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.factory.create_gate.lock_ignoring_poison() = Some(gate);
+    }
+
     /// Queue a `start()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_start_result(&self, result: Result<()>) {
@@ -778,6 +787,11 @@ impl MockSandboxOverrides {
             .start_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Block every `start()` call with a durable lifecycle gate.
+    pub fn set_start_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.start_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Return full run identities bound across all mock sandboxes.
