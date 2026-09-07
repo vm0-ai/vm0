@@ -2142,6 +2142,12 @@ describe("CHAT-02: thread connector account selection", () => {
   });
 
   it("starts the run when the runtime catalog no longer contains the selected built-in", async () => {
+    // Catalog rows are global by source, so isolate mutations from parallel test files.
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-chat-retired-catalog-connector-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({ runtimeProjection: true });
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -2188,9 +2194,6 @@ describe("CHAT-02: thread connector account selection", () => {
       [200],
     );
 
-    onTestFinished(async () => {
-      await installApiTestConnectorCatalog();
-    });
     const catalogVersion = `api-test-without-openai-${randomUUID()}`;
     const catalogWithoutOpenAi = {
       ...API_TEST_CONNECTOR_CATALOG,
