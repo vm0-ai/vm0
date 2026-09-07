@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
@@ -34,7 +34,11 @@ afterAll(() => server.close());
 async function desktop(
   granted = true,
   pluginEnabled = false,
-  options: { startupFailure?: boolean; stopDuringPreparation?: boolean } = {},
+  options: {
+    startupFailure?: boolean;
+    stopDuringPreparation?: boolean;
+    ignoreNetworkAbort?: boolean;
+  } = {},
 ) {
   const external = cuaBoundary();
   external.granted = granted;
@@ -52,7 +56,11 @@ async function desktop(
   const permissions = createComputerUsePermissions((read) =>
     driver.withPermissionProvider(read),
   );
-  const directory = await mkdtemp(path.join(tmpdir(), "cua-plugin-"));
+  // macOS TMPDIR can contain /var -> /private/var aliases; MCP authorizes
+  // canonical roots and validates the requested path before following symlinks.
+  const directory = await realpath(
+    await mkdtemp(path.join(tmpdir(), "cua-plugin-")),
+  );
   await writeFile(
     path.join(directory, "document.txt"),
     "plugin remains independent",
@@ -134,7 +142,13 @@ async function desktop(
           installationId: "00000000-0000-4000-8000-000000000001",
           hostName: "host",
           appVersion: "1.2.3",
-          hostFetch: (input, init) => fetch(input, init),
+          hostFetch: (input, init) =>
+            fetch(
+              input,
+              options.ignoreNetworkAbort
+                ? { ...init, signal: undefined }
+                : init,
+            ),
           addClientHeaders,
           getPermissions: permissions.refreshComputerUsePermissionState,
           getSupportedCapabilities: () => [
@@ -211,6 +225,13 @@ async function desktop(
         entered: claimEntered.promise,
         release: () => claimGate?.resolve(),
       };
+    },
+    expirePoll() {
+      const timer = [...timers.values()].find(
+        (timer) => timer.delay === 30_000,
+      );
+      if (!timer) throw new Error("No command poll deadline is scheduled");
+      timer.run();
     },
     advance(ms: number) {
       now += ms;
@@ -342,6 +363,30 @@ it("owns a late claim but refuses it when its original wire budget has expired",
   );
 });
 
+it("completes a late claim after network cancellation without dispatching its action", async () => {
+  const d = await desktop(true, false, { ignoreNetworkAbort: true });
+  const gate = d.delayClaim();
+  const completed = d.queue(
+    "app.open",
+    { app: "test.editor" },
+    { timeoutMs: 60_000 },
+  );
+  await gate.entered;
+  d.advance(31_000);
+  d.expirePoll();
+  gate.release();
+  expect(await completed).toMatchObject({
+    status: "failed",
+    error: {
+      code: "command_timeout",
+      message: expect.stringContaining("no native action was dispatched"),
+    },
+  });
+  expect(d.external.calls.some((call) => call.name === "launch_app")).toBe(
+    false,
+  );
+});
+
 it("preserves the existing plugin host and authorization when a selected replacement fails", async () => {
   const d = await desktop(true, true);
   await d.plugin.prepareForHost();
@@ -396,7 +441,7 @@ it.each([
   },
 );
 
-it.each(["check_permissions", "session", "get_window_state"])(
+it.each(["check_permissions", "session", "get_window_state", "launch_app"])(
   "expires one budget during %s and blocks late state publication",
   async (phase) => {
     const d = await desktop();
@@ -408,7 +453,10 @@ it.each(["check_permissions", "session", "get_window_state"])(
         await resume.promise;
       }
     };
-    const completed = d.queue("app.state", { app: "test.editor" });
+    const completed = d.queue(
+      phase === "launch_app" ? "app.open" : "app.state",
+      { app: "test.editor" },
+    );
     await entered.promise;
     d.expire();
     await d.external.stopEntered.promise;

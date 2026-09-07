@@ -74,7 +74,9 @@ remaining budget) and its requests/retries consume the same deadline. No network
 submission can be guaranteed after the server's command deadline has elapsed.
 
 Already-expired claims report no native action started. An in-flight timeout
-reports potentially delivered/unknown work. Fresh CUA permissions also have a
+reports potentially delivered/unknown work. A network response arriving after
+poll cancellation remains leased through its failure submission, using the
+original remaining budget; its action is never dispatched. Fresh CUA permissions also have a
 bounded five-second readiness check within that command budget. Permission
 revocation, unexpected exit, fatal transport failure, timeout and lifecycle Stop
 withdraw native admission and invalidate targets. Public embedded `stop()` starts

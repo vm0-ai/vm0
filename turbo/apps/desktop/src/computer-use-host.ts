@@ -873,18 +873,24 @@ export class ComputerUseHostRuntime {
     readonly timeoutMs: number;
     readonly request: (signal: AbortSignal) => Promise<Response>;
     readonly commandRequest?: boolean;
+    readonly onLateResponse?: (response: Response) => Promise<void>;
   }): Promise<Response> {
     const { label, timeoutMs, request } = args;
     const timeoutMessage = () => {
       return new Error(`Computer Use ${label} timed out after ${timeoutMs}ms`);
     };
     const controller = new AbortController();
-    const requestPromise = request(controller.signal).catch((error) => {
-      if (controller.signal.aborted) {
-        throw timeoutMessage();
-      }
-      throw error;
-    });
+    const requestPromise = request(controller.signal)
+      .then(async (response) => {
+        if (controller.signal.aborted) await args.onLateResponse?.(response);
+        return response;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          throw timeoutMessage();
+        }
+        throw error;
+      });
     if (args.commandRequest) {
       this.commandRequests.add(requestPromise);
       void requestPromise.then(
@@ -971,6 +977,34 @@ export class ComputerUseHostRuntime {
       label: "command poll",
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
       commandRequest: true,
+      onLateResponse: async (response) => {
+        if (
+          !response.ok ||
+          !this.running ||
+          generation !== this.sessionGeneration
+        )
+          return;
+        const late = (await response.json()) as ComputerUseHostNextResponse;
+        if (
+          late.status !== "command" ||
+          !this.running ||
+          generation !== this.sessionGeneration
+        )
+          return;
+        await this.completeCommandWithRetry(
+          late.command.id,
+          {
+            status: "failed",
+            error: {
+              code: "command_timeout",
+              message:
+                "Claim arrived after the polling deadline; no native action was dispatched",
+            },
+          },
+          generation,
+          new ComputerUseCommandBudget(late.command, this.commandClock),
+        );
+      },
       request: async (signal) => {
         return await this.hostFetch("/api/computer-use/host/commands/next", {
           method: "POST",

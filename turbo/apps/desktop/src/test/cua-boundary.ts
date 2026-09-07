@@ -44,6 +44,7 @@ export function cuaBoundary() {
   let bounds = { x: 10, y: 20, width: 800, height: 600 };
   let scale = 2;
   let resize = 1;
+  let observationFields: Record<string, unknown> = {};
   let effect: Record<string, unknown> = {
     effect: "unverifiable",
     route: "synthetic_events",
@@ -214,6 +215,7 @@ export function cuaBoundary() {
                     label: "Save",
                   },
                 ],
+                ...observationFields,
               },
               [{ mimeType: "image/png", dataBase64: png.toString("base64") }],
             );
@@ -251,6 +253,9 @@ export function cuaBoundary() {
     },
     set resize(value: number) {
       resize = value;
+    },
+    set observation(value: Record<string, unknown>) {
+      observationFields = value;
     },
     get destroyed() {
       return destroyed;

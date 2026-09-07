@@ -287,6 +287,54 @@ describe("host-owned CUA adapter and shared executor", () => {
     },
   );
 
+  it("refuses coordinates when a fresh screenshot frame is invalid", async () => {
+    const d = await desktop();
+    const state = result(await d.observe());
+    d.external.observation = { screenshot_frame_valid: false };
+    expect(
+      await d.execute("element.click", {
+        app: "test.editor",
+        snapshotId: state.snapshotId,
+        x: 100,
+        y: 50,
+      }),
+    ).toMatchObject({
+      status: "failed",
+      error: { code: "window_unavailable" },
+    });
+    expect(d.external.calls.some((call) => call.name === "click")).toBe(false);
+    expect(
+      await d.execute("element.click", {
+        app: "test.editor",
+        snapshotId: state.snapshotId,
+        elementIndex: 0,
+      }),
+    ).toMatchObject({ status: "failed" });
+  });
+
+  it("preserves read-only text and incomplete coverage when AX window scope is unresolved", async () => {
+    const d = await desktop();
+    d.external.observation = {
+      elements: [],
+      snapshot_id: undefined,
+      tree_markdown: "Read-only invoice total: 123 元",
+      degraded_reason: "ax_window_unresolved",
+    };
+    const state = result(await d.observe());
+    expect(state.appState).toContain("Read-only invoice total: 123 元");
+    expect(state.appState).toContain("Element coverage is incomplete");
+    expect(state.elementIdsByIndex).toEqual([]);
+    expect(JSON.stringify(state)).toContain("ax_window_unresolved");
+    expect(
+      await d.execute("element.click", {
+        app: "test.editor",
+        snapshotId: state.snapshotId,
+        elementIndex: 0,
+      }),
+    ).toMatchObject({ status: "failed" });
+    expect(d.external.calls.some((call) => call.name === "click")).toBe(false);
+  });
+
   it.each([
     {
       effect: "confirmed",
