@@ -1321,6 +1321,7 @@ impl Sandbox for MockSandbox {
                 .push(StartProcessCall {
                     cmd: request.cmd.to_string(),
                     timeout: request.timeout,
+                    start_timeout: request.start_timeout,
                     env: request
                         .env
                         .iter()
@@ -1362,6 +1363,7 @@ impl Sandbox for MockSandbox {
         let process_request = StartProcessRequest {
             cmd: "",
             timeout: request.timeout,
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             env: request.env,
             sudo: false,
             output: request.output,

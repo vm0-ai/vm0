@@ -1,4 +1,5 @@
 use super::*;
+use ::sandbox::DEFAULT_PROCESS_START_TIMEOUT;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -9,6 +10,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
     let buffered = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -21,6 +23,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
     let streamed = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -36,6 +39,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
             StartProcessCall {
                 cmd: "agent".to_string(),
                 timeout: Duration::from_secs(5),
+                start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 env: Vec::new(),
                 sudo: false,
                 output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
@@ -43,6 +47,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
             StartProcessCall {
                 cmd: "agent".to_string(),
                 timeout: Duration::from_secs(5),
+                start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 env: Vec::new(),
                 sudo: false,
                 output: ProcessOutputMode::stream(),
@@ -62,6 +67,7 @@ async fn start_process_emits_queued_stdout_chunks() {
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -95,6 +101,7 @@ async fn process_stream_capacity_overflow_retains_one_chunk_and_marks_exit() {
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -128,6 +135,7 @@ async fn start_agent_process_returns_mandatory_control_handle() {
     let without_control = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -371,6 +379,7 @@ async fn start_process_validates_stream_configuration() {
         let error = match sandbox
             .start_process(&StartProcessRequest {
                 cmd: "agent",
+                start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
@@ -399,6 +408,7 @@ async fn start_process_validates_stream_configuration() {
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -420,6 +430,7 @@ async fn start_process_rejects_invalid_env_key() {
     let result = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[("1BAD", "x")],
             sudo: false,
@@ -456,6 +467,7 @@ async fn queued_start_process_errors_are_consumed_fifo() {
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let request = StartProcessRequest {
         cmd: "agent",
+        start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
         timeout: Duration::from_secs(5),
         env: &[],
         sudo: false,
@@ -502,6 +514,7 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
             sandbox
                 .start_process(&StartProcessRequest {
                     cmd: "blocked-agent",
+                    start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                     timeout: Duration::from_secs(5),
                     env: &[],
                     sudo: false,
@@ -527,6 +540,7 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
         sandbox
             .start_process(&StartProcessRequest {
                 cmd: "next-agent",
+                start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
@@ -551,6 +565,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
     let invalid_start = sandbox
         .start_process(&StartProcessRequest {
             cmd: "invalid-agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[("1BAD", "value")],
             sudo: false,
@@ -564,6 +579,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
     let first_handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "first-agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -577,6 +593,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
     let second_handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "second-agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -589,6 +606,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
     let mut invalid_wait_handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "invalid-wait-agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -636,6 +654,7 @@ async fn wait_process_rejects_consumed_guest_process_handle() {
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -671,6 +690,7 @@ async fn wait_process_returns_queued_process_exit() {
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -697,6 +717,7 @@ async fn wait_process_default_exit_is_unchanged_without_queued_exit() {
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -753,6 +774,7 @@ async fn wait_process_lifecycle_gate_blocks_until_released() {
     let handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -784,6 +806,7 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
     let first_handle = first_sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -809,6 +832,7 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
     let second_handle = second_sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,
@@ -845,6 +869,7 @@ async fn process_cancel_releases_wait_process_lifecycle_gate() {
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
             cmd: "agent",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: false,

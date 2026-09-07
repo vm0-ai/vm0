@@ -1,7 +1,9 @@
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use nix::sys::socket::{setsockopt, sockopt};
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{
     ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
@@ -9,17 +11,30 @@ use vsock_proto::{
 };
 
 use super::super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
-    operation_count, read_guest_message, send_discarded_exec_result, send_exec_started,
-    setup_host_and_guest, wait_for_operation_count,
+    assert_connection_accepts_exec_operation, host_from_stream, is_connected, make_pair,
+    mock_handshake, normal_operation_readiness, operation_count, read_guest_message,
+    send_discarded_exec_result, send_exec_started, setup_host_and_guest, wait_for_operation_count,
 };
 use super::support::supervised_request;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
-use crate::{SupervisedExecControl, SupervisedExecRequest};
+use crate::{
+    FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, SupervisedExecControl,
+    SupervisedExecRequest,
+};
 
 const START_ACK_TEST_TIMEOUT: Duration = Duration::from_millis(50);
 const AGENT_READY_TEST_TIMEOUT: Duration = Duration::from_millis(200);
+
+fn assert_request_timeout(error: &io::Error, stage: RequestTimeoutStage, timeout: Duration) {
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    let timeout_error = error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<RequestTimeoutError>())
+        .expect("timeout should expose its request stage");
+    assert_eq!(timeout_error.stage(), stage);
+    assert_eq!(timeout_error.timeout(), timeout);
+}
 
 #[tokio::test]
 async fn supervised_exec_terminal_wait_timeout_does_not_send_cancel() {
@@ -65,7 +80,11 @@ async fn supervised_exec_start_ack_timeout_sends_cancel() {
         Ok(_) => panic!("supervised exec should time out before exec_started"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        START_ACK_TEST_TIMEOUT,
+    );
     assert_eq!(operation_count(&host), 0);
 
     let start = read_guest_message(&mut guest).await;
@@ -111,7 +130,11 @@ async fn supervised_agent_ready_timeout_after_started_sends_cancel() {
         Ok(_) => panic!("Agent start should time out before exec_agent_ready"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        AGENT_READY_TEST_TIMEOUT,
+    );
     assert_eq!(operation_count(&host), 0);
     let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
@@ -143,8 +166,11 @@ async fn supervised_exec_start_timeout_before_write_preserves_connection() {
         Ok(_) => panic!("supervised exec should time out while waiting for the writer"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-    assert_eq!(err.to_string(), "exec start timeout");
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::BeforeFrameWrite,
+        START_ACK_TEST_TIMEOUT,
+    );
     assert_eq!(operation_count(&host), 0);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -165,6 +191,66 @@ async fn supervised_exec_start_timeout_before_write_preserves_connection() {
         Err(err) => panic!("unexpected read error after releasing the writer: {err}"),
     }
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn supervised_exec_start_timeout_during_write_reports_frame_write() {
+    let (host_stream, mut guest) = make_pair();
+    setsockopt(&host_stream, sockopt::SndBuf, &4096usize).unwrap();
+    let host_task = tokio::spawn(async move { host_from_stream(host_stream).await.unwrap() });
+    mock_handshake(&mut guest).await;
+    let host = Arc::new(host_task.await.unwrap());
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        let stdin_bytes = vec![0xA5; vsock_proto::MAX_EXEC_STDIN_BYTES];
+        tokio::spawn(async move {
+            exec_operation_impl::test_support::start_supervised_exec_with_write_observer(
+                &host.shared,
+                SupervisedExecRequest {
+                    stdin_bytes: Some(&stdin_bytes),
+                    start_timeout: START_ACK_TEST_TIMEOUT,
+                    ..supervised_request("blocked-start-write")
+                },
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while write_start_count.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("supervised start should reach the frame write boundary");
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("blocked supervised start write should respect its deadline")
+        .unwrap();
+    let error = match result {
+        Ok(_) => panic!("blocked supervised start write should time out"),
+        Err(error) => error,
+    };
+    assert_request_timeout(
+        &error,
+        RequestTimeoutStage::FrameWrite,
+        START_ACK_TEST_TIMEOUT,
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(!is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]
@@ -207,10 +293,10 @@ async fn supervised_exec_start_timeout_is_not_restarted_after_write() {
         Ok(_) => panic!("elapsed start deadline must win before a late acknowledgement"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-    assert_eq!(
-        err.to_string(),
-        "supervised exec start acknowledgement timeout"
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        START_ACK_TEST_TIMEOUT,
     );
     let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
@@ -398,10 +484,10 @@ async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
         Ok(_) => panic!("supervised exec should fail when start-timeout cancel write is blocked"),
         Err(err) => err,
     };
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-    assert_eq!(
-        err.to_string(),
-        "supervised exec start timeout cancel write timed out"
+    assert_request_timeout(
+        &err,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        START_ACK_TEST_TIMEOUT,
     );
     assert_eq!(operation_count(&host), 0);
     host.wait_until_closed(Duration::from_secs(5))

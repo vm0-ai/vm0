@@ -116,7 +116,7 @@ async fn supervised_exec_zero_start_timeout_does_not_send_frame() {
             ..supervised_request("zero-start-timeout")
         },
         io::ErrorKind::TimedOut,
-        "exec start timeout",
+        "request timeout",
     )
     .await;
 }

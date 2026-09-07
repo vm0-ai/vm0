@@ -23,7 +23,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::codex_model_catalog_prefetch::{
-    StartedCodexModelCatalogPrefetch, is_eligible as is_codex_model_catalog_prefetch_eligible,
+    CodexModelCatalogPrefetchStart, StartedCodexModelCatalogPrefetch,
+    is_eligible as is_codex_model_catalog_prefetch_eligible,
 };
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
@@ -1130,11 +1131,28 @@ impl PreparedRunInputs {
 
 pub(super) enum PreparedGuestRuntime {
     Ready(StartedCodexModelCatalogPrefetch),
+    SandboxUnusable(RunnerError),
     Failed(RunnerError),
     Cancelled,
 }
 
 impl PreparedGuestRuntime {
+    async fn start_codex_model_catalog_prefetch(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        reuse_result: SandboxReuseResult,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel).await
+        {
+            CodexModelCatalogPrefetchStart::Usable(prefetch) => Self::Ready(prefetch),
+            CodexModelCatalogPrefetchStart::SandboxUnusable(unusable) => {
+                Self::SandboxUnusable(unusable.record_and_into_error(telemetry).into())
+            }
+        }
+    }
+
     pub(super) async fn prepare_for_codex_model_catalog_prefetch(
         sandbox: &dyn Sandbox,
         context: &ExecutionContext,
@@ -1160,6 +1178,30 @@ impl PreparedGuestRuntime {
         )
     }
 
+    pub(super) async fn prepare_without_codex_model_catalog_prefetch(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        restore_guest_state: bool,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match prepare_guest_runtime_state_phase(
+            sandbox,
+            context,
+            restore_guest_state,
+            cancel,
+            telemetry,
+        )
+        .await
+        {
+            GuestRuntimeStatePreparation::Ready => {
+                Self::Ready(StartedCodexModelCatalogPrefetch::disabled())
+            }
+            GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
+            GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
+        }
+    }
+
     async fn prepare(
         sandbox: &dyn Sandbox,
         context: &ExecutionContext,
@@ -1177,10 +1219,16 @@ impl PreparedGuestRuntime {
         )
         .await
         {
-            GuestRuntimeStatePreparation::Ready => Self::Ready(
-                StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel)
-                    .await,
-            ),
+            GuestRuntimeStatePreparation::Ready => {
+                Self::start_codex_model_catalog_prefetch(
+                    sandbox,
+                    context,
+                    reuse_result,
+                    cancel,
+                    telemetry,
+                )
+                .await
+            }
             GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
             GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
         }
@@ -1558,10 +1606,16 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
-        None if guest_state_prepared => PreparedGuestRuntime::Ready(
-            StartedCodexModelCatalogPrefetch::start(sandbox, context, start.reuse_result, &cancel)
-                .await,
-        ),
+        None if guest_state_prepared => {
+            PreparedGuestRuntime::start_codex_model_catalog_prefetch(
+                sandbox,
+                context,
+                start.reuse_result,
+                &cancel,
+                telemetry,
+            )
+            .await
+        }
         None => {
             PreparedGuestRuntime::prepare(
                 sandbox,
@@ -1576,6 +1630,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
     let mut model_catalog_prefetch = match prepared_guest_runtime {
         PreparedGuestRuntime::Ready(prefetch) => prefetch.supervise(sandbox),
+        PreparedGuestRuntime::SandboxUnusable(error) => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            return Err(error);
+        }
         PreparedGuestRuntime::Failed(error) => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;

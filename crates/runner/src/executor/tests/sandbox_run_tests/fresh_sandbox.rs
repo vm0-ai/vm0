@@ -184,6 +184,14 @@ fn guest_dns_readiness_failure(
     }
 }
 
+fn process_start_timeout(stage: sandbox::SandboxOperationTimeoutStage) -> SandboxError {
+    SandboxError::OperationTimeout {
+        operation: sandbox::SandboxOperation::StartProcess,
+        stage,
+        timeout_ms: 1_000,
+    }
+}
+
 #[tokio::test]
 async fn execute_inner_happy_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -462,6 +470,109 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(notifications.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_replaces_post_write_prefetch_timeout_before_workload() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(process_start_timeout(
+        sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+    ));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let params = JobParams {
+        restore_guest_state: true,
+        ..default_params()
+    };
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.guest_state_restore_calls().len(), 2);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_codex_model_catalog_prefetch",
+        false,
+        Some("start_timed_out"),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_codex_prefetch",
+        true,
+        None,
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_suppresses_prefetch_replacement_after_uncertain_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(process_start_timeout(
+        sandbox::SandboxOperationTimeoutStage::FrameWrite,
+    ));
+    overrides.push_destroy_panic("destroy failed");
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let error = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await
+    .err()
+    .expect("uncertain cleanup must suppress replacement");
+
+    assert!(matches!(
+        error,
+        RunnerError::Sandbox(SandboxError::OperationTimeout {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage: sandbox::SandboxOperationTimeoutStage::FrameWrite,
+            ..
+        })
+    ));
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_codex_prefetch",
+        false,
+        Some("cleanup_uncertain"),
+    );
+    assert_proxy_registry_empty(dir.path()).await;
 }
 
 #[tokio::test]

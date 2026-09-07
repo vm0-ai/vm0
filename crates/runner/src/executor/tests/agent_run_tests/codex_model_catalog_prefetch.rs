@@ -4,7 +4,7 @@ use std::time::Duration;
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use sandbox::{
     ExecTermination, ProcessExit, ProcessOutputMode, SandboxError, SandboxOperation,
-    SandboxOperationReason,
+    SandboxOperationReason, SandboxOperationTimeoutStage,
 };
 use sandbox_mock::MockLifecycleGate;
 use tokio::sync::Notify;
@@ -12,7 +12,7 @@ use tokio::sync::Notify;
 use crate::executor::EXIT_SIGKILL;
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::codex_model_catalog_prefetch::{
-    PREFETCH_HOST_START_TIMEOUT, StartedCodexModelCatalogPrefetch,
+    CodexModelCatalogPrefetchStart, PREFETCH_HOST_START_TIMEOUT, StartedCodexModelCatalogPrefetch,
 };
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, sandbox_exec_error,
@@ -39,6 +39,25 @@ fn sandbox_start_error(message: impl Into<String>) -> SandboxError {
         operation: SandboxOperation::StartProcess,
         reason: SandboxOperationReason::Guest,
         message: message.into(),
+    }
+}
+
+fn sandbox_start_timeout(stage: SandboxOperationTimeoutStage) -> SandboxError {
+    SandboxError::OperationTimeout {
+        operation: SandboxOperation::StartProcess,
+        stage,
+        timeout_ms: u64::try_from(PREFETCH_HOST_START_TIMEOUT.as_millis()).unwrap(),
+    }
+}
+
+fn expect_usable_prefetch(
+    start: CodexModelCatalogPrefetchStart,
+) -> StartedCodexModelCatalogPrefetch {
+    match start {
+        CodexModelCatalogPrefetchStart::Usable(started) => started,
+        CodexModelCatalogPrefetchStart::SandboxUnusable(_) => {
+            panic!("prefetch start unexpectedly made the sandbox unusable")
+        }
     }
 }
 
@@ -89,13 +108,15 @@ async fn run_prefetch_state_machine(
     ));
     let mut telemetry = test_telemetry(&config, &context);
 
-    let started = StartedCodexModelCatalogPrefetch::start(
-        &*sandbox,
-        &context,
-        SandboxReuseResult::PoolMiss,
-        &cancellation,
-    )
-    .await;
+    let started = expect_usable_prefetch(
+        StartedCodexModelCatalogPrefetch::start(
+            &*sandbox,
+            &context,
+            SandboxReuseResult::PoolMiss,
+            &cancellation,
+        )
+        .await,
+    );
     let mut prefetch = started.supervise(&*sandbox);
     prefetch.race(async {}).await;
     prefetch.record_outcome(&mut telemetry);
@@ -107,7 +128,7 @@ async fn run_prefetch_state_machine(
 }
 
 async fn finish_started_prefetch(
-    started: StartedCodexModelCatalogPrefetch,
+    started: CodexModelCatalogPrefetchStart,
     sandbox: Arc<sandbox_mock::MockSandbox>,
     scenario: &str,
     expected_success: bool,
@@ -117,7 +138,7 @@ async fn finish_started_prefetch(
     let config = test_executor_config(dir.path()).await;
     let context = codex_oauth_context();
     let mut telemetry = test_telemetry(&config, &context);
-    let mut prefetch = started.supervise(&*sandbox);
+    let mut prefetch = expect_usable_prefetch(started).supervise(&*sandbox);
     prefetch.record_outcome(&mut telemetry);
     prefetch.record_outcome(&mut telemetry);
     prefetch.finish(&mut telemetry).await;
@@ -180,10 +201,15 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
         .await
         .expect("prefetch should enter process start");
     cancel.cancel();
+    assert!(
+        !run_task.is_finished(),
+        "cancellation must not drop an in-flight process start"
+    );
+    prefetch_gate.release_one();
 
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
-        .expect("cancelled prefetch start should not hold the run open")
+        .expect("cancelled prefetch start should finish after provider ownership returns")
         .unwrap()
         .unwrap();
 
@@ -191,19 +217,20 @@ async fn codex_catalog_prefetch_start_observes_run_cancellation() {
         result.failure.as_ref().map(|failure| failure.exit_code),
         Some(EXIT_SIGKILL)
     );
-    assert!(overrides.start_process_calls().is_empty());
+    assert_eq!(overrides.start_process_calls().len(), 1);
     assert!(overrides.start_agent_process_calls().is_empty());
-    assert!(overrides.wait_process_calls().is_empty());
+    assert_eq!(overrides.wait_process_calls().len(), 1);
     assert!(overrides.process_cancel_calls().is_empty());
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let process_start_gate = MockLifecycleGate::new();
-    overrides.set_start_process_lifecycle_gate(process_start_gate.clone());
+    overrides.push_start_process_error(sandbox_start_timeout(
+        SandboxOperationTimeoutStage::BeforeFrameWrite,
+    ));
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let run_task = spawn_run_in_sandbox_test(
         sandbox,
@@ -212,19 +239,55 @@ async fn codex_catalog_prefetch_start_timeout_does_not_delay_agent() {
         tokio_util::sync::CancellationToken::new(),
     );
 
-    process_start_gate
-        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
-        .await
-        .expect("prefetch should enter process start");
-    overrides.clear_start_process_lifecycle_gate();
-    tokio::time::advance(PREFETCH_HOST_START_TIMEOUT).await;
-    tokio::task::yield_now().await;
-
     let result = run_task.await.unwrap().unwrap();
     assert!(result.failure.is_none());
-    assert!(overrides.start_process_calls().is_empty());
+    let process_calls = overrides.start_process_calls();
+    assert_eq!(process_calls.len(), 1);
+    assert_eq!(process_calls[0].start_timeout, PREFETCH_HOST_START_TIMEOUT);
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
+}
+
+#[tokio::test]
+async fn codex_catalog_prefetch_post_write_timeout_stops_direct_run_before_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(sandbox_start_timeout(
+        SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let error = run_in_sandbox(
+        &*sandbox,
+        &context,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .err()
+    .expect("direct run cannot replace a sandbox after post-write timeout");
+
+    assert!(error.to_string().contains("awaiting terminal response"));
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert!(overrides.wait_process_calls().is_empty());
+    assert!(overrides.process_cancel_calls().is_empty());
+    assert_prefetch_outcome(
+        &telemetry,
+        false,
+        Some("start_timed_out"),
+        "post_write_timeout",
+    );
 }
 
 #[tokio::test]
@@ -254,6 +317,11 @@ async fn codex_catalog_prefetch_records_start_cancellation() {
         .await
         .expect("prefetch should enter process start");
     cancel.cancel();
+    assert!(
+        !start_task.is_finished(),
+        "cancellation must retain the provider start future"
+    );
+    start_gate.release_one();
 
     let started = start_task.await.unwrap();
     finish_started_prefetch(
@@ -266,34 +334,23 @@ async fn codex_catalog_prefetch_records_start_cancellation() {
     .await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn codex_catalog_prefetch_records_start_timeout() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let start_gate = MockLifecycleGate::new();
-    overrides.set_start_process_lifecycle_gate(start_gate.clone());
+    overrides.push_start_process_error(sandbox_start_timeout(
+        SandboxOperationTimeoutStage::BeforeFrameWrite,
+    ));
     let sandbox = Arc::new(sandbox_mock::MockSandbox::with_overrides(
         "test",
         Arc::clone(&overrides),
     ));
-    let start_sandbox = Arc::clone(&sandbox);
-    let start_task = tokio::spawn(async move {
-        StartedCodexModelCatalogPrefetch::start(
-            &*start_sandbox,
-            &codex_oauth_context(),
-            SandboxReuseResult::PoolMiss,
-            &tokio_util::sync::CancellationToken::new(),
-        )
-        .await
-    });
-
-    start_gate
-        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
-        .await
-        .expect("prefetch should enter process start");
-    tokio::time::advance(PREFETCH_HOST_START_TIMEOUT).await;
-    tokio::task::yield_now().await;
-
-    let started = start_task.await.unwrap();
+    let started = StartedCodexModelCatalogPrefetch::start(
+        &*sandbox,
+        &codex_oauth_context(),
+        SandboxReuseResult::PoolMiss,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     finish_started_prefetch(
         started,
         sandbox,
@@ -444,13 +501,15 @@ async fn codex_catalog_prefetch_prefers_guest_duration_and_falls_back_to_host_el
         Arc::clone(&overrides),
     ));
     let mut telemetry = test_telemetry(&config, &context);
-    let started = StartedCodexModelCatalogPrefetch::start(
-        &*sandbox,
-        &context,
-        SandboxReuseResult::PoolMiss,
-        &tokio_util::sync::CancellationToken::new(),
-    )
-    .await;
+    let started = expect_usable_prefetch(
+        StartedCodexModelCatalogPrefetch::start(
+            &*sandbox,
+            &context,
+            SandboxReuseResult::PoolMiss,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await,
+    );
     tokio::time::sleep(Duration::from_millis(5)).await;
     let prefetch = started.supervise(&*sandbox);
     prefetch.finish(&mut telemetry).await;

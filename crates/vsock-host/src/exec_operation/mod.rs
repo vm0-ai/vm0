@@ -68,7 +68,7 @@ pub(crate) mod test_support {
     use std::sync::atomic::AtomicU8;
     use std::time::Duration;
 
-    use crate::Shared;
+    use crate::{FrameWriteObserver, Shared};
 
     use super::frame::ExecOperationFrameWriteGuard;
     use super::handle::SupervisedExecHandle;
@@ -109,6 +109,22 @@ pub(crate) mod test_support {
             request,
             after_start_write,
             start_timeout_cancel_write_timeout,
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    pub(crate) async fn start_supervised_exec_with_write_observer(
+        shared: &Arc<Shared>,
+        request: SupervisedExecRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<SupervisedExecHandle> {
+        start_supervised_exec_on_shared_with_after_start_write_and_cancel_timeout(
+            shared,
+            request,
+            std::future::ready(()),
+            super::EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+            write_observer,
         )
         .await
     }

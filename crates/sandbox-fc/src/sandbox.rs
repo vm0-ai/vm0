@@ -8,16 +8,16 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use guest_contracts::workspace_mount::WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE;
 use sandbox::{
-    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
-    GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
-    GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
-    ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
-    ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkHandoff,
-    SandboxFinalExecParkHandoffOutcome, SandboxFinalExecParkHandoffPoint,
-    SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome, SandboxFinalExecParkStage,
-    SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome, SandboxIdleTransition,
-    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, DEFAULT_PROCESS_START_TIMEOUT,
+    ExecRequest, ExecResult, GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot,
+    GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
+    GuestStateRestoreRequest, GuestStateRestoreTimezone, ProcessControlAck,
+    ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlOutcome,
+    ProcessControlWriteState, ProcessExit, ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
+    SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,
+    SandboxFinalExecParkHandoffPoint, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
+    SandboxFinalExecParkStage, SandboxFinalExecParkSubstage, SandboxFinalExecParkSubstageOutcome,
+    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
     SessionHistoryIdentityVerifyRequest, SevereMemoryRetentionDiagnostics,
     StartAgentProcessRequest, StartProcessRequest, StorageManifestRequest, WriteFileEntry,
@@ -85,8 +85,6 @@ use state::{
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// Timeout for receiving a process start acknowledgement from the guest.
-const PROCESS_START_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Timeout for graceful shutdown via vsock.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -631,6 +629,7 @@ impl SandboxNetwork {
 struct ProcessStartContractRequest<'a> {
     command: &'a str,
     timeout_ms: u32,
+    start_timeout: Duration,
     env: &'a [(&'a str, &'a str)],
     sudo: bool,
     output: ProcessOutputMode,
@@ -1954,7 +1953,7 @@ impl FirecrackerSandbox {
                     stdin_bytes: None,
                     control,
                     stream_queue_capacity: process_stream_queue_capacity(request.output),
-                    start_timeout: PROCESS_START_ACK_TIMEOUT,
+                    start_timeout: request.start_timeout,
                 })
                 .await
         };
@@ -2774,6 +2773,7 @@ impl Sandbox for FirecrackerSandbox {
                 ProcessStartContractRequest {
                     command: request.cmd,
                     timeout_ms: request.timeout_ms(),
+                    start_timeout: request.start_timeout,
                     env: request.env,
                     sudo: request.sudo,
                     output: request.output,
@@ -2796,6 +2796,7 @@ impl Sandbox for FirecrackerSandbox {
                 ProcessStartContractRequest {
                     command: "",
                     timeout_ms: request.timeout_ms(),
+                    start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                     env: request.env,
                     sudo: false,
                     output: request.output,

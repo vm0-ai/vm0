@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     ExecOutputLimits, ExecTermination, GuestProcessCancelHandle, GuestProcessHandle, ProcessExit,
-    ProcessOutputMode, Sandbox, StartProcessRequest,
+    ProcessOutputMode, Sandbox, SandboxError, SandboxOperation, SandboxOperationTimeoutStage,
+    StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -55,6 +56,16 @@ struct PrefetchOutcome {
     error: Option<&'static str>,
 }
 
+pub(super) enum CodexModelCatalogPrefetchStart {
+    Usable(StartedCodexModelCatalogPrefetch),
+    SandboxUnusable(UnusableCodexModelCatalogPrefetchStart),
+}
+
+pub(super) struct UnusableCodexModelCatalogPrefetchStart {
+    error: SandboxError,
+    started_at: Instant,
+}
+
 pub(super) struct StartedCodexModelCatalogPrefetch {
     handle: Option<GuestProcessHandle>,
     cancel: Option<GuestProcessCancelHandle>,
@@ -78,15 +89,26 @@ impl StartedCodexModelCatalogPrefetch {
         context: &ExecutionContext,
         reuse_result: SandboxReuseResult,
         cancel: &CancellationToken,
-    ) -> Self {
+    ) -> CodexModelCatalogPrefetchStart {
         let started_at = Instant::now();
         if !is_eligible(context, reuse_result) {
-            return Self::without_process(started_at, None);
+            return CodexModelCatalogPrefetchStart::Usable(Self::disabled_at(started_at));
+        }
+        if cancel.is_cancelled() {
+            return CodexModelCatalogPrefetchStart::Usable(Self::without_process(
+                started_at,
+                Some(PrefetchOutcome {
+                    duration: started_at.elapsed(),
+                    success: false,
+                    error: Some("start_cancelled"),
+                }),
+            ));
         }
 
         let request = StartProcessRequest {
             cmd: PREFETCH_COMMAND,
             timeout: PREFETCH_GUEST_TIMEOUT,
+            start_timeout: PREFETCH_HOST_START_TIMEOUT,
             env: &[],
             sudo: false,
             output: ProcessOutputMode::buffered(ExecOutputLimits::separate(
@@ -94,61 +116,58 @@ impl StartedCodexModelCatalogPrefetch {
                 PREFETCH_STDERR_LIMIT_BYTES,
             )),
         };
-        let result = tokio::select! {
-            biased;
-            result = tokio::time::timeout(
-                PREFETCH_HOST_START_TIMEOUT,
-                sandbox.start_process(&request),
-            ) => match result {
-                Ok(result) => result,
-                Err(_) => {
-                    warn!("timed out starting Codex model catalog prefetch");
-                    return Self::without_process(
-                        started_at,
-                        Some(PrefetchOutcome {
-                            duration: started_at.elapsed(),
-                            success: false,
-                            error: Some("start_timed_out"),
-                        }),
-                    );
-                }
-            },
-            () = cancel.cancelled() => {
-                return Self::without_process(
+        let result = sandbox.start_process(&request).await;
+
+        match result {
+            Ok(mut handle) => {
+                let process_cancel = handle.take_cancel_handle();
+                let outcome = cancel.is_cancelled().then(|| PrefetchOutcome {
+                    duration: started_at.elapsed(),
+                    success: false,
+                    error: Some("start_cancelled"),
+                });
+                CodexModelCatalogPrefetchStart::Usable(Self {
+                    handle: Some(handle),
+                    cancel: process_cancel,
+                    wait_deadline: Some(Instant::now() + PREFETCH_HOST_WAIT_TIMEOUT),
+                    started_at,
+                    outcome,
+                    recorded: false,
+                })
+            }
+            Err(error) if is_safe_start_timeout(&error) => {
+                warn!("timed out before writing Codex model catalog prefetch start request");
+                CodexModelCatalogPrefetchStart::Usable(Self::without_process(
                     started_at,
                     Some(PrefetchOutcome {
                         duration: started_at.elapsed(),
                         success: false,
-                        error: Some("start_cancelled"),
+                        error: Some("start_timed_out"),
                     }),
-                );
+                ))
             }
-        };
-
-        match result {
-            Ok(mut handle) => {
-                let cancel = handle.take_cancel_handle();
-                Self {
-                    handle: Some(handle),
-                    cancel,
-                    wait_deadline: Some(Instant::now() + PREFETCH_HOST_WAIT_TIMEOUT),
-                    started_at,
-                    outcome: None,
-                    recorded: false,
-                }
+            Err(error) if is_unusable_sandbox_start_timeout(&error) => {
+                warn!(error = %error, "Codex model catalog prefetch start timed out after write boundary");
+                CodexModelCatalogPrefetchStart::SandboxUnusable(
+                    UnusableCodexModelCatalogPrefetchStart { error, started_at },
+                )
             }
             Err(error) => {
                 warn!(error = %error, "failed to start Codex model catalog prefetch");
-                Self::without_process(
+                CodexModelCatalogPrefetchStart::Usable(Self::without_process(
                     started_at,
                     Some(PrefetchOutcome {
                         duration: started_at.elapsed(),
                         success: false,
                         error: Some("start_failed"),
                     }),
-                )
+                ))
             }
         }
+    }
+
+    pub(super) fn disabled() -> Self {
+        Self::disabled_at(Instant::now())
     }
 
     pub(super) fn supervise(self, sandbox: &dyn Sandbox) -> CodexModelCatalogPrefetch<'_> {
@@ -182,6 +201,45 @@ impl StartedCodexModelCatalogPrefetch {
             recorded: false,
         }
     }
+
+    fn disabled_at(started_at: Instant) -> Self {
+        Self::without_process(started_at, None)
+    }
+}
+
+impl UnusableCodexModelCatalogPrefetchStart {
+    pub(super) fn record_and_into_error(self, telemetry: &mut JobTelemetry) -> SandboxError {
+        telemetry.record(
+            PREFETCH_ACTION,
+            self.started_at.elapsed(),
+            false,
+            Some("start_timed_out"),
+        );
+        self.error
+    }
+}
+
+fn is_safe_start_timeout(error: &SandboxError) -> bool {
+    matches!(
+        error,
+        SandboxError::OperationTimeout {
+            operation: SandboxOperation::StartProcess,
+            stage: SandboxOperationTimeoutStage::BeforeFrameWrite,
+            ..
+        }
+    )
+}
+
+fn is_unusable_sandbox_start_timeout(error: &SandboxError) -> bool {
+    matches!(
+        error,
+        SandboxError::OperationTimeout {
+            operation: SandboxOperation::StartProcess,
+            stage: SandboxOperationTimeoutStage::FrameWrite
+                | SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+            ..
+        }
+    )
 }
 
 impl<'a> CodexModelCatalogPrefetch<'a> {

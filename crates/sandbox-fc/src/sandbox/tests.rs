@@ -2317,6 +2317,7 @@ async fn start_process_output_rejects_invalid_stream_configuration() {
         let error = match sandbox
             .start_process(&StartProcessRequest {
                 cmd: "agent",
+                start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
@@ -2354,6 +2355,7 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
     };
     let request = StartProcessRequest {
         cmd: "agent",
+        start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
         timeout: Duration::from_secs(5),
         env: &[],
         sudo: false,
@@ -2393,6 +2395,143 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
     assert_eq!(
         exit.termination,
         sandbox::ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
+#[tokio::test]
+async fn start_process_timeout_before_write_preserves_guest_connection() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let timed_out_request = StartProcessRequest {
+        cmd: "prefetch",
+        timeout: Duration::from_secs(5),
+        start_timeout: Duration::ZERO,
+        env: &[],
+        sudo: false,
+        output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
+    };
+
+    let error = match sandbox.start_process(&timed_out_request).await {
+        Ok(_) => panic!("zero-deadline process start should time out"),
+        Err(error) => error,
+    };
+    match error {
+        SandboxError::OperationTimeout {
+            operation,
+            stage,
+            timeout_ms,
+        } => {
+            assert_eq!(operation, SandboxOperation::StartProcess);
+            assert_eq!(
+                stage,
+                sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite
+            );
+            assert_eq!(timeout_ms, 0);
+        }
+        other => panic!("expected pre-write process-start timeout, got {other:?}"),
+    }
+    assert_eq!(
+        guest.try_read(&mut [0u8; 1]).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+
+    let request = StartProcessRequest {
+        start_timeout: Duration::from_secs(1),
+        ..timed_out_request
+    };
+    let start_process = sandbox.start_process(&request);
+    let acknowledge_start = async {
+        let start = read_vsock_message(&mut guest).await;
+        assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
+        let payload = vsock_proto::encode_exec_started(73).unwrap();
+        let response =
+            vsock_proto::encode(vsock_proto::MSG_EXEC_STARTED, start.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        start.seq
+    };
+    let (handle, exec_seq) = tokio::join!(start_process, acknowledge_start);
+    let handle = handle.unwrap();
+    let payload = vsock_proto::encode_exec_result(
+        vsock_proto::ExecTermination::Exited { exit_code: 0 },
+        1,
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        vsock_proto::ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        "",
+    )
+    .unwrap();
+    let response = vsock_proto::encode(vsock_proto::MSG_EXEC_RESULT, exec_seq, &payload).unwrap();
+    guest.write_all(&response).await.unwrap();
+    sandbox
+        .wait_process(handle, Duration::from_secs(1))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn start_process_timeout_after_write_rejects_later_guest_operation() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let start_timeout = Duration::from_millis(20);
+    let request = StartProcessRequest {
+        cmd: "prefetch",
+        timeout: Duration::from_secs(5),
+        start_timeout,
+        env: &[],
+        sudo: false,
+        output: ProcessOutputMode::buffered(sandbox::EXEC_OUTPUT_LIMIT_1_MIB),
+    };
+
+    let error = match sandbox.start_process(&request).await {
+        Ok(_) => panic!("unacknowledged process start should time out"),
+        Err(error) => error,
+    };
+    match error {
+        SandboxError::OperationTimeout {
+            operation,
+            stage,
+            timeout_ms,
+        } => {
+            assert_eq!(operation, SandboxOperation::StartProcess);
+            assert_eq!(
+                stage,
+                sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse
+            );
+            assert_eq!(timeout_ms, 20);
+        }
+        other => panic!("expected post-write process-start timeout, got {other:?}"),
+    }
+    let start = read_vsock_message(&mut guest).await;
+    assert_eq!(start.msg_type, vsock_proto::MSG_EXEC_START);
+    let cancel = read_vsock_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, vsock_proto::MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+
+    let later_error = match sandbox
+        .exec(&ExecRequest {
+            cmd: "true",
+            timeout: Duration::from_secs(1),
+            env: &[],
+            sudo: false,
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            output_limits: sandbox::EXEC_OUTPUT_LIMIT_1_MIB,
+        })
+        .await
+    {
+        Ok(_) => panic!("post-write timeout connection must reject later operations"),
+        Err(error) => error,
+    };
+    assert!(
+        later_error
+            .to_string()
+            .contains("normal operations are not available on this connection"),
+        "got: {later_error}"
     );
 }
 

@@ -1,6 +1,7 @@
 use std::future::{Future, ready};
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use guest_contracts::codex_session_cleanup::{
@@ -21,7 +22,9 @@ use vsock_proto::{
     MSG_EXEC_CANCEL,
 };
 
-use crate::{CompositeNormalOperation, FrameWriteObserver, Shared};
+use crate::{
+    CompositeNormalOperation, FrameWriteObserver, RequestTimeoutError, RequestTimeoutStage, Shared,
+};
 
 use super::frame::{admit_exec_cancel_frame, write_exec_start_frame, write_frame};
 use super::handle::{
@@ -42,6 +45,41 @@ use super::{EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT, SMALL_EXEC_CAPTUR
 
 fn exec_start_timeout_error() -> io::Error {
     io::Error::new(io::ErrorKind::TimedOut, "exec start timeout")
+}
+
+#[derive(Debug, Default)]
+struct SupervisedStartProgress {
+    stage: AtomicU8,
+}
+
+impl SupervisedStartProgress {
+    const BEFORE_FRAME_WRITE: u8 = 0;
+    const FRAME_WRITE: u8 = 1;
+    const AWAITING_TERMINAL_RESPONSE: u8 = 2;
+
+    fn mark_frame_write(&self) {
+        self.stage.store(Self::FRAME_WRITE, Ordering::Release);
+    }
+
+    fn mark_awaiting_terminal_response(&self) {
+        self.stage
+            .store(Self::AWAITING_TERMINAL_RESPONSE, Ordering::Release);
+    }
+
+    fn timeout_stage(&self) -> RequestTimeoutStage {
+        match self.stage.load(Ordering::Acquire) {
+            Self::BEFORE_FRAME_WRITE => RequestTimeoutStage::BeforeFrameWrite,
+            Self::FRAME_WRITE => RequestTimeoutStage::FrameWrite,
+            _ => RequestTimeoutStage::AwaitingTerminalResponse,
+        }
+    }
+}
+
+fn supervised_start_timeout_error(stage: RequestTimeoutStage, timeout: Duration) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        RequestTimeoutError::new(stage, timeout),
+    )
 }
 
 fn exec_start_deadline(timeout: Duration) -> io::Result<Instant> {
@@ -207,6 +245,7 @@ pub(crate) async fn start_supervised_process_on_shared(
         ready(()),
         EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
         ExecStreamQueueKind::ProcessOutput,
+        FrameWriteObserver::default(),
     )
     .await
 }
@@ -224,6 +263,7 @@ where
         request,
         after_start_write,
         EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+        FrameWriteObserver::default(),
     )
     .await
 }
@@ -235,6 +275,7 @@ pub(in crate::exec_operation) async fn start_supervised_exec_on_shared_with_afte
     request: SupervisedExecRequest<'_>,
     after_start_write: F,
     start_timeout_cancel_write_timeout: Duration,
+    start_write_observer: FrameWriteObserver,
 ) -> io::Result<SupervisedExecHandle>
 where
     F: Future<Output = ()>,
@@ -245,6 +286,7 @@ where
         after_start_write,
         start_timeout_cancel_write_timeout,
         ExecStreamQueueKind::Events,
+        start_write_observer,
     )
     .await
 }
@@ -255,10 +297,17 @@ async fn start_supervised_exec_on_shared_with_stream_queue_kind<F>(
     after_start_write: F,
     start_timeout_cancel_write_timeout: Duration,
     stream_queue_kind: ExecStreamQueueKind,
+    start_write_observer: FrameWriteObserver,
 ) -> io::Result<SupervisedExecHandle>
 where
     F: Future<Output = ()>,
 {
+    if request.start_timeout.is_zero() {
+        return Err(supervised_start_timeout_error(
+            RequestTimeoutStage::BeforeFrameWrite,
+            request.start_timeout,
+        ));
+    }
     let stream_queue_capacity = stream_queue_capacity_for(
         request.stdout,
         request.stderr,
@@ -295,6 +344,7 @@ where
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
     let deadline = exec_start_deadline(request.start_timeout)?;
+    let start_progress = Arc::new(SupervisedStartProgress::default());
 
     let (start_tx, start_rx) = oneshot::channel();
     let ExecOperationRegistration {
@@ -327,6 +377,7 @@ where
         route_id,
         diagnostic.clone(),
     );
+    let write_progress = Arc::clone(&start_progress);
     let start_write_result = time::timeout_at(
         deadline,
         write_exec_start_frame(
@@ -336,16 +387,22 @@ where
             &diagnostic,
             tracks_normal_operation,
             FrameWriteObserver::default(),
-            FrameWriteObserver::default(),
+            FrameWriteObserver::new(move || {
+                write_progress.mark_frame_write();
+                start_write_observer.record_write_start()
+            }),
         ),
     )
     .await
-    .map_err(|_| exec_start_timeout_error())
+    .map_err(|_| {
+        supervised_start_timeout_error(start_progress.timeout_stage(), request.start_timeout)
+    })
     .and_then(|result| result);
     if let Err(error) = start_write_result {
         start_cancel_on_drop.disarm();
         return Err(error);
     }
+    start_progress.mark_awaiting_terminal_response();
     after_start_write.await;
 
     let (pid, start_timing) = tokio::select! {
@@ -400,16 +457,16 @@ where
                     "supervised exec start timeout cancel write timed out"
                 );
                 shared.poison_connection();
-                Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "supervised exec start timeout cancel write timed out",
+                Err(supervised_start_timeout_error(
+                    RequestTimeoutStage::AwaitingTerminalResponse,
+                    request.start_timeout,
                 ))
             });
             start_cancel_on_drop.disarm();
             cancel_result?;
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "supervised exec start acknowledgement timeout",
+            return Err(supervised_start_timeout_error(
+                RequestTimeoutStage::AwaitingTerminalResponse,
+                request.start_timeout,
             ));
         }
     };
