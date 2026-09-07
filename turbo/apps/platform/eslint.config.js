@@ -397,7 +397,7 @@ export default [
             {
               name: "@clerk/ui",
               message:
-                "Hosted Clerk UI is not part of platform auth; use the app-owned Auth v2 components.",
+                "Use ensureClerkUiLoaded() so hosted Clerk UI stays route-scoped.",
             },
             {
               name: "@solana/web3.js",

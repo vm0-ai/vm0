@@ -270,16 +270,29 @@
           loadOptions.satelliteAutoSync = true;
         }
 
+        // Hosted Clerk UI mounts the sign-in and sign-up forms. Clerk accepts
+        // the constructor as a promise, so the core starts now and the app
+        // resolves the UI only where it is needed.
+        var resolveClerkUI;
+        var clerkUI = new Promise(function (resolve) {
+          resolveClerkUI = resolve;
+        });
+
         var bootstrap = {
           domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
           productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
+          resolveClerkUI: resolveClerkUI,
         };
         window.__okouClerkBootstrap = bootstrap;
 
         function isDomainOrSubdomain(value, domain) {
           return value === domain || value.endsWith("." + domain);
+        }
+
+        function isAuthRoute(pathname) {
+          return /^\/sign-(?:in|up)(?:\/|$)/.test(pathname || "");
         }
 
         function startClerk() {
@@ -310,7 +323,31 @@
           };
 
           bootstrap.clerk = clerk;
-          bootstrap.loaded = clerk.load(loadOptions);
+          bootstrap.loaded = clerk.load(
+            Object.assign({}, loadOptions, { ui: { ClerkUI: clerkUI } }),
+          );
+        }
+
+        // Auth routes need the hosted UI before they can paint. Satellite
+        // hosts hand authentication to the primary app instead, so they keep
+        // the core-only download.
+        function startClerkUI() {
+          if (satellite || !isAuthRoute(location.pathname)) return;
+          var uiScript = document.createElement("script");
+          uiScript.src = "__OKOU_CLERK_UI_SCRIPT_URL__";
+          uiScript.crossOrigin = "anonymous";
+          uiScript.async = true;
+          uiScript.dataset.clerkUiScript = "";
+          uiScript.dataset.clerkPublishableKey = publishableKey;
+          uiScript.onerror = function () {
+            uiScript.remove();
+          };
+          uiScript.onload = function () {
+            if (window.__internal_ClerkUICtor) {
+              resolveClerkUI(window.__internal_ClerkUICtor);
+            }
+          };
+          document.head.appendChild(uiScript);
         }
 
         var script = document.getElementById("okou-clerk-core-script");
@@ -324,6 +361,7 @@
           script.remove();
         };
         script.onload = startClerk;
+        startClerkUI();
       })();
     </script>
     <link

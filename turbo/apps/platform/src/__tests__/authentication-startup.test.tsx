@@ -15,7 +15,9 @@ const PRIMARY_LOAD_OPTIONS = {
 } as const;
 
 async function waitForReadySignIn(): Promise<void> {
-  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
+    "/sign-in",
+  );
 }
 
 function installEarlyBootstrap(options: {
@@ -31,6 +33,9 @@ function installEarlyBootstrap(options: {
     loaded: options.loaded,
     productionPrimaryAppDomain: "app.vm0.ai",
     publishableKey: "test_production_key",
+    resolveClerkUI: () => {
+      return;
+    },
   };
   if (options.clerk) {
     Reflect.set(bootstrap, "clerk", options.clerk);
@@ -75,7 +80,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeInTheDocument();
-  expect(screen.queryByTestId("app-auth-v2")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
   expect(queryAllByRoleFast("link").length).toBeGreaterThan(0);
 });
 
@@ -102,6 +107,7 @@ test("Authentication startup is reused without a duplicate load", async () => {
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeInTheDocument();
   expect(clerk.loads).toHaveLength(1);
+  expect(clerk.uiRequests).toStrictEqual([]);
 });
 
 test("Authentication startup retries after an early failure", async () => {
@@ -119,6 +125,9 @@ test("Authentication startup retries after an early failure", async () => {
   expect(clerk.resourceRequests).toStrictEqual([]);
   expect(clerk.loads).toHaveLength(1);
   expect(window.__okouClerkBootstrap?.loaded).toBeUndefined();
+  expect(clerk.uiRequests).toStrictEqual([
+    { domain: undefined, publishableKey: "test_production_key" },
+  ]);
 });
 
 test("Startup onboarding follows the current account and workspace", async () => {
@@ -174,6 +183,9 @@ test("VM0 production uses production authentication", async () => {
 
   await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
+    { domain: undefined, publishableKey: "test_production_key" },
+  ]);
+  expect(clerk.uiRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);

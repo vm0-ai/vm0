@@ -77,7 +77,9 @@ test("An explicitly requested app.vm0.ai still owns primary authentication", asy
     primaryAppDomain: "app.vm0.ai",
   });
 
-  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  await expect(screen.findByTestId("clerk-sign-in")).resolves.toHaveTextContent(
+    "/sign-in",
+  );
   expect(clerk.resourceRequests).toStrictEqual([
     { domain: undefined, publishableKey: "test_production_key" },
   ]);

@@ -1,3 +1,4 @@
+import type { ClerkUIConstructor } from "@clerk/shared/ui";
 import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
 
@@ -16,6 +17,11 @@ interface OkouClerkBootstrap {
   loaded?: Promise<void>;
   readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
+  /**
+   * Resolves the hosted UI constructor promise the page passed to its early
+   * `clerk.load`. The app calls it once the UI script is available.
+   */
+  readonly resolveClerkUI: (ui: ClerkUIConstructor) => void;
 }
 
 interface OkouGlobal {

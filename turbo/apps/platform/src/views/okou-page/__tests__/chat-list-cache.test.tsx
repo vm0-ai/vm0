@@ -182,9 +182,7 @@ test("Signed-out pages do not sync private conversations", async () => {
   await setupPage({ context, path: "/sign-in", auth: null });
 
   await waitFor(() => {
-    expect(
-      screen.getByRole("heading", { name: "Sign in to VM0" }),
-    ).toBeVisible();
+    expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
     expect(window.location.pathname).toBe("/sign-in");
   });
   expect(snapshotRequested).toBeFalsy();

@@ -259,7 +259,9 @@ const productionClerkPublishableKey = publishableKey(
   "live",
   productionClerkHost,
 );
+const clerkUiVersion = "1.26.0";
 const clerkBrowserScriptUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${clerkJsVersion}/dist/clerk.browser.js`;
+const clerkUiScriptUrl = `https://cdn.jsdelivr.net/npm/@clerk/ui@${clerkUiVersion}/dist/ui.browser.js`;
 const builtIndexTemplate = indexTemplate
   .replaceAll(
     "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%",
@@ -270,7 +272,8 @@ const builtIndexTemplate = indexTemplate
     productionClerkPublishableKey,
   )
   .replaceAll("__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
-  .replaceAll("__OKOU_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+  .replaceAll("__OKOU_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl)
+  .replaceAll("__OKOU_CLERK_UI_SCRIPT_URL__", clerkUiScriptUrl);
 const embeddedIndexTemplate = builtIndexTemplate
   .replace(
     "</head>",
@@ -577,7 +580,10 @@ assert.equal(
 );
 assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
 assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
-assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
+// Hosted Clerk UI is pinned with the core release set; the page must carry
+// exactly that URL and never an unsubstituted marker.
+assert.equal(okouPreview.html.includes(clerkUiScriptUrl), true);
+assert.equal(okouPreview.html.includes("__OKOU_CLERK_UI_SCRIPT_URL__"), false);
 
 const serviceWorker = await worker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
@@ -897,10 +903,7 @@ for (const [productionOrigin, publicBrand] of [
       assert.equal(telemetry?.disabled, true);
       return {
         authenticateRequest(request, options) {
-          assert.equal(
-            request.url,
-            `${productionEdgeUrl}?__bootstrap=1`,
-          );
+          assert.equal(request.url, `${productionEdgeUrl}?__bootstrap=1`);
           assert.equal(options.acceptsToken, "session_token");
           assert.deepEqual(options.authorizedParties, [productionOrigin]);
           return Promise.resolve({

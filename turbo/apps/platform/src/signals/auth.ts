@@ -25,6 +25,7 @@ import {
   VM0_CLERK_PRIMARY_APP_ORIGIN,
 } from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
+import { rootSignal$ } from "./root-signal.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
@@ -150,7 +151,7 @@ function parseUrl(value: string): URL | null {
   return new URL(trimmed);
 }
 
-function resolveAppUrl(): string {
+export function resolveAppUrl(): string {
   return resolveAppOrigin();
 }
 
@@ -416,28 +417,54 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
-/** Loaded Clerk instance for consumers that need authentication state. */
-export const clerk$ = computed(async () => {
+const clerkRuntime$ = computed(async (get) => {
   const { publishableKey, satelliteConfig } = resolveClerkInstanceConfig();
-  const runtime = await startClerkBrowserRuntime({
-    domain: satelliteConfig?.domain,
-    loadOptions: {
-      ...(satelliteConfig
-        ? {
-            isSatellite: true,
-            satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-          }
-        : {}),
-      afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
-      signInUrl: resolveAppAuthUrl("/sign-in"),
-      signUpUrl: resolveAppAuthUrl("/sign-up"),
+  return await startClerkBrowserRuntime(
+    {
+      domain: satelliteConfig?.domain,
+      loadOptions: {
+        ...(satelliteConfig
+          ? {
+              isSatellite: true,
+              satelliteAutoSync: satelliteConfig.satelliteAutoSync,
+            }
+          : {}),
+        afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
+        signInUrl: resolveAppAuthUrl("/sign-in"),
+        signUpUrl: resolveAppAuthUrl("/sign-up"),
+      },
+      publishableKey,
     },
-    publishableKey,
-  });
+    get(rootSignal$),
+  );
+});
+
+/** Clerk core is available once its browser script has initialized. */
+export const clerkInstance$ = computed(async (get) => {
+  const runtime = await get(clerkRuntime$);
+  return runtime.clerk;
+});
+
+/** Loaded Clerk instance for consumers that need authentication state. */
+export const clerk$ = computed(async (get) => {
+  const runtime = await get(clerkRuntime$);
   await runtime.loaded;
 
   return runtime.clerk;
 });
+
+/**
+ * Hosted Clerk UI stays route-scoped: auth pages and the account switcher
+ * request it, and every other route keeps the core-only download.
+ */
+export const ensureClerkUiLoaded$ = command(
+  async ({ get }, signal: AbortSignal): Promise<void> => {
+    const runtime = await get(clerkRuntime$);
+    signal.throwIfAborted();
+    await runtime.ensureUiLoaded();
+    signal.throwIfAborted();
+  },
+);
 
 /**
  * Moves satellite authentication to Clerk's primary app without bypassing

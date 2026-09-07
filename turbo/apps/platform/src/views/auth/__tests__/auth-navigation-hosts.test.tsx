@@ -1,22 +1,12 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
   PRESENTATION_ONBOARDING_PATH,
   PRESENTATION_ONBOARDING_URL,
 } from "../../../__tests__/presentation-onboarding-fixture.ts";
-import {
-  mockedClerk,
-  mockSignInResource,
-  type MockedSignInResourceState,
-} from "../../../__tests__/mock-auth.ts";
-import {
-  click,
-  fill,
-  queryAllByRoleFast,
-  setupPage,
-  startPage,
-} from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { startPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -32,46 +22,6 @@ function clerkAuthFragment(url: URL): URL {
     throw new Error("Expected Clerk auth state in the URL fragment");
   }
   return new URL(url.hash.slice(1), url.origin);
-}
-
-function currentSignInResource() {
-  return mockedClerk.client.signIn;
-}
-
-function moveSignInTo(state: MockedSignInResourceState) {
-  mockSignInResource(state);
-  return currentSignInResource();
-}
-
-function containingForm(element: HTMLElement): HTMLFormElement {
-  const form = element.closest("form");
-  if (!(form instanceof HTMLFormElement)) {
-    throw new Error("Expected element to be inside a form");
-  }
-  return form;
-}
-
-function roleElement(
-  role: "button" | "link",
-  name: string,
-): HTMLElement | undefined {
-  return queryAllByRoleFast(role).find((candidate) => {
-    return (
-      candidate.textContent?.trim() === name ||
-      candidate.getAttribute("aria-label") === name
-    );
-  });
-}
-
-function requiredRoleElement(
-  role: "button" | "link",
-  name: string,
-): HTMLElement {
-  const element = roleElement(role, name);
-  if (!element) {
-    throw new Error(`Expected ${role} named ${name}`);
-  }
-  return element;
 }
 
 test("A presentation-onboarding deep link survives sign-in", async () => {
@@ -314,100 +264,6 @@ test("Satellite auto-sync is not overridden by an extra redirect", async () => {
   ).resolves.toBeVisible();
   expect(location.href).toBe(
     "https://app.okou.ai/agents?utm_source=okou-launch",
-  );
-});
-
-test("A trusted destination from callback state is preserved", async () => {
-  const redirectUrl = "https://app.okou.ai/onboarding?source=callback";
-  const identification =
-    context.mocks.deferred<ReturnType<typeof currentSignInResource>>();
-  mockSignInResource({ status: "needs_identifier" });
-  mockedClerk.clientSignInCreate.mockReturnValueOnce(identification.promise);
-
-  await setupPage({
-    context,
-    host: "app.vm0.ai",
-    path: `/sign-in?redirect_url=${encodeURIComponent(
-      redirectUrl,
-    )}#/callback?attempt=1`,
-    auth: null,
-  });
-
-  const identifier = await screen.findByLabelText("Email address");
-  await fill(identifier, "person@example.com");
-  fireEvent.submit(containingForm(identifier));
-  identification.resolve(
-    moveSignInTo({
-      identifier: "person@example.com",
-      status: "needs_first_factor",
-      supportedFirstFactors: [{ strategy: "password" }],
-    }),
-  );
-
-  await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
-  const nestedStep = new URL(location.href);
-  expect(nestedStep.searchParams.get("redirect_url")).toBe(redirectUrl);
-  expect(nestedStep.hash).toBe("#/callback?attempt=1");
-});
-
-test("A trusted destination survives every authentication step", async () => {
-  const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
-  const identification =
-    context.mocks.deferred<ReturnType<typeof currentSignInResource>>();
-  mockSignInResource({ status: "needs_identifier" });
-  mockedClerk.clientSignInCreate.mockReturnValueOnce(identification.promise);
-  await setupPage({
-    context,
-    host: "app.vm0.ai",
-    path: `/sign-in?flow=identifier&redirect_url=${encodeURIComponent(
-      redirectUrl,
-    )}&flow=second#/factor-one?attempt=1`,
-    auth: null,
-  });
-  const identifier = await screen.findByLabelText("Email address");
-  await fill(identifier, "person@example.com");
-  fireEvent.submit(containingForm(identifier));
-  identification.resolve(
-    moveSignInTo({
-      identifier: "person@example.com",
-      status: "needs_first_factor",
-      supportedFirstFactors: [
-        { strategy: "password" },
-        {
-          emailAddressId: "email_primary",
-          safeIdentifier: "p***@example.com",
-          strategy: "email_code",
-        },
-      ],
-    }),
-  );
-
-  await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
-  const nested = new URL(location.href);
-  expect(nested.searchParams.getAll("flow")).toStrictEqual([
-    "identifier",
-    "second",
-  ]);
-  expect(nested.searchParams.get("redirect_url")).toBe(redirectUrl);
-  expect(nested.hash).toBe("#/factor-one?attempt=1");
-
-  click(requiredRoleElement("button", "Edit identifier"));
-  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
-  const signUpLink = requiredRoleElement("link", "Sign up");
-  const signUp = new URL(
-    signUpLink.getAttribute("href") ?? "",
-    location.origin,
-  );
-  expect(signUp.pathname).toBe("/sign-up");
-  expect(signUp.searchParams.get("redirect_url")).toBe(redirectUrl);
-  click(signUpLink);
-  await waitFor(() => {
-    expect(
-      screen.getByRole("heading", { name: "Create your account" }),
-    ).toBeVisible();
-  });
-  expect(new URL(location.href).searchParams.get("redirect_url")).toBe(
-    redirectUrl,
   );
 });
 

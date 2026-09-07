@@ -6,6 +6,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      // Hosted Clerk components render through the Clerk core in a real
+      // browser; page tests observe their mount contract instead.
+      "@clerk/react": path.resolve(
+        __dirname,
+        "./src/test/mocks/clerk-react.ts",
+      ),
       "@clerk/shared/loadClerkJsScript": path.resolve(
         __dirname,
         "./src/test/mocks/clerk-resource.ts",

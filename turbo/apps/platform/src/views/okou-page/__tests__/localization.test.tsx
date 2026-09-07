@@ -14,6 +14,7 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import frFRAgents from "../../../i18n/locales/fr-FR/agents.json";
 import frFRAgentsUrl from "../../../i18n/locales/fr-FR/agents.json?url";
 import frFRCommonUrl from "../../../i18n/locales/fr-FR/common.json?url";
@@ -93,10 +94,7 @@ function waitForFastRole(
   });
 }
 
-async function openAddAccount(
-  addAccountLabel: string,
-  dialogTitle: string,
-): Promise<HTMLElement> {
+async function openAddAccount(addAccountLabel: string): Promise<void> {
   const trigger = await waitFor(() => {
     const button = accountMenuTrigger();
     if (!button) {
@@ -106,17 +104,14 @@ async function openAddAccount(
   });
   click(trigger);
   const menu = await screen.findByRole("menu");
+  const openSignInCalls = mockedClerk.openSignIn.mock.calls.length;
   click(within(menu).getByText(addAccountLabel));
-  return screen.findByRole("dialog", { name: dialogTitle });
-}
-
-async function closeAddAccount(
-  dialog: HTMLElement,
-  closeLabel: string,
-): Promise<void> {
-  click(fastRoleElement("button", closeLabel, dialog));
   await waitFor(() => {
-    expect(dialog).not.toBeInTheDocument();
+    expect(mockedClerk.openSignIn.mock.calls).toHaveLength(openSignInCalls + 1);
+  });
+  expect(mockedClerk.openSignIn).toHaveBeenLastCalledWith({
+    fallbackRedirectUrl: "/",
+    forceRedirectUrl: "/",
   });
 }
 
@@ -149,7 +144,7 @@ async function closeDialog(dialog: HTMLElement, label: string): Promise<void> {
   });
 }
 
-test("Authentication copy falls back without changing the app language", async () => {
+test("An unavailable authentication language falls back without changing the app language", async () => {
   const clerk = context.mocks.clerk();
   vi.spyOn(console, "error").mockImplementation(() => {});
   clerk.localizationUnavailable("pt-BR");
@@ -161,11 +156,7 @@ test("Authentication copy falls back without changing the app language", async (
   expect(
     screen.getByText("Escolha seu idioma preferido para a interface do VM0"),
   ).toBeVisible();
-  const authentication = await openAddAccount(
-    "Adicionar conta",
-    "Entrar no VM0",
-  );
-  expect(within(authentication).getByLabelText("Seu e-mail")).toBeVisible();
+  await openAddAccount("Adicionar conta");
   expect(document.documentElement).toHaveAttribute("lang", "pt-BR");
   expect(clerk.localizationRequests).toStrictEqual(["pt-BR"]);
 });
@@ -343,39 +334,19 @@ test("Only the selected authentication language is loaded and reused", async () 
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
-  const frenchAuthentication = await openAddAccount(
-    "Ajouter un compte",
-    "Se connecter à VM0",
-  );
-  expect(
-    within(frenchAuthentication).getByLabelText("Adresse e-mail"),
-  ).toBeVisible();
-  await closeAddAccount(frenchAuthentication, "Fermer");
+  await openAddAccount("Ajouter un compte");
 
   await selectLanguage("Langue", "English");
   await expect(
     screen.findByRole("heading", { name: "Preference" }),
   ).resolves.toBeInTheDocument();
-  const englishAuthentication = await openAddAccount(
-    "Add account",
-    "Sign in to VM0",
-  );
-  expect(
-    within(englishAuthentication).getByLabelText("Email address"),
-  ).toBeVisible();
-  await closeAddAccount(englishAuthentication, "Close");
+  await openAddAccount("Add account");
 
   await selectLanguage("Language", "Français");
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
-  const reusedFrenchAuthentication = await openAddAccount(
-    "Ajouter un compte",
-    "Se connecter à VM0",
-  );
-  expect(
-    within(reusedFrenchAuthentication).getByLabelText("Adresse e-mail"),
-  ).toBeVisible();
+  await openAddAccount("Ajouter un compte");
   expect(clerk.localizationRequests).toStrictEqual(["fr-FR"]);
 });
 

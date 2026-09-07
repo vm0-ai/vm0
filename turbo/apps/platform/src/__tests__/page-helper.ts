@@ -220,6 +220,9 @@ function installClerkBootstrap(
     // The page selects the publishable key by hostname. Read the same source
     // the app reads so the two never disagree for a preview host.
     publishableKey: resolvePlatformRuntimeConfig().clerkPublishableKey,
+    resolveClerkUI: () => {
+      return;
+    },
   };
   signal.addEventListener(
     "abort",

@@ -143,8 +143,9 @@ const activateDesktopOrganization$ = command(
       location.replace(desktopAuthUrl("start"));
       return;
     }
-    // Suppress Clerk's default task navigation; Auth v2 handles required tasks
-    // below while the global organization watcher yields to this protocol.
+    // Suppress Clerk's default task navigation; required tasks continue on
+    // the sign-in tasks route below while the global organization watcher
+    // yields to this protocol.
     await waitForDesktopOperation(
       clerk.setActive({
         organization,

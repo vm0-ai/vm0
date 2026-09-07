@@ -77,10 +77,7 @@ import { setupConnectorCallbackPage$ } from "./connectors-page/connector-callbac
 import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-setup.ts";
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import {
-  setupSignInV2Page$,
-  setupSignUpV2Page$,
-} from "./auth-v2-page-setup.ts";
+import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
@@ -195,19 +192,19 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signIn,
-    setup: setupPageWrapper(setupSignInV2Page$),
+    setup: setupPageWrapper(setupSignInPage$),
   },
   {
     path: ROUTES.signInCatchAll,
-    setup: setupPageWrapper(setupSignInV2Page$),
+    setup: setupPageWrapper(setupSignInPage$),
   },
   {
     path: ROUTES.signUp,
-    setup: setupPageWrapper(setupSignUpV2Page$),
+    setup: setupPageWrapper(setupSignUpPage$),
   },
   {
     path: ROUTES.signUpCatchAll,
-    setup: setupPageWrapper(setupSignUpV2Page$),
+    setup: setupPageWrapper(setupSignUpPage$),
   },
 
   // --- New routes ---
@@ -537,7 +534,6 @@ const completeBootstrap$ = command(
     render();
 
     // These public protocol pages also run before an embedded Clerk session exists.
-    // Auth v2 task continuations retain the same ownership via redirect_url.
     if (isDesktopAuthFlow()) {
       await Promise.all([
         set(setupClerk$, signal),

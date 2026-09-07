@@ -1,0 +1,297 @@
+import { act, screen } from "@testing-library/react";
+import { expect, test } from "vitest";
+
+import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
+import {
+  queryAllByRoleFast,
+  setupPage,
+  startPage,
+} from "../../../__tests__/page-helper.ts";
+import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+function setupSignedOutPage(path: string): Promise<void> {
+  return setupPage({ auth: null, context, host: "app.vm0.ai", path });
+}
+
+function okouBrandLink(): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("aria-label") === "Go to Okou home";
+  });
+  if (!link) {
+    throw new Error("Okou brand link not found");
+  }
+  return link;
+}
+
+function clerkProviderConfig(): HTMLElement {
+  return screen.getByTestId("clerk-provider-config");
+}
+
+test("The hosted sign-in form renders with Google One Tap on the base route", async () => {
+  context.mocks.browser.matchMedia(false);
+  const clerk = context.mocks.clerk();
+  await setupSignedOutPage("/sign-in");
+
+  const signIn = screen.getByTestId("clerk-sign-in");
+  expect(signIn).toHaveAttribute("data-clerk-routing", "path");
+  expect(signIn).toHaveTextContent("/sign-in");
+  expect(signIn).toHaveAttribute(
+    "data-clerk-force-redirect-url",
+    "https://app.vm0.ai",
+  );
+  expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+    "data-sign-in-force-redirect-url",
+    "https://app.vm0.ai",
+  );
+  expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+    "data-sign-up-force-redirect-url",
+    "https://app.vm0.ai",
+  );
+  expect(screen.getByAltText("VM0")).toHaveAttribute(
+    "src",
+    platformVm0LogoDarkImg,
+  );
+  expect(document.title).toBe("Sign in | VM0");
+  expect(clerk.uiRequests).toStrictEqual([
+    { domain: undefined, publishableKey: "test_production_key" },
+  ]);
+  expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+});
+
+test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
+  await setupSignedOutPage("/sign-in/tasks/choose-organization");
+
+  expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/sign-in");
+  expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
+  expect(document.title).toBe("Sign in | VM0");
+});
+
+test("The hosted sign-up form renders with an allowed redirect URL", async () => {
+  const redirectUrl = PRESENTATION_ONBOARDING_URL;
+  await setupSignedOutPage(
+    `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+  );
+
+  const signUp = screen.getByTestId("clerk-sign-up");
+  expect(signUp).toHaveAttribute("data-clerk-routing", "path");
+  expect(signUp).toHaveTextContent("/sign-up");
+  expect(signUp).toHaveAttribute(
+    "data-clerk-fallback-redirect-url",
+    redirectUrl,
+  );
+  expect(signUp).toHaveAttribute("data-clerk-force-redirect-url", redirectUrl);
+  expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
+  expect(document.title).toBe("Sign up | VM0");
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-sign-in-start-action-link",
+    "Sign up",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-user-banned-error",
+    expect.stringContaining("support@vm0.ai"),
+  );
+});
+
+test("The hosted form waits behind the skeleton until Clerk mounts it", async () => {
+  const clerk = context.mocks.clerk();
+  const clerkLoad = clerk.runtimePending();
+  const authComponent = clerk.deferAuthComponentMount();
+
+  const page = await startPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-up",
+  });
+
+  const appSkeleton = await screen.findByTestId("app-skeleton");
+  await expect(
+    screen.findByTestId("clerk-auth-loading"),
+  ).resolves.toBeInTheDocument();
+  expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+  expect(screen.getByTestId("clerk-sign-up")).toBeEmptyDOMElement();
+  expect(clerk.uiRequests).toHaveLength(1);
+
+  await act(async () => {
+    clerkLoad.resolve();
+    await clerkLoad.promise;
+  });
+
+  expect(screen.getByTestId("clerk-auth-loading")).toBeInTheDocument();
+  expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+
+  act(() => {
+    authComponent.mount();
+  });
+  await page.ready;
+
+  expect(screen.getByTestId("clerk-sign-up")).toHaveTextContent("/sign-up");
+  expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+  expect(screen.queryByTestId("clerk-auth-loading")).not.toBeInTheDocument();
+});
+
+test("A trusted Okou destination brands the hosted sign-in", async () => {
+  context.mocks.browser.matchMedia(false);
+  const redirectUrl = "https://app.okou.ai/_/skeleton";
+  await setupSignedOutPage(
+    `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+  );
+
+  const signIn = screen.getByTestId("clerk-sign-in");
+  expect(signIn).toHaveAttribute("data-clerk-force-redirect-url", redirectUrl);
+  expect(signIn).toHaveAttribute("data-clerk-logo-placement", "none");
+  expect(signIn).not.toHaveAttribute("data-clerk-logo-image-url");
+  expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+    "data-sign-in-force-redirect-url",
+    redirectUrl,
+  );
+  expect(document.title).toBe("Sign in | Okou");
+  expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
+  expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-sign-in-start-title",
+    "Sign in to Okou",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-sign-in-email-code-subtitle",
+    "to continue to Okou",
+  );
+  expect(clerkProviderConfig()).toHaveAttribute(
+    "data-clerk-user-banned-error",
+    expect.stringContaining("support@okou.ai"),
+  );
+});
+
+test("Okou auth intent survives Clerk moving the redirect into the hash", async () => {
+  const redirectUrl = "https://app.okou.ai/onboarding?source=auth-switch";
+  await setupSignedOutPage(
+    `/sign-up#/?redirect_url=${encodeURIComponent(redirectUrl)}`,
+  );
+
+  expect(screen.getByTestId("clerk-sign-up")).toHaveAttribute(
+    "data-clerk-force-redirect-url",
+    redirectUrl,
+  );
+  expect(document.title).toBe("Sign up | Okou");
+  expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+});
+
+test("An untrusted redirect URL does not control the auth brand", async () => {
+  context.mocks.browser.matchMedia(false);
+  const redirectUrl = "https://app.okou.ai.evil.example/sign-in";
+  await setupSignedOutPage(
+    `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+  );
+
+  expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+    "data-clerk-force-redirect-url",
+    "https://app.vm0.ai",
+  );
+  expect(document.title).toBe("Sign in | VM0");
+  expect(screen.getByAltText("VM0")).toHaveAttribute(
+    "src",
+    platformVm0LogoDarkImg,
+  );
+  expect(screen.queryByText("Okou")).not.toBeInTheDocument();
+});
+
+test("Ad-attributed sign-ups continue to onboarding with their attribution", async () => {
+  await setupSignedOutPage(
+    "/sign-up?gclid=click-123&utm_campaign=summer#/verify?step=code",
+  );
+
+  const redirectUrl = new URL(
+    screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+  );
+  expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+  expect(redirectUrl.pathname).toBe("/onboarding");
+  expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+  expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+  expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
+});
+
+test("Sign-up redirects to sibling origins of the current host are kept", async () => {
+  const redirectUrl = "https://www.vm0.ai/connector/success?vm0_theme=light";
+  await setupSignedOutPage(
+    `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
+  );
+
+  expect(
+    screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
+  ).toBe(redirectUrl);
+});
+
+test("Sign-up redirects to other environments fall back to onboarding", async () => {
+  await setupSignedOutPage(
+    "/sign-up?redirect_url=https%3A%2F%2Fstaging-www.omby.ai%2Fconnector%2Fsuccess",
+  );
+
+  expect(
+    screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
+  ).toBe("https://app.vm0.ai/onboarding");
+});
+
+test("Hosted auth pages scroll inside the root safe area", async () => {
+  context.mocks.browser.matchMedia(false);
+  await setupSignedOutPage("/sign-up");
+
+  const layout = screen.getByTestId("app-auth-layout");
+  expect(layout).toHaveClass("h-full");
+  expect(layout).toHaveClass("min-h-0");
+  expect(layout).toHaveClass("overflow-y-auto");
+  expect(layout).toHaveClass("overflow-x-hidden");
+  expect(layout).not.toHaveClass("overflow-hidden");
+
+  const logoImage = screen.getByAltText("VM0");
+  expect(logoImage).toHaveAttribute("crossorigin", "anonymous");
+  const logo = logoImage.closest("a");
+  expect(logo).toHaveClass("left-6");
+  expect(logo).toHaveClass("top-6");
+
+  const themeToggle = screen.getByLabelText("Toggle theme");
+  expect(themeToggle.className).toContain("var(--sat)");
+  expect(themeToggle.className).toContain("var(--sar)");
+});
+
+test("Clerk checkboxes keep their native size inside the styled card", async () => {
+  await setupSignedOutPage("/sign-in");
+
+  const clerkSurface = screen.getByTestId("clerk-sign-in");
+  const card = document.createElement("div");
+  card.className = "cl-card";
+  const checkbox = document.createElement("input");
+  checkbox.className = "cl-formFieldInput cl-checkbox";
+  checkbox.type = "checkbox";
+  checkbox.checked = true;
+  card.append(checkbox);
+  clerkSurface.append(card);
+
+  expect(getComputedStyle(checkbox).width).toBe("16px");
+  expect(getComputedStyle(checkbox).height).toBe("16px");
+});
+
+test("The Clerk passkey action renders as a full-width outline control", async () => {
+  await setupSignedOutPage("/sign-in");
+
+  const clerkSurface = screen.getByTestId("clerk-sign-in");
+  const action = document.createElement("div");
+  action.className = "cl-footerAction cl-footerAction__usePasskey";
+  const link = document.createElement("a");
+  link.className = "cl-footerActionLink cl-footerActionLink__usePasskey";
+  link.href = "#";
+  link.textContent = "Use passkey instead";
+  action.append(link);
+  clerkSurface.append(action);
+
+  expect(getComputedStyle(action).width).toBe("100%");
+  expect(getComputedStyle(link).display).toBe("inline-flex");
+  expect(getComputedStyle(link).height).toBe("36px");
+  expect(getComputedStyle(link).width).toBe("100%");
+  expect(getComputedStyle(link).borderStyle).toBe("solid");
+});
