@@ -11,6 +11,33 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.0](https://github.com/vm0-ai/vm0/compare/app-v0.861.0...app-v0.862.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** add artifact link kind icons ([#32384](https://github.com/vm0-ai/vm0/issues/32384)) ([f3090b0](https://github.com/vm0-ai/vm0/commit/f3090b04e14bc6d3bfd8b65a8b7577a3c209e6c0))
+
+
+### Bug Fixes
+
+* **platform:** show thread identity in mobile chat headers ([#32373](https://github.com/vm0-ai/vm0/issues/32373)) ([fc38d72](https://github.com/vm0-ai/vm0/commit/fc38d72fc4cc4330db7d657b0104bb84c6b0afd5))
+
+
+### Refactoring
+
+* **platform:** canonicalize image recognition usage naming ([#32417](https://github.com/vm0-ai/vm0/issues/32417)) ([6303439](https://github.com/vm0-ai/vm0/commit/630343907b93980f2db85f2a3cac0583868af19d)), closes [#32410](https://github.com/vm0-ai/vm0/issues/32410)
+* remove chat thread pin shortcut feature switch ([#32407](https://github.com/vm0-ai/vm0/issues/32407)) ([bae37fd](https://github.com/vm0-ai/vm0/commit/bae37fde00af760986261b8cd5499e59a6dc9131))
+* remove pinned agent avatar feature switch ([#32405](https://github.com/vm0-ai/vm0/issues/32405)) ([a3e3f9a](https://github.com/vm0-ai/vm0/commit/a3e3f9ad89acb8581c3d241c1936a98fcab56eb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.0
+    * @okouai/core bumped to 8.634.0
+
 ## [0.861.0](https://github.com/vm0-ai/vm0/compare/app-v0.860.0...app-v0.861.0) (2026-09-07)
 
 

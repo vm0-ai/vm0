@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.634.0](https://github.com/vm0-ai/vm0/compare/core-v8.633.1...core-v8.634.0) (2026-09-07)
+
+
+### Features
+
+* **core:** enable shared worker realtime for staff ([#32403](https://github.com/vm0-ai/vm0/issues/32403)) ([6e78edf](https://github.com/vm0-ai/vm0/commit/6e78edfc9b510bbc3e47d0c0dd509b71aebdded1))
+* **platform:** add artifact link kind icons ([#32384](https://github.com/vm0-ai/vm0/issues/32384)) ([f3090b0](https://github.com/vm0-ai/vm0/commit/f3090b04e14bc6d3bfd8b65a8b7577a3c209e6c0))
+
+
+### Refactoring
+
+* remove chat thread pin shortcut feature switch ([#32407](https://github.com/vm0-ai/vm0/issues/32407)) ([bae37fd](https://github.com/vm0-ai/vm0/commit/bae37fde00af760986261b8cd5499e59a6dc9131))
+* remove pinned agent avatar feature switch ([#32405](https://github.com/vm0-ai/vm0/issues/32405)) ([a3e3f9a](https://github.com/vm0-ai/vm0/commit/a3e3f9ad89acb8581c3d241c1936a98fcab56eb9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.0
+
 ## [8.633.1](https://github.com/vm0-ai/vm0/compare/core-v8.633.0...core-v8.633.1) (2026-09-07)
 
 

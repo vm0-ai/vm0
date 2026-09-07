@@ -8,6 +8,23 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.566.0](https://github.com/vm0-ai/vm0/compare/api-v1.565.0...api-v1.566.0) (2026-09-07)
+
+
+### Features
+
+* **api:** add runner ssh jit authority and atomic host-key pinning ([#32394](https://github.com/vm0-ai/vm0/issues/32394)) ([ca08d94](https://github.com/vm0-ai/vm0/commit/ca08d9466fc4de5581cd49b929767dfbca266ff2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.0
+    * @okouai/core bumped to 8.634.0
+    * @okouai/db bumped to 1.245.9
+    * @okouai/pi-agent-runtime bumped to 1.21.20
+
 ## [1.565.0](https://github.com/vm0-ai/vm0/compare/api-v1.564.1...api-v1.565.0) (2026-09-07)
 
 
