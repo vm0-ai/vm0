@@ -7,6 +7,7 @@ import {
   type ChatThreadEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import {
   click,
   queryAllByRoleFast,
@@ -44,6 +45,9 @@ async function prepare(caseId: number, enabled = true, tied = false) {
   ];
   await seedChatListCache(caseId, auth, snapshot);
   installChatListAgent(context);
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
   const stream = installChatListStream(context, { caseId, snapshot });
   await setupPage({
     context,
@@ -51,6 +55,9 @@ async function prepare(caseId: number, enabled = true, tied = false) {
     auth,
     featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: enabled },
   });
+  // The shell can be ready while storage is still opening. Catch-up reaches
+  // the event endpoint after reading the seeded cache; still assert the DOM.
+  await stream.eventsRequested;
   await waitFor(() => {
     return expect(sidebarThreadTitles()).toStrictEqual([
       "First pin",

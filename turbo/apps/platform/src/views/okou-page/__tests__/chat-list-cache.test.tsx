@@ -1,11 +1,13 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import {
   chatThreadMetadataContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 
 import {
   queryAllByRoleFast,
@@ -26,6 +28,82 @@ import {
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
+
+beforeEach(() => {
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
+});
+
+test("Cached pins load after storage opens without waiting for remote synchronization", async () => {
+  const auth = chatListAuth(81);
+  const pinnedAt = "2026-09-01T00:00:00Z";
+  const cached = [
+    chatListThread(1, "First cached pin", { pinnedAt, pinOrder: "a0" }),
+    chatListThread(2, "Second cached pin", { pinnedAt, pinOrder: "a1" }),
+    chatListThread(3, "Regular cached chat"),
+  ];
+  await seedChatListCache(81, auth, cached);
+  const [database] = await indexedDB.databases();
+  const opened = context.mocks.deferred<void>();
+  let deliverOpen: (() => void) | undefined;
+  let released = false;
+  const open = indexedDB.open.bind(indexedDB);
+  vi.spyOn(indexedDB, "open").mockImplementation((name, version) => {
+    const request = open(name, version);
+    if (name === database?.name) {
+      const dispatch = request.dispatchEvent.bind(request);
+      vi.spyOn(request, "dispatchEvent").mockImplementation((event) => {
+        if (event.type === "success" && !released) {
+          deliverOpen = () => {
+            dispatch(event);
+          };
+          opened.resolve();
+          return true;
+        }
+        return dispatch(event);
+      });
+    }
+    return request;
+  });
+  const releaseStorage = () => {
+    released = true;
+    deliverOpen?.();
+    deliverOpen = undefined;
+  };
+  context.signal.addEventListener("abort", releaseStorage, { once: true });
+  const remote = context.mocks.deferred<void>();
+  const { eventsRequested } = installChatListStream(context, {
+    caseId: 81,
+    snapshot: cached,
+    remoteGate: remote.promise,
+  });
+  installChatListAgent(context);
+
+  await setupPage({
+    context,
+    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
+    auth,
+    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
+  });
+  await opened.promise;
+  expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+  expect(sidebarThreadTitles()).toStrictEqual([]);
+
+  act(releaseStorage);
+  await eventsRequested;
+  await waitFor(() => {
+    expect(sidebarThreadTitles()).toStrictEqual([
+      "First cached pin",
+      "Second cached pin",
+      "Regular cached chat",
+    ]);
+  });
+  expect(remote.settled()).toBeFalsy();
+});
 
 test("Cached conversations appear before remote synchronization", async () => {
   const auth = chatListAuth(1);
@@ -67,7 +145,7 @@ test("A complete cached conversation list remains navigable", async () => {
   });
   await seedChatListCache(3, auth, cached);
   const remote = context.mocks.deferred<void>();
-  installChatListStream(context, {
+  const { eventsRequested } = installChatListStream(context, {
     caseId: 3,
     snapshot: cached,
     remoteGate: remote.promise,
@@ -79,6 +157,7 @@ test("A complete cached conversation list remains navigable", async () => {
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
   });
+  await eventsRequested;
 
   const expected = Array.from({ length: 26 }, (_, offset) => {
     return `Cached conversation ${26 - offset}`;
@@ -105,7 +184,7 @@ test("Rename dialog uses the latest cached title", async () => {
   await seedChatListCache(11, auth, [cached], [rename]);
   const remote = context.mocks.deferred<void>();
   const detail = context.mocks.deferred<void>();
-  installChatListStream(context, {
+  const { eventsRequested } = installChatListStream(context, {
     caseId: 11,
     snapshot: [cached],
     events: [rename],
@@ -127,6 +206,7 @@ test("Rename dialog uses the latest cached title", async () => {
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
   });
+  await eventsRequested;
 
   await waitFor(() => {
     expect(sidebarThreadTitles()).toStrictEqual(["Cached renamed title"]);
@@ -199,7 +279,7 @@ test("The unread filter applies to cached conversations", async () => {
   const read = chatListThread(16, "Read cached conversation");
   await seedChatListCache(16, auth, [unread, read]);
   const remote = context.mocks.deferred<void>();
-  installChatListStream(context, {
+  const { eventsRequested } = installChatListStream(context, {
     caseId: 16,
     snapshot: [unread, read],
     remoteGate: remote.promise,
@@ -216,6 +296,7 @@ test("The unread filter applies to cached conversations", async () => {
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
   });
+  await eventsRequested;
 
   await waitFor(() => {
     expect(sidebarThreadTitles()).toStrictEqual([
