@@ -2219,7 +2219,6 @@
       "title": "¿Reemplazar el borrador del editor?"
     },
     "run": {
-      "all": "Todo",
       "automatedRun": "Ejecución automatizada",
       "collapseGroupedHistory": "Contraer el historial de ejecuciones agrupadas",
       "collapseHistoryMessage": "Contraer mensaje del historial: {{message}}",
@@ -2270,7 +2269,6 @@
       "keepGoingAt": "Sigue adelante · {{timestamp}}",
       "modelChangedTo": "Modelo cambiado a {{model}}",
       "queueEllipsis": "cola...",
-      "recent": "Reciente",
       "selectedModelAppliesAfterCurrentRun": "Tu modelo seleccionado {{model}} entrará en vigor después de esta ejecución",
       "thinking": {
         "assembling": "Ensamblando las piezas...",
@@ -2289,7 +2287,6 @@
       "waitingIn": "Esperando",
       "worked": "Trabajo realizado",
       "workedFor": "Trabajo realizado durante {{duration}}",
-      "workHistoryRange": "Rango del historial de trabajo",
       "workingFor": "Trabajando durante {{duration}}"
     },
     "sharing": {
