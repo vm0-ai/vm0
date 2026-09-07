@@ -337,6 +337,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatDesktopSelection]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Offer desktop passage actions for selections anywhere within one assistant reply.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@vm0.ai",
     description:

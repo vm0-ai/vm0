@@ -104,7 +104,7 @@ function textNodeContaining(
       node instanceof Text &&
       node.data.includes(text) &&
       node.parentElement?.closest(
-        ".okou-chat-bubble-assistant, [data-feedback-source]",
+        '[data-role="assistant"], [data-feedback-source]',
       )
     ) {
       matches.push(node);
@@ -154,10 +154,7 @@ function visibleSelectionRange(
   return range;
 }
 
-export async function selectPassage(
-  passage: string,
-  occurrence = 0,
-): Promise<void> {
+function setPassageSelection(passage: string, occurrence = 0): void {
   const node = textNodeContaining(passage, occurrence);
   const start = node.data.indexOf(passage);
   const target = node.parentElement;
@@ -178,7 +175,30 @@ export async function selectPassage(
   selection.removeAllRanges();
   selection.addRange(range);
   fireEvent.mouseUp(target, { button: 0 });
+}
+
+export async function selectPassage(
+  passage: string,
+  occurrence = 0,
+): Promise<void> {
+  setPassageSelection(passage, occurrence);
   await findButton("Quote");
+}
+
+export async function selectPassageWithoutActions(
+  passage: string,
+  occurrence = 0,
+): Promise<void> {
+  setPassageSelection(passage, occurrence);
+  await waitFor(() => {
+    if (
+      document.querySelector(
+        '[data-radix-popper-content-wrapper] button[aria-keyshortcuts="q"]',
+      )
+    ) {
+      throw new Error("Out-of-scope selection still exposes passage actions");
+    }
+  });
 }
 
 export async function selectAcrossPassages(
