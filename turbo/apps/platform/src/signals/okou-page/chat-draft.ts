@@ -831,7 +831,17 @@ function createDraftDocumentSignals() {
  * it can never load and every send is rejected, so removing them and saying so
  * is the only state the user can act on.
  */
-function createPruneUnavailableAttachments(
+/**
+ * Makes restored attachments usable: drops the ones whose file is gone, then
+ * rebuilds any annotated copy the draft is missing.
+ *
+ * Both jobs belong together because both restore paths — `seed$` on page load
+ * and `restoreAttachments$` on paste — end here, and an attachment that
+ * reaches either one without the rebuild is stuck. Marks with no copy start as
+ * `pending`, so nothing would move that state and the composer would refuse to
+ * send with no affordance to fix it.
+ */
+function createReconcileRestoredAttachments(
   internalAttachments$: State<ChatAttachment[]>,
 ): Command<Promise<boolean>, [readonly ChatAttachment[], AbortSignal]> {
   return command(
@@ -853,20 +863,38 @@ function createPruneUnavailableAttachments(
       const unavailable = candidates.filter((attachment, index) => {
         return infos[index] === null && currentAttachments.includes(attachment);
       });
-      if (unavailable.length === 0) {
-        return false;
-      }
-      set(internalAttachments$, (prev) => {
-        return prev.filter((attachment) => {
-          return !unavailable.includes(attachment);
+      if (unavailable.length > 0) {
+        set(internalAttachments$, (prev) => {
+          return prev.filter((attachment) => {
+            return !unavailable.includes(attachment);
+          });
         });
-      });
-      reportUnavailableAttachments(
-        unavailable.map((attachment) => {
-          return attachment.filename;
-        }),
+        reportUnavailableAttachments(
+          unavailable.map((attachment) => {
+            return attachment.filename;
+          }),
+        );
+      }
+
+      // The annotated copy is what the model reads, so a restored draft only
+      // still means what the user drew once it exists. Awaited rather than
+      // left running: both callers use the result solely to decide whether to
+      // re-save, and that save should land after the copy exists rather than
+      // persisting the same marks-without-copy shape again.
+      await Promise.all(
+        candidates
+          .filter((attachment) => {
+            return (
+              !unavailable.includes(attachment) &&
+              get(attachment.annotatedFileId$) === null
+            );
+          })
+          .map((attachment) => {
+            return set(attachment.retryAnnotationUpload$, signal);
+          }),
       );
-      return true;
+      signal.throwIfAborted();
+      return unavailable.length > 0;
     },
   );
 }
@@ -877,14 +905,14 @@ function createDraftLifecycleSignals({
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
-  pruneUnavailableAttachments$,
+  reconcileRestoredAttachments$,
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
-  pruneUnavailableAttachments$: Command<
+  reconcileRestoredAttachments$: Command<
     Promise<boolean>,
     [readonly ChatAttachment[], AbortSignal]
   >;
@@ -921,7 +949,11 @@ function createDraftLifecycleSignals({
       ) {
         set(draftDocument.takeRestoredUserMessage$);
       }
-      return await set(pruneUnavailableAttachments$, value.attachments, signal);
+      return await set(
+        reconcileRestoredAttachments$,
+        value.attachments,
+        signal,
+      );
     },
   );
 
@@ -982,12 +1014,12 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
-  const pruneUnavailableAttachments$ =
-    createPruneUnavailableAttachments(internalAttachments$);
+  const reconcileRestoredAttachments$ =
+    createReconcileRestoredAttachments(internalAttachments$);
 
   const restoreAttachments$ = command(
     async (
-      { get, set },
+      { set },
       persisted: RestorableAttachment[],
       signal: AbortSignal,
     ): Promise<boolean> => {
@@ -998,23 +1030,7 @@ export function createDraftSignals(): DraftSignals {
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
-      // Rebuild any annotated copy the draft is missing. A draft saved while
-      // its copy was still uploading carries the marks alone, and the copy is
-      // what the model actually reads, so regenerating it is the only way the
-      // restored draft still means what the user drew. Started before the
-      // prune and awaited after it, so the two run together and this command
-      // still owns both.
-      const rebuilt = restored
-        .filter((attachment) => {
-          return get(attachment.annotatedFileId$) === null;
-        })
-        .map((attachment) => {
-          return set(attachment.retryAnnotationUpload$, signal);
-        });
-      const pruned = await set(pruneUnavailableAttachments$, restored, signal);
-      await Promise.all(rebuilt);
-      signal.throwIfAborted();
-      return pruned;
+      return await set(reconcileRestoredAttachments$, restored, signal);
     },
   );
 
@@ -1040,7 +1056,7 @@ export function createDraftSignals(): DraftSignals {
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
-    pruneUnavailableAttachments$,
+    reconcileRestoredAttachments$,
   });
 
   return {
