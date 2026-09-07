@@ -323,9 +323,13 @@ test("Manage work waiting in the queue", async () => {
   );
   publishRunUpdate();
   await expect(screen.findByText("Queued audit")).resolves.toBeVisible();
-  await expect(findButton("Stop")).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(queryButton("Stop")).toBeVisible();
+  });
 
-  click(await findButton("Stop"));
+  const stopButton = requiredButton("Stop", document.body);
+  expect(stopButton).toBeVisible();
+  click(stopButton);
   events.push(
     cancelledEvent({ id: "second-cancelled", runId: RUN_B, seqId: 10 }),
     {
