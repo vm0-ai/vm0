@@ -717,10 +717,15 @@ mod tests {
         let selection_digest = "b".repeat(64);
         let lease_token = "44754115-d375-4c46-aea7-a55bd1b61ec7";
         let content = b"# Task Group: validated\n";
+        let secondary_content = b"Validated maintenance details\n";
         let file_hash = hex::encode(Sha256::digest(content));
+        let secondary_file_hash = hex::encode(Sha256::digest(secondary_content));
         let validated_version = content_hash::compute_content_hash(
             storage_id,
-            std::iter::once(("MEMORY.md", file_hash.as_str())),
+            [
+                ("MEMORY.md", file_hash.as_str()),
+                ("details.md", secondary_file_hash.as_str()),
+            ],
         );
         let expected_attestation = json!({
             "schemaVersion": 2,
@@ -757,8 +762,8 @@ mod tests {
                     "success": true,
                     "versionId": server_version,
                     "storageName": "memory",
-                    "size": content.len(),
-                    "fileCount": 1,
+                    "size": content.len() + secondary_content.len(),
+                    "fileCount": 2,
                 }),
             )
             .await;
@@ -776,6 +781,7 @@ mod tests {
         let memory_root = dir.path().join("memory");
         std::fs::create_dir_all(&memory_root).unwrap();
         std::fs::write(memory_root.join("MEMORY.md"), content).unwrap();
+        std::fs::write(memory_root.join("details.md"), secondary_content).unwrap();
         let launch_payload_file = dir.path().join("pi-launch-payload/payload.json");
         std::fs::create_dir_all(launch_payload_file.parent().unwrap()).unwrap();
         std::fs::write(
