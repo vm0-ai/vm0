@@ -45,7 +45,7 @@ const authV1CheckboxLabelClass =
   "text-sm font-medium leading-5 text-foreground";
 const authV1SignOutCheckboxLabelClass = cn(
   authV1CheckboxLabelClass,
-  "min-w-0 flex-1 cursor-pointer p-0 text-left",
+  "ms-1.5 min-w-0 flex-1 cursor-pointer p-0 text-left",
 );
 const authV1PasswordToggleClass = cn(
   buttonVariants({ size: "icon", variant: "ghost" }),
@@ -166,7 +166,8 @@ export function getAuthV1ComponentAppearance(
       // aligned with the shared Checkbox without specificity overrides.
       formFieldInput__signOutOfOtherSessions: authV1SignOutCheckboxInputClass,
       // This state exposes Clerk's public base radio-label element rather than
-      // a field modifier, so keep the label aligned through that stable slot.
+      // a field modifier. Its logical start margin reproduces the shared
+      // Checkbox gap without selecting Clerk's anonymous wrapper.
       formFieldRadioLabel: authV1SignOutCheckboxLabelClass,
       formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",

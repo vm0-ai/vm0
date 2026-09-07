@@ -150,7 +150,12 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(signOutCheckboxInputClasses).toContain("checked:bg-primary");
   expect(signOutCheckboxInputClasses).toContain("checked:before:bg-on-filled");
   expect(signOutCheckboxInputClasses).toContain("focus-visible:ring-2");
-  expect(elementClasses(appearance, "formFieldRadioLabel")).toContain("flex-1");
+  const signOutCheckboxLabelClasses = elementClasses(
+    appearance,
+    "formFieldRadioLabel",
+  );
+  expect(signOutCheckboxLabelClasses).toContain("ms-1.5");
+  expect(signOutCheckboxLabelClasses).toContain("flex-1");
   expect(appearance.elements).not.toHaveProperty(
     "formFieldRadioLabel__signOutOfOtherSessions",
   );
