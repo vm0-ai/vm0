@@ -11,6 +11,13 @@ import {
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 
+// Clerk always adds `crossorigin="anonymous"` to its logo image. The public
+// static asset hosts intentionally omit CORS headers, so render the real brand
+// asset through the supported logoBox slot and give Clerk a transparent,
+// self-contained image to preserve its accessible linked-logo structure.
+const TRANSPARENT_CLERK_LOGO_IMAGE_URL =
+  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+
 function authV1LogoImageUrl(
   theme: "light" | "dark",
   brandName: BrandName,
@@ -33,11 +40,14 @@ export function getAuthV1SignInAppearance(
   theme: "light" | "dark",
   authBrand: AuthBrandContext,
 ): ClerkAppearance {
+  const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
+  const logoWidth = authBrand.brandName === "Okou" ? "4.75rem" : "4.167rem";
+
   return {
     theme: "simple",
     options: {
       elevation: "raised",
-      logoImageUrl: authV1LogoImageUrl(theme, authBrand.brandName),
+      logoImageUrl: TRANSPARENT_CLERK_LOGO_IMAGE_URL,
       logoLinkUrl: authBrand.homeUrl,
       logoPlacement: "inside",
       socialButtonsPlacement: "top",
@@ -49,8 +59,18 @@ export function getAuthV1SignInAppearance(
         "w-full overflow-hidden rounded-[12px] border border-border bg-card shadow-none",
       card: "w-full rounded-none border-0 bg-card px-10 py-8 shadow-none",
       header: "items-center p-0 text-center",
-      logoBox: "mb-5 flex h-5 items-center justify-center p-0",
-      logoImage: "block h-5 w-auto",
+      logoBox: {
+        alignSelf: "center",
+        backgroundImage: `url("${logoImageUrl}")`,
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "contain",
+        height: "1.25rem",
+        marginBottom: "1.25rem",
+        padding: 0,
+        width: logoWidth,
+      },
+      logoImage: "block h-full w-full opacity-0",
       headerTitle: "text-lg font-medium leading-7 text-foreground",
       headerSubtitle: "mt-1 text-sm leading-5 text-muted-foreground",
       main: "mt-8 gap-6",
@@ -101,7 +121,7 @@ export function getAuthV1SignInAppearance(
         "text-brand-text transition-colors hover:text-brand-text-hover active:text-brand-text-hover",
       footer: "bg-card",
       footerAction: "text-sm",
-      footerAction__signUp:
+      footerAction__signIn:
         "justify-center border-t border-border px-10 py-4 text-brand-text transition-colors hover:text-brand-text-hover",
       footerActionText: "text-foreground",
       footerActionLink:

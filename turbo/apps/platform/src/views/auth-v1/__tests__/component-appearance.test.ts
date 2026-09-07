@@ -28,13 +28,26 @@ function elementClasses(
   return element;
 }
 
+function elementStyles(
+  appearance: ReturnType<typeof getAuthV1SignInAppearance>,
+  key: string,
+): Record<string, unknown> {
+  const element = (
+    appearance.elements as Record<string, unknown> | undefined
+  )?.[key];
+  if (!element || typeof element !== "object") {
+    throw new Error(`Expected ${key} to use CSS-in-JS styles`);
+  }
+  return element as Record<string, unknown>;
+}
+
 test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () => {
   const appearance = getAuthV1SignInAppearance("light", OKOU_AUTH_BRAND);
 
   expect(appearance.theme).toBe("simple");
   expect(appearance.options).toMatchObject({
     elevation: "raised",
-    logoImageUrl: platformOkouWordmarkDarkImg,
+    logoImageUrl: expect.stringMatching(/^data:image\/gif;base64,/u),
     logoLinkUrl: OKOU_AUTH_BRAND.homeUrl,
     logoPlacement: "inside",
     socialButtonsPlacement: "top",
@@ -44,7 +57,10 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
   expect(elementClasses(appearance, "formFieldInput")).toContain(
     "border-[hsl(var(--gray-400))]",
   );
-  expect(elementClasses(appearance, "footerAction__signUp")).toContain(
+  expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
+    platformOkouWordmarkDarkImg,
+  );
+  expect(elementClasses(appearance, "footerAction__signIn")).toContain(
     "text-brand-text",
   );
   expect(elementClasses(appearance, "footerAction__usePasskey")).toContain(
@@ -59,8 +75,9 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
 
 test("Hosted sign-in selects the theme-aware Okou logo", () => {
   expect(
-    getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND).options?.logoImageUrl,
-  ).toBe(platformOkouWordmarkLightImg);
+    elementStyles(getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND), "logoBox")
+      .backgroundImage,
+  ).toContain(platformOkouWordmarkLightImg);
 });
 
 test("The provider places Clerk styles below Tailwind utilities", () => {
