@@ -3253,6 +3253,15 @@ func browserAutomationAuthorization(_ bundleId: String) -> OSStatus {
     )
 }
 
+let browserAutomationQueries = AutomationAuthorizationQueries(authorization: browserAutomationAuthorization)
+
+func pendingBrowserAutomationPermission() -> [String: Any] {
+    [
+        "status": "unknown",
+        "reason": "Respond to the macOS browser Automation request, then test again. macOS has not finished checking access.",
+    ]
+}
+
 func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [String: Any] {
     let targetKey = try requiredString(request, "target")
     guard let target = automationPermissionTarget(named: targetKey) else {
@@ -3278,14 +3287,23 @@ func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [Strin
 
     // AppleScript can resolve an application's name without sending it an
     // event. Only TCC's authorization answer establishes Automation access.
-    var authorization = browserAutomationAuthorization(bundleId)
+    guard var authorization = browserAutomationQueries.status(for: bundleId) else {
+        return pendingBrowserAutomationPermission()
+    }
     var requestResult: AppleScriptRunResult?
     if authorization == errAEEventWouldRequireUserConsent {
         // This is an explicit user probe. A real, read-only browser event asks
         // for consent, without navigating or editing an existing tab.
         let script = "tell application id \(appleScriptStringLiteral(bundleId)) to count windows"
         requestResult = try runAppleScript(script, timeout: 3)
-        authorization = browserAutomationAuthorization(bundleId)
+        // The child can exit at its deadline while TCC still owns the prompt.
+        // Querying TCC synchronously here would block all subsequent commands.
+        guard requestResult?.timedOut == false,
+              let current = browserAutomationQueries.status(for: bundleId)
+        else {
+            return pendingBrowserAutomationPermission()
+        }
+        authorization = current
     }
     if authorization == noErr {
         return ["status": "granted"]
