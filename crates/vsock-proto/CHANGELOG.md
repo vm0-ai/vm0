@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.48](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.47...vsock-proto-v0.18.48) (2026-09-07)
+
+
+### Documentation
+
+* **vsock-proto:** document workspace drive messages ([#32246](https://github.com/vm0-ai/vm0/issues/32246)) ([40a3e98](https://github.com/vm0-ai/vm0/commit/40a3e98ef4b5ec3b61bd1570b1d08aed79d9afe4))
+
 ## [0.18.47](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.46...vsock-proto-v0.18.47) (2026-09-02)
 
 

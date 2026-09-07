@@ -216,14 +216,14 @@ const HEARTBEAT_DEGRADED_AFTER: Duration = Duration::from_secs(30);
 const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
-struct PollFailureEpisode {
+struct DegradationEpisode {
     started_at: Instant,
     consecutive_failures: u64,
     degradation_emitted: bool,
 }
 
 #[derive(Clone, Copy)]
-struct PollFailureObservation {
+struct DegradationObservation {
     consecutive_failures: u64,
     failure_elapsed: Duration,
     degraded: bool,
@@ -231,31 +231,60 @@ struct PollFailureObservation {
 }
 
 #[derive(Clone, Copy)]
-struct PollRecovery {
+struct DegradationRecovery {
     recovered_after_failures: u64,
     failure_elapsed: Duration,
     was_degraded: bool,
 }
 
-struct HeartbeatFailureEpisode {
-    started_at: Instant,
-    consecutive_failures: u64,
-    degradation_emitted: bool,
+struct DegradationEpisodeTracker {
+    active_episode: Mutex<Option<DegradationEpisode>>,
 }
 
-#[derive(Clone, Copy)]
-struct HeartbeatFailureObservation {
-    consecutive_failures: u64,
-    failure_elapsed: Duration,
-    degraded: bool,
-    emit_degradation: bool,
-}
+impl DegradationEpisodeTracker {
+    fn new() -> Self {
+        Self {
+            active_episode: Mutex::new(None),
+        }
+    }
 
-#[derive(Clone, Copy)]
-struct HeartbeatRecovery {
-    recovered_after_failures: u64,
-    failure_elapsed: Duration,
-    was_degraded: bool,
+    async fn observe_failure(
+        &self,
+        now: Instant,
+        degraded_after: Duration,
+    ) -> DegradationObservation {
+        let mut active_episode = self.active_episode.lock().await;
+        let episode = active_episode.get_or_insert(DegradationEpisode {
+            started_at: now,
+            consecutive_failures: 0,
+            degradation_emitted: false,
+        });
+        episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
+        let failure_elapsed = now.saturating_duration_since(episode.started_at);
+        let emit_degradation = failure_elapsed >= degraded_after && !episode.degradation_emitted;
+        if emit_degradation {
+            episode.degradation_emitted = true;
+        }
+
+        DegradationObservation {
+            consecutive_failures: episode.consecutive_failures,
+            failure_elapsed,
+            degraded: episode.degradation_emitted,
+            emit_degradation,
+        }
+    }
+
+    async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
+        self.active_episode
+            .lock()
+            .await
+            .take()
+            .map(|episode| DegradationRecovery {
+                recovered_after_failures: episode.consecutive_failures,
+                failure_elapsed: now.saturating_duration_since(episode.started_at),
+                was_degraded: episode.degradation_emitted,
+            })
+    }
 }
 
 enum DiscoveryWakeup {
@@ -315,8 +344,8 @@ pub struct ApiProvider {
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
-    poll_failure_episode: Mutex<Option<PollFailureEpisode>>,
-    heartbeat_failure_episode: Mutex<Option<HeartbeatFailureEpisode>>,
+    poll_degradation_tracker: DegradationEpisodeTracker,
+    heartbeat_degradation_tracker: DegradationEpisodeTracker,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -377,8 +406,8 @@ impl ApiProvider {
             connector_runtime_sync,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
-            poll_failure_episode: Mutex::new(None),
-            heartbeat_failure_episode: Mutex::new(None),
+            poll_degradation_tracker: DegradationEpisodeTracker::new(),
+            heartbeat_degradation_tracker: DegradationEpisodeTracker::new(),
             cancel,
         })
     }
@@ -545,43 +574,16 @@ impl ApiProvider {
             return;
         };
 
-        let observation = {
-            let mut active_episode = self.poll_failure_episode.lock().await;
-            let episode = active_episode.get_or_insert(PollFailureEpisode {
-                started_at: now,
-                consecutive_failures: 0,
-                degradation_emitted: false,
-            });
-            episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
-            let failure_elapsed = now.saturating_duration_since(episode.started_at);
-            let emit_degradation =
-                failure_elapsed >= POLL_DEGRADED_AFTER && !episode.degradation_emitted;
-            if emit_degradation {
-                episode.degradation_emitted = true;
-            }
-
-            PollFailureObservation {
-                consecutive_failures: episode.consecutive_failures,
-                failure_elapsed,
-                degraded: episode.degradation_emitted,
-                emit_degradation,
-            }
-        };
+        let observation = self
+            .poll_degradation_tracker
+            .observe_failure(now, POLL_DEGRADED_AFTER)
+            .await;
 
         log_retryable_poll_failure(reason, api_error, observation);
     }
 
     async fn record_poll_success_at(&self, reason: PollReason, now: Instant) {
-        let recovery = self
-            .poll_failure_episode
-            .lock()
-            .await
-            .take()
-            .map(|episode| PollRecovery {
-                recovered_after_failures: episode.consecutive_failures,
-                failure_elapsed: now.saturating_duration_since(episode.started_at),
-                was_degraded: episode.degradation_emitted,
-            });
+        let recovery = self.poll_degradation_tracker.recover(now).await;
 
         if let Some(recovery) = recovery {
             log_poll_recovery(self, reason, recovery);
@@ -599,43 +601,16 @@ impl ApiProvider {
             return;
         };
 
-        let observation = {
-            let mut active_episode = self.heartbeat_failure_episode.lock().await;
-            let episode = active_episode.get_or_insert(HeartbeatFailureEpisode {
-                started_at: now,
-                consecutive_failures: 0,
-                degradation_emitted: false,
-            });
-            episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
-            let failure_elapsed = now.saturating_duration_since(episode.started_at);
-            let emit_degradation =
-                failure_elapsed >= HEARTBEAT_DEGRADED_AFTER && !episode.degradation_emitted;
-            if emit_degradation {
-                episode.degradation_emitted = true;
-            }
-
-            HeartbeatFailureObservation {
-                consecutive_failures: episode.consecutive_failures,
-                failure_elapsed,
-                degraded: episode.degradation_emitted,
-                emit_degradation,
-            }
-        };
+        let observation = self
+            .heartbeat_degradation_tracker
+            .observe_failure(now, HEARTBEAT_DEGRADED_AFTER)
+            .await;
 
         log_retryable_heartbeat_failure(state, error, api_error, observation);
     }
 
     async fn record_heartbeat_success_at(&self, state: &HeartbeatState, now: Instant) {
-        let recovery = self
-            .heartbeat_failure_episode
-            .lock()
-            .await
-            .take()
-            .map(|episode| HeartbeatRecovery {
-                recovered_after_failures: episode.consecutive_failures,
-                failure_elapsed: now.saturating_duration_since(episode.started_at),
-                was_degraded: episode.degradation_emitted,
-            });
+        let recovery = self.heartbeat_degradation_tracker.recover(now).await;
 
         if let Some(recovery) = recovery {
             log_heartbeat_recovery(state, recovery);
@@ -1091,7 +1066,7 @@ fn eligible_poll_transport_error(error: &RunnerError) -> Option<&ApiTransportErr
 fn log_retryable_poll_failure(
     reason: PollReason,
     api_error: &ApiTransportError,
-    observation: PollFailureObservation,
+    observation: DegradationObservation,
 ) {
     let request = &api_error.request;
     let poll_reason = poll_reason_value(reason);
@@ -1186,7 +1161,7 @@ fn log_poll_failure(reason: PollReason, error: &RunnerError) {
     }
 }
 
-fn log_poll_recovery(provider: &ApiProvider, reason: PollReason, recovery: PollRecovery) {
+fn log_poll_recovery(provider: &ApiProvider, reason: PollReason, recovery: DegradationRecovery) {
     info!(
         runner_id = %provider.runner_identity.runner_id(),
         runner_group = %provider.group,
@@ -1259,7 +1234,7 @@ fn log_retryable_heartbeat_failure(
     state: &HeartbeatState,
     error: &RunnerError,
     api_error: &ApiTransportError,
-    observation: HeartbeatFailureObservation,
+    observation: DegradationObservation,
 ) {
     let request = &api_error.request;
     let reusable_sandboxes = state.held_sandbox_states.len();
@@ -1320,7 +1295,7 @@ fn log_retryable_heartbeat_failure(
     );
 }
 
-fn log_heartbeat_recovery(state: &HeartbeatState, recovery: HeartbeatRecovery) {
+fn log_heartbeat_recovery(state: &HeartbeatState, recovery: DegradationRecovery) {
     info!(
         runner_id = %state.runner_id,
         runner_group = %state.group,
@@ -2357,8 +2332,8 @@ mod tests {
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             active_input_notifications: ActiveInputNotifications::new(),
-            poll_failure_episode: Mutex::new(None),
-            heartbeat_failure_episode: Mutex::new(None),
+            poll_degradation_tracker: DegradationEpisodeTracker::new(),
+            heartbeat_degradation_tracker: DegradationEpisodeTracker::new(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
@@ -2477,6 +2452,86 @@ mod tests {
         }))
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum DegradationPath {
+        Poll,
+        Heartbeat,
+    }
+
+    impl DegradationPath {
+        fn degraded_after(self) -> Duration {
+            match self {
+                Self::Poll => POLL_DEGRADED_AFTER,
+                Self::Heartbeat => HEARTBEAT_DEGRADED_AFTER,
+            }
+        }
+
+        fn retry_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll failed, will retry",
+                Self::Heartbeat => "heartbeat failed, will retry",
+            }
+        }
+
+        fn degraded_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll fallback degraded",
+                Self::Heartbeat => "heartbeat delivery degraded",
+            }
+        }
+
+        fn recovery_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll fallback recovered",
+                Self::Heartbeat => "heartbeat delivery recovered",
+            }
+        }
+
+        fn transport_error(self) -> RunnerError {
+            match self {
+                Self::Poll => poll_transport_error(ApiFailureKind::Timeout),
+                Self::Heartbeat => heartbeat_transport_error(ApiFailureKind::Timeout),
+            }
+        }
+
+        async fn record_failure(
+            self,
+            provider: &ApiProvider,
+            state: &HeartbeatState,
+            error: &RunnerError,
+            now: Instant,
+        ) {
+            match self {
+                Self::Poll => {
+                    provider
+                        .record_poll_failure_at(PollReason::Fast, error, now)
+                        .await;
+                }
+                Self::Heartbeat => {
+                    provider
+                        .record_heartbeat_failure_at(state, error, now)
+                        .await;
+                }
+            }
+        }
+
+        async fn record_success(
+            self,
+            provider: &ApiProvider,
+            state: &HeartbeatState,
+            now: Instant,
+        ) {
+            match self {
+                Self::Poll => {
+                    provider
+                        .record_poll_success_at(PollReason::WakeupRetry, now)
+                        .await;
+                }
+                Self::Heartbeat => provider.record_heartbeat_success_at(state, now).await,
+            }
+        }
+    }
+
     async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
         provider.direct_candidates.push(candidate).await;
     }
@@ -2585,78 +2640,130 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn heartbeat_retryable_failure_warns_once_at_degradation_boundary() {
-        let provider = idle_api_provider_for_test();
+    async fn api_paths_share_degradation_episode_transition_semantics() {
         let state = heartbeat_state_for_test();
-        let error = heartbeat_transport_error(ApiFailureKind::Timeout);
-        let started_at = Instant::now();
 
-        let (_, events) = capture_api_provider_events(async {
-            for failure_elapsed in [
-                Duration::ZERO,
-                HEARTBEAT_DEGRADED_AFTER - Duration::from_secs(1),
-                HEARTBEAT_DEGRADED_AFTER,
-                HEARTBEAT_DEGRADED_AFTER + Duration::from_secs(1),
-            ] {
-                provider
-                    .record_heartbeat_failure_at(&state, &error, started_at + failure_elapsed)
-                    .await;
-            }
-        })
-        .await;
-        let heartbeat_events = events
-            .iter()
-            .filter(|event| {
-                event.fields.get("message").is_some_and(|message| {
-                    message == "heartbeat failed, will retry"
-                        || message == "heartbeat delivery degraded"
-                })
+        for path in [DegradationPath::Poll, DegradationPath::Heartbeat] {
+            let provider = idle_api_provider_for_test();
+            let error = path.transport_error();
+            let degraded_after = path.degraded_after();
+            let started_at = Instant::now();
+
+            let (_, events) = capture_api_provider_events(async {
+                for failure_elapsed in [
+                    Duration::ZERO,
+                    degraded_after - Duration::from_secs(1),
+                    degraded_after,
+                    degraded_after + Duration::from_secs(1),
+                ] {
+                    path.record_failure(&provider, &state, &error, started_at + failure_elapsed)
+                        .await;
+                }
             })
-            .collect::<Vec<_>>();
-
-        assert_eq!(heartbeat_events.len(), 4, "events={events:#?}");
-        assert_eq!(heartbeat_events[0].level, Level::INFO);
-        assert_eq!(heartbeat_events[1].level, Level::INFO);
-        assert_eq!(heartbeat_events[2].level, Level::WARN);
-        assert_eq!(heartbeat_events[3].level, Level::INFO);
-        assert_eq!(
-            event_field(heartbeat_events[0], "consecutive_failures"),
-            "1"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[1], "consecutive_failures"),
-            "2"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[2], "consecutive_failures"),
-            "3"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[3], "consecutive_failures"),
-            "4"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[1], "failure_elapsed_ms"),
-            "29000"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[2], "failure_elapsed_ms"),
-            "30000"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[3], "failure_elapsed_ms"),
-            "31000"
-        );
-        assert_eq!(event_field(heartbeat_events[1], "degraded"), "false");
-        assert_eq!(event_field(heartbeat_events[2], "degraded"), "true");
-        assert_eq!(event_field(heartbeat_events[3], "degraded"), "true");
-        assert_eq!(
-            heartbeat_events
+            .await;
+            let path_events = events
                 .iter()
-                .filter(|event| event.level == Level::WARN)
-                .count(),
-            1
-        );
+                .filter(|event| {
+                    event.fields.get("message").is_some_and(|message| {
+                        message == path.retry_message() || message == path.degraded_message()
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(path_events.len(), 4, "path={path:?}; events={events:#?}");
+            assert_eq!(path_events[0].level, Level::INFO, "path={path:?}");
+            assert_eq!(path_events[1].level, Level::INFO, "path={path:?}");
+            assert_eq!(path_events[2].level, Level::WARN, "path={path:?}");
+            assert_eq!(path_events[3].level, Level::INFO, "path={path:?}");
+            for (event, expected_count) in path_events.iter().zip(1_u64..=4) {
+                assert_eq!(
+                    event_field(event, "consecutive_failures"),
+                    expected_count.to_string(),
+                    "path={path:?}"
+                );
+            }
+            assert_eq!(
+                event_field(path_events[1], "failure_elapsed_ms"),
+                duration_ms(degraded_after - Duration::from_secs(1)).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(
+                event_field(path_events[2], "failure_elapsed_ms"),
+                duration_ms(degraded_after).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(
+                event_field(path_events[3], "failure_elapsed_ms"),
+                duration_ms(degraded_after + Duration::from_secs(1)).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(event_field(path_events[1], "degraded"), "false");
+            assert_eq!(event_field(path_events[2], "degraded"), "true");
+            assert_eq!(event_field(path_events[3], "degraded"), "true");
+            assert_eq!(
+                path_events
+                    .iter()
+                    .filter(|event| event.level == Level::WARN)
+                    .count(),
+                1,
+                "path={path:?}"
+            );
+
+            let recovery_elapsed = degraded_after + Duration::from_secs(2);
+            let (_, recovery_events) = capture_api_provider_events(path.record_success(
+                &provider,
+                &state,
+                started_at + recovery_elapsed,
+            ))
+            .await;
+            let recovery = captured_event(&recovery_events, path.recovery_message());
+            assert_eq!(recovery.level, Level::INFO, "path={path:?}");
+            assert_eq!(event_field(recovery, "recovered_after_failures"), "4");
+            assert_eq!(
+                event_field(recovery, "failure_elapsed_ms"),
+                duration_ms(recovery_elapsed).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(event_field(recovery, "was_degraded"), "true");
+            match path {
+                DegradationPath::Poll => {
+                    assert_eq!(event_field(recovery, "runner_id"), TEST_RUNNER_ID);
+                    assert_eq!(event_field(recovery, "runner_group"), "default");
+                    assert_eq!(event_field(recovery, "poll_reason"), "wakeup_retry");
+                }
+                DegradationPath::Heartbeat => {
+                    assert_eq!(event_field(recovery, "runner_id"), "runner-heartbeat-test");
+                    assert_eq!(event_field(recovery, "runner_group"), "vm0/test");
+                    assert_eq!(event_field(recovery, "mode"), "running");
+                    assert_eq!(event_field(recovery, "running"), "1");
+                    assert_eq!(event_field(recovery, "reusable_sandboxes"), "1");
+                    assert_eq!(event_field(recovery, "workspace_states"), "1");
+                }
+            }
+
+            let later_started_at = started_at + degraded_after + Duration::from_secs(3);
+            let (_, later_events) = capture_api_provider_events(async {
+                path.record_failure(&provider, &state, &error, later_started_at)
+                    .await;
+                path.record_failure(&provider, &state, &error, later_started_at + degraded_after)
+                    .await;
+            })
+            .await;
+            assert_eq!(
+                later_events
+                    .iter()
+                    .filter(|event| {
+                        event.level == Level::WARN
+                            && event
+                                .fields
+                                .get("message")
+                                .is_some_and(|message| message == path.degraded_message())
+                    })
+                    .count(),
+                1,
+                "path={path:?}; events={later_events:#?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2679,11 +2786,18 @@ mod tests {
         assert_eq!(event_field(event, "failure_kind"), "timeout");
         assert_eq!(event_field(event, "failure_cause"), "timeout");
         assert!(!event.fields.contains_key("will_retry"));
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
-    async fn heartbeat_success_recovers_and_allows_a_later_degradation_episode() {
+    async fn heartbeat_success_recovers_active_degradation_episode() {
         let server =
             RawHttpTestServer::spawn(vec![RawHttpAction::Respond(status_response(200))]).await;
         let provider = api_provider_for_test(
@@ -2715,35 +2829,13 @@ mod tests {
                 .unwrap()
                 >= duration_ms(HEARTBEAT_DEGRADED_AFTER)
         );
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
-
-        let later_started_at = Instant::now();
-        let (_, later_events) = capture_api_provider_events(async {
+        assert!(
             provider
-                .record_heartbeat_failure_at(&state, &error, later_started_at)
-                .await;
-            provider
-                .record_heartbeat_failure_at(
-                    &state,
-                    &error,
-                    later_started_at + HEARTBEAT_DEGRADED_AFTER,
-                )
-                .await;
-        })
-        .await;
-        assert_eq!(
-            later_events
-                .iter()
-                .filter(|event| {
-                    event.level == Level::WARN
-                        && event
-                            .fields
-                            .get("message")
-                            .is_some_and(|message| message == "heartbeat delivery degraded")
-                })
-                .count(),
-            1,
-            "events={later_events:#?}"
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
         );
     }
 
@@ -2806,7 +2898,11 @@ mod tests {
             "events={events:#?}"
         );
         {
-            let active_episode = provider.heartbeat_failure_episode.lock().await;
+            let active_episode = provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await;
             let episode = active_episode
                 .as_ref()
                 .expect("unsupported failures should not reset the active episode");
@@ -2846,7 +2942,14 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "reusable_sandboxes"), "1");
         assert_eq!(event_field(event, "workspace_states"), "1");
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
         let event_debug = format!("{event:#?}");
         assert!(
             !event_debug.contains("thread:heartbeat-test"),
@@ -2911,119 +3014,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[tokio::test]
-    async fn poll_retryable_failure_warns_once_at_degradation_boundary() {
-        let provider = idle_api_provider_for_test();
-        let error = poll_transport_error(ApiFailureKind::Timeout);
-        let started_at = Instant::now();
-
-        let (_, events) = capture_api_provider_events(async {
-            for failure_elapsed in [
-                Duration::ZERO,
-                POLL_DEGRADED_AFTER - Duration::from_secs(1),
-                POLL_DEGRADED_AFTER,
-                POLL_DEGRADED_AFTER + Duration::from_secs(1),
-            ] {
-                provider
-                    .record_poll_failure_at(PollReason::Fast, &error, started_at + failure_elapsed)
-                    .await;
-            }
-        })
-        .await;
-        let poll_events = events
-            .iter()
-            .filter(|event| {
-                event.fields.get("message").is_some_and(|message| {
-                    message == "poll failed, will retry" || message == "poll fallback degraded"
-                })
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(poll_events.len(), 4, "events={events:#?}");
-        assert_eq!(poll_events[0].level, Level::INFO);
-        assert_eq!(poll_events[1].level, Level::INFO);
-        assert_eq!(poll_events[2].level, Level::WARN);
-        assert_eq!(poll_events[3].level, Level::INFO);
-        assert_eq!(event_field(poll_events[0], "consecutive_failures"), "1");
-        assert_eq!(event_field(poll_events[1], "consecutive_failures"), "2");
-        assert_eq!(event_field(poll_events[2], "consecutive_failures"), "3");
-        assert_eq!(event_field(poll_events[3], "consecutive_failures"), "4");
-        assert_eq!(event_field(poll_events[1], "failure_elapsed_ms"), "59000");
-        assert_eq!(event_field(poll_events[2], "failure_elapsed_ms"), "60000");
-        assert_eq!(event_field(poll_events[3], "failure_elapsed_ms"), "61000");
-        assert_eq!(event_field(poll_events[1], "degraded"), "false");
-        assert_eq!(event_field(poll_events[2], "degraded"), "true");
-        assert_eq!(event_field(poll_events[3], "degraded"), "true");
-        assert_eq!(
-            poll_events
-                .iter()
-                .filter(|event| event.level == Level::WARN)
-                .count(),
-            1
-        );
-    }
-
-    #[tokio::test]
-    async fn poll_success_recovers_and_allows_a_later_degradation_episode() {
-        let provider = idle_api_provider_for_test();
-        let error = poll_transport_error(ApiFailureKind::Connect);
-        let started_at = Instant::now();
-        provider
-            .record_poll_failure_at(PollReason::Immediate, &error, started_at)
-            .await;
-        provider
-            .record_poll_failure_at(
-                PollReason::WakeupRetry,
-                &error,
-                started_at + POLL_DEGRADED_AFTER,
-            )
-            .await;
-
-        let (_, recovery_events) = capture_api_provider_events(provider.record_poll_success_at(
-            PollReason::WakeupRetry,
-            started_at + POLL_DEGRADED_AFTER + Duration::from_secs(1),
-        ))
-        .await;
-        let recovery = captured_event(&recovery_events, "poll fallback recovered");
-        assert_eq!(recovery.level, Level::INFO);
-        assert_eq!(event_field(recovery, "runner_id"), TEST_RUNNER_ID);
-        assert_eq!(event_field(recovery, "runner_group"), "default");
-        assert_eq!(event_field(recovery, "poll_reason"), "wakeup_retry");
-        assert_eq!(event_field(recovery, "recovered_after_failures"), "2");
-        assert_eq!(event_field(recovery, "failure_elapsed_ms"), "61000");
-        assert_eq!(event_field(recovery, "was_degraded"), "true");
-        assert!(provider.poll_failure_episode.lock().await.is_none());
-
-        let later_started_at = started_at + POLL_DEGRADED_AFTER + Duration::from_secs(2);
-        let (_, later_events) = capture_api_provider_events(async {
-            provider
-                .record_poll_failure_at(PollReason::Slow, &error, later_started_at)
-                .await;
-            provider
-                .record_poll_failure_at(
-                    PollReason::Slow,
-                    &error,
-                    later_started_at + POLL_DEGRADED_AFTER,
-                )
-                .await;
-        })
-        .await;
-        assert_eq!(
-            later_events
-                .iter()
-                .filter(|event| {
-                    event.level == Level::WARN
-                        && event
-                            .fields
-                            .get("message")
-                            .is_some_and(|message| message == "poll fallback degraded")
-                })
-                .count(),
-            1,
-            "events={later_events:#?}"
-        );
     }
 
     #[tokio::test]
@@ -3093,7 +3083,11 @@ mod tests {
             "poll status response body must not be logged: {events:#?}"
         );
         {
-            let active_episode = provider.poll_failure_episode.lock().await;
+            let active_episode = provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await;
             let episode = active_episode
                 .as_ref()
                 .expect("unsupported failures should not reset the active episode");
@@ -3586,7 +3580,11 @@ mod tests {
 
                     server.next_request("empty poll request").await;
                     {
-                        let active_episode = provider.poll_failure_episode.lock().await;
+                        let active_episode = provider
+                            .poll_degradation_tracker
+                            .active_episode
+                            .lock()
+                            .await;
                         let episode = active_episode
                             .as_ref()
                             .expect("status failure must not reset the poll episode");
@@ -3603,7 +3601,14 @@ mod tests {
         .await;
 
         assert_eq!(discovered.run_id(), run_id);
-        assert!(provider.poll_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
         let status_event = captured_event(&events, "poll failed");
         assert_eq!(status_event.level, Level::ERROR);
         assert_eq!(event_field(status_event, "status"), "503");
@@ -4378,7 +4383,12 @@ mod tests {
             Some(JobDiscoverySource::Ably)
         );
         assert!(
-            provider.poll_failure_episode.lock().await.is_some(),
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_some(),
             "direct candidate interruption must not reset HTTP poll state"
         );
 
@@ -4393,7 +4403,12 @@ mod tests {
             Some(JobDiscoverySource::Poll)
         );
         assert!(
-            provider.poll_failure_episode.lock().await.is_none(),
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none(),
             "successful HTTP poll with a job must reset poll state"
         );
         join_raw_http_task(server_task, "direct candidate sequence server").await;

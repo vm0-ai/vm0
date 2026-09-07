@@ -11,6 +11,32 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.857.0](https://github.com/vm0-ai/vm0/compare/app-v0.856.0...app-v0.857.0) (2026-09-07)
+
+
+### Features
+
+* **voice:** transcribe overlapping audio segments with resumable progress ([#32059](https://github.com/vm0-ai/vm0/issues/32059)) ([77a06e4](https://github.com/vm0-ai/vm0/commit/77a06e48dc6dbed124f690305b7f075350dd42a7))
+
+
+### Bug Fixes
+
+* **platform:** preserve markdown artifact link presentation ([#32236](https://github.com/vm0-ai/vm0/issues/32236)) ([e26bf23](https://github.com/vm0-ai/vm0/commit/e26bf239d93ad89a64b8deabd8434728c9d54e50))
+* share debounce and throttle command scheduling ([#32086](https://github.com/vm0-ai/vm0/issues/32086)) ([22f9b37](https://github.com/vm0-ai/vm0/commit/22f9b377b6201d539d5645dfcfa906d333ad05f7))
+
+
+### Refactoring
+
+* **platform:** rename remaining internal brand identifiers ([#32247](https://github.com/vm0-ai/vm0/issues/32247)) ([8aec76c](https://github.com/vm0-ai/vm0/commit/8aec76c897feed2f412467cef2b61a0bc4884f9d)), closes [#32240](https://github.com/vm0-ai/vm0/issues/32240)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.411.0
+    * @okouai/core bumped to 8.631.1
+
 ## [0.856.0](https://github.com/vm0-ai/vm0/compare/app-v0.855.1...app-v0.856.0) (2026-09-07)
 
 
