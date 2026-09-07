@@ -42,6 +42,9 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
+      true,
+    );
     expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
   });
 
@@ -228,7 +231,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
@@ -363,6 +366,9 @@ describe("getFeatureSwitchMetadata", () => {
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
     expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
+      "released",
+    );
+    expect(metadata[FeatureSwitchKey.PresentationTemplates].rolloutStage).toBe(
       "released",
     );
     expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
