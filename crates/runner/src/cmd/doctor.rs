@@ -1014,18 +1014,11 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         .await
         .ok()
         .flatten()?;
-    let mut blank_ids: HashSet<&str> = file
+    let blank_ids: HashSet<&str> = file
         .blank_sandboxes
         .iter()
         .map(|sandbox| sandbox.sandbox_id.as_str())
         .collect();
-    // Temporary input compatibility for pre-split writers. Remove in #32084
-    // after supported writers and retained live status files have migrated.
-    for sandbox in file.idle_sandboxes() {
-        if sandbox.reuse_key.strip_prefix("__vm0_blank__:") == Some(sandbox.sandbox_id.as_str()) {
-            blank_ids.insert(&sandbox.sandbox_id);
-        }
-    }
     let idle_sandboxes = file
         .idle_sandboxes()
         .iter()
@@ -1795,20 +1788,20 @@ printf '%s\n' \
     }
 
     #[tokio::test]
-    async fn read_status_does_not_infer_blank_from_unrelated_prefix_keys() {
+    async fn read_status_preserves_exact_inventory_without_blank_collection() {
         let dir = tempfile::tempdir().unwrap();
         let content = serde_json::json!({
             "mode": "running",
             "started_at": "2026-01-01T00:00:00.000Z",
             "idle_sandboxes": [
-                {"sandbox_id": "S1", "reuse_key": "__vm0_blank__:different-id"},
-                {"sandbox_id": "S2", "reuse_key": "thread:__vm0_blank__:S2"},
+                {"sandbox_id": "S1", "reuse_key": "thread:exact"},
             ],
-            "blank_sandboxes": [],
         });
         std::fs::write(dir.path().join("status.json"), content.to_string()).unwrap();
         let status = read_status(dir.path()).await.unwrap();
-        assert_eq!(status.idle_sandboxes.len(), 2);
+        assert_eq!(status.idle_sandboxes.len(), 1);
+        assert_eq!(status.idle_sandboxes[0].sandbox_id, "S1");
+        assert_eq!(status.idle_sandboxes[0].reuse_key, "thread:exact");
         assert!(status.blank_sandboxes.is_empty());
     }
 
@@ -1822,7 +1815,7 @@ printf '%s\n' \
                 "run_id": "R1", "sandbox_id": "S1", "phase": "running",
                 "phase_started_at": "2026-01-01T00:00:00.000Z",
             }],
-            "idle_sandboxes": [{"sandbox_id": "S1", "reuse_key": "__vm0_blank__:S1"}],
+            "idle_sandboxes": [{"sandbox_id": "S1", "reuse_key": "overlapping-mirror"}],
             "blank_sandboxes": [{"sandbox_id": "S1"}],
         });
         std::fs::write(dir.path().join("status.json"), content.to_string()).unwrap();
@@ -3251,14 +3244,8 @@ printf '%s\n' \
     }
 
     #[tokio::test]
-    async fn report_distinguishes_owned_blank_inventory_across_status_versions() {
+    async fn report_distinguishes_owned_blank_inventory_with_overlapping_entries() {
         for parked in [
-            serde_json::json!({
-                "idle_sandboxes": [
-                    {"reuse_key": "thread:exact", "sandbox_id": "exact-id"},
-                    {"reuse_key": "__vm0_blank__:blank-id", "sandbox_id": "blank-id"},
-                ],
-            }),
             serde_json::json!({
                 "idle_sandboxes": [{"reuse_key": "thread:exact", "sandbox_id": "exact-id"}],
                 "blank_sandboxes": [{"sandbox_id": "blank-id"}],
@@ -3266,7 +3253,6 @@ printf '%s\n' \
             serde_json::json!({
                 "idle_sandboxes": [
                     {"reuse_key": "thread:exact", "sandbox_id": "exact-id"},
-                    {"reuse_key": "__vm0_blank__:blank-id", "sandbox_id": "blank-id"},
                     {"reuse_key": "overlapping-mirror", "sandbox_id": "blank-id"},
                 ],
                 "blank_sandboxes": [{"sandbox_id": "blank-id"}, {"sandbox_id": "blank-id"}],
