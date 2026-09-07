@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -20,17 +20,6 @@ const featureSwitches = {
 } as const;
 const SEARCH_LABEL = "Search chats, messages, workflows, and artifacts...";
 
-function shortcutHintLabels(): string[] {
-  return screen
-    .queryAllByRole("tooltip", { hidden: true })
-    .flatMap((tooltip) => {
-      return [...tooltip.querySelectorAll("kbd")].map((key) => {
-        return key.textContent ?? "";
-      });
-    })
-    .sort();
-}
-
 const platforms = [
   {
     platform: "Mac",
@@ -38,21 +27,25 @@ const platforms = [
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36",
     modifier: "Meta",
     hints: ["⌘⇧F", "⌘⇧O", "⌘B"],
+    threadHint: "⌘1",
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifier: "Control",
     hints: ["Ctrl+Shift+F", "Ctrl+Shift+O", "Ctrl+B"],
+    threadHint: "Ctrl+1",
   },
 ] as const;
 
 test.each(platforms)(
-  "Show one hint panel after a 500 ms hold in a $platform browser and switch cleanly between hover labels",
-  async ({ userAgent, modifier, hints }) => {
+  "Keep action shortcuts available on hover while holding the thread modifier in a $platform app",
+  async ({ userAgent, modifier, hints, threadHint }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
-      return query === "(min-width: 48rem)";
+      return (
+        query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
+      );
     });
     const thread = chatListThread(1, "Keyboard hints");
     const workspace = await installContinuityWorkspace(context, {
@@ -85,46 +78,36 @@ test.each(platforms)(
     const searchButton = within(list).getByLabelText("Search workspace");
     await user.hover(searchButton);
     const searchHover = await screen.findByRole("tooltip", {
-      name: "Search workspace",
+      name: `Search workspace ${hints[0]}`,
     });
     const pressedAt = now();
     await user.keyboard(`{${modifier}>}`);
-    expect(shortcutHintLabels()).toStrictEqual([]);
+    expect(list.querySelectorAll("kbd")).toHaveLength(0);
     await waitFor(() => {
-      expect(shortcutHintLabels()).toStrictEqual([...hints].sort());
+      expect(within(list).getByText(threadHint)).toBeVisible();
     });
     expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
-    expect(searchHover).not.toBeVisible();
-    const hintPanels = screen
-      .getAllByRole("tooltip", { hidden: true })
-      .filter((tooltip) => {
-        return tooltip.querySelector("kbd") !== null;
-      });
-    expect(hintPanels).toHaveLength(1);
-    expect(hintPanels[0]).toHaveTextContent("Search workspace");
-    expect(hintPanels[0]).toHaveTextContent("New chat");
-    expect(hintPanels[0]).toHaveTextContent("Hide chat list");
+    expect(searchHover).toBeVisible();
     expect(composer).toHaveFocus();
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Browser tab-number shortcuts stay reserved for the browser.
-    expect(list.querySelectorAll("kbd")).toHaveLength(0);
 
     const newChatButton = fastButton("New chat", list);
     await user.hover(newChatButton);
-    expect(screen.queryByRole("tooltip", { name: "New chat" })).toBeNull();
+    const newChatHover = await screen.findByRole("tooltip", {
+      name: `New chat ${hints[1]}`,
+    });
+    expect(newChatHover).toBeVisible();
     await user.keyboard(`{/${modifier}}`);
     await waitFor(() => {
-      expect(shortcutHintLabels()).toStrictEqual([]);
+      expect(list.querySelectorAll("kbd")).toHaveLength(0);
     });
-    await expect(
-      screen.findByRole("tooltip", { name: "New chat" }),
-    ).resolves.toBeVisible();
+    expect(newChatHover).toBeVisible();
     await user.unhover(newChatButton);
   },
 );
 
 test.each(platforms)(
-  "Keep shortcuts usable with grouped hints in a $platform browser, including the collapsed chat list",
+  "Keep action shortcuts usable in a $platform browser, including the collapsed chat list",
   async ({ userAgent, modifier, hints }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
@@ -149,13 +132,13 @@ test.each(platforms)(
       expect(pathname()).toBe(`/agents/${CHAT_LIST_AGENT_ID}/chat`);
     });
     await user.keyboard(`{${modifier}>}b{/${modifier}}`);
-    await screen.findByLabelText("Show chat list");
+    const showChatList = await screen.findByLabelText("Show chat list");
     expect(screen.queryByTestId("chat-list-column")).toBeNull();
-    await user.keyboard(`{${modifier}>}`);
-    await waitFor(() => {
-      expect(shortcutHintLabels()).toStrictEqual([hints[2]]);
-    });
-    await user.keyboard(`b{/${modifier}}`);
+    await user.hover(showChatList);
+    await expect(
+      screen.findByRole("tooltip", { name: `Show chat list ${hints[2]}` }),
+    ).resolves.toBeVisible();
+    await user.keyboard(`{${modifier}>}b{/${modifier}}`);
     await screen.findByTestId("chat-list-column");
     await user.keyboard(`{${modifier}>}{Shift>}f{/Shift}{/${modifier}}`);
     const searchDialog = await screen.findByRole("dialog", {
@@ -167,63 +150,15 @@ test.each(platforms)(
   },
 );
 
-test("Cancel brief holds and dismiss global hints on release, blur, and visibility loss", async () => {
+test("Hide thread hints when stable chat navigation is disabled and preserve action tooltips", async () => {
   context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 48rem)";
-  });
-  const visibility = context.mocks.browser.visibilityState("visible");
-  const workspace = await installContinuityWorkspace(context, {
-    caseId: 61,
-    threads: [],
-  });
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
-    featureSwitches,
-  });
-  const composer = await screen.findByRole("textbox", { name: "Message" });
-  click(composer);
-  const user = userEvent.setup();
-  await user.keyboard("{Control>}{/Control}");
-  expect(shortcutHintLabels()).toStrictEqual([]);
-  const pressedAt = now();
-  await user.keyboard("{Control>}");
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toHaveLength(3);
-  });
-  expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
-  fireEvent.blur(window);
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toStrictEqual([]);
-  });
-  await user.keyboard("{/Control}{Control>}");
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toHaveLength(3);
-  });
-  visibility.changeTo("hidden");
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toStrictEqual([]);
-  });
-  visibility.changeTo("visible");
-  await user.keyboard("{/Control}{Control>}");
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toHaveLength(3);
-  });
-  await user.keyboard("{/Control}");
-  await waitFor(() => {
-    expect(shortcutHintLabels()).toStrictEqual([]);
-  });
-  expect(composer).toHaveFocus();
-});
-
-test("Hide active hints when stable chat navigation is disabled and preserve hover labels", async () => {
-  context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 48rem)";
+    return (
+      query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
+    );
   });
   const workspace = await installContinuityWorkspace(context, {
     caseId: 62,
-    threads: [],
+    threads: [chatListThread(1, "Thread hints")],
   });
   const response = context.mocks.deferred<void>();
   context.mocks.api(
@@ -245,19 +180,19 @@ test("Hide active hints when stable chat navigation is disabled and preserve hov
     cachedFeatureSwitches: featureSwitches,
   });
   await screen.findByRole("textbox", { name: "Message" });
+  const list = screen.getByTestId("chat-list-column");
   const user = userEvent.setup();
   await user.keyboard("{Control>}");
   await waitFor(() => {
-    expect(shortcutHintLabels()).toHaveLength(3);
+    expect(within(list).getByText("Ctrl+1")).toBeVisible();
   });
   response.resolve(undefined);
   await waitFor(() => {
-    expect(shortcutHintLabels()).toStrictEqual([]);
+    expect(list.querySelectorAll("kbd")).toHaveLength(0);
   });
   await user.keyboard("{/Control}");
-  const list = screen.getByTestId("chat-list-column");
   await user.hover(fastButton("New chat", list));
   await expect(
-    screen.findByRole("tooltip", { name: "New chat" }),
+    screen.findByRole("tooltip", { name: "New chat Ctrl+Shift+O" }),
   ).resolves.toBeVisible();
 });

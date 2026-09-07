@@ -32,7 +32,7 @@ function hintKeys(container: ParentNode): string[] {
       return keycap.textContent ?? "";
     })
     .filter((label) => {
-      return /^(?:Ctrl|⌃|⌘|[1-9])$/.test(label);
+      return /^(?:Ctrl\+|⌘⌃?)[1-9]$/.test(label);
     });
 }
 
@@ -45,7 +45,7 @@ test.each([
     modifier: "Meta",
     additionalModifier: "",
     releaseModifiers: "{/Meta}",
-    label: ["⌘"],
+    label: "⌘",
   },
   {
     platform: "Mac Safari",
@@ -55,7 +55,7 @@ test.each([
     modifier: "Meta",
     additionalModifier: "{Control>}",
     releaseModifiers: "{/Control}{/Meta}",
-    label: ["⌃", "⌘"],
+    label: "⌘⌃",
   },
   {
     platform: "iPad Safari with a desktop user agent",
@@ -65,7 +65,7 @@ test.each([
     modifier: "Meta",
     additionalModifier: "",
     releaseModifiers: "{/Meta}",
-    label: ["⌘"],
+    label: "⌘",
   },
   {
     platform: "Windows",
@@ -74,7 +74,7 @@ test.each([
     modifier: "Control",
     additionalModifier: "",
     releaseModifiers: "{/Control}",
-    label: ["Ctrl"],
+    label: "Ctrl+",
   },
 ])(
   "Reveal the first nine thread shortcuts after holding the modifier for 500 ms on $platform",
@@ -129,18 +129,18 @@ test.each([
     await user.keyboard(`{${modifier}>}`);
     expect(hintKeys(list)).toStrictEqual([]);
     await waitFor(() => {
-      expect(hintKeys(list)).toHaveLength(9 * (label.length + 1));
+      expect(hintKeys(list)).toHaveLength(9);
     });
     expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
     expect(hintKeys(list)).toStrictEqual(
       Array.from({ length: 9 }, (_, index) => {
-        return [...label, String(index + 1)];
-      }).flat(),
+        return `${label}${index + 1}`;
+      }),
     );
     if (additionalModifier) {
       await user.keyboard(additionalModifier);
     }
-    expect(hintKeys(list)).toHaveLength(9 * (label.length + 1));
+    expect(hintKeys(list)).toHaveLength(9);
     await user.keyboard(`9${releaseModifiers}`);
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
@@ -185,7 +185,7 @@ test("Cancel a short hold and clear hints on release, blur, and visibility loss"
   const pressedAt = now();
   await user.keyboard("{Control>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl", "1"]);
+    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
   });
   expect(now() - pressedAt).toBeGreaterThanOrEqual(500);
   fireEvent.blur(window);
@@ -194,7 +194,7 @@ test("Cancel a short hold and clear hints on release, blur, and visibility loss"
   });
   await user.keyboard("{/Control}{Control>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl", "1"]);
+    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
   });
   visibility.changeTo("hidden");
   await waitFor(() => {
@@ -270,7 +270,7 @@ test("Keep browser mode free of number shortcuts and react to display mode chang
   });
   await user.keyboard("{Control>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl", "1", "Ctrl", "2"]);
+    expect(hintKeys(list)).toStrictEqual(["Ctrl+1", "Ctrl+2"]);
   });
   media.setMatches((query) => {
     return query === "(min-width: 48rem)";
@@ -327,12 +327,12 @@ test("Number filtered threads and give the search dialog priority over the list"
   const user = userEvent.setup();
   await user.keyboard("{Control>}");
   await waitFor(() => {
-    expect(hintKeys(list)).toStrictEqual(["Ctrl", "1"]);
+    expect(hintKeys(list)).toStrictEqual(["Ctrl+1"]);
   });
   await user.keyboard("{Shift>}f{/Shift}");
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   await waitFor(() => {
-    expect(hintKeys(dialog)).toStrictEqual(["Ctrl", "1"]);
+    expect(hintKeys(dialog)).toStrictEqual(["Ctrl+1"]);
   });
   expect(hintKeys(list)).toStrictEqual([]);
   await user.keyboard("1{/Control}");

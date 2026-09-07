@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  ShortcutTooltipGroup,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -64,7 +65,6 @@ import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
-import { KeyboardShortcutTooltipGroup } from "../components/keyboard-shortcut-tooltip-group.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -643,7 +643,8 @@ function LabeledNavRail() {
       </div>
       {chatListHidden && (
         <div className="mb-3 shrink-0">
-          <KeyboardShortcutTooltipGroup
+          <ShortcutTooltipGroup
+            side="right"
             items={[
               {
                 shortcut: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
@@ -779,7 +780,7 @@ function ChatListColumn() {
             return $.appShell.sidebar.chat;
           })}
         </span>
-        <KeyboardShortcutTooltipGroup
+        <ShortcutTooltipGroup
           items={[
             {
               shortcut: GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding,

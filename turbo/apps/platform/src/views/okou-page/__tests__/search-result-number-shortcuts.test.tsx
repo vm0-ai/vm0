@@ -54,10 +54,10 @@ async function openSearch(modifiers = { ctrlKey: true, metaKey: false }) {
 function numberedHints(dialog: HTMLElement): string[] {
   return [...dialog.querySelectorAll("kbd")]
     .map((keycap) => {
-      return keycap.textContent;
+      return keycap.textContent?.match(/[1-9]$/)?.[0];
     })
     .filter((text): text is string => {
-      return text !== null && /^[1-9]$/.test(text);
+      return text !== undefined;
     });
 }
 
@@ -135,7 +135,7 @@ test.each([
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
     modifiers: { metaKey: true, ctrlKey: false },
     numberModifiers: { metaKey: true, ctrlKey: false },
-    firstHint: ["⌘", "1"],
+    firstHint: ["⌘1"],
   },
   {
     platform: "Mac Safari",
@@ -143,14 +143,14 @@ test.each([
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.2 Safari/605.1.15",
     modifiers: { metaKey: true, ctrlKey: false },
     numberModifiers: { metaKey: true, ctrlKey: true },
-    firstHint: ["⌃", "⌘", "1"],
+    firstHint: ["⌘⌃1"],
   },
   {
     platform: "Windows",
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     modifiers: { metaKey: false, ctrlKey: true },
     numberModifiers: { metaKey: false, ctrlKey: true },
-    firstHint: ["Ctrl", "1"],
+    firstHint: ["Ctrl+1"],
   },
 ])(
   "Limit empty search to 25 current chats and open the ninth result on $platform",
