@@ -90,32 +90,6 @@ async function submitSignInIdentifier(
 async function submitClerkEmailCode(page: Page): Promise<void> {
   const root = hostedSignIn(page);
   const codeInput = root.locator(CLERK_OTP_INPUT_SELECTOR).first();
-  const emailCodeButton = root
-    .getByRole("button", { name: /email code/i })
-    .first();
-  const useAnotherMethod = root.getByText(/use another method/i).first();
-
-  await expect
-    .poll(
-      async () => {
-        return (
-          (await codeInput.isVisible()) ||
-          (await emailCodeButton.isVisible()) ||
-          (await useAnotherMethod.isVisible())
-        );
-      },
-      { timeout: CLERK_UI_READY_TIMEOUT_MS },
-    )
-    .toBe(true);
-  if (!(await codeInput.isVisible())) {
-    if (await useAnotherMethod.isVisible()) {
-      await useAnotherMethod.click();
-    }
-    await expect(emailCodeButton).toBeVisible({
-      timeout: CLERK_UI_READY_TIMEOUT_MS,
-    });
-    await emailCodeButton.click();
-  }
 
   await expect(codeInput).toBeVisible({ timeout: CLERK_UI_READY_TIMEOUT_MS });
   // Clerk verifies the code as soon as the last digit arrives.
