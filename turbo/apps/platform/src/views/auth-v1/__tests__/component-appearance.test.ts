@@ -44,7 +44,11 @@ function elementStyles(
 }
 
 test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () => {
-  const appearance = getAuthV1SignInAppearance("light", OKOU_AUTH_BRAND);
+  const appearance = getAuthV1SignInAppearance(
+    "light",
+    OKOU_AUTH_BRAND,
+    "https://app.okou.ai",
+  );
 
   expect(appearance.theme).toBe("simple");
   expect(appearance.options).toMatchObject({
@@ -85,15 +89,33 @@ test("Hosted sign-in uses Clerk's supported Tailwind customization surface", () 
 
 test("Hosted sign-in selects the theme-aware Okou logo", () => {
   expect(
-    getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND).options?.logoImageUrl,
+    getAuthV1SignInAppearance("dark", OKOU_AUTH_BRAND, "https://app.okou.ai")
+      .options?.logoImageUrl,
   ).toBe(platformOkouWordmarkLightImg);
 });
 
+test("Preview origins retain the CORS-safe logo fallback", () => {
+  const appearance = getAuthV1SignInAppearance(
+    "light",
+    OKOU_AUTH_BRAND,
+    "https://pr-32278-app-okou-app-preview.vm0.workers.dev",
+  );
+
+  expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml/u);
+  expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(
+    platformOkouWordmarkDarkImg,
+  );
+});
+
 test("The dormant VM0 brand retains the CORS-safe logo fallback", () => {
-  const appearance = getAuthV1SignInAppearance("light", {
-    brandName: "VM0",
-    homeUrl: "https://app.vm0.ai",
-  });
+  const appearance = getAuthV1SignInAppearance(
+    "light",
+    {
+      brandName: "VM0",
+      homeUrl: "https://app.vm0.ai",
+    },
+    "https://app.vm0.ai",
+  );
 
   expect(appearance.options?.logoImageUrl).toMatch(/^data:image\/svg\+xml,/u);
   expect(elementStyles(appearance, "logoBox").backgroundImage).toContain(

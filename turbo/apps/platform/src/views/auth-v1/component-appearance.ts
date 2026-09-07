@@ -36,9 +36,9 @@ const authV1IdentityPreviewEditClass = buttonVariants({
   variant: "quiet",
 });
 
-// Clerk always adds `crossorigin="anonymous"` to its logo image. Okou's
-// public static host explicitly allows app.okou.ai. Retain the VM0 fallback
-// until that dormant hosted surface is intentionally migrated.
+// Clerk always adds `crossorigin="anonymous"` to its logo image. The public
+// static host only grants that native image path to app.okou.ai; previews and
+// the dormant VM0 surface retain the self-contained fallback.
 function transparentClerkLogoImageUrl(brandName: BrandName): string {
   const { width, height } =
     brandName === "Okou"
@@ -68,9 +68,11 @@ function authV1LogoImageUrl(
 export function getAuthV1SignInAppearance(
   theme: "light" | "dark",
   authBrand: AuthBrandContext,
+  currentOrigin: string,
 ): ClerkAppearance {
   const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
-  const usesNativeLogoImage = authBrand.brandName === "Okou";
+  const usesNativeLogoImage =
+    authBrand.brandName === "Okou" && currentOrigin === "https://app.okou.ai";
 
   return {
     theme: "simple",

@@ -71,7 +71,11 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
             ref={authPageMountRef}
           >
             <SignIn
-              appearance={getAuthV1SignInAppearance(theme, authBrand)}
+              appearance={getAuthV1SignInAppearance(
+                theme,
+                authBrand,
+                location.origin,
+              )}
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
