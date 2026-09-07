@@ -3,12 +3,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { packagedAppPaths } = require("./packaged-app-paths");
+const { resolveDesktopBuildConfig } = require("./desktop-build-config");
+const { readDesktopSmokeEvidence } = require("./desktop-smoke-evidence");
 
 const cuaProbe = process.argv.includes("--cua-probe");
-const READY_MARKER = cuaProbe
-  ? "[cua-probe] "
-  : "[smoke-test] desktop main ready";
 const LAUNCH_TIMEOUT_MS = 60_000;
+const OUTPUT_LIMIT = 128 * 1024;
 
 if (process.platform !== "darwin") {
   throw new Error("Packaged desktop smoke tests are only supported on macOS.");
@@ -24,24 +24,29 @@ const {
   appBundlePath: process.env.OKOU_DESKTOP_SMOKE_APP_PATH,
 });
 
-if (cuaProbe) {
-  if (process.argv.includes("--signed")) {
+try {
+  if (cuaProbe) {
+    if (process.argv.includes("--signed")) {
+      execFileSync(
+        "codesign",
+        ["--verify", "--deep", "--strict", appBundlePath],
+        { stdio: "pipe" },
+      );
+    }
     execFileSync(
-      "codesign",
-      ["--verify", "--deep", "--strict", appBundlePath],
-      { stdio: "inherit" },
+      "python3",
+      [
+        path.join(__dirname, "stage-cua-runtime.py"),
+        "--verify",
+        cuaRuntimePath,
+        ...(process.argv.includes("--signed") ? ["--signed"] : []),
+      ],
+      { stdio: "pipe" },
     );
   }
-  execFileSync(
-    "python3",
-    [
-      path.join(__dirname, "stage-cua-runtime.py"),
-      "--verify",
-      cuaRuntimePath,
-      ...(process.argv.includes("--signed") ? ["--signed"] : []),
-    ],
-    { stdio: "inherit" },
-  );
+} catch {
+  console.error("Packaged CUA preflight failed; no executable was launched");
+  process.exit(1);
 }
 
 if (!fs.existsSync(executablePath)) {
@@ -95,7 +100,7 @@ assertNoUnbundledRequires(
   ["@okouai/", "@modelcontextprotocol/sdk/"],
   "These packages must be bundled via tsup noExternal; see tsup.electron.config.js.",
 );
-console.log(`Main bundle has no unbundled requires: ${mainBundlePath}`);
+console.log("Main bundle dependency verification passed");
 
 const mcpBundle = fs.readFileSync(mcpBundlePath, "utf8");
 const unbundledMcpPrefixes = ["@modelcontextprotocol/sdk"];
@@ -111,9 +116,7 @@ assertNoUnbundledEsmImports(
   unbundledMcpPrefixes,
   "These packages must be bundled via tsup noExternal; see tsup.mcp-filesystem.config.js.",
 );
-console.log(
-  `Filesystem MCP bundle has no unbundled SDK imports: ${mcpBundlePath}`,
-);
+console.log("Filesystem MCP bundle dependency verification passed");
 
 const child = spawn(executablePath, [], {
   env: {
@@ -126,41 +129,66 @@ const child = spawn(executablePath, [], {
 });
 
 let stdout = "";
-let stderr = "";
+let outputBytes = 0;
+let outputExceeded = false;
+let timedOut = false;
 child.stdout.setEncoding("utf8");
 child.stderr.setEncoding("utf8");
 child.stdout.on("data", (chunk) => {
-  stdout += chunk;
+  outputBytes += Buffer.byteLength(chunk);
+  if (outputBytes > OUTPUT_LIMIT) {
+    outputExceeded = true;
+    child.kill("SIGKILL");
+  } else stdout += chunk;
 });
 child.stderr.on("data", (chunk) => {
-  stderr += chunk;
+  outputBytes += Buffer.byteLength(chunk);
+  if (outputBytes > OUTPUT_LIMIT) {
+    outputExceeded = true;
+    child.kill("SIGKILL");
+  }
 });
 
 const timeout = setTimeout(() => {
+  timedOut = true;
   child.kill("SIGKILL");
 }, LAUNCH_TIMEOUT_MS);
 
+child.on("error", () => {
+  clearTimeout(timeout);
+  console.error("Packaged verification failed: launch_failed");
+  process.exitCode = 1;
+});
+
 child.on("close", (code, signal) => {
   clearTimeout(timeout);
-
-  const succeeded =
-    code === 0 &&
-    stdout.includes(READY_MARKER) &&
-    (cuaProbe
-      ? stdout.includes('"cleanup":"confirmed"')
-      : stdout.includes("[smoke-test] cua dormant"));
-  if (succeeded) {
-    if (cuaProbe) console.log(stdout.trim());
-    console.log(`Packaged app launched and reported ready: ${executablePath}`);
-    return;
+  try {
+    if (code !== 0 || signal !== null || timedOut || outputExceeded) {
+      throw new Error("process_failed");
+    }
+    const evidence = readDesktopSmokeEvidence(
+      stdout,
+      cuaProbe,
+      resolveDesktopBuildConfig().identity,
+    );
+    const report = {
+      kind: cuaProbe ? "embedded-lifecycle" : "dormant-startup",
+      processExit: { code, signal, timedOut, outputExceeded },
+      evidence,
+    };
+    if (process.env.OKOU_DESKTOP_SMOKE_EVIDENCE_PATH) {
+      fs.writeFileSync(
+        process.env.OKOU_DESKTOP_SMOKE_EVIDENCE_PATH,
+        `${JSON.stringify(report, null, 2)}\n`,
+      );
+    }
+    console.log(JSON.stringify(report));
+  } catch {
+    // SDK/Electron stderr can contain user paths. Never copy raw child output
+    // into CI artifacts, including on malformed or oversized evidence.
+    console.error(
+      `Packaged verification failed: code=${code} signal=${signal} timedOut=${timedOut} outputExceeded=${outputExceeded}`,
+    );
+    process.exitCode = 1;
   }
-
-  console.error(
-    signal === "SIGKILL"
-      ? `Packaged app did not report ready within ${LAUNCH_TIMEOUT_MS}ms`
-      : `Packaged app exited with code ${code} (signal ${signal}) before reporting ready`,
-  );
-  console.error(`--- stdout ---\n${stdout}`);
-  console.error(`--- stderr ---\n${stderr}`);
-  process.exitCode = 1;
 });

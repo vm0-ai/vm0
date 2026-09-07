@@ -40,6 +40,7 @@ function externalSdk() {
   let captureGate: Promise<void> = Promise.resolve();
   let editMetadata = (value: DriverMetadata) => value;
   let editConnection = (value: EmbeddedDriverConnection) => value;
+  let editExit = (value: EmbeddedDriverExit) => value;
   let granted = false;
   let clientDestroyed = false;
   const sdk: CuaSdk = {
@@ -90,11 +91,13 @@ function externalSdk() {
           await stopGate;
           active.delete(id);
           state = 0;
-          exit.resolve({
-            generation: connection.generation,
-            success: true,
-            code: 0,
-          });
+          exit.resolve(
+            editExit({
+              generation: connection.generation,
+              success: true,
+              code: 0,
+            }),
+          );
         },
         state: () => state,
         waitForExit: () => exit.promise,
@@ -204,6 +207,9 @@ function externalSdk() {
     connection: (edit: typeof editConnection) => {
       editConnection = edit;
     },
+    exit: (edit: typeof editExit) => {
+      editExit = edit;
+    },
     grant: () => {
       granted = true;
     },
@@ -233,7 +239,11 @@ describe("embedded CUA host lifecycle", () => {
     expect(external.active.size).toBe(0);
     const first = owner.start();
     expect(owner.start()).toBe(first);
-    expect(await first).toEqual({ generation: 1, driverVersion: "0.23.2" });
+    expect(await first).toMatchObject({
+      generation: 1,
+      driverVersion: "0.23.2",
+      metadata: { pid: 1, embedded: true, hostBundleId: "ai.okou.desktop" },
+    });
     expect(external.active.size).toBe(1);
     expect((await stat(external.hosts[0]!.directory)).mode & 0o777).toBe(0o700);
     await Promise.all([owner.stop(), owner.stop()]);
@@ -415,17 +425,51 @@ describe("embedded CUA host lifecycle", () => {
       accessibility: false,
       screenRecording: false,
       capture: "not_requested",
-      cleanup: "confirmed",
+      cleanup: {
+        generation: 1,
+        exitObserved: true,
+        exitSuccess: true,
+        exitCode: 0,
+        hostStopped: true,
+        directoryRemoved: true,
+      },
     });
     expect(external.active.size).toBe(0);
     await expect(owner.start()).rejects.toThrow("disposed");
+  });
+
+  it("does not call a force-killed or failed child a successful packaged probe", async () => {
+    const { owner, external } = runtime();
+    external.exit((exit) => ({ ...exit, success: false, code: undefined }));
+    await expect(
+      runCuaHostProbe(owner, false, "/unused-probe-output"),
+    ).rejects.toThrow("clean process lifecycle");
+    expect(external.active.size).toBe(0);
+    expect(owner.getCleanupEvidence()).toMatchObject({
+      exitObserved: true,
+      exitSuccess: false,
+      exitCode: null,
+    });
+    await expect(stat(external.hosts[0]!.directory)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("explicit capture with missing TCC grants reports permission denial and cleans up", async () => {
     const { owner, external } = runtime();
     expect(
       await runCuaHostProbe(owner, true, "/unused-probe-output"),
-    ).toMatchObject({ capture: "permission_denied", cleanup: "confirmed" });
+    ).toMatchObject({
+      capture: "permission_denied",
+      cleanup: {
+        generation: 1,
+        exitObserved: true,
+        exitSuccess: true,
+        exitCode: 0,
+        hostStopped: true,
+        directoryRemoved: true,
+      },
+    });
     expect(external.active.size).toBe(0);
   });
 
@@ -437,7 +481,14 @@ describe("embedded CUA host lifecycle", () => {
       const result = await runCuaHostProbe(owner, true, directory);
       expect(result).toMatchObject({
         capture: "success",
-        cleanup: "confirmed",
+        cleanup: {
+          generation: 1,
+          exitObserved: true,
+          exitSuccess: true,
+          exitCode: 0,
+          hostStopped: true,
+          directoryRemoved: true,
+        },
       });
       expect(JSON.stringify(result)).not.toContain("iVBOR");
       expect(

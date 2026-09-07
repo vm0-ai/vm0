@@ -13,6 +13,15 @@ import { withComputerUseDeadline } from "./computer-use-lifecycle-deadline";
 interface CuaReadiness {
   readonly generation: number;
   readonly driverVersion: string;
+  readonly metadata: Pick<
+    DriverMetadata,
+    | "pid"
+    | "embedded"
+    | "hostBundleId"
+    | "driverVersion"
+    | "contractVersion"
+    | "mcpProtocolVersion"
+  >;
 }
 
 interface Generation {
@@ -57,8 +66,21 @@ export class CuaEmbeddedRuntime {
   private phase: "stopped" | "starting" | "ready" | "retiring" | "error" =
     "stopped";
   private error: string | null = null;
+  private cleanupEvidence: {
+    readonly generation: number;
+    readonly exitObserved: boolean;
+    readonly exitSuccess: boolean;
+    readonly exitCode: number | null;
+    readonly hostStopped: boolean;
+    readonly directoryRemoved: boolean;
+  } | null = null;
 
   constructor(private readonly options: RuntimeOptions) {}
+
+  /** Metadata only, for the fixed packaged lifecycle probe. No native labels. */
+  getCleanupEvidence() {
+    return this.cleanupEvidence;
+  }
 
   getState() {
     return {
@@ -103,6 +125,7 @@ export class CuaEmbeddedRuntime {
       startResult: Promise.resolve().then(() => this.startGeneration(context)),
     };
     this.context = context;
+    this.cleanupEvidence = null;
     this.phase = "starting";
     this.error = null;
     return context.startResult;
@@ -177,7 +200,18 @@ export class CuaEmbeddedRuntime {
     this.validateMetadata(context, connection, metadata);
     this.assertCurrent(context);
     this.phase = "ready";
-    return { generation: context.id, driverVersion: metadata.driverVersion };
+    return {
+      generation: context.id,
+      driverVersion: metadata.driverVersion,
+      metadata: {
+        pid: metadata.pid,
+        embedded: metadata.embedded,
+        hostBundleId: metadata.hostBundleId,
+        driverVersion: metadata.driverVersion,
+        contractVersion: metadata.contractVersion,
+        mcpProtocolVersion: metadata.mcpProtocolVersion,
+      },
+    };
   }
 
   private validateMetadata(
@@ -236,16 +270,27 @@ export class CuaEmbeddedRuntime {
     if (context.probe) await context.probe.catch(() => {});
     context.client?.uniffiDestroy();
     context.client = null;
+    let exit: EmbeddedDriverExit | null = null;
+    let hostStopped = false;
     if (context.host) {
       await context.host.stop();
-      if (context.exit) await context.exit;
+      if (context.exit) exit = await context.exit;
       if (context.host.state() !== context.sdk?.stoppedState)
         throw new Error("CUA process exit is unproven");
+      hostStopped = true;
       context.host.uniffiDestroy();
     }
     if (context.directory)
       await rm(context.directory, { recursive: true, force: true });
     if (this.context === context) {
+      this.cleanupEvidence = {
+        generation: context.id,
+        exitObserved: exit !== null,
+        exitSuccess: exit?.success === true,
+        exitCode: exit?.code ?? null,
+        hostStopped,
+        directoryRemoved: context.directory !== null,
+      };
       this.context = null;
       this.phase = this.error ? "error" : "stopped";
     }

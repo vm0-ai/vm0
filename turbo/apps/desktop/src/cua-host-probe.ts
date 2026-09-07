@@ -10,6 +10,7 @@ export async function runCuaHostProbe(
 ) {
   try {
     const ready = await runtime.start();
+    const readyState = runtime.getState();
     const permissions = await runtime.probe(capture);
     if (permissions.screenshot) {
       const directory = path.join(userData, "cua-host-probe");
@@ -21,8 +22,26 @@ export async function runCuaHostProbe(
       );
     }
     await runtime.stop();
+    const stoppedState = runtime.getState();
+    const cleanup = runtime.getCleanupEvidence();
+    if (
+      !cleanup ||
+      cleanup.generation !== ready.generation ||
+      !cleanup.exitObserved ||
+      !cleanup.exitSuccess ||
+      cleanup.exitCode !== 0 ||
+      !cleanup.hostStopped ||
+      !cleanup.directoryRemoved ||
+      stoppedState.phase !== "stopped" ||
+      stoppedState.cleanupPending ||
+      stoppedState.generation !== null
+    )
+      throw new Error("CUA probe did not complete a clean process lifecycle");
     return {
+      schemaVersion: 1,
       ...ready,
+      readyState,
+      stoppedState,
       accessibility: permissions.accessibility,
       screenRecording: permissions.screenRecording,
       attribution: permissions.attribution,
@@ -31,7 +50,7 @@ export async function runCuaHostProbe(
         : capture
           ? "permission_denied"
           : "not_requested",
-      cleanup: "confirmed",
+      cleanup,
     };
   } finally {
     await runtime.dispose();

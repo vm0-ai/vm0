@@ -90,6 +90,16 @@ Unexpected exit cannot replay a command, revive old readiness, or choose Okou.
 
 ## Automated package verification
 
+See the consolidated [acceptance guide](ACCEPTANCE.md),
+[fillable paired results](ACCEPTANCE-RESULTS.md) and
+[signed upgrade/rollback runbook](UPGRADE-ROLLBACK.md).
+
+**Dedicated CI/test OS account only:** ordinary smoke signs out and bootstrap
+uses the real product userData. It initializes normal services, including the
+production updater. It is not a read-only installed-profile check; moving an
+app or passing an arbitrary Electron profile flag does not isolate that state.
+Use `inspect-cua-package.py` from the guide for inspection without launching.
+
 From `turbo`, the macOS workflow runs both commands on the default,
 production-configured, and PR preview packages:
 
@@ -98,11 +108,16 @@ node apps/desktop/scripts/smoke-test-packaged-app.js
 node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
 ```
 
-The first verifies the normal renderer bridge and reports `cua dormant`.
+The first verifies the real preload/auth/driver-control bridge and initial plus
+settled off/Okou driver state. It rechecks actual SDK dormancy after both IPC
+reads and passive permission refresh.
 The second checks the real package inventory and launches the actual packaged
 Electron main, loads the shipped SDK/native libraries, starts the shipped
 daemon, validates metadata, passively checks permissions, stops, and observes
-cleanup. It never requests TCC grants or captures an image. A missing grant is
+matching-generation exit, stopped host and removed private directory. Structured
+evidence must contain exact metadata/version/state fields and successful child
+and Electron termination. A text cleanup marker, forced exit or timer expiry
+cannot pass. It never requests TCC grants or captures an image. A missing grant is
 reported as `false` and does not skip load/start/metadata/cleanup. Unsupported
 platform, startup failure, and unproven cleanup fail explicitly. These checks
 run on CI artifacts signed ad-hoc by the existing Forge hook (the artifact
@@ -117,50 +132,29 @@ boundary. Neither test substitutes for the real macOS packaged probe.
 
 ## Pending signed-host and TCC acceptance (user-owned)
 
-Use a correctly signed/notarized build or designated preview from the normal
-Desktop distribution process. This issue does not authorize a release or
-grant approvals. Quit any existing instance of that same build first.
+Use [ACCEPTANCE.md](ACCEPTANCE.md) for exact-source downloads, observed signing,
+read-only inspection and the explicit boundary between dedicated test launches
+and user-owned interaction. [ACCEPTANCE-RESULTS.md](ACCEPTANCE-RESULTS.md) covers
+real TCC grants/revocation, four application families, screenshots/Spaces/scaling,
+supported/refused actions, plugin/recording continuity and paired measurements.
+No interactive field is filled by CI. A reported `host` label is not evidence
+of macOS responsibility attribution or actual task success.
 
-1. Verify the app with `codesign --verify --deep --strict --verbose=2
-"/Applications/Okou.app"` and `spctl --assess --type execute --verbose=2
-"/Applications/Okou.app"`. Inspect the four nested signatures and confirm
-   the app bundle ID (`ai.okou.desktop`, or `ai.okou.desktop.dev` for preview).
-2. With the source checkout, set `OKOU_DESKTOP_SMOKE_APP_PATH` to that exact
-   app and run the probe wrapper above with `--cua-probe --signed`. This
-   verifies lifecycle/loading; shell-launched evidence alone does not prove
-   LaunchServices responsibility attribution.
-3. Launch the signed app itself through LaunchServices with the fixed host
-   probe environment (macOS `open --env`), without a separate CUA installation:
+The existing fixed host probe also supports explicitly user-requested local
+capture with `OKOU_DESKTOP_CUA_CAPTURE=1`, after normal host TCC authorization.
+It writes `<this build's userData>/cua-host-probe/screenshot.png` (mode 0600),
+overwriting any previous probe PNG. This is a separate SDK lifecycle/capture
+operation, not a selected-driver command-queue task. It launches the app and
+can initialize bootstrap's updater; it is not read-only profile inspection.
+The no-capture CI wrapper always sets this flag to `0`. No image or input is
+included in package evidence or uploaded by the fixed probe. The user owns any
+interactive launch, grant, local capture and decision to share sanitized output.
 
-   ```sh
-   open -n --stdout /tmp/okou-cua-probe.log --stderr /tmp/okou-cua-probe-error.log \
-     --env OKOU_DESKTOP_CUA_PROBE=1 --env OKOU_DESKTOP_SMOKE_TEST=1 \
-     /Applications/Okou.app
-   ```
-
-   Inspect passive grant booleans, `attribution: "host"`, exact version and
-   `cleanup: "confirmed"`. The host label is advisory, not proof of OS TCC
-   attribution. Confirm System Settings and macOS TCC attribution logs identify
-   Okou only. Never approve a separate `CuaDriver.app` entry.
-
-4. The user grants Accessibility and Screen Recording to the signed Okou host,
-   then launches a new probe process (TCC answers may be cached by old children).
-   Only after those grants, repeat the LaunchServices command adding
-   `--env OKOU_DESKTOP_CUA_CAPTURE=1`. This fixed route uses a named public SDK
-   session and `getDesktopState`, ends that session, and saves one PNG at
-   `<this build's userData>/cua-host-probe/screenshot.png` with mode 0600. Logs
-   contain permission/version/cleanup metadata only. The image stays local.
-   `capture: "success"` requires an actual PNG; denied grants report
-   `permission_denied`, and capture errors fail the probe.
-5. Revoke each grant, restart and repeat the passive probe, then regrant and
-   restart. Confirm the old CUA child and its private socket directory disappear
-   after each exit and no standalone CUA identity/daemon is left behind.
-
-Signed installation, actual OS TCC responsibility, authorized screenshot content,
-revocation/regrant behavior and paired real-app comparison remain **pending
-user verification**. An unsigned CI pass does not complete these items or the
-parent Epic. Future upgrades replace this explicit lock through normal Desktop
-distribution and rerun the package/lifecycle checks.
+Developer ID/notarized installation, actual host attribution, real application
+behavior and [same-identity signed upgrade/rollback](UPGRADE-ROLLBACK.md) remain
+pending-user until performed on a matching normally distributed signed build.
+An ad-hoc preview is not proof of production TCC persistence and does not
+authorize signing promotion, release or Epic acceptance.
 
 ## Developer selection and recovery
 
