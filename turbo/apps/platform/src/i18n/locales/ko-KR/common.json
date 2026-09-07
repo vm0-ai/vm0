@@ -1999,10 +1999,7 @@
       },
       "format": {
         "auto": "자동",
-        "filter": "화면 비율로 스타일 참고 필터링",
-        "landscape": "가로 · 16:9",
-        "output": "출력 화면 비율",
-        "portrait": "세로 · 9:16"
+        "output": "출력 화면 비율"
       },
       "heading": "인트로 영상 만들기",
       "help": "자료를 추가하거나 원하는 내용을 설명하세요. 둘 다 해도 좋습니다. 나머지는 Okou가 처리합니다.",
@@ -2017,7 +2014,16 @@
       "style": {
         "auto": "Okou에게 맡기기",
         "autoDescription": "요청과 자료에 맞는 시각적 방향 선택",
-        "emptyFormat": "이 화면 비율에 맞는 스타일 참고가 없습니다.",
+        "description": "스타일은 에이전트가 사용하는 시각적 템플릿에 영향을 줍니다. 장면, 전환, 텍스트 오버레이, 진행 속도는 해당 스타일의 디자인 시스템을 따릅니다.",
+        "groups": {
+          "cinematic": "영화와 사진",
+          "handmade": "수공예와 소재",
+          "iconic-artist": "예술과 디자인",
+          "other": "기타 스타일",
+          "pop-culture": "대중문화",
+          "print": "인쇄와 출판",
+          "retro-tech": "레트로 기술과 인터페이스"
+        },
         "heading": "참고할 스타일 선택",
         "label": "스타일 참고",
         "preview": "{{title}} 미리보기",

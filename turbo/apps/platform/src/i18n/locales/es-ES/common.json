@@ -2034,10 +2034,7 @@
       },
       "format": {
         "auto": "Automático",
-        "filter": "Filtrar referencias de estilo por formato",
-        "landscape": "Horizontal · 16:9",
-        "output": "Formato de salida",
-        "portrait": "Vertical · 9:16"
+        "output": "Formato de salida"
       },
       "heading": "Crea tu vídeo de introducción",
       "help": "Añade materiales, describe lo que quieres o haz ambas cosas. Okou se encarga del resto.",
@@ -2052,7 +2049,16 @@
       "style": {
         "auto": "Dejar que Okou elija",
         "autoDescription": "Adapta la dirección visual a tus indicaciones y materiales",
-        "emptyFormat": "No hay referencias de estilo para este formato.",
+        "description": "El estilo influye en la plantilla visual que usa el agente: las escenas, las transiciones, los textos superpuestos y el ritmo siguen el sistema de diseño del estilo.",
+        "groups": {
+          "cinematic": "Cine y fotografía",
+          "handmade": "Artesanía y materiales",
+          "iconic-artist": "Arte y diseño",
+          "other": "Otros estilos",
+          "pop-culture": "Cultura pop",
+          "print": "Impresión y publicaciones",
+          "retro-tech": "Tecnología retro e interfaces"
+        },
         "heading": "Elige una referencia de estilo",
         "label": "Referencia de estilo",
         "preview": "Vista previa de {{title}}",

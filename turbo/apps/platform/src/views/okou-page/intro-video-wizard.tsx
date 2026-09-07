@@ -39,10 +39,8 @@ import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import {
-  introVideoAvatarPickerSignals,
-  introVideoStylePickerSignals,
-} from "../../signals/okou-page/intro-video-catalog-picker.ts";
+import { introVideoAvatarPickerSignals } from "../../signals/okou-page/intro-video-catalog-picker.ts";
+import { introVideoStyleGallerySignals } from "../../signals/okou-page/intro-video-style-gallery.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import { groupIntroVideoAvatars } from "../../signals/okou-page/intro-video-avatar-groups.ts";
 import {
@@ -393,31 +391,19 @@ function StylePicker() {
   const selection = useGet(introVideoWizardSignals.style$);
   const setSelection = useSet(introVideoWizardSignals.setStyle$);
   const close = useSet(introVideoWizardSignals.setPicker$);
-  const catalog = useLoadable(introVideoStylePickerSignals.catalogPage$);
-  const lastCatalog = useLastResolved(
-    introVideoStylePickerSignals.catalogPage$,
-  );
-  const generation = useGet(introVideoStylePickerSignals.generation$);
-  const loadMoreState = useLoadable(introVideoStylePickerSignals.paging$);
-  const loadMore = useSet(introVideoStylePickerSignals.loadMore$);
-  const setSentinelRef = useSet(introVideoStylePickerSignals.setSentinelRef$);
-  const reload = useSet(introVideoStylePickerSignals.reload$);
-  const pageSignal = useGet(pageSignal$);
-  const handleLoadMore = () => {
-    detach(loadMore(pageSignal), Reason.DomCallback, "load more HeyGen styles");
-  };
-  const visible =
-    catalog.state === "hasData"
-      ? catalog.data
-      : lastCatalog?.generation === generation
-        ? lastCatalog
-        : undefined;
+  const catalog = useLoadable(introVideoStyleGallerySignals.catalog$);
+  const reload = useSet(introVideoStyleGallerySignals.reload$);
   const choose = (next: IntroVideoStyleSelection) => {
     setSelection(next);
     close(null);
   };
   return (
     <div className="grid gap-3">
+      <p className="text-sm leading-6 text-muted-foreground">
+        {t(($) => {
+          return $.chat.introVideo.style.description;
+        })}
+      </p>
       <div className="grid gap-2">
         <UtilityOption
           title={t(($) => {
@@ -435,9 +421,9 @@ function StylePicker() {
       </div>
       {catalog.state === "hasError" ? (
         <CatalogError onRetry={reload} />
-      ) : visible === undefined ? (
+      ) : catalog.state === "loading" ? (
         <CatalogSkeleton />
-      ) : visible.items.length === 0 ? (
+      ) : catalog.data.length === 0 ? (
         <CatalogMessage>
           {t(($) => {
             return $.chat.introVideo.catalog.empty;
@@ -445,8 +431,7 @@ function StylePicker() {
         </CatalogMessage>
       ) : (
         <IntroVideoStyleGallery
-          styles={visible.items}
-          hasNext={visible.hasNext}
+          styles={catalog.data}
           selectedStyleId={
             selection.kind === "catalog" ? selection.style.id : undefined
           }
@@ -455,14 +440,6 @@ function StylePicker() {
           }}
         />
       )}
-      <IntroVideoCatalogPagination
-        hasNext={visible?.hasNext ?? false}
-        loading={loadMoreState.state === "loading"}
-        error={loadMoreState.state === "hasError" ? loadMoreState.error : null}
-        onLoadMore={handleLoadMore}
-        onReload={reload}
-        onSentinelRef={setSentinelRef}
-      />
     </div>
   );
 }

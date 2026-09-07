@@ -2002,10 +2002,7 @@
       },
       "format": {
         "auto": "Automatisch",
-        "filter": "Stilreferenzen nach Format filtern",
-        "landscape": "Querformat · 16:9",
-        "output": "Ausgabeformat",
-        "portrait": "Hochformat · 9:16"
+        "output": "Ausgabeformat"
       },
       "heading": "Erstelle dein Intro-Video",
       "help": "Füge Materialien hinzu, beschreibe dein Ziel oder mache beides. Okou erledigt den Rest.",
@@ -2020,7 +2017,16 @@
       "style": {
         "auto": "Okou wählen lassen",
         "autoDescription": "Die visuelle Richtung an deine Vorgaben und Materialien anpassen",
-        "emptyFormat": "Keine Stilreferenzen für dieses Format.",
+        "description": "Der Stil beeinflusst die visuelle Vorlage des Agenten — Szenen, Übergänge, Texteinblendungen und Tempo folgen dem Designsystem des Stils.",
+        "groups": {
+          "cinematic": "Film und Fotografie",
+          "handmade": "Handarbeit und Materialien",
+          "iconic-artist": "Kunst und Design",
+          "other": "Weitere Stile",
+          "pop-culture": "Popkultur",
+          "print": "Druck und Verlagswesen",
+          "retro-tech": "Retro-Technik und Oberflächen"
+        },
         "heading": "Stilreferenz wählen",
         "label": "Stilreferenz",
         "preview": "Vorschau von {{title}}",

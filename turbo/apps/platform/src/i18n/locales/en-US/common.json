@@ -2002,10 +2002,7 @@
       },
       "format": {
         "auto": "Auto",
-        "filter": "Filter style references by format",
-        "landscape": "Landscape · 16:9",
-        "output": "Output format",
-        "portrait": "Portrait · 9:16"
+        "output": "Output format"
       },
       "heading": "Create your intro video",
       "help": "Add material, describe what you want, or do both. Okou handles the rest.",
@@ -2020,7 +2017,16 @@
       "style": {
         "auto": "Let Okou choose",
         "autoDescription": "Match a visual direction to your prompt and material",
-        "emptyFormat": "No style references match this format.",
+        "description": "The style influences the visual template the agent uses — scenes, transitions, text overlays, and pacing will follow the style’s design system.",
+        "groups": {
+          "cinematic": "Film and photography",
+          "handmade": "Handmade and materials",
+          "iconic-artist": "Art and design",
+          "other": "Other styles",
+          "pop-culture": "Pop culture",
+          "print": "Print and publishing",
+          "retro-tech": "Retro tech and interfaces"
+        },
         "heading": "Choose a style reference",
         "label": "Style reference",
         "preview": "Preview {{title}}",

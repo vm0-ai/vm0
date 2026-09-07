@@ -79,7 +79,7 @@ function installIntroVideoFixture(
   context.mocks.api(
     introVideoPresenterContract.styles,
     ({ query, respond }) => {
-      expect(query).toStrictEqual({ pageSize: 24 });
+      expect(query).toStrictEqual({ pageSize: 100 });
       return respond(200, {
         styles: [
           {
@@ -370,24 +370,33 @@ test("The whole upload area opens the file picker and still accepts drops", asyn
   expect(requiredButtonNamed("Create video", dialog)).toBeEnabled();
 });
 
-test("Styles automatically load near the end and keep existing choices", async () => {
-  const user = userEvent.setup({ delay: null });
-  const approachEnd = mockCatalogIntersection();
+test("Styles from every catalog page are grouped by tag across aspect ratios", async () => {
   installIntroVideoFixture();
   const nextPage = createDeferredPromise<void>(context.signal);
   context.mocks.api(
     introVideoPresenterContract.styles,
     async ({ query, respond }) => {
+      expect(query.pageSize).toBe(100);
       if (query.token === "next-styles") {
         await nextPage.promise;
         return respond(200, {
           styles: [
             {
-              id: "portrait-style",
-              name: "Portrait",
-              thumbnailUrl: "https://files.heygen.test/portrait.jpg",
+              id: "portrait",
+              name: "Portrait film",
               aspectRatio: "9:16",
-              tags: [],
+              tags: ["cinematic"],
+            },
+            { id: "paper", name: "Paper craft", tags: ["handmade"] },
+            { id: "pixel", name: "Pixel screen", tags: ["retro-tech"] },
+            { id: "comic", name: "Comic book", tags: ["pop-culture"] },
+            { id: "editorial", name: "Editorial", tags: ["print"] },
+            { id: "painting", name: "Painting", tags: ["iconic-artist"] },
+            { id: "untagged", name: "Untagged style", tags: [] },
+            {
+              id: "new-tag",
+              name: "New provider category",
+              tags: ["new-category"],
             },
           ],
           hasMore: false,
@@ -397,10 +406,10 @@ test("Styles automatically load near the end and keep existing choices", async (
       return respond(200, {
         styles: [
           {
-            id: "landscape-style",
-            name: "Landscape",
+            id: "landscape",
+            name: "Landscape film",
             aspectRatio: "16:9",
-            tags: [],
+            tags: ["print", "cinematic"],
           },
         ],
         hasMore: true,
@@ -410,39 +419,58 @@ test("Styles automatically load near the end and keep existing choices", async (
   );
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await within(picker).findByText("Landscape");
-  approachEnd(picker, false);
-  expect(within(picker).getByText("Landscape")).toBeVisible();
-  approachEnd(picker);
-  await within(picker).findByText("Loading more options");
-  expect(
-    picker.querySelector("[data-intro-video-catalog-sentinel]"),
-  ).toBeNull();
+  expect(within(picker).getByText("Let Okou choose")).toBeVisible();
   nextPage.resolve();
-  await user.click(within(picker).getByLabelText("Portrait · 9:16"));
-  await within(picker).findByText("Portrait");
-  await user.click(within(picker).getByLabelText("Landscape · 16:9"));
-  expect(within(picker).getByText("Landscape")).toBeVisible();
+  const cinematic = await within(picker).findByRole("region", {
+    name: "Film and photography",
+  });
   expect(
-    picker.querySelector("[data-intro-video-catalog-sentinel]"),
-  ).toBeNull();
+    within(cinematic).getByRole("heading", {
+      name: "Film and photography · 2",
+    }),
+  ).toBeVisible();
+  expect(
+    requiredButtonNamed("Select style Landscape film", cinematic),
+  ).toHaveTextContent("16:9");
+  expect(
+    requiredButtonNamed("Select style Portrait film", cinematic),
+  ).toHaveTextContent("9:16");
+  for (const [group, style] of [
+    ["Handmade and materials", "Paper craft"],
+    ["Retro tech and interfaces", "Pixel screen"],
+    ["Pop culture", "Comic book"],
+    ["Print and publishing", "Editorial"],
+    ["Art and design", "Painting"],
+  ]) {
+    const section = within(picker).getByRole("region", { name: group });
+    expect(requiredButtonNamed(`Select style ${style}`, section)).toBeVisible();
+    expect(
+      within(section).getByRole("heading", { name: `${group} · 1` }),
+    ).toBeVisible();
+  }
+  const other = within(picker).getByRole("region", { name: "Other styles" });
+  expect(
+    requiredButtonNamed("Select style Untagged style", other),
+  ).toBeVisible();
+  expect(
+    requiredButtonNamed("Select style New provider category", other),
+  ).toBeVisible();
+  click(requiredButtonNamed("Select style Portrait film", cinematic));
+  expect(requiredButtonNamed("Style reference: Portrait film")).toBeVisible();
 });
 
-test("A failed automatic page load keeps existing options and waits for a retry", async () => {
-  const user = userEvent.setup({ delay: null });
-  const approachEnd = mockCatalogIntersection();
+test("A failed later style page can retry and show the complete catalog", async () => {
   installIntroVideoFixture();
-  let attempts = 0;
+  let unavailable = true;
   context.mocks.api(
     introVideoPresenterContract.styles,
     ({ query, respond }) => {
       if (query.token === "next-styles") {
-        attempts += 1;
-        if (attempts === 1) {
+        if (unavailable) {
           return respond(502, {
             error: {
               code: "HEYGEN_UNAVAILABLE",
@@ -456,7 +484,7 @@ test("A failed automatic page load keeps existing options and waits for a retry"
               id: "second-style",
               name: "Second style",
               aspectRatio: "16:9",
-              tags: [],
+              tags: ["cinematic"],
             },
           ],
           hasMore: false,
@@ -469,7 +497,7 @@ test("A failed automatic page load keeps existing options and waits for a retry"
             id: "first-style",
             name: "First style",
             aspectRatio: "16:9",
-            tags: [],
+            tags: ["cinematic"],
           },
         ],
         hasMore: true,
@@ -479,23 +507,21 @@ test("A failed automatic page load keeps existing options and waits for a retry"
   );
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await within(picker).findByText("First style");
-  approachEnd(picker);
   const retry = await within(picker).findByText("Try again");
-  expect(within(picker).getByText("First style")).toBeVisible();
   expect(
-    picker.querySelector("[data-intro-video-catalog-sentinel]"),
-  ).toBeNull();
-  await user.click(retry);
+    within(picker).getByText("The HeyGen catalog could not be loaded."),
+  ).toBeVisible();
+  unavailable = false;
+  click(retry);
   await within(picker).findByText("Second style");
-  expect(within(picker).queryByText("Try again")).toBeNull();
+  expect(requiredButtonNamed("Select style First style", picker)).toBeVisible();
   expect(
-    picker.querySelector("[data-intro-video-catalog-sentinel]"),
-  ).toBeNull();
+    within(picker).getByRole("heading", { name: "Film and photography · 2" }),
+  ).toBeVisible();
 });
 
 test.each(["avatars", "styles"] as const)(
@@ -613,7 +639,7 @@ test("A style previews inline without a third dialog or selecting it", async () 
   });
 });
 
-test("Only one inline style preview is mounted and changing format stops it", async () => {
+test("Only one inline style preview is mounted across tag groups", async () => {
   installIntroVideoFixture();
   context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
     return respond(200, {
@@ -622,14 +648,14 @@ test("Only one inline style preview is mounted and changing format stops it", as
           id: "one",
           name: "First video",
           aspectRatio: "16:9",
-          tags: [],
+          tags: ["cinematic"],
           previewVideoUrl: "https://files.heygen.test/first.mp4",
         },
         {
           id: "two",
           name: "Second video",
           aspectRatio: "16:9",
-          tags: [],
+          tags: ["handmade"],
           previewVideoUrl: "https://files.heygen.test/second.mp4",
         },
       ],
@@ -652,10 +678,6 @@ test("Only one inline style preview is mounted and changing format stops it", as
     "src",
     "https://files.heygen.test/second.mp4",
   );
-  click(within(picker).getByLabelText("Portrait · 9:16"));
-  expect(picker.querySelector("video")).toBeNull();
-  click(within(picker).getByLabelText("Landscape · 16:9"));
-  expect(picker.querySelector("video")).toBeNull();
 });
 
 test("A failed preview keeps style selection available", async () => {
@@ -723,7 +745,7 @@ test("A prompt alone creates an Intro Video chat", async () => {
   });
 });
 
-test("Style format filtering does not change the explicit output ratio", async () => {
+test("Selecting a landscape style from a tag group preserves the explicit portrait output", async () => {
   const user = userEvent.setup({ delay: null });
   let submittedPrompt: string | undefined;
   installIntroVideoFixture({
@@ -734,8 +756,18 @@ test("Style format filtering does not change the explicit output ratio", async (
   context.mocks.api(introVideoPresenterContract.styles, ({ respond }) => {
     return respond(200, {
       styles: [
-        { id: "wide", name: "Wide story", aspectRatio: "16:9", tags: [] },
-        { id: "tall", name: "Tall story", aspectRatio: "9:16", tags: [] },
+        {
+          id: "wide",
+          name: "Wide story",
+          aspectRatio: "16:9",
+          tags: ["cinematic"],
+        },
+        {
+          id: "tall",
+          name: "Tall story",
+          aspectRatio: "9:16",
+          tags: ["cinematic"],
+        },
       ],
       hasMore: false,
       nextToken: null,
@@ -755,20 +787,15 @@ test("Style format filtering does not change the explicit output ratio", async (
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await within(picker).findByText("Wide story");
-  const formats = within(picker).getByLabelText(
-    "Filter style references by format",
-  );
+  const group = await within(picker).findByRole("region", {
+    name: "Film and photography",
+  });
   expect(
-    queryAllByRoleFast("radio", formats).map((format) => {
-      return format.getAttribute("aria-label");
-    }),
-  ).toStrictEqual(["Landscape · 16:9", "Portrait · 9:16"]);
-  expect(within(picker).queryByText("Tall story")).toBeNull();
-  expect(within(picker).getByText("Wide story")).toBeVisible();
-  await user.click(within(formats).getByLabelText("Portrait · 9:16"));
-  expect(within(picker).getByText("Tall story")).toBeVisible();
-  await user.click(within(formats).getByLabelText("Landscape · 16:9"));
+    requiredButtonNamed("Select style Wide story", group),
+  ).toHaveTextContent("16:9");
+  expect(
+    requiredButtonNamed("Select style Tall story", group),
+  ).toHaveTextContent("9:16");
   await user.click(within(picker).getByLabelText("Select style Wide story"));
   await user.click(requiredButtonNamed("Create video", dialog));
   await waitFor(() => {
@@ -781,8 +808,6 @@ test("Style format filtering does not change the explicit output ratio", async (
 });
 
 test("An expired catalog cursor reloads the catalog instead of retrying that cursor", async () => {
-  const user = userEvent.setup({ delay: null });
-  const intersect = mockCatalogIntersection();
   installIntroVideoFixture();
   let expired = false;
   context.mocks.api(
@@ -810,16 +835,15 @@ test("An expired catalog cursor reloads the catalog instead of retrying that cur
   );
   await setupIntroVideoPage();
   await openIntroVideoDialog();
-  await user.click(requiredButtonNamed("Style reference: Let Okou choose"));
+  click(requiredButtonNamed("Style reference: Let Okou choose"));
   const picker = await screen.findByRole("dialog", {
     name: "Choose a style reference",
   });
-  await within(picker).findByText("Old style");
-  intersect(picker);
-  await user.click(await within(picker).findByText("Reload catalog"));
+  click(await within(picker).findByText("Try again"));
   await within(picker).findByText("Fresh style");
   expect(within(picker).queryByText("Old style")).toBeNull();
-  expect(within(picker).queryByText("Reload catalog")).toBeNull();
+  click(requiredButtonNamed("Select style Fresh style", picker));
+  expect(requiredButtonNamed("Style reference: Fresh style")).toBeVisible();
 });
 
 test("Cancelling a partially uploaded video draft leaves the chat draft intact and does not leak files on reopen", async () => {

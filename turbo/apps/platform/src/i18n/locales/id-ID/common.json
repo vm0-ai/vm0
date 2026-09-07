@@ -1999,10 +1999,7 @@
       },
       "format": {
         "auto": "Otomatis",
-        "filter": "Filter referensi gaya berdasarkan format",
-        "landscape": "Lanskap · 16:9",
-        "output": "Format keluaran",
-        "portrait": "Potret · 9:16"
+        "output": "Format keluaran"
       },
       "heading": "Buat video intro Anda",
       "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
@@ -2017,7 +2014,16 @@
       "style": {
         "auto": "Biarkan Okou memilih",
         "autoDescription": "Sesuaikan arah visual dengan instruksi dan materi Anda",
-        "emptyFormat": "Tidak ada referensi gaya yang sesuai dengan format ini.",
+        "description": "Gaya memengaruhi templat visual yang digunakan agen — adegan, transisi, teks overlay, dan tempo akan mengikuti sistem desain gaya tersebut.",
+        "groups": {
+          "cinematic": "Film dan fotografi",
+          "handmade": "Kerajinan dan material",
+          "iconic-artist": "Seni dan desain",
+          "other": "Gaya lainnya",
+          "pop-culture": "Budaya pop",
+          "print": "Percetakan dan penerbitan",
+          "retro-tech": "Teknologi retro dan antarmuka"
+        },
         "heading": "Pilih referensi gaya",
         "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",

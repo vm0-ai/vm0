@@ -1,7 +1,6 @@
 import {
   introVideoPresenterContract,
   type IntroVideoAvatar,
-  type IntroVideoStyle,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
@@ -203,32 +202,5 @@ const avatarPageLoader$ = computed((get): CatalogLoader<IntroVideoAvatar> => {
   };
 });
 
-const stylePageLoader$ = computed((get): CatalogLoader<IntroVideoStyle> => {
-  const client = get(apiClient$)(introVideoPresenterContract, {
-    apiBase: "api",
-  });
-  return async (token, signal) => {
-    const result = await accept(
-      client.styles({
-        query: {
-          pageSize: INTRO_VIDEO_CATALOG_PAGE_SIZE,
-          ...(token ? { token } : {}),
-        },
-        ...(signal ? { fetchOptions: { signal } } : {}),
-      }),
-      [200],
-      signal,
-    );
-    return {
-      items: result.body.styles,
-      hasNext: result.body.hasMore && result.body.nextToken !== null,
-      nextToken: result.body.nextToken,
-    };
-  };
-});
-
 export const introVideoAvatarPickerSignals =
   createPagedCatalogSignals(avatarPageLoader$);
-
-export const introVideoStylePickerSignals =
-  createPagedCatalogSignals(stylePageLoader$);
