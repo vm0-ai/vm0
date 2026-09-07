@@ -7,7 +7,19 @@ import {
 } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
-import { and, eq, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  gt,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import type { ApiDb, Tx } from "../../lib/db-types";
@@ -60,6 +72,106 @@ interface PiMemoryPhase2MaintenanceRunBinding {
   readonly claimedRevision: number;
   readonly claimedBaseVersionId: string;
   readonly selectionDigest: string;
+}
+
+/**
+ * Match the complete live sandbox-maintenance fence for one owned run. The
+ * job constraints make these fields move together, while spelling them out
+ * here keeps cleanup fail-closed if an invalid legacy row is ever observed.
+ */
+export function activePiMemoryPhase2MaintenanceRunCondition(
+  db: Pick<ApiDb, "select">,
+  args: {
+    readonly runId: string | SQLWrapper;
+    readonly orgId: string | SQLWrapper;
+    readonly userId: string | SQLWrapper;
+    readonly currentTime: Date;
+  },
+): SQL {
+  return and(
+    eq(piMemoryPhase2Jobs.maintenanceRunId, args.runId),
+    eq(piMemoryPhase2Jobs.orgId, args.orgId),
+    eq(piMemoryPhase2Jobs.userId, args.userId),
+    eq(piMemoryPhase2Jobs.status, "leased"),
+    isNull(piMemoryPhase2Jobs.legacyLeaseToken),
+    isNotNull(piMemoryPhase2Jobs.leaseToken),
+    eq(piMemoryPhase2Jobs.sandboxLeaseToken, piMemoryPhase2Jobs.leaseToken),
+    gt(piMemoryPhase2Jobs.leaseExpiresAt, args.currentTime),
+    isNotNull(piMemoryPhase2Jobs.claimedRevision),
+    gt(
+      piMemoryPhase2Jobs.claimedRevision,
+      piMemoryPhase2Jobs.completedRevision,
+    ),
+    lte(piMemoryPhase2Jobs.claimedRevision, piMemoryPhase2Jobs.inputRevision),
+    isNotNull(piMemoryPhase2Jobs.claimedBaseVersionId),
+    lt(piMemoryPhase2Jobs.retryCount, PI_MEMORY_PHASE2_MAX_ATTEMPTS),
+    isNull(piMemoryPhase2Jobs.retryAt),
+    isNull(piMemoryPhase2Jobs.lastErrorClass),
+    isNotNull(piMemoryPhase2Jobs.claimedSelectionDigest),
+    isNotNull(piMemoryPhase2Jobs.claimedSelectedCount),
+    isNotNull(piMemoryPhase2Jobs.claimedSelectedUtf8Bytes),
+    exists(
+      db
+        .select({ id: agentRunCallbacks.id })
+        .from(agentRunCallbacks)
+        .where(
+          and(
+            eq(agentRunCallbacks.runId, args.runId),
+            eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+            sql`${agentRunCallbacks.payload}->>'schemaVersion' = '1'`,
+            sql`${agentRunCallbacks.payload}->>'memoryStorageId' = ${piMemoryPhase2Jobs.memoryStorageId}::text`,
+            sql`${agentRunCallbacks.payload}->>'orgId' = ${piMemoryPhase2Jobs.orgId}`,
+            sql`${agentRunCallbacks.payload}->>'userId' = ${piMemoryPhase2Jobs.userId}`,
+            sql`${agentRunCallbacks.payload}->>'leaseToken' = ${piMemoryPhase2Jobs.leaseToken}::text`,
+            sql`${agentRunCallbacks.payload}->>'claimedRevision' = ${piMemoryPhase2Jobs.claimedRevision}::text`,
+            sql`${agentRunCallbacks.payload}->>'claimedBaseVersionId' = ${piMemoryPhase2Jobs.claimedBaseVersionId}`,
+            sql`${agentRunCallbacks.payload}->>'selectionDigest' = ${piMemoryPhase2Jobs.claimedSelectionDigest}`,
+          ),
+        ),
+    ),
+  ) as SQL;
+}
+
+/**
+ * Serialize cleanup with every exact owner binding for this run, then classify
+ * the complete fence under that lock. Locking the bound row before applying
+ * the live-lease predicate closes the expired-at-discovery/renewed-at-write
+ * race without allowing an unrelated owner row to shield the run.
+ */
+export async function lockPiMemoryPhase2MaintenanceCleanupProtection(
+  tx: Tx,
+  args: {
+    readonly runId: string;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<boolean> {
+  const bound = await tx
+    .select({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId })
+    .from(piMemoryPhase2Jobs)
+    .where(
+      and(
+        eq(piMemoryPhase2Jobs.maintenanceRunId, args.runId),
+        eq(piMemoryPhase2Jobs.orgId, args.orgId),
+        eq(piMemoryPhase2Jobs.userId, args.userId),
+      ),
+    )
+    .for("update", { of: piMemoryPhase2Jobs });
+  if (bound.length === 0) {
+    return false;
+  }
+
+  const [active] = await tx
+    .select({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId })
+    .from(piMemoryPhase2Jobs)
+    .where(
+      activePiMemoryPhase2MaintenanceRunCondition(tx, {
+        ...args,
+        currentTime: nowDate(),
+      }),
+    )
+    .limit(1);
+  return active !== undefined;
 }
 
 function exactActiveMaintenanceCondition(args: {
