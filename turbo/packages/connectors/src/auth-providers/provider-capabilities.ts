@@ -1311,6 +1311,33 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "optimizely-cmp",
+    authMethodId: "oauth",
+    contract: {
+      client: {
+        kind: "static-confidential-env",
+        clientIdEnv: "OPTIMIZELY_CMP_OAUTH_CLIENT_ID",
+        clientSecretEnv: "OPTIMIZELY_CMP_OAUTH_CLIENT_SECRET",
+      },
+      grant: {
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: ["accessToken", "refreshToken"],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputNames: ["refreshToken"],
+      },
+    },
+  },
+  {
     connectorSlug: "oto",
     authMethodId: "api-token",
     contract: {
