@@ -630,6 +630,41 @@ function segmentForm(
 }
 
 describe("POST /api/voice-io/transcribe/segment", () => {
+  it("accepts the 60-minute recording boundary and rejects longer recordings", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify({
+                  transcript: "Recorded speech.",
+                  language: "en",
+                }),
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(1)], "", false, 60 * 60),
+      }),
+      [200],
+    );
+    const tooLong = await client().segment({
+      headers,
+      body: segmentForm([audioFile(2)], "", false, 60 * 60 + 1),
+    });
+    expect(tooLong.status).toBe(400);
+  });
+
   it.each(["openai/gpt-audio", "openai/gpt-audio-mini"] as const)(
     "finishes a saved transcript with a text-capable model when %s has no remaining audio",
     async (model) => {
