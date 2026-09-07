@@ -7,6 +7,14 @@ interface PreviewBypassFixtures {
 }
 
 const test = base.extend<PreviewBypassFixtures>({
+  page: async ({ page }, use) => {
+    try {
+      await use(page);
+    } finally {
+      // UI assertions can finish while an intercepted upstream fetch is pending.
+      await page.unrouteAll({ behavior: "wait" });
+    }
+  },
   previewBypassCookie: [
     async ({ baseURL, context }, use) => {
       if (!baseURL) {

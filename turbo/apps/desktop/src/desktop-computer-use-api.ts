@@ -42,6 +42,7 @@ export function createDesktopComputerUseHostRuntime(
           ? options.driver.acquireCommand()
           : null;
       return {
+        identity: native?.identity,
         beginCommand: (budget) => native?.beginCommand?.(budget),
         release: () => native?.release(),
         abort: () => native?.abort?.(),

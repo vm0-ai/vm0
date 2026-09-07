@@ -69,7 +69,7 @@ interface Observation {
   readonly scale: number;
 }
 
-/** Internal factory only. The normal main registry intentionally remains Okou-only. */
+/** Lazy internal factory; the Desktop lifecycle owns opt-in and admission. */
 export function createCuaComputerUseDriver(
   options: ConstructorParameters<typeof CuaEmbeddedRuntime>[0],
 ): ComputerUseDriver {
@@ -81,6 +81,8 @@ export function createCuaComputerUseDriver(
 }
 
 class CuaComputerUseBackend implements ComputerUseNativeBackend {
+  isCleanupPending = () => this.runtime.getState().cleanupPending;
+  getRuntimeVersion = () => this.runtime.getState().loadedDriverVersion;
   readonly supportsWindowScroll = true;
   readonly discoveryNote = DISCOVERY_NOTE;
   private observation: Observation | null = null;

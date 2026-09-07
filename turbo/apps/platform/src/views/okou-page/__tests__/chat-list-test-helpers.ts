@@ -19,6 +19,7 @@ import {
   type SetupPageAuth,
 } from "../../../__tests__/page-helper.ts";
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
+import type { ChatThreadEventQueryResult } from "../../../shared-database/data-key.ts";
 import { createChatIdbOpener } from "../../../signals/external/chat-idb-opener.ts";
 import { createStrictIdbChatThreadEventStores } from "../../../signals/external/idb-chat-thread-event-store.ts";
 
@@ -108,6 +109,21 @@ function authIdentity(auth: Exclude<SetupPageAuth, null>): {
   return { userId: auth.user.id, orgId };
 }
 
+export function cachedChatListEvents(
+  caseId: number,
+  chatThreads: readonly ChatThreadSnapshotProjection[],
+  events: readonly ChatThreadEvent[] = [],
+): ChatThreadEventQueryResult {
+  return {
+    snapshot: {
+      chatThreads: [...chatThreads],
+      latestEventId: chatListEventId(caseId, 1),
+      latestSeqId: 1,
+    },
+    events: [...events],
+  };
+}
+
 export async function seedChatListCache(
   caseId: number,
   auth: Exclude<SetupPageAuth, null>,
@@ -146,12 +162,8 @@ export function installChatListStream(
   options: ChatListStreamOptions,
 ): {
   readonly setEvents: (events: readonly ChatThreadEvent[]) => void;
-  readonly eventsRequested: Promise<void>;
-  readonly eventsServed: Promise<void>;
 } {
   let currentEvents = [...(options.events ?? [])];
-  const eventsRequested = context.mocks.deferred<void>();
-  const eventsServed = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
     await options.remoteGate;
     return respond(200, {
@@ -161,17 +173,11 @@ export function installChatListStream(
     });
   });
   context.mocks.api(chatThreadsContract.events, async ({ query, respond }) => {
-    if (!eventsRequested.settled()) {
-      eventsRequested.resolve();
-    }
     await options.remoteGate;
     const sinceSeqId = query.sinceSeqId ?? 0;
     const events = currentEvents.filter((event) => {
       return event.seqId > sinceSeqId;
     });
-    if (!eventsServed.settled()) {
-      eventsServed.resolve();
-    }
     return respond(200, {
       events,
       hasMore: false,
@@ -183,12 +189,13 @@ export function installChatListStream(
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, { agents: {}, threads: {} });
   });
+  context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
   return {
     setEvents(events) {
       currentEvents = [...events];
     },
-    eventsRequested: eventsRequested.promise,
-    eventsServed: eventsServed.promise,
   };
 }
 

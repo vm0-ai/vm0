@@ -43,7 +43,6 @@ function buildCommands(): Command[] {
     new Command("web-search"),
     new Command("social"),
     new Command("image-recognition"),
-    new Command("recognize"),
     new Command("finance"),
     new Command("seo"),
     new Command("banking"),
@@ -168,11 +167,7 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual([
-      "mcp",
-      "image-recognition",
-      "recognize",
-    ]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -235,7 +230,6 @@ describe("registerCommands", () => {
       "web-search",
       "social",
       "image-recognition",
-      "recognize",
       "finance",
       "seo",
       "banking",
@@ -248,11 +242,7 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([
-      "mcp",
-      "image-recognition",
-      "recognize",
-    ]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -266,11 +256,7 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual([
-      "mcp",
-      "image-recognition",
-      "recognize",
-    ]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -792,9 +778,7 @@ describe("registerCommands", () => {
     expect(registeredCommandNames(noTokenProgram)).toContain(
       "image-recognition",
     );
-    expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
     expect(hiddenCommandNames(noTokenProgram)).toContain("image-recognition");
-    expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
     expect(buildHelpText()).not.toContain("Recognize an image?");
 
     const missingCapabilityToken = buildOkouToken({
@@ -808,7 +792,6 @@ describe("registerCommands", () => {
     expect(hiddenCommandNames(missingCapabilityProgram)).toContain(
       "image-recognition",
     );
-    expect(hiddenCommandNames(missingCapabilityProgram)).toContain("recognize");
     expect(
       buildHelpText(decodeSandboxTokenPayload(missingCapabilityToken)),
     ).not.toContain("Recognize an image?");
@@ -822,8 +805,6 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", eligibleToken);
     const eligibleProgram = buildProgram();
     expect(visibleCommandNames(eligibleProgram)).toContain("image-recognition");
-    expect(visibleCommandNames(eligibleProgram)).not.toContain("recognize");
-    expect(hiddenCommandNames(eligibleProgram)).toContain("recognize");
     expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
     );

@@ -1,9 +1,10 @@
-# Host-owned CUA command adapter (slice 3)
+# Host-owned CUA command adapter (0.23.2)
 
 `createCuaComputerUseDriver` is an internal composition seam for
-`ComputerUseDriverController` and the existing executor/host. Ordinary `main.ts`
-registers only Okou. The factory is not renderer IPC, a preference, an environment
-switch, or an agent-controlled tool interface. Public commands, auth, queue,
+`ComputerUseDriverController` and the existing executor/host. `main.ts` keeps
+Okou as the default and selects this adapter only through the local Developer
+experiment described in [README.md](README.md). The factory itself is not a
+renderer IPC or an agent-controlled tool interface. Public commands, auth, queue,
 errors, result/artifact envelopes and the packaged distribution remain unchanged.
 
 The sole source contract is CUA **0.23.2**, commit
@@ -122,4 +123,4 @@ lifecycle only. They do not prove the fixture action behavior on an interactive
 Mac. Developer ID/notarized installation, actual host TCC attribution, revoked/
 regranted access, real application/window/Unicode/scroll behavior, screenshot
 content, paired Okou comparison and performance remain **unproven and pending
-user acceptance in slice 5**. This PR exposes no selector and authorizes no release.
+user acceptance in slice 5**. The Developer selector does not establish interactive acceptance or authorize a release.

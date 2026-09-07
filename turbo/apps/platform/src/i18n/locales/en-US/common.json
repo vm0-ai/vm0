@@ -2196,7 +2196,6 @@
       "title": "Replace composer draft?"
     },
     "run": {
-      "all": "All",
       "automatedRun": "Automated run",
       "collapseGroupedHistory": "Collapse grouped run history",
       "collapseHistoryMessage": "Collapse history message: {{message}}",
@@ -2241,7 +2240,6 @@
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
-      "recent": "Recent",
       "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",
@@ -2260,7 +2258,6 @@
       "waitingIn": "Waiting in",
       "worked": "Worked",
       "workedFor": "Worked for {{duration}}",
-      "workHistoryRange": "Work history range",
       "workingFor": "Working for {{duration}}"
     },
     "sharing": {

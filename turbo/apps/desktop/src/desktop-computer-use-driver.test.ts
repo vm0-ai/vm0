@@ -654,7 +654,10 @@ describe("production driver generation and admission wiring", () => {
     permission.resume.resolve();
     await Promise.all([start, stop]);
     expect(app.controller.getHostState().status).toBe("offline");
-    expect(app.requests).toEqual([]);
+    expect(app.requests.map((request) => request.path)).toEqual([
+      "/api/auth/me",
+      "/api/org",
+    ]);
     expect(app.native.active).toBe(0);
     await app.controller.start();
     expect(app.native.created).toBe(1);
@@ -671,7 +674,11 @@ describe("production driver generation and admission wiring", () => {
     expect(app.driver.generation).toBe(2);
     expect(app.native.active).toBe(1);
     expect(app.controller.getHostState().status).toBe("online");
-    expect(app.timers.count(0)).toBe(1);
+    // Only the latest startup registers; it starts with the normal poll delay.
+    expect(app.timers.count(5_000)).toBe(1);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(1);
   });
 
   it.each(["stop", "auth", "quit", "update"] as const)(
@@ -763,12 +770,11 @@ describe("production driver generation and admission wiring", () => {
     const first = app.controller.transitionDriver(app.driverDefinition);
     const second = app.controller.transitionDriver(other);
     await Promise.all([first, second]);
-    expect(app.driver.generation).toBe(3);
+    expect(app.driver.generation).toBe(2);
     expect(app.native.active).toBe(1);
     expect(app.timers.count(0)).toBe(1);
     expect(app.events.filter((event) => event.startsWith("dispose:"))).toEqual([
       "dispose:1",
-      "dispose:2",
     ]);
     expect(app.online).toEqual([true]);
   });

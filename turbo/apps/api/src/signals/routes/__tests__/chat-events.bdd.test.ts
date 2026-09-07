@@ -7396,14 +7396,35 @@ describe("CHAT-02: model-first provider policies", () => {
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
         triggerSource: null,
       }),
-    ).toBe("source_not_web_chat");
+    ).toBe("source_not_interactive_chat");
+    expect(
+      piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
+        triggerSource: "unknown",
+      }),
+    ).toBe("source_not_interactive_chat");
+    const expectedAdmissionBySource = {
+      web: null,
+      slack: null,
+      teams: null,
+      feishu: null,
+      email: "source_not_interactive_chat",
+      telegram: null,
+      agentphone: null,
+      github: null,
+      test: "source_not_interactive_chat",
+      agent: null,
+      webhook: "source_not_interactive_chat",
+      "automation-schedule": "source_not_interactive_chat",
+      "automation-event": "source_not_interactive_chat",
+      goal: "source_not_interactive_chat",
+    } as const satisfies Record<
+      (typeof triggerSourceSchema.options)[number],
+      "source_not_interactive_chat" | null
+    >;
     for (const triggerSource of triggerSourceSchema.options) {
-      if (triggerSource === "web" || triggerSource === "agent") {
-        continue;
-      }
       expect(
         piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({ triggerSource }),
-      ).toBe("source_not_web_chat");
+      ).toBe(expectedAdmissionBySource[triggerSource]);
     }
     const usagePricingResolution = await createTerraUsagePricingResolution();
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);

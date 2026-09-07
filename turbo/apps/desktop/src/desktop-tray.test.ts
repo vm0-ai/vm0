@@ -1,3 +1,4 @@
+import { stoppedOkouDriverState } from "./test/desktop-driver-state";
 import {
   afterAll,
   beforeEach,
@@ -146,6 +147,7 @@ function computerUseState(
   options: ComputerUseStateOptions = {},
 ): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     permissions: {

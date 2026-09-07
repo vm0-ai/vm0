@@ -2193,7 +2193,6 @@
       "title": "작성 중인 초안을 교체하시겠습니까?"
     },
     "run": {
-      "all": "전체",
       "automatedRun": "자동 실행",
       "collapseGroupedHistory": "그룹화된 실행 기록 접기",
       "collapseHistoryMessage": "기록 메시지 접기: {{message}}",
@@ -2238,7 +2237,6 @@
       "keepGoingAt": "계속 진행 · {{timestamp}}",
       "modelChangedTo": "모델을 {{model}}로 변경했습니다",
       "queueEllipsis": "대기 중...",
-      "recent": "최근",
       "selectedModelAppliesAfterCurrentRun": "선택한 {{model}} 모델은 이번 실행 후에 적용됩니다",
       "thinking": {
         "assembling": "조립 중...",
@@ -2257,7 +2255,6 @@
       "waitingIn": "대기 중",
       "worked": "작업 완료",
       "workedFor": "{{duration}} 동안 작업 완료",
-      "workHistoryRange": "작업 기록 범위",
       "workingFor": "{{duration}} 동안 작업 중"
     },
     "sharing": {

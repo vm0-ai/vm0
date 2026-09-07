@@ -101,6 +101,41 @@ export class DesktopAuthSession {
   private pendingCallback: DesktopAuthCallback | null = null;
   private signingIn = false;
   private restoreEnabled = true;
+  private authority: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly lifetime: AbortSignal;
+  } | null = null;
+
+  /** Opaque, current identity/session proof. Never sent over the renderer bridge. */
+  getAuthority(): object | null {
+    return !this.signingIn && !this.lifetime.signal.aborted
+      ? this.authority
+      : null;
+  }
+
+  private rememberAuthority(
+    state: DesktopAuthState,
+    lifetime: AbortController,
+  ): void {
+    if (this.lifetime !== lifetime || lifetime.signal.aborted) return;
+    const next =
+      state.status === "signed_in" && state.organization
+        ? {
+            userId: state.user.userId,
+            orgId: state.organization.id,
+            lifetime: lifetime.signal,
+          }
+        : null;
+    if (
+      this.authority?.userId === next?.userId &&
+      this.authority?.orgId === next?.orgId &&
+      this.authority?.lifetime === next?.lifetime
+    )
+      return;
+    this.authority = next;
+    this.onChange();
+  }
 
   constructor(options: DesktopAuthSessionOptions) {
     this.product = options.product;
@@ -208,9 +243,11 @@ export class DesktopAuthSession {
   }
 
   private async fetchAuthState(): Promise<DesktopAuthState> {
+    const lifetime = this.lifetime;
     const meUrl = new URL(AUTH_ME_PATH, this.apiBaseUrl);
     const meResponse = await this.fetchWithSessionAuth(meUrl);
     if (meResponse.status === 401) {
+      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
       return signedOutDesktopAuthState();
     }
     if (!meResponse.ok) {
@@ -221,9 +258,11 @@ export class DesktopAuthSession {
     const orgUrl = new URL(ZERO_ORG_PATH, this.apiBaseUrl);
     const orgResponse = await this.fetchWithSessionAuth(orgUrl);
     if (orgResponse.status === 401) {
+      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
       return signedOutDesktopAuthState();
     }
     if (orgResponse.status === 404) {
+      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
       return { status: "signed_in", user, organization: null };
     }
     if (!orgResponse.ok) {
@@ -233,7 +272,7 @@ export class DesktopAuthSession {
     }
 
     const organization = (await orgResponse.json()) as ZeroOrgResponse;
-    return {
+    const state: DesktopAuthState = {
       status: "signed_in",
       user,
       organization: {
@@ -241,10 +280,13 @@ export class DesktopAuthSession {
         name: organization.name,
       },
     };
+    this.rememberAuthority(state, lifetime);
+    return lifetime.signal.aborted ? signedOutDesktopAuthState() : state;
   }
 
   signOut(): void {
     this.lifetime.abort();
+    this.authority = null;
     this.token = null;
     this.appState = signedOutDesktopAuthState();
     this.tokenRefresh.clear();
@@ -311,10 +353,13 @@ export class DesktopAuthSession {
     this.lifetime.abort();
     const lifetime = new AbortController();
     this.lifetime = lifetime;
+    this.authority = null;
     this.restoreEnabled = true;
     this.token = null;
     this.appState = signedOutDesktopAuthState();
     this.setSigningIn(interactive);
+    // Even a hidden token restoration replaces session execution authority.
+    this.onChange();
     // The lifetime also owns validation requests after the window closes.
     const signal = AbortSignal.any([
       lifetime.signal,
@@ -334,6 +379,7 @@ export class DesktopAuthSession {
         signal.throwIfAborted();
         if (state.status !== "signed_in") return null;
         this.appState = state;
+        this.rememberAuthority(state, lifetime);
       }
       this.token = token;
       this.onChange();
@@ -441,11 +487,16 @@ export class DesktopAuthSession {
     try {
       const state = await this.readAppIdentity(this.token, lifetime.signal);
       lifetime.signal.throwIfAborted();
-      if (state.status === "signed_in") return state;
+      if (state.status === "signed_in") {
+        this.appState = state;
+        this.rememberAuthority(state, lifetime);
+        return state;
+      }
       await this.getToken({ forceRefresh: true });
       return this.appState;
     } catch (error) {
       if (lifetime.signal.aborted) return signedOutDesktopAuthState();
+      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
       throw error;
     }
   }
@@ -478,6 +529,7 @@ export class DesktopAuthSession {
       this.restoreEnabled = false;
       this.token = null;
       this.appState = signedOutDesktopAuthState();
+      this.authority = null;
       this.onChange();
     }
     return retried;

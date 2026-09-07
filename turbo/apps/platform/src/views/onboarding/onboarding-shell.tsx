@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@okouai/ui";
-import { useGet, useSet } from "ccstate-react";
+import { useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -11,12 +11,8 @@ import {
 } from "@okouai/ui/components/ui/dialog";
 import { AccountDropdown } from "../okou-page/sidebar-account";
 import { OrgSwitcher, OrgSwitcherCompact } from "../okou-page/org-switcher.tsx";
-import { SettingsDialog } from "../okou-page/components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "../okou-page/components/settings/settings-dialog.tsx";
 import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
-import {
-  closeSettingsModal$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
 
 /**
  * Onboarding uses a softer, larger surface than the rest of the app: a wider
@@ -197,19 +193,9 @@ export function OnboardingShell({
   readonly footer?: ReactNode;
   readonly preview?: ReactNode;
 }) {
-  const settingsOpen = useGet(settingsDialogOpen$);
-  const closeSettings = useSet(closeSettingsModal$);
-
   return (
     <div className="okou-app okou-viewport-shell relative w-full bg-background text-foreground">
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeSettings();
-          }
-        }}
-      />
+      <SettingsDialogMount />
       <div className="fixed left-4 top-4 z-20 hidden w-60 sm:left-6 sm:top-6 sm:block">
         <OrgSwitcher />
       </div>

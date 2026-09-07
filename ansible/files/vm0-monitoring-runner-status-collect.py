@@ -77,17 +77,8 @@ def parse_status(path: Path) -> tuple[str, list[tuple[str, str]]]:
         parse_sandbox_entry(entry)[1]
         for entry in parse_collection(status, "blank_sandboxes")
     }
-    idle_entries = [
-        parse_sandbox_entry(entry)
-        for entry in parse_collection(status, "idle_sandboxes")
-    ]
-    # Temporary input compatibility; remove in #32084 once supported writers
-    # and retained live status files no longer use synthetic blank reuse keys.
-    for idle, sandbox_id in idle_entries:
-        if idle.get("reuse_key") == f"__vm0_blank__:{idle['sandbox_id']}":
-            blank_ids.add(sandbox_id)
-
-    for _, sandbox_id in idle_entries:
+    for entry in parse_collection(status, "idle_sandboxes"):
+        _, sandbox_id = parse_sandbox_entry(entry)
         if sandbox_id not in blank_ids:
             sandbox_states.append((sandbox_id, "idle"))
     sandbox_states.extend((sandbox_id, "blank") for sandbox_id in blank_ids)

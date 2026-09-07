@@ -15,14 +15,18 @@ import type {
 import {
   hasRequiredComputerUsePermissions,
   type ComputerUsePermissionState,
+  type ComputerUseExecutionIdentity,
 } from "./computer-use-types";
 
 export interface ComputerUseDriver {
   readonly id: string;
+  readonly buildVersion?: string;
+  readonly getAuthorization?: () => object | null;
   readonly createBackend: () => ComputerUseNativeBackend;
 }
 
 interface DriverGeneration {
+  readonly authorization: object | null;
   readonly driver: ComputerUseDriver;
   readonly generation: number;
   readonly backend: ComputerUseNativeBackend;
@@ -35,6 +39,7 @@ interface DriverGeneration {
 }
 
 export interface ComputerUseCommandSession {
+  readonly identity?: ComputerUseExecutionIdentity;
   beginCommand?(budget: ComputerUseCommandBudget): void;
   getPermissions(
     command?: ComputerUseCommand,
@@ -56,14 +61,79 @@ export class ComputerUseDriverController {
   private active = false;
   private permissionsPaused = false;
   private closed = false;
+  private failure: string | null = null;
 
   constructor(
     private driver: ComputerUseDriver,
     private readonly platform: NodeJS.Platform = process.platform,
+    private readonly onChange: () => void = () => {},
   ) {}
 
   get generation(): number | null {
     return this.context?.generation ?? null;
+  }
+
+  get selectedDriver(): ComputerUseDriver {
+    return this.driver;
+  }
+
+  get cleanupPending(): boolean {
+    return (
+      this.retirement !== null ||
+      (this.context?.backend.isCleanupPending?.() ?? false)
+    );
+  }
+
+  getState() {
+    const context = this.context ?? this.retiringContext;
+    const ready = this.getCapabilities().length > 0;
+    return {
+      actual: context ? this.identity(context, ready) : null,
+      ready,
+      cleanupPending: this.cleanupPending,
+      error:
+        this.failure ??
+        (this.context &&
+        this.active &&
+        this.context.backend.isAvailable?.() === false
+          ? "Native driver became unavailable. Retry after cleanup, or use Okou."
+          : null),
+    };
+  }
+
+  resetFailure(): void {
+    this.failure = null;
+  }
+
+  private identity(
+    context: DriverGeneration,
+    ready: boolean,
+  ): ComputerUseExecutionIdentity {
+    return {
+      id: context.driver.id,
+      generation: context.generation,
+      version: ready
+        ? (context.backend.getRuntimeVersion?.() ??
+          context.driver.buildVersion ??
+          null)
+        : null,
+    };
+  }
+
+  private authorized(context: DriverGeneration): boolean {
+    return (
+      !context.driver.getAuthorization ||
+      (context.authorization !== null &&
+        context.authorization === context.driver.getAuthorization())
+    );
+  }
+
+  /** Synchronous withdrawal; claimed work cannot admit a new native action. */
+  withdrawAdmission(): void {
+    this.active = false;
+    this.permissionsPaused = true;
+    this.context?.snapshots.clear();
+    this.onChange();
   }
 
   private prepare(): DriverGeneration {
@@ -71,8 +141,12 @@ export class ComputerUseDriverController {
       throw new Error("Computer Use driver retirement is not complete");
     }
     if (!this.context) {
+      const authorization = this.driver.getAuthorization?.() ?? null;
+      if (this.driver.getAuthorization && !authorization)
+        throw new Error("Computer Use driver authorization is unavailable");
       const { promise, resolve } = createComputerUseDrain();
       this.context = {
+        authorization,
         driver: this.driver,
         generation: ++this.nextGeneration,
         backend: this.driver.createBackend(),
@@ -83,7 +157,10 @@ export class ComputerUseDriverController {
         disposal: null,
         permissionsReady: false,
       };
+      this.onChange();
     }
+    if (!this.authorized(this.context))
+      throw new Error("Computer Use driver authorization changed");
     return this.context;
   }
 
@@ -91,6 +168,7 @@ export class ComputerUseDriverController {
     this.prepare();
     this.active = true;
     this.permissionsPaused = false;
+    this.onChange();
   }
 
   pausePermissions(): void {
@@ -109,7 +187,9 @@ export class ComputerUseDriverController {
         ...context.backend,
         getPermissions: () => this.readPermissions(context),
       });
-      return this.context === context ? result : null;
+      return this.context === context && this.authorized(context)
+        ? result
+        : null;
     } finally {
       release();
     }
@@ -117,11 +197,17 @@ export class ComputerUseDriverController {
 
   acquireCommand(): ComputerUseCommandSession {
     const context = this.context;
-    if (!this.active || !context || context.backend.isAvailable?.() === false) {
+    if (
+      !this.active ||
+      !context ||
+      !this.authorized(context) ||
+      context.backend.isAvailable?.() === false
+    ) {
       throw new Error("Computer Use driver is not ready");
     }
     const release = this.lease(context);
     return {
+      identity: this.identity(context, true),
       beginCommand: (budget) => context.backend.setCommandBudget?.(budget),
       abort: () => {
         void this.forceRetire().catch(() => {});
@@ -131,6 +217,7 @@ export class ComputerUseDriverController {
         if (
           this.context !== context ||
           !this.active ||
+          !this.authorized(context) ||
           context.backend.isAvailable?.() === false
         )
           return {
@@ -172,6 +259,7 @@ export class ComputerUseDriverController {
     const context = this.context;
     return this.active &&
       context?.permissionsReady &&
+      this.authorized(context) &&
       context.backend.isAvailable?.() !== false
       ? SUPPORTED_COMPUTER_USE_CAPABILITIES
       : [];
@@ -182,11 +270,20 @@ export class ComputerUseDriverController {
   ): Promise<ComputerUsePermissionState> {
     try {
       const permissions = await context.backend.getPermissions();
-      context.permissionsReady = hasRequiredComputerUsePermissions(permissions);
-      if (!context.permissionsReady && this.active)
+      context.permissionsReady =
+        this.context === context &&
+        this.authorized(context) &&
+        hasRequiredComputerUsePermissions(permissions);
+      if (!context.permissionsReady && this.active) {
+        this.failure =
+          "Native permissions or authorization were withdrawn. Explicit recovery is required.";
         void this.forceRetire().catch(() => {});
+      }
+      this.onChange();
       return permissions;
     } catch (error) {
+      this.failure =
+        "Native driver permission check failed. Explicit recovery is required.";
       context.permissionsReady = false;
       if (this.context === context) void this.forceRetire().catch(() => {});
       throw error;
@@ -240,11 +337,13 @@ export class ComputerUseDriverController {
       await this.dispose(context, reason);
     })();
     this.retirement = retirement;
+    this.onChange();
     void retirement.then(
       () => {
         if (this.retirement === retirement) {
           this.retirement = null;
           this.retiringContext = null;
+          this.onChange();
         }
       },
       () => {

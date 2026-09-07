@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.86.11"
+version = "0.86.12"
 edition.workspace = true
 
 [dependencies]
@@ -44,6 +44,10 @@ guest-control-proto.workspace = true
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
+
+[[example]]
+name = "pi_memory_citation_bench"
+path = "src/cli/pi_memory_citation_bench.rs"
 
 [lints]
 workspace = true

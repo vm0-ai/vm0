@@ -45,13 +45,4 @@ export const imageRecognitionRoutes: readonly RouteEntry[] = [
     route: imageRecognitionContract.imageRecognition,
     handler: imageRecognitionHandler$,
   },
-  // Compatibility for immutable commit-addressed CLI artifacts that still call
-  // `/api/recognize`. Keep until the canonical CLI and first-party guidance
-  // have shipped, every pre-switch execution context has drained through queue,
-  // execution, and finalization, and supported external callers no longer use
-  // the old path. Remove in the evidence-backed cleanup phase tracked by #26929.
-  {
-    route: imageRecognitionContract.recognize,
-    handler: imageRecognitionHandler$,
-  },
 ];

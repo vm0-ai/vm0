@@ -70,6 +70,8 @@ export interface ComputerUseNativeAppRecord {
 }
 
 export interface ComputerUseNativeBackend {
+  readonly isCleanupPending?: () => boolean;
+  readonly getRuntimeVersion?: () => string | null;
   readonly validateCommand?: (command: ComputerUseCommand) => void;
   readonly setCommandBudget?: (budget: ComputerUseCommandBudget | null) => void;
   readonly supportsWindowScroll?: boolean;

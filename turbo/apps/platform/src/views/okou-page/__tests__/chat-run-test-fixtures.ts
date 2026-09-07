@@ -78,65 +78,50 @@ function matchesAccessibleName(element: HTMLElement, name: string): boolean {
   );
 }
 
-function workHistoryRangeContainers(container: ParentNode): HTMLElement[] {
+function workHistoryToggleButtons(container: ParentNode): HTMLElement[] {
   return Array.from(
     container.querySelectorAll<HTMLElement>("[data-chat-run-work-range]"),
   );
 }
 
-export function queryWorkHistoryRangeOptions(
-  name: "All" | "Recent",
+export function queryWorkHistoryToggles(
+  state: "collapsed" | "expanded",
   container: ParentNode = document.body,
 ): HTMLElement[] {
-  return workHistoryRangeContainers(container).flatMap((range) => {
-    return queryAllByRoleFast("radio", range).filter((option) => {
-      return (
-        option.getAttribute("aria-label") === name ||
-        normalizedText(option) === name
-      );
-    });
+  const expanded = state === "expanded";
+  return workHistoryToggleButtons(container).filter((control) => {
+    return control.getAttribute("aria-expanded") === String(expanded);
   });
 }
 
-export function queryWorkHistoryRangeOption(
-  name: "All" | "Recent",
+export function queryWorkHistoryToggle(
+  state: "collapsed" | "expanded",
   container: ParentNode = document.body,
 ): HTMLElement | null {
-  const options = queryWorkHistoryRangeOptions(name, container);
+  const options = queryWorkHistoryToggles(state, container);
   if (options.length > 1) {
-    throw new Error(`Found multiple work history range options named ${name}`);
+    throw new Error(`Found multiple ${state} work history toggles`);
   }
   return options[0] ?? null;
 }
 
-export function getWorkHistoryRangeOption(
-  name: "All" | "Recent",
+export function getWorkHistoryToggle(
+  state: "collapsed" | "expanded",
   container: ParentNode = document.body,
 ): HTMLElement {
-  const option = queryWorkHistoryRangeOption(name, container);
+  const option = queryWorkHistoryToggle(state, container);
   if (!option) {
-    throw new Error(`Work history range option ${name} was not visible`);
+    throw new Error(`${state} work history toggle was not visible`);
   }
   return option;
 }
 
-export function getWorkHistoryRangeOptions(
-  name: "All" | "Recent",
-  container: ParentNode = document.body,
-): HTMLElement[] {
-  const options = queryWorkHistoryRangeOptions(name, container);
-  if (options.length === 0) {
-    throw new Error(`Work history range option ${name} was not visible`);
-  }
-  return options;
-}
-
-export function findWorkHistoryRangeOption(
-  name: "All" | "Recent",
+export function findWorkHistoryToggle(
+  state: "collapsed" | "expanded",
   container: ParentNode = document.body,
 ): Promise<HTMLElement> {
   return waitFor(() => {
-    return getWorkHistoryRangeOption(name, container);
+    return getWorkHistoryToggle(state, container);
   });
 }
 

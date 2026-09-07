@@ -5,7 +5,9 @@ import { expect, test, vi } from "vitest";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { mockedClerk } from "./mock-auth.ts";
-import { queryAllByRoleFast, setupPage } from "./page-helper.ts";
+import { queryAllByRoleFast, setupPage, startPage } from "./page-helper.ts";
+import frFRCommon from "../i18n/locales/fr-FR/common.json";
+import frFRCommonUrl from "../i18n/locales/fr-FR/common.json?url";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -102,6 +104,72 @@ test("The SharedWorker owns realtime when its feature switch is enabled", async 
     ).toBeTruthy();
   });
   expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(1);
+});
+
+test.each(["setupPage", "startPage"])(
+  "%s does not report cancelled authentication startup as ready",
+  async (entryPoint) => {
+    const clerkLoad = context.mocks.clerk().runtimePending();
+    const controller = new AbortController();
+    const options = {
+      context: {
+        ...context,
+        signal: AbortSignal.any([context.signal, controller.signal]),
+      },
+      host: "app.vm0.ai",
+      path: "/agents",
+    };
+    const pageReady =
+      entryPoint === "setupPage"
+        ? setupPage(options)
+        : (await startPage(options)).ready;
+
+    const skeleton = await screen.findByTestId("app-skeleton");
+    expect(skeleton).toBeVisible();
+    const reason = new DOMException("Page startup cancelled", "AbortError");
+    controller.abort(reason);
+    clerkLoad.resolve();
+    await expect(pageReady).rejects.toBe(reason);
+
+    expect(screen.queryByRole("heading", { name: "Agents" })).toBeNull();
+    expect(skeleton).not.toBeInTheDocument();
+  },
+);
+
+test("Cancelled locale startup does not adopt a replacement lifetime", async () => {
+  const localeRequested = context.mocks.deferred<Request>();
+  const localeResponse = context.mocks.deferred<void>();
+  context.mocks.http.get(frFRCommonUrl, async ({ request }) => {
+    localeRequested.resolve(request);
+    await localeResponse.promise;
+    return HttpResponse.json(frFRCommon);
+  });
+  const controller = new AbortController();
+  let currentSignal = AbortSignal.any([context.signal, controller.signal]);
+  const startup = startPage({
+    context: {
+      ...context,
+      get signal() {
+        return currentSignal;
+      },
+    },
+    host: "app.vm0.ai",
+    path: "/agents",
+    locale: "fr-FR",
+  });
+  const request = await localeRequested.promise;
+  const reason = new DOMException("Locale startup cancelled", "AbortError");
+  controller.abort(reason);
+  // Model testContext replacing its lifetime while old startup is suspended.
+  currentSignal = context.signal;
+  localeResponse.resolve();
+  await expect(startup).rejects.toBe(reason);
+
+  expect(request.signal.aborted).toBeTruthy();
+  expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Agents" }),
+  ).not.toBeInTheDocument();
 });
 
 test("Authentication startup is reused without a duplicate load", async () => {

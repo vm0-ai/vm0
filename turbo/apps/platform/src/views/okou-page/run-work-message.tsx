@@ -1,4 +1,4 @@
-import { Button, cn } from "@okouai/ui";
+import { Button } from "@okouai/ui";
 import type { Element, Root } from "hast";
 import { ChevronRight, ChevronUp } from "lucide-react";
 import type { ReactNode } from "react";
@@ -84,16 +84,26 @@ export function RunWorkMessage({
       data-chat-run-work-message
       data-chat-run-work-message-expanded={expanded || undefined}
       data-chat-run-work-preview={expanded ? undefined : ""}
-      className={cn(
-        "min-w-0 max-w-full text-[13px] leading-5",
-        expanded &&
-          "-mx-2 grid grid-cols-[5px_minmax(0,1fr)_28px] items-start gap-x-2 px-2 py-1",
-      )}
+      className="group/history-message flex min-h-7 w-fit min-w-0 max-w-[92%] items-start text-[13px] leading-5 text-muted-foreground transition-colors hover:text-foreground"
     >
+      <div
+        id={contentId}
+        className={
+          expanded ? "min-w-0 flex-[0_1_auto]" : "min-w-0 flex-[0_1_auto] py-1"
+        }
+      >
+        {expanded ? (
+          children
+        ) : (
+          <span className="block min-w-0 truncate whitespace-nowrap">
+            {text}
+          </span>
+        )}
+      </div>
       <Button
         type="button"
         variant="quiet"
-        size={expanded ? "icon-xs" : "sm"}
+        size="icon-xs"
         aria-expanded={expanded}
         aria-controls={contentId}
         aria-label={
@@ -107,45 +117,10 @@ export function RunWorkMessage({
             : text
         }
         onClick={onToggle}
-        className={cn(
-          "text-[13px]",
-          expanded
-            ? "col-start-3 row-start-1 -mt-0.5 text-muted-foreground/70"
-            : "group -mx-2 h-auto min-h-8 w-[calc(100%+1rem)] justify-start px-2 text-left font-normal text-muted-foreground/60 hover:text-muted-foreground",
-        )}
+        className="shrink-0 text-muted-foreground/70 [&_svg]:size-3.5"
       >
-        {expanded ? (
-          <ChevronUp aria-hidden />
-        ) : (
-          <>
-            <span aria-hidden className="shrink-0">
-              •
-            </span>
-            <span className="min-w-0 flex-1 truncate whitespace-nowrap">
-              {text}
-            </span>
-            <ChevronRight
-              aria-hidden
-              className="shrink-0 text-muted-foreground/50"
-            />
-          </>
-        )}
+        {expanded ? <ChevronUp aria-hidden /> : <ChevronRight aria-hidden />}
       </Button>
-      <div
-        id={contentId}
-        hidden={!expanded}
-        className="col-start-2 row-start-1 min-w-0 text-foreground"
-      >
-        {expanded ? children : null}
-      </div>
-      {expanded ? (
-        <span
-          aria-hidden
-          className="col-start-1 row-start-1 mt-2.5 text-muted-foreground/60"
-        >
-          •
-        </span>
-      ) : null}
     </div>
   );
 }

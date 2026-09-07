@@ -344,11 +344,15 @@ where
 /// dropping the future preserves the reader state for the normal loop. This is
 /// the producer-owned barrier used to drain complete lines that are immediately
 /// observable to the runner reader task without sleeping.
+///
+/// Exclude Tokio's cooperative budget only from this probe: a scheduler yield
+/// must not masquerade as an empty input boundary. The drain loop still awaits
+/// callbacks normally and yields after each bounded slice of ready lines.
 pub(crate) fn poll_next_line_ready<R>(lines: &mut Lines<R>) -> std::io::Result<ReadyLine>
 where
     R: AsyncBufRead + Unpin,
 {
-    let mut next = std::pin::pin!(lines.next_line());
+    let mut next = std::pin::pin!(tokio::task::unconstrained(lines.next_line()));
     let mut cx = Context::from_waker(noop_waker_ref());
     match Future::poll(next.as_mut(), &mut cx) {
         Poll::Ready(Ok(Some(line))) => Ok(ReadyLine::Line(line)),
@@ -357,6 +361,9 @@ where
         Poll::Pending => Ok(ReadyLine::Pending),
     }
 }
+
+#[cfg(test)]
+mod cooperative_tests;
 
 #[cfg(test)]
 mod tests {

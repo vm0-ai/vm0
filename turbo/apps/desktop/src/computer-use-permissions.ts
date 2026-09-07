@@ -27,16 +27,23 @@ export function createComputerUsePermissions(
   ) => Promise<T | null>,
 ) {
   let currentPermissionState = DEFAULT_COMPUTER_USE_PERMISSION_STATE;
+  let revision = 0;
+
+  function resetComputerUsePermissionState(): void {
+    revision++;
+    currentPermissionState = DEFAULT_COMPUTER_USE_PERMISSION_STATE;
+  }
 
   function getComputerUsePermissionState(): ComputerUsePermissionState {
     return currentPermissionState;
   }
 
   async function refreshComputerUsePermissionState(): Promise<ComputerUsePermissionState> {
+    const current = revision;
     const permissions = await withProvider((provider) =>
       provider.getPermissions(),
     );
-    if (!permissions) return currentPermissionState;
+    if (!permissions || current !== revision) return currentPermissionState;
     currentPermissionState = normalizeComputerUsePermissionState({
       ...permissions,
       automation: currentPermissionState.automation,
@@ -45,10 +52,11 @@ export function createComputerUsePermissions(
   }
 
   async function requestComputerUseAccessibilityPermission(): Promise<ComputerUsePermissionState> {
+    const current = revision;
     const permissions = await withProvider((provider) =>
       provider.requestAccessibilityPermission(),
     );
-    if (!permissions) return currentPermissionState;
+    if (!permissions || current !== revision) return currentPermissionState;
     currentPermissionState = normalizeComputerUsePermissionState({
       ...permissions,
       automation: currentPermissionState.automation,
@@ -57,11 +65,12 @@ export function createComputerUsePermissions(
   }
 
   async function requestComputerUseScreenRecordingPermission(): Promise<ComputerUsePermissionState> {
+    const current = revision;
     const automation = currentPermissionState.automation;
     const permissions = await withProvider((provider) =>
       provider.requestScreenRecordingPermission(),
     );
-    if (!permissions) return currentPermissionState;
+    if (!permissions || current !== revision) return currentPermissionState;
     currentPermissionState = normalizeComputerUsePermissionState({
       ...permissions,
       automation,
@@ -72,10 +81,11 @@ export function createComputerUsePermissions(
   async function probeComputerUseAutomationPermission(
     target: ComputerUseAutomationPermissionTarget,
   ): Promise<ComputerUsePermissionState> {
+    const current = revision;
     const result = await withProvider((provider) =>
       provider.probeAutomationPermission(target),
     );
-    if (!result) return currentPermissionState;
+    if (!result || current !== revision) return currentPermissionState;
     currentPermissionState = normalizeComputerUsePermissionState({
       ...currentPermissionState,
       automation: {
@@ -110,6 +120,7 @@ export function createComputerUsePermissions(
   }
 
   return {
+    resetComputerUsePermissionState,
     getComputerUsePermissionState,
     refreshComputerUsePermissionState,
     requestComputerUseAccessibilityPermission,
