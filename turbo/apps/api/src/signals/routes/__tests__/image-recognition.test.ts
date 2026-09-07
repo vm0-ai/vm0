@@ -171,16 +171,13 @@ function setStoredObjects(objects: readonly StoredObject[]): void {
   );
 }
 
-function requestImageRecognition(
-  args: {
-    readonly token?: string;
-    readonly fileId: string;
-    readonly prompt?: string;
-    readonly clientRequestId?: string;
-    readonly usagePricingResolution?: UsagePricingFixture["resolution"];
-  },
-  operation: "imageRecognition" | "recognize" = "imageRecognition",
-) {
+function requestImageRecognition(args: {
+  readonly token?: string;
+  readonly fileId: string;
+  readonly prompt?: string;
+  readonly clientRequestId?: string;
+  readonly usagePricingResolution?: UsagePricingFixture["resolution"];
+}) {
   const headers = {
     ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
     ...(args.clientRequestId
@@ -199,9 +196,7 @@ function requestImageRecognition(
       prompt: args.prompt ?? "Describe this image",
     },
   };
-  return operation === "imageRecognition"
-    ? client.imageRecognition(request)
-    : client.recognize(request);
+  return client.imageRecognition(request);
 }
 
 async function createConfiguredImageRecognitionPricing(): Promise<UsagePricingFixture> {
@@ -697,29 +692,5 @@ describe("POST /api/image-recognition", () => {
         context.signal,
       ),
     ).resolves.toStrictEqual({ raw: 2, hourly: 0 });
-  });
-});
-
-describe("POST /api/recognize compatibility", () => {
-  it("keeps pre-switch CLI requests on the canonical authenticated behavior", async () => {
-    const actor = await seedImageRecognitionActor();
-    const fileId = randomUUID();
-    const request = {
-      token: okouToken(actor),
-      fileId,
-    };
-    setStoredObjects([]);
-
-    const canonical = await requestImageRecognition(request);
-    const compatibility = await requestImageRecognition(request, "recognize");
-
-    expect(compatibility.status).toBe(404);
-    expect({
-      status: compatibility.status,
-      body: compatibility.body,
-    }).toStrictEqual({
-      status: canonical.status,
-      body: canonical.body,
-    });
   });
 });

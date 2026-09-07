@@ -63,10 +63,6 @@ export const imageRecognitionContract = c.router({
     ...imageRecognitionRoute,
     path: "/api/image-recognition",
   },
-  recognize: {
-    ...imageRecognitionRoute,
-    path: "/api/recognize",
-  },
 });
 
 export type ImageRecognitionContract = typeof imageRecognitionContract;
