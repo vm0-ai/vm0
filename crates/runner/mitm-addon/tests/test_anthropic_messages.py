@@ -747,7 +747,7 @@ class TestAnthropicModelJsonResponseInspector:
             "tokens.output": 100,
         }
 
-    def test_large_discarded_utf8_content_stays_within_work_limit(self):
+    def test_large_discarded_utf8_content_stays_within_work_limit(self) -> None:
         content_bytes = 3 * 1024 * 1024
         body = (
             b'{"id":"msg_bulk","model":"claude-sonnet-4-6",'
