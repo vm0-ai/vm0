@@ -298,7 +298,6 @@ test.each([
       context,
       path: `/chats/${main.id}?sidebar=${side.id}`,
       auth: workspace.auth,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadPinShortcut]: true },
     });
     await waitFor(() => {
       expect(composerIn(main.id)).toBeVisible();
@@ -351,7 +350,6 @@ test("Pin the main chat when neither pane owns keyboard focus", async () => {
     context,
     path: `/chats/${main.id}?sidebar=${side.id}`,
     auth: workspace.auth,
-    featureSwitches: { [FeatureSwitchKey.ChatThreadPinShortcut]: true },
   });
   await waitFor(() => {
     expect(composerIn(side.id)).toBeVisible();
@@ -369,29 +367,6 @@ test("Pin the main chat when neither pane owns keyboard focus", async () => {
   expect(pinnedIndicator(side.id)).toBeNull();
 });
 
-test("Preserve the browser shortcut while the pin shortcut is disabled", async () => {
-  const thread = continuityThread(72, 1, "Disabled pin shortcut chat");
-  const workspace = await installContinuityWorkspace(context, {
-    caseId: 72,
-    threads: [thread],
-  });
-  await setupPage({
-    context,
-    path: `/chats/${thread.id}`,
-    auth: workspace.auth,
-    featureSwitches: { [FeatureSwitchKey.ChatThreadPinShortcut]: false },
-  });
-  const composer = await screen.findByRole("textbox", { name: "Message" });
-  composer.focus();
-  const event = dispatchPinShortcut(composer);
-  expect(event.defaultPrevented).toBeFalsy();
-
-  threadContainer(thread.id).focus();
-  await userEvent.keyboard("{Shift>}?{/Shift}");
-  const dialog = await screen.findByRole("dialog");
-  expect(dialog).not.toHaveTextContent("Pin / unpin chat");
-});
-
 test("Respect composition, held keys, dialogs, and navigation for pin shortcuts", async () => {
   const thread = continuityThread(73, 1, "Scoped pin shortcut chat");
   const workspace = await installContinuityWorkspace(context, {
@@ -405,7 +380,6 @@ test("Respect composition, held keys, dialogs, and navigation for pin shortcuts"
     context,
     path: `/chats/${thread.id}`,
     auth: workspace.auth,
-    featureSwitches: { [FeatureSwitchKey.ChatThreadPinShortcut]: true },
   });
   const composer = await screen.findByRole("textbox", { name: "Message" });
   composer.focus();

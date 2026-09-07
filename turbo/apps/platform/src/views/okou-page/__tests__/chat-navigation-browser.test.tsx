@@ -19,6 +19,7 @@ import {
   chatEventRowsResponse,
   testContext,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "../sidebar-breakpoint.ts";
 import {
   mockChatEventRows,
   normalizeMockChatEvents,
@@ -200,7 +201,9 @@ function completedConversationEvents(): MockChatEventInput[] {
 
 function mockWideScreen(): void {
   context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 1280px)";
+    return (
+      query === SIDEBAR_DESKTOP_MEDIA_QUERY || query === "(min-width: 1280px)"
+    );
   });
 }
 
@@ -223,7 +226,7 @@ function openConversation(chatEvents: MockChatEventInput[]): Promise<void> {
 
 async function expectConversationReady(): Promise<void> {
   await waitFor(() => {
-    expect(buttonByName("Open browser")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeVisible();
   });
   await waitFor(() => {
     expect(

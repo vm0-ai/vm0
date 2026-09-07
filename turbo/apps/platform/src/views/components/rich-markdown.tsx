@@ -1,9 +1,10 @@
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
-import { Loader2, Image } from "lucide-react";
+import { File, Image, Loader2, Video } from "lucide-react";
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
@@ -11,9 +12,13 @@ import {
   escapeHtmlTags,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
 import { openMarkdownArtifact$ } from "../../signals/okou-page/markdown-artifact-preview.ts";
-import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
+import type {
+  ArtifactKind,
+  ArtifactSignals,
+} from "../../signals/chat-page/artifact-card-signals.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
@@ -121,9 +126,30 @@ function MediaImage({
   );
 }
 
+function ArtifactLinkIcon({ kind }: { readonly kind: ArtifactKind }) {
+  const iconProps = {
+    "aria-hidden": true,
+    className: "mr-1 inline-block align-[-0.1em]",
+    size: 14,
+  };
+  if (kind === "image") {
+    return (
+      <Image {...iconProps} data-testid="markdown-artifact-link-icon-image" />
+    );
+  }
+  if (kind === "video") {
+    return (
+      <Video {...iconProps} data-testid="markdown-artifact-link-icon-video" />
+    );
+  }
+  return <File {...iconProps} data-testid="markdown-artifact-link-icon-file" />;
+}
+
 function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   const openArtifact = useSet(openMarkdownArtifact$);
   const openImageLightbox = useSet(openImageLightbox$);
+  const showArtifactLinkKindIcons =
+    useGet(featureSwitch$)[FeatureSwitchKey.ArtifactLinkKindIcons] ?? false;
   const card = rest.node?.data?.card;
   return (
     <PlainLink
@@ -152,6 +178,9 @@ function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
         }
       }}
     >
+      {showArtifactLinkKindIcons && card?.kind === "artifact" && (
+        <ArtifactLinkIcon kind={card.signals.kind} />
+      )}
       {children}
     </PlainLink>
   );

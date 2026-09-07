@@ -811,9 +811,6 @@ describe("registerCommands", () => {
     expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "okou image-recognition --file",
     );
-    expect(
-      buildHelpText(decodeSandboxTokenPayload(eligibleToken)),
-    ).not.toContain("okou recognize --file");
   });
 
   it("should show billing help examples only for billing capabilities", () => {

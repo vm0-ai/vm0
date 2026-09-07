@@ -1,5 +1,4 @@
 import { authMeRoutes } from "./routes/auth-me";
-import { appBootstrapRoutes } from "./routes/app-bootstrap";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
@@ -133,6 +132,7 @@ import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
 import { socialRoutes } from "./routes/social";
 import { sshConnectionsRoutes } from "./routes/ssh-connections";
+import { runnerSshRoutes } from "./routes/runner-ssh";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
@@ -201,7 +201,6 @@ import { webFileUrlRoutes } from "./routes/web-file-url";
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
-  ...appBootstrapRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -312,6 +311,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webSearchRoutes,
   ...socialRoutes,
   ...sshConnectionsRoutes,
+  ...runnerSshRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,

@@ -10,10 +10,7 @@ import {
 } from "../image-recognition";
 
 describe("image recognition contract", () => {
-  it("declares only the canonical API operation", () => {
-    expect(Object.keys(imageRecognitionContract)).toStrictEqual([
-      "imageRecognition",
-    ]);
+  it("declares the canonical API operation", () => {
     expect({
       method: imageRecognitionContract.imageRecognition.method,
       path: imageRecognitionContract.imageRecognition.path,

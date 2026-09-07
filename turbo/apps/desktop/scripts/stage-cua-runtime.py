@@ -151,8 +151,10 @@ def stage(manifest_path, output, cache):
     print(f"CUA {manifest['driverVersion']} staged: {len(files)} files; upstream SHA-256 verified")
 
 
-def verify_payload(root, signed):
+def verify_payload(root, signed, manifest_path):
     manifest = json.loads((root / "artifacts.json").read_text())
+    if manifest != json.loads(manifest_path.read_text()):
+        raise ValueError("CUA packaged manifest does not match the source lock")
     payload = json.loads((root / "payload.json").read_text())
     if payload["driverVersion"] != manifest["driverVersion"]:
         raise ValueError("CUA payload version mismatch")
@@ -187,7 +189,7 @@ def main():
     parser.add_argument("--signed", action="store_true")
     args = parser.parse_args()
     if args.verify:
-        verify_payload(args.verify, args.signed)
+        verify_payload(args.verify, args.signed, args.manifest)
         return
     if args.target is None and platform.system() != "Darwin":
         print("CUA distribution is macOS-only; no runtime staged on this platform")

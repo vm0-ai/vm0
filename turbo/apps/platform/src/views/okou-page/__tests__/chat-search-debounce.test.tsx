@@ -3,28 +3,28 @@ import { expect, test } from "vitest";
 import { chatSearchContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { installContinuityWorkspace } from "./chat-continuity-test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
+  cachedChatListEvents,
   chatListThread,
-  sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
 const SEARCH_LABEL = "Search workspace...";
+const SEARCH_BUTTON_LABEL = "Search workspace";
+const THREAD_TITLE = "Workspace notes";
 const featureSwitches = {
   [FeatureSwitchKey.StableChatThreadNavigation]: true,
 } as const;
 
 async function openSearch() {
-  fireEvent.keyDown(document.body, {
-    key: "f",
-    code: "KeyF",
-    ctrlKey: true,
-    shiftKey: true,
+  const searchButton = await screen.findByLabelText(SEARCH_BUTTON_LABEL, {
+    selector: "button",
   });
+  click(searchButton);
   const dialog = await screen.findByRole("dialog", { name: SEARCH_LABEL });
   return {
     dialog,
@@ -59,21 +59,24 @@ function installMessageSearch(threadId: string): string[] {
 }
 
 test("Search messages only after the latest input settles", async () => {
-  const thread = chatListThread(1, "Workspace notes");
+  const thread = chatListThread(1, THREAD_TITLE);
+  const remoteChatList = context.mocks.deferred<void>();
   const workspace = await installContinuityWorkspace(context, {
     caseId: 37,
     threads: [thread],
+    chatListRemoteGate: remoteChatList.promise,
   });
   const keywords = installMessageSearch(thread.id);
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth: workspace.auth,
+    cachedChatThreadEvents: cachedChatListEvents(37, [thread]),
     featureSwitches,
   });
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toContain(thread.title);
-  });
+  const chatThreads = await screen.findByLabelText("Chat threads");
+  await within(chatThreads).findByText(THREAD_TITLE);
+  expect(remoteChatList.settled()).toBeFalsy();
   const { dialog, search } = await openSearch();
 
   for (const value of ["3", "32", "320", "3205", "32059"]) {
@@ -86,28 +89,31 @@ test("Search messages only after the latest input settles", async () => {
 });
 
 test("Clearing or closing search discards a pending message search", async () => {
-  const thread = chatListThread(1, "Workspace notes");
+  const thread = chatListThread(1, THREAD_TITLE);
+  const remoteChatList = context.mocks.deferred<void>();
   const workspace = await installContinuityWorkspace(context, {
     caseId: 38,
     threads: [thread],
+    chatListRemoteGate: remoteChatList.promise,
   });
   const keywords = installMessageSearch(thread.id);
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth: workspace.auth,
+    cachedChatThreadEvents: cachedChatListEvents(38, [thread]),
     featureSwitches,
   });
-  await waitFor(() => {
-    expect(sidebarThreadTitles()).toContain(thread.title);
-  });
+  const chatThreads = await screen.findByLabelText("Chat threads");
+  await within(chatThreads).findByText(THREAD_TITLE);
+  expect(remoteChatList.settled()).toBeFalsy();
   const { dialog, search } = await openSearch();
 
   fireEvent.change(search, { target: { value: "discarded" } });
   fireEvent.change(search, { target: { value: "" } });
   expect(search).toHaveValue("");
   await expect(
-    within(dialog).findByText("Workspace notes"),
+    within(dialog).findByText(THREAD_TITLE),
   ).resolves.toBeInTheDocument();
 
   await fill(search, "issue");

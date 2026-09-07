@@ -23,6 +23,7 @@ import {
   testContext,
   type TestContext,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "../sidebar-breakpoint.ts";
 import {
   artifactRun,
   artifactSummary,
@@ -289,7 +290,9 @@ function installAuthorizationPopup(): AuthorizationPopupMock {
 
 function useWideScreen(): void {
   context.mocks.browser.matchMedia((query) => {
-    return query === "(min-width: 1280px)";
+    return (
+      query === SIDEBAR_DESKTOP_MEDIA_QUERY || query === "(min-width: 1280px)"
+    );
   });
 }
 
