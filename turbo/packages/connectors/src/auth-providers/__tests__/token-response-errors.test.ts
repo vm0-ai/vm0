@@ -186,8 +186,21 @@ const INVALID_RESPONSES = [
   },
 ];
 
+function invalidResponses(provider: ProviderCase) {
+  if (provider.slug === "optimizely-cmp") {
+    return [
+      ...INVALID_RESPONSES,
+      {
+        label: "a missing refresh token",
+        body: JSON.stringify({ access_token: "PRIVATE123", expires_in: 3600 }),
+      },
+    ];
+  }
+  return INVALID_RESPONSES;
+}
+
 describe.each(PROVIDERS)("registered $slug token responses", (provider) => {
-  it.each(INVALID_RESPONSES)(
+  it.each(invalidResponses(provider))(
     "sanitizes $label as an upstream response error",
     async ({ body }) => {
       server.use(
@@ -290,7 +303,7 @@ describe.each(
     return provider.clientEnv;
   }),
 )("registered $slug code exchange", (provider) => {
-  it.each(INVALID_RESPONSES)(
+  it.each(invalidResponses(provider))(
     "sanitizes $label before fetching user information",
     async ({ body }) => {
       server.use(
