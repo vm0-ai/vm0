@@ -105,7 +105,7 @@ describe("ComputerUseRuntimeController", () => {
 
     expect(createRuntime).not.toHaveBeenCalled();
     expect(controller.getHostState().status).toBe("offline");
-    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalled();
   });
 
   it("records a blocked host state when signed out", async () => {

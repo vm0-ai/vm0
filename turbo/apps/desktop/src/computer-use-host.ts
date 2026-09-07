@@ -51,6 +51,8 @@ const LOCAL_COMMAND_LOG_OMITTED_RESULT_KEYS = new Set([
   "visibleElements",
 ]);
 
+class ComputerUseCapabilitiesPaused extends Error {}
+
 export type ComputerUseHostFetch = (
   input: string,
   init?: RequestInit,
@@ -394,6 +396,7 @@ export class ComputerUseHostRuntime {
     const permissions = await this.getPermissions();
     const capabilities = this.getSupportedCapabilities();
     if (capabilities.length === 0) {
+      if (this.draining) throw new ComputerUseCapabilitiesPaused();
       await this.stop();
       throw new Error("Computer Use has no available capabilities");
     }
@@ -498,9 +501,11 @@ export class ComputerUseHostRuntime {
   private startLocalCommandLogEntry(
     command: ComputerUseCommand,
     startedAt: string,
+    driver: ComputerUseCommandSession["identity"],
   ): void {
     const app = command.payload.app;
     const entry: ComputerUseLocalCommandLogEntry = {
+      ...(command.kind !== "plugin.call" && driver ? { driver } : {}),
       commandId: command.id,
       kind: command.kind,
       app: typeof app === "string" ? app : null,
@@ -702,6 +707,12 @@ export class ComputerUseHostRuntime {
   private async heartbeatLoop(): Promise<void> {
     const generation = this.sessionGeneration;
     try {
+      // A bounded native replacement keeps this host registration. Never send
+      // an empty legacy capability list during its activation gap.
+      if (this.draining && this.getSupportedCapabilities().length === 0) {
+        this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
+        return;
+      }
       const online = this.hostToken && (await this.heartbeat());
       if (generation !== this.sessionGeneration) return;
       if (!online) {
@@ -711,6 +722,13 @@ export class ComputerUseHostRuntime {
       }
       this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
     } catch (error) {
+      if (
+        error instanceof ComputerUseCapabilitiesPaused &&
+        generation === this.sessionGeneration
+      ) {
+        this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
+        return;
+      }
       if (generation === this.sessionGeneration)
         this.handleRuntimeFailure("heartbeat", error);
     }
@@ -1043,7 +1061,11 @@ export class ComputerUseHostRuntime {
     const startedAtMs = Date.now();
     this.lastCommandActivityAtMs = startedAtMs;
     const startedAt = new Date(startedAtMs).toISOString();
-    this.startLocalCommandLogEntry(body.command, startedAt);
+    this.startLocalCommandLogEntry(
+      body.command,
+      startedAt,
+      commandSession.identity,
+    );
 
     let completed: ComputerUseCommandExecutionResult;
     const budget = new ComputerUseCommandBudget(
