@@ -130,6 +130,16 @@ export const richMarkdownUnderlineEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.RichMarkdownUnderline] ?? false;
 });
 
+export const instructionsMarkdownPreservationEnabled$ = computed(
+  (get): boolean => {
+    return (
+      get(richMarkdownUnderlineEnabled$) &&
+      (get(featureSwitch$)[FeatureSwitchKey.InstructionsMarkdownPreservation] ??
+        false)
+    );
+  },
+);
+
 export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
 });

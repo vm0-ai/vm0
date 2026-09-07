@@ -54,6 +54,7 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   ChatRunWorkFolding = "chatRunWorkFolding",
   RichMarkdownUnderline = "richMarkdownUnderline",
+  InstructionsMarkdownPreservation = "instructionsMarkdownPreservation",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
   FollowUpOptimize = "followUpOptimize",

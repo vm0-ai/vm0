@@ -54,6 +54,8 @@ import {
 } from "lucide-react";
 import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import { useGet } from "ccstate-react";
+import { instructionsMarkdownPreservationEnabled$ } from "../../signals/external/feature-switch.ts";
 
 interface TiptapInstructionsEditorProps {
   initialContent: string;
@@ -126,35 +128,21 @@ const EDITOR_CLASSES =
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:my-2 [&_blockquote]:text-muted-foreground " +
   "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-[var(--font-family-mono)] " +
   "[&_pre]:bg-muted [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
-  "[&_hr]:border-border [&_hr]:my-4 " +
+  "[&_hr]:border-border [&_hr]:my-4";
+
+const PRESERVED_MARKDOWN_CLASSES =
   "[&_a]:text-primary [&_a]:underline [&_img]:inline-block [&_img]:max-h-80 [&_img]:max-w-full [&_img]:object-contain " +
   "[&_.tableWrapper]:overflow-x-auto [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-3 " +
   "[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:items-start [&_li[data-type=taskItem]]:gap-2 [&_li[data-type=taskItem]>label]:mt-2 [&_li[data-type=taskItem]>div]:min-w-0 [&_li[data-type=taskItem]>div]:flex-1";
 
-function createInstructionsEditorExtensions(taskLabel: string) {
+function createPreservedMarkdownExtensions(taskLabel: string) {
   return [
-    BoldExtension,
-    Blockquote,
-    BulletList,
-    CodeExtension,
-    CodeBlock,
-    Document,
-    Dropcursor,
-    Gapcursor,
-    HardBreak,
-    Heading,
-    UndoRedo,
-    HorizontalRule,
     ImageExtension.configure({ inline: true }),
-    ItalicExtension,
     LinkExtension.configure({
       openOnClick: false,
       autolink: false,
       linkOnPaste: false,
     }),
-    ListItem,
-    ListKeymap,
-    OrderedList,
     Paragraph.extend({
       parseMarkdown(token, helpers) {
         // Tiptap unwraps image-only paragraphs for block images. Our images
@@ -174,7 +162,6 @@ function createInstructionsEditorExtensions(taskLabel: string) {
         return parseParagraph(token, helpers);
       },
     }),
-    Strike,
     Table.configure({ renderWrapper: true }),
     TableCell,
     TableHeader,
@@ -188,6 +175,34 @@ function createInstructionsEditorExtensions(taskLabel: string) {
         },
       },
     }),
+  ];
+}
+
+function createInstructionsEditorExtensions(
+  taskLabel: string,
+  preserveMarkdown: boolean,
+) {
+  return [
+    BoldExtension,
+    Blockquote,
+    BulletList,
+    CodeExtension,
+    CodeBlock,
+    Document,
+    Dropcursor,
+    Gapcursor,
+    HardBreak,
+    Heading,
+    UndoRedo,
+    HorizontalRule,
+    ItalicExtension,
+    ListItem,
+    ListKeymap,
+    OrderedList,
+    ...(preserveMarkdown
+      ? createPreservedMarkdownExtensions(taskLabel)
+      : [Paragraph]),
+    Strike,
     Text,
     Underline,
     TrailingNode,
@@ -219,7 +234,20 @@ function createBaselineExtension(onChange: (markdown: string) => void) {
   });
 }
 
-export function TiptapInstructionsEditor({
+export function TiptapInstructionsEditor(props: TiptapInstructionsEditorProps) {
+  const preserveMarkdown = useGet(instructionsMarkdownPreservationEnabled$);
+  // Extension changes require a new schema. The caller supplies the current
+  // draft as initialContent, so a switch refresh retains unsaved text.
+  return (
+    <InstructionsEditor
+      key={preserveMarkdown ? "preserved" : "basic"}
+      {...props}
+      preserveMarkdown={preserveMarkdown}
+    />
+  );
+}
+
+function InstructionsEditor({
   initialContent,
   onChange,
   disabled = false,
@@ -228,7 +256,8 @@ export function TiptapInstructionsEditor({
   footerHint,
   surface = "card",
   toolbarLabels,
-}: TiptapInstructionsEditorProps) {
+  preserveMarkdown,
+}: TiptapInstructionsEditorProps & { readonly preserveMarkdown: boolean }) {
   const { t } = useTranslation();
   const labels: ToolbarLabels = {
     bold: t(($) => {
@@ -281,6 +310,7 @@ export function TiptapInstructionsEditor({
       : footerHint;
   const editorClassName = cn(
     EDITOR_CLASSES,
+    preserveMarkdown && PRESERVED_MARKDOWN_CLASSES,
     surface === "canvas" ? "min-h-[calc(100vh-10rem)] px-0 py-3" : "",
   );
   const editor = useEditor({
@@ -289,6 +319,7 @@ export function TiptapInstructionsEditor({
         t(($) => {
           return $.activity.events.task;
         }),
+        preserveMarkdown,
       ),
       createBaselineExtension(onChange),
     ],

@@ -15,6 +15,7 @@ import { createMarkdownChatFixture } from "./markdown-page-test-helpers.ts";
 const context = testContext();
 const featureSwitches = {
   [FeatureSwitchKey.RichMarkdownUnderline]: true,
+  [FeatureSwitchKey.InstructionsMarkdownPreservation]: true,
 } as const;
 
 test.each([

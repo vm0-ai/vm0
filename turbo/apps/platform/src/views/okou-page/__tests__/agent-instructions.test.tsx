@@ -5,6 +5,8 @@ import {
   agentsByIdContract,
 } from "@okouai/api-contracts/contracts/agents";
 import { expect, test } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 
 import {
   click,
@@ -17,6 +19,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const context = testContext();
+const enabledFeatures = {
+  [FeatureSwitchKey.RichMarkdownUnderline]: true,
+  [FeatureSwitchKey.InstructionsMarkdownPreservation]: true,
+} as const;
 
 function researchAgent() {
   return {
@@ -36,6 +42,10 @@ function researchAgent() {
 function setupInstructionsPage(
   initialContent: string,
   onUpdate?: (content: string) => void,
+  rollout: {
+    readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+    readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  } = { featureSwitches: enabledFeatures },
 ): Promise<void> {
   let savedContent = initialContent;
   context.mocks.api(agentsByIdContract.get, ({ respond }) => {
@@ -56,6 +66,7 @@ function setupInstructionsPage(
   return setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=instructions`,
+    ...rollout,
   });
 }
 
@@ -66,6 +77,42 @@ async function instructionsEditor(): Promise<HTMLElement> {
   }
   return editor;
 }
+
+test.each([
+  { underline: false, preservation: false },
+  { underline: true, preservation: false },
+  { underline: false, preservation: true },
+])(
+  "Structured Markdown requires both switches: $underline / $preservation",
+  async ({ underline, preservation }) => {
+    await setupInstructionsPage(
+      [
+        "[Runbook](https://docs.example.test/runbook)",
+        "",
+        "![Diagram](https://images.example.test/diagram.png)",
+        "",
+        "| Name | Status |",
+        "| --- | --- |",
+        "| Launch | Ready |",
+        "",
+        "- [x] Reviewed",
+      ].join("\n"),
+      undefined,
+      {
+        featureSwitches: {
+          [FeatureSwitchKey.RichMarkdownUnderline]: underline,
+          [FeatureSwitchKey.InstructionsMarkdownPreservation]: preservation,
+        },
+      },
+    );
+    const editor = await instructionsEditor();
+    expect(editor).toHaveTextContent("Runbook");
+    expect(editor.querySelector("a")).toBeNull();
+    expect(within(editor).queryByRole("img")).toBeNull();
+    expect(within(editor).queryByRole("table")).toBeNull();
+    expect(within(editor).queryByRole("checkbox")).toBeNull();
+  },
+);
 
 test("Markdown links retain their destination while remaining editable", async () => {
   await setupInstructionsPage(
@@ -278,4 +325,38 @@ test("A user can format and save agent instructions", async () => {
   expect((await instructionsEditor()).querySelector("h2")).toHaveTextContent(
     "Launch risks",
   );
+});
+
+test("Markdown extensions follow the hydrated switches without making instructions dirty", async () => {
+  const releaseFeatures = context.mocks.deferred<void>();
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      await withSignal(releaseFeatures.promise);
+      return respond(200, {
+        switches: enabledFeatures,
+        effectiveSwitches: enabledFeatures,
+      });
+    },
+  );
+  await setupInstructionsPage(
+    "[Runbook](https://docs.example.test/runbook)",
+    undefined,
+    {
+      cachedFeatureSwitches: {
+        [FeatureSwitchKey.RichMarkdownUnderline]: false,
+        [FeatureSwitchKey.InstructionsMarkdownPreservation]: false,
+      },
+    },
+  );
+  const editor = await instructionsEditor();
+  expect(editor).toHaveTextContent("Runbook");
+  expect(editor.querySelector("a")).toBeNull();
+  releaseFeatures.resolve(undefined);
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText("Instructions editor").querySelector("a"),
+    ).toHaveAttribute("href", "https://docs.example.test/runbook");
+  });
+  expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
 });

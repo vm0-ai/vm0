@@ -377,6 +377,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Render ++underline++ with an isolated Markdown parser. Refresh the page after changing this switch.",
     enabled: false,
   },
+  [FeatureSwitchKey.InstructionsMarkdownPreservation]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Preserve links, images, tables and tasks when editing instructions. Requires richMarkdownUnderline. Refresh the page after changing this switch.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@vm0.ai",
     description:
