@@ -19,7 +19,6 @@ import {
 } from "./chat-run-test-fixtures.ts";
 
 const secondContext = testContext();
-const thirdContext = testContext();
 interface RecordingDatabase extends DBSchema {
   drafts: {
     key: string;
@@ -85,24 +84,32 @@ async function uploadedAudio(request: Request): Promise<ArrayBuffer> {
 
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 
-test.each([RUN_PATH, NEW_CHAT_PATH])(
-  "Recover committed PCM after reloading during recording at %s",
-  async (path) => {
+test.each([
+  { path: RUN_PATH, reloadAt: "recording" },
+  { path: NEW_CHAT_PATH, reloadAt: "recording" },
+  { path: RUN_PATH, reloadAt: "failed retries" },
+  { path: NEW_CHAT_PATH, reloadAt: "failed retries" },
+])(
+  "Recover committed PCM across a reload ($reloadAt) at $path",
+  async ({ path, reloadAt }) => {
     const firstPage = createChildAbortController(context.signal);
-    const secondPage = createChildAbortController(secondContext.signal);
     const capture = context.mocks.deferred<(samples: Float32Array) => void>();
     context.mocks.browser.voiceInput({
       rms: 0.12,
       onPcmCapture: capture.resolve,
+      finalPcmSamples: new Float32Array(0),
     });
     installVoiceBoundaries();
     const uploads: ArrayBuffer[] = [];
-    const retries = Array.from({ length: 2 }, () => {
-      return {
-        requested: context.mocks.deferred<void>(),
-        response: context.mocks.deferred<void>(),
-      };
-    });
+    const retries = Array.from(
+      { length: reloadAt === "failed retries" ? 2 : 0 },
+      () => {
+        return {
+          requested: context.mocks.deferred<void>(),
+          response: context.mocks.deferred<void>(),
+        };
+      },
+    );
     context.mocks.http.post(
       "*/api/voice-io/transcribe/segment",
       async ({ request }) => {
@@ -131,37 +138,42 @@ test.each([RUN_PATH, NEW_CHAT_PATH])(
     click(await findEnabledButton("Voice input"));
     const emit = await capture.promise;
     emit(new Float32Array(4096).fill(0.25));
-    await findEnabledButton("Stop recording");
     await waitFor(async () => {
       await expect(savedRecording()).resolves.toMatchObject({
         sampleCount: 4096,
         chunkCount: 1,
       });
     });
-    unload(firstPage);
-    await setupPage({
-      context: { ...secondContext, signal: secondPage.signal },
-      path,
-      featureSwitches: flags,
-    });
+    await findEnabledButton("Stop recording");
+    // Keep interrupted capture and repeated transcription failures independent:
+    // each case needs only one reload before its successful recovery.
+    if (reloadAt === "recording") {
+      unload(firstPage);
+      await setupPage({ context: secondContext, path, featureSwitches: flags });
+    }
     for (const retry of retries) {
-      click(await findEnabledButton("Retry"));
+      const action = retry === retries[0] ? "Stop recording" : "Retry";
+      click(await findEnabledButton(action));
       await retry.requested.promise;
       await screen.findByText("Transcribing...");
       retry.response.resolve();
       await findEnabledButton("Retry");
     }
+    if (reloadAt === "failed retries") {
+      unload(firstPage);
+      await setupPage({ context: secondContext, path, featureSwitches: flags });
+    }
+    const retryButton = await findEnabledButton("Retry");
     expect(queryButton("Stop recording")).toBeNull();
-    unload(secondPage);
-    await setupPage({ context: thirdContext, path, featureSwitches: flags });
-    click(await findEnabledButton("Retry"));
+    click(retryButton);
     await findEnabledButton("Voice input");
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
       "Recovered audio.",
     );
-    expect(uploads).toHaveLength(3);
-    expect(uploads[1]).toStrictEqual(uploads[0]);
-    expect(uploads[2]).toStrictEqual(uploads[0]);
+    expect(uploads).toHaveLength(retries.length + 1);
+    for (const upload of uploads.slice(1)) {
+      expect(upload).toStrictEqual(uploads[0]);
+    }
     const samples = decodeVoiceDraftPcmWav(uploads[0]!);
     expect(samples).toHaveLength(4096);
     expect(samples?.at(-1)).toBeCloseTo(0.25, 4);
