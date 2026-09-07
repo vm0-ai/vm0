@@ -454,9 +454,8 @@ function restoreElementProperty(
 }
 
 /**
- * happy-dom measures every box as zero-width, which leaves the title fade with
- * no input. Give the title box a fixed width and its text a width per
- * character, so one title overflows the box and the other fits inside it.
+ * Gives the title box a fixed width and its text a width per character, so one
+ * title overflows the box and the other fits inside it.
  */
 function stubSidebarTitleLayout(): void {
   const clientWidth = Object.getOwnPropertyDescriptor(
@@ -784,6 +783,16 @@ test("Delete a chat after reviewing the impact", async () => {
   });
 });
 
+/**
+ * Deliberate exception to `docs/testing/testing-external-behavior.md`. The fade
+ * and the hover travel are a mask and a transform derived from measured text
+ * width, and happy-dom has no layout engine: it reports every box as
+ * zero-width and paints nothing, so neither the state nor the result exists on
+ * the page surface here. The measured distance is the only place the behavior
+ * is observable, and it is worth pinning because both the fade and the travel
+ * are derived from it — a wrong distance fades a title that fits, or stops the
+ * scroll before the end.
+ */
 test("Fade a clipped chat title and pace its scroll by the hidden distance", async () => {
   stubSidebarTitleLayout();
   prepareDefaultAgent();
