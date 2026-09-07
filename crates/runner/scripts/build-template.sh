@@ -42,9 +42,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 #
 # Uses a positional sentinel (not an env var) so we don't depend on sudoers
-# allowing env preservation. The sentinel is prefixed with `__vm0_` to make
+# allowing env preservation. The sentinel is prefixed with `__runner_` to make
 # an accidental arg collision vanishingly unlikely.
-readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+readonly UNSHARE_SENTINEL="--__runner_unshared__"
 if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
   for cmd in sudo unshare; do
     if ! command -v "$cmd" &>/dev/null; then

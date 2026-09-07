@@ -46,8 +46,8 @@ _INTERNAL_PATH_MARKERS = frozenset(
         _UNKNOWN_KEY,
         FIRST_ARRAY_ELEMENT,
         _OTHER_ARRAY_ELEMENT,
-        "\0__vm0_json_unknown_key__",
-        "\0__vm0_json_array_element__",
+        "\0__json_selective_unknown_key__",
+        "\0__json_selective_array_element__",
     )
 )
 _JSON_CONTROL_CHAR_MAX = 0x20

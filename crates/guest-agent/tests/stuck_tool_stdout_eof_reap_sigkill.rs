@@ -52,7 +52,7 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
     .expect("execute_cli did not return within 15s - stdout EOF forced reap likely broken")?;
 
     assert!(
-        tmp.path().join(".vm0-mock-sigterm-ignored").exists(),
+        tmp.path().join(".guest-mock-sigterm-ignored").exists(),
         "mock did not install SIGTERM ignore marker"
     );
 

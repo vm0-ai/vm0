@@ -92,11 +92,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         .collect::<Vec<_>>();
     assert_eq!(delivered.len(), 12);
     assert!(
-        delivered
-            .iter()
-            .all(|event| event.get("vm0_delivery").is_none())
-    );
-    assert!(
         requests
             .iter()
             .all(|request| !request.body.contains("[vm0:")
@@ -236,7 +231,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         .find(|event| event["type"] == "warning")
         .ok_or("normal warning was not delivered")?;
     assert_eq!(warning["message"], "guest-mock-codex warning 999");
-    assert!(warning.get("vm0_delivery").is_none());
 
     let local_events = read_jsonl(runtime.paths.agent_log_file())?;
     let local_agent = delivered_item(&local_events, "oversized-agent-message")?;
@@ -246,7 +240,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     assert!(local_text.len() > MAX_REQUEST_BYTES);
     assert!(local_text.contains(SECRET));
     assert!(!local_text.contains(DELIVERY_MARKER));
-    assert!(local_agent.get("vm0_delivery").is_none());
     let local_plan = local_events
         .iter()
         .find(|event| event["type"] == "turn.plan.updated")

@@ -64,26 +64,26 @@ pub const SIGKILL_EXIT: i32 = 137;
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
 
-pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
-pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
-pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+pub const MOCK_TERMINATION_READY_EVENT: &str = "guest_mock_termination_ready";
+pub const MOCK_CODEX_TURN_START_READY_FILE: &str = ".guest-mock-codex-turn-start-ready";
+pub const MOCK_CODEX_TURN_START_READY_EVENT: &str = "guest_mock_codex_turn_start_ready";
 pub const MOCK_CODEX_TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
-    ".vm0-mock-codex-turn-complete-before-heartbeat-ready";
-pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
-pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
-pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
-pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
-pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+    ".guest-mock-codex-turn-complete-before-heartbeat-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_FILE: &str = ".guest-mock-codex-session-history-ready";
+pub const MOCK_CODEX_SESSION_HISTORY_READY_EVENT: &str = "guest_mock_codex_session_history_ready";
+pub const MOCK_CODEX_TURN_STEER_READY_FILE: &str = ".guest-mock-codex-turn-steer-ready";
+pub const MOCK_CODEX_TURN_STEER_READY_EVENT: &str = "guest_mock_codex_turn_steer_ready";
+pub const MOCK_CODEX_TURN_STEER_RELEASE_SOCKET: &str = ".guest-mock-codex-turn-steer-release.sock";
 pub const MOCK_CODEX_EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
-    ".vm0-mock-codex-event-delivery-large-release.sock";
-pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
-pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
-pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
-pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
-pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
-pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
-pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
-pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
+    ".guest-mock-codex-event-delivery-large-release.sock";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_FILE: &str = ".guest-mock-codex-active-turn-ready";
+pub const MOCK_CODEX_ACTIVE_TURN_READY_EVENT: &str = "guest_mock_codex_active_turn_ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_FILE: &str = ".guest-mock-codex-turn-interrupt-ready";
+pub const MOCK_CODEX_TURN_INTERRUPT_READY_EVENT: &str = "guest_mock_codex_turn_interrupt_ready";
+pub const MOCK_POST_RESULT_READY_EVENT: &str = "guest_mock_post_result_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "guest_mock_post_result_activity_1_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "guest_mock_post_result_activity_2_ready";
+pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "guest_mock_post_result_stale_deadline_survived";
 pub const MOCK_POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 pub const MOCK_POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 

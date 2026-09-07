@@ -18,11 +18,11 @@ use std::time::{Duration, Instant};
 use super::bash_tool_command;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
-const TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
-const POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
-const POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
-const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
-const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
+const TERMINATION_READY_EVENT: &str = "guest_mock_termination_ready";
+const POST_RESULT_READY_EVENT: &str = "guest_mock_post_result_ready";
+const POST_RESULT_ACTIVITY_ONE_EVENT: &str = "guest_mock_post_result_activity_1_ready";
+const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "guest_mock_post_result_activity_2_ready";
+const POST_RESULT_LIVENESS_EVENT: &str = "guest_mock_post_result_stale_deadline_survived";
 const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
 const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 const TRANSCRIPT_FENCE_PADDING_BYTES: usize = 16 * 1024;
@@ -162,7 +162,7 @@ fn ignore_sigterm() {
 
 fn emit_termination_ready_fence() {
     if let Ok(home) = std::env::var("HOME") {
-        let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
+        let _ = std::fs::write(format!("{home}/.guest-mock-sigterm-ignored"), b"");
     }
     emit_stream_event_fence(TERMINATION_READY_EVENT);
 }

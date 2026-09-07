@@ -335,7 +335,7 @@ def resolve_firewall_entries(
 
     Runtime ownership metadata is assigned by the registry rather than trusted
     from source firewall data. Resolution clears any source-provided
-    `_vm0ConnectorRuntimeKind` marker, marks a resolved builtin as `builtin` only
+    `_connectorRuntimeKind` marker, marks a resolved builtin as `builtin` only
     when its name is registered in `connectorRuntimeTargets`, and marks an inline
     custom firewall as `custom` only when its UUID is registered there. Unregistered
     or absent connector identities remain unclassified.

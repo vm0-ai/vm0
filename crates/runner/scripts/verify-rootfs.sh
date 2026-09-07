@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+readonly UNSHARE_SENTINEL="--__runner_unshared__"
 if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
   for cmd in sudo unshare; do
     if ! command -v "$cmd" &> /dev/null; then

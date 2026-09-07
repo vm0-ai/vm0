@@ -46,7 +46,7 @@ _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
-_RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
+_RESPONSE_STREAM_CALLBACK = "_response_stream_callback"
 
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
 _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"

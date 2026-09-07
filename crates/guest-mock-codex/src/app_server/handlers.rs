@@ -24,21 +24,21 @@ use std::process::Command;
 use std::thread;
 use uuid::Uuid;
 
-const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
-const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const HANG_ON_TURN_START_READY_FILE: &str = ".guest-mock-codex-turn-start-ready";
+const HANG_ON_TURN_START_READY_EVENT: &str = "guest_mock_codex_turn_start_ready";
 const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_FILE: &str =
-    ".vm0-mock-codex-turn-complete-before-heartbeat-ready";
+    ".guest-mock-codex-turn-complete-before-heartbeat-ready";
 const TURN_COMPLETE_BEFORE_HEARTBEAT_READY_EVENT: &str =
-    "vm0_mock_codex_turn_complete_before_heartbeat_ready";
-const SESSION_HISTORY_READY_FILE: &str = ".vm0-mock-codex-session-history-ready";
-const SESSION_HISTORY_READY_EVENT: &str = "vm0_mock_codex_session_history_ready";
-const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
-const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
-const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
+    "guest_mock_codex_turn_complete_before_heartbeat_ready";
+const SESSION_HISTORY_READY_FILE: &str = ".guest-mock-codex-session-history-ready";
+const SESSION_HISTORY_READY_EVENT: &str = "guest_mock_codex_session_history_ready";
+const WAIT_ON_TURN_STEER_READY_FILE: &str = ".guest-mock-codex-turn-steer-ready";
+const WAIT_ON_TURN_STEER_READY_EVENT: &str = "guest_mock_codex_turn_steer_ready";
+const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".guest-mock-codex-turn-steer-release.sock";
 const EVENT_DELIVERY_LARGE_RELEASE_SOCKET: &str =
-    ".vm0-mock-codex-event-delivery-large-release.sock";
-const TURN_INTERRUPT_READY_FILE: &str = ".vm0-mock-codex-turn-interrupt-ready";
-const TURN_INTERRUPT_READY_EVENT: &str = "vm0_mock_codex_turn_interrupt_ready";
+    ".guest-mock-codex-event-delivery-large-release.sock";
+const TURN_INTERRUPT_READY_FILE: &str = ".guest-mock-codex-turn-interrupt-ready";
+const TURN_INTERRUPT_READY_EVENT: &str = "guest_mock_codex_turn_interrupt_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;

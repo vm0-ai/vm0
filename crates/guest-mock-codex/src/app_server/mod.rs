@@ -15,8 +15,8 @@ use std::thread;
 
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
-const ACTIVE_TURN_READY_FILE: &str = ".vm0-mock-codex-active-turn-ready";
-const ACTIVE_TURN_READY_EVENT: &str = "vm0_mock_codex_active_turn_ready";
+const ACTIVE_TURN_READY_FILE: &str = ".guest-mock-codex-active-turn-ready";
+const ACTIVE_TURN_READY_EVENT: &str = "guest_mock_codex_active_turn_ready";
 
 /// Run the mock Codex app server over process stdio.
 ///

@@ -196,8 +196,8 @@ def test_response_does_not_clear_replaced_stream_callback(tmp_path, real_flow, m
     )
 
     mitm_addon.responseheaders(flow)
-    vm0_stream = response_stream(flow)
-    vm0_stream(b'{"model":"claude-sonnet-4-6"}')
+    stream_callback = response_stream(flow)
+    stream_callback(b'{"model":"claude-sonnet-4-6"}')
     flow.response.stream = external_stream
 
     with mitm_ctx():
