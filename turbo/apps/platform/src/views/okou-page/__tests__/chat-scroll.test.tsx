@@ -19,6 +19,7 @@ import {
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
 import { selectPassage } from "./chat-capability-test-helpers.ts";
+import { getWorkHistoryRangeOption } from "./chat-run-test-fixtures.ts";
 
 const ROW_HEIGHT_PX = 100;
 const ROW_CONTENT_HEIGHT_PX = 80;
@@ -515,7 +516,7 @@ test("Keep an expanded work message in place when its run completes", async () =
     ).not.toBeInTheDocument();
   });
 
-  click(screen.getByRole("radio", { name: "All" }));
+  click(getWorkHistoryRangeOption("All"));
   await screen.findByText("Checked the first rollout stage");
   click(buttonByLabel("Checked the first rollout stage"));
   const container = chatScrollContainer();
@@ -552,7 +553,7 @@ test("Keep an expanded work message in place when its run completes", async () =
   await screen.findByText("The rollout is healthy");
   await waitFor(() => {
     expect(screen.getByText("Checked the first rollout stage")).toBeVisible();
-    expect(screen.getByRole("radio", { name: "All" })).toBeChecked();
+    expect(getWorkHistoryRangeOption("All")).toBeChecked();
     expect(screen.getByText("Worked for 1m")).toBeVisible();
     expect(
       anchorById(

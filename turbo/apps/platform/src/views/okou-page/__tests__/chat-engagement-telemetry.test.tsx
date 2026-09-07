@@ -5,11 +5,14 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { click } from "../../../__tests__/page-helper.ts";
 import {
-  buttonByLabel,
   buttonByText,
   context,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
+import {
+  findWorkHistoryRangeOption,
+  getWorkHistoryRangeOption,
+} from "./chat-run-test-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 type Capture = (
@@ -95,7 +98,7 @@ describe("chat engagement telemetry", () => {
       },
     });
 
-    const expandWork = await screen.findByRole("radio", { name: "All" });
+    const expandWork = await findWorkHistoryRangeOption("All");
     expect(screen.getByText(/^Working for /)).toBeVisible();
     expect(queryMessageBody("Checking the launch brief.")).toBeNull();
 
@@ -108,7 +111,7 @@ describe("chat engagement telemetry", () => {
       ["chat_work_history_expanded", { work_status: "active" }],
     ]);
 
-    click(screen.getByRole("radio", { name: "Recent" }));
+    click(getWorkHistoryRangeOption("Recent"));
 
     await waitFor(() => {
       expect(queryMessageBody("Checking the launch brief.")).toBeNull();
@@ -146,11 +149,15 @@ describe("chat engagement telemetry", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${threadId}` });
-
-    const expandWork = await waitFor(() => {
-      return buttonByLabel("Expand work history");
+    await setupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
     });
+
+    const expandWork = await findWorkHistoryRangeOption("All");
     expect(screen.getByText("Worked for 20s")).toBeVisible();
 
     click(expandWork);

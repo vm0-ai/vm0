@@ -15,6 +15,8 @@ import {
   context,
   creditUsage,
   expectTextOrder,
+  findWorkHistoryRangeOption,
+  getWorkHistoryRangeOptions,
   installRunChat,
   promptEvent,
   readyChat,
@@ -191,7 +193,7 @@ test("Review goal continuations as one work history", async () => {
   expect(screen.queryByText("Keep checking launch readiness")).toBeNull();
   expect(screen.queryByText("Finish checking launch readiness")).toBeNull();
 
-  click(await screen.findByRole("radio", { name: "All" }));
+  click(await findWorkHistoryRangeOption("All"));
 
   await expect(
     screen.findByText("Checked the initial launch evidence"),
@@ -452,7 +454,7 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
     screen.queryByText("Continue the deployment investigation with Sol"),
   ).toBeNull();
 
-  click(await screen.findByRole("radio", { name: "All" }));
+  click(await findWorkHistoryRangeOption("All"));
 
   await expect(
     screen.findByText("Model changed to GPT 5.6 Luna"),
@@ -560,7 +562,7 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   });
 
   await readyChat();
-  const workHistories = screen.getAllByRole("radio", { name: "All" });
+  const workHistories = getWorkHistoryRangeOptions("All");
   expect(workHistories).toHaveLength(2);
   expect(queryMessageBody("Checked the first rollout logs")).toBeNull();
   expect(queryMessageBody("Checked the replacement rollout logs")).toBeNull();

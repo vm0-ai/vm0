@@ -17,9 +17,12 @@ import {
   expectTextOrder,
   findButton,
   findLink,
+  findWorkHistoryRangeOption,
+  getWorkHistoryRangeOptions,
   installRunChat,
   promptEvent,
   queryButton,
+  queryWorkHistoryRangeOptions,
   readyChat,
   RUN_PATH,
   thinkingEvent,
@@ -209,7 +212,7 @@ test("Browse completed work by conversation phase", async () => {
   expect(
     queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
-  const firstExpand = screen.getAllByRole("radio", { name: "All" })[0];
+  const firstExpand = getWorkHistoryRangeOptions("All")[0];
   if (!firstExpand) {
     throw new Error("First work-history summary not found");
   }
@@ -231,7 +234,7 @@ test("Browse completed work by conversation phase", async () => {
     queryMessageBody("Checked launch dependencies"),
   ).not.toBeInTheDocument();
 
-  const firstRecent = screen.getAllByRole("radio", { name: "Recent" })[0];
+  const firstRecent = getWorkHistoryRangeOptions("Recent")[0];
   if (!firstRecent) {
     throw new Error("First recent work-history option not found");
   }
@@ -240,7 +243,7 @@ test("Browse completed work by conversation phase", async () => {
     expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
   });
 
-  const secondRunExpand = screen.getAllByRole("radio", { name: "All" }).at(-1);
+  const secondRunExpand = getWorkHistoryRangeOptions("All").at(-1);
   if (!secondRunExpand) {
     throw new Error("Second run work-history summary not found");
   }
@@ -253,9 +256,7 @@ test("Browse completed work by conversation phase", async () => {
   expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
   expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
-  const secondRunRecent = screen
-    .getAllByRole("radio", { name: "Recent" })
-    .at(-1);
+  const secondRunRecent = getWorkHistoryRangeOptions("Recent").at(-1);
   if (!secondRunRecent) {
     throw new Error("Second recent work-history option not found");
   }
@@ -313,7 +314,7 @@ test.each([
     expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(
       showsHistoryStatus ? 1 : 0,
     );
-    expect(screen.queryAllByRole("radio", { name: "All" })).toHaveLength(
+    expect(queryWorkHistoryRangeOptions("All")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
 
@@ -333,7 +334,7 @@ test.each([
       return;
     }
 
-    click(await screen.findByRole("radio", { name: "All" }));
+    click(await findWorkHistoryRangeOption("All"));
     const firstHistoryMessage = await screen.findByText(workMessage(0));
     const secondHistoryMessage = screen.getByText(workMessage(1));
     expect(assistantGroupFor(firstHistoryMessage)).toBe(
@@ -374,7 +375,7 @@ test("Do not create history before the first output.message", async () => {
 
   await readyChat();
   expect(screen.queryByText(/^Working(?: for)? /u)).toBeNull();
-  expect(screen.queryAllByRole("radio", { name: "All" })).toHaveLength(0);
+  expect(queryWorkHistoryRangeOptions("All")).toHaveLength(0);
   expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
 });
 
@@ -417,7 +418,7 @@ test("Count one output.message once when Markdown renders multiple child blocks"
     findLink("Open pdf preview for package.pdf"),
   ).resolves.toBeVisible();
   await expect(screen.findByTestId("plan-upgrade-card")).resolves.toBeVisible();
-  expect(screen.queryAllByRole("radio", { name: "All" })).toHaveLength(0);
+  expect(queryWorkHistoryRangeOptions("All")).toHaveLength(0);
   expect(screen.queryAllByText(/^Working(?: for)? /u)).toHaveLength(1);
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
@@ -458,7 +459,7 @@ test.each([
     expect(screen.getByText(workMessage(messageCount - 1))).toBeVisible();
     expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     expect(screen.queryAllByText(/^Worked(?: for)? /u)).toHaveLength(1);
-    expect(screen.queryAllByRole("radio", { name: "All" })).toHaveLength(
+    expect(queryWorkHistoryRangeOptions("All")).toHaveLength(
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
@@ -549,7 +550,7 @@ test.each(finalOutputDocuments)(
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
     expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
-    expect(screen.queryAllByRole("radio", { name: "All" })).toHaveLength(1);
+    expect(queryWorkHistoryRangeOptions("All")).toHaveLength(1);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
     );

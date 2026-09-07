@@ -9,6 +9,7 @@ import {
   completedEvent,
   context,
   findButton,
+  findWorkHistoryRangeOption,
   installRunChat,
   promptEvent,
   publishRunUpdate,
@@ -76,10 +77,10 @@ test.each([
     if (count < 2) {
       return;
     }
-    const showAll = await screen.findByRole("radio", { name: "All" });
+    const showAll = await findWorkHistoryRangeOption("All");
     expect(showAll).not.toBeChecked();
     click(showAll);
-    const showRecent = await screen.findByRole("radio", { name: "Recent" });
+    const showRecent = await findWorkHistoryRangeOption("Recent");
     expect(showAll).toBeChecked();
     expect(
       document.querySelectorAll("[data-chat-run-work-message]"),
@@ -151,7 +152,7 @@ test("Expand history messages independently and preserve them across range chang
     document.querySelectorAll("[data-chat-run-work-message-expanded]"),
   ).toHaveLength(2);
 
-  click(await screen.findByRole("radio", { name: "All" }));
+  click(await findWorkHistoryRangeOption("All"));
   expect(
     document.querySelectorAll("[data-chat-run-work-message]"),
   ).toHaveLength(4);
@@ -163,13 +164,13 @@ test("Expand history messages independently and preserve them across range chang
   expect(
     document.querySelectorAll("[data-chat-run-work-message-expanded]"),
   ).toHaveLength(3);
-  click(await screen.findByRole("radio", { name: "Recent" }));
+  click(await findWorkHistoryRangeOption("Recent"));
   expect(screen.queryByText("Step 1")).toBeNull();
   expect(
     document.querySelectorAll("[data-chat-run-work-message-expanded]"),
   ).toHaveLength(2);
 
-  click(await screen.findByRole("radio", { name: "All" }));
+  click(await findWorkHistoryRangeOption("All"));
   expect(screen.getByText("Step 1")).toBeVisible();
   expect(
     document.querySelectorAll("[data-chat-run-work-message-expanded]"),
@@ -204,7 +205,7 @@ test("Keep work history open and keyboard focus in place when another output arr
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await readyChat();
-  const showAll = await screen.findByRole("radio", { name: "All" });
+  const showAll = await findWorkHistoryRangeOption("All");
   click(showAll);
   showAll.focus();
 
@@ -223,9 +224,7 @@ test("Keep work history open and keyboard focus in place when another output arr
   ).resolves.toBeVisible();
   expect(screen.getByText("Checked the dependencies")).toBeVisible();
   expect(screen.getByText("Checked the boundaries")).toBeVisible();
-  await expect(
-    screen.findByRole("radio", { name: "All" }),
-  ).resolves.toHaveFocus();
+  await expect(findWorkHistoryRangeOption("All")).resolves.toHaveFocus();
 });
 
 test("Keep a card-only output in the collapsed history preview", async () => {

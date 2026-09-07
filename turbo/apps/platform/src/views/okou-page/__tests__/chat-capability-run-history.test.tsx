@@ -17,9 +17,12 @@ import {
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
 import {
+  findWorkHistoryRangeOption,
+  getWorkHistoryRangeOption,
   installRunChat,
   publishRunUpdate,
   queryButton,
+  queryWorkHistoryRangeOption,
 } from "./chat-run-test-fixtures.ts";
 
 const WORKFLOW_GROUP_ID = "e0000000-0000-4000-a000-000000000871";
@@ -195,7 +198,7 @@ test("Project all workflow run outputs through one run-group history", async () 
   const main = screen.getByText("Earlier workflow result 2");
   expect(main).toBeVisible();
   expect(queryButton("Expand grouped run history")).toBeNull();
-  const fold = await screen.findByRole("radio", { name: "All" });
+  const fold = await findWorkHistoryRangeOption("All");
   const currentProgress = await screen.findByLabelText(
     "Checking the latest workflow run",
   );
@@ -227,7 +230,7 @@ test("Project all workflow run outputs through one run-group history", async () 
   );
   expect(screen.queryByText("Nightly launch review")).toBeNull();
 
-  click(screen.getByRole("radio", { name: "Recent" }));
+  click(getWorkHistoryRangeOption("Recent"));
   await waitFor(() => {
     expect(queryMessageBody("Earlier workflow result 1")).toBeNull();
   });
@@ -249,9 +252,7 @@ test("Project all workflow run outputs through one run-group history", async () 
   expect(queryMessageBody("Earlier workflow result 2")).toBeNull();
   expect(currentMain.closest('[data-role="assistant"]')).toBe(assistantGroup);
   expect(queryButton("Expand grouped run history")).toBeNull();
-  await expect(
-    screen.findByRole("radio", { name: "All" }),
-  ).resolves.toBeVisible();
+  await expect(findWorkHistoryRangeOption("All")).resolves.toBeVisible();
 });
 
 test("Keep different run groups as separate assistant responses", async () => {
@@ -324,7 +325,7 @@ test("Keep different run groups as separate assistant responses", async () => {
       return link.getAttribute("aria-label") === "View agent profile";
     }),
   ).toHaveLength(2);
-  expect(screen.queryByRole("radio", { name: "All" })).toBeNull();
+  expect(queryWorkHistoryRangeOption("All")).toBeNull();
 });
 
 test("Keep the prior goal result as main while the next run has no output", async () => {
@@ -401,7 +402,7 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   );
   expect(priorMain).toBeVisible();
   expect(queryButton("Expand grouped run history")).toBeNull();
-  expect(screen.queryByRole("radio", { name: "All" })).toBeNull();
+  expect(queryWorkHistoryRangeOption("All")).toBeNull();
   const thinking = await waitFor(() => {
     const indicator = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
@@ -444,7 +445,7 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   expect(
     queryMessageBody("The earlier launch evidence is complete."),
   ).toBeNull();
-  const currentFold = await screen.findByRole("radio", { name: "All" });
+  const currentFold = await findWorkHistoryRangeOption("All");
   const answeringAssistant = answer.closest<HTMLElement>(
     '[data-role="assistant"]',
   );
@@ -543,7 +544,7 @@ test("Open an archived goal run from a linked event", async () => {
   const linkedResult = await screen.findByText("Linked archived launch result");
   expect(linkedResult).toBeVisible();
   expect(screen.getByText("Latest launch result")).toBeVisible();
-  const expandedFold = await screen.findByRole("radio", { name: "All" });
+  const expandedFold = await findWorkHistoryRangeOption("All");
   expect(expandedFold).toBeVisible();
   expect(expandedFold).toBeChecked();
   expect(queryButton("Collapse grouped run history")).toBeNull();

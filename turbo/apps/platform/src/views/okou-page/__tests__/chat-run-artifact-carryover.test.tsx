@@ -9,9 +9,11 @@ import {
   assistantEvent,
   completedEvent,
   context,
+  findWorkHistoryRangeOption,
   installRunChat,
   promptEvent,
   queryButton,
+  queryWorkHistoryRangeOption,
   readyChat,
   RUN_PATH,
 } from "./chat-run-test-fixtures.ts";
@@ -130,9 +132,7 @@ test("Carry an artifact referenced only by history below the main result", async
     throw new Error("Expected the artifact inside the main message region");
   }
   expect(mainMessage).toContainElement(actions);
-  await expect(
-    screen.findByRole("radio", { name: "All" }),
-  ).resolves.toBeVisible();
+  await expect(findWorkHistoryRangeOption("All")).resolves.toBeVisible();
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
 
@@ -351,9 +351,7 @@ test("Do not carry inline media or action cards out of historical messages", asy
   expect(screen.queryByText("Historical rich output")).toBeNull();
   expect(screen.queryByAltText("Inline chart")).toBeNull();
   expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
-  await expect(
-    screen.findByRole("radio", { name: "All" }),
-  ).resolves.toBeVisible();
+  await expect(findWorkHistoryRangeOption("All")).resolves.toBeVisible();
 });
 
 test("Carry artifacts across every run in the same run group", async () => {
@@ -439,9 +437,7 @@ test("Carry artifacts across every run in the same run group", async () => {
   expectDocumentOrder(main, artifact);
   expect(assistantGroupFor(artifact)).toBe(assistantGroupFor(main));
   expect(queryButton("Expand grouped run history")).toBeNull();
-  await expect(
-    screen.findByRole("radio", { name: "All" }),
-  ).resolves.toBeVisible();
+  await expect(findWorkHistoryRangeOption("All")).resolves.toBeVisible();
 });
 
 test("Ignore artifacts from revoked output messages", async () => {
@@ -487,5 +483,5 @@ test("Ignore artifacts from revoked output messages", async () => {
 
   expect(screen.getByText("The obsolete artifact was withdrawn")).toBeVisible();
   expect(queryNamedLink("Open pdf preview for obsolete.pdf")).toBeNull();
-  expect(screen.queryByRole("radio", { name: "All" })).toBeNull();
+  expect(queryWorkHistoryRangeOption("All")).toBeNull();
 });
