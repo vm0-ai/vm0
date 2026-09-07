@@ -89,8 +89,15 @@ export function ComputerUseDriverControls({
         </p>
       )}
       <div className="panel-actions">
-        {(state.phase === "starting" || state.phase === "switching" || state.cleanupPending) && (
-          <IconButton icon={<Square size={15} />} tone="danger" disabled={stopping.state === "loading"} onClick={() => detach(stop(), Reason.DomCallback)}>
+        {(state.phase === "starting" ||
+          state.phase === "switching" ||
+          state.cleanupPending) && (
+          <IconButton
+            icon={<Square size={15} />}
+            tone="danger"
+            disabled={stopping.state === "loading"}
+            onClick={() => detach(stop(), Reason.DomCallback)}
+          >
             Stop
           </IconButton>
         )}

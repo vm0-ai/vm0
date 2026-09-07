@@ -2,7 +2,9 @@ import { systemPreferences, shell } from "electron";
 import type { ComputerUsePermissionProvider } from "./computer-use-permissions";
 
 /** Electron's signed host can inspect TCC without loading either actuator. */
-export function createComputerUseHostPermissions(platform: NodeJS.Platform = process.platform): ComputerUsePermissionProvider {
+export function createComputerUseHostPermissions(
+  platform: NodeJS.Platform = process.platform,
+): ComputerUsePermissionProvider {
   const getPermissions = async () => ({
     accessibility:
       platform === "darwin" &&
