@@ -40,7 +40,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS =
-  "flex items-center justify-between gap-2 -ml-1";
+  "flex items-center justify-between gap-2";
 
 // Consecutive user messages read as one burst. The copy button already sits
 // `mt-1` below its message, so this pull keeps the gap below it equally tight.

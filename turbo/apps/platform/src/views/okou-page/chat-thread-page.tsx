@@ -3863,18 +3863,22 @@ function RunWorkSectionRow({
                 );
           }}
         </ElapsedTime>
-        <span aria-hidden>·</span>
-        <span>
-          {t(
-            ($) => {
-              return $.activity.events.steps;
-            },
-            {
-              count: stepCount,
-              formattedCount: formatAppNumber(stepCount),
-            },
-          )}
-        </span>
+        {stepCount > 0 ? (
+          <>
+            <span aria-hidden>·</span>
+            <span>
+              {t(
+                ($) => {
+                  return $.activity.events.steps;
+                },
+                {
+                  count: stepCount,
+                  formattedCount: formatAppNumber(stepCount),
+                },
+              )}
+            </span>
+          </>
+        ) : null}
       </span>
       {collapsible ? (
         <ChevronRight
@@ -8145,18 +8149,25 @@ function PagedGroupPrimaryActions({
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link
-                pathname="/activities/:activityRunId"
-                options={{
-                  pathParams: { activityRunId: firstRunId },
-                }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
-                aria-label={t(($) => {
-                  return $.chat.run.viewLogs;
-                })}
+              <Button
+                asChild
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="text-muted-foreground/60"
               >
-                <ChartLine size={18} />
-              </Link>
+                <Link
+                  pathname="/activities/:activityRunId"
+                  options={{
+                    pathParams: { activityRunId: firstRunId },
+                  }}
+                  aria-label={t(($) => {
+                    return $.chat.run.viewLogs;
+                  })}
+                >
+                  <ChartLine />
+                </Link>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {t(($) => {
@@ -8170,16 +8181,19 @@ function PagedGroupPrimaryActions({
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
                 onClick={onCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
+                className="text-muted-foreground/60"
                 aria-label={t(($) => {
                   return $.chat.actions.copyMessage;
                 })}
               >
-                {copied ? <Check size={18} /> : <Copy size={18} />}
-              </button>
+                {copied ? <Check /> : <Copy />}
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {copied
