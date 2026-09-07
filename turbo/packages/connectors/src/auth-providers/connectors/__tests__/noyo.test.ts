@@ -3,6 +3,7 @@ import { HttpResponse, http } from "msw";
 
 import type { ConnectorAuthMethodRuntimeConfig } from "../../../connector-config";
 import { refreshConnectorAuthProviderAccessTokenWithMethod } from "../../connector-auth";
+import { ProviderResponseError } from "../../provider-error";
 import { server } from "../../__tests__/test-server";
 
 const NOYO_PROVIDER_METHOD = {
@@ -101,5 +102,36 @@ describe("connector/providers/noyo", () => {
     );
     expect(contentType).toBe("application/json");
     expect(body).toEqual({ grant_type: "client_credentials" });
+  });
+
+  it.each([
+    { label: "malformed JSON", body: "private-provider-response" },
+    {
+      label: "an invalid token payload",
+      body: JSON.stringify({ access_token: "private-provider-token" }),
+    },
+  ])("classifies $label as an upstream response failure", async ({ body }) => {
+    server.use(
+      http.post("https://accounts.noyo.com/auth/public/token", () => {
+        return new HttpResponse(body, {
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    const refresh = refreshConnectorAuthProviderAccessTokenWithMethod(
+      {
+        connectorSlug: "noyo",
+        authMethodId: "api-token",
+        method: NOYO_PROVIDER_METHOD,
+        inputs: { clientId: "client-id", clientSecret: "client-secret" },
+      },
+      new AbortController().signal,
+    );
+    await expect(refresh).rejects.toBeInstanceOf(ProviderResponseError);
+    await expect(refresh).rejects.toHaveProperty(
+      "message",
+      "Invalid Noyo access token response",
+    );
   });
 });

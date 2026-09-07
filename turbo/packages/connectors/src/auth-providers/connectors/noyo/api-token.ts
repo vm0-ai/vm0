@@ -31,7 +31,16 @@ export async function fetchNoyoAccessToken(
       response.status,
     );
   }
-  const parsed = noyoAccessTokenResponseSchema.safeParse(await response.json());
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ProviderResponseError("Invalid Noyo access token response");
+    }
+    throw error;
+  }
+  const parsed = noyoAccessTokenResponseSchema.safeParse(payload);
   if (!parsed.success) {
     throw new ProviderResponseError("Invalid Noyo access token response");
   }
