@@ -1,4 +1,4 @@
-import { buttonVariants, cardClassName } from "@okouai/ui";
+import { buttonVariants, cardClassName, inputClassName } from "@okouai/ui";
 import { expect, test } from "vitest";
 
 import {
@@ -68,6 +68,8 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(elementClasses(appearance, "formFieldInput")).toContain(
     AUTH_FIELD_INPUT_CLASS,
   );
+  expect(inputClassName).toContain("px-[var(--okou-input-padding-inline)]");
+  expect(inputClassName).toContain("py-[var(--okou-input-padding-block)]");
   expect(elementClasses(appearance, "socialButtonsBlockButton")).toContain(
     AUTH_SOCIAL_ACTION_CLASS,
   );
@@ -133,10 +135,17 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   ).toContain("max-w-4");
   expect(
     elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
-  ).toContain("focus-visible:ring-2");
+  ).toContain("[--okou-input-padding-inline:0]");
   expect(
-    elementClasses(appearance, "formFieldRadioLabel__signOutOfOtherSessions"),
-  ).toContain("flex-1");
+    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
+  ).toContain("[--okou-input-padding-block:0]");
+  expect(
+    elementClasses(appearance, "formFieldInput__signOutOfOtherSessions"),
+  ).toContain("focus-visible:ring-2");
+  expect(elementClasses(appearance, "formFieldRadioLabel")).toContain("flex-1");
+  expect(appearance.elements).not.toHaveProperty(
+    "formFieldRadioLabel__signOutOfOtherSessions",
+  );
 
   const serializedAppearance = JSON.stringify(appearance);
   expect(serializedAppearance).not.toContain("!important");

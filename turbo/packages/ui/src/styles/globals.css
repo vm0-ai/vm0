@@ -173,6 +173,8 @@
   --input-border-radius: 8px; /* rounded-lg */
   --input-focus-ring-width: 3px;
   --input-focus-ring-opacity: 0.1;
+  --okou-input-padding-block: 0.5rem;
+  --okou-input-padding-inline: 0.75rem;
 
   /* ===================================
    * Interaction States

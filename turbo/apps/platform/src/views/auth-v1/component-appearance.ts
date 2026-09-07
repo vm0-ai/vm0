@@ -39,13 +39,13 @@ const authV1CheckboxInputClass =
   "size-4 shrink-0 rounded-md border border-border bg-input shadow-none accent-primary focus-visible:ring-2 focus-visible:ring-ring";
 const authV1SignOutCheckboxInputClass = cn(
   authV1CheckboxInputClass,
-  "min-h-4 min-w-4 max-h-4 max-w-4 p-0 outline-none",
+  "mt-0.5 min-h-4 min-w-4 max-h-4 max-w-4 [--okou-input-padding-block:0] [--okou-input-padding-inline:0] outline-none",
 );
 const authV1CheckboxLabelClass =
   "text-sm font-medium leading-5 text-foreground";
 const authV1SignOutCheckboxLabelClass = cn(
   authV1CheckboxLabelClass,
-  "min-w-0 flex-1 p-0 text-left",
+  "min-w-0 flex-1 cursor-pointer p-0 text-left",
 );
 const authV1PasswordToggleClass = cn(
   buttonVariants({ size: "icon", variant: "ghost" }),
@@ -161,11 +161,12 @@ export function getAuthV1ComponentAppearance(
       formFieldInput__password:
         "font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal",
       // Clerk renders this native checkbox through the generic formFieldInput
-      // slot. Its public field modifier keeps the shared input width and height
-      // from stretching the control without relying on Clerk's DOM structure.
+      // slot. The shared input's semantic padding variables let this public
+      // field modifier reset its geometry without specificity overrides.
       formFieldInput__signOutOfOtherSessions: authV1SignOutCheckboxInputClass,
-      formFieldRadioLabel__signOutOfOtherSessions:
-        authV1SignOutCheckboxLabelClass,
+      // This state exposes Clerk's public base radio-label element rather than
+      // a field modifier, so keep the label aligned through that stable slot.
+      formFieldRadioLabel: authV1SignOutCheckboxLabelClass,
       formFieldInputShowPasswordButton: authV1PasswordToggleClass,
       formFieldInputShowPasswordIcon: "size-4",
       formButtonPrimary: authV1PrimaryActionClass,
