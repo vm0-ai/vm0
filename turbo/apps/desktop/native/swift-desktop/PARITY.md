@@ -26,16 +26,30 @@ helper waiting inside `AEDeterminePermissionToAutomateTarget`, despite passing
 temporarily displayed both browsers as not tested. The existing Chrome result
 returned after the decision.
 
-Authorization reads now have a bounded wait off the command queue. Repeated
-queries share at most one pending OS call per browser; completed answers are
-not cached, so later grants and revocations require a fresh read. A timed-out
-consent request returns an explicit unknown result without another blocking
-query. [Candidate evidence](https://cdn.vm0.io/artifacts/9lrgnze3sd.json) includes
-137 passing helper tests and a real unanswered dialog: the first probe returned
-in 3.56 seconds, then 13 repeated probes and 14 grant queries remained responsive
-for 26 seconds (maximum subsequent request 1.04 seconds, including transport).
-A new probe correctly reported denied after the native decision. This uses a
-separate owned helper parent; new packaged Desktop acceptance remains pending.
+The subsequent `6e54c76` release bounds authorization reads off the command
+queue. Repeated queries share one pending OS call per browser; completed
+answers are not cached. [Packaged Desktop/UI/server evidence](https://cdn.vm0.io/artifacts/ekb6hwmmec.json)
+records an unanswered system dialog over 92.7 seconds, retained browser
+observations and all eleven API requests across nine command kinds passing
+with the same app and bundled helper. Fresh denial, a Settings grant and actual
+Safari navigation also passed. Native Stop made the API host offline and Quit
+ended both processes, but the system notification remained visible afterward.
+
+That release still used a three-second AppleScript window-count event to ask
+for consent. Late clicks on its expired request were not accepted as valid
+denial tests. An explicit permission probe now asks macOS directly with
+`AEDeterminePermissionToAutomateTarget(..., true)` on the existing bounded
+worker. This keeps the native consent request alive until the user decides,
+without sending a browser event or starting an AppleScript child.
+
+[Direct-consent candidate and independent AppKit evidence](https://cdn.vm0.io/artifacts/7hohn55hgf.json)
+includes 137 passing helper tests, thirteen repeated probes and fourteen grant
+queries while consent was unanswered. A visible denial about 78 seconds after
+the initial reply was accepted by the same helper. Automatic notification
+dismissal is not repaired: the residual notification also reproduced for 47
+seconds after normal Quit in a standalone AppKit app with no Desktop helper or
+AppleScript. This observation applies to the tested macOS 26.6.2 host; other OS
+versions and new packaged Desktop acceptance remain separate requirements.
 
 The subsequent `d73ebb28` release passed 11 actual server requests across all
 nine command kinds with the same native app/helper processes, and retained the
@@ -45,10 +59,9 @@ Safari was reported as granted after an explicit reprobe while the matching
 current-code TCC record remained unapproved. AppleScript's `get name` can resolve
 an application without establishing permission to send it events.
 
-The helper now uses macOS's Apple Events authorization query. It requests consent
-with a read-only window-count event only when the system says consent is needed;
-an application-name lookup can no longer establish a grant. The subsequent
-`19a0f11e` configured release passed
+The `19a0f11e` repair replaced that application-name lookup with macOS's Apple
+Events authorization query and a read-only window-count consent event. That
+configured release passed
 [all nine API command kinds and actual Safari denial/recovery](https://cdn.vm0.io/artifacts/1y4fmz184n.json).
 Three separate `d73ebb28` Safari URL commands timed out without completing
 navigation; their timeout cause is not established and they are not counted

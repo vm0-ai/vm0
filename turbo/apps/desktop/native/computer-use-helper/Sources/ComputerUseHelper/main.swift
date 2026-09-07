@@ -3247,9 +3247,12 @@ func automationPermissionDeniedMessage(_ message: String) -> Bool {
 }
 
 func browserAutomationAuthorization(_ bundleId: String) -> OSStatus {
+    // Only explicit user probes call this. Asking macOS directly keeps consent
+    // alive until the decision; a short-lived AppleScript event can expire first.
+    // AutomationAuthorizationQueries owns the potentially unbounded OS wait.
     let address = NSAppleEventDescriptor(bundleIdentifier: bundleId)
     return AEDeterminePermissionToAutomateTarget(
-        address.aeDesc, typeWildCard, typeWildCard, false
+        address.aeDesc, typeWildCard, typeWildCard, true
     )
 }
 
@@ -3285,25 +3288,10 @@ func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [Strin
         ]
     }
 
-    // AppleScript can resolve an application's name without sending it an
-    // event. Only TCC's authorization answer establishes Automation access.
-    guard var authorization = browserAutomationQueries.status(for: bundleId) else {
+    // This command is an explicit user request. Ask macOS directly and keep
+    // its consent request alive independently of the bounded command reply.
+    guard let authorization = browserAutomationQueries.status(for: bundleId) else {
         return pendingBrowserAutomationPermission()
-    }
-    var requestResult: AppleScriptRunResult?
-    if authorization == errAEEventWouldRequireUserConsent {
-        // This is an explicit user probe. A real, read-only browser event asks
-        // for consent, without navigating or editing an existing tab.
-        let script = "tell application id \(appleScriptStringLiteral(bundleId)) to count windows"
-        requestResult = try runAppleScript(script, timeout: 3)
-        // The child can exit at its deadline while TCC still owns the prompt.
-        // Querying TCC synchronously here would block all subsequent commands.
-        guard requestResult?.timedOut == false,
-              let current = browserAutomationQueries.status(for: bundleId)
-        else {
-            return pendingBrowserAutomationPermission()
-        }
-        authorization = current
     }
     if authorization == noErr {
         return ["status": "granted"]
@@ -3322,8 +3310,7 @@ func handlePermissionsProbeAutomation(_ request: [String: Any]) throws -> [Strin
     }
     return [
         "status": "unknown",
-        "reason": requestResult.map(appleScriptFailureMessage)
-            ?? "macOS could not determine browser Automation access (\(authorization)).",
+        "reason": "macOS could not determine browser Automation access (\(authorization)).",
     ]
 }
 
