@@ -10,10 +10,10 @@ import uuid
 from collections import Counter
 from pathlib import Path
 
-SANDBOX_STATES = ("active", "idle", "preparing", "unknown")
+SANDBOX_STATES = ("active", "idle", "blank", "preparing", "unknown")
 RUNNER_MODES = ("starting", "running", "draining", "stopping", "unknown")
 STATUS_RESULTS = ("included", "stopped", "invalid")
-STATE_PRECEDENCE = {"unknown": 0, "preparing": 1, "active": 2, "idle": 3}
+STATE_PRECEDENCE = {"blank": -1, "unknown": 0, "preparing": 1, "active": 2, "idle": 3}
 CANONICAL_RUNNERS_DIR_ENV = "OKOU_RUNNERS_DIR"
 DEFAULT_RUNNERS_DIR = "/var/lib/vm0-runner/runners"
 CANONICAL_TEXTFILE_DIR_ENV = "OKOU_MONITORING_TEXTFILE_DIR"
@@ -73,9 +73,24 @@ def parse_status(path: Path) -> tuple[str, list[tuple[str, str]]]:
             )
         sandbox_states.append((sandbox_id, state))
 
-    for entry in parse_collection(status, "idle_sandboxes"):
-        _, sandbox_id = parse_sandbox_entry(entry)
-        sandbox_states.append((sandbox_id, "idle"))
+    blank_ids = {
+        parse_sandbox_entry(entry)[1]
+        for entry in parse_collection(status, "blank_sandboxes")
+    }
+    idle_entries = [
+        parse_sandbox_entry(entry)
+        for entry in parse_collection(status, "idle_sandboxes")
+    ]
+    # Temporary input compatibility; remove in #32084 once supported writers
+    # and retained live status files no longer use synthetic blank reuse keys.
+    for idle, sandbox_id in idle_entries:
+        if idle.get("reuse_key") == f"__vm0_blank__:{idle['sandbox_id']}":
+            blank_ids.add(sandbox_id)
+
+    for _, sandbox_id in idle_entries:
+        if sandbox_id not in blank_ids:
+            sandbox_states.append((sandbox_id, "idle"))
+    sandbox_states.extend((sandbox_id, "blank") for sandbox_id in blank_ids)
 
     return mode, sandbox_states
 
