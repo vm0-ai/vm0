@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   chatSearchContract,
@@ -20,6 +20,7 @@ import {
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
+import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import {
   agentsByIdContract,
   type AgentResponse,
@@ -227,8 +228,7 @@ function mockChatThreadSnapshot(
     return [];
   },
   targetContext = context,
-): { readonly responseReturned: Promise<void> } {
-  const responseReturned = targetContext.mocks.deferred<void>();
+): void {
   targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
     const response = respond(200, {
@@ -255,7 +255,6 @@ function mockChatThreadSnapshot(
       latestEventId: null,
       latestSeqId: null,
     });
-    responseReturned.resolve();
     return response;
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
@@ -271,7 +270,17 @@ function mockChatThreadSnapshot(
       ),
     });
   });
-  return { responseReturned: responseReturned.promise };
+  targetContext.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
+      },
+    });
+  });
+  targetContext.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+    return respond(200, { hosts: [] });
+  });
 }
 
 function mockUnreadAgents(
@@ -566,18 +575,28 @@ function chatListNewChatButton(): HTMLElement {
   return within(actions).getByLabelText("New chat");
 }
 
+function mockSidebarViewport(height: number, scrollHeight: number): void {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? height : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function (this: HTMLElement): number {
+      return this.dataset.testid === "sidebar-scroll-area" ? scrollHeight : 0;
+    },
+  );
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
   targetContext = context,
-): {
-  threads: SidebarThread[];
-  snapshotResponseReturned: Promise<void>;
-} {
+): { threads: SidebarThread[] } {
   let threads = [...firstPageThreads];
 
-  const { responseReturned: snapshotResponseReturned } = mockChatThreadSnapshot(
+  mockChatThreadSnapshot(
     () => {
       return [...threads, ...extraThreads];
     },
@@ -635,10 +654,10 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads, snapshotResponseReturned };
+  return { threads };
 }
 
-test("Browse a long sidebar chat history", async () => {
+function mockLongSidebarHistory(): void {
   prepareDefaultAgent();
   const overflowThreads = Array.from({ length: 23 }, (_, index) => {
     return createThread(
@@ -653,12 +672,9 @@ test("Browse a long sidebar chat history", async () => {
     ],
     [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
   );
+}
 
-  await setupSidebarPage({
-    context,
-    path: `/chats/${EXISTING_THREAD_ID}`,
-  });
-
+async function scrollToArchivedContext(): Promise<HTMLElement> {
   await waitFor(() => {
     expect(
       within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
@@ -666,11 +682,7 @@ test("Browse a long sidebar chat history", async () => {
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-  Object.defineProperties(scrollArea, {
-    clientHeight: { configurable: true, value: 200 },
-    scrollHeight: { configurable: true, value: 1000 },
-    scrollTop: { configurable: true, value: 780, writable: true },
-  });
+  scrollArea.scrollTop = 780;
   fireEvent.scroll(scrollArea);
 
   await waitFor(() => {
@@ -678,7 +690,32 @@ test("Browse a long sidebar chat history", async () => {
   });
   expect(within(sidebar()).queryByText("Release plan")).toBeNull();
   expect(within(sidebar()).queryByText("Load more")).not.toBeInTheDocument();
+  return scrollArea;
+}
 
+test("Browse a long sidebar chat history", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
+  expect(scrollArea).toBeInTheDocument();
+});
+
+test("Refresh a long sidebar after deleting an offscreen chat", async () => {
+  mockLongSidebarHistory();
+  mockSidebarViewport(200, 1000);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const scrollArea = await scrollToArchivedContext();
   openThreadMenu("Archived context");
   click(menuItemByText("Delete chat"));
   const dialog = await screen.findByRole("dialog", {
@@ -1037,15 +1074,10 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponse = context.mocks.deferred<void>();
   const draftRequestStarted = context.mocks.deferred<void>();
   const draftResponseReturned = context.mocks.deferred<void>();
-  const indicatorRequestStarted = context.mocks.deferred<void>();
-
-  const { snapshotResponseReturned } = mockSidebarThreadStory([
+  mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
-    if (!indicatorRequestStarted.settled()) {
-      indicatorRequestStarted.resolve();
-    }
     await indicatorResponse.promise;
     return respond(200, { agents: {}, threads: {} });
   });
@@ -1063,10 +1095,6 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   });
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-  await Promise.all([
-    snapshotResponseReturned,
-    indicatorRequestStarted.promise,
-  ]);
 
   await waitFor(() => {
     expect(

@@ -11,6 +11,27 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.860.0](https://github.com/vm0-ai/vm0/compare/app-v0.859.0...app-v0.860.0) (2026-09-07)
+
+
+### Features
+
+* **platform:** refine chat work history ([#32369](https://github.com/vm0-ai/vm0/issues/32369)) ([12e41b0](https://github.com/vm0-ai/vm0/commit/12e41b0e8c7455c53e1e26906f47e7ce7b8eb012))
+* **platform:** route app realtime through shared worker ([#32366](https://github.com/vm0-ai/vm0/issues/32366)) ([02b8739](https://github.com/vm0-ai/vm0/commit/02b87392dba2e9d2c61ad34734ad3f091110d461))
+
+
+### Refactoring
+
+* **platform:** mount settings only while open ([#32374](https://github.com/vm0-ai/vm0/issues/32374)) ([b56cad8](https://github.com/vm0-ai/vm0/commit/b56cad81f87e15f42db67d44bdf7ec250fd2a846))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.412.4
+    * @okouai/core bumped to 8.633.0
+
 ## [0.859.0](https://github.com/vm0-ai/vm0/compare/app-v0.858.3...app-v0.859.0) (2026-09-07)
 
 

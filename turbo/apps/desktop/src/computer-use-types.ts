@@ -73,6 +73,7 @@ export type ComputerUseLocalCommandLogStatus =
   | "failed";
 
 export interface ComputerUseLocalCommandLogEntry {
+  readonly driver?: ComputerUseExecutionIdentity;
   readonly commandId: string;
   readonly kind: string;
   readonly app: string | null;
@@ -154,6 +155,7 @@ export interface DesktopComputerUsePluginsState {
 }
 
 export interface DesktopComputerUseState {
+  readonly driver: DesktopComputerUseDriverState;
   readonly platform: NodeJS.Platform;
   readonly supported: boolean;
   /**
@@ -165,6 +167,37 @@ export interface DesktopComputerUseState {
   readonly host: ComputerUseHostRuntimeState;
   readonly keepAwake: DesktopKeepAwakeState;
   readonly plugins?: DesktopComputerUsePluginsState;
+}
+
+export type ComputerUseDriverId = "okou" | "cua";
+
+export interface ComputerUseDriverPreference {
+  readonly experimentalCuaEnabled: boolean;
+  readonly selectedDriver: ComputerUseDriverId;
+}
+
+export interface ComputerUseExecutionIdentity {
+  readonly id: string;
+  readonly generation: number;
+  readonly version: string | null;
+}
+
+export interface DesktopComputerUseDriverState extends ComputerUseDriverPreference {
+  readonly developerAvailability: "unresolved" | "available" | "unavailable";
+  readonly actual: ComputerUseExecutionIdentity | null;
+  readonly phase:
+    | "stopped"
+    | "starting"
+    | "ready"
+    | "switching"
+    | "retiring"
+    | "blocked"
+    | "error";
+  readonly lifecycleElapsedMs: number;
+  readonly cleanupPending: boolean;
+  readonly expectedCuaVersion: string;
+  readonly error: string | null;
+  readonly canRetry: boolean;
 }
 
 export function hasRequiredComputerUsePermissions(

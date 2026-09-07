@@ -1,3 +1,4 @@
+import { stoppedOkouDriverState } from "./test/desktop-driver-state";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import type {
@@ -11,6 +12,7 @@ import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-
 import { DESKTOP_RECORDER_CHANNELS } from "./desktop-recorder-ipc-channels";
 
 type IpcEvent = {
+  readonly sender?: object;
   readonly senderFrame?: {
     readonly url?: string;
   };
@@ -63,6 +65,16 @@ interface MockBrowserWindow {
 
 const rendererUrl = "vm0-desktop://renderer/index.html";
 const recorderUrl = "vm0-desktop://renderer/recorder.html?mode=bar";
+const trustedFrame = {
+  url: rendererUrl,
+  detached: false,
+  isDestroyed: () => false,
+};
+const trustedContents = { mainFrame: trustedFrame, isDestroyed: () => false };
+const trustedWindow = {
+  webContents: trustedContents,
+  isDestroyed: () => false,
+};
 const blockedAppUrl = "https://evil.example/desktop-auth/callback";
 
 beforeEach(() => {
@@ -79,12 +91,20 @@ describe("Desktop IPC boundary", () => {
     const { installComputerUseIpc } = await import("./computer-use-electron");
     const api = createComputerUseApi();
 
-    installComputerUseIpc(api, { rendererUrl });
+    installComputerUseIpc(api, {
+      rendererUrl,
+      getMainWindow: () => trustedWindow,
+    });
 
     const protectedHandlers: readonly {
       readonly channel: string;
       readonly args: readonly unknown[];
     }[] = [
+      {
+        channel: COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled,
+        args: [true],
+      },
+      { channel: COMPUTER_USE_CHANNELS.selectDriver, args: ["cua"] },
       { channel: COMPUTER_USE_CHANNELS.getState, args: [] },
       { channel: COMPUTER_USE_CHANNELS.refreshPermissions, args: [] },
       {
@@ -161,7 +181,10 @@ describe("Desktop IPC boundary", () => {
     const { installComputerUseIpc } = await import("./computer-use-electron");
     const api = createComputerUseApi();
 
-    installComputerUseIpc(api, { rendererUrl });
+    installComputerUseIpc(api, {
+      rendererUrl,
+      getMainWindow: () => trustedWindow,
+    });
 
     await expect(
       invokeIpc(COMPUTER_USE_CHANNELS.setKeepAwakeEnabled, rendererUrl, "true"),
@@ -191,6 +214,85 @@ describe("Desktop IPC boundary", () => {
     expect(api.start).toHaveBeenCalledWith({ userInitiated: true });
     expect(api.setKeepAwakeEnabled).toHaveBeenCalledWith(true);
     expect(api.probeAutomationPermission).toHaveBeenCalledWith("chrome");
+  });
+
+  it("requires the live main window and its exact top-level frame even for local URLs", async () => {
+    const { installComputerUseIpc } = await import("./computer-use-electron");
+    const api = createComputerUseApi();
+    installComputerUseIpc(api, {
+      rendererUrl,
+      getMainWindow: () => trustedWindow,
+    });
+    const handler = electronMock.handlers.get(
+      COMPUTER_USE_CHANNELS.selectDriver,
+    )!;
+    const reject = (event: IpcEvent) =>
+      expect(
+        Promise.resolve().then(() => handler(event, "cua")),
+      ).rejects.toThrow("unavailable on this page");
+    await reject({ sender: {}, senderFrame: trustedFrame }); // auth/recorder/other local window
+    await reject({
+      sender: trustedContents,
+      senderFrame: { url: rendererUrl },
+    }); // subframe
+    await reject({ sender: trustedContents });
+    trustedFrame.detached = true;
+    await reject({ sender: trustedContents, senderFrame: trustedFrame });
+    trustedFrame.detached = false;
+    const stale = { ...trustedWindow, isDestroyed: () => true };
+    installComputerUseIpc(api, { rendererUrl, getMainWindow: () => stale });
+    await expect(
+      invokeIpc(COMPUTER_USE_CHANNELS.selectDriver, rendererUrl, "cua"),
+    ).rejects.toThrow("unavailable on this page");
+    expect(api.selectDriver).not.toHaveBeenCalled();
+  });
+
+  it("validates new driver writes and rejects forged start authority", async () => {
+    const { installComputerUseIpc } = await import("./computer-use-electron");
+    const api = createComputerUseApi();
+    installComputerUseIpc(api, {
+      rendererUrl,
+      getMainWindow: () => trustedWindow,
+    });
+    for (const invalid of [null, 1, "true", {}, [true]]) {
+      await expect(
+        invokeIpc(
+          COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled,
+          rendererUrl,
+          invalid,
+        ),
+      ).rejects.toThrow("boolean");
+    }
+    for (const invalid of [
+      null,
+      "CUA",
+      "other",
+      { driver: "cua", available: true },
+    ]) {
+      await expect(
+        invokeIpc(COMPUTER_USE_CHANNELS.selectDriver, rendererUrl, invalid),
+      ).rejects.toThrow("Unknown Computer Use driver");
+    }
+    for (const invalid of [
+      null,
+      "true",
+      {},
+      { userInitiated: "true" },
+      { userInitiated: true, driver: "cua", tool: "click" },
+    ]) {
+      await expect(
+        invokeIpc(COMPUTER_USE_CHANNELS.start, rendererUrl, invalid),
+      ).rejects.toThrow("Invalid Computer Use start options");
+    }
+    expect(api.start).not.toHaveBeenCalled();
+    await invokeIpc(
+      COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled,
+      rendererUrl,
+      true,
+    );
+    await invokeIpc(COMPUTER_USE_CHANNELS.selectDriver, rendererUrl, "cua");
+    expect(api.setExperimentalCuaEnabled).toHaveBeenCalledExactlyOnceWith(true);
+    expect(api.selectDriver).toHaveBeenCalledExactlyOnceWith("cua");
   });
 
   it("rejects recorder handlers from every frame but the recorder overlays", async () => {
@@ -437,6 +539,12 @@ describe("Desktop IPC boundary", () => {
 });
 
 function createComputerUseApi(): {
+  readonly setExperimentalCuaEnabled: ReturnType<
+    typeof vi.fn<(enabled: boolean) => Promise<DesktopComputerUseState>>
+  >;
+  readonly selectDriver: ReturnType<
+    typeof vi.fn<(driver: "okou" | "cua") => Promise<DesktopComputerUseState>>
+  >;
   readonly getState: ReturnType<typeof vi.fn<() => DesktopComputerUseState>>;
   readonly refreshPermissions: ReturnType<
     typeof vi.fn<() => Promise<DesktopComputerUseState>>
@@ -488,6 +596,8 @@ function createComputerUseApi(): {
 } {
   const state = createComputerUseState();
   return {
+    setExperimentalCuaEnabled: vi.fn(async () => state),
+    selectDriver: vi.fn(async () => state),
     getState: vi.fn(() => state),
     refreshPermissions: vi.fn(async () => state),
     start: vi.fn(async () => state),
@@ -551,6 +661,7 @@ function createDesktopDeveloperToolsApi(): {
 
 function createComputerUseState(): DesktopComputerUseState {
   return {
+    driver: stoppedOkouDriverState,
     platform: "darwin",
     supported: true,
     permissions: {
@@ -598,9 +709,9 @@ async function invokeIpc(
   }
   return await handler(
     {
-      senderFrame: {
-        url: senderFrameUrl,
-      },
+      sender: trustedContents,
+      senderFrame:
+        senderFrameUrl === rendererUrl ? trustedFrame : { url: senderFrameUrl },
     },
     ...args,
   );

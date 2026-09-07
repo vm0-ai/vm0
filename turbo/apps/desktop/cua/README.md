@@ -1,10 +1,9 @@
 # Experimental embedded CUA runtime and adapter
 
-Okou remains the only registered/default Computer Use driver. This slice ships
-a dormant, host-owned runtime and a fixed verification entry point. Slice 3 adds
-an internal [command adapter](ADAPTER.md) factory for the next slice to connect.
-Normal startup does not register or import it. There is no Developer selector,
-preference, renderer diagnostic panel, or runtime updater.
+Okou is the default Computer Use driver. The pinned official macOS arm64
+embedded runtime and [command adapter](ADAPTER.md) are available only through an
+explicit local Developer opt-in and selection. Ordinary startup does not load
+CUA. This adds no agent-facing driver parameter, runtime download or release.
 
 ## Distribution and integrity
 
@@ -162,3 +161,60 @@ revocation/regrant behavior and paired real-app comparison remain **pending
 user verification**. An unsigned CI pass does not complete these items or the
 parent Epic. Future upgrades replace this explicit lock through normal Desktop
 distribution and rerun the package/lifecycle checks.
+
+## Developer selection and recovery
+
+In the native **Developer** menu, **Enable experimental CUA driver** is separate
+from the diagnostic-panel **Developer Tools** checkbox. Enabling it only reveals
+**Computer Use driver** on the main page. Okou remains requested until CUA is
+explicitly selected. CUA is experimental; the [0.23.2 adapter contract](ADAPTER.md)
+is unchanged. There is no implicit browser/Okou fallback or action replay.
+
+The local `computerUseDriver` preference contains only `experimentalCuaEnabled`
+and `selectedDriver` (`okou` or `cua`). Missing/invalid fields use off/Okou; a CUA
+selection requires exact opt-in. Writes preserve installation, keep-awake and
+plugin data. Corrupt/unreadable settings are reported without overwriting them.
+Authorization, native processes and readiness are never persisted.
+
+CUA requires a currently authenticated user/workspace/session, newly resolved
+`_debug` authority, opt-in and a running/explicit Start intent. An unresolved or
+revoked Developer result blocks CUA and retains the choice. Old responses cannot
+authorize a new session. Setup/tray/state reads use Electron host permission
+status without loading either actuator. Explicit Accessibility requests prompt
+the signed host; Screen Recording requests open its macOS Privacy settings.
+Ready CUA command/heartbeat checks still withdraw admission on revocation.
+
+The shared main-page controls remain available during setup, Stop and errors.
+Selecting while stopped persists the choice without starting it. A running
+switch drains the entire claim/action/post-state/completion, retires the old
+generation, and resumes the same cloud host and plugin processes. Rapid choices
+retain only the latest activation intent, including a repeated CUA choice after
+an intervening Okou choice. Stop, auth changes and update/quit supersede startup.
+Disabling persists off/Okou and hides the selector immediately, while actual CUA
+and cleanup remain visible until retirement is proven.
+
+**Retry** is an explicit Start. **Use Okou** changes the request only; neither
+bypasses retained cleanup or a manual Stop. A native failure can retain the real
+non-empty plugin-only host; otherwise the host stops. No unknown action result
+is retried automatically. Updates remain deferred during start, replacement,
+retirement and retained cleanup after a caller-facing timeout.
+
+Diagnostics distinguish requested driver, actual controller generation and
+ready build/runtime version. The packaged CUA version is labeled **expected**;
+a stopped/unready runtime has no loaded-version claim. Lifecycle elapsed time
+is bounded to 120 seconds from the most recent lifecycle intent. Native command
+logs retain only driver ID, version and controller generation captured before
+claim, even if preference changes before completion. Embedded SDK generation is
+a different scope. New errors are bounded categories without SDK messages,
+paths, endpoints, session labels or screen/input content.
+
+### Interactive acceptance still pending
+
+Use a Developer ID signed installation with the intended host identity. Verify
+menu/keyboard selection and recovery with permissions missing, startup delayed,
+CUA failed, manually stopped and Developer access withdrawn. Confirm native
+TCC attribution/grant/revocation, real target screenshots and paired app actions
+against [ADAPTER.md](ADAPTER.md), plus recording continuity and update/rollback.
+The deterministic renderer/OS-boundary tests do not prove these interactions.
+The three actual macOS CI package smoke/probe lanes remain ad-hoc signed and do
+not constitute Developer ID, real TCC, performance or final user acceptance.
