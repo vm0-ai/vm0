@@ -196,20 +196,17 @@ test_canonical_idle_field_behavior() {
   assert_line 'vm0_runner_status_collection_success 1'
 }
 
-test_blank_inventory_formats() {
+test_explicit_blank_inventory_with_overlap() {
   local format
   local idle
   local blank
-  for format in legacy explicit overlap; do
+  for format in explicit overlap; do
     reset_dirs
     mkdir -p "$runners_dir/current"
     idle="{\"sandbox_id\":\"$uuid_a\",\"reuse_key\":\"thread:exact\"}"
     blank="\"blank_sandboxes\":[{\"sandbox_id\":\"$uuid_b\"}],"
-    if [ "$format" != explicit ]; then
-      idle+=",{\"sandbox_id\":\"$uuid_b\",\"reuse_key\":\"__vm0_blank__:$uuid_b\"}"
-    fi
-    if [ "$format" = legacy ]; then
-      blank=""
+    if [ "$format" = overlap ]; then
+      idle+=",{\"sandbox_id\":\"$uuid_b\",\"reuse_key\":\"overlapping-mirror\"}"
     fi
     printf '%s\n' "{\"mode\":\"running\",$blank\"idle_sandboxes\":[$idle]}" \
       >"$runners_dir/current/status.json"
@@ -224,7 +221,7 @@ test_blank_inventory_formats() {
     assert_line 'vm0_runner_status_files{result="included"} 1'
     assert_line 'vm0_runner_status_collection_success 1'
     assert_stderr_empty
-    if grep -qE "sandbox_id|run_id|reuse_key|__vm0_blank__|$uuid_a|$uuid_b" "$output_file"; then
+    if grep -qE "sandbox_id|run_id|reuse_key|$uuid_a|$uuid_b" "$output_file"; then
       fail "blank inventory leaked identity-level data into metrics"
     fi
   done
@@ -232,8 +229,8 @@ test_blank_inventory_formats() {
 
 test_mixed_blank_inventory_deduplicates_by_uuid_and_lifecycle() {
   reset_dirs
-  mkdir -p "$runners_dir/legacy" "$runners_dir/explicit" "$runners_dir/stopped"
-  cat >"$runners_dir/legacy/status.json" <<EOF
+  mkdir -p "$runners_dir/draining" "$runners_dir/current" "$runners_dir/stopped"
+  cat >"$runners_dir/draining/status.json" <<EOF
 {
   "mode": "draining",
   "active_runs": [
@@ -242,14 +239,14 @@ test_mixed_blank_inventory_deduplicates_by_uuid_and_lifecycle() {
     {"sandbox_id":"$uuid_e","phase":"future-phase"}
   ],
   "idle_sandboxes": [
-    {"sandbox_id":"$uuid_a","reuse_key":"__vm0_blank__:$uuid_a"},
     {"sandbox_id":"$uuid_c","reuse_key":"thread:exact"},
-    {"sandbox_id":"$uuid_g","reuse_key":"__vm0_blank__:$uuid_h"},
+    {"sandbox_id":"$uuid_g","reuse_key":"thread:another-exact"},
     {"sandbox_id":"$uuid_h"}
-  ]
+  ],
+  "blank_sandboxes": [{"sandbox_id":"$uuid_a"}]
 }
 EOF
-  cat >"$runners_dir/explicit/status.json" <<EOF
+  cat >"$runners_dir/current/status.json" <<EOF
 {
   "mode": "running",
   "idle_sandboxes": [{"sandbox_id":"$uuid_f","reuse_key":"overlap"}],
@@ -463,7 +460,7 @@ test_playbook_provisions_collector_identity_and_cadence() {
 test_missing_and_empty_runner_roots_emit_zero_metrics
 test_aggregates_current_and_future_statuses
 test_canonical_idle_field_behavior
-test_blank_inventory_formats
+test_explicit_blank_inventory_with_overlap
 test_mixed_blank_inventory_deduplicates_by_uuid_and_lifecycle
 test_malformed_blank_inventory_invalidates_only_its_status_file
 test_invalid_files_publish_partial_metrics
