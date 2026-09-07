@@ -18,6 +18,25 @@ The evidence below is cumulative; results from different commits and modified
 test identities do not establish a complete current production-app acceptance.
 The PR body and native check identify the latest build and its remaining work.
 
+The unchanged `e19929b` helper reproduced a ten-second `app.state` timeout
+against an independent AppKit folder picker while that same fixture continued
+its main-loop heartbeat. A diagnostic-only longer capture measured 1,147
+distinct nodes and 42,780 attribute reads in 57.6 seconds. Native column-browser
+lists exposed hundreds of rows in offscreen ancestor columns; this was not a
+repeated-element traversal cycle.
+
+Snapshot reads now batch and cache attributes within one capture, then discard
+that cache before any later capture or action. Within an `AXBrowser`, lists use
+their advertised visible children, including an empty visible list; unsupported
+attributes retain the existing traversal. Other collection types are unchanged.
+With the original ten-second limit, the candidate read the same picker in 1.3
+seconds, performed its actual Cancel action, and observed the closed picker and
+updated fixture text in the next capture. All 138 helper tests passed, including
+real AppKit Unicode, geometry, attribute-error, cache-refresh and column-list
+coverage. The PR progress record separately tracks the downloaded package and
+actual Desktop/server acceptance; these fixture results do not establish full
+application or cross-application parity.
+
 The configured `b8dfd731` release passed twenty validated filesystem cases
 through the actual Desktop/server API, covering all thirteen tools. Independent
 disk checks confirmed Unicode edits/moves, byte-identical 148,000-byte text and

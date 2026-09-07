@@ -67,6 +67,29 @@ final class AccessibilityReadContext: @unchecked Sendable {
 final class AccessibilityReadContextStorage: @unchecked Sendable {
     private let lock = NSLock()
     private var current: AccessibilityReadContext?
+    private var currentSnapshotReader: AccessibilitySnapshotReader?
+
+    func withSnapshotReader<T>(_ body: () -> T) -> T {
+        lock.lock()
+        let previous = currentSnapshotReader
+        currentSnapshotReader = AccessibilitySnapshotReader(
+            timeoutSeconds: limits.accessibilityMessagingTimeoutSeconds,
+            recordError: recordAccessibilityReadError
+        )
+        lock.unlock()
+        defer {
+            lock.lock()
+            currentSnapshotReader = previous
+            lock.unlock()
+        }
+        return body()
+    }
+
+    func snapshotReader() -> AccessibilitySnapshotReader? {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentSnapshotReader
+    }
 
     func withContext<T>(_ context: AccessibilityReadContext, _ body: () throws -> T) rethrows -> T {
         lock.lock()
@@ -1860,6 +1883,9 @@ func attribute(_ element: AXUIElement, _ name: CFString) -> Any? {
     guard !accessibilityReadContextStorage.hasTimedOut() else {
         return nil
     }
+    if let reader = accessibilityReadContextStorage.snapshotReader() {
+        return reader.value(element, name)
+    }
     configureAccessibilityMessagingTimeout(element)
     var value: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(element, name, &value)
@@ -3438,6 +3464,11 @@ func prefixedChildren(
 }
 
 func candidates(from element: AXUIElement, sources: [ChildSource]) -> [ChildEntry] {
+    if !accessibilityReadContextStorage.hasTimedOut() {
+        accessibilityReadContextStorage.snapshotReader()?.prefetch(
+            element, sources.map { $0.attribute as CFString }
+        )
+    }
     return sources.flatMap { source in
         prefixedChildren(element, source.attribute as CFString, source.prefix)
     }
@@ -3472,8 +3503,20 @@ func traversalChildCandidates(_ element: AXUIElement) -> [ChildEntry] {
     }
 }
 
-func collectChildren(_ element: AXUIElement) -> [ChildEntry] {
-    let candidates = traversalChildCandidates(element)
+func collectChildren(_ element: AXUIElement, insideColumnBrowser: Bool = false) -> [ChildEntry] {
+    let candidates: [ChildEntry]
+    if insideColumnBrowser, role(element) == "AXList",
+        let visible = attribute(element, "AXVisibleChildren" as CFString) as? [AXUIElement]
+    {
+        // NSBrowser exposes every ancestor column, including offscreen lists
+        // containing hundreds of rows. An empty visible list is authoritative;
+        // only an unsupported attribute falls back to the other child sources.
+        candidates = visible.prefix(limits.maxChildrenPerSource).enumerated().map { index, child in
+            ChildEntry(element: child, segment: "v\(index)")
+        }
+    } else {
+        candidates = traversalChildCandidates(element)
+    }
 
     var seenElements = Set<CFHashCode>()
     var seen = Set<String>()
@@ -3510,7 +3553,8 @@ func describe(
     nodeCount: inout Int,
     truncationReasons: inout [String],
     ancestry: Set<CFHashCode> = [],
-    insideWebArea: Bool = false
+    insideWebArea: Bool = false,
+    insideColumnBrowser: Bool = false
 ) -> [String: Any]? {
     let elementHash = CFHash(element)
     if ancestry.contains(elementHash) {
@@ -3529,6 +3573,7 @@ func describe(
     var node: [String: Any] = ["id": id]
     let elementRole = role(element)
     let elementInsideWebArea = insideWebArea || elementRole == "AXWebArea"
+    let elementInsideColumnBrowser = insideColumnBrowser || elementRole == "AXBrowser"
     if let elementRole {
         node["role"] = elementRole
     }
@@ -3620,7 +3665,7 @@ func describe(
 
     var childAncestry = ancestry
     childAncestry.insert(elementHash)
-    let children = collectChildren(element).compactMap { child in
+    let children = collectChildren(element, insideColumnBrowser: elementInsideColumnBrowser).compactMap { child in
         describe(
             child.element,
             id: "\(id).\(child.segment)",
@@ -3628,7 +3673,8 @@ func describe(
             nodeCount: &nodeCount,
             truncationReasons: &truncationReasons,
             ancestry: childAncestry,
-            insideWebArea: elementInsideWebArea
+            insideWebArea: elementInsideWebArea,
+            insideColumnBrowser: elementInsideColumnBrowser
         )
     }
     if !children.isEmpty {
@@ -3939,6 +3985,14 @@ func handlePermissionsRequestScreenRecording() -> [String: Any] {
 }
 
 func captureAccessibilityElements(
+    _ root: AXUIElement
+) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
+    accessibilityReadContextStorage.withSnapshotReader {
+        readAccessibilityElements(root)
+    }
+}
+
+func readAccessibilityElements(
     _ root: AXUIElement
 ) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
     var nodeCount = 0
