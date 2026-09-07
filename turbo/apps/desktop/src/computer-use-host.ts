@@ -1,4 +1,9 @@
 import { createComputerUseDrain } from "./computer-use-lifecycle-deadline";
+import {
+  ComputerUseCommandBudget,
+  type ComputerUseCommandClock,
+} from "./computer-use-command-budget";
+import { ComputerUseNativeHelperError } from "./computer-use-native";
 import os from "node:os";
 import type {
   ComputerUseCommand,
@@ -54,6 +59,7 @@ export type ComputerUseHostFetch = (
 type MaybePromise<T> = T | Promise<T>;
 
 interface ComputerUseHostRuntimeOptions {
+  readonly commandClock?: ComputerUseCommandClock;
   readonly platformUrl: URL;
   readonly installationId: string;
   readonly hostName: string;
@@ -179,7 +185,10 @@ function commandFailureFromError(
   return {
     status: "failed",
     error: {
-      code: "accessibility_unavailable",
+      code:
+        error instanceof ComputerUseNativeHelperError
+          ? error.code
+          : "accessibility_unavailable",
       message: errorMessage(error),
     },
   };
@@ -273,6 +282,7 @@ export class ComputerUseHostRuntime {
   };
 
   constructor(options: ComputerUseHostRuntimeOptions) {
+    this.commandClock = options.commandClock;
     this.acquireCommand = options.acquireCommand;
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
     this.installationId = options.installationId;
@@ -294,6 +304,7 @@ export class ComputerUseHostRuntime {
   }
 
   private readonly acquireCommand: ComputerUseHostRuntimeOptions["acquireCommand"];
+  private commandClock: ComputerUseCommandClock | undefined;
 
   async start(): Promise<void> {
     if (this.running) {
@@ -380,12 +391,18 @@ export class ComputerUseHostRuntime {
   }
 
   private async runtimeBody(): Promise<Record<string, unknown>> {
+    const permissions = await this.getPermissions();
+    const capabilities = this.getSupportedCapabilities();
+    if (capabilities.length === 0) {
+      await this.stop();
+      throw new Error("Computer Use has no available capabilities");
+    }
     return buildComputerUseRuntimeBody({
       installationId: this.installationId,
       hostName: this.hostName,
       appVersion: this.appVersion,
-      permissions: await this.getPermissions(),
-      supportedCapabilities: this.getSupportedCapabilities(),
+      permissions,
+      supportedCapabilities: capabilities,
     });
   }
 
@@ -946,6 +963,10 @@ export class ComputerUseHostRuntime {
     commandSession: ComputerUseCommandSession,
   ): Promise<"idle" | "completed"> {
     const generation = this.sessionGeneration;
+    if (this.getSupportedCapabilities().length === 0) {
+      await this.stop();
+      return "idle";
+    }
     const next = await this.runHostRequestWithTimeout({
       label: "command poll",
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
@@ -991,12 +1012,22 @@ export class ComputerUseHostRuntime {
     this.startLocalCommandLogEntry(body.command, startedAt);
 
     let completed: ComputerUseCommandExecutionResult;
+    const budget = new ComputerUseCommandBudget(
+      body.command,
+      this.commandClock,
+    );
     try {
-      const permissions = await commandSession.getPermissions();
-      if (!this.running || generation !== this.sessionGeneration) return "idle";
-      completed = await commandSession.executeCommand(
-        body.command,
-        permissions,
+      completed = await budget.run(
+        async () => {
+          commandSession.beginCommand?.(budget);
+          const permissions = await commandSession.getPermissions(body.command);
+          if (!this.running || generation !== this.sessionGeneration)
+            throw new Error(
+              "Computer Use command was superseded; completion is unknown",
+            );
+          return commandSession.executeCommand(body.command, permissions);
+        },
+        () => commandSession.abort?.(),
       );
     } catch (error) {
       completed = commandFailureFromError(error);
@@ -1020,7 +1051,12 @@ export class ComputerUseHostRuntime {
     ) {
       return "idle";
     }
-    await this.completeCommandWithRetry(body.command.id, completed, generation);
+    await this.completeCommandWithRetry(
+      body.command.id,
+      completed,
+      generation,
+      budget,
+    );
     if (
       !this.running ||
       generation !== this.sessionGeneration ||
@@ -1044,6 +1080,7 @@ export class ComputerUseHostRuntime {
     commandId: string,
     completed: ComputerUseCommandExecutionResult,
     generation: number,
+    budget: ComputerUseCommandBudget,
   ): Promise<void> {
     let lastError: Error | null = null;
     for (
@@ -1052,10 +1089,17 @@ export class ComputerUseHostRuntime {
       attempt++
     ) {
       if (!this.running || generation !== this.sessionGeneration) return;
+      if (attempt > 1 && budget.remaining(true) <= 0) break;
       try {
         const response = await this.runHostRequestWithTimeout({
           label: "command completion",
-          timeoutMs: COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
+          timeoutMs: Math.max(
+            1,
+            Math.min(
+              COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
+              budget.remaining(true),
+            ),
+          ),
           commandRequest: true,
           request: async (signal) => {
             return await this.hostFetch(
@@ -1092,7 +1136,10 @@ export class ComputerUseHostRuntime {
               );
       }
 
-      if (attempt < COMMAND_COMPLETION_MAX_ATTEMPTS) {
+      if (
+        attempt < COMMAND_COMPLETION_MAX_ATTEMPTS &&
+        budget.remaining(true) > COMMAND_COMPLETION_RETRY_DELAY_MS
+      ) {
         await this.sleep(COMMAND_COMPLETION_RETRY_DELAY_MS);
       }
     }

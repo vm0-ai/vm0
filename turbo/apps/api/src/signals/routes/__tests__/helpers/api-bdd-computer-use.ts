@@ -56,6 +56,10 @@ interface RequiredAuthHeaders {
 type ComputerUseAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface ComputerUseHostStartOptions {
+  readonly permissions?: {
+    readonly accessibility: boolean;
+    readonly screenRecording: boolean;
+  };
   readonly clientProduct?: DesktopProduct;
   readonly installationId?: string;
   readonly hostName?: string;
@@ -250,7 +254,10 @@ function hostRuntimeBody(options: ComputerUseHostStartOptions = {}) {
       ...(options.supportedCapabilities ??
         DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES),
     ],
-    permissions: { accessibility: true, screenRecording: true },
+    permissions: options.permissions ?? {
+      accessibility: true,
+      screenRecording: true,
+    },
   };
 }
 

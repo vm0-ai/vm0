@@ -1,6 +1,8 @@
 import type { ComputerUsePermissionProvider } from "./computer-use-permissions";
+import type { ComputerUseCommandBudget } from "./computer-use-command-budget";
 import { createComputerUseDrain } from "./computer-use-lifecycle-deadline";
 import {
+  SUPPORTED_COMPUTER_USE_CAPABILITIES,
   ComputerUseSnapshotStore,
   executeComputerUseCommand,
   type ComputerUseCommand,
@@ -10,7 +12,10 @@ import type {
   ComputerUseNativeBackend,
   ComputerUseNativeShutdownReason,
 } from "./computer-use-native";
-import type { ComputerUsePermissionState } from "./computer-use-types";
+import {
+  hasRequiredComputerUsePermissions,
+  type ComputerUsePermissionState,
+} from "./computer-use-types";
 
 export interface ComputerUseDriver {
   readonly id: string;
@@ -26,10 +31,15 @@ interface DriverGeneration {
   readonly resolveDrained: () => void;
   leases: number;
   disposal: Promise<void> | null;
+  permissionsReady: boolean;
 }
 
 export interface ComputerUseCommandSession {
-  getPermissions(): Promise<ComputerUsePermissionState>;
+  beginCommand?(budget: ComputerUseCommandBudget): void;
+  getPermissions(
+    command?: ComputerUseCommand,
+  ): Promise<ComputerUsePermissionState>;
+  abort?(): void;
   executeCommand(
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
@@ -71,6 +81,7 @@ export class ComputerUseDriverController {
         resolveDrained: resolve,
         leases: 0,
         disposal: null,
+        permissionsReady: false,
       };
     }
     return this.context;
@@ -94,7 +105,10 @@ export class ComputerUseDriverController {
     const context = this.prepare();
     const release = this.lease(context);
     try {
-      const result = await read(context.backend);
+      const result = await read({
+        ...context.backend,
+        getPermissions: () => this.readPermissions(context),
+      });
       return this.context === context ? result : null;
     } finally {
       release();
@@ -103,12 +117,30 @@ export class ComputerUseDriverController {
 
   acquireCommand(): ComputerUseCommandSession {
     const context = this.context;
-    if (!this.active || !context) {
+    if (!this.active || !context || context.backend.isAvailable?.() === false) {
       throw new Error("Computer Use driver is not ready");
     }
+    const release = this.lease(context);
     return {
-      getPermissions: () => context.backend.getPermissions(),
+      beginCommand: (budget) => context.backend.setCommandBudget?.(budget),
+      abort: () => {
+        void this.forceRetire().catch(() => {});
+      },
+      getPermissions: () => this.readPermissions(context),
       executeCommand: async (command, permissions) => {
+        if (
+          this.context !== context ||
+          !this.active ||
+          context.backend.isAvailable?.() === false
+        )
+          return {
+            status: "failed",
+            error: {
+              code: "accessibility_unavailable",
+              message:
+                "Native generation is retired; re-observe after explicit recovery",
+            },
+          };
         const { app, snapshotId } = command.payload;
         if (
           typeof app === "string" &&
@@ -129,8 +161,49 @@ export class ComputerUseDriverController {
           platform: this.platform,
         });
       },
-      release: this.lease(context),
+      release: () => {
+        context.backend.setCommandBudget?.(null);
+        release();
+      },
     };
+  }
+
+  getCapabilities(): readonly string[] {
+    const context = this.context;
+    return this.active &&
+      context?.permissionsReady &&
+      context.backend.isAvailable?.() !== false
+      ? SUPPORTED_COMPUTER_USE_CAPABILITIES
+      : [];
+  }
+
+  private async readPermissions(
+    context: DriverGeneration,
+  ): Promise<ComputerUsePermissionState> {
+    try {
+      const permissions = await context.backend.getPermissions();
+      context.permissionsReady = hasRequiredComputerUsePermissions(permissions);
+      if (!context.permissionsReady && this.active)
+        void this.forceRetire().catch(() => {});
+      return permissions;
+    } catch (error) {
+      context.permissionsReady = false;
+      if (this.context === context) void this.forceRetire().catch(() => {});
+      throw error;
+    }
+  }
+
+  forceRetire(): Promise<void> {
+    const context = this.context ?? this.retiringContext;
+    if (context?.backend.forceStop) {
+      this.active = false;
+      context.snapshots.clear();
+      context.disposal ??= context.backend.forceStop();
+      // Observe a bounded cleanup rejection even while an old lease is hung.
+      // Keep the original rejected promise as the replacement gate.
+      void context.disposal.catch(() => {});
+    }
+    return this.retire();
   }
 
   private lease(context: DriverGeneration): () => void {

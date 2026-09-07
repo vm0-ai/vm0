@@ -44,6 +44,8 @@ interface ComputerUseRuntimeControllerOptions {
   readonly driver?: ComputerUseDriverController;
   readonly transitionTimeoutMs?: number;
   readonly lifecycleTimers?: ComputerUseLifecycleTimers;
+  readonly getPluginCapabilities?: () => readonly string[];
+  readonly preparePlugins?: () => Promise<void>;
 }
 
 /**
@@ -74,8 +76,13 @@ export class ComputerUseRuntimeController {
   private readonly transitionTimeoutMs: number;
   private readonly lifecycleTimers: ComputerUseLifecycleTimers | undefined;
   private quitPromise: Promise<void> | null = null;
+  private readonly getPluginCapabilities: () => readonly string[];
+  private readonly preparePlugins: () => Promise<void>;
+  private pluginStartupIntent: number | null = null;
 
   constructor(options: ComputerUseRuntimeControllerOptions) {
+    this.getPluginCapabilities = options.getPluginCapabilities ?? (() => []);
+    this.preparePlugins = options.preparePlugins ?? (async () => {});
     this.lifecycleTimers = options.lifecycleTimers;
     this.driver = options.driver;
     this.transitionTimeoutMs = options.transitionTimeoutMs ?? 30_000;
@@ -100,6 +107,10 @@ export class ComputerUseRuntimeController {
 
   isRuntimeOnline(): boolean {
     return this.runtime?.getState().status === "online";
+  }
+
+  pluginsMayRun(): boolean {
+    return this.isRuntimeOnline() || this.pluginStartupIntent === this.intent;
   }
 
   /**
@@ -133,6 +144,10 @@ export class ComputerUseRuntimeController {
     try {
       await start;
     } finally {
+      if (this.pluginStartupIntent === intent) {
+        this.pluginStartupIntent = null;
+        this.setHostRuntimeOnline(this.isRuntimeOnline());
+      }
       options.signal?.removeEventListener("abort", abort);
       if (this.starting === start) this.starting = null;
     }
@@ -150,17 +165,34 @@ export class ComputerUseRuntimeController {
     await transitions;
     if (intent !== this.intent) return;
     this.driver?.resumePermissions();
-    const permissions = await this.refreshPermissions();
+    const permissions = await withComputerUseDeadline(
+      this.refreshPermissions(),
+      this.transitionTimeoutMs,
+      this.lifecycleTimers,
+    ).catch(() => {
+      void this.driver?.forceRetire().catch(() => {});
+      return { accessibility: false, screenRecording: false };
+    });
     if (intent !== this.intent) return;
-    if (!hasRequiredComputerUsePermissions(permissions)) {
-      await this.detachRuntime();
-      return;
-    }
     const authState = await this.getAuthState();
     if (intent !== this.intent) return;
+    if (
+      !hasRequiredComputerUsePermissions(permissions) &&
+      authState.status === "signed_in" &&
+      authState.organization
+    ) {
+      this.pluginStartupIntent = intent;
+      await withComputerUseDeadline(
+        this.preparePlugins(),
+        this.transitionTimeoutMs,
+        this.lifecycleTimers,
+      );
+      if (intent !== this.intent) return;
+    }
     const startupGate = resolveComputerUseStartupGate({
       authState,
       permissions,
+      pluginCapabilities: this.getPluginCapabilities(),
     });
     if (startupGate.status !== "ready") {
       await this.detachRuntime();
@@ -172,7 +204,7 @@ export class ComputerUseRuntimeController {
       return;
     }
     this.blockedHostState = null;
-    this.driver?.activate();
+    if (hasRequiredComputerUsePermissions(permissions)) this.driver?.activate();
     const runtime = (this.runtime ??= this.createRuntime());
     await runtime.start();
     if (intent !== this.intent) return;
@@ -215,9 +247,13 @@ export class ComputerUseRuntimeController {
       if (runtime && !this.manualStopRequested) {
         const permissions = await this.refreshPermissions();
         checkIntent();
-        if (!hasRequiredComputerUsePermissions(permissions))
+        if (
+          !hasRequiredComputerUsePermissions(permissions) &&
+          this.getPluginCapabilities().length === 0
+        )
           throw new Error("Computer Use permissions are unavailable");
-        this.driver?.activate();
+        if (hasRequiredComputerUsePermissions(permissions))
+          this.driver?.activate();
         resume?.();
       }
     })();
@@ -229,6 +265,13 @@ export class ComputerUseRuntimeController {
       expired = true;
       // A failure withdraws the host rather than advertising empty legacy capabilities.
       if (intent === this.intent) {
+        void this.driver?.forceRetire().catch(() => {});
+        if (this.getPluginCapabilities().length > 0 && this.runtime) {
+          // The rejected transition keeps its native owner retired. Existing
+          // host authorization, heartbeat and plugin processes remain intact.
+          void this.runtime.pauseAndDrainCommands().then((resume) => resume());
+          throw error;
+        }
         this.manualStopRequested = true;
         this.supersede();
         this.detachRuntime();
@@ -353,7 +396,7 @@ export class ComputerUseRuntimeController {
     this.blockedHostState = null;
     this.setHostRuntimeOnline(false);
     const stop = runtime?.stop() ?? Promise.resolve();
-    const retirement = this.driver?.retire() ?? Promise.resolve();
+    const retirement = this.driver?.forceRetire() ?? Promise.resolve();
     const cleanup = Promise.all([this.stopping, stop, retirement]).then(() => {
       if (intent === this.intent && !this.quitStopStarted)
         this.driver?.resumePermissions();

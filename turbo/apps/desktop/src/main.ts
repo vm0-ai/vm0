@@ -17,7 +17,6 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
-import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
 import { isComputerUseMcpPluginCallPayload } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
@@ -312,6 +311,13 @@ const computerUseController = new ComputerUseRuntimeController({
   driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
   refreshPermissions: refreshComputerUsePermissionState,
+  getPluginCapabilities: supportedPluginCapabilities,
+  preparePlugins: async () => {
+    await Promise.all([
+      ensureFilesystemPluginManager().prepareForHost(),
+      ensureMcpPluginManager().prepareForHost(),
+    ]);
+  },
   getAuthState: () => getAuthSession().getAuthState(),
   setHostRuntimeOnline: (online) => {
     filesystemPluginManager?.setHostRuntimeOnline(online);
@@ -405,11 +411,9 @@ function refreshDesktopTrayAuth(): void {
 
 function notifyComputerUseChanged(): void {
   filesystemPluginManager?.setHostRuntimeOnline(
-    computerUseController.isRuntimeOnline(),
+    computerUseController.pluginsMayRun(),
   );
-  mcpPluginManager?.setHostRuntimeOnline(
-    computerUseController.isRuntimeOnline(),
-  );
+  mcpPluginManager?.setHostRuntimeOnline(computerUseController.pluginsMayRun());
   notifyDesktopComputerUseChanged();
   refreshDesktopTray();
   computerUseAutoStart.restartRecoverableRuntimeState();
@@ -648,7 +652,13 @@ function ensureMcpPluginManager(): DesktopMcpPluginManager {
 
 function supportedComputerUseCapabilities(): readonly string[] {
   return [
-    ...SUPPORTED_COMPUTER_USE_CAPABILITIES,
+    ...computerUseDriver.getCapabilities(),
+    ...supportedPluginCapabilities(),
+  ];
+}
+
+function supportedPluginCapabilities(): readonly string[] {
+  return [
     ...(filesystemPluginManager?.getCapabilities() ?? []),
     ...(mcpPluginManager?.getCapabilities() ?? []),
   ];

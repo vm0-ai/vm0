@@ -43,8 +43,12 @@ export function isComputerUseSetupRequired(args: {
 export function resolveComputerUseStartupGate(args: {
   readonly authState: DesktopAuthState;
   readonly permissions: ComputerUsePermissionState;
+  readonly pluginCapabilities?: readonly string[];
 }): ComputerUseStartupGate {
-  if (!hasRequiredComputerUsePermissions(args.permissions)) {
+  if (
+    !hasRequiredComputerUsePermissions(args.permissions) &&
+    !args.pluginCapabilities?.length
+  ) {
     return { status: "missing_permissions" };
   }
 
