@@ -30,11 +30,11 @@ use super::{
     ParsedEventAction, codex_runtime_config,
 };
 use crate::active_input::{ActiveInputController, ActiveInputFrame, ActiveInputWriter};
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
     HeartbeatFailureDiagnostic,
 };
+use guest_telemetry::{log_info, log_warn};
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 const TURN_INTERRUPT_GRACE: Duration = Duration::from_secs(5);

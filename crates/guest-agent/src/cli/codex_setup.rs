@@ -6,8 +6,8 @@
 
 use std::time::Instant;
 
-use guest_common::log_info;
-use guest_common::telemetry::record_sandbox_op;
+use guest_telemetry::log_info;
+use guest_telemetry::telemetry::record_sandbox_op;
 
 use crate::codex_auth::{DesiredCodexAuth, reconcile_codex_auth_state};
 use crate::env;

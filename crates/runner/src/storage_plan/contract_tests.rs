@@ -59,7 +59,7 @@ fn write_archive(dir: &Path, name: &str, files: &[(&str, &[u8])]) -> String {
 
 fn run_plan(plan: super::StoragePlan) {
     let bytes = serde_json::to_vec(&plan.into_guest_manifest()).unwrap();
-    assert!(guest_download::run_manifest_bytes(&bytes));
+    assert!(guest_storage_apply::run_manifest_bytes(&bytes));
 }
 
 #[test]

@@ -1240,7 +1240,7 @@ profiles:
         }
         tokio::fs::write(
             snapshot.complete_marker(),
-            sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+            sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
         )
         .await
         .unwrap();

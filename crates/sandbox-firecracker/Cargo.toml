@@ -1,0 +1,41 @@
+[package]
+name = "sandbox-firecracker"
+version = "0.39.3"
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+futures-util.workspace = true
+guest-contracts.workspace = true
+nbd-cow.workspace = true
+libc.workspace = true
+nix = { workspace = true, features = ["user", "inotify", "fs", "signal", "sched"] }
+reqwest.workspace = true
+sandbox.workspace = true
+runner-rpc-proto.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+hex.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process", "fs", "rt", "rt-multi-thread", "macros", "sync", "io-util", "net", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+guest-control-client.workspace = true
+guest-control-proto.workspace = true
+which.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { workspace = true, features = ["process"] }
+
+[dev-dependencies]
+clap = { workspace = true, features = ["derive"] }
+proptest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+tracing-test-support.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

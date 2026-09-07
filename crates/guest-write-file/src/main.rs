@@ -1,4 +1,4 @@
-//! Direct guest file writer used by vsock-guest.
+//! Direct guest file writer used by guest-control-server.
 //!
 //! Accepted syntax:
 //!
@@ -19,7 +19,7 @@
 //! `--append` and `--create-parents` cannot be combined. `--private` and
 //! `--create-parents` cannot be combined; private mode creates missing parent
 //! directories, including when used with `--append`.
-//! Batch mode reads a `vsock-proto` `write_files` payload from stdin and writes
+//! Batch mode reads a `guest-control-proto` `write_files` payload from stdin and writes
 //! every entry with create-parent and truncate semantics. Private batch mode
 //! applies private runtime-file semantics to every entry.
 //! Use `--` before a path that begins with `-`.

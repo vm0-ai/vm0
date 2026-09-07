@@ -717,13 +717,13 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
 /// and under `cargo test --release`. We infer both from the currently-
 /// running test binary's path and forward them to the subprocess.
 pub fn build_and_locate_mock() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-claude", "guest-mock-claude")
+    build_and_locate_mock_package("claude-mock", "guest-mock-claude")
 }
 
 /// Build the mock Codex binary and resolve its filesystem path beside the
 /// current test profile.
 pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-codex", "guest-mock-codex")
+    build_and_locate_mock_package("codex-mock", "guest-mock-codex")
 }
 
 pub struct PostOpenMockGate {
@@ -1265,9 +1265,9 @@ pub fn expected_codex_turn_usage() -> Value {
 /// bootstrap captures the process env snapshot.
 ///
 /// `prompt` is interpreted by `guest-mock-claude`. See the module documentation
-/// in `crates/guest-mock-claude/src/main.rs` for the complete special-prefix
+/// in `crates/claude-mock/src/main.rs` for the complete special-prefix
 /// catalog and `SCENARIO_RULES` in
-/// `crates/guest-mock-claude/src/scenario.rs` for authoritative matching
+/// `crates/claude-mock/src/scenario.rs` for authoritative matching
 /// behavior. Prompts that match no special rule use ordinary shell behavior.
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the

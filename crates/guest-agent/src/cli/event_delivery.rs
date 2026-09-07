@@ -13,13 +13,13 @@ use crate::http::{
     HttpAttemptStarted, HttpClient,
 };
 use bytes::Bytes;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     EventDeliveryAcceptanceOutcome, EventDeliveryActiveAttemptDiagnostic,
     EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
     EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
     EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic,
 };
+use guest_telemetry::{log_info, log_warn};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

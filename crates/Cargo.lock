@@ -821,6 +821,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "claude-mock"
+version = "0.21.133"
+dependencies = [
+ "api-contracts",
+ "guest-contracts",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -834,6 +846,19 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
+name = "codex-mock"
+version = "0.10.23"
+dependencies = [
+ "chrono",
+ "clap",
+ "guest-contracts",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "uuid",
+]
 
 [[package]]
 name = "colorchoice"
@@ -1264,9 +1289,11 @@ dependencies = [
  "chrono",
  "flate2",
  "futures-util",
- "guest-common",
  "guest-contracts",
- "guest-session-prune",
+ "guest-control-client",
+ "guest-control-proto",
+ "guest-control-server",
+ "guest-telemetry",
  "hex",
  "http-body 1.1.0",
  "httpmock",
@@ -1278,6 +1305,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
+ "session-history-selector",
  "sha2",
  "shell-quote",
  "tar",
@@ -1286,22 +1314,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
- "vsock-guest",
- "vsock-host",
- "vsock-proto",
  "zstd",
-]
-
-[[package]]
-name = "guest-common"
-version = "0.3.61"
-dependencies = [
- "chrono",
- "guest-contracts",
- "libc",
- "serde",
- "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -1320,12 +1333,83 @@ dependencies = [
 ]
 
 [[package]]
-name = "guest-download"
+name = "guest-control-client"
+version = "0.18.3"
+dependencies = [
+ "guest-contracts",
+ "guest-control-proto",
+ "nix",
+ "sandbox",
+ "serde_json",
+ "shell-quote",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test-support",
+ "uuid",
+]
+
+[[package]]
+name = "guest-control-proto"
+version = "0.18.48"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
+name = "guest-control-server"
+version = "0.19.157"
+dependencies = [
+ "guest-contracts",
+ "guest-control-proto",
+ "libc",
+ "process-control-ipc",
+ "serde_json",
+ "shell-quote",
+ "tempfile",
+]
+
+[[package]]
+name = "guest-control-tests"
+version = "0.9.292"
+dependencies = [
+ "guest-control-client",
+ "guest-control-proto",
+ "guest-control-server",
+ "guest-write-file",
+ "libc",
+ "nix",
+ "shell-quote",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "guest-init"
+version = "0.16.238"
+dependencies = [
+ "guest-contracts",
+ "guest-control-server",
+ "libc",
+ "nix",
+ "tempfile",
+]
+
+[[package]]
+name = "guest-state-restore"
+version = "0.3.8"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
+name = "guest-storage-apply"
 version = "0.23.65"
 dependencies = [
  "flate2",
- "guest-common",
  "guest-contracts",
+ "guest-telemetry",
  "httpmock",
  "libc",
  "serde",
@@ -1336,78 +1420,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "guest-init"
-version = "0.16.238"
-dependencies = [
- "guest-contracts",
- "libc",
- "nix",
- "tempfile",
- "vsock-guest",
-]
-
-[[package]]
-name = "guest-mock-claude"
-version = "0.21.133"
-dependencies = [
- "api-contracts",
- "guest-contracts",
- "libc",
- "serde_json",
- "tempfile",
- "uuid",
-]
-
-[[package]]
-name = "guest-mock-codex"
-version = "0.10.23"
+name = "guest-telemetry"
+version = "0.3.61"
 dependencies = [
  "chrono",
- "clap",
  "guest-contracts",
  "libc",
- "serde_json",
- "tempfile",
- "uuid",
-]
-
-[[package]]
-name = "guest-reseed"
-version = "0.3.8"
-dependencies = [
- "libc",
- "tempfile",
-]
-
-[[package]]
-name = "guest-rpc"
-version = "0.2.0"
-dependencies = [
- "guest-rpc-proto",
- "libc",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "guest-rpc-proto"
-version = "0.2.0"
-dependencies = [
  "serde",
  "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "guest-session-prune"
-version = "0.3.75"
-dependencies = [
- "guest-contracts",
- "proptest",
- "serde_json",
  "tempfile",
- "uuid",
 ]
 
 [[package]]
@@ -1427,9 +1448,9 @@ name = "guest-write-file"
 version = "0.1.138"
 dependencies = [
  "guest-contracts",
+ "guest-control-proto",
  "libc",
  "tempfile",
- "vsock-proto",
 ]
 
 [[package]]
@@ -2640,16 +2661,16 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "claude-mock",
+ "codex-mock",
  "flate2",
  "futures-util",
  "guest-agent",
  "guest-contracts",
- "guest-download",
+ "guest-control-proto",
  "guest-init",
- "guest-mock-claude",
- "guest-mock-codex",
- "guest-reseed",
- "guest-rpc",
+ "guest-state-restore",
+ "guest-storage-apply",
  "guest-tool-exec",
  "guest-write-file",
  "hex",
@@ -2662,9 +2683,10 @@ dependencies = [
  "nix",
  "process-control-ipc",
  "reqwest",
+ "runner-rpc-client",
  "rustix",
  "sandbox",
- "sandbox-fc",
+ "sandbox-firecracker",
  "sandbox-mock",
  "sentry",
  "serde",
@@ -2685,9 +2707,28 @@ dependencies = [
  "unicode-normalization",
  "url",
  "uuid",
- "vsock-proto",
  "which",
  "zstd",
+]
+
+[[package]]
+name = "runner-rpc-client"
+version = "0.2.0"
+dependencies = [
+ "libc",
+ "runner-rpc-proto",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "runner-rpc-proto"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -2837,20 +2878,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "sandbox-fc"
+name = "sandbox-firecracker"
 version = "0.39.3"
 dependencies = [
  "async-trait",
  "clap",
  "futures-util",
  "guest-contracts",
- "guest-rpc-proto",
+ "guest-control-client",
+ "guest-control-proto",
  "hex",
  "libc",
  "nbd-cow",
  "nix",
  "proptest",
  "reqwest",
+ "runner-rpc-proto",
  "rustix",
  "sandbox",
  "serde",
@@ -2864,8 +2907,6 @@ dependencies = [
  "tracing-subscriber",
  "tracing-test-support",
  "uuid",
- "vsock-host",
- "vsock-proto",
  "which",
 ]
 
@@ -3079,6 +3120,17 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "session-history-selector"
+version = "0.3.75"
+dependencies = [
+ "guest-contracts",
+ "proptest",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -3849,58 +3901,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vsock-guest"
-version = "0.19.157"
-dependencies = [
- "guest-contracts",
- "libc",
- "process-control-ipc",
- "serde_json",
- "shell-quote",
- "tempfile",
- "vsock-proto",
-]
-
-[[package]]
-name = "vsock-host"
-version = "0.18.3"
-dependencies = [
- "guest-contracts",
- "nix",
- "sandbox",
- "serde_json",
- "shell-quote",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tracing-test-support",
- "uuid",
- "vsock-proto",
-]
-
-[[package]]
-name = "vsock-proto"
-version = "0.18.48"
-dependencies = [
- "proptest",
-]
-
-[[package]]
-name = "vsock-test"
-version = "0.9.292"
-dependencies = [
- "guest-write-file",
- "libc",
- "nix",
- "shell-quote",
- "tempfile",
- "tokio",
- "vsock-guest",
- "vsock-host",
- "vsock-proto",
-]
 
 [[package]]
 name = "walkdir"

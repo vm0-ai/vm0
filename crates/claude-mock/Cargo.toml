@@ -1,0 +1,21 @@
+[package]
+name = "claude-mock"
+version = "0.21.133"
+edition.workspace = true
+
+[dependencies]
+api-contracts.workspace = true
+guest-contracts.workspace = true
+libc.workspace = true
+serde_json.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "guest-mock-claude"
+path = "src/main.rs"

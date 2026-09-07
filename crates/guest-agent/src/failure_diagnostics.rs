@@ -12,13 +12,13 @@ use crate::failure_patterns;
 use crate::paths;
 use crate::session_history;
 use crate::session_metadata::CapturedSessionMetadata;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
     EventDeliveryDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
     PromptMetadata, SessionHistoryStatus,
 };
 use guest_contracts::env::CliFramework;
+use guest_telemetry::{log_info, log_warn};
 use serde_json::Value;
 
 const LOG_TAG: &str = "sandbox:guest-agent";

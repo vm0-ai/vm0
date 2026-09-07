@@ -19,7 +19,7 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths::{self, GuestPaths};
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use serde_json::json;
 use std::path::Path;
 use std::sync::Arc;

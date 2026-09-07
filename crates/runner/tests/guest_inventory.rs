@@ -156,7 +156,13 @@ fn delivered_guests_match_cargo_and_release_contracts() {
         .filter(|dependency| {
             dependency.kind.as_deref() == Some("dev")
                 && dependency.path.is_some()
-                && dependency.name.starts_with("guest-")
+                && metadata.packages.iter().any(|package| {
+                    package.name == dependency.name
+                        && package
+                            .targets
+                            .iter()
+                            .any(|target| target.kind.iter().any(|kind| kind == "bin"))
+                })
         })
         .map(|dependency| dependency.name.as_str())
         .collect();

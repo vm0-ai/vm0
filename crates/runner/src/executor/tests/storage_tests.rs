@@ -93,7 +93,7 @@ fn guest_download_env_contains_run_identity_values() {
 async fn exact_manifest_limit_uses_dedicated_transport() {
     let sandbox = MockSandbox::new("test");
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES);
 
     download_storages(&sandbox, &context, &manifest)
         .await
@@ -108,7 +108,7 @@ async fn exact_manifest_limit_uses_dedicated_transport() {
 async fn oversized_manifest_uses_shared_fallback_path() {
     let sandbox = MockSandbox::new("test");
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
     let manifest_json = serde_json::to_vec(&manifest).unwrap();
 
     download_storages(&sandbox, &context, &manifest)
@@ -138,7 +138,7 @@ async fn stale_fallback_cleanup_failure_prevents_write() {
         b"rm: cannot remove storage manifest".to_vec(),
     )));
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
 
     let error = download_storages(&sandbox, &context, &manifest)
         .await
@@ -160,7 +160,7 @@ async fn fallback_exec_error_triggers_cleanup() {
     sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
 
     let error = download_storages(&sandbox, &context, &manifest)
         .await
@@ -200,7 +200,7 @@ async fn fallback_helper_failure_triggers_cleanup() {
         b"guest-download: not found".to_vec(),
     )));
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
 
     let error = download_storages(&sandbox, &context, &manifest)
         .await
@@ -259,7 +259,7 @@ async fn fallback_write_error_triggers_cleanup() {
     let sandbox = MockSandbox::new("test");
     sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
 
     let error = download_storages(&sandbox, &context, &manifest)
         .await
@@ -283,7 +283,7 @@ async fn fallback_cleanup_failure_preserves_write_error() {
     )));
     sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
     let context = minimal_context();
-    let manifest = manifest_with_serialized_len(vsock_proto::MAX_EXEC_STDIN_BYTES + 1);
+    let manifest = manifest_with_serialized_len(guest_control_proto::MAX_EXEC_STDIN_BYTES + 1);
 
     let error = download_storages(&sandbox, &context, &manifest)
         .await

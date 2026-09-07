@@ -290,7 +290,7 @@ fi
 # agent-abnormal-exit-diagnostics.sh runs with `set +e` and has command/fallback
 # guards where absence should reduce diagnostic detail, not block image verification.
 
-# Shell wrappers used by vsock-guest before the runner command body executes.
+# Shell wrappers used by guest-control-server before the runner command body executes.
 # Env-backed wrappers clean up their transient script directory before exec.
 check_required_executable "/bin/sh" "sh"
 check_required_executable "/bin/bash" "bash"

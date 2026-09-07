@@ -392,12 +392,12 @@ fn batch_mode_creates_missing_parents_and_writes_files() {
     let dir = tempfile::tempdir().unwrap();
     let first = dir.path().join("a/b/one.txt");
     let second = dir.path().join("c/two.txt");
-    let payload = vsock_proto::encode_write_files(&[
-        vsock_proto::WriteFileBatchEntry {
+    let payload = guest_control_proto::encode_write_files(&[
+        guest_control_proto::WriteFileBatchEntry {
             path: first.to_str().unwrap(),
             content: b"one",
         },
-        vsock_proto::WriteFileBatchEntry {
+        guest_control_proto::WriteFileBatchEntry {
             path: second.to_str().unwrap(),
             content: b"two",
         },
@@ -416,11 +416,12 @@ fn batch_mode_truncates_existing_files() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out.txt");
     std::fs::write(&path, b"old longer content").unwrap();
-    let payload = vsock_proto::encode_write_files(&[vsock_proto::WriteFileBatchEntry {
-        path: path.to_str().unwrap(),
-        content: b"new",
-    }])
-    .unwrap();
+    let payload =
+        guest_control_proto::encode_write_files(&[guest_control_proto::WriteFileBatchEntry {
+            path: path.to_str().unwrap(),
+            content: b"new",
+        }])
+        .unwrap();
 
     let output = run_helper(&["--batch"], &payload);
 
@@ -434,12 +435,12 @@ fn private_batch_mode_writes_private_files_with_restrictive_umask() {
     let dir = tempfile::tempdir().unwrap();
     let first = dir.path().join("run/user-env/env.json");
     let second = dir.path().join("run/run-payload/payload.json");
-    let payload = vsock_proto::encode_write_files(&[
-        vsock_proto::WriteFileBatchEntry {
+    let payload = guest_control_proto::encode_write_files(&[
+        guest_control_proto::WriteFileBatchEntry {
             path: first.to_str().unwrap(),
             content: b"env",
         },
-        vsock_proto::WriteFileBatchEntry {
+        guest_control_proto::WriteFileBatchEntry {
             path: second.to_str().unwrap(),
             content: b"payload",
         },
@@ -467,11 +468,12 @@ fn private_batch_mode_truncates_existing_file() {
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let path = dir.path().join("payload.json");
     std::fs::write(&path, b"old longer content").unwrap();
-    let payload = vsock_proto::encode_write_files(&[vsock_proto::WriteFileBatchEntry {
-        path: path.to_str().unwrap(),
-        content: b"new",
-    }])
-    .unwrap();
+    let payload =
+        guest_control_proto::encode_write_files(&[guest_control_proto::WriteFileBatchEntry {
+            path: path.to_str().unwrap(),
+            content: b"new",
+        }])
+        .unwrap();
 
     let output = run_helper(&["--batch", "--private"], &payload);
 
@@ -490,12 +492,12 @@ fn private_batch_mode_reports_later_failure_after_partial_progress() {
     std::fs::create_dir(&target).unwrap();
     std::os::unix::fs::symlink(&target, &link).unwrap();
     let second = link.join("payload.json");
-    let payload = vsock_proto::encode_write_files(&[
-        vsock_proto::WriteFileBatchEntry {
+    let payload = guest_control_proto::encode_write_files(&[
+        guest_control_proto::WriteFileBatchEntry {
             path: first.to_str().unwrap(),
             content: b"env",
         },
-        vsock_proto::WriteFileBatchEntry {
+        guest_control_proto::WriteFileBatchEntry {
             path: second.to_str().unwrap(),
             content: b"payload",
         },

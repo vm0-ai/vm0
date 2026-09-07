@@ -10,7 +10,7 @@ guest-contracts.workspace = true
 process-control-ipc.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }
-sandbox-fc = { workspace = true }
+sandbox-firecracker = { workspace = true }
 shell-quote = { workspace = true }
 
 async-trait = { workspace = true }
@@ -47,7 +47,7 @@ uuid = { workspace = true, features = ["v4", "v5", "serde"] }
 sentry = { workspace = true, features = ["panic"] }
 which = { workspace = true }
 zstd = { workspace = true, features = ["zstdmt"] }
-vsock-proto = { workspace = true }
+guest-control-proto = { workspace = true }
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
@@ -63,13 +63,13 @@ serde_json = { workspace = true }
 aws-sdk-s3 = { workspace = true, features = ["test-util"] }
 aws-smithy-mocks = { workspace = true }
 guest-agent = { workspace = true }
-guest-download = { workspace = true }
+guest-storage-apply = { workspace = true }
 guest-init = { workspace = true }
-guest-mock-claude = { workspace = true }
-guest-mock-codex = { workspace = true }
-guest-reseed = { workspace = true }
+claude-mock = { workspace = true }
+codex-mock = { workspace = true }
+guest-state-restore = { workspace = true }
 guest-tool-exec = { workspace = true }
-guest-rpc = { workspace = true }
+runner-rpc-client = { workspace = true }
 guest-write-file = { workspace = true }
 httpmock = { workspace = true }
 http-body = "1"

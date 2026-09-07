@@ -15,7 +15,7 @@ use api_contracts::generated::{
 use guest_contracts::env::{CliAgentTypeSelection, CliFramework};
 
 use crate::constants;
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;

@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 use std::path::Path;
 
-use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
+use sandbox_firecracker::DNS_PROBE_RESOLVER_IPV4;
 use sha2::{Digest, Sha256};
 
 use crate::ca;
@@ -155,7 +155,7 @@ pub(super) async fn compute_ca_cert_fingerprint(paths: &HomePaths) -> RunnerResu
 ///   - `rootfs_hash` — the rootfs this snapshot is built from
 ///   - `vcpu`, `memory_mb`, `workspace_disk_mb` — VM resource config
 ///   - `fc_version`, `kernel_version` — Firecracker and guest kernel versions
-///   - `provider_config_hash` — sandbox-fc internal config (boot args, prewarm, etc.)
+///   - `provider_config_hash` — sandbox-firecracker internal config (boot args, prewarm, etc.)
 pub(super) fn compute_snapshot_hash(
     rootfs_hash: &str,
     vcpu: u32,

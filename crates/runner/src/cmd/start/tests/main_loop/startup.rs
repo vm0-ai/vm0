@@ -854,7 +854,7 @@ async fn nameless_config_reaches_local_provider_setup_before_runtime() {
     }
     tokio::fs::write(
         snapshot.complete_marker(),
-        sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+        sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
     )
     .await
     .unwrap();

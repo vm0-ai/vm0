@@ -19,7 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub use sandbox_fc::SnapshotOutputPaths as SnapshotPaths;
+pub use sandbox_firecracker::SnapshotOutputPaths as SnapshotPaths;
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;

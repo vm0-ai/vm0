@@ -282,5 +282,5 @@ the per-drive split.
   host capacity and derives sandbox-level limits.
 - [`crates/runner/src/cmd/start/mod.rs`](../crates/runner/src/cmd/start/mod.rs)
   emits the startup state and effective-limit logs.
-- [`crates/sandbox-fc/src/config.rs`](../crates/sandbox-fc/src/config.rs) splits
+- [`crates/sandbox-firecracker/src/config.rs`](../crates/sandbox-firecracker/src/config.rs) splits
   the sandbox block budget across Firecracker drives.

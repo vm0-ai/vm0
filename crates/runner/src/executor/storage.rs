@@ -45,7 +45,7 @@ pub(super) async fn download_storages(
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
     let run_id = context.run_id.to_string();
     let runtime_dir = guest_runtime_dir(context.run_id)?;
-    let use_dedicated = manifest_json.len() <= vsock_proto::MAX_EXEC_STDIN_BYTES;
+    let use_dedicated = manifest_json.len() <= guest_control_proto::MAX_EXEC_STDIN_BYTES;
     let transport = if use_dedicated {
         "dedicated"
     } else {

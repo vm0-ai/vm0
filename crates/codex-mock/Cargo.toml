@@ -1,0 +1,22 @@
+[package]
+name = "codex-mock"
+version = "0.10.23"
+edition.workspace = true
+
+[dependencies]
+chrono = { workspace = true, features = ["clock"] }
+clap = { workspace = true, features = ["derive"] }
+guest-contracts.workspace = true
+libc.workspace = true
+serde_json.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "guest-mock-codex"
+path = "src/main.rs"

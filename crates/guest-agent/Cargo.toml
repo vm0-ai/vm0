@@ -13,8 +13,8 @@ flate2.workspace = true
 futures-util.workspace = true
 process-control-ipc.workspace = true
 guest-contracts.workspace = true
-guest-common.workspace = true
-guest-session-prune.workspace = true
+guest-telemetry.workspace = true
+session-history-selector.workspace = true
 http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
@@ -37,9 +37,9 @@ httpmock.workspace = true
 nix = { workspace = true, features = ["inotify", "process"] }
 shell-quote.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-vsock-host.workspace = true
-vsock-guest = { workspace = true, features = ["test-support"] }
-vsock-proto.workspace = true
+guest-control-client.workspace = true
+guest-control-server = { workspace = true, features = ["test-support"] }
+guest-control-proto.workspace = true
 
 [[test]]
 name = "integration"

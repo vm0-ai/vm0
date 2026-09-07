@@ -1,7 +1,7 @@
 //! Integration coverage for the guest-agent process-control channel.
 //!
 //! Lower-level protocol status mapping, nonce validation, queue limits, and
-//! concurrent routing live in vsock-host/vsock-guest tests. This test keeps the
+//! concurrent routing live in guest-control-client/guest-control-server tests. This test keeps the
 //! guest-agent layer focused on the real bootstrap path: host vsock -> spawned
 //! guest-agent process -> ControlHandle IPC -> host ack.
 
@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use guest_control_client::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
+use guest_control_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 use shell_quote::quote_shell_arg;
-use vsock_host::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
-use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
 const PRE_READY_CONTROL_MESSAGE_ID: &str = "process-control-before-cli-ready";
 const READY_CONTROL_MESSAGE_ID: &str = "process-control-after-cli-ready";
@@ -30,7 +30,7 @@ struct MockStartGate {
 }
 
 struct ConnectionHarness {
-    host: Option<vsock_host::VsockHost>,
+    host: Option<guest_control_client::GuestControlClient>,
     guest: Option<thread::JoinHandle<io::Result<()>>>,
 }
 
@@ -80,7 +80,10 @@ impl MockStartGate {
 }
 
 impl ConnectionHarness {
-    fn new(host: vsock_host::VsockHost, guest: thread::JoinHandle<io::Result<()>>) -> Self {
+    fn new(
+        host: guest_control_client::GuestControlClient,
+        guest: thread::JoinHandle<io::Result<()>>,
+    ) -> Self {
         Self {
             host: Some(host),
             guest: Some(guest),
@@ -88,7 +91,7 @@ impl ConnectionHarness {
     }
 
     #[allow(clippy::expect_used)]
-    fn host(&self) -> &vsock_host::VsockHost {
+    fn host(&self) -> &guest_control_client::GuestControlClient {
         self.host
             .as_ref()
             .expect("connection harness host should be present")
@@ -178,7 +181,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let mut handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
-            role: vsock_proto::ExecProcessRole::Agent,
+            role: guest_control_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
             command: "",
             env: &env,
@@ -322,7 +325,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
     let handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
-            role: vsock_proto::ExecProcessRole::Agent,
+            role: guest_control_proto::ExecProcessRole::Agent,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
             command: "",
             env: &env,
@@ -383,7 +386,7 @@ async fn host_listener_startup_failure_is_preserved() -> TestResult<()> {
 }
 
 async fn collect_stdout_until(
-    stdout_rx: &mut tokio::sync::mpsc::Receiver<vsock_host::ExecOutputEvent>,
+    stdout_rx: &mut tokio::sync::mpsc::Receiver<guest_control_client::ExecOutputEvent>,
     needle: &[u8],
     timeout: Duration,
 ) -> io::Result<Vec<u8>> {
@@ -417,7 +420,11 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
     let listener = PathBuf::from(&listener_path);
     let host_base_path = base_path.clone();
     let mut host_task = tokio::spawn(async move {
-        vsock_host::VsockHost::wait_for_connection(&host_base_path, Duration::from_secs(5)).await
+        guest_control_client::GuestControlClient::wait_for_connection(
+            &host_base_path,
+            Duration::from_secs(5),
+        )
+        .await
     });
 
     tokio::select! {
@@ -442,8 +449,8 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
     }
 
     let guest = thread::spawn(move || {
-        let stream = vsock_guest::connect_unix(&listener_path)?;
-        vsock_guest::handle_connection_with_test_guest_agent_program(stream, guest_agent)
+        let stream = guest_control_server::connect_unix(&listener_path)?;
+        guest_control_server::handle_connection_with_test_guest_agent_program(stream, guest_agent)
     });
 
     let host = match host_task.await? {
@@ -457,7 +464,7 @@ async fn start_host_and_guest(dir: &Path, guest_agent: PathBuf) -> TestResult<Co
 }
 
 async fn collect_stdout(
-    stdout_rx: &mut tokio::sync::mpsc::Receiver<vsock_host::ExecOutputEvent>,
+    stdout_rx: &mut tokio::sync::mpsc::Receiver<guest_control_client::ExecOutputEvent>,
     timeout: Duration,
 ) -> io::Result<Vec<u8>> {
     tokio::time::timeout(timeout, async {

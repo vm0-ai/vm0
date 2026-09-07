@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use nix::fcntl::Flock;
 use sandbox::SnapshotProvider;
-use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
+use sandbox_firecracker::DNS_PROBE_RESOLVER_IPV4;
 
 use crate::ca;
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};

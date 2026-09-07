@@ -138,7 +138,7 @@ When multiple tests need shared setup/teardown:
 ```rust
 struct Harness {
     dir: PathBuf,
-    host: Option<VsockHost>,
+    host: Option<GuestControlClient>,
 }
 
 impl Harness {

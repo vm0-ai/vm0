@@ -3,7 +3,7 @@
 //! `SIGCHLD`, `SIGTERM`, and `SIGINT` are blocked before `fork()` so PID 1 can
 //! synchronously wait for them without a race between checking child state and
 //! going to sleep. The child restores the pre-existing mask before running
-//! `vsock-guest`.
+//! `guest-control-server`.
 
 use std::time::{Duration, Instant};
 

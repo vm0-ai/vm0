@@ -7,7 +7,7 @@
     "destination": "/usr/local/bin/guest-agent"
   },
   {
-    "package": "guest-download",
+    "package": "guest-storage-apply",
     "binary": "guest-download",
     "pathEnv": "GUEST_DOWNLOAD_PATH",
     "bundledEnv": "BUNDLED_GUEST_DOWNLOAD",
@@ -21,7 +21,7 @@
     "destination": "/sbin/guest-init"
   },
   {
-    "package": "guest-reseed",
+    "package": "guest-state-restore",
     "binary": "guest-reseed",
     "pathEnv": "GUEST_RESEED_PATH",
     "bundledEnv": "BUNDLED_GUEST_RESEED",
@@ -42,21 +42,21 @@
     "destination": "/usr/local/bin/guest-tool-exec"
   },
   {
-    "package": "guest-rpc",
+    "package": "runner-rpc-client",
     "binary": "guest-rpc",
     "pathEnv": "GUEST_RPC_PATH",
     "bundledEnv": "BUNDLED_GUEST_RPC",
     "destination": "/usr/local/bin/guest-rpc"
   },
   {
-    "package": "guest-mock-claude",
+    "package": "claude-mock",
     "binary": "guest-mock-claude",
     "pathEnv": "GUEST_MOCK_CLAUDE_PATH",
     "bundledEnv": "BUNDLED_GUEST_MOCK_CLAUDE",
     "destination": "/usr/local/bin/guest-mock-claude"
   },
   {
-    "package": "guest-mock-codex",
+    "package": "codex-mock",
     "binary": "guest-mock-codex",
     "pathEnv": "GUEST_MOCK_CODEX_PATH",
     "bundledEnv": "BUNDLED_GUEST_MOCK_CODEX",

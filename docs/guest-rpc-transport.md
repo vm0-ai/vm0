@@ -99,7 +99,7 @@ cancellation. Retain the stream through all handler work, even after terminal
 bytes and while awaiting non-I/O work.
 
 Admission checks Running/Open/current assignment and acquires the SAME
-`VsockHost` tracker reservation at the admission linearization point, with no
+`GuestControlClient` tracker reservation at the admission linearization point, with no
 coordinator lock held across await. If park wins, admission fails; if RPC wins,
 park is Busy. Both normal park and final-exec-park/handoff invalidate the old
 endpoint. Rebinding precedes guest resume; old handles/backlog cannot follow a

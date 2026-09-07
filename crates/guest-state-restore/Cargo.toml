@@ -1,0 +1,18 @@
+[package]
+name = "guest-state-restore"
+version = "0.3.8"
+edition.workspace = true
+description = "Repair snapshot-sensitive guest state and apply guest timezones"
+
+[dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "guest-reseed"
+path = "src/main.rs"
