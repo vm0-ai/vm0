@@ -88,7 +88,8 @@ function MediaModelSelect<Model extends string>({
   readonly onChange: (model: Model) => void;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    // Keep adjacent composer actions tappable while the model menu is open.
+    <Select value={value} onValueChange={onChange} modal={false}>
       <SelectTrigger
         aria-label={label}
         className="h-8 w-8 shrink-0 gap-1 border-transparent bg-transparent px-0 text-sm text-muted-foreground hover:bg-state-hover @min-[600px]/composer:w-auto @min-[600px]/composer:max-w-[11rem] @min-[600px]/composer:px-2 [&>[data-slot=select-icon]]:hidden @min-[600px]/composer:[&>[data-slot=select-icon]]:block"

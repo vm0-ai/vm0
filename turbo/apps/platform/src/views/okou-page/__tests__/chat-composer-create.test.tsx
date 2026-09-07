@@ -164,6 +164,47 @@ test("Image mode selects image models and exiting preserves the prompt", async (
   expect(editor).toHaveTextContent("A quiet garden");
 });
 
+test("Image mode sends when the model menu is still open", async () => {
+  setupModels();
+  const user = userEvent.setup({ delay: null });
+  const submissions: UserMessageDocument[] = [];
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      if (body.userMessage) {
+        submissions.push(body.userMessage);
+      }
+    },
+  });
+  const editor = await setupComposer();
+  await chooseCommand(editor, "A quiet garden /create image", "Create image");
+  await waitFor(() => {
+    expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
+  });
+  const picker = screen.getByRole("combobox", { name: "Image models" });
+  await user.click(picker);
+  await waitFor(() => {
+    expect(picker).toHaveAttribute("aria-controls");
+  });
+  const listboxId = picker.getAttribute("aria-controls");
+  if (!listboxId) {
+    throw new Error("Expected image model listbox id");
+  }
+  const listbox = await waitFor(() => {
+    const element = document.getElementById(listboxId);
+    expect(element).toHaveAttribute("role", "listbox");
+    return element as HTMLElement;
+  });
+  const popupPortal = listbox.closest("[data-base-ui-portal]");
+  expect(
+    popupPortal?.querySelector(":scope > [data-base-ui-inert]"),
+  ).toBeNull();
+  const send = button("Send");
+  await user.click(send);
+  await waitFor(() => {
+    expect(submissions).toHaveLength(1);
+  });
+});
+
 test("Presentation mode replaces its one selected template without adding a second", async () => {
   setupModels();
   const editor = await setupComposer();
