@@ -37,6 +37,7 @@ export async function fetchNoyoAccessToken(
   }
   return {
     accessToken: parsed.data.access_token,
-    expiresIn: parsed.data.expires_in,
+    // Noyo reports milliseconds; connector providers expose expiry in seconds.
+    expiresIn: parsed.data.expires_in / 1000,
   };
 }
