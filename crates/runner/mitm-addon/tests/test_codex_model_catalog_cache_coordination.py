@@ -195,6 +195,19 @@ async def test_non_utf8_identity_headers_release_singleflight_follower(
     await asyncio.wait_for(follower_prepare, timeout=0.1)
     assert follower.response is None
     assert follower.request.headers["Accept-Encoding"] == "identity"
+
+    capacity_owners = [
+        catalog_flow(real_flow, version=f"{version}-capacity-{index}")
+        for index in range(catalog_cache.MAX_IN_FLIGHT_REQUESTS - 1)
+    ]
+    for capacity_owner in capacity_owners:
+        await prepare_miss(capacity_owner)
+        capacity_telemetry: dict[str, object] = {}
+        catalog_cache.add_network_log_fields(capacity_owner, capacity_telemetry)
+        assert capacity_telemetry == {}
+    for capacity_owner in capacity_owners:
+        catalog_cache.handle_error(capacity_owner)
+
     owner_telemetry: dict[str, object] = {}
     catalog_cache.add_network_log_fields(owner, owner_telemetry)
     validation_latency = owner_telemetry.pop("model_catalog_cache_validation_latency_ms")
