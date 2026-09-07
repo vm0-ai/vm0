@@ -838,16 +838,15 @@ impl JobProvider for ApiProvider {
                     response_body_read_elapsed,
                     response_decode_elapsed,
                 );
-                let active_input_source = (ctx.cli_agent_type != "pi"
-                    && supports_thread_active_input(ctx.reuse_key.as_deref()))
-                .then(|| {
-                    ActiveInputSource::api(
-                        self.api.clone(),
-                        run_id,
-                        ctx.sandbox_token.clone(),
-                        self.active_input_notifications.subscribe(run_id),
-                    )
-                });
+                let active_input_source = supports_thread_active_input(ctx.reuse_key.as_deref())
+                    .then(|| {
+                        ActiveInputSource::api(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                            self.active_input_notifications.subscribe(run_id),
+                        )
+                    });
                 let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(
                         run_id,
@@ -5346,6 +5345,46 @@ mod tests {
         assert_eq!(context.prompt, "minimal response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_attaches_active_input_source_for_thread_bound_pi() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "reuseKey": "thread:pi-active-input",
+                    "prompt": "steer the active Pi run",
+                    "sandboxToken": "pi-active-input-sandbox-token",
+                    "cliAgentType": "pi",
+                    "platformEnvironment": {},
+                    "connectorRuntimeTargets": []
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("thread-bound Pi claim should succeed");
+
+        assert!(matches!(
+            claimed.active_input_source(),
+            Some(ActiveInputSource::Api(_))
+        ));
         claim_mock.assert_calls_async(1).await;
     }
 
