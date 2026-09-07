@@ -187,6 +187,12 @@ impl SockPaths {
         self.vsock_dir().join("vsock.sock")
     }
 
+    /// Dedicated guest-initiated SSH transport within the private vsock directory.
+    pub(crate) fn ssh_rpc(&self) -> PathBuf {
+        self.vsock_dir()
+            .join(format!("vsock.sock_{}", ssh_rpc_proto::VSOCK_PORT))
+    }
+
     /// VM0 control server Unix-domain socket, `control.sock`.
     pub fn control_sock(&self) -> PathBuf {
         self.dir.join("control.sock")

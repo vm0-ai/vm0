@@ -139,6 +139,7 @@ make_manifest() {
         "guest-mock-codex": "guest-mock-codex-sha",
         "guest-reseed": "guest-reseed-sha",
         "guest-tool-exec": "guest-tool-exec-sha",
+        "guest-ssh-rpc": "guest-ssh-rpc-sha",
         "guest-write-file": "guest-write-file-sha"
       },
       hosts: $hosts

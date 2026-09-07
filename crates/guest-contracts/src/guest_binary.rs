@@ -22,6 +22,9 @@ pub const WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 /// Production path of the managed guest tool executor.
 pub const TOOL_EXEC_PATH: &str = "/usr/local/bin/guest-tool-exec";
 
+/// Production path of the one-shot guest SSH transport helper.
+pub const SSH_RPC_PATH: &str = "/usr/local/bin/guest-ssh-rpc";
+
 /// Production path of the shipped Claude mock executable.
 pub const MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 

@@ -1391,6 +1391,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-ssh-rpc"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "ssh-rpc-proto",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "guest-tool-exec"
 version = "0.1.47"
 dependencies = [
@@ -2629,6 +2640,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-mock-codex",
  "guest-reseed",
+ "guest-ssh-rpc",
  "guest-tool-exec",
  "guest-write-file",
  "hex",
@@ -2809,6 +2821,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-util",
  "trybuild",
  "uuid",
 ]
@@ -2832,6 +2845,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "ssh-rpc-proto",
  "tempfile",
  "thiserror",
  "tokio",
@@ -3190,6 +3204,17 @@ name = "spin"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
+
+[[package]]
+name = "ssh-rpc-proto"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "stable_deref_trait"

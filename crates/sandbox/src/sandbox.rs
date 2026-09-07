@@ -529,6 +529,13 @@ pub trait Sandbox: Send + Sync + Any {
         Ok(())
     }
 
+    /// Optional guest SSH transport for this exact host-derived Run assignment.
+    /// Providers without SSH support, including local mode, return `None`.
+    /// Obtaining a capability does not authorize a destination or start SSH.
+    fn ssh_rpc(&self, _expected_run_id: &str) -> Option<Arc<dyn crate::SshRpcAcceptor>> {
+        None
+    }
+
     // -- lifecycle --
 
     /// Boot the guest and make the sandbox ready to serve operations.

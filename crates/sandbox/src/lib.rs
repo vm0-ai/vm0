@@ -24,6 +24,7 @@ mod factory;
 mod runtime;
 mod sandbox;
 mod snapshot;
+mod ssh_rpc;
 mod types;
 
 pub use config::{
@@ -54,6 +55,7 @@ pub use sandbox::{
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,
 };
+pub use ssh_rpc::{AcceptedSshRpc, SshRpcAcceptor, SshRpcStream};
 pub use types::{
     CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB,
     EXEC_OUTPUT_LIMIT_7_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult,
