@@ -302,12 +302,6 @@ async fn start_supervised_exec_on_shared_with_stream_queue_kind<F>(
 where
     F: Future<Output = ()>,
 {
-    if request.start_timeout.is_zero() {
-        return Err(supervised_start_timeout_error(
-            RequestTimeoutStage::BeforeFrameWrite,
-            request.start_timeout,
-        ));
-    }
     let stream_queue_capacity = stream_queue_capacity_for(
         request.stdout,
         request.stderr,
@@ -343,6 +337,12 @@ where
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    if request.start_timeout.is_zero() {
+        return Err(supervised_start_timeout_error(
+            RequestTimeoutStage::BeforeFrameWrite,
+            request.start_timeout,
+        ));
+    }
     let deadline = exec_start_deadline(request.start_timeout)?;
     let start_progress = Arc::new(SupervisedStartProgress::default());
 
