@@ -197,11 +197,16 @@ dual-protocol preparation release remains safe for canonical clients.
 
 Runner deployment is draining, not instant. The production promote playbook
 starts the new runner service, verifies it, and then sends a soft-drain signal
-to old runner services. Before that signal arrives, there can be a short overlap
-where both old and new runners are running. After old runners enter draining,
-they stop claiming new runs but keep executing already claimed runs until those
-runs finish. During that drain window, old runners continue calling backend APIs
-with the old protocol.
+to old runner services. Promotion observes a bounded acknowledgement from the
+same live process and status generation: Draining/Stopping, or service/process
+exit. This acknowledgement does not wait for active runs to finish. Discovery,
+signal, status, identity, or acknowledgement failures for an old runner are
+reported as promotion warnings while a healthy new runner remains promoted;
+promotion does not force-kill the old runner. Before the signal arrives, there
+can be a short overlap where both old and new runners are running. After old
+runners enter draining, they stop claiming new runs but keep executing already
+claimed runs until those runs finish. During that drain window, old runners
+continue calling backend APIs with the old protocol.
 
 The backend must support old runner requests until old runners have fully
 drained. Runner changes that require backend support must be staged so a new
