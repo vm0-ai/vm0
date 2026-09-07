@@ -1134,6 +1134,7 @@ button {
   animation: brand-mark-breathe 3.4s ease-in-out infinite;
 }
 
+.desktop-product-okou .desktop-brand-mark-init,
 .desktop-product-okou .desktop-brand-mark-hero {
   border-radius: 0;
   background: transparent;
