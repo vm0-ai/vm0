@@ -18,6 +18,7 @@ export function createPlainMarkdownTree(
   if (
     source.trim() !== source ||
     source.includes("\r") ||
+    source.includes("++") ||
     INLINE_RICH_SYNTAX.test(source) ||
     (options.mathEnabled && source.includes("$")) ||
     AUTOLINK.test(source)

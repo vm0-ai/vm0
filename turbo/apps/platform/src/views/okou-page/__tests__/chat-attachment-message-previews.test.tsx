@@ -338,7 +338,7 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
     return HttpResponse.text("metric,value\nlatency,42");
   });
   context.mocks.http.get("https://private-files.example/notes.md", () => {
-    return HttpResponse.text("# Review notes\n\nEverything is ready.");
+    return HttpResponse.text("# Review notes\n\n++Everything is ready.++");
   });
   context.mocks.http.get("https://private-files.example/summary.txt", () => {
     return HttpResponse.text("Plain text summary");
@@ -398,6 +398,7 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
 
   click(getNamedButton("Open markdown preview for notes.md"));
   await expect(screen.findByText("Review notes")).resolves.toBeVisible();
+  expect(screen.getByText("Everything is ready.").tagName).toBe("U");
   click(await findNamedLink("Share"));
   await waitFor(() => {
     expect(clipboard.writes).toContain(markdownShareUrl);

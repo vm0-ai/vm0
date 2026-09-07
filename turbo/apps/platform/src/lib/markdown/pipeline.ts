@@ -1,5 +1,5 @@
 import type { Data, Element, ElementContent, Root, RootContent } from "hast";
-import { marked, Renderer, type Token, type Tokens } from "marked";
+import { Marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -18,6 +18,64 @@ import {
 } from "../rehype-mermaid.ts";
 import { findHexRgbColors } from "./hex-rgb-color.ts";
 import { rehypeRewriteHandle } from "./uiw-nodes.ts";
+
+// Tiptap registers editor-only tokenizers on the default Marked instance.
+// Display parsing owns its extensions so mounting an editor cannot change it.
+const markdownParser: Readonly<Marked> = new Marked({
+  extensions: [
+    {
+      name: "underline",
+      level: "inline",
+      start(source) {
+        return source.indexOf("++");
+      },
+      tokenizer(source) {
+        if (this.lexer.state.inRawBlock || !/^\+\+\S/u.test(source)) {
+          return undefined;
+        }
+        for (let index = 2; index < source.length; index++) {
+          if (source[index] === "\\") {
+            index++;
+            continue;
+          }
+          // A code span owns its delimiters; ++ inside it is literal text.
+          if (source[index] === "`") {
+            const remaining = source.slice(index);
+            const code = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/u.exec(remaining);
+            const run = /^`+/u.exec(remaining);
+            if (code) {
+              index += code[0].length - 1;
+            } else if (run) {
+              index += run[0].length - 1;
+            }
+            continue;
+          }
+          if (source.startsWith("++", index)) {
+            const content = source.slice(2, index);
+            if (content === "") {
+              return undefined;
+            }
+            if (/\s$/u.test(content)) {
+              continue;
+            }
+            return {
+              type: "underline",
+              raw: source.slice(0, index + 2),
+              tokens: this.lexer.inlineTokens(content),
+            };
+          }
+        }
+        return undefined;
+      },
+      renderer(token) {
+        if (token.tokens === undefined) {
+          throw new Error("Underline token is missing its inline tokens");
+        }
+        return `<u>${this.parser.parseInline(token.tokens)}</u>`;
+      },
+    },
+  ],
+});
 
 /**
  * Markers the pipeline puts on a node so the view can swap it for a component.
@@ -457,7 +515,7 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
-  const html = marked.parse(source, {
+  const html = markdownParser.parse(source, {
     async: false,
     renderer: options.mermaid ? createMarkedRenderer() : null,
   });

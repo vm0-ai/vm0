@@ -1,0 +1,230 @@
+import { act, screen } from "@testing-library/react";
+import {
+  agentInstructionsContract,
+  agentsByIdContract,
+} from "@okouai/api-contracts/contracts/agents";
+import { expect, test } from "vitest";
+import { marked } from "marked";
+
+import { click, setupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createMarkdownChatFixture } from "./markdown-page-test-helpers.ts";
+
+const context = testContext();
+
+test("A global tokenizer without a renderer cannot break chat Markdown", async () => {
+  const defaults = marked.defaults;
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      marked.setOptions(defaults);
+    },
+    { once: true },
+  );
+  marked.use({
+    extensions: [
+      {
+        name: "editorOnly",
+        level: "inline",
+        start(source) {
+          return source.indexOf("::");
+        },
+        tokenizer(source) {
+          const match = /^::(.+?)::/u.exec(source);
+          return match
+            ? { type: "editorOnly", raw: match[0], text: match[1] }
+            : undefined;
+        },
+      },
+    ],
+  });
+  const chat = createMarkdownChatFixture(context);
+  const rows = [
+    chat.outputMessage("**Readable** ::extension text::", { seqId: 1 }),
+    chat.runCompleted({ seqId: 2 }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+
+  const bold = await screen.findByText("Readable");
+  expect(bold.tagName).toBe("STRONG");
+  expect(bold.parentElement).toHaveTextContent("Readable ::extension text::");
+});
+
+test.each(["++Underlined text++", "**Prefix** ++Underlined text++"])(
+  "Underline renders without first opening an editor: %s",
+  async (source) => {
+    const chat = createMarkdownChatFixture(context);
+    const rows = [
+      chat.outputMessage(source, { seqId: 1 }),
+      chat.runCompleted({ seqId: 2 }),
+    ];
+    chat.install({
+      rows: () => {
+        return rows;
+      },
+    });
+
+    await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+
+    const underline = await screen.findByText("Underlined text");
+    expect(underline.tagName).toBe("U");
+  },
+);
+
+test("Underline preserves nested Markdown, literal code and escaped delimiters", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const source = [
+    "++**Nested bold** and [Nested link](https://example.com)++",
+    "",
+    "**++Nested underline++**",
+    "",
+    "++`C++` and escaped \\+\\+ markers++",
+    "",
+    "`++Inline literal++` and \\+\\+Escaped literal\\+\\+ and C++ / i++",
+    "",
+    "<code>++HTML code literal++</code>",
+    "",
+    "```text",
+    "++Block literal++",
+    "```",
+    "",
+    "++&lt;literal&gt; &amp; **safe**++",
+  ].join("\n");
+  const rows = [
+    chat.outputMessage(source, { seqId: 1 }),
+    chat.runCompleted({ seqId: 2 }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+
+  const bold = await screen.findByText("Nested bold");
+  expect(bold.tagName).toBe("STRONG");
+  expect(bold.closest("u")).not.toBeNull();
+  expect(screen.getByText("Nested link").closest("u")).not.toBeNull();
+  expect(screen.getByText("Nested underline").closest("strong")).not.toBeNull();
+  const code = screen.getByText("C++", { selector: "code" });
+  expect(code.closest("u")).toHaveTextContent("C++ and escaped ++ markers");
+  expect(screen.getByText("++Inline literal++").closest("code")).not.toBeNull();
+  expect(screen.getByText("++Block literal++").closest("code")).not.toBeNull();
+  expect(
+    screen.getByText("++HTML code literal++").closest("code"),
+  ).not.toBeNull();
+  expect(screen.getByText(/Escaped literal/).textContent).toContain(
+    "++Escaped literal++ and C++ / i++",
+  );
+  expect(screen.getByText("safe").closest("u")).toHaveTextContent(
+    "<literal> & safe",
+  );
+});
+
+test("A streaming underline remains readable until its closing delimiter arrives", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const rows = [
+    chat.outputMessage("++Streaming text", {
+      id: "streaming-underline",
+      runEventId: "streaming-underline",
+      seqId: 1,
+    }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+
+  await expect(screen.findByText("++Streaming text")).resolves.toBeVisible();
+  rows[0] = chat.outputMessage("++Streaming text++", {
+    id: "streaming-underline",
+    runEventId: "streaming-underline",
+    seqId: 2,
+    sequenceNumber: 1,
+  });
+  rows.push(chat.runCompleted({ seqId: 3, sequenceNumber: 2 }));
+  context.mocks.ably.trigger(chat.realtimeTopic);
+
+  const underline = await screen.findByText("Streaming text");
+  expect(underline.tagName).toBe("U");
+});
+
+test("Opening and reopening an instructions editor does not change chat parsing", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const source =
+    "**Result** ++Stable underline++\n\n3. Stable list item\n4. Next item\n\n- [x] Completed task";
+  const rows = [
+    chat.outputMessage(source, { seqId: 1 }),
+    chat.runCompleted({ seqId: 2 }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
+    return respond(200, {
+      filename: "AGENTS.md",
+      content: "++Editor underline++\n\n1. Editor list",
+    });
+  });
+
+  const agentId = "c0000000-0000-4000-a000-000000000071";
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      agentId,
+      avatarUrl: null,
+      description: "Markdown instructions",
+      displayName: "Markdown Agent",
+      modelProviderId: null,
+      ownerId: "test-user-123",
+      preferPersonalProvider: false,
+      selectedModel: null,
+      sound: null,
+      visibility: "private",
+    });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${agentId}?tab=instructions`,
+    host: "app.vm0.ai",
+  });
+
+  for (let visit = 0; visit < 2; visit++) {
+    const editor = await screen.findByLabelText("Instructions editor");
+    expect(editor.querySelector("u")).toHaveTextContent("Editor underline");
+    click(await screen.findByText("Rich content"));
+    const currentPrefix = visit === 0 ? "Stable" : `Fresh ${visit - 1}`;
+    expect(
+      (await screen.findByText(`${currentPrefix} underline`)).tagName,
+    ).toBe("U");
+    expect(screen.getByText(`${currentPrefix} list item`).tagName).toBe("LI");
+    // A new event forces parsing after the editor has registered its extensions.
+    rows.push(
+      chat.outputMessage(source.replaceAll("Stable", `Fresh ${visit}`), {
+        seqId: 3 + visit,
+      }),
+    );
+    context.mocks.ably.trigger(chat.realtimeTopic);
+    expect((await screen.findByText(`Fresh ${visit} underline`)).tagName).toBe(
+      "U",
+    );
+    expect(screen.getByText(`Fresh ${visit} list item`).tagName).toBe("LI");
+    act(() => {
+      window.history.back();
+    });
+  }
+  await expect(
+    screen.findByLabelText("Instructions editor"),
+  ).resolves.toBeVisible();
+});
