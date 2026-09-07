@@ -89,6 +89,7 @@ import { debounceCommand } from "../command-scheduling.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
+  richMarkdownUnderlineEnabled$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -1862,6 +1863,7 @@ function createCardRefRegistrar({
 
 interface EventTree {
   readonly content: string;
+  readonly underline: boolean;
   readonly tree: Root | undefined;
   readonly error: boolean;
 }
@@ -1871,6 +1873,7 @@ interface RichEventTreePlan {
   readonly content: string;
   readonly treeSource: string;
   readonly descriptors: readonly CardDescriptorBlock[];
+  readonly underline: boolean;
 }
 
 function createEventTreeParser(registries: EventTreeRegistries) {
@@ -1892,6 +1895,7 @@ function createEventTreeParser(registries: EventTreeRegistries) {
     const tree = parseMarkdownTree(plan.treeSource, {
       mermaid: true,
       cards,
+      underline: plan.underline,
     });
     embedMermaidSignals(tree, (code) => {
       return set(mermaidDiagrams.register$, code);
@@ -1913,6 +1917,7 @@ function planEventTreeUpdates(
   events: readonly ChatEvent[],
   current: ReadonlyMap<string, EventTree>,
   chatActionContext: ChatActionContext,
+  underline: boolean,
 ): {
   readonly next: Map<string, EventTree> | undefined;
   readonly richPlans: RichEventTreePlan[];
@@ -1921,7 +1926,11 @@ function planEventTreeUpdates(
   const richPlans: RichEventTreePlan[] = [];
   for (const event of events) {
     const content = chatEventTreeContent(event);
-    if (content === null || current.get(event.id)?.content === content) {
+    const previous = current.get(event.id);
+    if (
+      content === null ||
+      (previous?.content === content && previous.underline === underline)
+    ) {
       continue;
     }
     const plan = chatEventTreePlan(event, chatActionContext);
@@ -1930,11 +1939,13 @@ function planEventTreeUpdates(
     }
     const plainTree = createPlainMarkdownTree(plan.treeSource, {
       mathEnabled: false,
+      underline,
     });
     next ??= new Map(current);
     if (plainTree !== null) {
       next.set(event.id, {
         content: plan.content,
+        underline,
         tree: plainTree,
         error: false,
       });
@@ -1944,10 +1955,11 @@ function planEventTreeUpdates(
     // body loads. This pending identity also deduplicates concurrent ensures.
     next.set(event.id, {
       content: plan.content,
+      underline,
       tree: undefined,
       error: false,
     });
-    richPlans.push({ eventId: event.id, ...plan });
+    richPlans.push({ eventId: event.id, ...plan, underline });
   }
   return { next, richPlans };
 }
@@ -1961,6 +1973,7 @@ function markPendingEventTreesFailed(
     const entry = current.get(plan.eventId);
     if (
       entry?.content === plan.content &&
+      entry.underline === plan.underline &&
       entry.tree === undefined &&
       !entry.error
     ) {
@@ -2010,6 +2023,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         const pendingEntry = pending.get(plan.eventId);
         if (
           pendingEntry?.content !== plan.content ||
+          pendingEntry.underline !== plan.underline ||
           pendingEntry.tree !== undefined ||
           pendingEntry.error
         ) {
@@ -2019,6 +2033,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         parsed ??= new Map(pending);
         parsed.set(plan.eventId, {
           content: plan.content,
+          underline: plan.underline,
           tree,
           error: false,
         });
@@ -2048,6 +2063,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         events,
         current,
         chatActionContext,
+        get(richMarkdownUnderlineEnabled$),
       );
       if (next) {
         set(internalEventTrees$, next);

@@ -126,6 +126,10 @@ export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
 });
 
+export const richMarkdownUnderlineEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.RichMarkdownUnderline] ?? false;
+});
+
 export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
 });

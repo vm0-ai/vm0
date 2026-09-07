@@ -1,5 +1,6 @@
 import type { Root } from "hast";
 import type { CSSProperties } from "react";
+import { useGet } from "ccstate-react";
 
 import { i18n } from "../../i18n/index.ts";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../../lib/markdown/plain-markdown.ts";
 import { MarkdownTextWithColorPreviews } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
+import { richMarkdownUnderlineEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   Markdown as RichMarkdown,
   MarkdownEventBody as RichMarkdownEventBody,
@@ -124,7 +126,10 @@ export function Markdown({
   escapeHtml = false,
   ...props
 }: MarkdownProps) {
-  const tree = createPlainMarkdownTree(props.source, { mathEnabled: false });
+  const tree = createPlainMarkdownTree(props.source, {
+    mathEnabled: false,
+    underline: useGet(richMarkdownUnderlineEnabled$),
+  });
   if (tree !== null && !escapeHtml) {
     return (
       <PlainMarkdown

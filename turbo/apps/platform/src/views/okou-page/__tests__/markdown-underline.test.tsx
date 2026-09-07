@@ -1,16 +1,41 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import {
   agentInstructionsContract,
   agentsByIdContract,
 } from "@okouai/api-contracts/contracts/agents";
 import { expect, test } from "vitest";
 import { marked } from "marked";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createMarkdownChatFixture } from "./markdown-page-test-helpers.ts";
 
 const context = testContext();
+const featureSwitches = {
+  [FeatureSwitchKey.RichMarkdownUnderline]: true,
+} as const;
+
+test.each([
+  { source: "++Plain underline++", text: "++Plain underline++" },
+  { source: "**Prefix** ++Rich underline++", text: "++Rich underline++" },
+])("Underline stays literal by default: $source", async ({ source, text }) => {
+  const chat = createMarkdownChatFixture(context);
+  const rows = [
+    chat.outputMessage(source, { seqId: 1 }),
+    chat.runCompleted({ seqId: 2 }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+  const content = await screen.findByText(text);
+  expect(content).toBeVisible();
+  expect(content.closest("u")).toBeNull();
+});
 
 test("A global tokenizer without a renderer cannot break chat Markdown", async () => {
   const defaults = marked.defaults;
@@ -49,7 +74,12 @@ test("A global tokenizer without a renderer cannot break chat Markdown", async (
     },
   });
 
-  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches,
+  });
 
   const bold = await screen.findByText("Readable");
   expect(bold.tagName).toBe("STRONG");
@@ -70,7 +100,12 @@ test.each(["++Underlined text++", "**Prefix** ++Underlined text++"])(
       },
     });
 
-    await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+    await setupPage({
+      context,
+      path: chat.path,
+      host: "app.vm0.ai",
+      featureSwitches,
+    });
 
     const underline = await screen.findByText("Underlined text");
     expect(underline.tagName).toBe("U");
@@ -106,7 +141,12 @@ test("Underline preserves nested Markdown, literal code and escaped delimiters",
     },
   });
 
-  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches,
+  });
 
   const bold = await screen.findByText("Nested bold");
   expect(bold.tagName).toBe("STRONG");
@@ -143,7 +183,12 @@ test("A streaming underline remains readable until its closing delimiter arrives
     },
   });
 
-  await setupPage({ context, path: chat.path, host: "app.vm0.ai" });
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches,
+  });
 
   await expect(screen.findByText("++Streaming text")).resolves.toBeVisible();
   rows[0] = chat.outputMessage("++Streaming text++", {
@@ -157,6 +202,60 @@ test("A streaming underline remains readable until its closing delimiter arrives
 
   const underline = await screen.findByText("Streaming text");
   expect(underline.tagName).toBe("U");
+});
+
+test("Changing the underline switch in Lab refreshes a previously opened chat", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const rows = [
+    chat.outputMessage("++Rollout text++", { seqId: 1 }),
+    chat.runCompleted({ seqId: 2 }),
+  ];
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+  let effectiveSwitches: Record<string, boolean> = {
+    [FeatureSwitchKey.Lab]: true,
+    [FeatureSwitchKey.RichMarkdownUnderline]: false,
+  };
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: effectiveSwitches,
+  });
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(200, { switches: effectiveSwitches, effectiveSwitches });
+  });
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    effectiveSwitches = { ...effectiveSwitches, ...body.switches };
+    return respond(200, { switches: effectiveSwitches, effectiveSwitches });
+  });
+
+  for (const enabled of [true, false]) {
+    const row = (
+      await screen.findByText(FeatureSwitchKey.RichMarkdownUnderline)
+    ).closest("li");
+    if (!row) {
+      throw new Error("Expected the underline feature row");
+    }
+    const control = within(row).getByRole("switch");
+    click(control);
+    await waitFor(() => {
+      expect(control).toHaveAttribute("aria-checked", String(enabled));
+    });
+    await act(() => {
+      window.history.pushState({}, "", chat.path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    const content = await screen.findByText(
+      enabled ? "Rollout text" : "++Rollout text++",
+    );
+    expect(content.tagName).toBe(enabled ? "U" : "P");
+    await act(() => {
+      window.history.back();
+    });
+  }
 });
 
 test("Opening and reopening an instructions editor does not change chat parsing", async () => {
@@ -198,6 +297,7 @@ test("Opening and reopening an instructions editor does not change chat parsing"
     context,
     path: `/agents/${agentId}?tab=instructions`,
     host: "app.vm0.ai",
+    featureSwitches,
   });
 
   for (let visit = 0; visit < 2; visit++) {

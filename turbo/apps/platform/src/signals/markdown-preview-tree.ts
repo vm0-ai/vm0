@@ -9,6 +9,7 @@ import {
   embedMermaidSignals,
 } from "./mermaid-diagram.ts";
 import type { TextPreviewComputed } from "./text-preview.ts";
+import { richMarkdownUnderlineEnabled$ } from "./external/feature-switch.ts";
 
 export type MarkdownPreviewTreeComputed = Computed<Promise<Root>>;
 
@@ -29,15 +30,20 @@ export function createMarkdownPreviewTree(
     // The preview's error surface can explicitly retry preparation without
     // replacing an otherwise unchanged file.
     get(richMarkdownRetryVersion$);
+    const underline = get(richMarkdownUnderlineEnabled$);
     const ownerSignal = "aborted" in owner ? owner : get(owner);
     const source = await get(text$);
     ownerSignal.throwIfAborted();
-    const plainTree = createPlainMarkdownTree(source, { mathEnabled: false });
+    const plainTree = createPlainMarkdownTree(source, {
+      mathEnabled: false,
+      underline,
+    });
     if (plainTree !== null) {
       return plainTree;
     }
     const tree = parseMarkdownTree(source, {
       mermaid: true,
+      underline,
     });
     ownerSignal.throwIfAborted();
     embedMermaidSignals(tree, (code) => {
