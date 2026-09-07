@@ -325,6 +325,82 @@ describe("release-please API deployment graph", () => {
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
   });
 
+  it("reconciles the connector catalog immediately after API deployment", () => {
+    const workflow = readText(".github/workflows/release-please.yml");
+    const promoteApiProductionJob = workflowJobBlock(
+      workflow,
+      "promote-api-production",
+    );
+    const deployStep = promoteApiProductionJob.indexOf(
+      "- name: Deploy API Production",
+    );
+    const reconcileStep = promoteApiProductionJob.indexOf(
+      "- name: Reconcile production connector catalog (best effort)",
+    );
+    const finishStep = promoteApiProductionJob.indexOf(
+      "- name: Finish GitHub Deployment",
+    );
+
+    expect(deployStep).toBeGreaterThan(-1);
+    expect(reconcileStep).toBeGreaterThan(deployStep);
+    expect(finishStep).toBeGreaterThan(reconcileStep);
+    expect(promoteApiProductionJob).not.toContain(
+      "- name: Verify production App and API domains",
+    );
+    expect(promoteApiProductionJob).not.toContain(
+      "- name: Check staged API health",
+    );
+    expect(promoteApiProductionJob).not.toContain(
+      "- name: Promote API Production",
+    );
+
+    const deployBlock = promoteApiProductionJob.slice(
+      deployStep,
+      reconcileStep,
+    );
+    expect(deployBlock).not.toContain('skip-domain: "true"');
+    expect(deployBlock.match(/- name:/g)).toHaveLength(1);
+    expect(promoteApiProductionJob).not.toContain(
+      "uses: ./.github/actions/vercel-promote",
+    );
+
+    const reconcileBlock = promoteApiProductionJob.slice(
+      reconcileStep,
+      finishStep,
+    );
+    expect(reconcileBlock).toContain("shell: bash");
+    expect(reconcileBlock).toContain(
+      `API_DEPLOYMENT_URL: \${{ steps.deploy.outputs.url }}`,
+    );
+    expect(reconcileBlock).toContain(
+      "vercel curl /api/cron/sync-connector-catalog",
+    );
+    expect(reconcileBlock).toContain('--deployment "$API_DEPLOYMENT_URL"');
+    expect(reconcileBlock).toContain(
+      `--header "Authorization: Bearer \${CRON_SECRET}"`,
+    );
+    expect(reconcileBlock).not.toContain("for attempt in");
+    expect(reconcileBlock).not.toContain("sleep ");
+    expect(reconcileBlock).not.toContain("exit 1");
+    expect(reconcileBlock).toContain("::warning::");
+    expect(reconcileBlock).toContain("the scheduled cron will retry");
+    expect(reconcileBlock).toContain("--max-time 120");
+    expect(reconcileBlock).toContain("hasActive: (.active != null)");
+    expect(reconcileBlock).toContain(
+      "lastAttemptOutcome: .lastAttempt.outcome",
+    );
+    expect(reconcileBlock).toContain("stale: .filtering.stale");
+    expect(reconcileBlock).toContain(
+      "filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)",
+    );
+    expect(reconcileBlock).not.toContain("capabilityDigest:");
+    expect(reconcileBlock).not.toContain("catalogVersion:");
+    expect(reconcileBlock).not.toContain("catalogDigest:");
+    expect(reconcileBlock).toContain('.state == "current"');
+    expect(reconcileBlock).toContain(".active != null");
+    expect(reconcileBlock).toContain(".filtering.stale == false");
+  });
+
   it("keeps Vercel setup enabled for other deployment callers", () => {
     const action = readText(".github/actions/vercel-deploy/action.yml");
     const skipSetupInputStart = action.indexOf("  skip-setup:\n");
