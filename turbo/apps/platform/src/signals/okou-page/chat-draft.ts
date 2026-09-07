@@ -826,20 +826,18 @@ function createDraftDocumentSignals() {
 }
 
 /**
- * Drops restored attachments whose artifact no longer resolves for this
- * account. Leaving them in place strands the composer: the chip waits on a file
- * it can never load and every send is rejected, so removing them and saying so
- * is the only state the user can act on.
- */
-/**
- * Makes restored attachments usable: drops the ones whose file is gone, then
- * rebuilds any annotated copy the draft is missing.
+ * Makes restored attachments usable, in two passes.
  *
- * Both jobs belong together because both restore paths — `seed$` on page load
- * and `restoreAttachments$` on paste — end here, and an attachment that
- * reaches either one without the rebuild is stuck. Marks with no copy start as
- * `pending`, so nothing would move that state and the composer would refuse to
- * send with no affordance to fix it.
+ * Drops the ones whose artifact no longer resolves for this account. Leaving
+ * them in place strands the composer: the chip waits on a file it can never
+ * load and every send is rejected, so removing them and saying so is the only
+ * state the user can act on.
+ *
+ * Then rebuilds any annotated copy the draft is missing. Both restore paths —
+ * `seed$` on page load and `restoreAttachments$` on paste — end here, and an
+ * attachment that reaches either one without the rebuild is stuck: marks with
+ * no copy start as `pending`, so nothing would move that state and the
+ * composer would refuse to send with no affordance to fix it.
  */
 function createReconcileRestoredAttachments(
   internalAttachments$: State<ChatAttachment[]>,
