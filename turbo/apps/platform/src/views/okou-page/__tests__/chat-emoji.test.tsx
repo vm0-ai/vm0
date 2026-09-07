@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
+import { chatThreadRenameContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
   click,
@@ -99,6 +100,54 @@ function nextAnimationFrame(): Promise<void> {
   });
   return frame.promise;
 }
+
+test("Change a thread icon from the mobile header and keep one picker after resizing", async () => {
+  const viewport = context.mocks.browser.matchMedia(false);
+  context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
+    return respond(204);
+  });
+
+  await setupEmojiPage();
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      "Emoji planning",
+    );
+    expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("agent-avatar")).not.toBeInTheDocument();
+
+  click(buttonByLabel("Change icon"));
+  await screen.findByRole("textbox", { name: "Search emoji" });
+  click(emojiButton("grinning face"));
+  await waitFor(() => {
+    expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
+    expect(
+      screen.queryByRole("textbox", { name: "Search emoji" }),
+    ).not.toBeInTheDocument();
+  });
+
+  act(() => {
+    viewport.setMatches(true);
+  });
+  await waitFor(() => {
+    expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
+    expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
+  });
+  click(buttonByLabel("Change icon"));
+  await screen.findByRole("textbox", { name: "Search emoji" });
+
+  act(() => {
+    viewport.setMatches(false);
+  });
+  await waitFor(() => {
+    expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("textbox", { name: "Search emoji" }),
+    ).toHaveLength(1);
+  });
+  expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
+  expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
+});
 
 test("Choosing an emoji category exits search results", async () => {
   const user = userEvent.setup();
