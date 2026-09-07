@@ -805,7 +805,11 @@ async fn wait_for_child_cleanup(component: &str, pid: u32, starttime: u64) {
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("{component} cleanup should eventually reap its owned child"));
+    .unwrap_or_else(|_| {
+        panic!(
+            "{component} cleanup did not reap child pid {pid} with start time {starttime} within 2s"
+        )
+    });
 }
 
 async fn assert_run_error_contains(
