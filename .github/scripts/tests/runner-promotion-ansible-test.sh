@@ -10,10 +10,12 @@ rollback_playbook="$repo_root/ansible/playbooks/rollback-runner.yml"
 gc_task="$repo_root/ansible/tasks/garbage-collect-runner.yml"
 release_workflow="$repo_root/.github/workflows/release-please.yml"
 
-if ! command -v ansible-playbook >/dev/null; then
-  echo "ansible-playbook is required" >&2
-  exit 1
-fi
+for command in ansible-playbook yq; do
+  if ! command -v "$command" >/dev/null; then
+    echo "$command is required" >&2
+    exit 1
+  fi
+done
 
 assert_contains() {
   local file=$1
@@ -313,5 +315,76 @@ assert_contains "$release_workflow" \
   "steps.promote-runner.outputs.has_warnings != 'true'"
 assert_contains "$release_workflow" \
   "steps.promote-runner.outputs.has_warnings == 'true'"
+
+promotion_script="$(
+  yq -r '.jobs.promote-runner-production.steps[] | select(.id == "promote-runner") | .run' \
+    "$release_workflow"
+)"
+cat > "$fake_bin/ansible-playbook" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$PROMOTION_WORKFLOW_CASE" in
+  empty)
+    ;;
+  warnings)
+    cp "$PROMOTION_TEST_WARNING_SOURCE/"*.json "$RUNNER_TEMP/runner-promotion-warnings/"
+    ;;
+  missing-directory)
+    rmdir "$RUNNER_TEMP/runner-promotion-warnings"
+    ;;
+  *)
+    echo "unexpected workflow test case: $PROMOTION_WORKFLOW_CASE" >&2
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/ansible-playbook"
+
+run_promotion_workflow() (
+  local case_name=$1
+  local work_dir="$tmp/workflow-$case_name"
+  mkdir -p "$work_dir"
+  cd "$repo_root"
+  PATH="$fake_bin:$PATH" \
+    RUNNER_TEMP="$work_dir" \
+    GITHUB_OUTPUT="$work_dir/output" \
+    GITHUB_STEP_SUMMARY="$work_dir/summary" \
+    RUNNER_HOSTS=promotion-test \
+    AWS_METAL_RUNNER_USER=runner-test \
+    SENTRY_DSN_RUNNER='' \
+    AXIOM_TOKEN_TELEMETRY='' \
+    RUNNER_VERSION=999.0.0 \
+    RUNNER_TARGET="$runner_target" \
+    PROMOTION_WORKFLOW_CASE="$case_name" \
+    PROMOTION_TEST_WARNING_SOURCE="$drain_warning_dir" \
+    bash --noprofile --norc -e -o pipefail -c "$promotion_script" >"$work_dir/log" 2>&1
+)
+
+for workflow_case in empty warnings; do
+  if ! run_promotion_workflow "$workflow_case"; then
+    cat "$tmp/workflow-$workflow_case/log" >&2
+    exit 1
+  fi
+done
+assert_line_count "$tmp/workflow-empty/output" 1 'has_warnings=false'
+assert_line_count "$tmp/workflow-warnings/output" 1 'has_warnings=true'
+assert_contains "$tmp/workflow-warnings/summary" '## Runner promotion warnings'
+assert_contains "$tmp/workflow-warnings/summary" \
+  '"error": "drain acknowledgement timed out for v101.0.0"'
+for host in runner-promotion-a runner-promotion-b; do
+  assert_contains "$tmp/workflow-warnings/summary" "\"host\": \"$host\""
+done
+
+if run_promotion_workflow missing-directory; then
+  echo "warning discovery failure unexpectedly succeeded" >&2
+  cat "$tmp/workflow-missing-directory/log" >&2
+  exit 1
+fi
+if [ -s "$tmp/workflow-missing-directory/output" ]; then
+  echo "warning discovery failure must not publish a success output" >&2
+  cat "$tmp/workflow-missing-directory/output" >&2
+  exit 1
+fi
 
 echo "runner-promotion-ansible-test: ok"

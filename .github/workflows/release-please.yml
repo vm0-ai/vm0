@@ -2475,9 +2475,9 @@ jobs:
             -e "promotion_warning_dir=${promotion_warning_dir}" \
             -v
 
-          mapfile -d '' warning_files < <(
-            find "$promotion_warning_dir" -type f -name '*.json' -print0 | sort -z
-          )
+          warning_manifest="${RUNNER_TEMP}/runner-promotion-warning-files"
+          find "$promotion_warning_dir" -type f -name '*.json' -print0 | sort -z > "$warning_manifest"
+          mapfile -d '' warning_files < "$warning_manifest"
           if (( ${#warning_files[@]} > 0 )); then
             echo "has_warnings=true" >> "$GITHUB_OUTPUT"
             {
