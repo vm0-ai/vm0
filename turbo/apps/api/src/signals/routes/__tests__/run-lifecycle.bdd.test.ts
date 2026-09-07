@@ -1686,6 +1686,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationTemplates]: false,
+    });
+
     // The guide is not a mounted skill, so the prompt is the only thing that
     // tells a run where to pull it. Off, it must stay out of every run.
     const gatedOff = await api.createRun(actor, {

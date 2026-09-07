@@ -1,7 +1,9 @@
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { platformRealtimeTokenContract } from "@okouai/api-contracts/contracts/realtime";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -15,6 +17,7 @@ import {
 } from "../realtime.ts";
 import { clerk$, setupClerk$ } from "../auth.ts";
 import { initializeAppVersion$ } from "../app-version.ts";
+import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { setRootSignal$ } from "../root-signal.ts";
@@ -167,6 +170,11 @@ test("Workspace live updates stay in the active workspace", async () => {
 
 test("A disabled workspace-template feature does not receive workspace updates", async () => {
   mockSignedInUser();
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    const switches = { [FeatureSwitchKey.PresentationTemplates]: false };
+    return respond(200, { switches, effectiveSwitches: switches });
+  });
+  await context.store.set(reloadFeatureSwitch$, context.signal);
   const subscriber = testSubscriber();
   const subscriptionPromise = context.store.set(
     subscribePresentationTemplatesChanged$,
