@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => {
       >(async () => ({ response: 0 })),
     },
     setInterval: vi.fn(),
+    setTimeout: vi.fn(),
     sentryInit: vi.fn(),
     sentryCaptureException: vi.fn<(error: unknown) => string>(() => "event"),
   };
@@ -48,6 +49,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("node:timers", () => ({
   setInterval: mocks.setInterval,
+  setTimeout: mocks.setTimeout,
 }));
 
 vi.mock("electron", () => ({
