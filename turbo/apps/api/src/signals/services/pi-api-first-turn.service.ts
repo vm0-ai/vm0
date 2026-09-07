@@ -2145,13 +2145,16 @@ export const runPiApiFirstTurn$ = command(
           }
         : undefined;
     }
-    apiAttemptController.abort(executed.error);
     const activeInputBeforeProvider =
       executed.error instanceof PiApiFirstTurnActiveInputBeforeProviderError;
     let failure = normalizedApiFirstTurnFailure(
       executed.error,
       apiAttemptSignal,
     );
+    // Classify the failure before closing any residual attempt work. Aborting
+    // the private controller first would misclassify every raw API failure as
+    // an ownership deadline and incorrectly replay it in Sandbox.
+    apiAttemptController.abort(executed.error);
     const resourceFallbackReason = activeInputBeforeProvider
       ? null
       : eligibleSandboxFallbackReason(
