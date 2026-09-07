@@ -3839,7 +3839,7 @@ function RunWorkSectionRow({
   const { t } = useTranslation();
   const content = (
     <>
-      <span className="flex size-7 shrink-0 items-center justify-center">
+      <span className="flex w-7 shrink-0 items-center justify-center">
         <Hourglass aria-hidden />
       </span>
       <span className="inline-flex min-w-0 items-center gap-1">
@@ -3887,10 +3887,12 @@ function RunWorkSectionRow({
       ) : null}
     </>
   );
-  const className =
-    "inline-flex min-h-7 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal leading-5 text-muted-foreground [&_svg]:size-3.5";
+  const className = cn(
+    "inline-flex min-h-9 w-fit items-center gap-0 rounded-lg pr-1 text-[13px] font-normal text-muted-foreground [&_svg]:size-3.5",
+    CHAT_THREAD_RESPONSE_LINE_CLASS,
+  );
   return (
-    <div data-chat-run-work className="flex min-h-7 items-center">
+    <div data-chat-run-work className="flex min-h-9 items-center">
       {collapsible ? (
         <Button
           type="button"
