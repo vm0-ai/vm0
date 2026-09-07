@@ -12115,7 +12115,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const h1 = h1Bytes.toString("utf8");
     expect(h1).toContain('"type":"thinking_level_change"');
-    expect(h1).toContain('"thinkingLevel":"low"');
+    expect(h1).toContain('"thinkingLevel":"max"');
     expect(h1).not.toContain("serviceTier");
     const h2Session = MemoryPiSession.fromJsonl(h1);
     const h1Assistant = [...h2Session.buildSessionContext().messages]
