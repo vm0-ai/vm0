@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { debounceCommand } from "../command-scheduling.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { resetSignal } from "../utils.ts";
+import { hideKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -196,6 +197,7 @@ export const threeColumnSearchOpen$ = computed((get) => {
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
   if (!open) {
     set(clearChatListQuery$);
+    set(hideKeyboardShortcutHints$);
   }
   set(internalThreeColumnSearchOpen$, open);
 });
@@ -211,6 +213,7 @@ export const setThreeColumnSearchFilter$ = command(
 );
 
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
+  set(hideKeyboardShortcutHints$);
   set(clearChatListQuery$);
   set(internalThreeColumnSearchFilter$, "all");
   set(internalThreeColumnSearchOpen$, true);

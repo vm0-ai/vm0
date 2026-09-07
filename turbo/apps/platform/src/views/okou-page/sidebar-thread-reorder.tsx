@@ -175,7 +175,7 @@ export function PinnedThreadRow({
             }
           : undefined
       }
-      className="group group/shortcut relative grid grid-cols-[minmax(0,1fr)_auto] okou-thread-reorder-row"
+      className="group relative grid grid-cols-[minmax(0,1fr)_auto] okou-thread-reorder-row"
       data-thread-id={signals.threadId}
       data-reorderable={reorderable || undefined}
       data-dragging={
