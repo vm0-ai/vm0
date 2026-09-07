@@ -33,7 +33,7 @@ async fn sibling_fixture(
 }
 
 #[tokio::test]
-async fn idle_reclamation_holds_from_unpark_through_stop_but_not_host_destroy() {
+async fn idle_reclamation_holds_from_terminal_unpark_through_kill_but_not_host_destroy() {
     let history = br#"{"type":"message","content":"bounded reclamation"}"#;
     let identity = test_restored_session_identity("sess-reclamation", history);
     let first = WorkspacePromotionFixture::new_with_restored_session_identity_and_export_capacity(
@@ -47,12 +47,12 @@ async fn idle_reclamation_holds_from_unpark_through_stop_but_not_host_destroy() 
     let unpark = MockLifecycleGate::new();
     let exec = MockLifecycleGate::new();
     let copy = MockLifecycleGate::new();
-    let stop = MockLifecycleGate::new();
+    let kill = MockLifecycleGate::new();
     let destroy = MockLifecycleGate::new();
     overrides.set_unpark_lifecycle_gate(unpark.clone());
     overrides.set_exec_lifecycle_gate(exec.clone());
     overrides.set_copy_file_lifecycle_gate(copy.clone());
-    overrides.set_stop_lifecycle_gate(stop.clone());
+    overrides.set_kill_lifecycle_gate(kill.clone());
     overrides.set_destroy_lifecycle_gate(destroy.clone());
     overrides.add_exec_result_matcher(
         "export-session-history-sidecar",
@@ -100,17 +100,23 @@ async fn idle_reclamation_holds_from_unpark_through_stop_but_not_host_destroy() 
     assert!(matches!(futures_util::poll!(&mut queued), Poll::Pending));
     assert_eq!(second_overrides.unpark_call_count(), 0);
     copy.release_one();
-    // Sidecar cleanup, then workspace freeze, are both still admitted work.
-    for count in [2, 3] {
-        exec.wait_entered(count, WAIT).await.unwrap();
-        assert!(matches!(futures_util::poll!(&mut queued), Poll::Pending));
-        assert_eq!(second_overrides.unpark_call_count(), 0);
-        exec.release_one();
-    }
-    stop.wait_entered(1, WAIT).await.unwrap();
+    // Workspace freeze remains admitted work; guest sidecar cleanup is left
+    // to sandbox destruction.
+    exec.wait_entered(2, WAIT).await.unwrap();
     assert!(matches!(futures_util::poll!(&mut queued), Poll::Pending));
     assert_eq!(second_overrides.unpark_call_count(), 0);
-    stop.release_one();
+    exec.release_one();
+    kill.wait_entered(1, WAIT).await.unwrap();
+    assert!(matches!(futures_util::poll!(&mut queued), Poll::Pending));
+    assert_eq!(second_overrides.unpark_call_count(), 0);
+    assert!(
+        first.cache.held_workspace_states().await.is_empty(),
+        "frozen workspace must remain unpublished until kill succeeds"
+    );
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
+    kill.release_one();
     destroy.wait_entered(1, WAIT).await.unwrap();
 
     let second_result = tokio::time::timeout(WAIT, queued).await.unwrap();
@@ -118,7 +124,7 @@ async fn idle_reclamation_holds_from_unpark_through_stop_but_not_host_destroy() 
     assert_eq!(second_overrides.destroy_call_count(), 1);
     assert!(
         !task.is_finished(),
-        "post-stop host cleanup is still blocked"
+        "post-kill host cleanup is still blocked"
     );
     assert_eq!(budget.allocated(), (2, 4096, 1));
     destroy.release_one();
@@ -170,7 +176,7 @@ async fn idle_reclamation_uses_host_cpu_capacity_across_cache_clones() {
                 .iter()
                 .all(|result| result.outcome == DestroyOutcome::Completed)
         );
-        // Publication is best effort: concurrent post-stop publishers may skip
+        // Publication is best effort: concurrent post-kill publishers may skip
         // the nonblocking cache-capacity lock, but every sandbox must be cleaned up.
         let promoted = results
             .iter()
@@ -184,22 +190,22 @@ async fn idle_reclamation_uses_host_cpu_capacity_across_cache_clones() {
 }
 
 #[tokio::test]
-async fn idle_reclamation_retains_admission_through_destroy_when_stop_fails() {
+async fn idle_reclamation_retains_admission_through_destroy_when_kill_fails() {
     for panics in [false, true] {
         let first =
             WorkspacePromotionFixture::new_with_restored_session_identity_and_export_capacity(
-                "thread:stop-failure",
+                "thread:kill-failure",
                 None,
                 1,
             )
             .await;
-        let second = sibling_fixture(&first, "thread:after-stop-failure").await;
+        let second = sibling_fixture(&first, "thread:after-kill-failure").await;
         let overrides = Arc::new(MockSandboxOverrides::new());
         if panics {
-            overrides.push_stop_panic("test stop panic");
+            overrides.push_kill_panic("test kill panic");
         } else {
-            overrides.push_stop_result(Err(SandboxError::Start {
-                message: "test stop failure".into(),
+            overrides.push_kill_result(Err(SandboxError::Start {
+                message: "test kill failure".into(),
             }));
         }
         let destroy = MockLifecycleGate::new();
@@ -287,7 +293,7 @@ async fn idle_reclamation_failure_releases_admission_after_cleanup() {
                 overrides.add_exec_panic_matcher("--freeze", "test freeze panic")
             }
             Failure::DestroyPanic => {
-                overrides.push_stop_panic("test stop panic");
+                overrides.push_kill_panic("test kill panic");
                 overrides.push_destroy_panic("test destroy panic");
             }
         }

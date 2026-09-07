@@ -98,6 +98,13 @@ const PROCESS_LOG_READER_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Timeout for guest lifecycle acknowledgements during same-session park/unpark.
 const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnparkPurpose {
+    Reuse,
+    TerminalOperations,
+}
+
 /// Independent deadline for terminal diagnostics on an already-severe park.
 const GUEST_MEMORY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -2127,6 +2134,83 @@ impl FirecrackerSandbox {
             }
         }
     }
+
+    async fn unpark_with_purpose(&mut self, purpose: UnparkPurpose) -> sandbox::Result<()> {
+        if !self.is_parked {
+            if self.park_fence.is_some() {
+                let message = "sandbox has a normal-operation fence while unpark is a no-op";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    message,
+                ));
+            }
+            if self.park_outcome.is_some() {
+                let message = "sandbox has a recorded park outcome while unpark is a no-op";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    message,
+                ));
+            }
+            return ensure_unpark_noop_state(&self.park_coordinator);
+        }
+        if self.park_fence.is_none() {
+            let message = "sandbox is parked without a normal-operation fence";
+            self.park_coordinator.mark_dirty(DirtyReason::new(message));
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                message,
+            ));
+        }
+
+        let guest_rpc_endpoint = self.bind_guest_rpc_endpoint().map_err(|error| {
+            idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                format!("bind guest RPC transport: {error}"),
+            )
+        })?;
+        let coordinator = self.park_coordinator.clone();
+        let guest = Arc::clone(&self.guest);
+        let id = self.id.clone();
+        let api_sock = self.sock_paths.api_sock();
+        let memory_mb = self.config.resources.memory_mb;
+        let state_rx = self.state_tx.subscribe();
+        let is_parked = &mut self.is_parked;
+        let balloon_controller = self.runtime.balloon_mut();
+        let park_fence = &mut self.park_fence;
+        unpark_with_ready_for_operations(
+            &id,
+            &coordinator,
+            || {
+                unpark_inner(
+                    is_parked,
+                    memory_mb,
+                    balloon_controller,
+                    &api_sock,
+                    state_rx,
+                    &id,
+                    purpose,
+                )
+            },
+            || async move {
+                let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        "guest connection missing during unpark resume",
+                    )
+                })?;
+                guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+            },
+            || {
+                drop(park_fence.take());
+            },
+        )
+        .await?;
+        self.park_outcome = None;
+        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -2310,6 +2394,9 @@ impl Sandbox for FirecrackerSandbox {
     // the reactive controller so active workload is served with full
     // memory again. Ordering: resume before deflate — the guest needs
     // running vCPUs to process the deflate.
+    // `unpark_for_terminal_operations()` shares that readiness sequence but
+    // omits the reactive controller because the lifecycle owner must destroy
+    // the sandbox after its bounded preservation work.
     //
     // Park first closes the sandbox policy gate, then acquires a host-side
     // vsock normal-operation fence before guest lifecycle quiesce. Unpark
@@ -2452,79 +2539,12 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
-        if !self.is_parked {
-            if self.park_fence.is_some() {
-                let message = "sandbox has a normal-operation fence while unpark is a no-op";
-                self.park_coordinator.mark_dirty(DirtyReason::new(message));
-                return Err(idle_transition_error(
-                    SandboxIdleTransition::Unpark,
-                    message,
-                ));
-            }
-            if self.park_outcome.is_some() {
-                let message = "sandbox has a recorded park outcome while unpark is a no-op";
-                self.park_coordinator.mark_dirty(DirtyReason::new(message));
-                return Err(idle_transition_error(
-                    SandboxIdleTransition::Unpark,
-                    message,
-                ));
-            }
-            return ensure_unpark_noop_state(&self.park_coordinator);
-        }
-        if self.park_fence.is_none() {
-            let message = "sandbox is parked without a normal-operation fence";
-            self.park_coordinator.mark_dirty(DirtyReason::new(message));
-            return Err(idle_transition_error(
-                SandboxIdleTransition::Unpark,
-                message,
-            ));
-        }
+        self.unpark_with_purpose(UnparkPurpose::Reuse).await
+    }
 
-        let guest_rpc_endpoint = self.bind_guest_rpc_endpoint().map_err(|error| {
-            idle_transition_error(
-                SandboxIdleTransition::Unpark,
-                format!("bind guest RPC transport: {error}"),
-            )
-        })?;
-        let coordinator = self.park_coordinator.clone();
-        let guest = Arc::clone(&self.guest);
-        let id = self.id.clone();
-        let api_sock = self.sock_paths.api_sock();
-        let memory_mb = self.config.resources.memory_mb;
-        let state_rx = self.state_tx.subscribe();
-        let is_parked = &mut self.is_parked;
-        let balloon_controller = self.runtime.balloon_mut();
-        let park_fence = &mut self.park_fence;
-        unpark_with_ready_for_operations(
-            &id,
-            &coordinator,
-            || {
-                unpark_inner(
-                    is_parked,
-                    memory_mb,
-                    balloon_controller,
-                    &api_sock,
-                    state_rx,
-                    &id,
-                )
-            },
-            || async move {
-                let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::NotConnected,
-                        "guest connection missing during unpark resume",
-                    )
-                })?;
-                guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
-            },
-            || {
-                drop(park_fence.take());
-            },
-        )
-        .await?;
-        self.park_outcome = None;
-        self.guest_rpc_endpoint = Some(guest_rpc_endpoint);
-        Ok(())
+    async fn unpark_for_terminal_operations(&mut self) -> sandbox::Result<()> {
+        self.unpark_with_purpose(UnparkPurpose::TerminalOperations)
+            .await
     }
 
     // -- operations --
@@ -4555,6 +4575,7 @@ async fn unpark_inner(
     api_sock: &std::path::Path,
     state_rx: watch::Receiver<SandboxState>,
     log_id: &str,
+    purpose: UnparkPurpose,
 ) -> sandbox::Result<()> {
     if !*is_parked {
         return Ok(());
@@ -4606,12 +4627,14 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
-        *balloon_controller = Some(balloon::spawn_after_unpark_deflation(
-            client,
-            memory_mb,
-            state_rx,
-            log_id.to_owned(),
-        ));
+        if purpose == UnparkPurpose::Reuse {
+            *balloon_controller = Some(balloon::spawn_after_unpark_deflation(
+                client,
+                memory_mb,
+                state_rx,
+                log_id.to_owned(),
+            ));
+        }
     }
 
     *is_parked = false;

@@ -53,14 +53,18 @@ Workspace promotion uses two independent runner-process-local admission gates,
 each sized as `(host_cpus / 2).clamp(1, 4)`. Cache clones share the gates.
 The existing sidecar export gate covers guest export execution only. Idle
 reclamation additionally acquires admission **before unpark** and holds it
-through export, host copy, cleanup, workspace freeze and sandbox stop. Waiting
-reclamation jobs remain parked.
+through terminal unpark, export, host copy, workspace freeze and immediate
+sandbox termination. Waiting reclamation jobs remain parked. Terminal unpark
+does not start the reactive balloon controller used by future active workloads,
+and the temporary guest sidecar is left for sandbox destruction instead of a
+separate guest cleanup command.
 
-After a successful stop, cache publication and factory destruction run without
-holding idle admission. If stop fails or panics, admission remains held through
-the factory destruction attempt. Missing or explicitly abandoned promotion
-does not acquire this gate. Normal startup/reuse and active sandbox promotion
-do not acquire idle reclamation admission.
+After successful termination, cache publication and factory destruction run
+without holding idle admission. If termination fails or panics, publication is
+abandoned and admission remains held through the factory destruction attempt.
+Missing or explicitly abandoned promotion does not acquire this gate. Normal
+startup/reuse and active sandbox promotion do not acquire idle reclamation
+admission.
 
 This limits simultaneous resumed idle guests, not total sandboxes or team run
 concurrency. A bulk drain can take longer and retain parked budget leases while

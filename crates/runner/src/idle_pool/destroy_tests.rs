@@ -74,28 +74,32 @@ pub(super) async fn make_idle_destroy_job_for(
 }
 
 #[tokio::test]
-async fn idle_destroy_payload_stop_error_completes_after_destroy() {
+async fn idle_destroy_payload_kill_error_completes_after_destroy() {
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_stop_result(Err(sandbox::SandboxError::Start {
-        message: "simulated idle stop failure".into(),
+    overrides.push_kill_result(Err(sandbox::SandboxError::Start {
+        message: "simulated idle kill failure".into(),
     }));
     let payload = make_idle_destroy_payload(Arc::clone(&overrides)).await;
 
     let outcome = payload.stop_and_destroy().await;
 
     assert_eq!(outcome, DestroyOutcome::Completed);
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
 }
 
 #[tokio::test]
-async fn idle_destroy_payload_stop_panic_is_uncertain_after_destroy() {
+async fn idle_destroy_payload_kill_panic_is_uncertain_after_destroy() {
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_stop_panic("simulated idle stop panic");
+    overrides.push_kill_panic("simulated idle kill panic");
     let payload = make_idle_destroy_payload(Arc::clone(&overrides)).await;
 
     let outcome = payload.stop_and_destroy().await;
 
     assert_eq!(outcome, DestroyOutcome::Uncertain);
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
 }
 
@@ -149,10 +153,10 @@ async fn idle_destroy_job_destroy_panic_preserves_workspace_cache_and_releases_b
 }
 
 #[tokio::test]
-async fn idle_destroy_job_stop_panic_still_attempts_destroy_and_releases_budget_lease() {
-    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-stop-panic").await;
+async fn idle_destroy_job_kill_panic_still_attempts_destroy_and_releases_budget_lease() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-kill-panic").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_stop_panic("simulated idle stop panic");
+    overrides.push_kill_panic("simulated idle kill panic");
     let (budget, lease) = reserved_budget_lease();
     let job = make_idle_destroy_job_for(
         fixture.sandbox_id,
@@ -162,7 +166,7 @@ async fn idle_destroy_job_stop_panic_still_attempts_destroy_and_releases_budget_
     )
     .await;
 
-    let promoted = job.run_with_context("test_stop_panic").await;
+    let promoted = job.run_with_context("test_kill_panic").await;
 
     assert!(!promoted);
     let exec_calls = overrides.exec_calls();
@@ -178,16 +182,16 @@ async fn idle_destroy_job_stop_panic_still_attempts_destroy_and_releases_budget_
 }
 
 #[tokio::test]
-async fn idle_destroy_job_stop_error_still_attempts_destroy_and_releases_budget_lease() {
+async fn idle_destroy_job_kill_error_still_attempts_destroy_and_releases_budget_lease() {
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_stop_result(Err(sandbox::SandboxError::Start {
-        message: "simulated idle stop failure".into(),
+    overrides.push_kill_result(Err(sandbox::SandboxError::Start {
+        message: "simulated idle kill failure".into(),
     }));
     let (budget, lease) = reserved_budget_lease();
     assert_eq!(budget.allocated(), (2, 4096, 1));
     let job = make_idle_destroy_job(Arc::clone(&overrides), lease).await;
 
-    let promoted = job.run_with_context("test_stop_error").await;
+    let promoted = job.run_with_context("test_kill_error").await;
 
     assert!(!promoted);
     assert_eq!(overrides.destroy_call_count(), 1);
@@ -195,7 +199,7 @@ async fn idle_destroy_job_stop_error_still_attempts_destroy_and_releases_budget_
 }
 
 #[tokio::test]
-async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop() {
+async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_kill() {
     let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-promote").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     let (budget, lease) = reserved_budget_lease();
@@ -210,6 +214,9 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
     let promoted = job.run_with_context("test_idle_destroy_promote").await;
 
     assert!(promoted);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(
@@ -240,11 +247,11 @@ async fn idle_destroy_job_publishes_frozen_workspace_only_after_successful_stop(
 }
 
 #[tokio::test]
-async fn idle_destroy_job_stop_error_abandons_frozen_workspace_and_still_destroys() {
-    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-stop-error").await;
+async fn idle_destroy_job_kill_error_abandons_frozen_workspace_and_still_destroys() {
+    let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-kill-error").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_stop_result(Err(sandbox::SandboxError::Start {
-        message: "simulated idle stop failure".into(),
+    overrides.push_kill_result(Err(sandbox::SandboxError::Start {
+        message: "simulated idle kill failure".into(),
     }));
     let (budget, lease) = reserved_budget_lease();
     let job = make_idle_destroy_job_for(
@@ -255,9 +262,12 @@ async fn idle_destroy_job_stop_error_abandons_frozen_workspace_and_still_destroy
     )
     .await;
 
-    let promoted = job.run_with_context("test_idle_destroy_stop_error").await;
+    let promoted = job.run_with_context("test_idle_destroy_kill_error").await;
 
     assert!(!promoted);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(
@@ -271,7 +281,7 @@ async fn idle_destroy_job_stop_error_abandons_frozen_workspace_and_still_destroy
 }
 
 #[tokio::test]
-async fn idle_destroy_job_publication_failure_after_stop_still_destroys() {
+async fn idle_destroy_job_publication_failure_after_kill_still_destroys() {
     let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-publish-error").await;
     let paths = RunnerPaths::new(fixture._dir.path().join("runner"));
     tokio::fs::remove_file(paths.active_workspace_image(&fixture.sandbox_id))
@@ -348,7 +358,10 @@ async fn assert_idle_destroy_job_unpark_failure_skips_workspace_cache_and_still_
 
     assert!(!promoted);
     assert_eq!(overrides.unpark_call_count(), 1);
+    assert_eq!(overrides.terminal_unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
+    assert_eq!(overrides.stop_call_count(), 0);
+    assert_eq!(overrides.kill_call_count(), 1);
     assert_eq!(overrides.destroy_call_count(), 1);
     assert_eq!(budget.allocated(), (0, 0, 0));
     assert!(fixture.cache.held_workspace_states().await.is_empty());
