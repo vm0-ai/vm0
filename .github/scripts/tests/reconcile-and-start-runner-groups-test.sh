@@ -58,6 +58,10 @@ case "$*" in
     if [ "${MOCK_FAILURE:-none}" = readiness ]; then
       exit 1
     fi
+    if [ "${MOCK_FAILURE:-none}" = cancel ]; then
+      kill -TERM "$MOCK_DEPLOY_PID"
+      exit 0
+    fi
     echo 35
     ;;
   "sudo ${BIN_DIR}/runner doctor "*) ;;
@@ -65,6 +69,12 @@ case "$*" in
 esac
 SH
 chmod +x "${tmp_dir}/bin/ssh"
+
+cat >"${tmp_dir}/run-deployment" <<'SH'
+#!/usr/bin/env bash
+export MOCK_DEPLOY_PID=$$
+exec bash "$@"
+SH
 
 run_case() {
   local case_name=$1 job_ref=$2 selected_host=$3 selected_index=$4 failure=$5
@@ -109,10 +119,13 @@ run_case() {
     MOCK_REMOTE_ROOT="$case_dir" \
     MOCK_SERVICE_LOG="${case_dir}/service.log" \
     MOCK_FAILURE="$failure" \
-    bash "$script" >"${case_dir}/output" 2>&1 || status=$?
+    bash "${tmp_dir}/run-deployment" "$script" >"${case_dir}/output" 2>&1 || status=$?
 
   if [ "$failure" != none ]; then
     [ "$status" -ne 0 ] || fail "${case_name}: ${failure} failure must fail deployment"
+    if [ "$failure" = cancel ]; then
+      [ "$status" -eq 143 ] || fail "${case_name}: cancellation must preserve the signal exit code"
+    fi
     [ ! -f "${case_dir}/${selected_host}/${service_ref}-${selected_index}" ] ||
       fail "${case_name}: failed start left the selected service running"
   else
@@ -138,6 +151,8 @@ run_case() {
     [ "$(cat "${case_dir}/${host}/pr-999-${host_index}")" = unrelated-service ] ||
       fail "${case_name}: deployment changed another PR's service"
     [ "$host" = "$selected_host" ] && continue
+    # Cancellation can interrupt retirement, but must roll back the new service.
+    [ "$failure" = cancel ] && continue
     if [ "$failure" = retire ] && [ "$host" = x86-2 ]; then
       [ -f "${case_dir}/${host}/${service_ref}-${host_index}" ] ||
         fail "${case_name}: fixture did not retain the failed retirement"
@@ -154,6 +169,7 @@ run_case x86 pr-1 x86-1 2 none
 run_case arm pr-2 arm-1 1 none
 run_case failed-start pr-9 x86-2 3 readiness
 run_case failed-retirement pr-1 x86-1 2 retire
+run_case cancelled-start pr-9 x86-2 3 cancel
 # A new staging image ref can select another host while service names stay fixed.
 run_case staging staging-000000000000 arm-1 1 none
 run_case staging staging-222222222222 x86-1 2 none
