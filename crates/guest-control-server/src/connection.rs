@@ -8,10 +8,11 @@ use std::time::{Duration, Instant};
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use guest_control_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
-    MSG_GUEST_DNS_READINESS, MSG_GUEST_STATE_RESTORE, MSG_GUEST_STORAGE_MANIFEST,
-    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_WORKSPACE_DRIVE_MOUNT, MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
+    MSG_FILE_WRITE_STATUS, MSG_FILE_WRITE_STATUS_RESULT, MSG_GUEST_DNS_READINESS,
+    MSG_GUEST_STATE_RESTORE, MSG_GUEST_STORAGE_MANIFEST, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_WORKSPACE_DRIVE_MOUNT,
+    MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
 };
 
 use crate::agent_command::GuestAgentProgram;
@@ -411,10 +412,31 @@ impl ConnectionDispatcher {
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
             MSG_MEMORY_SNAPSHOT => self.handle_memory_snapshot(msg)?,
+            MSG_FILE_WRITE_STATUS => self.handle_file_write_status(msg)?,
             _ => return self.handle_basic_message(msg),
         }
 
         Ok(DispatchOutcome::Continue)
+    }
+
+    fn handle_file_write_status(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "file-write status", &self.writer)?
+            || !validate_empty_control_payload(
+                msg.seq,
+                "file-write status payload must be empty",
+                msg.payload,
+                &self.writer,
+            )?
+        {
+            return Ok(());
+        }
+        // This read-only control query neither acquires normal-operation
+        // ownership nor changes the quiesce fence. Release the snapshot lock
+        // before acquiring the response writer.
+        let payload = self.file_write_worker.status().encode_payload();
+        let response = guest_control_proto::encode(MSG_FILE_WRITE_STATUS_RESULT, msg.seq, &payload)
+            .map_err(to_io_error)?;
+        self.writer.write_frame(&response)
     }
 
     fn handle_exec_start(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {

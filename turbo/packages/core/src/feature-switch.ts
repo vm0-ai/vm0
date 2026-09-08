@@ -218,17 +218,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NotionWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description:
-      "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description: "Enable Google Forms response workflow automations.",
-    enabled: true,
-  },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -407,12 +396,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
-  [FeatureSwitchKey.FollowUpOptimize]: {
-    maintainer: "lancy@okou.ai",
-    description:
-      "Use a concise, language-matched prompt for recommended chat follow-ups.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
     description:
@@ -460,6 +443,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@okou.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.SlackRead]: {
+    maintainer: "linghan@okou.ai",
+    description:
+      "List Slack channels and read channel and bot DM history through the Okou CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

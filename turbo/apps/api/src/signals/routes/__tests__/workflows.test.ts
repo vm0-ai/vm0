@@ -1646,13 +1646,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Notion Copy Source Agent",
       visibility: "private",
@@ -2006,13 +1999,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Google Forms Copy Source Agent",
       visibility: "private",

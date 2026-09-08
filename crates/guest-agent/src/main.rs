@@ -1475,57 +1475,96 @@ mod tests {
             .block_on(async {
                 let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
                 server.reset_async().await;
-                let _env_guard = unsafe { set_test_env(server, None) };
-                let guest_paths = test_guest_paths();
+                let tmp = tempfile::tempdir().unwrap();
+                let guest_paths = paths::GuestPaths::from_runtime_dir(tmp.path());
+                let system_log_path = Path::new(guest_paths.system_log_file());
+                paths::write_private(system_log_path, "").unwrap();
+                let _system_log_guard = SystemLogOverrideGuard::set(system_log_path);
                 let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(std::path::Path::new(
                     guest_paths.sandbox_ops_file(),
                 ));
 
                 let marker = "producer_after_shutdown_before_final_upload";
-                let cleanup_paths = vec![
-                    guest_paths.sandbox_ops_file().to_string(),
-                    guest_paths.telemetry_system_log_pos_file().to_string(),
-                    guest_paths.telemetry_metrics_pos_file().to_string(),
-                    guest_paths.telemetry_sandbox_ops_pos_file().to_string(),
-                ];
-                for path in &cleanup_paths {
-                    let _ = std::fs::remove_file(path);
-                }
-
+                let request_bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+                let request_bodies_for_mock = Arc::clone(&request_bodies);
                 let telemetry_mock = server.mock(|when, then| {
                     when.method(POST)
-                        .path("/api/webhooks/agent/telemetry")
-                        .body_includes(marker);
-                    then.status(200)
-                        .header("Content-Type", "application/json")
-                        .json_body(json!({}));
+                        .path("/api/webhooks/agent/telemetry");
+                    then.respond_with(move |request| {
+                        request_bodies_for_mock.lock().unwrap().push(request.body_vec());
+                        HttpMockResponse::builder()
+                            .status(200)
+                            .header("Content-Type", "application/json")
+                            .body("{}")
+                            .build()
+                    });
                 });
 
                 let shutdown = CancellationToken::new();
                 let producer_shutdown = shutdown.clone();
+                let (producer_cancelled_tx, producer_cancelled_rx) = tokio::sync::oneshot::channel();
+                let (release_producer_tx, release_producer_rx) = tokio::sync::oneshot::channel();
                 let metrics_handle = tokio::spawn(async move {
                     producer_shutdown.cancelled().await;
+                    producer_cancelled_tx.send(()).unwrap();
+                    release_producer_rx.await.unwrap();
                     record_sandbox_op(marker, Duration::from_millis(1), true, None);
                 });
-                let heartbeat_handle = tokio::spawn(async {
-                    std::future::pending::<()>().await;
+                let (heartbeat_done_tx, heartbeat_done_rx) = tokio::sync::oneshot::channel();
+                let heartbeat_handle = tokio::spawn(async move {
+                    heartbeat_done_tx.send(()).unwrap();
                 });
-                let config = test_guest_config(server, None);
-                let masker = Arc::new(masker::SecretMasker::from_config(&config));
+                let masker = Arc::new(masker::SecretMasker::from_raw(""));
                 let http = test_http_client(server);
-                let telemetry =
-                    Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
+                let telemetry = Telemetry::spawn_for_paths(
+                    "test-run-001".to_string(),
+                    &guest_paths,
+                    masker,
+                    http,
+                );
 
-                tokio::time::timeout(
-                    Duration::from_secs(5),
-                    stop_background_and_flush_final_telemetry(
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    // On this current-thread runtime the sender's task finishes
+                    // before we resume. Heartbeat cleanup must not mask the join
+                    // under test by providing another pending await first.
+                    heartbeat_done_rx.await.unwrap();
+                    assert!(heartbeat_handle.is_finished());
+                    let finalization = stop_background_and_flush_final_telemetry(
                         shutdown,
                         None,
                         metrics_handle,
                         heartbeat_handle,
                         telemetry,
-                    ),
-                )
+                    );
+                    // Exclude cooperative-budget yields from both explicit polls.
+                    let finalization = tokio::task::unconstrained(finalization);
+                    tokio::pin!(finalization);
+                    assert!(futures_util::poll!(&mut finalization).is_pending());
+                    producer_cancelled_rx.await.unwrap();
+
+                    // Poll past already-settled heartbeat cleanup while the
+                    // producer is acknowledged but still blocked on release.
+                    let finalization_poll = futures_util::poll!(&mut finalization);
+                    // This log is synchronously persisted before final_telemetry's
+                    // first await, unlike an eventually dispatched HTTP request.
+                    let final_upload_log = "Performing final telemetry upload...";
+                    assert!(
+                        !std::fs::read_to_string(system_log_path)
+                            .unwrap()
+                            .contains(final_upload_log),
+                        "final telemetry started before the producer was released"
+                    );
+                    assert!(finalization_poll.is_pending());
+
+                    release_producer_tx.send(()).unwrap();
+                    finalization.await;
+                    assert!(
+                        std::fs::read_to_string(system_log_path)
+                            .unwrap()
+                            .contains(final_upload_log),
+                        "completed shutdown must exercise the final-upload log boundary"
+                    );
+                })
                 .await
                 .expect(
                     "final telemetry producer shutdown and final upload completion should finish within 5 seconds",
@@ -1533,9 +1572,12 @@ mod tests {
 
                 telemetry_mock.assert_calls_async(1).await;
                 telemetry_mock.delete_async().await;
-                for path in cleanup_paths {
-                    let _ = std::fs::remove_file(path);
-                }
+                let request_bodies = request_bodies.lock().unwrap();
+                assert_eq!(request_bodies.len(), 1);
+                let payload: serde_json::Value = serde_json::from_slice(&request_bodies[0]).unwrap();
+                let operations = payload["sandboxOperations"].as_array().unwrap();
+                assert_eq!(operations.len(), 1);
+                assert_eq!(operations[0]["action_type"], marker);
             });
     }
 

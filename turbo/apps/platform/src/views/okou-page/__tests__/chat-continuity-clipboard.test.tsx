@@ -97,7 +97,7 @@ test("Paste copied chat text and attachments safely", async () => {
   const available = continuityAttachment(14, 1, "available-copy.txt");
   const missing = continuityAttachment(14, 2, "missing-copy.txt");
   const localized = continuityAttachment(14, 3, "locale-copy.txt");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 14,
     threads: [thread],
     resolveAttachment(fileId) {
@@ -108,7 +108,7 @@ test("Paste copied chat text and attachments safely", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -183,7 +183,7 @@ test("Paste copied chat text and attachments safely", async () => {
 test("Paste plain and multi-line text at the current draft position", async () => {
   const thread = continuityThread(15, 1, "Paste position");
   const referenced = continuityThread(15, 2, "Launch reference");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 15,
     threads: [thread, referenced],
   });
@@ -191,7 +191,7 @@ test("Paste plain and multi-line text at the current draft position", async () =
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -246,7 +246,7 @@ test("Paste plain and multi-line text at the current draft position", async () =
 test("Copy a multiline draft without flattening its line breaks", async () => {
   const user = userEvent.setup({ delay: null });
   const thread = continuityThread(16, 1, "Copy line breaks");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 16,
     threads: [thread],
   });
@@ -254,7 +254,7 @@ test("Copy a multiline draft without flattening its line breaks", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });

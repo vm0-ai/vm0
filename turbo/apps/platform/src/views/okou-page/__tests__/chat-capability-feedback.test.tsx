@@ -15,6 +15,7 @@ import {
   context,
   feedbackItems,
   feedbackNotes,
+  FIRST_CAPABILITY_RUN_ID,
   findButton,
   installCapabilityChat,
   quoteSelectedPassage,
@@ -26,7 +27,12 @@ import {
   waitForSend,
   type CapturedChatSend,
 } from "./chat-capability-test-helpers.ts";
-import { findEnabledButton } from "./chat-run-test-fixtures.ts";
+import {
+  assistantEvent,
+  completedEvent,
+  findEnabledButton,
+  promptEvent,
+} from "./chat-run-test-fixtures.ts";
 import { buttonByLabel } from "./chat-lifecycle-test-helpers.ts";
 
 const FIRST_PASSAGE = "The launch plan has three careful stages.";
@@ -136,6 +142,58 @@ test("Expand desktop passage actions to the boundary of one AI reply", async () 
     "rendered detail outside Markdown",
     "separate decision",
   );
+
+  expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Quote")).not.toBeInTheDocument();
+  expect(queryToolbarButton("Forward")).not.toBeInTheDocument();
+});
+
+test("Hide passage actions for a run summary inside an AI reply", async () => {
+  installCapabilityChat({
+    events: [
+      promptEvent({
+        id: "capability-run-summary-user",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 1,
+        text: "Prepare the run summary response",
+        createdAt: "2026-08-01T10:00:00.000Z",
+      }),
+      assistantEvent({
+        id: "capability-run-summary-work",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 2,
+        text: "Checked the rollout dependencies",
+        createdAt: "2026-08-01T10:00:20.000Z",
+      }),
+      assistantEvent({
+        id: "capability-run-summary-answer",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 3,
+        text: FIRST_PASSAGE,
+        createdAt: "2026-08-01T10:00:40.000Z",
+      }),
+      completedEvent({
+        id: "capability-run-summary-completed",
+        runId: FIRST_CAPABILITY_RUN_ID,
+        seqId: 4,
+        createdAt: "2026-08-01T10:01:00.000Z",
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatDesktopSelection]: true,
+      [FeatureSwitchKey.ChatRunWorkFolding]: true,
+    },
+  });
+
+  await readyChat();
+  await expect(screen.findByText("Worked for 1m")).resolves.toBeVisible();
+  await selectPassage("launch plan has three careful stages");
+  await selectPassageWithoutActions("Worked for 1m");
 
   expect(queryToolbarButton("Copy")).not.toBeInTheDocument();
   expect(queryToolbarButton("Quote")).not.toBeInTheDocument();

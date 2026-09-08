@@ -124,7 +124,8 @@ export function cachedChatListEvents(
   };
 }
 
-export async function seedChatListCache(
+/** Seed IndexedDB only when the page story exercises persistence across reloads. */
+export async function seedPersistentChatListCache(
   caseId: number,
   auth: Exclude<SetupPageAuth, null>,
   chatThreads: readonly ChatThreadSnapshotProjection[],
