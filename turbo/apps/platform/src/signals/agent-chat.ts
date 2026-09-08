@@ -141,7 +141,7 @@ export const currentChatThreadListSignals$ = computed(
       get(reloadChatIndicatorsCounter$);
     }
 
-    const agentId = await get(currentChatAgentId$);
+    const agentId = get(currentChatAgentScope$) ?? (await get(defaultAgentId$));
     if (!unreadOnly || !agentId) {
       return createChatThreadListSignals(agentId, null);
     }
