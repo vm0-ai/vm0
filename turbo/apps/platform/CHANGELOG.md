@@ -11,6 +11,27 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.8](https://github.com/vm0-ai/vm0/compare/app-v0.862.7...app-v0.862.8) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** converge calendar recovery after reconnect ([#32549](https://github.com/vm0-ai/vm0/issues/32549)) ([26c387f](https://github.com/vm0-ai/vm0/commit/26c387f49b2858be89eb130a859a2e3999f9cbf1))
+
+
+### Refactoring
+
+* remove googleFormsWorkflowAutomations feature switch ([#32523](https://github.com/vm0-ai/vm0/issues/32523)) ([9f498b5](https://github.com/vm0-ai/vm0/commit/9f498b557f70cf3545a784cf53108f73302c24ec))
+* remove notion workflow automation feature switch ([#32524](https://github.com/vm0-ai/vm0/issues/32524)) ([14a02ec](https://github.com/vm0-ai/vm0/commit/14a02ec10b944dc744b143c678ce2a60787e6284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.0
+    * @okouai/core bumped to 8.635.0
+
 ## [0.862.7](https://github.com/vm0-ai/vm0/compare/app-v0.862.6...app-v0.862.7) (2026-09-08)
 
 

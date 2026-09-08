@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.635.0](https://github.com/vm0-ai/vm0/compare/core-v8.634.6...core-v8.635.0) (2026-09-08)
+
+
+### Features
+
+* add slack bot channel discovery and history reads ([#32527](https://github.com/vm0-ai/vm0/issues/32527)) ([9873338](https://github.com/vm0-ai/vm0/commit/9873338effbfa71fa10e7fbf4c8a3508a9de1ba3))
+
+
+### Refactoring
+
+* remove googleFormsWorkflowAutomations feature switch ([#32523](https://github.com/vm0-ai/vm0/issues/32523)) ([9f498b5](https://github.com/vm0-ai/vm0/commit/9f498b557f70cf3545a784cf53108f73302c24ec))
+* remove notion workflow automation feature switch ([#32524](https://github.com/vm0-ai/vm0/issues/32524)) ([14a02ec](https://github.com/vm0-ai/vm0/commit/14a02ec10b944dc744b143c678ce2a60787e6284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.0
+
 ## [8.634.6](https://github.com/vm0-ai/vm0/compare/core-v8.634.5...core-v8.634.6) (2026-09-08)
 
 

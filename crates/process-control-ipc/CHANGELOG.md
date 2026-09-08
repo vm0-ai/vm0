@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.11](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.10...process-control-ipc-v0.3.11) (2026-09-08)
+
+
+### Bug Fixes
+
+* **rust:** enforce exec-control request deadlines ([#32560](https://github.com/vm0-ai/vm0/issues/32560)) ([f222eab](https://github.com/vm0-ai/vm0/commit/f222eab48ae3490abd952db26ef1ff51c8074af6))
+
 ## [0.3.10](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.9...process-control-ipc-v0.3.10) (2026-09-07)
 
 
