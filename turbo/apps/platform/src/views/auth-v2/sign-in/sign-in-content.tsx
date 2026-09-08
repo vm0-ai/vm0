@@ -23,10 +23,6 @@ import {
 } from "../auth-v2-status-steps.tsx";
 import { UserAvatar } from "../../components/avatar.tsx";
 import {
-  AUTH_FIELD_INPUT_CLASS,
-  AUTH_SOCIAL_ACTION_CLASS,
-} from "../../auth/auth-action-styles.ts";
-import {
   AUTH_V2_LINK_ACTION_CLASS,
   AUTH_V2_PRIMARY_ACTION_CLASS,
 } from "../auth-v2-action-styles.ts";
@@ -95,7 +91,7 @@ function OAuthFactorButton({
     <Button
       aria-busy={busy}
       aria-label={actionLabel}
-      className={AUTH_SOCIAL_ACTION_CLASS}
+      className="relative w-full border border-border bg-transparent text-sm hover:bg-muted"
       disabled={disabled}
       type="button"
       variant="outline"
@@ -110,7 +106,7 @@ function OAuthFactorButton({
           : copy.googleProvider}
       </FactorActionContent>
       {factor.lastUsed ? (
-        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-badge font-medium text-muted-foreground shadow-sm">
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground shadow-sm">
           {copy.lastUsed}
         </span>
       ) : null}
@@ -163,7 +159,7 @@ function TextField({
       <Input
         aria-describedby={invalid ? AUTH_V2_SIGN_IN_ERROR_ID : undefined}
         aria-invalid={invalid ? true : undefined}
-        className={AUTH_FIELD_INPUT_CLASS}
+        className="border border-border"
         id={id}
         name={name}
         autoComplete={autoComplete}
@@ -421,7 +417,7 @@ function ChooseSessionStep({
   };
   return (
     <div>
-      <div className="empty:hidden px-[var(--okou-auth-card-padding-inline)] pt-6">
+      <div className="empty:hidden px-10 pt-6">
         <FlowErrorAlert copy={copy} signals={signals} />
       </div>
       <div className="divide-y divide-border">
@@ -457,7 +453,7 @@ function ChooseSessionStep({
           );
         })}
       </div>
-      <div className="flex justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]">
+      <div className="flex justify-center border-t border-border px-10 py-4">
         <Button
           className={cn(
             "h-auto w-fit p-0 text-sm leading-5",
@@ -610,7 +606,7 @@ function PasswordStep({
             resetFactor ? (
               <Button
                 className={cn(
-                  "h-auto p-0 text-action",
+                  "h-auto p-0 text-[13px] leading-[17px]",
                   AUTH_V2_LINK_ACTION_CLASS,
                 )}
                 disabled={submitting}
@@ -825,7 +821,7 @@ function SignInCodeInput({
           aria-invalid={invalid ? true : undefined}
           autoCapitalize="none"
           autoComplete="off"
-          className={AUTH_FIELD_INPUT_CLASS}
+          className="border border-border"
           id="auth-v2-code"
           name="code"
           onChange={(event) => {
@@ -875,7 +871,9 @@ function CodeResendButton({
       {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
       <Button
         className={cn(
-          expired ? "w-full" : "mx-auto h-auto w-fit p-0 text-action",
+          expired
+            ? "w-full"
+            : "mx-auto h-auto w-fit p-0 text-[13px] leading-[17px]",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
         disabled={operationPending || (coolingDown && !expired)}

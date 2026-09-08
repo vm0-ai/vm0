@@ -44,10 +44,8 @@ export function AuthV2Shell({
   return (
     <div
       className={cn(
-        "max-w-[var(--okou-auth-card-max-width)] shrink-0 space-y-4",
-        surface === "dialog"
-          ? "w-full"
-          : "w-[var(--okou-auth-card-page-width)]",
+        "max-w-[25rem] shrink-0 space-y-4",
+        surface === "dialog" ? "w-full" : "w-[calc(100%+0.5rem)]",
       )}
     >
       <Card
@@ -63,22 +61,16 @@ export function AuthV2Shell({
         <div
           className={cn(
             "flex flex-col",
-            choiceLayout
-              ? ""
-              : "gap-8 px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)]",
+            choiceLayout ? "" : "gap-8 px-10 py-8",
           )}
         >
           <CardHeader
             className={cn(
               "items-center space-y-0 bg-transparent p-0 text-center",
-              choiceLayout &&
-                "px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)]",
+              choiceLayout && "px-10 py-8",
             )}
           >
-            <span
-              className="mb-[var(--okou-auth-card-logo-gap)]"
-              data-testid="auth-v2-brand-logo"
-            >
+            <span className="mb-5" data-testid="auth-v2-brand-logo">
               <ProductBrandMark decorative size="compact" />
             </span>
             <div className="w-full space-y-1">
@@ -109,7 +101,7 @@ export function AuthV2Shell({
           </CardContent>
         </div>
         {cardFooter ? (
-          <CardFooter className="justify-center border-t border-border px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-footer-padding-block)]">
+          <CardFooter className="justify-center border-t border-border px-10 py-4">
             {cardFooter}
           </CardFooter>
         ) : null}

@@ -14,12 +14,12 @@ import {
 } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import {
-  AUTH_ERROR_ALERT_CLASS,
-  AUTH_ERROR_ALERT_TEXT_CLASS,
-  AUTH_FIELD_INPUT_CLASS,
-  AUTH_LINK_ACTION_CLASS,
-  AUTH_SOCIAL_ACTION_CLASS,
-} from "../auth/auth-action-styles.ts";
+  AUTH_V1_ERROR_ALERT_CLASS,
+  AUTH_V1_ERROR_ALERT_TEXT_CLASS,
+  AUTH_V1_FIELD_INPUT_CLASS,
+  AUTH_V1_LINK_ACTION_CLASS,
+  AUTH_V1_SOCIAL_ACTION_CLASS,
+} from "./action-styles.ts";
 
 type ClerkAppearance = NonNullable<ComponentProps<typeof SignIn>["appearance"]>;
 type AuthV1ComponentMode = "sign-in" | "sign-up";
@@ -30,7 +30,7 @@ const authV1OutlineActionClass = cn(
 );
 const authV1SocialActionClass = cn(
   authV1OutlineActionClass,
-  AUTH_SOCIAL_ACTION_CLASS,
+  AUTH_V1_SOCIAL_ACTION_CLASS,
 );
 // OTP slots are visual divs, not shared Input components. Clerk's accessible
 // textbox owns typing, paste and retry; these public state attributes paint it.
@@ -61,7 +61,7 @@ const authV1IdentityPreviewEditClass = cn(
   "shrink-0 p-0 no-underline hover:no-underline",
 );
 const authV1TextActionClass = cn(
-  AUTH_LINK_ACTION_CLASS,
+  AUTH_V1_LINK_ACTION_CLASS,
   "no-underline hover:no-underline ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
 );
 const authV1BackLinkClass = cn(
@@ -69,7 +69,7 @@ const authV1BackLinkClass = cn(
   authV1TextActionClass,
 );
 const authV1ResendCodeLinkClass = cn(
-  "h-auto p-0 text-action",
+  "h-auto p-0 text-[length:var(--text-action)] leading-[var(--text-action--line-height)]",
   authV1TextActionClass,
 );
 
@@ -161,7 +161,7 @@ export function getAuthV1ComponentAppearance(
       socialButtonsBlockButton: authV1SocialActionClass,
       socialButtonsBlockButtonText: "text-foreground",
       lastAuthenticationStrategyBadge:
-        "rounded-md border border-border bg-card px-1.5 py-0.5 text-badge font-medium text-muted-foreground shadow-sm",
+        "rounded-md border border-border bg-card px-1.5 py-0.5 text-[length:var(--text-badge)] leading-[var(--text-badge--line-height)] font-medium text-muted-foreground shadow-sm",
       dividerRow: "m-0 flex items-center gap-3",
       dividerLine: "h-px flex-1 bg-border",
       dividerText: "m-0 text-sm leading-5 text-muted-foreground",
@@ -171,7 +171,8 @@ export function getAuthV1ComponentAppearance(
       formFieldLabel: "text-sm font-medium leading-5 text-foreground",
       formFieldInput: cn(
         inputClassName,
-        AUTH_FIELD_INPUT_CLASS,
+        "px-[var(--okou-input-padding-inline)] py-[var(--okou-input-padding-block)]",
+        AUTH_V1_FIELD_INPUT_CLASS,
         "shadow-none aria-invalid:border-destructive aria-invalid:focus:border-destructive",
       ),
       formFieldInput__password: authV1PasswordInputClass,
@@ -199,13 +200,13 @@ export function getAuthV1ComponentAppearance(
       // Field feedback is text, not an Alert container. Clerk positions and
       // measures it to allocate space below the input. Container positioning,
       // borders, and padding break that contract, especially for OTP errors.
-      formFieldErrorText: AUTH_ERROR_ALERT_TEXT_CLASS,
+      formFieldErrorText: AUTH_V1_ERROR_ALERT_TEXT_CLASS,
       formFieldHintText: "text-xs leading-4 text-muted-foreground",
       formFieldInfoText: "text-xs leading-4 text-muted-foreground",
       formFieldWarningText: "text-xs leading-4",
       formFieldSuccessText: "text-xs leading-4 text-foreground",
-      alert: AUTH_ERROR_ALERT_CLASS,
-      alertText: AUTH_ERROR_ALERT_TEXT_CLASS,
+      alert: AUTH_V1_ERROR_ALERT_CLASS,
+      alertText: AUTH_V1_ERROR_ALERT_TEXT_CLASS,
       identityPreview:
         "flex min-h-6 w-full items-center justify-center gap-2 text-sm leading-5 text-muted-foreground",
       identityPreviewText: "min-w-0 truncate text-center",
@@ -221,7 +222,7 @@ export function getAuthV1ComponentAppearance(
       otpCodeFieldInputs: "gap-2",
       otpCodeFieldInputs__loading: "opacity-50",
       otpCodeFieldInput: authV1OtpInputClass,
-      otpCodeFieldErrorText: AUTH_ERROR_ALERT_TEXT_CLASS,
+      otpCodeFieldErrorText: AUTH_V1_ERROR_ALERT_TEXT_CLASS,
       alternativeMethods: "gap-2",
       // The same slot is a solid primary action for recovery and an outline
       // choice elsewhere. The button adapter preserves Clerk's variant.

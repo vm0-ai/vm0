@@ -4,7 +4,7 @@ import { useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
 import { resolveAuthBrandContext } from "../../signals/auth.ts";
-import { AUTH_PRIMARY_ACTION_CLASS } from "../auth/auth-action-styles.ts";
+import { AUTH_V1_PRIMARY_ACTION_CLASS } from "./action-styles.ts";
 import { AuthV1Layout } from "./auth-v1-layout.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
@@ -40,7 +40,10 @@ export function AuthV1LoadError() {
             </a>
           </p>
           <Button
-            className={cn(AUTH_PRIMARY_ACTION_CLASS, "text-action")}
+            className={cn(
+              AUTH_V1_PRIMARY_ACTION_CLASS,
+              "text-[length:var(--text-action)] leading-[var(--text-action--line-height)]",
+            )}
             onClick={() => {
               return window.location.reload();
             }}

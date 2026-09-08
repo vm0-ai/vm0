@@ -10,7 +10,7 @@
 @source "../../../../../packages/ui/src/**/*.{ts,tsx}";
 
 @theme {
-  /* Shared auth geometry; equal-value extraction from the AuthV2 shell. */
+  /* V1 comparison geometry follows AuthV2 without changing its styles. */
   --okou-auth-card-max-width: 25rem;
   --okou-auth-card-page-width: calc(100% + 0.5rem);
   --okou-auth-card-padding-inline: 2.5rem;

@@ -147,8 +147,7 @@
   --font-size-sm: 14px;
   --font-size-xs: 12px;
 
-  /* Auth actions and compact status badges share these Figma text roles
-   * across app-owned and provider-owned surfaces. */
+  /* Figma typography roles consumed by the hosted auth adapter. */
   --text-action: 13px;
   --text-action--line-height: 17px;
   --text-badge: 10px;
