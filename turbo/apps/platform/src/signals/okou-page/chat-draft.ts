@@ -1,3 +1,4 @@
+import { fetchResource } from "../../lib/resource-fetch.ts";
 import {
   command,
   computed,
@@ -7,7 +8,13 @@ import {
   type State,
 } from "ccstate";
 import { delay } from "signal-timers";
-import { onRejection, resetSignal, settle, tapError } from "../utils.ts";
+import {
+  onRejection,
+  resetSignal,
+  setLoop,
+  settle,
+  tapError,
+} from "../utils.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -196,34 +203,45 @@ async function uploadPartWithRetry(
   contentType: string,
   signal: AbortSignal,
 ): Promise<void> {
-  for (let attempt = 1; attempt <= MAX_PART_UPLOAD_ATTEMPTS; attempt += 1) {
-    const result = await settle(
-      fetch(uploadUrl, {
-        method: "PUT",
-        body,
-        headers: { "content-type": contentType },
-        signal,
-      }),
-      signal,
-    );
-    if (result.ok) {
-      if (result.value.ok) {
-        return;
+  let attempt = 0;
+  await setLoop(
+    async (loopSignal) => {
+      attempt += 1;
+      const result = await settle(
+        fetchResource(
+          uploadUrl,
+          {
+            method: "PUT",
+            body,
+            headers: { "content-type": contentType },
+          },
+          loopSignal,
+        ),
+        loopSignal,
+      );
+      if (result.ok) {
+        if (result.value.ok) {
+          return true;
+        }
+        if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+          throw new Error(
+            `storage returned ${result.value.status} ${result.value.statusText}`,
+          );
+        }
+      } else if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
+        throw result.error;
       }
-      if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
-        throw new Error(
-          `storage returned ${result.value.status} ${result.value.statusText}`,
-        );
-      }
-    } else if (attempt === MAX_PART_UPLOAD_ATTEMPTS) {
-      throw result.error;
-    }
-    await delay(
-      IN_VITEST ? 0 : PART_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
-      { signal },
-    );
-  }
-  throw new Error("Multipart upload retry loop ended unexpectedly");
+      await delay(
+        IN_VITEST ? 0 : PART_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+        { signal: loopSignal },
+      );
+      return false;
+    },
+    0,
+    signal,
+    { retryTransientErrors: false },
+  );
+  signal.throwIfAborted();
 }
 
 /**
@@ -313,15 +331,18 @@ const uploadFileToStorage$ = command(
     }
 
     signal.throwIfAborted();
-    const putRes = await fetch(prepared.body.uploadUrl, {
-      method: "PUT",
-      body: file,
-      headers: {
-        "content-type": prepared.body.contentType,
-        ...prepared.body.uploadHeaders,
+    const putRes = await fetchResource(
+      prepared.body.uploadUrl,
+      {
+        method: "PUT",
+        body: file,
+        headers: {
+          "content-type": prepared.body.contentType,
+          ...prepared.body.uploadHeaders,
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (!putRes.ok) {

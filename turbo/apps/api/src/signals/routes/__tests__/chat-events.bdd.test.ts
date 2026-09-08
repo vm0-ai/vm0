@@ -1790,6 +1790,30 @@ describe("CHAT-02: thread connector account selection", () => {
       prompt: "Overlap stored thread selection with runtime context",
     });
     expect(threadCatalogReadStarted.settled()).toBeTruthy();
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    const preparationActions = [
+      "api_dispatch_prepare_context_select_connector_catalog",
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ];
+    expectApiDispatchSpanKind(timingEvents, preparationActions, "nested");
+    for (const event of timingEvents.filter((candidate) => {
+      return preparationActions.includes(String(candidate.op_type));
+    })) {
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
+      expect(event.run_preparation_retry_count).toBe("0");
+      expect(event.agent_run_origin).toBe("direct");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      fixture.threadId,
+      fixture.connectionId,
+      fixture.actor.userId,
+      "Overlap stored thread selection with runtime context",
+      "runtime-context-priority-secret",
+    ]);
     clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
     const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
     expect(kms.decryptCalls).toBeGreaterThan(0);
@@ -18946,6 +18970,9 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
     for (const actionType of [
+      "api_dispatch_prepare_context_select_connector_catalog",
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
       "api_dispatch_prepare_run_context",
       "api_dispatch_build_runner_job_payload",
       "api_dispatch_insert_run_with_concurrency",

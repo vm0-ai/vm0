@@ -10,6 +10,10 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-direct-fetch", rule, {
   valid: [
+    { code: `await fetchResource(url, {}, signal);` },
+    { code: `await client.fetch();` },
+    { code: `function run(fetch) { return fetch(); }` },
+    { code: `function run(window) { return window.fetch(); }` },
     {
       // Allowed: using apiClient$ instead
       code: `
@@ -18,38 +22,27 @@ ruleTester.run("no-direct-fetch", rule, {
       `,
     },
     {
-      // Allowed: defining fetch$ itself
-      code: `export const fetch$ = atom(() => fetch);`,
-    },
-    {
-      // Allowed: importing fetch$ (file-level exemptions handle allowed usages)
-      code: `import { fetch$ } from "./fetch";`,
-    },
-    {
       // Allowed: unrelated identifiers
       code: `const result = get(otherSignal$);`,
     },
   ],
   invalid: [
     {
-      code: `const fetchFn = get(fetch$);`,
-      errors: [{ messageId: "noDirectFetch" }],
+      code: `await fetch("/api/data");`,
+      errors: [{ messageId: "noNativeFetch" }],
+    },
+    { code: `const send = fetch;`, errors: [{ messageId: "noNativeFetch" }] },
+    {
+      code: `await globalThis.fetch("/api/data");`,
+      errors: [{ messageId: "noNativeFetch" }],
     },
     {
-      code: `const result = await get(fetch$)("/api/chat/events", { method: "POST" });`,
-      errors: [{ messageId: "noDirectFetch" }],
+      code: `await window["fetch"]("/api/data");`,
+      errors: [{ messageId: "noNativeFetch" }],
     },
     {
-      code: `use(fetch$);`,
-      errors: [{ messageId: "noDirectFetch" }],
-    },
-    {
-      code: `
-        function doRequest() {
-          return get(fetch$)("/api/endpoint");
-        }
-      `,
-      errors: [{ messageId: "noDirectFetch" }],
+      code: `const send = self.fetch;`,
+      errors: [{ messageId: "noNativeFetch" }],
     },
   ],
 });

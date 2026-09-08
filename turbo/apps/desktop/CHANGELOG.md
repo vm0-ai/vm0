@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.8...desktop-v0.48.9) (2026-09-08)
+
+
+### Refactoring
+
+* **naming:** neutralize private constants and refresh developer branding ([#32619](https://github.com/vm0-ai/vm0/issues/32619)) ([9eb06e3](https://github.com/vm0-ai/vm0/commit/9eb06e348ade35a05771dff4209e0cb75ac6d6b8)), closes [#32601](https://github.com/vm0-ai/vm0/issues/32601)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.2
+
 ## [0.48.8](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.7...desktop-v0.48.8) (2026-09-08)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.86.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.16...guest-agent-v0.86.17) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runtime:** use okou and neutral runtime copy ([#32588](https://github.com/vm0-ai/vm0/issues/32588)) ([61d758c](https://github.com/vm0-ai/vm0/commit/61d758c9dd50358a8f787867637ca3edef1ea1cc))
+
+
+### Documentation
+
+* **guest-agent:** clarify Codex agent log representation ([#32609](https://github.com/vm0-ai/vm0/issues/32609)) ([de65fa5](https://github.com/vm0-ai/vm0/commit/de65fa54cc28aa03af6ff65058a17aa611cd55fd))
+
 ## [0.86.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.15...guest-agent-v0.86.16) (2026-09-08)
 
 ## [0.86.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.14...guest-agent-v0.86.15) (2026-09-08)

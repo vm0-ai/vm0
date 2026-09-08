@@ -1945,6 +1945,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
     expectApiDispatchSpanKind(
       timingEvents,
+      [
+        "api_dispatch_prepare_context_select_connector_catalog",
+        "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ]);
+    expectApiDispatchSpanKind(
+      timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
       "top_level",
     );

@@ -1183,10 +1183,16 @@ async function resolveThreadSessionForAgentRun(
       });
     },
   );
-  const pausedThreadGoalPrompt = await resolvePausedThreadGoalPrompt(db, {
-    orgId: input.command.auth.orgId,
-    threadId,
-  });
+  const pausedThreadGoalPrompt = await measureAgentRunPreCreate(
+    input.timing,
+    "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    () => {
+      return resolvePausedThreadGoalPrompt(db, {
+        orgId: input.command.auth.orgId,
+        threadId,
+      });
+    },
+  );
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
   const sessionPrompt = webChatSessionPromptContext
     ? await measureAgentRunPreCreate(

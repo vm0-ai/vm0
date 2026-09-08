@@ -21,7 +21,7 @@
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
  * - no-direct-session-storage: Disallow direct sessionStorage access — use sessionStorageSignals()
  * - no-detach-in-signals: Disallow detach() in signals/ — use await or signal chain
- * - no-direct-fetch: Disallow direct fetch$ usage — use apiClient$ instead
+ * - no-direct-fetch: Require typed API clients or the resource transport
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - no-manual-mock-cleanup: Disallow manual vi.*AllMocks()/unstub cleanup — Vitest config owns it
@@ -54,6 +54,7 @@ import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDirectSessionStorage from "./rules/no-direct-session-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
+import noManualPolling from "./rules/no-manual-polling.ts";
 import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
 import noVoidStatement from "./rules/no-void-statement.ts";
 import noAbortSwallower from "./rules/no-abort-swallower.ts";
@@ -97,6 +98,7 @@ const plugin = {
     "no-direct-session-storage": noDirectSessionStorage,
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,
+    "no-manual-polling": noManualPolling,
     "no-empty-promise-catch": noEmptyPromiseCatch,
     "no-void-statement": noVoidStatement,
     "no-abort-swallower": noAbortSwallower,

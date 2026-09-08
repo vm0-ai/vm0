@@ -1,3 +1,4 @@
+import { fetchResource } from "../lib/resource-fetch.ts";
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 
@@ -92,7 +93,7 @@ const activeInstatusIssues$ = computed(
     }
 
     const signal = get(rootSignal$);
-    const response = await fetch(config.issuesUrl, { signal });
+    const response = await fetchResource(config.issuesUrl, {}, signal);
     if (!response.ok) {
       throw new Error(`Instatus issues request failed with ${response.status}`);
     }
