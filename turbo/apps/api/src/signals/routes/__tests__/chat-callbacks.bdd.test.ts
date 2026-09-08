@@ -18,7 +18,6 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -1121,18 +1120,6 @@ describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-        orgRole: actor.orgRole,
-      },
-      { [FeatureSwitchKey.FollowUpOptimize]: false },
-    );
 
     const titlePrompts: string[] = [];
     const followupSystemPrompts: string[] = [];
@@ -1146,7 +1133,11 @@ describe("CHAT-02: completed chat callback", () => {
         titlePrompts.push(body.messages[1]?.content ?? "");
         return "Debugging Node Apps";
       }
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (
+        systemContent.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
         followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
@@ -1268,11 +1259,11 @@ describe("CHAT-02: completed chat callback", () => {
     expect(followupPrompts[0]).not.toContain("queued next turn");
     expect(followupSystemPrompts).toStrictEqual([
       expect.stringContaining(
-        'The "prompt" values are shown as plain text, not rendered as Markdown',
+        "The prompt values are displayed as plain text, not rendered as Markdown",
       ),
     ]);
     expect(followupSystemPrompts[0]).toContain(
-      "Supported built-in generation tasks:",
+      "Supported generation types are:",
     );
     expect(followupSystemPrompts[0]).not.toContain("VM0");
 
@@ -1530,7 +1521,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the released optimized prompt and userMessage semantics for recommended follow-ups", async () => {
+  it("uses the optimized prompt and userMessage semantics for recommended follow-ups", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
