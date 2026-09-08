@@ -179,6 +179,8 @@ import {
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import { openRouterModelContractError } from "./helpers/openrouter-model-contract";
+import { openRouterErrorFixtures } from "./helpers/openrouter-error-fixtures";
 import { verifyOkouToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
@@ -18774,6 +18776,10 @@ describe("CHAT-02: initial thinking indicator", () => {
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
           const payload = openRouterBodySchema.parse(await request.json());
+          const contractError = openRouterModelContractError(payload);
+          if (contractError) {
+            return contractError;
+          }
           const systemContent = payload.messages[0]?.content ?? "";
           let responseContent = "Unrelated completion";
           if (systemContent.includes("Generate a short, descriptive title")) {
@@ -18801,9 +18807,11 @@ describe("CHAT-02: initial thinking indicator", () => {
       ),
     );
 
+    const clientEventId = randomUUID();
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "Draft a launch checklist",
+      clientEventId,
     });
 
     const page = await waitForThreadMessages(actor, run.threadId, (items) => {
@@ -18834,8 +18842,8 @@ describe("CHAT-02: initial thinking indicator", () => {
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
     expect(thinkingRequestBody).toMatchObject({
       model: "google/gemini-3.8-flash",
-      max_tokens: 160,
-      reasoning: { effort: "none" },
+      max_tokens: 1024,
+      reasoning: { effort: "low" },
     });
     expect(thinkingPromptPayload).toContain("one paragraph at a time");
     expect(thinkingPromptPayload).toContain(
@@ -18850,6 +18858,24 @@ describe("CHAT-02: initial thinking indicator", () => {
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
+
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: run.threadId,
+        prompt: "Draft a launch checklist",
+        clientEventId,
+      },
+      [201],
+    );
+    await flushWaitUntilForTest();
+    const replayed = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      replayed.events.filter((event) => {
+        return event.runEventId === "thinking:initial";
+      }),
+    ).toStrictEqual([marker]);
 
     await cancelChatRun(actor, run.runId);
   });
@@ -18911,6 +18937,318 @@ describe("CHAT-02: initial thinking indicator", () => {
 
     await cancelChatRun(actor, run.runId);
   });
+
+  it("caps complete progress copy at 600 characters while preserving paragraph sanitization", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      return body.messages[0]?.content.includes(
+        "Write user-visible progress copy",
+      )
+        ? `"  Preparing\t the update.\r\n\r\n\r\n${"界".repeat(700)}"`
+        : "Update";
+    });
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Prepare an update",
+    });
+    await flushWaitUntilForTest();
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    const marker = page.events.find((event) => {
+      return event.runEventId === "thinking:initial";
+    });
+    expect(marker).toMatchObject({
+      thinking: `Preparing the update.\n\n${"界".repeat(577)}`,
+    });
+    await cancelChatRun(actor, run.runId);
+  });
+
+  it("does not request opening copy while a run waits for org capacity", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const blocker = await sendChatRun(actor, {
+      agentId,
+      prompt: "Occupy capacity",
+    });
+    await flushWaitUntilForTest();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+    let thinkingRequests = 0;
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      if (
+        body.messages[0]?.content.includes("Write user-visible progress copy")
+      ) {
+        thinkingRequests += 1;
+      }
+      return "Update";
+    });
+    const queued = await sendChatRun(actor, {
+      agentId,
+      prompt: "Prepare a later update",
+    });
+    await flushWaitUntilForTest();
+    expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
+    const page = await chat.listThreadEvents(actor, queued.threadId);
+    expect(page.events).toContainEqual(
+      expect.objectContaining({ runEventId: "queue:queued" }),
+    );
+    expect(
+      page.events.some((event) => {
+        return event.runEventId === "thinking:initial";
+      }),
+    ).toBeFalsy();
+    expect(thinkingRequests).toBe(0);
+    await cancelChatRun(actor, queued.runId);
+    await cancelChatRun(actor, blocker.runId);
+  });
+
+  it.each([400, 429, 503])(
+    "keeps the main run usable after an auxiliary HTTP %i",
+    async (status) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const body = openRouterBodySchema.parse(await request.json());
+            if (
+              body.messages[0]?.content.includes(
+                "Write user-visible progress copy",
+              )
+            ) {
+              return HttpResponse.json({ error: { code: status } }, { status });
+            }
+            return HttpResponse.json({
+              choices: [
+                { finish_reason: "stop", message: { content: "Update" } },
+              ],
+            });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await flushWaitUntilForTest();
+      const claim = await claimChatRun(runnerGroup, run.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "The main response is ready."),
+      ]);
+      await completeChatRunOk(run.runId, claim.sandboxHeaders);
+      await flushWaitUntilForTest();
+      expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(page.events).toContainEqual(
+        expect.objectContaining({ content: "The main response is ready." }),
+      );
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+    },
+  );
+
+  it.each([
+    {
+      name: "empty",
+      responseBody: {
+        choices: [{ finish_reason: "stop", message: { content: "  " } }],
+      },
+    },
+    {
+      name: "non-text",
+      responseBody: {
+        choices: [{ finish_reason: "stop", message: { content: null } }],
+      },
+    },
+    {
+      name: "unknown finish reason",
+      responseBody: {
+        choices: [
+          {
+            finish_reason: "private_prompt_history_authorization_canary",
+            native_finish_reason: "private_prompt_history_authorization_canary",
+            message: { content: "Incomplete" },
+          },
+        ],
+      },
+    },
+    {
+      name: "malformed JSON",
+      responseBody: "private_prompt_history_authorization_canary: invalid JSON",
+    },
+  ])(
+    "discards $name output without failing the run or leaking provider data",
+    async ({ responseBody }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const body = openRouterBodySchema.parse(await request.json());
+            if (
+              body.messages[0]?.content.includes(
+                "Write user-visible progress copy",
+              )
+            ) {
+              return typeof responseBody === "string"
+                ? HttpResponse.text(responseBody)
+                : HttpResponse.json(responseBody);
+            }
+            return HttpResponse.json({
+              choices: [
+                { finish_reason: "stop", message: { content: "Update" } },
+              ],
+            });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await flushWaitUntilForTest();
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === "Initial thinking generation failed";
+        },
+      );
+      expect(errors).toHaveLength(1);
+      const logged = z
+        .object({ err: z.instanceof(Error) })
+        .parse(errors[0]?.[1]);
+      expect(logged.err.message).not.toContain(
+        "private_prompt_history_authorization_canary",
+      );
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  it.each(["answer", "completed", "cancelled"] as const)(
+    "suppresses late progress copy after %s while the provider remains pending",
+    async (outcome) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      const entered = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<void>(context.signal);
+      chatCallbacks.mockOpenRouterCompletions(async (body) => {
+        if (
+          body.messages[0]?.content.includes("Write user-visible progress copy")
+        ) {
+          entered.resolve();
+          await release.promise;
+          return "This progress copy arrived too late.";
+        }
+        return "Update";
+      });
+      // The send and main-run lifecycle must proceed before auxiliary generation resolves.
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await entered.promise;
+      const claim = await claimChatRun(runnerGroup, run.runId);
+      if (outcome === "answer") {
+        chatCallbacks.mockChatOutputEvents([assistantEvent(0, "Main answer")]);
+        await webhooks.requestAgentEvents(
+          {
+            runId: run.runId,
+            events: chatCallbacks.consumeMockChatOutputEvents(),
+          },
+          claim.sandboxHeaders,
+          [200],
+        );
+      } else if (outcome === "completed") {
+        await completeChatRunOk(run.runId, claim.sandboxHeaders);
+      } else {
+        await api.requestCancelRun(actor, run.runId, [200]);
+      }
+      release.resolve();
+      await flushWaitUntilForTest();
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+      expect((await api.readRun(actor, run.runId)).status).toBe(
+        outcome === "answer" ? "running" : outcome,
+      );
+      if (outcome === "answer") {
+        await cancelChatRun(actor, run.runId, claim.sandboxHeaders);
+      }
+    },
+  );
+
+  it.each(openRouterErrorFixtures)(
+    "retains only safe initial-thinking diagnostics: $name",
+    async ({ body, expected }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            return payload.messages[0]?.content.includes(
+              "Write user-visible progress copy",
+            )
+              ? typeof body === "string"
+                ? HttpResponse.text(body, { status: 400 })
+                : HttpResponse.json(body, { status: 400 })
+              : HttpResponse.json({
+                  choices: [
+                    { finish_reason: "stop", message: { content: "Update" } },
+                  ],
+                });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await flushWaitUntilForTest();
+      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === "Initial thinking generation failed";
+        },
+      );
+      expect(errors).toHaveLength(1);
+      const logged = z
+        .object({ err: z.instanceof(Error) })
+        .parse(errors[0]?.[1]);
+      expect(logged.err).toMatchObject({
+        name: "OpenRouterRequestError",
+        message: "OpenRouter request failed: 400",
+        status: 400,
+        errorType: undefined,
+        ...expected,
+      });
+      expect(JSON.stringify(logged.err)).not.toContain(
+        "private_prompt_history_authorization_canary",
+      );
+      expect(logged.err).not.toHaveProperty("cause");
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+      await cancelChatRun(actor, run.runId);
+    },
+  );
 });
 
 describe("CHAT-02: prior rounds and thread titles", () => {
