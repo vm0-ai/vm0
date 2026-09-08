@@ -37,7 +37,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function createSession() {
+function createSession(onChange?: (session: DesktopAuthSession) => void) {
   const config = resolveDesktopConfig();
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
@@ -59,6 +59,7 @@ function createSession() {
     },
     onChange: () => {
       changes.push(session.getCachedToken());
+      onChange?.(session);
     },
     onAuthCompleted: () => {
       completed.push("completed");
@@ -94,6 +95,38 @@ function identityHandlers(
 }
 
 describe("Okou App session authority", () => {
+  it("joins hidden restoration when a change subscriber synchronously reads auth state", async () => {
+    identityHandlers();
+    const reads: ReturnType<DesktopAuthSession["getAuthState"]>[] = [];
+    let depth = 0;
+    const { session, replies, windows } = createSession((current) => {
+      // Safety cap only for the red run against the original implementation.
+      if (depth === 8) return;
+      depth++;
+      reads.push(current.getAuthState());
+      depth--;
+    });
+    const result = deferred<string | null>();
+    replies.push(result.promise);
+    const startup = session.getAuthState();
+    const requestsAtEntry = windows.length;
+    result.resolve("restored");
+    await startup;
+    for (let settled = 0; settled < reads.length; ) {
+      const pending = reads.slice(settled);
+      settled = reads.length;
+      await Promise.all(pending);
+    }
+
+    expect(requestsAtEntry).toBe(1);
+    expect(windows).toHaveLength(1);
+    expect(await session.getAuthState()).toMatchObject({
+      status: "signed_in",
+      user: { userId: "Bearer restored" },
+    });
+    expect(session.getAuthority()).not.toBeNull();
+  });
+
   it("requires a fresh App token before any native request despite legacy cookie-only API success", async () => {
     const { session, windows } = createSession();
     const requests: string[] = [];

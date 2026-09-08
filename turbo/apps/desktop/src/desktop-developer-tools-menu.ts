@@ -10,7 +10,7 @@ export function desktopDeveloperToolsMenu(developer: DeveloperToolsController) {
       type: "checkbox",
       checked: state.enabled,
       click: () => {
-        developer.setEnabled(!state.enabled);
+        developer.setEnabled(!developer.getState().enabled);
       },
     },
     { type: "separator" },
