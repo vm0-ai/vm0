@@ -477,6 +477,7 @@ async function fetchDataForSeoOnce(
   signal: AbortSignal,
 ): Promise<DataForSeoAttemptResult> {
   const endpoint = dataForSeoPath(request);
+  const logContext = { operation: request.operation, endpoint, attempt };
   const result = await fetchDataForSeoJson(
     new URL(endpoint, DATAFORSEO_BASE_URL),
     {
@@ -501,9 +502,7 @@ async function fetchDataForSeoOnce(
     providerStatus.providerStatusCode !== 20_000
   ) {
     L.warn("DataForSEO request failed", {
-      operation: request.operation,
-      endpoint,
-      attempt,
+      ...logContext,
       ...providerStatus,
     });
     return errorResult(
@@ -517,9 +516,7 @@ async function fetchDataForSeoOnce(
   const parsed = dataForSeoResponseSchema.safeParse(result.body);
   if (!parsed.success) {
     L.warn("DataForSEO API returned an invalid response", {
-      operation: request.operation,
-      endpoint,
-      attempt,
+      ...logContext,
       validationIssues: parsed.error.issues.slice(0, 10).map((issue) => {
         return {
           path: issue.path.join("."),
@@ -546,9 +543,7 @@ async function fetchDataForSeoOnce(
   const task = parsed.data.tasks[0];
   if (!task || (parsed.data.tasks_error !== 0 && task.status_code === 20_000)) {
     L.warn("DataForSEO API returned an invalid task response", {
-      operation: request.operation,
-      endpoint,
-      attempt,
+      ...logContext,
       tasksCount: parsed.data.tasks_count,
       tasksError: parsed.data.tasks_error,
       returnedTasks: parsed.data.tasks.length,
@@ -569,9 +564,7 @@ async function fetchDataForSeoOnce(
     (task.status_code !== 20_000 && !hasNoSearchResults)
   ) {
     L.warn("DataForSEO task failed", {
-      operation: request.operation,
-      endpoint,
-      attempt,
+      ...logContext,
       ...providerStatus,
     });
     return errorResult(
@@ -584,9 +577,7 @@ async function fetchDataForSeoOnce(
   const billingQuantity = providerCostMicros(parsed.data.cost);
   if (billingQuantity === undefined) {
     L.warn("DataForSEO API returned an invalid cost", {
-      operation: request.operation,
-      endpoint,
-      attempt,
+      ...logContext,
       providerCostUsd: parsed.data.cost,
     });
     return errorResult(
