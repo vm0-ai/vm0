@@ -6973,7 +6973,7 @@ function ConnectorTriggerIcons({
               (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
-            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background okou-border sm:h-7 sm:w-7">
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
               ) : (
@@ -6989,14 +6989,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text okou-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-gray-400 bg-background text-brand-text sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -10579,8 +10579,13 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
 
   return (
     <Card
+      data-slot="chat-composer-card"
       className={cn(
-        "okou-composer @container/composer relative z-10 overflow-visible",
+        // Paint focus on the existing border. A separately promoted border
+        // with a negative inset can snap differently from the card and SVGs.
+        "@container/composer relative z-10 overflow-visible rounded-3xl border-gray-400 bg-card shadow-[var(--okou-card-shadow)] transition-[border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] focus-within:border-surface-focus motion-reduce:transition-none",
+        "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:opacity-0 after:shadow-[var(--okou-composer-focus-veil)] after:transition-opacity after:duration-[220ms] after:ease-[cubic-bezier(0.4,0,0.2,1)] after:content-[''] focus-within:after:opacity-100 motion-reduce:after:transition-none",
+        "[@media(display-mode:standalone)]:[[data-chat-composer]_&]:scroll-mb-4",
         dragOver && "outline outline-2 outline-blue-400/60",
       )}
       onDrop={(event) => {

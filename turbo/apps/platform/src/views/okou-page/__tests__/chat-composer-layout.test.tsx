@@ -33,5 +33,7 @@ test("Keep the iPadOS composer from stealing focus", async () => {
     throw new Error("The page has no active HTML element");
   }
   expect(editor).not.toHaveFocus();
-  expect(editor.closest(".okou-composer")).not.toContainElement(activeElement);
+  expect(
+    editor.closest("[data-slot='chat-composer-card']"),
+  ).not.toContainElement(activeElement);
 });

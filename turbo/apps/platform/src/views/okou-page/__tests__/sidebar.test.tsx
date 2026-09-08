@@ -55,7 +55,7 @@ import {
 // can drive it. Keyboard events on a detached editor are silently dropped.
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Composer editor is not mounted");
