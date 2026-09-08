@@ -3259,25 +3259,6 @@ test("Create a Google Calendar event-cancelled automation", async () => {
   });
 });
 
-test("Hide Google Forms automation creation when the feature is unavailable", async () => {
-  mockWorkflowApis([salesResearch()]);
-
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
-  });
-
-  click(await screen.findByText("Add automation"));
-  const picker = await screen.findByRole("dialog");
-  expect(
-    queryAllByRoleFast("button", picker).some((candidate) => {
-      return textFor(candidate) === "Google Forms";
-    }),
-  ).toBeFalsy();
-  expect(
-    within(picker).queryByText("Google Forms response submitted"),
-  ).not.toBeInTheDocument();
-});
-
 test("Create a Google Forms automation and surface its warning", async () => {
   const createBodies: WorkflowAutomationCreateRequest[] = [];
   const warning = "This Google Form is not accepting responses yet.";
@@ -3290,9 +3271,7 @@ test("Create a Google Forms automation and surface its warning", async () => {
     );
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   click(await screen.findByText("Add automation"));
   await screen.findByRole("dialog");
@@ -3332,9 +3311,7 @@ test("Explain how to provide a valid Google Forms link", async () => {
     });
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   click(await screen.findByText("Add automation"));
   await screen.findByRole("dialog");
