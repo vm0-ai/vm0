@@ -4948,17 +4948,12 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const donePhrase =
     useLastResolved(thread.donePhrase$) ??
     t(($) => {
       return $.chat.run.done.default;
     });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  if (runWorkFoldingEnabled && source === null) {
-    return null;
-  }
   const label =
     source && runFinishedAt
       ? t(
@@ -5148,8 +5143,6 @@ function ThinkingIndicator({
   inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
-  const runWorkFoldingEnabled =
-    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const spinnerEnabled =
     featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
@@ -5185,12 +5178,7 @@ function ThinkingIndicator({
         }
       : undefined;
 
-  if (
-    mode === null ||
-    (runWorkFoldingEnabled &&
-      mode === "finished" &&
-      recommendedFollowupSource === null)
-  ) {
+  if (mode === null) {
     return null;
   }
 
@@ -7532,19 +7520,6 @@ type PagedAssistantGroupProps = {
   readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
 
-function visibleRunIndicatorMode(
-  mode: Exclude<ThinkingIndicatorMode, null> | undefined,
-  recommendedFollowupSource: RecommendedFollowupSource | null,
-): Exclude<ThinkingIndicatorMode, null> | undefined {
-  if (mode === undefined) {
-    return undefined;
-  }
-  if (mode === "finished" && recommendedFollowupSource === null) {
-    return undefined;
-  }
-  return mode;
-}
-
 type PagedAssistantHistoryItem =
   | {
       readonly kind: "assistant";
@@ -7809,10 +7784,6 @@ function PagedRunWorkAssistantContent({
   | "runIndicatorMode"
   | "statusTailEvents"
 >) {
-  const recommendedFollowupSource =
-    useLastResolved(thread.recommendedFollowupSource$, {
-      equalityFn: equalRecommendedFollowupSources,
-    }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
     group: {
       ...group,
@@ -7829,10 +7800,6 @@ function PagedRunWorkAssistantContent({
         return event.id === runWorkSection.anchorEventId;
       })
     : undefined;
-  const visibleIndicatorMode = visibleRunIndicatorMode(
-    runIndicatorMode,
-    recommendedFollowupSource,
-  );
   const mainActions =
     mainEvent !== undefined ? (
       <PagedGroupActions
@@ -7851,8 +7818,7 @@ function PagedRunWorkAssistantContent({
         thread={thread}
         mainActions={mainActions}
       />
-      {(statusTailEvents?.length ?? 0) > 0 ||
-      visibleIndicatorMode !== undefined ? (
+      {(statusTailEvents?.length ?? 0) > 0 || runIndicatorMode !== undefined ? (
         <div
           data-chat-run-status-tail
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
@@ -7867,10 +7833,10 @@ function PagedRunWorkAssistantContent({
                 />
               );
             })
-          ) : visibleIndicatorMode !== undefined ? (
+          ) : runIndicatorMode !== undefined ? (
             <ThinkingIndicator
               thread={thread}
-              mode={visibleIndicatorMode}
+              mode={runIndicatorMode}
               runGroupFolds={[]}
               inAssistantGroup
             />
