@@ -160,7 +160,7 @@ function isFastGptPiProvider(
 
 /**
  * Route canonical chat threads by model and provider policy. Trigger source is
- * intentionally absent so every queued connector shares the same admission.
+ * intentionally absent so every thread-bound launch shares the same admission.
  */
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;

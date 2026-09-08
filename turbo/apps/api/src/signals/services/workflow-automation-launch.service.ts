@@ -29,6 +29,7 @@ import {
 import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
+import { shouldUsePiExecution } from "./pi-sandbox-config";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
 import {
@@ -89,6 +90,7 @@ type ModelContext =
       readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
+      readonly piExecution: boolean;
     }
   | { readonly ok: false; readonly failure: RunFailure };
 
@@ -339,13 +341,22 @@ async function resolveModelContext(
     };
   }
 
+  const piExecution = shouldUsePiExecution({
+    chatThreadId: args.chatThreadId,
+    modelProviderType: effectiveModelProvider,
+    selectedModel,
+    codexServiceTier: runCodexServiceTier,
+    builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
+    featureSwitchContext: threadModelContext.featureSwitchContext,
+  });
   return {
     ok: true,
     modelPin: pin,
     effectiveModelProvider,
     builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
-    cliAgentType: providerAdmission.cliAgentType,
+    cliAgentType: piExecution ? "pi" : providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
+    piExecution,
   };
 }
 
@@ -685,7 +696,7 @@ export const launchQueuedWorkflowAutomation$ = command(
           modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
           selectedModel: modelPin.selectedModel,
         },
-        piExecution: false,
+        piExecution: modelContext.piExecution,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },
