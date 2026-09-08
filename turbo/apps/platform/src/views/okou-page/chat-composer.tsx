@@ -37,6 +37,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  formatUserImageReferenceId,
+  parseUserImageReferenceId,
+} from "@okouai/core/image-reference-selection";
 import { ExplainerVideoPicker } from "./explainer-video-picker.tsx";
 import {
   avatarSelectionLabel,
@@ -57,6 +61,8 @@ import type {
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
+import type { IllustrationReferencePickerItem } from "../../signals/okou-page/illustration-reference-picker.ts";
+import { IllustrationReferencePicker } from "./components/illustration-reference-picker.tsx";
 import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { CHAT_UPLOAD_MAX_FILE_SIZE } from "../../lib/chat-upload.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -6220,6 +6226,16 @@ function TemplatePickerDialog({
     closeTemplatePicker();
   };
 
+  const handleSelectImageReference = (referenceId: string) => {
+    onChange({
+      type: "illustration",
+      selection: {
+        illustrationStyleId: formatUserImageReferenceId(referenceId),
+      },
+    });
+    closeTemplatePicker();
+  };
+
   const handlePreview = (item: PresentationTemplateItem, slideIndex = 0) => {
     const selectedTheme = findPresentationTemplateTheme(
       cardThemeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
@@ -6470,6 +6486,7 @@ function TemplatePickerDialog({
                     onSelectWebsite={handleSelectWebsite}
                     onPreviewWebsite={handlePreviewWebsite}
                     onSelectIllustration={handleSelectIllustration}
+                    onSelectImageReference={handleSelectImageReference}
                     onIllustrationVariantChange={setIllustrationVariantIndex}
                     onSelectVideo={handleSelectVideo}
                     onSelectAvatar={handleSelectAvatar}
@@ -6528,6 +6545,7 @@ function TemplatePickerCategoryContent({
   onSelectWebsite,
   onPreviewWebsite,
   onSelectIllustration,
+  onSelectImageReference,
   onIllustrationVariantChange,
   onSelectVideo,
   onSelectAvatar,
@@ -6564,6 +6582,7 @@ function TemplatePickerCategoryContent({
   onSelectWebsite: (item: WebsiteTemplateItem) => void;
   onPreviewWebsite: (item: WebsiteTemplateItem) => void;
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
+  onSelectImageReference: (referenceId: string) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
   onSelectAvatar: (
@@ -6575,6 +6594,9 @@ function TemplatePickerCategoryContent({
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const referenceImagesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ReferenceImages] === true;
+
   if (selectedCategory === "slides") {
     return (
       <div
@@ -6630,14 +6652,38 @@ function TemplatePickerCategoryContent({
           });
         }}
       >
-        <IllustrationTemplateGrid
-          items={illustrationItems}
-          value={value}
-          variantIndexBySlug={illustrationVariantIndex}
-          onSelect={onSelectIllustration}
-          onVariantChange={onIllustrationVariantChange}
-          runtime={runtime}
-        />
+        {referenceImagesEnabled ? (
+          <IllustrationReferencePicker
+            signals={signals.template.imageReferencePicker}
+            selectedReferenceId={
+              value?.type === "illustration"
+                ? (parseUserImageReferenceId(
+                    value.selection.illustrationStyleId,
+                  ) ?? null)
+                : null
+            }
+            onSelectReference={onSelectImageReference}
+            builtInStyles={
+              <IllustrationTemplateGrid
+                items={illustrationItems}
+                value={value}
+                variantIndexBySlug={illustrationVariantIndex}
+                onSelect={onSelectIllustration}
+                onVariantChange={onIllustrationVariantChange}
+                runtime={runtime}
+              />
+            }
+          />
+        ) : (
+          <IllustrationTemplateGrid
+            items={illustrationItems}
+            value={value}
+            variantIndexBySlug={illustrationVariantIndex}
+            onSelect={onSelectIllustration}
+            onVariantChange={onIllustrationVariantChange}
+            runtime={runtime}
+          />
+        )}
       </div>
     );
   }
@@ -6709,6 +6755,7 @@ function TemplatePickerCategoryContent({
 function selectedComposerTemplateAttachment(
   value: GenerationTemplateRequest | undefined,
   importedTemplates: readonly PresentationTemplateSummary[] = [],
+  imageReferences: readonly IllustrationReferencePickerItem[] = [],
 ): ComposerTemplateAttachment | undefined {
   const explainer = explainerVideoTemplateOptions(value);
   if (explainer) {
@@ -6770,6 +6817,21 @@ function selectedComposerTemplateAttachment(
         : { previewImageUrl: importedPresentationTemplate.coverUrl }),
     };
   }
+  const imageReferenceId =
+    value?.type === "illustration"
+      ? parseUserImageReferenceId(value.selection.illustrationStyleId)
+      : undefined;
+  const imageReference = imageReferences.find((item) => {
+    return item.id === imageReferenceId;
+  });
+  if (imageReference) {
+    return {
+      type: "illustration",
+      title: imageReference.title,
+      category: "illustration",
+      previewImageUrl: imageReference.previewUrl,
+    };
+  }
   const illustrationItem = selectedIllustrationTemplateItem(value);
   if (illustrationItem) {
     return {
@@ -6823,6 +6885,42 @@ function ComposerImportedTemplateUrlRefreshLifecycle({
         aria-hidden="true"
         className="pointer-events-none absolute size-px overflow-hidden opacity-0"
       />
+    </>
+  );
+}
+
+function ComposerImageReferenceAvailability({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const unavailableReferenceIds =
+    useLastResolved(signals.template.unavailableImageReferenceIds$) ??
+    new Set<string>();
+  const syncAvailabilityRef = useSet(
+    signals.template.syncImageReferenceAvailabilityRef$,
+  );
+  const encoded = [...unavailableReferenceIds].sort().join(",");
+  return (
+    <>
+      <span
+        key={`image-reference-availability:${encoded}`}
+        ref={syncAvailabilityRef}
+        data-unavailable-image-reference-ids={encoded}
+        aria-hidden="true"
+        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+      />
+      {unavailableReferenceIds.size > 0 ? (
+        <p
+          role="alert"
+          className="mx-4 mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          {t(($) => {
+            return $.artifacts.imageReferences.unavailableSelection;
+          })}
+        </p>
+      ) : null}
     </>
   );
 }
@@ -9077,7 +9175,18 @@ function useComposerTemplatePicker(
   signals: ComposerSignals,
 ): ComposerTemplatePicker {
   const insertTemplate = useSet(signals.template.insertTemplate$);
+  const setIllustrationTemplate = useSet(
+    signals.template.setIllustrationTemplate$,
+  );
+  const referenceImagesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ReferenceImages] === true;
   const importedTemplates = useImportedPresentationTemplates(signals);
+  const imageReferenceCatalog = useLastResolved(
+    signals.template.imageReferencePicker.catalog$,
+  );
+  const imageReferences = imageReferenceCatalog
+    ? [...imageReferenceCatalog.own, ...imageReferenceCatalog.organization]
+    : [];
   const notifyDraftChanged = useComposerDraftChange(signals);
   return {
     onChange(value) {
@@ -9087,11 +9196,16 @@ function useComposerTemplatePicker(
       const attachment = selectedComposerTemplateAttachment(
         value,
         importedTemplates,
+        imageReferences,
       );
       if (!attachment) {
         return;
       }
-      insertTemplate(value, attachment);
+      if (referenceImagesEnabled && value.type === "illustration") {
+        setIllustrationTemplate(value, attachment);
+      } else {
+        insertTemplate(value, attachment);
+      }
       notifyDraftChanged();
     },
   };
@@ -10740,6 +10854,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
+          <ComposerImageReferenceAvailability signals={signals} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
               `px-4 pt-4` above and stays concentric with the 24px shell: a
               control 16px in from a 24px corner needs exactly an 8px radius. */}

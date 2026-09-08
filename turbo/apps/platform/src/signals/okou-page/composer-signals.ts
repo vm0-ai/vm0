@@ -106,6 +106,9 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
+  | "setIllustrationTemplate$"
+  | "imageReferenceSelectionIds$"
+  | "syncImageReferenceAvailabilityRef$"
   | "openTemplatePicker$"
 >;
 
@@ -247,8 +250,13 @@ interface ComposerQueueSignals {
   >;
 }
 
+type UnavailableImageReferenceIds =
+  | ReadonlySet<string>
+  | Promise<ReadonlySet<string>>;
+
 interface ComposerTemplateSignals
   extends ComposerTemplateEditorSignals, ComposerTemplateUiSignals {
+  readonly unavailableImageReferenceIds$: Computed<UnavailableImageReferenceIds>;
   readonly generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   readonly setGenerationTemplate$: Command<
     void,
@@ -380,6 +388,10 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
+    setIllustrationTemplate$: composer.setIllustrationTemplate$,
+    imageReferenceSelectionIds$: composer.imageReferenceSelectionIds$,
+    syncImageReferenceAvailabilityRef$:
+      composer.syncImageReferenceAvailabilityRef$,
     openTemplatePicker$: composer.openTemplatePicker$,
   };
 }
@@ -526,6 +538,40 @@ function createComposerVoiceInput(
   );
 }
 
+function unavailableImageReferenceIds(
+  selectedIds: ReadonlySet<string>,
+  references: readonly { readonly id: string }[],
+): ReadonlySet<string> {
+  const accessibleIds = new Set(
+    references.map((reference) => {
+      return reference.id;
+    }),
+  );
+  return new Set(
+    [...selectedIds].filter((referenceId) => {
+      return !accessibleIds.has(referenceId);
+    }),
+  );
+}
+
+function createUnavailableImageReferenceIds$(
+  workflowComposer: WorkflowComposerSignals,
+  references$: Computed<Promise<readonly { readonly id: string }[]>>,
+): Computed<UnavailableImageReferenceIds> {
+  return computed((get) => {
+    const selectedIds = get(workflowComposer.imageReferenceSelectionIds$);
+    if (selectedIds.size === 0) {
+      // Keep ordinary composer input on the existing synchronous path. This
+      // avoids turning a rapid text-then-Enter gesture into a transiently
+      // disabled action when no reusable image reference is selected.
+      return new Set<string>();
+    }
+    return get(references$).then((references) => {
+      return unavailableImageReferenceIds(selectedIds, references);
+    });
+  });
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -552,6 +598,10 @@ export function createComposerSignals(
     image: options.imageModel !== undefined,
     video: options.videoModel !== undefined,
   });
+  const unavailableImageReferenceIds$ = createUnavailableImageReferenceIds$(
+    workflowComposer,
+    ui.template.imageReference.references$,
+  );
   const voice = createComposerVoiceInput(
     options,
     workflowComposer,
@@ -562,7 +612,7 @@ export function createComposerSignals(
     eventSignals,
     workflowComposer,
     ui.videoOptions,
-    { voice, create },
+    { voice, create, unavailableImageReferenceIds$ },
   );
   const fileInput = createComposerFileInputSignals();
   const workflowPrompt = createComposerWorkflowPromptSignals(
@@ -649,6 +699,7 @@ export function createComposerSignals(
     template: {
       ...composerTemplateSignals(workflowComposer),
       ...ui.template,
+      unavailableImageReferenceIds$,
       generationTemplate$: draft.generationTemplate$,
       setGenerationTemplate$: draft.setGenerationTemplate$,
     },
@@ -783,6 +834,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly options: CreateComposerSignalsOptions;
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
+  readonly unavailableImageReferenceIds$: Computed<UnavailableImageReferenceIds>;
   readonly voiceState$: ComposerVoiceInputSignals["state$"];
   readonly choosingCreateType$: ComposerCreateSignals["choosing$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
@@ -794,6 +846,19 @@ function createComposerPrimaryActionSignal(args: {
     }
     if ((await get(args.voiceState$)).status !== "idle") {
       return "disabled";
+    }
+    if (get(featureSwitch$)[FeatureSwitchKey.ReferenceImages] === true) {
+      const unavailableImageReferenceIds = get(
+        args.unavailableImageReferenceIds$,
+      );
+      if (
+        (unavailableImageReferenceIds instanceof Promise
+          ? await unavailableImageReferenceIds
+          : unavailableImageReferenceIds
+        ).size > 0
+      ) {
+        return "disabled";
+      }
     }
 
     const uploadsReady = get(draft.attachmentUploadsReady$);
@@ -820,11 +885,15 @@ function createSubmitCurrentInput(
   options: CreateComposerSignalsOptions,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  voice: ComposerVoiceInputSignals,
-  create: ComposerCreateSignals,
+  dependencies: {
+    readonly voice: ComposerVoiceInputSignals;
+    readonly create: ComposerCreateSignals;
+    readonly unavailableImageReferenceIds$: Computed<UnavailableImageReferenceIds>;
+  },
 ) {
   const draft = options.draft.signals;
-  const voiceState$ = voice.state$;
+  const voiceState$ = dependencies.voice.state$;
+  const { create, unavailableImageReferenceIds$ } = dependencies;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
     options.videoModel,
     videoOptions,
@@ -837,6 +906,17 @@ function createSubmitCurrentInput(
     ): Promise<boolean> => {
       signal.throwIfAborted();
       if (action !== "send" && action !== "queue") {
+        return false;
+      }
+      if (
+        get(featureSwitch$)[FeatureSwitchKey.ReferenceImages] === true &&
+        (await get(unavailableImageReferenceIds$)).size > 0
+      ) {
+        toast.error(
+          i18n.t(($) => {
+            return $.artifacts.imageReferences.unavailableSelection;
+          }),
+        );
         return false;
       }
       await set(stopAndTranscribe$, signal);
@@ -921,11 +1001,13 @@ function createComposerSubmissionSignals(
   eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  {
-    voice,
-    create,
-  }: { voice: ComposerVoiceInputSignals; create: ComposerCreateSignals },
+  dependencies: {
+    readonly voice: ComposerVoiceInputSignals;
+    readonly create: ComposerCreateSignals;
+    readonly unavailableImageReferenceIds$: Computed<UnavailableImageReferenceIds>;
+  },
 ) {
+  const { voice, create, unavailableImageReferenceIds$ } = dependencies;
   const { state$: voiceState$, owner$ } = voice;
   const invocation$ = state<{
     readonly owner: AbortController;
@@ -939,6 +1021,7 @@ function createComposerSubmissionSignals(
     options,
     eventSignals,
     workflowComposer,
+    unavailableImageReferenceIds$,
     voiceState$,
     choosingCreateType$: create.choosing$,
   });
@@ -946,8 +1029,7 @@ function createComposerSubmissionSignals(
     options,
     workflowComposer,
     videoOptions,
-    voice,
-    create,
+    { voice, create, unavailableImageReferenceIds$ },
   );
   const activatePrimaryAction$ = command(
     async (

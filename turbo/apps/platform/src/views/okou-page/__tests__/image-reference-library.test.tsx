@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import {
   imageReferencesContract,
   type CreateImageReferenceBody,
@@ -8,6 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/image-references";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { formatUserImageReferenceId } from "@okouai/core/image-reference-selection";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
@@ -16,11 +17,14 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { agentChatComposerSignals$ } from "../../../signals/okou-page/agent-composer-signals.ts";
 import type { ImageReferenceLibrarySignals } from "../../../signals/okou-page/image-reference-library.ts";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "../../../lib/platform-template-items.ts";
 import { mockNow, now } from "../../../lib/time.ts";
 import {
   AGENT_ID,
   context,
   mockTemplateChat,
+  openTemplatePicker,
+  sendComposerMessage,
 } from "./chat-composer-template-gallery-test-helpers.ts";
 
 const USER_ID = "test-user-123";
@@ -640,4 +644,117 @@ test("reject unsupported source formats before preparing an upload", async () =>
     ),
   ).rejects.toThrow("Image must be a PNG, JPEG, or WebP file");
   expect(control.requests.creates).toStrictEqual([]);
+});
+
+function cardForReference(title: string): HTMLElement {
+  const titleNode = screen.getByText(title);
+  const card = titleNode.closest<HTMLElement>("article");
+  if (!card) {
+    throw new Error(`Reference card for ${title} not found`);
+  }
+  return card;
+}
+
+test("keep the disabled picker on the exact built-in Illustration experience", async () => {
+  mockTemplateChat();
+  installImageReferenceLibrary([
+    createReference({ index: 100, title: "Feature-gated reference" }),
+  ]);
+  const user = userEvent.setup();
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.ReferenceImages]: false },
+  });
+
+  const dialog = await openTemplatePicker(user, "Illustration");
+  expect(within(dialog).queryByText("Your references")).not.toBeInTheDocument();
+  const builtIn = ILLUSTRATION_TEMPLATE_ITEMS[0];
+  if (!builtIn) {
+    throw new Error("Built-in illustration fixture not found");
+  }
+  expect(
+    within(dialog).getByLabelText(`Select template ${builtIn.title}`),
+  ).toBeVisible();
+});
+
+test("group, select, and serialize one reusable reference in the Illustration slot", async () => {
+  const own = createReference({ index: 101, title: "My watercolor" });
+  const shared = createReference({
+    index: 102,
+    title: "Studio collage",
+    ownerUserId: OTHER_USER_ID,
+    visibility: "public",
+  });
+  const { chat } = await setupImageReferencePage([own, shared]);
+  const user = userEvent.setup();
+
+  const dialog = await openTemplatePicker(user, "Illustration");
+  expect(within(dialog).getByText("Your references")).toBeVisible();
+  expect(within(dialog).getByText("Organization")).toBeVisible();
+  expect(within(dialog).getByText("Only you")).toBeVisible();
+  expect(within(dialog).getByText("Shared by Casey Creator")).toBeVisible();
+  await user.click(
+    within(cardForReference(own.title)).getByRole("button", {
+      name: "Use reference",
+    }),
+  );
+
+  await waitFor(() => {
+    expect(screen.getByText(`Reference · ${own.title}`)).toBeVisible();
+    expect(
+      document.querySelectorAll("[data-composer-inline-template]"),
+    ).toHaveLength(1);
+  });
+  await sendComposerMessage(user, "Use this composition");
+  expect(chat.selectedTemplates).toStrictEqual([
+    {
+      type: "illustration",
+      selection: {
+        illustrationStyleId: formatUserImageReferenceId(own.id),
+      },
+    },
+  ]);
+});
+
+test("replace built-in and custom Illustration choices and block a revoked reference", async () => {
+  const own = createReference({ index: 103, title: "Revocable portrait" });
+  const { chat, control } = await setupImageReferencePage([own]);
+  const user = userEvent.setup();
+  const builtIn = ILLUSTRATION_TEMPLATE_ITEMS[0];
+  if (!builtIn) {
+    throw new Error("Built-in illustration fixture not found");
+  }
+
+  let dialog = await openTemplatePicker(user, "Illustration");
+  await user.click(
+    within(dialog).getByLabelText(`Select template ${builtIn.title}`),
+  );
+  dialog = await openTemplatePicker(user, "Illustration");
+  await user.click(
+    within(cardForReference(own.title)).getByRole("button", {
+      name: "Use reference",
+    }),
+  );
+  await waitFor(() => {
+    expect(
+      document.querySelectorAll("[data-composer-inline-template]"),
+    ).toHaveLength(1);
+    expect(screen.getByText(`Reference · ${own.title}`)).toBeVisible();
+  });
+
+  control.replace([]);
+  triggerReferenceEvent("user");
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        "This reference image is no longer available. Remove it or choose another reference before sending.",
+      ),
+    ).toBeVisible();
+    expect(
+      document.querySelector("[data-image-reference-unavailable='true']"),
+    ).not.toBeNull();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+  });
+  expect(chat.sentMessages).toStrictEqual([]);
 });

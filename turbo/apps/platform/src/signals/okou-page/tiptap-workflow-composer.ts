@@ -30,6 +30,7 @@ import {
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
+import { parseUserImageReferenceId } from "@okouai/core/image-reference-selection";
 import {
   VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS,
   type VoiceIoEditorContext,
@@ -217,6 +218,15 @@ export interface WorkflowComposerSignals {
   readonly insertTemplate$: Command<
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
+  readonly setIllustrationTemplate$: Command<
+    void,
+    [GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
+  readonly imageReferenceSelectionIds$: Computed<ReadonlySet<string>>;
+  readonly syncImageReferenceAvailabilityRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
   >;
   readonly openTemplatePicker$: Command<
     void,
@@ -887,6 +897,18 @@ function templateAttachmentTypeLabel(
   });
 }
 
+function imageReferenceIdFromTemplateNode(
+  node: ProseMirrorNode,
+): string | undefined {
+  const request = generationTemplateRequestSchema.safeParse(
+    node.attrs.template,
+  );
+  if (!request.success || request.data.type !== "illustration") {
+    return undefined;
+  }
+  return parseUserImageReferenceId(request.data.selection.illustrationStyleId);
+}
+
 function createTemplateAttachmentNodeView(
   node: ProseMirrorNode,
   openTemplate: (category: string) => void,
@@ -1048,10 +1070,34 @@ function createInlineTemplateNodeView(
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
-    title.textContent = attachment.title;
+    const referenceId = imageReferenceIdFromTemplateNode(nextNode);
+    const unavailable =
+      referenceId !== undefined && nextNode.attrs.unavailable === true;
+    title.textContent = referenceId
+      ? i18n.t(
+          ($) => {
+            return $.artifacts.imageReferences.referenceChip;
+          },
+          { title: attachment.title },
+        )
+      : attachment.title;
+    dom.dataset.imageReferenceUnavailable = unavailable ? "true" : "false";
+    dom.setAttribute("aria-invalid", unavailable ? "true" : "false");
+    title.className =
+      "min-w-0 select-none truncate text-[13px] font-medium " +
+      (unavailable
+        ? "text-destructive"
+        : "text-orange-600 dark:text-orange-300");
     openButton.setAttribute(
       "aria-label",
-      templateAttachmentPreviewLabel(attachment),
+      unavailable
+        ? i18n.t(
+            ($) => {
+              return $.artifacts.imageReferences.unavailableChip;
+            },
+            { title: attachment.title },
+          )
+        : templateAttachmentPreviewLabel(attachment),
     );
   }
   // The zone labels are localized, so a locale switch has to re-render the
@@ -1567,6 +1613,7 @@ function createInlineTemplateNode(
         title: { default: "" },
         category: { default: "slides" },
         previewImageUrl: { default: null },
+        unavailable: { default: false },
       };
     },
     parseHTML() {
@@ -2425,6 +2472,122 @@ function createInsertTemplateCommand(
  * so a selection-based update only works once; every later edit would fall
  * through to inserting another chip.
  */
+function inlineIllustrationTemplatePositions(
+  doc: ProseMirrorNode,
+): readonly { readonly position: number; readonly node: ProseMirrorNode }[] {
+  const positions: { position: number; node: ProseMirrorNode }[] = [];
+  doc.descendants((node, position) => {
+    if (node.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+      return;
+    }
+    const request = generationTemplateRequestSchema.safeParse(
+      node.attrs.template,
+    );
+    if (request.success && request.data.type === "illustration") {
+      positions.push({ position, node });
+    }
+  });
+  return positions;
+}
+
+function createSetIllustrationTemplateCommand(
+  editor: Editor,
+  insertTemplate$: Command<
+    void,
+    [GenerationTemplateRequest, ComposerTemplateAttachment]
+  >,
+  legacyReplacementPending$: State<boolean>,
+) {
+  return command(
+    (
+      { get, set },
+      request: GenerationTemplateRequest,
+      attachment: ComposerTemplateAttachment,
+    ) => {
+      if (request.type !== "illustration" || get(legacyReplacementPending$)) {
+        set(insertTemplate$, request, attachment);
+        return;
+      }
+      const existing = inlineIllustrationTemplatePositions(editor.state.doc);
+      if (existing.length === 0) {
+        set(insertTemplate$, request, attachment);
+        return;
+      }
+      const replacement = inlineTemplateNode(editor, request, attachment);
+      const transaction = editor.state.tr;
+      for (const located of [...existing].reverse()) {
+        transaction.delete(
+          located.position,
+          located.position + located.node.nodeSize,
+        );
+      }
+      transaction.insert(existing[0]?.position ?? 0, replacement);
+      editor.view.dispatch(transaction.scrollIntoView());
+    },
+  );
+}
+
+function imageReferenceSelectionIds(doc: ProseMirrorNode): ReadonlySet<string> {
+  const referenceIds = new Set<string>();
+  doc.descendants((node) => {
+    if (node.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+      return;
+    }
+    const referenceId = imageReferenceIdFromTemplateNode(node);
+    if (referenceId) {
+      referenceIds.add(referenceId);
+    }
+  });
+  return referenceIds;
+}
+
+function synchronizeImageReferenceAvailability(
+  editor: Editor,
+  unavailableReferenceIds: ReadonlySet<string>,
+): void {
+  const transaction = editor.state.tr;
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+      return;
+    }
+    const referenceId = imageReferenceIdFromTemplateNode(node);
+    const unavailable =
+      referenceId !== undefined && unavailableReferenceIds.has(referenceId);
+    if (node.attrs.unavailable !== unavailable) {
+      transaction.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        unavailable,
+      });
+    }
+  });
+  if (transaction.docChanged) {
+    editor.view.dispatch(transaction);
+  }
+}
+
+function createImageReferenceSelectionSignals(
+  editor: Editor,
+  draft: DraftSignals,
+) {
+  const imageReferenceSelectionIds$ = computed((get) => {
+    get(draft.input$);
+    return imageReferenceSelectionIds(editor.state.doc);
+  });
+  const syncImageReferenceAvailabilityRef$ = onRef<HTMLElement>(
+    command((_context, element: HTMLElement) => {
+      const encoded = element.dataset.unavailableImageReferenceIds ?? "";
+      synchronizeImageReferenceAvailability(
+        editor,
+        new Set(encoded.split(",").filter(Boolean)),
+      );
+    }),
+  );
+  return {
+    imageReferenceSelectionIds$,
+    syncImageReferenceAvailabilityRef$,
+  };
+}
+
 function createPrepareTemplateInsertionCommand(editor: Editor) {
   return command(() => {
     const { selection } = editor.state;
@@ -2460,6 +2623,11 @@ function createTemplateCommands(
 ) {
   const legacyReplacementPending$ = state(false);
   const readSelectedTemplate$ = createReadSelectedTemplateCommand(editor);
+  const insertTemplate$ = createInsertTemplateCommand(
+    editor,
+    draft,
+    legacyReplacementPending$,
+  );
   const prepareTemplateInsertion$ =
     createPrepareTemplateInsertionCommand(editor);
   const openTemplatePicker$ = command(
@@ -2482,11 +2650,13 @@ function createTemplateCommands(
     },
   );
   return {
-    insertTemplate$: createInsertTemplateCommand(
+    insertTemplate$,
+    setIllustrationTemplate$: createSetIllustrationTemplateCommand(
       editor,
-      draft,
+      insertTemplate$,
       legacyReplacementPending$,
     ),
+    ...createImageReferenceSelectionSignals(editor, draft),
     openTemplatePicker$,
   };
 }

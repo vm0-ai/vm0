@@ -18,6 +18,7 @@ import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
 import { createExplainerVideoPickerSignals } from "./explainer-video-picker.ts";
 import { createImportedPresentationTemplateSignals } from "./presentation-template-library.ts";
 import { createImageReferenceLibrarySignals } from "./image-reference-library.ts";
+import { createIllustrationReferencePickerSignals } from "./illustration-reference-picker.ts";
 import { createModelPickerMenuSignals } from "./model-picker-menu.ts";
 import type { VideoRunOptionsPatch } from "./video-run-options.ts";
 
@@ -961,6 +962,8 @@ export function createComposerUiSignals() {
   const importedPresentationTemplates =
     createImportedPresentationTemplateSignals();
   const imageReference = createImageReferenceLibrarySignals();
+  const imageReferencePicker =
+    createIllustrationReferencePickerSignals(imageReference);
   const resources = createTemplatePreviewResourceSignals(list, cards, detail);
   const applySelection$ =
     createApplyPresentationTemplateDetailSelectionSignal(detail);
@@ -986,6 +989,7 @@ export function createComposerUiSignals() {
       ...detail.signals,
       ...importedPresentationTemplates,
       imageReference,
+      imageReferencePicker,
       ...resources,
       loadPresentationTemplateHtmlPreview,
       openPresentationTemplateDetailPreview$,
