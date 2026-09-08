@@ -45,9 +45,7 @@ import {
 } from "../../signals/okou-page/nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  consumePendingAccountMenuSettingsSection$,
   openSettingsDialogAt$,
-  setPendingAccountMenuSettingsSection$,
   type SettingsSection,
 } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -632,13 +630,11 @@ function SignOutItem({
 
 export function AccountDropdown({
   onAccountAction,
-  settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
   renderCodexResetDialog = true,
 }: {
   onAccountAction?: (action: AccountAction) => void;
-  settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
   renderCodexResetDialog?: boolean;
@@ -656,12 +652,6 @@ export function AccountDropdown({
   const avatarShape = "square";
   const realtimeIndicator = useGet(okouDebugRealtimeIndicator$);
   const openSettings = useSet(openSettingsDialogAt$);
-  const setPendingSettingsSection = useSet(
-    setPendingAccountMenuSettingsSection$,
-  );
-  const consumePendingSettingsSection = useSet(
-    consumePendingAccountMenuSettingsSection$,
-  );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
   const reloadCreditBalances = useSet(reloadAccountMenuCreditBalances$);
   const resetCodexSubscriptionUsage = useSet(
@@ -733,17 +723,17 @@ export function AccountDropdown({
     );
   };
 
-  const queueSettingsOpen = (section: SettingsSection) => {
+  const openSettingsSection = (section: SettingsSection) => {
     setSidebarExpanded(false);
-    setPendingSettingsSection(settingsOwnerId, section);
+    detach(openSettings(section, pageSignal), Reason.DomCallback);
   };
 
   const handleOpenSettings = () => {
-    queueSettingsOpen("preference");
+    openSettingsSection("preference");
   };
 
   const handleOpenCreditBalance = () => {
-    queueSettingsOpen("usage");
+    openSettingsSection("usage");
   };
 
   const handleOpenCodexReset = (resetCredits: number | null) => {
@@ -772,7 +762,6 @@ export function AccountDropdown({
     if (!open) {
       return;
     }
-    setPendingSettingsSection(settingsOwnerId, null);
     if (hidePreferences) {
       return;
     }
@@ -811,14 +800,6 @@ export function AccountDropdown({
           align="start"
           sideOffset={8}
           className="w-[240px]"
-          onCloseAutoFocus={(event) => {
-            const section = consumePendingSettingsSection(settingsOwnerId);
-            if (section === null) {
-              return;
-            }
-            event.preventDefault();
-            detach(openSettings(section, pageSignal), Reason.DomCallback);
-          }}
         >
           <CurrentAccountHeader
             display={accountDisplay}

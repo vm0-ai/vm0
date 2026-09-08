@@ -204,6 +204,8 @@ describe("GET /api/web/file-url", () => {
   });
 
   it("reports the public artifacts url for the same object", async () => {
+    mockEnv("R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID", undefined);
+    mockEnv("R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY", undefined);
     const fileId = randomUUID();
     const { token, userId } = await mintFileReadToken();
     const key = artifactKey(userId, fileId, "photo.png");
@@ -221,6 +223,7 @@ describe("GET /api/web/file-url", () => {
     // A shared link has to outlive the presigned window and carry no
     // credential, so it addresses the object on the public artifacts domain.
     expect(response.body.publicUrl).toBe(`https://cdn.vm7.io/${key}`);
+    expect(response.headers.get("cache-control")).toBeNull();
   });
 
   it("signs an inline URL without a download disposition", async () => {

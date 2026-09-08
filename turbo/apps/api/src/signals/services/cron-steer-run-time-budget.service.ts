@@ -24,8 +24,6 @@ const RUN_TIME_BUDGET_SCAN_LIMIT = 100;
 
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
-An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
-
 A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;

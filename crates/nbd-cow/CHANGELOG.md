@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.85...nbd-cow-v0.5.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.4.85](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.84...nbd-cow-v0.4.85) (2026-09-07)
 
 

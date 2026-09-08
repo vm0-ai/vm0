@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { ComponentProps, ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -205,11 +206,9 @@ function AccountDropdownContainer({
   renderCodexResetDialog?: boolean;
 }) {
   const onAccountAction = useSet(handleAccountAction$);
-  const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
   return (
     <AccountDropdown
       onAccountAction={onAccountAction}
-      settingsOwnerId={settingsOwnerId}
       collapsed={collapsed}
       renderCodexResetDialog={renderCodexResetDialog}
     />
@@ -853,11 +852,11 @@ function ChatListColumn() {
 
 function ThreeColumnNav() {
   const chatListHidden = useGet(sidebarOff$);
-  return (
+  return withChatScrollLayout(
     <>
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
-    </>
+    </>,
   );
 }
 

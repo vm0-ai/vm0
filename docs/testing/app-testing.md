@@ -11,10 +11,9 @@ user can observe. Keep page tests in the relevant `views/**/__tests__`
 directory with a `.test.tsx` or `.test.ts` suffix.
 
 Use a signal bootstrap test only when the behavior has no page-visible surface
-and still needs the production Platform bootstrap path. Direct pure tests are
-narrow exceptions for security-critical logic, complex algorithms, parsers or
-serializers with non-obvious invariants, and explicit protocol or state-machine
-contracts that cannot be expressed through a page.
+and still needs the production Platform bootstrap path. Follow the
+[external behavior boundary](testing-external-behavior.md) when a state cannot
+be constructed through a production interface.
 
 Do not add helper-only, component-only, or static-configuration unit tests when
 a rendered page can cover the behavior.

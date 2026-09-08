@@ -4538,9 +4538,6 @@
     "apps/platform/src/views/okou-page/image-annotation-editor.tsx": {
       "okou-app": 1
     },
-    "apps/platform/src/views/okou-page/intro-video-wizard.tsx": {
-      "okou-app": 2
-    },
     "apps/platform/src/views/okou-page/replace-composer-draft-dialog.tsx": {
       "okou-app": 1
     },
@@ -4598,7 +4595,7 @@
       "okou-sidebar-header": 1
     },
     "apps/platform/src/views/okou-page/start-cards.tsx": {
-      "okou-card": 2
+      "okou-card": 1
     },
     "apps/platform/src/views/okou-page/telegram-settings-page.tsx": {
       "okou-card": 3

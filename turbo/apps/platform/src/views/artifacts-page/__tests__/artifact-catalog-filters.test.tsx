@@ -1,14 +1,8 @@
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import {
-  click,
-  queryAllByRoleFast,
-  setupPage,
-} from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { search } from "../../../signals/location.ts";
 import {
@@ -21,56 +15,6 @@ import {
 } from "./artifact-catalog-test-helpers.ts";
 
 const context = testContext();
-
-test("Feature-dependent artifact filters match the user's enabled capabilities", async () => {
-  const releaseCatalog = context.mocks.deferred<void>();
-  const releaseCurrentSwitches = context.mocks.deferred<void>();
-  context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
-    await releaseCurrentSwitches.promise;
-    return respond(200, {
-      switches: { [FeatureSwitchKey.SharedThreadSharing]: false },
-      effectiveSwitches: { [FeatureSwitchKey.SharedThreadSharing]: false },
-    });
-  });
-  context.mocks.api(artifactCatalogContract.list, async ({ respond }) => {
-    await releaseCatalog.promise;
-    return respond(200, {
-      artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
-      nextCursor: null,
-    });
-  });
-
-  await setupPage({
-    context,
-    path: "/artifacts",
-    cachedFeatureSwitches: {
-      [FeatureSwitchKey.SharedThreadSharing]: true,
-    },
-  });
-
-  await expect(
-    screen.findByLabelText("Loading artifacts"),
-  ).resolves.toBeInTheDocument();
-  const filters = screen.getByLabelText("Artifact kind filters");
-  expect(getButtonByName("Show avatar artifacts", filters)).toBeInTheDocument();
-  expect(
-    getButtonByName("Show shared conversation artifacts", filters),
-  ).toBeInTheDocument();
-
-  releaseCurrentSwitches.resolve();
-
-  await waitFor(() => {
-    expect(
-      queryButtonByName("Show shared conversation artifacts", filters),
-    ).toBeUndefined();
-    expect(
-      getButtonByName("Show avatar artifacts", filters),
-    ).toBeInTheDocument();
-  });
-
-  releaseCatalog.resolve();
-  await expect(findArtifactAction("launch-deck")).resolves.toBeInTheDocument();
-});
 
 test("Artifact filters stay synchronized with browser history", async () => {
   context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {

@@ -18,6 +18,7 @@ import type { RestorableAttachment } from "./chat-draft.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 import { avatarTemplateSelection } from "./avatar-template-selection.ts";
+import { explainerVideoTemplateOptions } from "@okouai/core/explainer-video-template";
 import {
   serializeAgentMention,
   splitAgentMentionSegments,
@@ -488,6 +489,9 @@ function templateAttachmentType(template: GenerationTemplateRequest): string {
 }
 
 function templateCategory(template: GenerationTemplateRequest): string {
+  if (explainerVideoTemplateOptions(template)) {
+    return "explainer";
+  }
   const type = templateAttachmentType(template);
   return type === "presentation" ? "slides" : type;
 }
@@ -495,6 +499,10 @@ function templateCategory(template: GenerationTemplateRequest): string {
 function templatePreviewImageUrl(
   template: GenerationTemplateRequest,
 ): string | null {
+  const explainer = explainerVideoTemplateOptions(template);
+  if (explainer?.style.kind === "catalog") {
+    return explainer.style.style.thumbnailUrl ?? null;
+  }
   if (template.type === "presentation") {
     return template.selection.previewUrl ?? null;
   }

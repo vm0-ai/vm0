@@ -437,6 +437,7 @@ pub(super) struct AblySupervisor {
 }
 
 pub(super) struct AblySupervisorConfig {
+    pub(super) ssh: Option<Arc<crate::ssh::SshRuntime>>,
     pub(super) api: ApiClient,
     pub(super) group: String,
     pub(super) profiles: Vec<String>,
@@ -449,6 +450,7 @@ pub(super) struct AblySupervisorConfig {
 }
 
 struct SupervisorTaskConfig {
+    ssh: Option<Arc<crate::ssh::SshRuntime>>,
     api: ApiClient,
     group: String,
     profiles: Vec<String>,
@@ -461,11 +463,20 @@ struct SupervisorTaskConfig {
     shutdown: CancellationToken,
 }
 
+impl Drop for SupervisorTaskConfig {
+    fn drop(&mut self) {
+        if let Some(ssh) = &self.ssh {
+            ssh.ably_connected(false);
+        }
+    }
+}
+
 impl AblySupervisor {
     pub(super) fn spawn(config: AblySupervisorConfig) -> Self {
         let shutdown = CancellationToken::new();
         let task_shutdown = shutdown.clone();
         let task_config = SupervisorTaskConfig {
+            ssh: config.ssh,
             api: config.api,
             group: config.group,
             profiles: config.profiles,
@@ -553,6 +564,9 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
             event = recv_ably(&mut ably) => {
                 match event {
                     Some(ably_subscriber::Event::Message(msg)) => {
+                        if config.ssh.as_ref().is_some_and(|ssh| ssh.ably_message(&msg)) {
+                            continue;
+                        }
                         if let Some(run_id) = parse_active_input_notification(&msg) {
                             config.active_input_notifications.notify(run_id);
                             continue;
@@ -576,6 +590,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         .await;
                     }
                     Some(ably_subscriber::Event::Connected) => {
+                        if let Some(ssh) = &config.ssh { ssh.ably_connected(true); }
                         if !disconnect.is_connected() {
                             info!("ably reconnected");
                         }
@@ -583,12 +598,14 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         config.poll_wakeups.mark_ably_connected();
                     }
                     Some(ably_subscriber::Event::Disconnected { reason }) => {
+                        if let Some(ssh) = &config.ssh { ssh.ably_connected(false); }
                         let reason = reason.unwrap_or_else(|| "unknown".to_string());
                         disconnect.record_disconnected(reason.clone());
                         config.poll_wakeups.mark_ably_disconnected();
                         info!(reason = %reason, "ably disconnected, switching to fast poll");
                     }
                     Some(ably_subscriber::Event::Error { code, message }) => {
+                        if let Some(ssh) = &config.ssh { ssh.ably_connected(false); }
                         error!(code, message = %message, "ably fatal error, will reconnect");
                         disconnect.record_disconnected(message.clone());
                         config.poll_wakeups.mark_ably_disconnected();
@@ -596,6 +613,7 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                         ably_retry.schedule();
                     }
                     None => {
+                        if let Some(ssh) = &config.ssh { ssh.ably_connected(false); }
                         warn!("ably subscription closed, will reconnect");
                         disconnect.record_disconnected("subscription closed".to_string());
                         config.poll_wakeups.mark_ably_disconnected();
@@ -629,6 +647,9 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
         }
     }
 
+    if let Some(ssh) = &config.ssh {
+        ssh.ably_connected(false);
+    }
     if let Some(sub) = ably.take() {
         sub.close();
     }

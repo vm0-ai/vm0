@@ -1054,7 +1054,7 @@ describe("computer use native backend", () => {
     }
   });
 
-  it("recovers by respawning the helper after a request times out", async () => {
+  it("requires generation retirement after a request times out", async () => {
     const helper = await createConcurrencyHelper(20);
     const onRuntimeError = vi.fn();
     // Generous enough that a legitimate request (which must cold-start a fresh
@@ -1071,13 +1071,14 @@ describe("computer use native backend", () => {
         code: "accessibility_unavailable",
         message: expect.stringContaining("timed out running app.open"),
       });
-      // The next request runs on a freshly spawned helper, not the killed one.
-      await expect(backend.openApp("ok")).resolves.toEqual({});
+      // The old backend cannot make its process-owned snapshots/actions valid
+      // in a replacement. Fresh work belongs to a newly constructed generation.
+      await expect(backend.openApp("ok")).rejects.toThrow("closed");
 
       const starts = (await readFile(helper.startLogPath, "utf8"))
         .trim()
         .split("\n");
-      expect(starts).toHaveLength(2);
+      expect(starts).toHaveLength(1);
       expect(onRuntimeError).toHaveBeenCalledWith(
         expect.any(Error),
         expect.objectContaining({
@@ -1174,4 +1175,119 @@ describe("computer use native backend", () => {
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("native permission response settlement", () => {
+  it.each([
+    ["invalid status", 'JSON.stringify({id: request.id, status: "invalid"})'],
+    [
+      "invalid result",
+      'JSON.stringify({id: request.id, status: "succeeded", result: []})',
+    ],
+    [
+      "invalid permission fields",
+      'JSON.stringify({id: request.id, status: "succeeded", result: {accessibility: "secret"}})',
+    ],
+    ["malformed JSON", '"{private-payload"'],
+    ["non-object frame", '"null"'],
+  ])(
+    "rejects %s and releases queued work without reusing the poisoned helper",
+    async (_label, frame) => {
+      const dir = await mkdtemp(path.join(tmpdir(), "native-settlement-"));
+      const helperPath = path.join(dir, "helper.cjs");
+      await writeFile(
+        helperPath,
+        `#!${process.execPath}\nrequire('node:readline').createInterface({input:process.stdin}).on('line', line => { const request = JSON.parse(line); process.stdout.write(${frame} + '\\n'); });\n`,
+      );
+      await chmod(helperPath, 0o755);
+      const onRuntimeError = vi.fn();
+      const backend = createComputerUseNativeBackend({
+        helperPath,
+        requestTimeoutMs: 400,
+        onRuntimeError,
+      });
+      try {
+        const results = await Promise.allSettled([
+          backend.getPermissions(),
+          backend.listApps(),
+        ]);
+        expect(results.map((result) => result.status)).toEqual([
+          "rejected",
+          "rejected",
+        ]);
+        expect(onRuntimeError).toHaveBeenCalledExactlyOnceWith(
+          expect.any(Error),
+          expect.objectContaining({
+            stage: "protocol",
+            pendingRequestCount: 1,
+          }),
+        );
+        expect(JSON.stringify(onRuntimeError.mock.calls)).not.toContain(
+          "private-payload",
+        );
+        await expect(backend.getPermissions()).rejects.toThrow("closed");
+      } finally {
+        await backend.dispose();
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+it("ignores duplicate and unowned replies, and bounds protocol diagnostics without retaining private output", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "native-frame-ownership-"));
+  const helperPath = path.join(dir, "helper.cjs");
+  await writeFile(
+    helperPath,
+    `#!${process.execPath}
+const fs = require('node:fs');
+let previous;
+require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+  const request=JSON.parse(line);
+  if (request.kind === 'permissions.state') {
+    fs.writeSync(2, 'private-token-and-app-content'.repeat(1000));
+    fs.writeSync(1, JSON.stringify({id:request.id,status:'succeeded',result:[]})+'\\n');
+    return;
+  }
+  if(previous) fs.writeSync(1, JSON.stringify({id:previous,status:'failed',error:{code:'permission_denied'}})+'\\n');
+  fs.writeSync(1, JSON.stringify({id:'unowned',status:'invalid'})+'\\n');
+  fs.writeSync(1, JSON.stringify({id:request.id,status:'succeeded',result:{apps:['Fresh']}})+'\\n');
+  previous=request.id;
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  const onRuntimeError = vi.fn();
+  const backend = createComputerUseNativeBackend({
+    helperPath,
+    onRuntimeError,
+  });
+  try {
+    for (let index = 0; index < 20; index++)
+      await expect(backend.listApps()).resolves.toEqual([{ name: "Fresh" }]);
+    await expect(backend.getPermissions()).rejects.toThrow("invalid result");
+    const context = onRuntimeError.mock.calls[0]?.[1] as {
+      phases: { elapsedMs: number }[];
+      stderrBytes: number;
+      pendingRequestCount: number;
+    };
+    expect(context.phases).toHaveLength(12);
+    expect(
+      context.phases.every(
+        (phase) => phase.elapsedMs >= 0 && phase.elapsedMs <= 120_000,
+      ),
+    ).toBe(true);
+    expect(context.stderrBytes).toBeLessThanOrEqual(4096);
+    expect(context.pendingRequestCount).toBe(1);
+    expect(JSON.stringify(onRuntimeError.mock.calls)).not.toContain(
+      "private-token",
+    );
+    expect(JSON.stringify(onRuntimeError.mock.calls)).not.toContain("Fresh");
+    await backend.dispose();
+    await expect(backend.listApps()).rejects.toThrow("closed");
+    expect(onRuntimeError).toHaveBeenCalledTimes(1);
+  } finally {
+    await backend.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

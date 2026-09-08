@@ -1979,9 +1979,7 @@ function FeishuSetupDialog({
         closeLabel={t(($) => {
           return $.connectors.actions.close;
         })}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-        }}
+        initialFocus={false}
       >
         {FEISHU_GUIDE_IMAGE_SOURCES.map((src) => {
           return <link key={src} rel="preload" as="image" href={src} />;

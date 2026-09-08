@@ -17,7 +17,7 @@ const downloadFileInner$ = computed(async (get) => {
     return badRequestMessage("file_id query parameter is required");
   }
 
-  const result = await get(webDownloadFile(fileId, auth.userId));
+  const result = await get(webDownloadFile(fileId, auth.userId, auth.orgId));
   if (!result) {
     return notFound("File not found");
   }
@@ -28,6 +28,14 @@ const downloadFileInner$ = computed(async (get) => {
   headers.set("X-File-Mimetype", result.contentType);
   headers.set("Content-Length", String(result.buffer.length));
   headers.set("Cache-Control", "private, no-store");
+  if (result.isPrivate) {
+    // Never execute uploaded HTML or SVG with the API origin's privileges.
+    headers.set(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`,
+    );
+    headers.set("X-Content-Type-Options", "nosniff");
+  }
 
   return new Response(new Uint8Array(result.buffer), {
     status: 200,

@@ -18,6 +18,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { publishSshRuntimeInvalidation } from "./ssh-runtime-wakeup.service";
 
 type SshConnectionRow = typeof sshConnections.$inferSelect;
 type SshConnectionFailure = {
@@ -231,6 +232,28 @@ export async function summarizeSshConnections(
   };
 }
 
+async function encryptSshCredentials(
+  credentials: {
+    readonly privateKey: string;
+    readonly passphrase: string | null;
+  },
+  featureContext: FeatureSwitchContext,
+) {
+  return {
+    encryptedPrivateKey: await encryptStoredSecretValue(
+      credentials.privateKey,
+      featureContext,
+    ),
+    encryptedPassphrase:
+      credentials.passphrase === null
+        ? null
+        : await encryptStoredSecretValue(
+            credentials.passphrase,
+            featureContext,
+          ),
+  };
+}
+
 export async function createSshConnection(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -259,17 +282,10 @@ export async function createSshConnection(args: {
     return failure("conflict", SSH_CONNECTION_LIMIT_CONFLICT);
   }
 
-  const encryptedPrivateKey = await encryptStoredSecretValue(
-    args.body.privateKey,
+  const encryptedCredentials = await encryptSshCredentials(
+    args.body,
     args.featureContext,
   );
-  const encryptedPassphrase =
-    args.body.passphrase === null
-      ? null
-      : await encryptStoredSecretValue(
-          args.body.passphrase,
-          args.featureContext,
-        );
 
   return await args.db.transaction(async (tx) => {
     await lockSshConnectionOwner(tx, args.orgId, args.userId);
@@ -306,8 +322,7 @@ export async function createSshConnection(args: {
     }
     await tx.insert(sshConnectionCredentials).values({
       connectionId: connection.id,
-      encryptedPrivateKey,
-      encryptedPassphrase,
+      ...encryptedCredentials,
     });
     return { ok: true, value: toSshConnectionResponse(connection) };
   });
@@ -353,21 +368,11 @@ export async function updateSshConnection(args: {
   const encryptedCredentials =
     args.body.credentials === undefined
       ? undefined
-      : {
-          encryptedPrivateKey: await encryptStoredSecretValue(
-            args.body.credentials.privateKey,
-            args.featureContext,
-          ),
-          encryptedPassphrase:
-            args.body.credentials.passphrase === null
-              ? null
-              : await encryptStoredSecretValue(
-                  args.body.credentials.passphrase,
-                  args.featureContext,
-                ),
-        };
+      : await encryptSshCredentials(args.body.credentials, args.featureContext);
 
-  return await args.db.transaction(async (tx) => {
+  const result = await args.db.transaction<
+    SshConnectionResult<SshConnectionResponse>
+  >(async (tx) => {
     await lockSshConnectionOwner(tx, args.orgId, args.userId);
     const [current] = await tx
       .select()
@@ -437,6 +442,14 @@ export async function updateSshConnection(args: {
     }
     return { ok: true, value: toSshConnectionResponse(updated) };
   });
+  if (result.ok) {
+    await publishSshRuntimeInvalidation(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectionId: args.connectionId,
+    });
+  }
+  return result;
 }
 
 export async function deleteSshConnection(args: {
@@ -445,23 +458,33 @@ export async function deleteSshConnection(args: {
   readonly userId: string;
   readonly connectionId: string;
 }): Promise<SshConnectionResult<undefined>> {
-  return await args.db.transaction(async (tx) => {
-    await lockSshConnectionOwner(tx, args.orgId, args.userId);
-    const [deleted] = await tx
-      .delete(sshConnections)
-      .where(
-        and(
-          eq(sshConnections.id, args.connectionId),
-          eq(sshConnections.orgId, args.orgId),
-          eq(sshConnections.userId, args.userId),
-        ),
-      )
-      .returning({ id: sshConnections.id });
-    if (!deleted) {
-      return failure("not_found", SSH_CONNECTION_NOT_FOUND);
-    }
-    return { ok: true, value: undefined };
-  });
+  const result = await args.db.transaction<SshConnectionResult<undefined>>(
+    async (tx) => {
+      await lockSshConnectionOwner(tx, args.orgId, args.userId);
+      const [deleted] = await tx
+        .delete(sshConnections)
+        .where(
+          and(
+            eq(sshConnections.id, args.connectionId),
+            eq(sshConnections.orgId, args.orgId),
+            eq(sshConnections.userId, args.userId),
+          ),
+        )
+        .returning({ id: sshConnections.id });
+      if (!deleted) {
+        return failure("not_found", SSH_CONNECTION_NOT_FOUND);
+      }
+      return { ok: true, value: undefined };
+    },
+  );
+  if (result.ok) {
+    await publishSshRuntimeInvalidation(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectionId: args.connectionId,
+    });
+  }
+  return result;
 }
 
 export async function resetSshConnectionHostKey(args: {
@@ -471,7 +494,9 @@ export async function resetSshConnectionHostKey(args: {
   readonly connectionId: string;
   readonly expectedGeneration: number;
 }): Promise<SshConnectionResult<SshConnectionResponse>> {
-  return await args.db.transaction(async (tx) => {
+  const result = await args.db.transaction<
+    SshConnectionResult<SshConnectionResponse>
+  >(async (tx) => {
     await lockSshConnectionOwner(tx, args.orgId, args.userId);
     const [current] = await tx
       .select()
@@ -507,6 +532,14 @@ export async function resetSshConnectionHostKey(args: {
     }
     return { ok: true, value: toSshConnectionResponse(updated) };
   });
+  if (result.ok) {
+    await publishSshRuntimeInvalidation(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectionId: args.connectionId,
+    });
+  }
+  return result;
 }
 
 export async function matchSshConnectionCredentials(args: {

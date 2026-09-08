@@ -33,8 +33,6 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 export { AGENT_ID, THREAD_ID, context };
 
-export const TEMPLATE_FEATURES = { presentationTemplates: true } as const;
-
 interface TemplateChatCapture {
   readonly sentMessages: UserMessageDocument[];
   readonly selectedTemplates: GenerationTemplateRequest[];
@@ -103,7 +101,13 @@ export function mockTemplateChat(options?: {
 
 export async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
-  category?: "Presentation" | "Website" | "Illustration" | "Video" | "Avatar",
+  category?:
+    | "Presentation"
+    | "Website"
+    | "Illustration"
+    | "Video"
+    | "Creative video"
+    | "Avatar",
 ): Promise<HTMLElement> {
   click(
     await waitFor(() => {

@@ -1,4 +1,4 @@
-import { RunWorkMessage } from "./run-work-message.tsx";
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -311,7 +311,7 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
-  focusChatThreadContainer$,
+  chatThreadContainerElement$,
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
@@ -695,9 +695,6 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const startSharing = useSet(thread.sharing.start$);
   const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-
   if (sharingPhase !== "idle") {
     return (
       <header className={CHAT_THREAD_HEADER_CLASS}>
@@ -732,38 +729,36 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     <header className={CHAT_THREAD_HEADER_CLASS}>
       <ChatThreadHeaderTitle thread={thread} />
       <div className="flex items-center gap-0.5">
-        {sharingEnabled ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    detach(
-                      startSharing(pageSignal),
-                      Reason.DomCallback,
-                      "start shared thread selection",
-                    );
-                  }}
-                  variant="quiet"
-                  size="icon-sm"
-                  iconSize="md"
-                  className="shrink-0 duration-150"
-                  aria-label={t(($) => {
-                    return $.chat.sharing.start;
-                  })}
-                >
-                  <Share2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(($) => {
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  detach(
+                    startSharing(pageSignal),
+                    Reason.DomCallback,
+                    "start shared thread selection",
+                  );
+                }}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0 duration-150"
+                aria-label={t(($) => {
                   return $.chat.sharing.start;
                 })}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+              >
+                <Share2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.sharing.start;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
@@ -784,18 +779,11 @@ function useChatThreadEmojiMenuActions({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
-  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
   function closeMenu() {
-    const openThreadId = emojiMenuThreadId;
     closeChatThreadEmojiMenu();
-    if (openThreadId) {
-      queueMicrotask(() => {
-        focusChatThreadContainer(openThreadId);
-      });
-    }
   }
 
   function selectEmoji(nextEmoji: string) {
@@ -853,6 +841,7 @@ function ChatThreadEmojiMenuButton({
   title: string | null | undefined;
 }) {
   const { t } = useTranslation();
+  const chatThreadContainerElement = useSet(chatThreadContainerElement$);
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
@@ -911,8 +900,17 @@ function ChatThreadEmojiMenuButton({
         <PopoverContent
           align="start"
           className="w-80 p-0"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
+          finalFocus={() => {
+            // An open header replaced at a breakpoint keeps the new picker's focus.
+            if (!open) {
+              // Restore the keyboard root after the portal has detached.
+              queueMicrotask(() => {
+                chatThreadContainerElement(threadId)?.focus({
+                  preventScroll: true,
+                });
+              });
+            }
+            return false;
           }}
         >
           <ChatThreadEmojiPicker
@@ -2912,7 +2910,7 @@ export function ChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftPane = useGet(currentLeftPane$);
   const rightPane = useGet(currentRightPane$);
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadSidebarShell
         animateEntry={activeThreadSidebar?.animateEntry ?? true}
@@ -2935,7 +2933,7 @@ export function ChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       <ChatConnectorActionConnectModal />
-    </>
+    </>,
   );
 }
 
@@ -3133,7 +3131,7 @@ function ChatThreadRenderedEventGroups({
     ),
   });
 
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadEventGroups
         thread={thread}
@@ -3161,7 +3159,7 @@ function ChatThreadRenderedEventGroups({
         }
         runGroupFolds={runGroupFoldPlacements.thinkingIndicatorRunGroupFolds}
       />
-    </>
+    </>,
   );
 }
 
@@ -3216,7 +3214,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
   const sharingPhase = useGet(thread.sharing.phase$);
 
-  return (
+  return withChatScrollLayout(
     <main
       data-run-work-folding={runWorkFoldingEnabled || undefined}
       className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
@@ -3235,7 +3233,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadNextRunModelNotice thread={thread} />
       </div>
-    </main>
+    </main>,
   );
 }
 
@@ -3275,7 +3273,7 @@ function ChatThreadNextRunModelNotice({
     runningSelection === undefined ||
     runningSelection === null
   ) {
-    return null;
+    return withChatScrollLayout(null);
   }
 
   const selectedRunSelection: ChatRunModelSelection = {
@@ -3303,9 +3301,9 @@ function ChatThreadNextRunModelNotice({
           return $.chat.run.fastModeWillBeOff;
         });
   } else {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return <RunSectionDividerRow label={label} announce />;
+  return withChatScrollLayout(<RunSectionDividerRow label={label} announce />);
 }
 
 // An assistant group whose events are all bookkeeping — a run's terminal event,
@@ -4277,14 +4275,14 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
     thread.sharing.create$,
   );
   if (phase === "idle") {
-    return <ChatThreadComposer thread={thread} />;
+    return withChatScrollLayout(<ChatThreadComposer thread={thread} />);
   }
 
   const creating = createLoadable.state === "loading";
   const shareUrl = sharedThreadId
     ? `${window.location.origin}/share/threads/${sharedThreadId}`
     : null;
-  return (
+  return withChatScrollLayout(
     <footer className="relative shrink-0 border-t border-border/60 bg-background px-4 py-3 sm:px-6">
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-2">
         {shareUrl ? (
@@ -4384,7 +4382,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
           </div>
         )}
       </div>
-    </footer>
+    </footer>,
   );
 }
 
@@ -4700,11 +4698,13 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
+  const composerLayoutRef = useSet(thread.composerLayoutOnRef$);
   const standalonePwa = isStandalonePwa();
 
   return (
     <footer
       data-chat-composer
+      ref={composerLayoutRef}
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
         paddingBottom: "max(0.5rem, var(--okou-composer-safe-bottom))",
@@ -4948,17 +4948,12 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const donePhrase =
     useLastResolved(thread.donePhrase$) ??
     t(($) => {
       return $.chat.run.done.default;
     });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  if (runWorkFoldingEnabled && source === null) {
-    return null;
-  }
   const label =
     source && runFinishedAt
       ? t(
@@ -5148,8 +5143,6 @@ function ThinkingIndicator({
   inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
-  const runWorkFoldingEnabled =
-    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const spinnerEnabled =
     featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
@@ -5185,12 +5178,7 @@ function ThinkingIndicator({
         }
       : undefined;
 
-  if (
-    mode === null ||
-    (runWorkFoldingEnabled &&
-      mode === "finished" &&
-      recommendedFollowupSource === null)
-  ) {
+  if (mode === null) {
     return null;
   }
 
@@ -7532,19 +7520,6 @@ type PagedAssistantGroupProps = {
   readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
 
-function visibleRunIndicatorMode(
-  mode: Exclude<ThinkingIndicatorMode, null> | undefined,
-  recommendedFollowupSource: RecommendedFollowupSource | null,
-): Exclude<ThinkingIndicatorMode, null> | undefined {
-  if (mode === undefined) {
-    return undefined;
-  }
-  if (mode === "finished" && recommendedFollowupSource === null) {
-    return undefined;
-  }
-  return mode;
-}
-
 type PagedAssistantHistoryItem =
   | {
       readonly kind: "assistant";
@@ -7554,10 +7529,6 @@ type PagedAssistantHistoryItem =
       readonly kind: "model-change";
       readonly eventId: string;
       readonly change: RunModelChange;
-    }
-  | {
-      readonly kind: "run-work-message";
-      readonly event: EnrichedChatEvent;
     };
 
 type PagedAssistantTimelineItem =
@@ -7595,7 +7566,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "run-work-message", event }]
+        ? [{ kind: "assistant", event }]
         : [];
     });
   });
@@ -7639,14 +7610,6 @@ function buildPagedAssistantTimeline({
   if (showAllHistory) {
     historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
-    );
-  } else {
-    historyItems.push(
-      ...runWorkSection.previewMessages.map(
-        (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-message", event };
-        },
-      ),
     );
   }
   historyItems.push(
@@ -7728,15 +7691,6 @@ function PagedAssistantTimeline({
         </div>
       );
     }
-    if (item.kind === "run-work-message") {
-      return (
-        <PagedRunWorkMessage
-          key={item.event.id}
-          event={item.event}
-          thread={thread}
-        />
-      );
-    }
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7759,38 +7713,6 @@ function PagedAssistantTimeline({
   });
 }
 
-function PagedRunWorkMessage({
-  event,
-  thread,
-}: {
-  event: EnrichedChatEvent;
-  thread: ChatPanelSignals;
-}) {
-  const expandedIds = useGet(thread.timelineExpandedIds$);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const isScrollTarget =
-    useGet(thread.threadScrollPosition$, {
-      equalityFn: (previous, next) => {
-        return (
-          (previous?.targetEventId === event.id) ===
-          (next?.targetEventId === event.id)
-        );
-      },
-    })?.targetEventId === event.id;
-  const expanded = expandedIds.has(event.id) || isScrollTarget;
-  return (
-    <RunWorkMessage
-      event={event}
-      expanded={expanded}
-      onToggle={() => {
-        toggleExpanded(event.id);
-      }}
-    >
-      <PagedAssistantEventItem event={event} thread={thread} compact />
-    </RunWorkMessage>
-  );
-}
-
 function PagedRunWorkAssistantContent({
   group,
   thread,
@@ -7809,10 +7731,6 @@ function PagedRunWorkAssistantContent({
   | "runIndicatorMode"
   | "statusTailEvents"
 >) {
-  const recommendedFollowupSource =
-    useLastResolved(thread.recommendedFollowupSource$, {
-      equalityFn: equalRecommendedFollowupSources,
-    }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
     group: {
       ...group,
@@ -7829,10 +7747,6 @@ function PagedRunWorkAssistantContent({
         return event.id === runWorkSection.anchorEventId;
       })
     : undefined;
-  const visibleIndicatorMode = visibleRunIndicatorMode(
-    runIndicatorMode,
-    recommendedFollowupSource,
-  );
   const mainActions =
     mainEvent !== undefined ? (
       <PagedGroupActions
@@ -7844,15 +7758,14 @@ function PagedRunWorkAssistantContent({
       />
     ) : undefined;
 
-  return (
+  return withChatScrollLayout(
     <>
       <PagedAssistantTimeline
         items={timelineItems}
         thread={thread}
         mainActions={mainActions}
       />
-      {(statusTailEvents?.length ?? 0) > 0 ||
-      visibleIndicatorMode !== undefined ? (
+      {(statusTailEvents?.length ?? 0) > 0 || runIndicatorMode !== undefined ? (
         <div
           data-chat-run-status-tail
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
@@ -7867,17 +7780,17 @@ function PagedRunWorkAssistantContent({
                 />
               );
             })
-          ) : visibleIndicatorMode !== undefined ? (
+          ) : runIndicatorMode !== undefined ? (
             <ThinkingIndicator
               thread={thread}
-              mode={visibleIndicatorMode}
+              mode={runIndicatorMode}
               runGroupFolds={[]}
               inAssistantGroup
             />
           ) : null}
         </div>
       ) : null}
-    </>
+    </>,
   );
 }
 
@@ -7972,11 +7885,9 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
-  compact = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  compact?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7984,7 +7895,6 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
-        className={compact ? "py-1 text-[13px] leading-5" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -8003,11 +7913,7 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={
-          compact
-            ? "py-1 text-[13px] leading-5"
-            : CHAT_THREAD_RESPONSE_LINE_CLASS
-        }
+        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

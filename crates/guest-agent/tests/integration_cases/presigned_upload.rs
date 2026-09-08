@@ -278,17 +278,21 @@ async fn put_presigned_file_retry_then_succeed() {
 
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("retry.bin");
-    std::fs::write(&file_path, b"retry file data").unwrap();
+    let data: Vec<u8> = (0..600000).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&file_path, &data).unwrap();
 
     let mock = server.mock(|when, then| {
         when.method(PUT).path("/test/put-file-retry");
         let attempts = AtomicUsize::new(0);
         then.respond_with(move |req| {
+            if !upload_request_matches(req, &data, "600000") {
+                return http_status(400);
+            }
             if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
                 return http_status(500);
             }
 
-            upload_validation_response(req, b"retry file data", "15")
+            http_status(200)
         });
     });
 
@@ -435,14 +439,14 @@ async fn put_presigned_file_large_multi_chunk() {
     let dir = tempfile::tempdir().unwrap();
     let file_path = dir.path().join("large.bin");
     // 600000 bytes — spans multiple 256 KiB streaming chunks.
-    let data = vec![0x42u8; 600000];
+    let data: Vec<u8> = (0..600000).map(|i| (i % 251) as u8).collect();
     std::fs::write(&file_path, &data).unwrap();
 
     let mock = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/put-file-large")
             .header("Content-Length", "600000");
-        then.status(200);
+        then.respond_with(move |req| upload_validation_response(req, &data, "600000"));
     });
 
     let url = api.url("/test/put-file-large");

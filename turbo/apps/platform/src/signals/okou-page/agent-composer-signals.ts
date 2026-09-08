@@ -171,15 +171,6 @@ const noOp$ = command((): void => {});
 interface AgentComposerOptions {
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;
-  readonly draftScope?: "agent" | "standalone";
-}
-
-/** Programmatic task input has no mounted editor or inline template. */
-interface TextSubmission {
-  readonly prompt: string;
-  readonly generationTemplate: undefined;
-  readonly editorDocument?: undefined;
-  readonly videoRunOptions?: undefined;
 }
 
 function createAgentSubmitMessage(
@@ -192,7 +183,7 @@ function createAgentSubmitMessage(
     async (
       { get, set },
       action: "send" | "queue",
-      submission: ComposerSubmission | TextSubmission,
+      submission: ComposerSubmission,
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (action !== "send") {
@@ -250,7 +241,6 @@ function createAgentSubmitMessage(
         {
           agentId,
           draft,
-          draftScope: options.draftScope,
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
@@ -337,17 +327,6 @@ function createAgentComposerSignalsWithDraft(
     removeAutomationEvent$: noOpEventAction$,
     cancelActiveGoal$: noOpAction$,
     openActiveGoal$: noOp$,
-  });
-}
-
-/** A task dialog owns its attachments and must not consume the chat draft. */
-export function createStandaloneAgentSubmission(
-  agentId: string,
-  draft: DraftSignals,
-  connector: ReturnType<typeof createComposerConnectorSignals>,
-) {
-  return createAgentSubmitMessage(agentId, draft, connector, {
-    draftScope: "standalone",
   });
 }
 

@@ -63,51 +63,61 @@ guest-control-client = { path = "guest-control-client" }
 guest-control-proto = { path = "guest-control-proto" }
 
 # External dependencies
-aho-corasick = "1"
-async-trait = "0.1"
+# Keep versions here and select features explicitly in each consuming crate.
+aho-corasick = { version = "1", default-features = false }
+async-trait = { version = "0.1", default-features = false }
 aws-sdk-s3 = { version = "1", default-features = false }
-aws-smithy-mocks = "0.3"
-base64 = "0.23"
-bitvec = "1"
-bytes = "1"
+aws-smithy-mocks = { version = "0.3", default-features = false }
+base64 = { version = "0.23", default-features = false }
+bitvec = { version = "1", default-features = false }
+bytes = { version = "1", default-features = false }
 chrono = { version = "0.4", default-features = false }
-clap = "4"
-flate2 = "1"
-futures-util = "0.3"
-hex = "0.4"
-hmac = "0.13.0"
-httpmock = "0.8"
-hyper = "1"
-idna = "1"
-libc = "0.2"
+clap = { version = "4", default-features = false }
+flate2 = { version = "1", default-features = false }
+futures-util = { version = "0.3", default-features = false }
+hex = { version = "0.4", default-features = false }
+hmac = { version = "0.13.0", default-features = false }
+http-body = { version = "1", default-features = false }
+httpmock = { version = "0.8", default-features = false }
+hyper = { version = "1", default-features = false }
+idna = { version = "1", default-features = false }
+libc = { version = "0.2", default-features = false }
+log = { version = "0.4", default-features = false }
 nix = { version = "0.31", default-features = false }
-proptest = { version = "1", default-features = false, features = ["std"] }
-proc-macro2 = "1"
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
-rmp-serde = "1"
-rmpv = "1"
-rustix = { version = "1", features = ["fs", "linux_4_11"] }
+pin-project-lite = { version = "0.2", default-features = false }
+pkcs5 = { version = "0.8", default-features = false }
+pkcs8 = { version = "0.11", default-features = false }
+proc-macro2 = { version = "1", default-features = false }
+proptest = { version = "1", default-features = false }
+reqwest = { version = "0.13", default-features = false }
+rmp-serde = { version = "1", default-features = false }
+rmpv = { version = "1", default-features = false }
+rsa = { version = "=0.10.0-rc.18", default-features = false }
+russh = { version = "=0.63.2", default-features = false }
+rustix = { version = "1", default-features = false }
 sentry = { version = "0.49", default-features = false }
-serde = "1"
-serde_json = "1"
-serde_path_to_error = "0.1"
-serde_yaml_ng = "0.10"
-sha2 = "0.11"
-tar = "0.4"
-tempfile = "3"
-thiserror = "2"
-tokio = "1"
+serde = { version = "1", default-features = false }
+serde_json = { version = "1", default-features = false }
+serde_path_to_error = { version = "0.1", default-features = false }
+serde_yaml_ng = { version = "0.10", default-features = false }
+sha2 = { version = "0.11", default-features = false }
+tar = { version = "0.4", default-features = false }
+tempfile = { version = "3", default-features = false }
+thiserror = { version = "2", default-features = false }
+tokio = { version = "1", default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false }
-tokio-util = "0.7"
-tracing = "0.1"
-tracing-appender = "0.2"
-tracing-subscriber = "0.3"
-trybuild = "1"
-unicode-normalization = "0.1"
-ureq = "3"
-url = "2"
-uuid = "1"
-which = "8"
+tokio-util = { version = "0.7", default-features = false }
+tracing = { version = "0.1", default-features = false }
+tracing-appender = { version = "0.2", default-features = false }
+tracing-log = { version = "0.2", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false }
+trybuild = { version = "1", default-features = false }
+unicode-normalization = { version = "0.1", default-features = false }
+ureq = { version = "3", default-features = false }
+url = { version = "2", default-features = false }
+uuid = { version = "1", default-features = false }
+which = { version = "8", default-features = false }
+zeroize = { version = "1", default-features = false }
 zstd = { version = "0.13", default-features = false }
 
 # Keep routine local validation usable in constrained environments while

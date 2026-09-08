@@ -1,332 +1,83 @@
 # Testing at vm0
 
-## Why We Care About Testing
-
-Good tests give us confidence to ship fast. Bad tests slow us down with false failures, missed bugs, and maintenance burden. After years of writing tests, we've learned that _how_ you test matters more than _how much_ you test.
-
-Kent C. Dodds summarized it well: **"Write tests. Not too many. Mostly integration."**
-
-This document explains our testing philosophy and the principles behind it.
-
-## Our Testing Strategy
-
-### The Testing Trophy
-
-Traditional testing advice suggests a pyramid: many unit tests at the base, fewer integration tests in the middle, and a handful of E2E tests at the top. We've found the opposite works better for us.
-
-```
-        ┌─────┐
-        │ E2E │           ← Few tests, happy path only
-       ┌┴─────┴┐
-       │ Integ │          ← Our primary tests
-      ┌┴───────┴┐
-      │  Static │         ← TypeScript, ESLint
-      └─────────┘
-```
-
-**Integration tests are our primary tests.** They exercise real code paths, catch real bugs, and give us confidence that the system works. Unit tests, by contrast, often test implementation details that change frequently.
-
-### Why Integration Tests?
-
-Integration tests hit the sweet spot:
-
-- **They exercise real code.** When you test a CLI command end-to-end, you're testing the argument parser, the validators, the business logic, and the output formatting—all at once.
-
-- **They're fast enough.** With MSW mocking external HTTP calls, our integration tests run in milliseconds. No network latency, no flaky external services.
-
-- **They catch real bugs.** Unit tests for individual functions often miss bugs that only appear when functions interact. Integration tests catch these.
-
-- **They survive refactoring.** When you reorganize internal code, integration tests keep passing as long as the behavior is preserved. Unit tests break because they're coupled to implementation.
-
-### What About Unit Tests?
-
-We don't write unit tests. This is a deliberate choice.
-
-When you test a CLI command via `command.parseAsync()`, you're already exercising the validators, formatters, and domain logic inside it. Writing separate unit tests for those internal functions adds maintenance burden without additional confidence.
-
-**Narrow exceptions:**
-
-- **Security-critical code** where the stakes of a bug are high and the logic is genuinely independent.
-- **Algorithmically complex code** with non-obvious invariants (e.g. parsers, serializers, cryptographic routines).
-- **State-machine transition matrices.** When a handler's contract is the full N×M table of (current state, input) → next state, pinning every cell via integration tests balloons setup cost without catching more bugs than a direct unit test would. The canonical example is the runner lifecycle matrix in `crates/runner/src/lifecycle.rs` (`soft_drain_state_guards`, `resume_state_guards`): each test is a multi-cell table calling the lifecycle controller directly, and the happy-path transitions are still covered by full-`run()` integration tests alongside.
-
-### E2E Tests: Happy Path Only
-
-E2E runner tests are expensive. Each remote run takes about 15 seconds, involves real network calls, and can fail due to external service issues. We use E2E tests only to verify that the happy path works—that the whole system hangs together.
-
-Error cases and edge cases belong in integration tests, where we can control the environment and test reliably.
-
-### Deployment Compatibility Tests
-
-When a change touches a deployable boundary, tests must cover the relevant
-old/new version combination. Frontend, backend, and runner deploy independently:
-open browser pages may keep running already-loaded frontend code until
-navigation or refresh, the service worker may update on its own browser
-lifecycle, and old runners may briefly overlap before draining already claimed
-runs.
-
-For API contracts, runner protocols, queue payloads, and persisted state, include
-tests for the previous request or data shape whenever the old version can still
-talk to the new version during rollout. See
-[deployment-compatibility.md](./deployment-compatibility.md) for the full
-deployment compatibility contract.
-
-## The Mock Boundary
-
-The most important decision in testing is: **what do you mock?**
-
-Our rule is simple: **mock at the system boundary, nowhere else.**
-
-### External vs Internal
-
-```
-External (MOCK):
-├── Third-party services (Clerk, AWS, Anthropic)
-├── External APIs (via MSW)
-└── Node.js built-ins when necessary (child_process)
-
-Internal (USE REAL):
-├── Database (globalThis.services.db)
-├── Internal services
-├── Internal utilities
-└── Filesystem (use temp directories)
-```
-
-If you find yourself writing `vi.mock("../../lib/something")`, stop. That's internal code—use the real implementation.
-
-### The Relative Path Rule
-
-Here's a quick heuristic: **if the path in `vi.mock()` starts with `../` or `../../`, it's probably wrong.**
-
-```typescript
-// ✅ Good: External packages
-vi.mock("@clerk/backend");
-vi.mock("@clerk/clerk-js");
-vi.mock("@aws-sdk/client-s3");
-
-// ❌ Bad: Internal code
-vi.mock("../../services/user-service");
-vi.mock("../utils/format");
-```
-
-When you mock internal code, you're not testing real behavior. You're testing that your test correctly orchestrates mocks. That's a recipe for tests that pass while production breaks.
-
-### Why Real Database?
-
-We use a real database in tests, not a mock. This catches:
-
-- SQL syntax errors
-- Constraint violations
-- Transaction issues
-- Migration problems
-
-The database runs locally in Docker, so tests are fast and reliable. Isolate most
-test data with unique user and organization IDs, not by mocking the database
-layer. The `testContext()` signal owns runtime state and mock cleanup; it does
-not roll back persisted rows. When a test must use a fixed shared identity or
-another quota-limited scope, register every resource it creates for teardown
-through the production API instead of deleting database rows directly.
-
-### Why Real Filesystem?
-
-Similarly, we use real files in a temp directory instead of mocking `fs`:
-
-```typescript
-let tempDir: string;
-
-beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "test-"));
-});
-
-afterEach(() => {
-  rmSync(tempDir, { recursive: true, force: true });
-});
-```
-
-This catches permission issues, race conditions, and encoding problems that mocks would hide.
-
-## Common Pitfalls
-
-We've made these mistakes so you don't have to.
-
-### Testing Mocks Instead of Behavior
-
-```typescript
-// ❌ This test proves nothing
-it("should call getUser", async () => {
-  await doSomething();
-  expect(mockGetUser).toHaveBeenCalled();
-});
-
-// ✅ This test verifies behavior
-it("should display the user's name", async () => {
-  const result = await doSomething();
-  expect(result.displayName).toBe("Alice");
-});
-```
-
-The first test passes even if `doSomething()` is completely broken, as long as it calls the mock. The second test verifies actual behavior.
-
-### Direct Fetch Mocking
-
-```typescript
-// ❌ Brittle and unrealistic
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue(...));
-
-// ✅ Use MSW for realistic HTTP mocking
-server.use(
-  http.get('/api/users', () => {
-    return HttpResponse.json({ users: [...] });
-  })
-);
-```
-
-MSW intercepts HTTP at the network level, so your code makes real `fetch` calls that get intercepted. This tests the actual request construction—URL building, headers, body formatting—not just that `fetch` was called.
-
-### Fake Timers
-
-```typescript
-// ❌ Hides real timing issues
-vi.useFakeTimers();
-vi.advanceTimersByTime(1000);
-
-// ✅ Mock the application clock for the owning test lifecycle
-mockNow(fixedTimestamp, context.signal);
-```
-
-Fake timers can mask race conditions and timing bugs. Platform production code
-reads time through `lib/time.ts`'s `now()`, and its test `mockNow()` binds the
-override to `context.signal`. Do not spy on `Date.now()` directly or add a
-cleanup hook for the clock override.
-
-### Manual Detached Cleanup
-
-Do not manually `await clearAllDetached()` inside a test body. The global test
-teardown owns detached cleanup so one test's background work cannot leak into
-the next test. If a test is flaky during its own execution, assume there is a
-floating promise and fix the missing `await`, ownership signal, or explicit
-test synchronization point; do not patch the symptom with waits, manual clears,
-or extra `detach()` calls.
-
-### Over-Testing
-
-Not everything needs a test. We don't test:
-
-- That Zod validates schemas (trust the library)
-- Every HTTP status code (test meaningful error handling)
-- UI text content (it changes frequently and isn't logic)
-- Loading spinners (test the logic that triggers states)
-
-Focus tests on business logic and integration points, not on proving that libraries work.
-
-## Practical Guidelines
-
-### CLI Commands
-
-Test CLI commands via `command.parseAsync()`, mock the Web API with MSW:
-
-```typescript
-it("should scrape a page", async () => {
-  server.use(
-    http.post("http://localhost:3000/api/scrape", () => {
-      return HttpResponse.json({
-        requestedUrl: "https://example.com",
-        format: "markdown",
-        mode: "standard",
-        provider: "firecrawl",
-        creditsCharged: 4,
-        billingCategory: "standard.markdown",
-        billingQuantity: 1,
-        result: { markdown: "# Example" },
-      });
-    }),
-  );
-
-  await scrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
-
-  expect(console.log).toHaveBeenCalledWith(
-    expect.stringContaining("# Example"),
-  );
-});
-```
-
-Console output and exit codes are valid assertions for CLI tests—that's the user interface.
-
-### API Routes
-
-Test `apps/api` routes through the Hono app and the route's ts-rest contract,
-mocking only external services:
-
-```typescript
-const context = testContext();
-const client = setupApp({ context, routes: agentsRoutes })(agentsMainContract);
-
-it("should list an agent created through the API", async () => {
-  context.mocks.clerk.session(userId, orgId);
-
-  const created = await accept(
-    client.create({
-      headers: { authorization: "Bearer clerk-session" },
-      body: { displayName: "Support Agent" },
-    }),
-    [201],
-  );
-
-  const listed = await accept(
-    client.list({ headers: { authorization: "Bearer clerk-session" } }),
-    [200],
-  );
-
-  expect(listed.body).toContainEqual(
-    expect.objectContaining({ agentId: created.body.agentId }),
-  );
-});
-```
-
-Use API calls for setup and verification. Do not create API test state by
-writing database rows, importing DB schemas, importing route handlers, or calling
-internal services.
-
-### Platform UI
-
-Test through the same initialization flow as production:
-
-```typescript
-await setupPage({
-  context,
-  path: "/dashboard",
-});
-
-expect(await screen.findByText("Dashboard")).toBeInTheDocument();
-click(getButtonByName("Create"));
-
-expect(await screen.findByText("Created successfully")).toBeInTheDocument();
-```
-
-Don't render components directly. For view tests, await `setupPage()`, which
-initializes i18n, mirrors `main.ts` startup, renders the complete Router, and
-waits for its first observable page content.
-
-## Reference
-
-### Deep Dives
-
-| Topic             | Guide                                                                                                                                                     |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anti-patterns     | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10)                                       |
-| Patterns          | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                                                              |
-| External behavior | [testing-external-behavior.md](./testing/testing-external-behavior.md) — Why tests should use external user interfaces instead of internal implementation |
-
-### App-Specific Guides
-
-| App            | Guide                                                    |
-| -------------- | -------------------------------------------------------- |
-| CLI commands   | [cli-testing.md](./testing/cli-testing.md)               |
-| CLI E2E (BATS) | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
-| API routes     | [api-testing.md](./testing/api-testing.md)               |
-| App UI         | [app-testing.md](./testing/app-testing.md)               |
-| Desktop app    | [desktop-testing.md](./testing/desktop-testing.md)       |
-| Rust crates    | [rust-testing.md](./testing/rust-testing.md)             |
-| Python addon   | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
-
-For general code quality rules (no `any`, no lint suppressions, etc.), see [bad-smell.md](./bad-smell.md).
+Test the contract an external user or caller relies on. Provide context through
+the production entry point and verify externally observable state or an HTTP
+response available through a production endpoint. Internal implementation
+changes should not break a test when that contract is preserved.
+
+## Choose the Boundary
+
+- **Platform:** boot the real Router with `setupPage`, interact with the page,
+  and assert visible or accessible state, controls, navigation, and downloads.
+- **API:** call production endpoints for setup and verification. Assert HTTP
+  responses, including status, headers, bodies, and effects observable through
+  subsequent requests. Exercise auth, validation, serialization, permissions,
+  idempotency, and existence-leak protection through those endpoints.
+- **CLI:** invoke the command parser and assert output, exit status, or the
+  resulting user-accessible files.
+- **Desktop, Runner, and addon:** use the production boundary described in the
+  matching guide below, including IPC, protocols, and process outcomes.
+
+Do not substitute component state, query caches, database rows, service return
+values, or internal callback counts for these outcomes. The
+[external behavior guide](testing/testing-external-behavior.md) defines the
+boundary and the treatment of states impossible to construct through it.
+
+## Coverage
+
+Prefer integration coverage through real entry points. Add tests for new
+behavior and regressions where they provide confidence beyond existing checks.
+Keep cases focused on meaningful business, security, cancellation, recovery,
+and compatibility contracts. Avoid duplicate cases that merely exercise a
+library, restate static configuration, or pin incidental implementation.
+
+Use expensive deployed E2E runs for representative happy paths. Exercise error
+and edge cases in controlled integration tests. Follow each surface's guide
+for contracts that specifically require deployed or native verification.
+
+Changes to requests, Runner protocols, queue payloads, or persisted state must
+cover the old/new combinations that can coexist during rollout. Follow
+[deployment compatibility](deployment-compatibility.md); those boundaries
+remain part of the runtime contract.
+
+## Dependencies and Ownership
+
+- Mock external services at their boundary. Use MSW for HTTP rather than
+  replacing `fetch`; return realistic contract responses and fail on unhandled
+  requests. Package guides define handler registration and cleanup.
+- Use real internal code, the real database, and real temporary files. A
+  relative import in `vi.mock()` is a warning sign, not a substitute for checking
+  who owns the dependency; workspace packages can also be internal.
+- API and Platform tests use their centralized `testContext()` and
+  `context.mocks` lifetimes. Platform page tests must not import the global MSW
+  server or call `server.use()`.
+- `testContext()` cleans runtime state and mocks; it does not roll back database
+  rows. Use unique identities. For fixed or quota-limited identities, register
+  created resources for teardown through production APIs.
+- Avoid fake timers. Platform time overrides use `mockNow(value, context.signal)`.
+  Wait for the observable result, not elapsed time or an internal cache update.
+- Global teardown owns detached work. Do not manually call `clearAllDetached()`
+  in a test body. Repair missing awaits, cancellation ownership, or observable
+  synchronization when a test races its background work.
+
+## Guides
+
+Read only the guides matching the work:
+
+| Surface                  | Guide                                                     |
+| ------------------------ | --------------------------------------------------------- |
+| Shared setup and cleanup | [Patterns](testing/patterns.md)                           |
+| Common mistakes          | [Anti-patterns](testing/anti-patterns.md)                 |
+| External assertions      | [External behavior](testing/testing-external-behavior.md) |
+| API routes               | [API testing](testing/api-testing.md)                     |
+| Platform pages           | [App testing](testing/app-testing.md)                     |
+| CLI commands             | [CLI testing](testing/cli-testing.md)                     |
+| CLI deployed E2E         | [CLI E2E](testing/cli-e2e-testing.md)                     |
+| Desktop                  | [Desktop testing](testing/desktop-testing.md)             |
+| Rust                     | [Rust testing](testing/rust-testing.md)                   |
+| Python addon             | [Addon testing](testing/mitm-addon-testing.md)            |
+
+Select verification from the changed surface and consumers, as described in
+[the project guidelines](../CLAUDE.md#development-and-verification). Run one
+Vitest process at a time. Do not run unrelated suites or repeat passed checks
+without a new change, failure, or unresolved concern.

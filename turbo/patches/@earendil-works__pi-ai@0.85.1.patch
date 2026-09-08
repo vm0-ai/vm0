@@ -1,0 +1,28 @@
+diff --git a/dist/api/openai-codex-responses.d.ts b/dist/api/openai-codex-responses.d.ts
+index 704476d..8274468 100644
+--- a/dist/api/openai-codex-responses.d.ts
++++ b/dist/api/openai-codex-responses.d.ts
+@@ -1,6 +1,7 @@
+ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+ import type { SimpleStreamOptions, StreamFunction, StreamOptions } from "../types.ts";
+ export interface OpenAICodexResponsesOptions extends StreamOptions {
++    accountId?: string;
+     reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+     reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
+     serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
+index bf979d4..429a003 100644
+--- a/dist/api/openai-codex-responses.js
++++ b/dist/api/openai-codex-responses.js
+@@ -164,7 +164,10 @@ export const stream = (model, context, options) => {
+             if (!apiKey) {
+                 throw new Error(`No API key for provider: ${model.provider}`);
+             }
+-            const accountId = extractAccountId(apiKey);
++            // Preserve existing JWT callers while VM0 adopts the explicit binding.
++            // Remove after #31373 records the two-hour Runner/Sandbox drain and
++            // confirms every supported caller supplies accountId.
++            const accountId = options?.accountId?.trim() || extractAccountId(apiKey);
+             const grammarToolInputProperties = createGrammarToolInputProperties(context.tools, model.compat?.supportsOpenAIGrammarTools ?? false);
+             const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
+             const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);

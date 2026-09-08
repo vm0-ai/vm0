@@ -202,6 +202,14 @@ function placeholderRustDoc(name: string): readonly string[] {
 
 const expectedBindings = [
   {
+    rustModulePath: ["runners"],
+    rustConstName: "OFFICIAL_RUNNER_TOKEN_PREFIX",
+    rustDoc: [
+      "Official token kind; the API still authenticates the secret and winning claim.",
+    ],
+    value: { kind: "string", value: "vm0_official_" },
+  },
+  {
     rustModulePath: ["client", "headers"],
     rustConstName: "CLIENT_VERSION_HEADER",
     value: rustString(CLIENT_VERSION_HEADER),

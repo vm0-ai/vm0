@@ -115,10 +115,8 @@ export async function notifyRunningChatRunOfPendingInput(
 /**
  * The single per-thread scheduler entry: terminal run callbacks, cancel,
  * resume, and the stale sweep all converge here. The standard path attempts
- * user messages first, workflow automation second, and goal continuation
- * third. A terminal callback that just admitted a durable goal may try the
- * existing priority-aware goal selector first; any miss returns to a fresh
- * standard attempt. The final claims serialize on the same thread row and fold
+ * retirement revocation before user messages and workflow automations. The
+ * final claims serialize on the same thread row and fold
  * pending events by class priority, then original `created_at` and id.
  *
  * This entry is the designated mounting point for a future unified per-thread
@@ -130,120 +128,75 @@ export const drainChatThreadQueueForThread$ = command(
     input: DrainChatThreadQueueInput,
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
-    let schedulerEnteredAt = now();
+    const schedulerEnteredAt = now();
     const apiStartTime = input.apiStartTime ?? schedulerEnteredAt;
-    let goalSchedulerTiming =
+    const goalSchedulerTiming =
       input.goalSchedulerTiming ??
       new GoalSchedulerTimingCollector(
         apiStartTime,
         input.goalSchedulerOrigin ?? "direct",
       );
-    let timingHasPreEntry = input.goalSchedulerTiming !== undefined;
-    let tryAdmittedGoal = input.goalContinuationAdmitted === true;
+    const timingHasPreEntry = input.goalSchedulerTiming !== undefined;
     const db = set(writeDb$);
 
-    for (let schedulerAttempt = 0; schedulerAttempt < 2; schedulerAttempt++) {
-      if (!timingHasPreEntry) {
-        goalSchedulerTiming.checkpoint(
-          "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
-          schedulerEnteredAt,
-        );
-      }
-      // Run-based drains close their database lookup at this common entry, so
-      // that phase also includes the command handoff. Direct drains emit the
-      // same action with zero duration to keep one fixed per-run action set.
+    await set(drainGoalQueueForThread$, input.chatThreadId, signal);
+    if (!timingHasPreEntry) {
       goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
+        "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
         schedulerEnteredAt,
       );
-      const notifiedRunningRun = await notifyRunningChatRunOfPendingInput(
-        db,
-        input.chatThreadId,
-      );
-      signal.throwIfAborted();
-      goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
-      );
-      if (notifiedRunningRun) {
-        return null;
-      }
-
-      if (tryAdmittedGoal) {
-        const launched = await set(
-          drainGoalQueueForThread$,
-          {
-            chatThreadId: input.chatThreadId,
-            apiStartTime,
-            admittedGoalFastPath: true,
-            dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-            goalSchedulerTiming,
-            queueItemCreatedBefore: input.queueItemCreatedBefore,
-          },
-          signal,
-        );
-        signal.throwIfAborted();
-        L.debug("Admitted goal scheduler fast path completed", {
-          outcome: launched ? "launched" : "fallback",
-        });
-        if (launched) {
-          return null;
-        }
-        tryAdmittedGoal = false;
-        schedulerEnteredAt = now();
-        goalSchedulerTiming = new GoalSchedulerTimingCollector(
-          apiStartTime,
-          goalSchedulerTiming.origin,
-        );
-        timingHasPreEntry = false;
-        continue;
-      }
-
-      await set(
-        drainQueuedUserMessagesForThread$,
-        {
-          chatThreadId: input.chatThreadId,
-          apiStartTime,
-          queueItemCreatedBefore: input.queueItemCreatedBefore,
-          timing: input.timing,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
-      );
-      const workflowResult = await set(
-        drainWorkflowQueueForThread$,
-        {
-          chatThreadId: input.chatThreadId,
-          apiStartTime,
-          dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-          queueItemCreatedBefore: input.queueItemCreatedBefore,
-          ...(input.automationEventLaunch
-            ? { automationEventLaunch: input.automationEventLaunch }
-            : {}),
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      goalSchedulerTiming.checkpoint(
-        "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
-      );
-      await set(
-        drainGoalQueueForThread$,
-        {
-          chatThreadId: input.chatThreadId,
-          apiStartTime,
-          dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-          goalSchedulerTiming,
-          queueItemCreatedBefore: input.queueItemCreatedBefore,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      return workflowResult;
     }
-    return null;
+    // Run-based drains close their database lookup at this common entry, so
+    // that phase also includes the command handoff. Direct drains emit the
+    // same action with zero duration to keep one fixed per-run action set.
+    goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
+      schedulerEnteredAt,
+    );
+    const notifiedRunningRun = await notifyRunningChatRunOfPendingInput(
+      db,
+      input.chatThreadId,
+    );
+    signal.throwIfAborted();
+    goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
+    );
+    if (notifiedRunningRun) {
+      return null;
+    }
+
+    await set(
+      drainQueuedUserMessagesForThread$,
+      {
+        chatThreadId: input.chatThreadId,
+        apiStartTime,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+        timing: input.timing,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+    );
+    const workflowResult = await set(
+      drainWorkflowQueueForThread$,
+      {
+        chatThreadId: input.chatThreadId,
+        apiStartTime,
+        dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+        queueItemCreatedBefore: input.queueItemCreatedBefore,
+        ...(input.automationEventLaunch
+          ? { automationEventLaunch: input.automationEventLaunch }
+          : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    goalSchedulerTiming.checkpoint(
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
+    );
+    return workflowResult;
   },
 );
 

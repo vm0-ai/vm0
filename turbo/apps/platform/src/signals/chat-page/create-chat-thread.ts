@@ -1,3 +1,4 @@
+import { createChatComposerLayoutOnRef } from "./chat-layout.ts";
 import {
   command,
   computed,
@@ -773,28 +774,10 @@ function createThreadOwnedSignals(threadId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: per-thread UI state (timeline expansion, copy)
+// Sub-factory: per-thread UI state (copy)
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
-  // Timeline expansion
-  const internalExpandedIds$ = state(new Set<string>());
-
-  const timelineExpandedIds$ = computed((get) => {
-    return get(internalExpandedIds$);
-  });
-
-  const toggleTimelineExpanded$ = command(({ get, set }, eventId: string) => {
-    const current = get(internalExpandedIds$);
-    const next = new Set(current);
-    if (next.has(eventId)) {
-      next.delete(eventId);
-    } else {
-      next.add(eventId);
-    }
-    set(internalExpandedIds$, next);
-  });
-
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
   const resetCopiedSignal$ = resetSignal();
@@ -835,8 +818,6 @@ function createThreadUIState() {
   );
 
   return {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
     copiedEventId$,
     copyEvent$,
   };
@@ -4390,6 +4371,10 @@ function createChatPanelSignalsWithDraft(
     ...threadTitle,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    composerLayoutOnRef$: createChatComposerLayoutOnRef(
+      composer.editor.editor,
+      messages.scroll.restoreScrollPosition$,
+    ),
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
@@ -4398,6 +4383,7 @@ function createChatPanelSignalsWithDraft(
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,
+    restoreScrollPosition$: messages.scroll.restoreScrollPosition$,
     ...container,
     composer,
     feedback,

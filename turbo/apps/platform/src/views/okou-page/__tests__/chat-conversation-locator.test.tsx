@@ -4,10 +4,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   context,
   mockChatLifecycleWithoutBrowserSession,
@@ -417,6 +414,7 @@ test("A long conversation has a bounded, readable locator overview", async () =>
 
   await screen.findByText("Locator answer 16");
   installLocatorGeometry();
+  fireEvent.resize(window);
   resize.automationAll();
 
   const ticks = await expectLocatorTickCount(24);
@@ -447,6 +445,7 @@ test("The conversation locator follows the work currently shown in the thread", 
 
   await screen.findByText("Grouped result 3");
   const collapsedGeometry = installLocatorGeometry({ clientHeight: 360 });
+  fireEvent.resize(window);
   resize.automationAll();
   await expectLocatorTickCount(14);
   fireEvent.pointerEnter(collapsedGeometry.rail);
@@ -470,6 +469,7 @@ test("The conversation locator follows the work currently shown in the thread", 
   await screen.findByText("Grouped result 1");
 
   const expandedGeometry = installLocatorGeometry({ clientHeight: 360 });
+  fireEvent.resize(window);
   resize.automationAll();
   await expectLocatorTickCount(18);
   fireEvent.pointerEnter(expandedGeometry.rail);
@@ -497,13 +497,12 @@ test("The conversation locator follows folded goal continuation work", async () 
 
   await screen.findByText("All deployment regions are healthy");
   await screen.findByText("Checked the first deployment region");
-  expect(
-    queryMessageBody("Checked the first deployment region"),
-  ).not.toBeInTheDocument();
+  expect(screen.getByText("Checked the first deployment region")).toBeVisible();
   expect(
     screen.queryByText("Keep checking the deployment regions"),
   ).not.toBeInTheDocument();
   const collapsedGeometry = installLocatorGeometry({ clientHeight: 360 });
+  fireEvent.resize(window);
   resize.automationAll();
   await expectLocatorTickCount(14);
   fireEvent.pointerEnter(collapsedGeometry.rail);
@@ -540,6 +539,7 @@ test("The conversation locator makes the pointed turn easy to identify", async (
 
   await screen.findByText("Locator answer 16");
   const geometry = installLocatorGeometry();
+  fireEvent.resize(window);
   resize.automationAll();
   const ticks = await expectLocatorTickCount(24);
   const selected = ticks[12]!;
@@ -573,6 +573,7 @@ test("Selecting a locator marker jumps to that conversation turn", async () => {
 
   await screen.findByText("Locator answer 16");
   const geometry = installLocatorGeometry();
+  fireEvent.resize(window);
   resize.automationAll();
   const initialTicks = await expectLocatorTickCount(24);
   const firstTarget = initialTicks.find((tick) => {
@@ -598,6 +599,7 @@ test("Selecting a locator marker jumps to that conversation turn", async () => {
   const secondGeometry = installLocatorGeometry({
     initialScrollTop: geometry.readScrollTop(),
   });
+  fireEvent.resize(window);
   resize.automationAll();
   const currentTicks = await expectLocatorTickCount(24);
   const secondTarget = [...currentTicks].reverse().find((tick) => {
@@ -640,6 +642,7 @@ test("The conversation locator can page through older turns", async () => {
 
   await screen.findByText("Locator answer 16");
   const geometry = installLocatorGeometry();
+  fireEvent.resize(window);
   resize.automationAll();
   const initialTicks = await expectLocatorTickCount(24);
   const initialFirstIndex = Number(initialTicks[0]!.dataset.turnIndex);

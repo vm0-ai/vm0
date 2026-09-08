@@ -47,7 +47,7 @@ import {
   deleteChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-event.ts";
-import { focusChatThreadContainer$ } from "../../signals/chat-page/chat-keyboard.ts";
+import { chatThreadContainerElement$ } from "../../signals/chat-page/chat-keyboard.ts";
 import {
   createNewChatThread$,
   newChatThreadDisabled$,
@@ -442,17 +442,11 @@ function ChatThreadRenameDialog() {
   const closeRenameChatThreadDialog = useSet(closeRenameChatThreadDialog$);
   const setRenameDialogInput = useSet(setRenameDialogInput$);
   const renameChatThread = useSet(renameChatThread$);
-  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
+  const chatThreadContainerElement = useSet(chatThreadContainerElement$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
-    const threadId = renameDialogThreadId;
     closeRenameChatThreadDialog();
-    if (threadId) {
-      queueMicrotask(() => {
-        focusChatThreadContainer(threadId);
-      });
-    }
   }
 
   function handleRename() {
@@ -481,13 +475,10 @@ function ChatThreadRenameDialog() {
       }}
     >
       <DialogContent
-        onCloseAutoFocus={(event) => {
-          if (
-            renameDialogThreadId &&
-            focusChatThreadContainer(renameDialogThreadId)
-          ) {
-            event.preventDefault();
-          }
+        finalFocus={() => {
+          return renameDialogThreadId
+            ? chatThreadContainerElement(renameDialogThreadId)
+            : null;
         }}
       >
         <DialogHeader>

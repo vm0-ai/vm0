@@ -26,6 +26,7 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { matchSshConnectionCredentials } from "../services/ssh-connection.service";
+import { publishSshRuntimeInvalidation } from "../services/ssh-runtime-wakeup.service";
 import { createDeferredPromise } from "../utils";
 import {
   isTestEndpointAllowed,
@@ -227,6 +228,7 @@ async function createRuntime(
       workflowAutomationId,
       goalId,
       runnerId: body.runnerId,
+      runnerGroup: body.runnerGroup,
       runnerHeartbeatGeneration: body.heartbeatGeneration,
     });
     if (body.access) {
@@ -266,6 +268,12 @@ async function setAgentAccess(
         ),
       );
   }
+  await publishSshRuntimeInvalidation(db, {
+    orgId: body.orgId,
+    userId: body.userId,
+    agentId: body.agentId,
+    connectionId: null,
+  });
   return { status: 200 as const, body: { ok: true as const } };
 }
 

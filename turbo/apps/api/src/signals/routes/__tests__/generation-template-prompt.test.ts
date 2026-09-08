@@ -136,7 +136,6 @@ describe("buildGenerationTemplatePrompt", () => {
         },
       },
       {
-        presentationTemplatesEnabled: true,
         mountedUserPresentationTemplateIds: [USER_TEMPLATE_ROW_ID],
       },
     );
@@ -177,17 +176,6 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("presentation-template@");
   });
 
-  it("rejects a private template while the switch is off", () => {
-    const result = buildGenerationTemplatePrompt({
-      type: "presentation",
-      selection: {
-        templateId: formatUserPresentationTemplateId(USER_TEMPLATE_ROW_ID),
-      },
-    });
-
-    expect(result.status).toBe("invalid");
-  });
-
   it("emits no guidance for a private template the run does not mount", () => {
     const result = buildGenerationTemplatePrompt(
       {
@@ -200,7 +188,6 @@ describe("buildGenerationTemplatePrompt", () => {
       // it, so naming the package would send the agent to a path that is not
       // there.
       {
-        presentationTemplatesEnabled: true,
         mountedUserPresentationTemplateIds: [],
       },
     );
@@ -230,7 +217,6 @@ describe("buildGenerationTemplatePrompt", () => {
         },
       ],
       {
-        presentationTemplatesEnabled: true,
         mountedUserPresentationTemplateIds: [mounted],
       },
     );
@@ -251,7 +237,6 @@ describe("buildGenerationTemplatePrompt", () => {
         selection: { templateId: "user-template:not-a-uuid" },
       },
       {
-        presentationTemplatesEnabled: true,
         mountedUserPresentationTemplateIds: [],
       },
     );
@@ -263,29 +248,6 @@ describe("buildGenerationTemplatePrompt", () => {
       return;
     }
     expect(result.message).toBe("Malformed presentation template");
-  });
-
-  it("still resolves a built-in template while the switch is on", () => {
-    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-
-    const result = buildGenerationTemplatePrompt(
-      {
-        type: "presentation",
-        selection: {
-          templateId: item.templateId,
-          colorSystemId: item.colorSystemId,
-        },
-      },
-      { presentationTemplatesEnabled: true },
-    );
-
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain(
-      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
-    );
   });
 
   it("falls back to the default color token when none is selected", () => {
