@@ -784,8 +784,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       signal-timers:
-        specifier: ^1.0.4
-        version: 1.0.4
+        specifier: ^1.0.5
+        version: 1.0.5
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -8899,6 +8899,10 @@ packages:
 
   signal-timers@1.0.4:
     resolution: {integrity: sha512-aIqj6BTlnA2G48GTfTFqkEn5MJBtfx4bHCjqzdRLdkhvCRhH8kEDFsX6yUbX0qYXLvV4bI1PRgAw+C9DrgskGg==}
+    engines: {node: '>=10'}
+
+  signal-timers@1.0.5:
+    resolution: {integrity: sha512-O90dl9YMPJiwzBjPI42lS2X47uvmg85eCOeg1WMi8pmLtX/IjKVWIcroLZj5NOJ7J0gRhEl7mu2j7z36caEfHg==}
     engines: {node: '>=10'}
 
   sirv@3.0.2:
@@ -18129,6 +18133,8 @@ snapshots:
   signal-exit@4.1.0: {}
 
   signal-timers@1.0.4: {}
+
+  signal-timers@1.0.5: {}
 
   sirv@3.0.2:
     dependencies:
