@@ -1075,7 +1075,7 @@
         "atRules": ["@layer components"],
         "selector": ".okou-app .okou-chat-card,.okou-app .okou-chat-frame",
         "property": "border",
-        "value": "0.7px solid hsl(var(--gray-400))",
+        "value": "1px solid hsl(var(--gray-400))",
         "important": false
       },
       {

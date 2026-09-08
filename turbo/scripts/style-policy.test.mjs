@@ -134,6 +134,27 @@ test("an exact third-party selector allowlist does not authorize siblings", (t) 
   );
 });
 
+test("counts literal legacy classes without matching longer class names", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createWorkspace(t, {
+    [file]: [
+      'export const View = () => <div className="legacy legacy-extra xlegacy legacy_x motion-safe:legacy [&_.legacy]:block custom[part]+token customparttoken" />;',
+      'document.querySelectorAll(".legacy + .legacy-extra + .legacy");',
+    ].join("\n"),
+  });
+  const baseline = {
+    ...emptyBaseline(["legacy", "custom[part]+token"]),
+    classUsages: {
+      [file]: { legacy: 5, "custom[part]+token": 1 },
+    },
+  };
+
+  assert.deepEqual(
+    checkStylePolicy({ root, allowlist: EMPTY_ALLOWLIST, baseline }).issues,
+    [],
+  );
+});
+
 test("rejects a new inline stylesheet", (t) => {
   const jsxFile = "packages/ui/src/view.tsx";
   const htmlFile = "apps/platform/src/html.ts";

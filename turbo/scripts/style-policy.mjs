@@ -475,10 +475,6 @@ function classStringContents(sourceFile) {
   return [...values.values()];
 }
 
-function escapedRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function collectLegacyClassUsage(file, text, tokens) {
   const sourceFile = ts.createSourceFile(
     file,
@@ -490,13 +486,17 @@ function collectLegacyClassUsage(file, text, tokens) {
   const contents = classStringContents(sourceFile);
   const counts = {};
   for (const token of tokens) {
-    const pattern = new RegExp(
-      `(?<![A-Za-z0-9_-])${escapedRegex(token)}(?![A-Za-z0-9_-])`,
-      "g",
-    );
     let count = 0;
     for (const content of contents) {
-      count += [...content.matchAll(pattern)].length;
+      let offset = content.indexOf(token);
+      while (offset !== -1) {
+        const before = content.charAt(offset - 1);
+        const after = content.charAt(offset + token.length);
+        if (!/[A-Za-z0-9_-]/.test(before) && !/[A-Za-z0-9_-]/.test(after)) {
+          count += 1;
+        }
+        offset = content.indexOf(token, offset + Math.max(token.length, 1));
+      }
     }
     if (count > 0) {
       counts[token] = count;
@@ -901,7 +901,7 @@ function baselineAtGitRef(ref) {
 function printIssues(issues) {
   for (const issue of issues) {
     console.error(
-      `${issue.file}:${issue.line}:1 error ${issue.message} [style-policy/${issue.type}]`,
+      `${issue.file}:${issue.line}:1 error ${issue.message} Read docs/styles.md for the style guide. [style-policy/${issue.type}]`,
     );
   }
 }

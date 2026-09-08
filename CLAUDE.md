@@ -104,7 +104,7 @@ See `docs/externally-managed-references.md` for the full rules and examples.
 - Existing first-party CSS and class dependencies are a shrink-only baseline. When removing one, run `cd turbo && pnpm lint:style:prune`
 - Run `cd turbo && pnpm lint:style` for the complete policy and Tailwind class validation
 
-See `docs/design-system.md` for token ownership, exception boundaries, and lint behavior.
+Read `docs/styles.md` before changing App styles or fixing a style lint failure. It defines the final zero-first-party-selector goal, token ownership, exception boundaries, and lint behavior.
 
 ### Testing Guidelines
 **"Write tests. Not too many. Mostly integration."** — Kent C. Dodds
