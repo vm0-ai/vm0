@@ -32,8 +32,9 @@ Output:
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
-  - Returned URL is permanent (serves a short-lived signed redirect on access)
-  - Safe to persist in chat messages or share over external channels
+  - Persist the returned stable URL in chat messages
+  - Private file URLs require the owner's authentication; they do not grant public access
+  - Use okou web download-file <id> to retrieve a private file
   - Max file size: 1 GB
   - Allowed image types: png / jpeg / gif / webp / avif / svg / bmp / heic / heif / tiff / psd
   - Allowed video types: mp4 / webm / mov
@@ -46,6 +47,7 @@ Notes:
     withErrorHandler(async (options: UploadFileOptions) => {
       const result = await uploadWebFile(options.file, {
         contentType: options.contentType,
+        purpose: "artifact",
       });
       const markdown = createArtifactMarkdownOutput(
         result.filename,

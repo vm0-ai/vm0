@@ -79,7 +79,7 @@ describe("okou web upload-file command", () => {
           "x-amz-meta-filename": "report.pdf",
           "x-amz-meta-user-id": "user-test",
         },
-        url: "https://presigned.example.com/file-uuid-1/report.pdf?sig=abc",
+        url: "https://api.okou.ai/api/web/download-file?file_id=file-uuid-1&filename=report.pdf",
       };
 
       let putReceivedContentType: string | null = null;
@@ -109,6 +109,7 @@ describe("okou web upload-file command", () => {
             contentType: string;
             size: number;
           };
+          expect(body).toMatchObject({ purpose: "artifact" });
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);

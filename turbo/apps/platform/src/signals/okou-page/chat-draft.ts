@@ -431,14 +431,15 @@ function createAttachmentAnnotationSignals(args: {
           }
           // A presigned resource URL can render in an image element while its
           // response remains unreadable to fetch because of CORS. Flattening
-          // needs the bytes, so use the public CDN URL for the same attachment.
+          // needs the bytes. Private storage must allow authenticated app origins
+          // through R2 CORS; public inputs retain their existing CDN URL.
           const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
           const resolved = await get(
             resolveResourceUrl(publicAttachmentUrl(original.url)),
           );
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
-            resolved.shareUrl,
+            resolved.shareUrl ?? resolved.resourceUrl,
             annotations,
             args.filename,
             signal,

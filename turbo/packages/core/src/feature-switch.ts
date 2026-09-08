@@ -104,7 +104,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Dropbox file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
@@ -359,6 +359,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  // Every artifact privacy slice in #32492 uses this same rollout switch.
+  [FeatureSwitchKey.PrivateArtifacts]: {
+    maintainer: "yuma@okou.ai",
+    description:
+      "Use private storage and authenticated previews for CLI artifact uploads.",
+    enabled: false,
   },
   [FeatureSwitchKey.AgentMessageMath]: {
     maintainer: "bingjie@okou.ai",
