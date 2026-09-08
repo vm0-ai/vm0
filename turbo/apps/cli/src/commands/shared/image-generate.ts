@@ -5,6 +5,7 @@ import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
 import { runDefaultImageModelFromEnvironment } from "./run-default-image-model";
+import { isUuid } from "../../lib/utils/uuid";
 import {
   findImageStyle,
   listImageStyles,
@@ -33,6 +34,7 @@ interface ImageOptions {
   safetyTolerance: string;
   enhancePrompt?: boolean;
   imageUrl: string[];
+  imageReferenceId: string[];
   maskImageUrl?: string;
   inputFidelity?: string;
   imagePromptStrength?: string;
@@ -107,6 +109,10 @@ function collectString(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function collectImageReferenceId(value: string, previous: string[]): string[] {
+  return [...previous, value.trim()];
+}
+
 function parseStyleSource(value: string): "github" | "r2" {
   if (value !== "github" && value !== "r2") {
     throw new InvalidArgumentError("style source must be github or r2");
@@ -159,7 +165,7 @@ function resolveImageRequestSize(
   if (command.getOptionValueSource("size") !== "default") {
     return options.size;
   }
-  if (options.imageUrl.length > 0) {
+  if (options.imageUrl.length > 0 || options.imageReferenceId.length > 0) {
     return "auto";
   }
 
@@ -189,7 +195,8 @@ function hasImagePromptModeRequest(options: ImageOptions): boolean {
     options.compile === true ||
     options.prompt !== undefined ||
     options.compiledPrompt !== undefined ||
-    options.rawPrompt !== undefined
+    options.rawPrompt !== undefined ||
+    options.imageReferenceId.length > 0
   );
 }
 
@@ -295,6 +302,12 @@ export function createImageGenerateCommand(
       [],
     )
     .option(
+      "--image-reference-id <uuid>",
+      "Saved reference image id for built-in generation; may be specified once",
+      collectImageReferenceId,
+      [],
+    )
+    .option(
       "--mask-image-url <url>",
       "Mask image URL for supported edit models",
     )
@@ -382,7 +395,10 @@ Options:
     --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
     not supported on the fal-backed image path. Ideogram prompt expansion is
     disabled because Okou supplies the final prompt and expansion costs extra.
-  - Image-to-image: pass --image-url to use the model's edit/reference path.
+  - Image-to-image: pass --image-url to use the model's edit/reference path,
+    or --image-reference-id once to use an authorized saved reference with
+    built-in generation. Explicit URLs are submitted first, followed by the
+    saved reference.
     GPT Image 2.5 accepts up to 16 source images and an optional mask.
     Nano Banana 2 models and Seedream 5 Lite accept up to 14 source images;
     Seedream 5 Pro accepts up to 10; flux-2-pro accepts up to 9;
@@ -395,6 +411,22 @@ ${formatRegistryListing(styles, "image styles")}`;
     })
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
+        if (options.imageReferenceId.some((id) => !isUuid(id))) {
+          throw new Error("--image-reference-id must be a valid UUID");
+        }
+        if (options.imageReferenceId.length > 1) {
+          throw new Error("--image-reference-id can be specified at most once");
+        }
+        if (
+          options.imageReferenceId.length > 0 &&
+          options.provider !== undefined &&
+          options.provider !== "built-in"
+        ) {
+          throw new Error(
+            "--image-reference-id is only supported by the built-in provider",
+          );
+        }
+
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           provider: options.provider,
@@ -412,6 +444,11 @@ ${formatRegistryListing(styles, "image styles")}`;
         const mode = resolveImagePromptMode(options, config.usageCommand);
 
         if (mode === "compile") {
+          if (options.imageReferenceId.length > 0) {
+            throw new Error(
+              "--image-reference-id is only available for direct image generation",
+            );
+          }
           if (options.json) {
             throw new Error(
               "--json is only available for direct built-in generation",
@@ -467,6 +504,7 @@ ${formatRegistryListing(styles, "image styles")}`;
           safetyTolerance: options.safetyTolerance,
           enhancePrompt: options.enhancePrompt,
           imageUrls: options.imageUrl,
+          imageReferenceIds: options.imageReferenceId,
           maskImageUrl: options.maskImageUrl,
           inputFidelity,
           imagePromptStrength,

@@ -53,6 +53,11 @@ import {
   startRunBuiltInAdmission$,
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
+import {
+  authorizeImageReferenceForGeneration$,
+  resolveImageReferenceProviderUrl$,
+  type ImageReferenceGenerationAccess,
+} from "../services/image-reference-generation.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
@@ -81,6 +86,46 @@ interface ImageJobArgs {
   readonly admission: RunBuiltInAdmission | null;
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
+}
+
+type ImageReferenceSource = "owner" | "organization";
+type ImageReferenceAccessFailure = Exclude<
+  ImageReferenceGenerationAccess,
+  { readonly kind: "authorized" }
+>;
+
+type ImageProviderReferencesResolution =
+  | ReturnType<typeof badRequestMessage>
+  | ImageReferenceAccessFailure
+  | {
+      readonly kind: "resolved";
+      readonly references: ImageProviderReferences;
+      readonly imageReferenceSource: ImageReferenceSource | undefined;
+    };
+
+function imageReferenceAccessError(
+  access: ImageReferenceAccessFailure,
+): GenerationErrorResponse {
+  if (access.kind === "disabled") {
+    return {
+      status: 403,
+      body: {
+        error: {
+          message: "Reference images are not enabled",
+          code: "FORBIDDEN",
+        },
+      },
+    };
+  }
+  return {
+    status: 404,
+    body: {
+      error: {
+        message: "Image reference not found",
+        code: "NOT_FOUND",
+      },
+    },
+  };
 }
 
 async function loadRunImageModelDefault(
@@ -178,9 +223,7 @@ const resolveImageProviderReferences$ = command(
     { set },
     args: Pick<ImageJobArgs, "orgId" | "userId" | "options">,
     signal: AbortSignal,
-  ): Promise<
-    ImageProviderReferences | ReturnType<typeof badRequestMessage>
-  > => {
+  ): Promise<ImageProviderReferencesResolution> => {
     const sourceCount = args.options.sourceImageUrls.length;
     const urls = [
       ...args.options.sourceImageUrls,
@@ -194,11 +237,40 @@ const resolveImageProviderReferences$ = command(
     if ("status" in resolved) {
       return resolved;
     }
+    const referenceId = args.options.imageReferenceIds[0];
+    if (!referenceId) {
+      return {
+        kind: "resolved",
+        references: {
+          sourceImageUrls: resolved.slice(0, sourceCount),
+          maskImageUrl: args.options.maskImageUrl
+            ? resolved[sourceCount]
+            : undefined,
+        },
+        imageReferenceSource: undefined,
+      };
+    }
+
+    const savedReference = await set(
+      resolveImageReferenceProviderUrl$,
+      { orgId: args.orgId, userId: args.userId, referenceId },
+      signal,
+    );
+    if (savedReference.kind !== "resolved") {
+      return savedReference;
+    }
     return {
-      sourceImageUrls: resolved.slice(0, sourceCount),
-      maskImageUrl: args.options.maskImageUrl
-        ? resolved[sourceCount]
-        : undefined,
+      kind: "resolved",
+      references: {
+        sourceImageUrls: [
+          ...resolved.slice(0, sourceCount),
+          savedReference.url,
+        ],
+        maskImageUrl: args.options.maskImageUrl
+          ? resolved[sourceCount]
+          : undefined,
+      },
+      imageReferenceSource: savedReference.referenceSource,
     };
   },
 );
@@ -218,18 +290,39 @@ const submitImageProviderWebhookJob$ = command(
         "NOT_CONFIGURED",
       );
     }
-    const references = await set(resolveImageProviderReferences$, args, signal);
-    if ("status" in references) {
+    const resolution = await set(resolveImageProviderReferences$, args, signal);
+    if ("status" in resolution) {
       await set(
         failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: references.body.error },
+        { generationId: args.generationId, error: resolution.body.error },
         signal,
       );
-      return references;
+      return resolution;
+    }
+    if (resolution.kind !== "resolved") {
+      const error = imageReferenceAccessError(resolution);
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: error.body.error },
+        signal,
+      );
+      return error;
+    }
+    if (resolution.imageReferenceSource) {
+      await set(
+        mergeBuiltInGenerationJobInternal$,
+        {
+          generationId: args.generationId,
+          internal: {
+            imageReferenceSource: resolution.imageReferenceSource,
+          },
+        },
+        signal,
+      );
     }
     const handle = await submitFalImageQueueGeneration(
       args.options,
-      references,
+      resolution.references,
       falKey,
       falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
       signal,
@@ -286,16 +379,51 @@ const executeDirectImageProviderJob$ = command(
       return;
     }
 
-    const references = await set(resolveImageProviderReferences$, args, signal);
-    const generation =
-      "status" in references
-        ? references
-        : await (isOpenAi ? generateOpenAiImage : generateBytePlusImage)(
-            args.options,
-            references,
-            apiKey,
-            signal,
-          );
+    const resolution = await set(resolveImageProviderReferences$, args, signal);
+    if ("status" in resolution) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: resolution.body.error },
+        signal,
+      );
+      signal.throwIfAborted();
+      await set(completeRunBuiltInAdmission$, {
+        admission: args.admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    if (resolution.kind !== "resolved") {
+      const error = imageReferenceAccessError(resolution);
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: error.body.error },
+        signal,
+      );
+      signal.throwIfAborted();
+      await set(completeRunBuiltInAdmission$, {
+        admission: args.admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    if (resolution.imageReferenceSource) {
+      await set(
+        mergeBuiltInGenerationJobInternal$,
+        {
+          generationId: args.generationId,
+          internal: {
+            imageReferenceSource: resolution.imageReferenceSource,
+          },
+        },
+        signal,
+      );
+    }
+    const generation = await (
+      isOpenAi ? generateOpenAiImage : generateBytePlusImage
+    )(args.options, resolution.references, apiKey, signal);
     signal.throwIfAborted();
     if (isErrorResponse(generation)) {
       await set(
@@ -431,6 +559,18 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return options;
   }
 
+  const referenceId = options.imageReferenceIds[0];
+  if (referenceId) {
+    const access = await set(
+      authorizeImageReferenceForGeneration$,
+      { orgId: auth.orgId, userId: auth.userId, referenceId },
+      signal,
+    );
+    if (access.kind !== "authorized") {
+      return imageReferenceAccessError(access);
+    }
+  }
+
   const hasCredits = await set(
     checkImageCredits$,
     { orgId: auth.orgId, userId: auth.userId, runId },
@@ -503,6 +643,10 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
           publicBrand,
           provider: options.provider,
           providerTask: "image",
+          imageReferenceCount:
+            options.savedImageReferenceCount === 0
+              ? undefined
+              : options.savedImageReferenceCount,
         },
       ),
     },

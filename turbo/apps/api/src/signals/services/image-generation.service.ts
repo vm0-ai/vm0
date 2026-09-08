@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { command, computed, type Computed } from "ccstate";
+import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
@@ -628,6 +629,8 @@ export interface ImageOptions {
   readonly safetyTolerance: ImageSafetyTolerance;
   readonly enhancePrompt: boolean;
   readonly sourceImageUrls: readonly string[];
+  readonly imageReferenceIds: readonly string[];
+  readonly savedImageReferenceCount: number;
   readonly maskImageUrl: string | undefined;
   readonly inputFidelity: ImageInputFidelity | undefined;
   readonly imagePromptStrength: number | undefined;
@@ -1235,7 +1238,6 @@ function appendSourceImageUrls(
 
 function parseSourceImageUrls(
   body: Record<string, unknown>,
-  modelConfig: ImageModelConfig,
 ): readonly string[] | ErrorResponse {
   const sourceImageUrls: string[] = [];
   for (const key of [
@@ -1250,39 +1252,96 @@ function parseSourceImageUrls(
       return error;
     }
   }
+  return sourceImageUrls;
+}
 
-  if (sourceImageUrls.length === 0) {
-    if (modelConfig.promptless) {
-      return badRequest(`${modelConfig.alias} requires imageUrl`);
-    }
-    return sourceImageUrls;
+function parseImageReferenceIds(
+  body: Record<string, unknown>,
+): readonly string[] | ErrorResponse {
+  const value = body.imageReferenceIds;
+  if (value === undefined || value === null) {
+    return [];
   }
-  const maxSourceImageUrls =
-    modelConfig.provider === "openai"
-      ? 16
-      : modelConfig.alias === "nano-banana-2" ||
-          modelConfig.alias === "nano-banana-2-lite"
-        ? NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS
-        : modelConfig.alias === "flux-2-pro"
-          ? FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS
-          : modelConfig.alias === "seedream5-lite"
-            ? SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS
-            : modelConfig.alias === "qwen-image-3"
-              ? QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS
-              : MAX_SOURCE_IMAGE_URLS;
-  if (sourceImageUrls.length > maxSourceImageUrls) {
-    return badRequest(
-      `imageUrls supports at most ${maxSourceImageUrls} images`,
-    );
+  if (!Array.isArray(value)) {
+    return badRequest("imageReferenceIds must be an array");
+  }
+  if (value.length > 1) {
+    return badRequest("imageReferenceIds supports at most one saved reference");
+  }
+  const parsed = z.array(z.uuid()).safeParse(value);
+  if (!parsed.success) {
+    return badRequest("imageReferenceIds must contain valid UUIDs");
+  }
+  return parsed.data;
+}
+
+function multiSourceImageLimit(modelConfig: ImageModelConfig): number {
+  if (modelConfig.provider === "openai") {
+    return 16;
   }
   if (
-    modelConfig.sourceImageInput === "image_url" &&
-    sourceImageUrls.length > 1
+    modelConfig.alias === "nano-banana-2" ||
+    modelConfig.alias === "nano-banana-2-lite"
   ) {
-    return badRequest(`${modelConfig.alias} accepts one source image`);
+    return NANO_BANANA_2_MAX_SOURCE_IMAGE_URLS;
+  }
+  if (modelConfig.alias === "flux-2-pro") {
+    return FLUX_2_PRO_MAX_SOURCE_IMAGE_URLS;
+  }
+  if (modelConfig.alias === "seedream5-lite") {
+    return SEEDREAM_5_LITE_MAX_SOURCE_IMAGE_URLS;
+  }
+  if (modelConfig.alias === "qwen-image-3") {
+    return QWEN_IMAGE_3_MAX_SOURCE_IMAGE_URLS;
+  }
+  return MAX_SOURCE_IMAGE_URLS;
+}
+
+function validateSourceImages(
+  modelConfig: ImageModelConfig,
+  sourceImageUrls: readonly string[],
+  savedImageReferenceCount: number,
+): ErrorResponse | null {
+  const maxSourceImageUrls = multiSourceImageLimit(modelConfig);
+  const totalSourceImages = sourceImageUrls.length + savedImageReferenceCount;
+  if (totalSourceImages === 0) {
+    return modelConfig.promptless
+      ? badRequest(`${modelConfig.alias} requires imageUrl`)
+      : null;
   }
 
-  return sourceImageUrls;
+  if (savedImageReferenceCount === 0) {
+    if (sourceImageUrls.length > maxSourceImageUrls) {
+      return badRequest(
+        `imageUrls supports at most ${maxSourceImageUrls} images`,
+      );
+    }
+    if (
+      modelConfig.sourceImageInput === "image_url" &&
+      sourceImageUrls.length > 1
+    ) {
+      return badRequest(`${modelConfig.alias} accepts one source image`);
+    }
+    return null;
+  }
+
+  const combinedLimit =
+    modelConfig.sourceImageInput === "image_url" ? 1 : maxSourceImageUrls;
+  if (totalSourceImages > combinedLimit) {
+    const limit = combinedLimit === 1 ? "one" : String(combinedLimit);
+    const noun = combinedLimit === 1 ? "image" : "images";
+    return badRequest(
+      `${modelConfig.alias} accepts at most ${limit} source ${noun} across image URLs and saved references`,
+      "IMAGE_REFERENCE_INCOMPATIBLE",
+    );
+  }
+  return null;
+}
+
+export function imageSourceCount(
+  options: Pick<ImageOptions, "sourceImageUrls" | "savedImageReferenceCount">,
+): number {
+  return options.sourceImageUrls.length + options.savedImageReferenceCount;
 }
 
 function parseMaskImageUrl(
@@ -1385,7 +1444,10 @@ function requestedImageSize(
 
 export function parseImageOptions(
   body: unknown,
-  options?: { readonly defaultModel?: ImageModel },
+  options?: {
+    readonly defaultModel?: ImageModel;
+    readonly savedImageReferenceCount?: number;
+  },
 ): ImageOptions | ErrorResponse {
   if (!isRecord(body)) {
     return badRequest("Invalid JSON body");
@@ -1402,11 +1464,32 @@ export function parseImageOptions(
     return prompt;
   }
 
-  const sourceImageUrls = parseSourceImageUrls(body, modelConfig);
+  const sourceImageUrls = parseSourceImageUrls(body);
   if (typeof sourceImageUrls === "object" && "status" in sourceImageUrls) {
     return sourceImageUrls;
   }
-  const hasSourceImages = sourceImageUrls.length > 0;
+  const imageReferenceIds = parseImageReferenceIds(body);
+  if (typeof imageReferenceIds === "object" && "status" in imageReferenceIds) {
+    return imageReferenceIds;
+  }
+  const savedImageReferenceCount =
+    options?.savedImageReferenceCount ?? imageReferenceIds.length;
+  if (
+    !Number.isInteger(savedImageReferenceCount) ||
+    savedImageReferenceCount < imageReferenceIds.length ||
+    savedImageReferenceCount > 1
+  ) {
+    throw new Error("Invalid saved image reference count");
+  }
+  const sourceImageError = validateSourceImages(
+    modelConfig,
+    sourceImageUrls,
+    savedImageReferenceCount,
+  );
+  if (sourceImageError) {
+    return sourceImageError;
+  }
+  const hasSourceImages = sourceImageUrls.length + savedImageReferenceCount > 0;
 
   const size = requestedImageSize(body, model, hasSourceImages);
   const sizeError = validateImageSize(model, size);
@@ -1482,6 +1565,8 @@ export function parseImageOptions(
     safetyTolerance,
     enhancePrompt,
     sourceImageUrls,
+    imageReferenceIds,
+    savedImageReferenceCount,
     maskImageUrl,
     inputFidelity,
     imagePromptStrength,
@@ -1671,7 +1756,7 @@ function falImageSize(options: ImageOptions) {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   if (options.size === "auto") {
     if (
-      options.sourceImageUrls.length > 0 &&
+      imageSourceCount(options) > 0 &&
       (options.model === FLUX_2_PRO_MODEL || options.model === IDEOGRAM_4_MODEL)
     ) {
       return "auto";
@@ -1732,7 +1817,7 @@ function ideogramRenderingSpeed(
 function falImageCountInput(options: ImageOptions): Record<string, unknown> {
   const providerSelectsCount =
     options.model === FLUX_2_PRO_MODEL ||
-    (options.model === IDEOGRAM_4_MODEL && options.sourceImageUrls.length > 0);
+    (options.model === IDEOGRAM_4_MODEL && imageSourceCount(options) > 0);
   return providerSelectsCount ? {} : { num_images: 1 };
 }
 
@@ -1791,7 +1876,7 @@ function falImageInput(
     ...(modelConfig.supportsEnhancePrompt
       ? { enhance_prompt: options.enhancePrompt }
       : {}),
-    ...(options.sourceImageUrls.length > 0
+    ...(imageSourceCount(options) > 0
       ? falSourceImageInput(modelConfig, references.sourceImageUrls)
       : {}),
     ...(modelConfig.supportsMaskImage && references.maskImageUrl
@@ -1809,7 +1894,7 @@ function falImageInput(
 
 function falImageEndpointId(options: ImageOptions): string {
   const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
-  return options.sourceImageUrls.length > 0
+  return imageSourceCount(options) > 0
     ? modelConfig.imageToImageEndpointId
     : modelConfig.endpointId;
 }
@@ -1933,7 +2018,7 @@ function bytePlusImageInput(
   return {
     model: options.model,
     prompt: options.prompt,
-    ...(options.sourceImageUrls.length > 0 ? { image: sourceImages } : {}),
+    ...(imageSourceCount(options) > 0 ? { image: sourceImages } : {}),
     size: bytePlusImageSize(options),
     output_format: options.outputFormat,
     response_format: "url",
@@ -2336,7 +2421,7 @@ function bytePlusProviderCostUsdMicros(
       ? SEEDREAM_5_PRO_HIGH_TIER_OUTPUT_COST_USD_MICROS
       : SEEDREAM_5_PRO_LOW_TIER_OUTPUT_COST_USD_MICROS;
   const additionalInputCost =
-    Math.max(0, options.sourceImageUrls.length - 1) *
+    Math.max(0, imageSourceCount(options) - 1) *
     SEEDREAM_5_PRO_ADDITIONAL_INPUT_COST_USD_MICROS;
   return outputCost + additionalInputCost;
 }

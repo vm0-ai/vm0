@@ -301,6 +301,7 @@ interface GenerateWebImageOptions {
   safetyTolerance?: string;
   enhancePrompt?: boolean;
   imageUrls?: readonly string[];
+  imageReferenceIds?: readonly string[];
   maskImageUrl?: string;
   inputFidelity?: string;
   imagePromptStrength?: number;
@@ -965,6 +966,9 @@ export async function generateWebImage(
         : {}),
       ...(options.imageUrls && options.imageUrls.length > 0
         ? { imageUrls: options.imageUrls }
+        : {}),
+      ...(options.imageReferenceIds && options.imageReferenceIds.length > 0
+        ? { imageReferenceIds: options.imageReferenceIds }
         : {}),
       ...(options.maskImageUrl ? { maskImageUrl: options.maskImageUrl } : {}),
       ...(options.inputFidelity

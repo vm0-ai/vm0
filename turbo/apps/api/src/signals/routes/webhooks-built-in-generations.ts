@@ -185,7 +185,10 @@ const completeAdmissionForJob$ = command(
 );
 
 function parseJobImageOptions(job: BuiltInGenerationWebhookJob): ImageOptions {
-  const options = parseImageOptions(job.request);
+  const internal = readBuiltInGenerationRequestInternal(job.request);
+  const options = parseImageOptions(job.request, {
+    savedImageReferenceCount: internal.imageReferenceCount,
+  });
   if (isErrorResponse(options)) {
     throw new Error(options.body.error.message);
   }
