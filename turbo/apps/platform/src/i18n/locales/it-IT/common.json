@@ -1903,11 +1903,14 @@
       "create": {
         "addStyle": "Aggiungi stile",
         "addTemplate": "Aggiungi modello",
+        "chooseType": "Scegli un tipo",
+        "description": "Presentazioni, video e immagini",
         "exit": "Esci dalla modalità creazione",
         "image": "Crea immagine",
         "imagePlaceholder": "Descrivi l’immagine che vuoi creare…",
         "presentation": "Crea presentazione",
         "presentationPlaceholder": "Di cosa tratta la tua presentazione?",
+        "question": "Cosa vorresti realizzare?",
         "settingsAdjusted": "Alcune impostazioni video sono state adattate a questo modello",
         "title": "Crea",
         "video": "Crea video",
@@ -2234,7 +2237,6 @@
     "run": {
       "automatedRun": "Esecuzione automatizzata",
       "collapseGroupedHistory": "Comprimi la cronologia delle esecuzioni raggruppate",
-      "collapseHistoryMessage": "Comprimi il messaggio della cronologia: {{message}}",
       "collapseWorkHistory": "Comprimi la cronologia lavorativa",
       "creditUsage": "Utilizzo del credito",
       "done": {

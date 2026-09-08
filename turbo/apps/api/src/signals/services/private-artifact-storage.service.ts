@@ -1,0 +1,150 @@
+import { randomUUID } from "node:crypto";
+import { command, computed } from "ccstate";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+
+import { env } from "../../lib/env";
+import { sanitizeArtifactFilename } from "../../lib/file-url";
+import { nowDate } from "../../lib/time";
+import { apiBackendUrl } from "../../lib/api-backend-url";
+import { db$, writeDb$ } from "../external/db";
+
+const PRIVATE_STORAGE = "private-artifact-v1";
+const privateMetadataSchema = z.object({
+  storage: z.literal(PRIVATE_STORAGE),
+  bucket: z.string().min(1),
+  publicBrand: z.enum(["vm0", "okou"]),
+});
+
+export function privateArtifactUrl(id: string, filename: string): string {
+  const origin = apiBackendUrl();
+  if (!origin) {
+    throw new Error("OKOU_API_BACKEND_URL is required for private artifacts");
+  }
+  const url = new URL("/api/web/download-file", origin);
+  url.searchParams.set("file_id", id);
+  // A display hint lets Markdown classify the file without an unauthenticated
+  // metadata request. Authorization and storage lookup use only file_id.
+  url.searchParams.set("filename", filename);
+  return url.toString();
+}
+
+function privateArtifactsBucket(): string {
+  const bucket = env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME");
+  if (!bucket || bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {
+    throw new Error("A separate R2_PRIVATE_ARTIFACTS_BUCKET_NAME is required");
+  }
+  return bucket;
+}
+
+export const allocatePrivateArtifact$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly filename: string;
+      readonly contentType: string;
+      readonly size: number;
+      readonly publicBrand: PublicBrand;
+    },
+    signal: AbortSignal,
+  ) => {
+    const bucket = privateArtifactsBucket();
+    const id = randomUUID();
+    const key = `private-artifacts/${id}/${sanitizeArtifactFilename(args.filename)}`;
+    const url = privateArtifactUrl(id, args.filename);
+    const db = set(writeDb$);
+    // This independent ownership record also covers uploads outside a run.
+    // Historical accessLevel="private" rows still use public storage; only
+    // this versioned storage marker identifies the new private policy.
+    await db.insert(runUploadedFiles).values({
+      id,
+      source: "web",
+      externalId: id,
+      userId: args.userId,
+      orgId: args.orgId,
+      filename: args.filename,
+      contentType: args.contentType,
+      sizeBytes: args.size,
+      storageKey: key,
+      accessLevel: "private",
+      materializationStatus: "pending",
+      metadata: {
+        storage: PRIVATE_STORAGE,
+        bucket,
+        publicBrand: args.publicBrand,
+      },
+    });
+    signal.throwIfAborted();
+    return {
+      id,
+      key,
+      bucket,
+      url,
+      publicBrand: args.publicBrand,
+      metadata: { "artifact-id": id },
+    };
+  },
+);
+
+export function privateArtifactRecord(id: string) {
+  return computed(async (get) => {
+    // Historical file IDs are not all UUIDs; the database key is a UUID.
+    if (!z.uuid().safeParse(id).success) {
+      return null;
+    }
+    const [row] = await get(db$)
+      .select()
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.id, id))
+      .limit(1);
+    if (!row || row.metadata.storage !== PRIVATE_STORAGE) {
+      return null;
+    }
+    const metadata = privateMetadataSchema.parse(row.metadata);
+    if (!row.orgId || !row.storageKey || !row.filename || !row.contentType) {
+      throw new Error(`Private artifact ${id} has incomplete storage metadata`);
+    }
+    if (metadata.bucket !== privateArtifactsBucket()) {
+      throw new Error(
+        `Private artifact ${id} does not match the configured private bucket`,
+      );
+    }
+    return {
+      ...row,
+      orgId: row.orgId,
+      key: row.storageKey,
+      filename: row.filename,
+      contentType: row.contentType,
+      ...metadata,
+    };
+  });
+}
+
+export const completePrivateArtifact$ = command(
+  async (
+    { set },
+    args: {
+      readonly id: string;
+      readonly url: string;
+      readonly contentType: string;
+      readonly size: number;
+    },
+    signal: AbortSignal,
+  ) => {
+    await set(writeDb$)
+      .update(runUploadedFiles)
+      .set({
+        url: args.url,
+        contentType: args.contentType,
+        sizeBytes: args.size,
+        materializationStatus: "ready",
+        updatedAt: nowDate(),
+      })
+      .where(eq(runUploadedFiles.id, args.id));
+    signal.throwIfAborted();
+  },
+);

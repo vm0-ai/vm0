@@ -11,10 +11,7 @@ import {
   readyChat,
   RUN_PATH,
 } from "./chat-capability-test-helpers.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   findWorkHistoryToggle,
   installRunChat,
@@ -190,9 +187,9 @@ test("Project all workflow run outputs through one run-group history", async () 
   });
 
   await readyChat();
-  expect(queryMessageBody("Earlier workflow evidence 1")).toBeNull();
-  expect(queryMessageBody("Earlier workflow result 1")).toBeNull();
-  expect(queryMessageBody("Earlier workflow evidence 2")).toBeNull();
+  expect(screen.getByText("Earlier workflow evidence 1")).toBeVisible();
+  expect(screen.getByText("Earlier workflow result 1")).toBeVisible();
+  expect(screen.getByText("Earlier workflow evidence 2")).toBeVisible();
   const main = screen.getByText("Earlier workflow result 2");
   expect(main).toBeVisible();
   expect(queryButton("Expand grouped run history")).toBeNull();
@@ -241,7 +238,7 @@ test("Project all workflow run outputs through one run-group history", async () 
 
   const currentMain = await screen.findByText("Current workflow result");
   expect(currentMain).toBeVisible();
-  expect(queryMessageBody("Earlier workflow result 2")).toBeNull();
+  expect(screen.queryByText("Earlier workflow result 2")).toBeNull();
   expect(currentMain.closest('[data-role="assistant"]')).toBe(assistantGroup);
   expect(queryButton("Expand grouped run history")).toBeNull();
   await expect(findWorkHistoryToggle("collapsed")).resolves.toBeVisible();
@@ -434,16 +431,15 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   const answer = await screen.findByText(
     "The current launch evidence is ready.",
   );
-  expect(
-    queryMessageBody("The earlier launch evidence is complete."),
-  ).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
-  const historyMessage = queryButton(
+  const historyMessage = screen.getByText(
     "The earlier launch evidence is complete.",
   );
-  if (!historyMessage) {
-    throw new Error("Expected the earlier result in work history");
-  }
+  expect(historyMessage).toBeVisible();
+  expect(
+    historyMessage.closest("[data-chat-run-work-history-list]"),
+  ).toBeVisible();
+  expect(queryButton("The earlier launch evidence is complete.")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
   const answeringAssistant = answer.closest<HTMLElement>(
     '[data-role="assistant"]',
   );

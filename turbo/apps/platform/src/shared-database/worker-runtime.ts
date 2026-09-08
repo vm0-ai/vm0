@@ -1,3 +1,4 @@
+import { fetchResource } from "../lib/resource-fetch.ts";
 import {
   chatThreadsContract,
   chatThreadEventsContract,
@@ -823,7 +824,7 @@ export class SharedDatabaseWorkerRuntime {
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
-    const response = await fetch(snapshot.body.url, { signal });
+    const response = await fetchResource(snapshot.body.url, {}, signal);
     if (!response.ok) {
       throw new SharedDatabaseHttpError(response.status);
     }

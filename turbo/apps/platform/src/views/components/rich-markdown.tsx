@@ -22,6 +22,7 @@ import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
+import { MathFormulaView } from "./math-formula.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 
 type MarkdownNodeProp = { node?: Element };
@@ -271,6 +272,10 @@ function MediaParagraphRenderer({
 }
 
 function MarkdownSpanRenderer(props: MarkdownSpanProps) {
+  const math = props.node?.data?.math;
+  if (math) {
+    return <MathFormulaView formula={math} />;
+  }
   const color = props.node?.data?.colorPreview;
   if (typeof color === "string") {
     return <MarkdownColorPreview color={color} />;
@@ -310,6 +315,9 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   }
   if (data?.mermaidSignals) {
     return <MermaidDiagramView signals={data.mermaidSignals} />;
+  }
+  if (data?.math) {
+    return <MathFormulaView formula={data.math} />;
   }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }

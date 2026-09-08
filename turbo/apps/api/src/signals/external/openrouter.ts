@@ -1,5 +1,15 @@
 import { optionalEnv } from "../../lib/env";
-import { readBoundedResponseText, safeJsonParse } from "../utils";
+import {
+  onRejection,
+  readBoundedResponseText,
+  safeJsonParse,
+  safeSync,
+} from "../utils";
+import {
+  recordOpenRouterFailure,
+  recordOpenRouterRequestFailure,
+  recordOpenRouterTransportFailure,
+} from "./openrouter-failure";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -149,6 +159,7 @@ function openRouterRequestError(args: {
   readonly message: string;
   readonly status: number;
   readonly value: unknown;
+  readonly origin: "http" | "completion";
 }): OpenRouterRequestError {
   const error = objectProperty(args.value, "error") ?? args.value;
   const metadata = objectProperty(error, "metadata");
@@ -180,13 +191,20 @@ function openRouterRequestError(args: {
     safeErrorCode(provider) ??
     safeErrorCode(error);
   const errorParam = safeErrorParam(provider) ?? safeErrorParam(error);
-  return new OpenRouterRequestError({
+  const requestError = new OpenRouterRequestError({
     message: args.message,
     status: args.status,
     ...(errorType === undefined ? {} : { errorType }),
     ...(errorCode === undefined ? {} : { errorCode }),
     ...(errorParam === undefined ? {} : { errorParam }),
   });
+  recordOpenRouterRequestFailure(
+    requestError,
+    args.status,
+    args.origin,
+    args.value,
+  );
+  return requestError;
 }
 
 async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
@@ -202,6 +220,7 @@ async function ensureOpenRouterResponseOk(response: Response): Promise<void> {
   throw openRouterRequestError({
     message: "OpenRouter request failed",
     status: response.status,
+    origin: "http",
     value: errorValue,
   });
 }
@@ -215,6 +234,7 @@ function parseOpenRouterGeneration(
       throw openRouterRequestError({
         message: "OpenRouter request failed",
         status: 502,
+        origin: "completion",
         value: data,
       });
     }
@@ -224,6 +244,7 @@ function parseOpenRouterGeneration(
     throw openRouterRequestError({
       message: "OpenRouter completion failed",
       status: 502,
+      origin: "completion",
       value: choice.error ?? data.error,
     });
   }
@@ -306,28 +327,47 @@ export async function generateTextWithUsage(
     return null;
   }
 
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
-      ...(options?.reasoning === undefined
-        ? {}
-        : { reasoning: options.reasoning }),
-      temperature: options?.temperature ?? 0.3,
+  const response = await onRejection(
+    fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
+        ...(options?.reasoning === undefined
+          ? {}
+          : { reasoning: options.reasoning }),
+        temperature: options?.temperature ?? 0.3,
+      }),
+      signal,
     }),
-    signal,
+    recordOpenRouterTransportFailure,
+  );
+  await onRejection(
+    ensureOpenRouterResponseOk(response),
+    recordOpenRouterTransportFailure,
+  );
+  const body = await onRejection(
+    response.text(),
+    recordOpenRouterTransportFailure,
+  );
+  const parsed = safeSync(() => {
+    // Preserve the shared helper's payload-free parsing and throw contract.
+    const data = safeJsonParse(body);
+    if (typeof data !== "object" || data === null) {
+      throw new Error("OpenRouter returned invalid JSON");
+    }
+    return parseOpenRouterGeneration(data as OpenRouterResponse);
   });
-  await ensureOpenRouterResponseOk(response);
-  // JSON parser errors can quote the upstream body. Keep failures payload-free.
-  const data = safeJsonParse(await response.text());
-  if (typeof data !== "object" || data === null) {
-    throw new Error("OpenRouter returned invalid JSON");
+  if ("error" in parsed) {
+    if (!(parsed.error instanceof OpenRouterRequestError)) {
+      recordOpenRouterFailure(parsed.error, "invalid_output");
+    }
+    throw parsed.error;
   }
-  return parseOpenRouterGeneration(data as OpenRouterResponse);
+  return parsed.ok;
 }

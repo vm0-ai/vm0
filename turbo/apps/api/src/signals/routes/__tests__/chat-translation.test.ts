@@ -16,6 +16,8 @@ import { createBddApi } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatTranslationRoutes } from "../chat-translation";
+import { auxiliaryResults } from "./helpers/auxiliary-generation";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
@@ -120,6 +122,26 @@ describe("POST /api/chat/translate", () => {
         },
       ],
     });
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    const unavailable = await accept(
+      client(pricing.resolution).translate({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Hello, world", targetLanguage: "zh-CN" },
+      }),
+      [503],
+    );
+    expect(unavailable.body).toStrictEqual({
+      error: {
+        code: "PROVIDER_UNAVAILABLE",
+        message: "Translation is temporarily unavailable",
+      },
+    });
+    await flushWaitUntilForTest();
+    expect(auxiliaryResults(context)).toStrictEqual([]);
   });
 
   it("requires session auth and the chat translation switch", async () => {

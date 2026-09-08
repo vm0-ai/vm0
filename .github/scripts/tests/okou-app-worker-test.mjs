@@ -1193,6 +1193,7 @@ assert.equal(
 assert.equal(manifest.name, "Okou");
 assert.equal(manifest.short_name, "Okou");
 assert.equal(manifest.description, okouDescription);
+assert.equal(manifest.id, "/?source=pwa");
 assert.equal(manifest.icons.length, 3);
 
 let observedR2Key = null;

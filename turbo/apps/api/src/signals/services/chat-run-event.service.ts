@@ -1,4 +1,5 @@
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core";
 
 import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -24,7 +25,10 @@ export async function resolveRunChatThreadModelContext(params: {
   readonly userId: string;
   readonly threadId: string;
 }): Promise<
-  ResolvedPersistedChatThreadModel | ReturnType<typeof badRequestMessage>
+  | (ResolvedPersistedChatThreadModel & {
+      readonly featureSwitchContext: FeatureSwitchContext;
+    })
+  | ReturnType<typeof badRequestMessage>
 > {
   const featureSwitchContext = await loadUserFeatureSwitchContext(
     params.db,
@@ -42,7 +46,7 @@ export async function resolveRunChatThreadModelContext(params: {
   if (!resolved) {
     return badRequestMessage("Chat thread not found");
   }
-  return resolved;
+  return { ...resolved, featureSwitchContext };
 }
 
 async function publishRunUserMessageSignals(

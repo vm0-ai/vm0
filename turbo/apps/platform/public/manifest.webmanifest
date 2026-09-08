@@ -2,6 +2,7 @@
   "name": "Okou",
   "short_name": "Okou",
   "description": "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
+  "id": "/?source=pwa",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

@@ -2743,12 +2743,26 @@ const modelProviderFailureInner$ = command(
     });
     signal.throwIfAborted();
     if (transition.outcome === "recorded" && transition.cooldown) {
-      L.error("Built-in model provider failure report recorded", {
-        type: "built_in_model_provider_cooldown",
-        runId,
-        ...transition.cooldown,
-        unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
-      });
+      const logLevels = {
+        authentication: "warn",
+        billing: "warn",
+        rate_limit: "info",
+        provider_unavailable: "info",
+        timeout: "info",
+        connection: "info",
+      } as const satisfies Record<
+        typeof transition.cooldown.failureKind,
+        "info" | "warn"
+      >;
+      L[logLevels[transition.cooldown.failureKind]](
+        "Built-in model provider failure report recorded",
+        {
+          type: "built_in_model_provider_cooldown",
+          runId,
+          ...transition.cooldown,
+          unavailableUntil: transition.cooldown.unavailableUntil.toISOString(),
+        },
+      );
     }
     return { status: 200 as const, body: { outcome: transition.outcome } };
   },

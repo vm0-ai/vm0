@@ -928,7 +928,8 @@ impl http_body::Body for SizedBody {
         let to_read = next_chunk_size(*this.remaining);
         let spare_capacity = this.buffer.capacity() - buffer_len;
         if spare_capacity < to_read {
-            this.buffer.reserve(to_read - spare_capacity);
+            // `reserve` takes additional space relative to length, not capacity.
+            this.buffer.reserve(to_read);
         }
 
         let Some(spare) = this.buffer.spare_capacity_mut().get_mut(..to_read) else {
@@ -1118,24 +1119,42 @@ mod tests {
         let data: Vec<u8> = (0..(STREAM_CHUNK_SIZE * 2 + 37))
             .map(|i| (i % 251) as u8)
             .collect();
-        let (_dir, mut body) = sized_body_from_bytes(&data).await;
+        for read_size in [STREAM_CHUNK_SIZE, 8192] {
+            for retain_frames in [false, true] {
+                let (_dir, mut body) = sized_body_from_bytes(&data).await;
+                // Force legal short reads through the real file reader.
+                body.reader.set_max_buf_size(read_size);
 
-        let mut remaining = data.len() as u64;
-        assert_eq!(body.size_hint().exact(), Some(remaining));
+                let mut remaining = data.len() as u64;
+                assert_eq!(body.size_hint().exact(), Some(remaining));
+                assert!(!body.is_end_stream());
 
-        let mut chunks = 0;
-        let mut uploaded = Vec::with_capacity(data.len());
-        while let Some(chunk) = next_data(&mut body).await {
-            assert!(chunk.len() <= STREAM_CHUNK_SIZE);
-            chunks += 1;
-            remaining = remaining.saturating_sub(chunk.len() as u64);
-            assert_eq!(body.size_hint().exact(), Some(remaining));
-            uploaded.extend_from_slice(&chunk);
+                let mut chunks = 0;
+                let mut uploaded = Vec::with_capacity(data.len());
+                let mut retained = Vec::new();
+                while let Some(chunk) = next_data(&mut body).await {
+                    assert!(!chunk.is_empty());
+                    assert!(chunk.len() <= read_size);
+                    chunks += 1;
+                    remaining -= chunk.len() as u64;
+                    assert_eq!(body.size_hint().exact(), Some(remaining));
+                    assert_eq!(body.is_end_stream(), remaining == 0);
+                    uploaded.extend_from_slice(&chunk);
+                    if retain_frames {
+                        retained.push(chunk);
+                    }
+                }
+
+                assert!(chunks > 1);
+                assert_eq!(uploaded, data);
+                if retain_frames {
+                    assert_eq!(retained.concat(), data);
+                }
+                assert_eq!(body.size_hint().exact(), Some(0));
+                assert!(body.is_end_stream());
+                assert!(next_data(&mut body).await.is_none());
+            }
         }
-
-        assert!(chunks > 1);
-        assert_eq!(uploaded, data);
-        assert_eq!(body.size_hint().exact(), Some(0));
     }
 
     #[tokio::test]

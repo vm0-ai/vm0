@@ -39,8 +39,8 @@ _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
 _HTTP_STATUS_BAD_GATEWAY = 502
-_WEBSOCKET_KEY_BASE64_CHARS = 24
-_WEBSOCKET_ACCEPT_BASE64_CHARS = 28
+_WEBSOCKET_KEY_BASE64_BYTES = 24
+_WEBSOCKET_ACCEPT_BASE64_BYTES = 28
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
@@ -514,38 +514,42 @@ def is_confirmed_websocket_upgrade_response(
         return False
     if flow.metadata.get(metadata_keys.WEBSOCKET_UPGRADE_REQUEST) is not True:
         return False
-    if not http_header_syntax.header_values_contain_token(
-        response.headers.get_all("Upgrade"),
-        "websocket",
+    if not http_header_syntax.header_fields_contain_token(
+        response.headers.fields,
+        b"upgrade",
+        b"websocket",
         max_work_units=websocket_header_work_limit,
     ):
         return False
-    if not http_header_syntax.header_values_contain_token(
-        response.headers.get_all("Connection"),
-        "upgrade",
+    if not http_header_syntax.header_fields_contain_token(
+        response.headers.fields,
+        b"connection",
+        b"upgrade",
         max_work_units=websocket_header_work_limit,
     ):
         return False
 
     request_key = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Key"),
-        max_value_chars=websocket_header_work_limit,
+        flow.request.headers.fields,
+        b"sec-websocket-key",
+        max_fields=websocket_header_work_limit,
+        max_value_bytes=websocket_header_work_limit,
     )
     response_accept = http_header_syntax.single_header_value(
-        response.headers.get_all("Sec-WebSocket-Accept"),
-        max_value_chars=websocket_header_work_limit,
+        response.headers.fields,
+        b"sec-websocket-accept",
+        max_fields=websocket_header_work_limit,
+        max_value_bytes=websocket_header_work_limit,
     )
     if (
         request_key is None
-        or len(request_key) != _WEBSOCKET_KEY_BASE64_CHARS
+        or len(request_key) != _WEBSOCKET_KEY_BASE64_BYTES
+        or not request_key.isascii()
         or response_accept is None
-        or len(response_accept) != _WEBSOCKET_ACCEPT_BASE64_CHARS
+        or len(response_accept) != _WEBSOCKET_ACCEPT_BASE64_BYTES
     ):
         return False
-    try:
-        expected_accept = generate_accept_token(request_key.encode("ascii")).decode("ascii")
-    except UnicodeEncodeError:
-        return False
+    expected_accept = generate_accept_token(request_key)
     return response_accept == expected_accept
 
 

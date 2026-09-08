@@ -32,11 +32,17 @@ import {
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
 
+// Character rate is noisy for short clips, so only context-sized output can
+// trigger the conservative upper bound for human speech.
+const VOICE_TRANSCRIPT_MAX_CHARACTERS_PER_SECOND = 25;
+const VOICE_TRANSCRIPT_MINIMUM_SUSPICIOUS_CHARACTERS = 200;
+
 type VoiceDraftTranscriptionInput = VoiceIoTranscribeContext &
   VoiceIoTranscribeSegmentOptions & {
     readonly files: readonly File[];
     readonly model: VoiceInputModel;
     readonly debug: boolean;
+    readonly audioDurationSeconds: number;
   };
 
 function voicePolishModel(
@@ -121,6 +127,54 @@ function normalizeVoiceTranscript(
       ? { polishedText: "" }
       : {}),
   };
+}
+
+function exceedsPlausibleSpeechRate(
+  text: string,
+  durationSeconds: number,
+): boolean {
+  const characters = text.trim().length;
+  return (
+    durationSeconds > 0 &&
+    characters >= VOICE_TRANSCRIPT_MINIMUM_SUSPICIOUS_CHARACTERS &&
+    characters / durationSeconds > VOICE_TRANSCRIPT_MAX_CHARACTERS_PER_SECOND
+  );
+}
+
+function rejectUnusableVoiceOutput(
+  input: VoiceDraftTranscriptionInput,
+  result: VoiceIoTranscribeSegmentResponse,
+) {
+  const hasSavedSpeech = Boolean(input.previousTranscript.trim());
+  const hasTranscribedSpeech = Boolean(result.transcript.trim());
+  if (input.final && !hasSavedSpeech && !hasTranscribedSpeech) {
+    return { status: 204 as const, body: undefined };
+  }
+  if (
+    exceedsPlausibleSpeechRate(result.transcript, input.audioDurationSeconds)
+  ) {
+    return input.final && !hasSavedSpeech
+      ? { status: 204 as const, body: undefined }
+      : providerError(
+          new Error("Voice transcription exceeded a plausible speech rate"),
+        );
+  }
+  if (
+    input.final &&
+    result.polishedText !== undefined &&
+    exceedsPlausibleSpeechRate(result.polishedText, input.totalDurationSeconds)
+  ) {
+    return providerError(
+      new Error("Voice polish exceeded a plausible speech rate"),
+    );
+  }
+  if (
+    input.final &&
+    (hasSavedSpeech || hasTranscribedSpeech) &&
+    !result.polishedText?.trim()
+  ) {
+    return providerError(new Error("Voice polish discarded recorded speech"));
+  }
 }
 
 async function transcribeIncrementalVoice(
@@ -239,12 +293,9 @@ export const transcribeVoiceSegment$ = command(
     if (!generated.ok) {
       return providerError(generated.error);
     }
-    if (
-      input.final &&
-      (input.previousTranscript.trim() || generated.value.transcript.trim()) &&
-      !generated.value.polishedText?.trim()
-    ) {
-      return providerError(new Error("Voice polish discarded recorded speech"));
+    const rejected = rejectUnusableVoiceOutput(input, generated.value);
+    if (rejected) {
+      return rejected;
     }
     if (input.debug) {
       set(

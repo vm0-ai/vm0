@@ -35,6 +35,13 @@
   --color-usage-kind-video: #008d76;
   --color-usage-kind-connector: #779aad;
   --color-usage-kind-other: #c8b800;
+
+  /* Artifact-type icon foregrounds, shared by type choices, selected labels,
+     and their menus. These glyph colors retain contrast on light and dark
+     surfaces; they are not body-text colors. */
+  --color-artifact-presentation: #8175a8;
+  --color-artifact-video: #ad775f;
+  --color-artifact-image: #638b80;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline

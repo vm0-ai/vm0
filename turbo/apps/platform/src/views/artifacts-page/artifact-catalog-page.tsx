@@ -12,7 +12,6 @@ import {
   Globe,
 } from "lucide-react";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { surfaceVariants, cn } from "@okouai/ui";
 import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
@@ -27,11 +26,10 @@ import {
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
 import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifact-catalog-signals.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
-import { publicAttachmentUrl } from "../okou-page/attachment-url.ts";
+import { useResolvedAttachmentUrl } from "../okou-page/attachment-resource.ts";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -142,9 +140,10 @@ function ArtifactCatalogFallbackPreview({
 }
 
 function ArtifactCatalogVideoPreview({ sourceUrl }: { sourceUrl: string }) {
+  const resourceUrl = useResolvedAttachmentUrl(sourceUrl);
   return (
     <video
-      src={`${publicAttachmentUrl(sourceUrl)}#t=0.001`}
+      src={resourceUrl ? `${resourceUrl}#t=0.001` : undefined}
       preload="metadata"
       muted
       playsInline
@@ -424,17 +423,12 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
-  sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
-  readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
-  const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
-    return kind !== "shared-thread" || sharedConversationEnabled;
-  });
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
@@ -442,7 +436,7 @@ function ArtifactCatalogKindFilter({
         return $.artifacts.catalog.filters.label;
       })}
     >
-      {options.map((kind) => {
+      {ARTIFACT_KIND_OPTIONS.map((kind) => {
         const selected = kind === selectedKind;
         const label =
           kind === "presentation"
@@ -536,7 +530,6 @@ export function ArtifactCatalogPage({
   const openArtifact = useSet(openArtifact$);
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
-  const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
   const sharedConversationLayout = selectedKind === "shared-thread";
@@ -577,9 +570,6 @@ export function ArtifactCatalogPage({
           </div>
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
-            sharedConversationEnabled={
-              featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
-            }
             onKindChange={setKind}
           />
         </div>

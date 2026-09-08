@@ -42,6 +42,10 @@ import {
   PI_MEMORY_ROOT,
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { cronExtractPiMemoryStage1Contract } from "@okouai/api-contracts/contracts/cron";
+import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import {
@@ -63,6 +67,9 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { cronExtractPiMemoryStage1RoutesForTest } from "../cron-extract-pi-memory-stage1";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import type { AgentEvent } from "../../../lib/event-consumer/verify";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
@@ -184,7 +191,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { openRouterModelContractError } from "./helpers/openrouter-model-contract";
 import { openRouterErrorFixtures } from "./helpers/openrouter-error-fixtures";
-import { verifyOkouToken } from "../../auth/tokens";
+import { signSandboxJwtForTests, verifyOkouToken } from "../../auth/tokens";
 import {
   createUnassociatedThreadBoundAgentRunFixture,
   createUnassociatedThreadBoundAgentRunsServiceFixture,
@@ -216,6 +223,15 @@ import {
   setChatCallbackGitHubDeliveryFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
+import {
+  readGoalQueueStateFixture,
+  readGoalThreadFixture,
+} from "../../../test-fixtures/goal-queue";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { goalsRoutes } from "../goals";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { mailRoutes } from "../mail";
@@ -594,6 +610,7 @@ const openRouterBodySchema = z.object({
 
 async function entitledChatActor(
   options: ApiTestUserOptions = {},
+  tier: "pro" | "team" = "pro",
 ): Promise<EntitledChatActor> {
   const actor = bdd.user(options);
   chatCallbacks.acceptChatObjectStorage();
@@ -602,15 +619,15 @@ async function entitledChatActor(
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
   const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(
-    actor,
-    options.orgId === STAFF_ORG_ID
+  await api.grantProEntitlement(actor, {
+    ...(options.orgId === STAFF_ORG_ID
       ? {
           customerId: "cus_bdd_chat_events_staff",
           subscriptionId: "sub_bdd_chat_events_staff",
         }
-      : {},
-  );
+      : {}),
+    tier,
+  });
   const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD chat messages agent",
@@ -1093,6 +1110,25 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function expectPiConfigObservation(runId: string, generation: 1 | 2 | 3): void {
+  const snapshots = context.mocks.axiom.ingest.mock.calls.flatMap(
+    ([dataset, events]) => {
+      return dataset === "run-context" && Array.isArray(events)
+        ? events.filter(isRecord).filter((event) => {
+            return event.runId === runId;
+          })
+        : [];
+    },
+  );
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toMatchObject({
+    cliAgentType: "pi",
+    piModelConfigGeneration: generation,
+    piModelConfigLegacyApi: "absent",
+  });
+  expect(snapshots[0]).not.toHaveProperty("piModelConfig");
 }
 
 function templateUsageEvents(): readonly Record<string, unknown>[] {
@@ -1790,6 +1826,30 @@ describe("CHAT-02: thread connector account selection", () => {
       prompt: "Overlap stored thread selection with runtime context",
     });
     expect(threadCatalogReadStarted.settled()).toBeTruthy();
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    const preparationActions = [
+      "api_dispatch_prepare_context_select_connector_catalog",
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ];
+    expectApiDispatchSpanKind(timingEvents, preparationActions, "nested");
+    for (const event of timingEvents.filter((candidate) => {
+      return preparationActions.includes(String(candidate.op_type));
+    })) {
+      expect(event.duration_ms).toStrictEqual(expect.any(Number));
+      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
+      expect(event.run_preparation_retry_count).toBe("0");
+      expect(event.agent_run_origin).toBe("direct");
+    }
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      fixture.threadId,
+      fixture.connectionId,
+      fixture.actor.userId,
+      "Overlap stored thread selection with runtime context",
+      "runtime-context-priority-secret",
+    ]);
     clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
     const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
     expect(kms.decryptCalls).toBeGreaterThan(0);
@@ -2685,7 +2745,640 @@ async function expectExactPrivatePiMemoryAdmission(args: {
   await expect(
     readmitPiMemoryStage1CandidateFixture(args.runId),
   ).resolves.toMatchObject({ outcome: "exact_retry" });
+  // Admission has no public endpoint. A mismatched captured identity must not
+  // create or replace learning, even when the run has valid native history.
+  for (const ownership of [
+    { userId: `other-${args.userId}` },
+    { orgId: `other-${args.orgId}` },
+    { chatThreadId: randomUUID() },
+  ]) {
+    await expect(
+      readmitPiMemoryStage1CandidateFixture(args.runId, ownership),
+    ).resolves.toMatchObject({
+      outcome: "skipped",
+      reason: "not_owned_chat_thread",
+    });
+  }
 }
+
+async function extractOwnedThreadPiMemory(actor: ApiTestUser, runId: string) {
+  const scope = { orgId: requireOrgId(actor), userId: actor.userId };
+  const candidate = await readPiMemoryStage1CandidateFixture(scope);
+  if (!candidate) {
+    throw new Error("Expected completed source admission");
+  }
+  await seedBuiltInModelKey("gpt-5.6-terra");
+  const requests: unknown[] = [];
+  server.use(
+    http.post(
+      "https://api.openai.com/v1/responses",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return new HttpResponse(
+          piResponsesTextSse(
+            JSON.stringify({
+              raw_memory: "The owner prefers concise progress reports.",
+              rollout_summary: "Learned the owner's reporting preference.",
+              rollout_slug: "owned-reporting-preference",
+            }),
+            100,
+          ),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      },
+      { once: true },
+    ),
+  );
+  mockNow(candidate.eligibleAt.getTime() + 1000);
+  const extracted = await accept(
+    setupApp({
+      context,
+      // Scope the existing cron worker to this source; no production API
+      // exposes internal candidate extraction or its private output.
+      routes: cronExtractPiMemoryStage1RoutesForTest({
+        memoryStorageId: candidate.memoryStorageId,
+        piSessionId: candidate.piSessionId,
+      }),
+    })(cronExtractPiMemoryStage1Contract).extract({
+      headers: { authorization: `Bearer ${env("CRON_SECRET")}` },
+    }),
+    [200],
+  );
+  expect(extracted.body).toMatchObject({ claimed: 1, succeeded: 1 });
+  expect(requests).toHaveLength(1);
+  await expect(
+    readPiMemoryStage1CandidateFixture(scope),
+  ).resolves.toMatchObject({
+    sourceRunId: runId,
+    piSessionId: candidate.piSessionId,
+    sourceHistoryHash: candidate.sourceHistoryHash,
+    status: "succeeded",
+    rawMemory: "The owner prefers concise progress reports.",
+  });
+}
+
+function threadPiAutomationsClient(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
+  return setupApp({
+    context,
+    routes: workflowAutomationsRoutes,
+    usagePricingResolution,
+  })(workflowAutomationsContract);
+}
+
+function threadPiGoalHeaders(actor: ApiTestUser, runId: string) {
+  const seconds = Math.floor(now() / 1000);
+  return {
+    authorization: `Bearer ${signSandboxJwtForTests({
+      scope: "okou",
+      userId: actor.userId,
+      orgId: requireOrgId(actor),
+      runId,
+      capabilities: [
+        "goal:read",
+        "goal:agent-result:write",
+        "goal:user-control:write",
+      ],
+      iat: seconds,
+      exp: seconds + 600,
+    })}`,
+  };
+}
+
+async function postThreadPiAutomationEvent(args: {
+  readonly webhookUrl: string;
+  readonly webhookSecret: string;
+  readonly payload: string;
+  readonly timestamp: number;
+  readonly usagePricingResolution: UsagePricingFixture["resolution"];
+}) {
+  const rawBody = JSON.stringify({ event: args.payload });
+  const timestamp = args.timestamp;
+  const response = await createAppWithRoutes({
+    signal: context.signal,
+    routes: webhooksWorkflowAutomationsRoutes,
+    usagePricingResolution: args.usagePricingResolution,
+  }).request(new URL(args.webhookUrl).pathname, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-VM0-Timestamp": String(timestamp),
+      "X-VM0-Signature": computeHmacSignature(
+        rawBody,
+        args.webhookSecret,
+        timestamp,
+      ),
+    },
+    body: rawBody,
+  });
+  expect(response.status).toBe(200);
+  return z
+    .object({ success: z.literal(true), duplicate: z.boolean() })
+    .parse(await response.json());
+}
+
+async function lastThreadPiAutomationRun(actor: ApiTestUser, threadId: string) {
+  const page = await chat.listThreadEvents(actor, threadId);
+  const event = [...page.events].reverse().find((item) => {
+    return (
+      item.eventType === "input.prompt" &&
+      item.userMessage.parts.some((part) => {
+        return part.type === "automation";
+      })
+    );
+  });
+  if (event?.eventType !== "input.prompt" || !event.runId) {
+    throw new Error("Expected an admitted Automation run");
+  }
+  return event.runId;
+}
+
+async function expectThreadPiTerminal(
+  actor: ApiTestUser,
+  threadId: string,
+  runId: string,
+) {
+  await waitForRunStatus(actor, runId, "completed", 10_000);
+  await flushWaitUntilForTest();
+  await expect(
+    readRunLaunchSnapshotFixture(context, runId),
+  ).resolves.toMatchObject({
+    launch_snapshot: { schemaVersion: 3, framework: "pi" },
+  });
+  const page = await chat.listThreadEvents(actor, threadId);
+  expect(
+    page.events
+      .filter((event) => {
+        return (
+          event.runId === runId && isChatRunTerminalEventType(event.eventType)
+        );
+      })
+      .map((event) => {
+        return event.eventType;
+      }),
+  ).toStrictEqual(["run.completed"]);
+}
+
+describe("thread-bound Pi Automation and Goal execution", () => {
+  it.each(["schedule", "event"] as const)(
+    "rotates the %s Automation session into Pi and shares owned learning with user turns",
+    async (source) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor(
+        {},
+        source === "event" ? "team" : "pro",
+      );
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      const workflows = createWorkflowsBddApi(context);
+      const workflowId = await workflows.createWorkflow(actor, {
+        agentId,
+        name: `pi-source-${source}`,
+      });
+      if (source === "schedule") {
+        await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+      }
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        {
+          [FeatureSwitchKey.PiLoop]: false,
+        },
+      );
+      const created = await accept(
+        threadPiAutomationsClient().create({
+          headers: sessionHeaders(actor),
+          params: { workflowId },
+          body:
+            source === "schedule"
+              ? { schedule: { type: "loop", intervalSeconds: 3600 } }
+              : { kind: "event", eventType: "webhook-received" },
+        }),
+        [201],
+      );
+      const automation = created.body;
+      const eventRoute =
+        automation.kind === "event" &&
+        automation.eventType === "webhook-received" &&
+        automation.webhookUrl &&
+        automation.webhookSecret
+          ? {
+              webhookUrl: automation.webhookUrl,
+              webhookSecret: automation.webhookSecret,
+            }
+          : null;
+      let threadId: string;
+      if (eventRoute) {
+        await postThreadPiAutomationEvent({
+          ...eventRoute,
+          payload: "legacy",
+          timestamp: Math.floor(now() / 1000),
+          usagePricingResolution,
+        });
+        if (!automation.chatThreadId) {
+          throw new Error("Expected the event thread");
+        }
+        threadId = automation.chatThreadId;
+      } else {
+        const started = await accept(
+          threadPiAutomationsClient().run({
+            headers: sessionHeaders(actor),
+            params: { id: automation.id },
+          }),
+          [201],
+        );
+        threadId = started.body.chatThreadId;
+      }
+      const legacyRunId = await lastThreadPiAutomationRun(actor, threadId);
+      const legacyClaim = await claimChatRun(runnerGroup, legacyRunId);
+      const legacyFramework = source === "schedule" ? "codex" : "claude-code";
+      await completeChatRunOk(legacyRunId, legacyClaim.sandboxHeaders, {
+        cliAgentType: legacyFramework,
+      });
+      await flushWaitUntilForTest();
+      const legacyBinding = await readThreadSessionBinding(context, threadId);
+      await expect(
+        readRunLaunchSnapshotFixture(context, legacyRunId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: legacyFramework },
+      });
+      await expect(
+        readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+      ).resolves.toBeNull();
+
+      await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+      await chat.updateThreadModelSelection(actor, threadId, "gpt-5.6-terra");
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+        },
+      );
+      mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+      mockPiResourceArchiveDownloads();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const requests: unknown[] = [];
+      server.use(
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            requests.push(await request.json());
+            return new HttpResponse(
+              piResponsesTextSse(
+                `owned ${source} answer ${requests.length}`,
+                requests.length,
+              ),
+              {
+                headers: { "content-type": "text/event-stream" },
+              },
+            );
+          },
+        ),
+      );
+      if (eventRoute) {
+        const event = {
+          ...eventRoute,
+          payload: "pi-event",
+          timestamp: Math.floor(now() / 1000),
+          usagePricingResolution,
+        };
+        await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
+          {
+            duplicate: false,
+          },
+        );
+        // A retry keeps the original signed envelope across clock seconds.
+        mockNow(now() + 1000);
+        await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
+          {
+            duplicate: true,
+          },
+        );
+      } else {
+        const scheduled = await workflows.readAutomation(automation.id);
+        if (!scheduled.nextRunAt) {
+          throw new Error("Expected preserved recurrence");
+        }
+        mockNow(Date.parse(scheduled.nextRunAt) + 1000);
+        await accept(
+          setupApp({
+            context,
+            routes: testWorkflowAutomationExecutionRoutes,
+            usagePricingResolution,
+          })(testWorkflowAutomationExecutionContract).execute({
+            body: { automation_id: automation.id },
+          }),
+          [200],
+        );
+      }
+      const piRunId = await lastThreadPiAutomationRun(actor, threadId);
+      expect(piRunId).not.toBe(legacyRunId);
+      // Workflow slash input intentionally enters native AgentSession in the
+      // Sandbox. Exercise the real runner claim/checkpoint/completion protocol.
+      await flushWaitUntilForTest();
+      const piClaim = await claimChatRun(runnerGroup, piRunId);
+      expect(piClaim.claim).toMatchObject({
+        piModelConfig: { model: "gpt-5.6-terra" },
+      });
+      const sandboxUsage = {
+        idempotencyKey: randomUUID(),
+        kind: "model" as const,
+        provider: "gpt-5.6-terra",
+        category: "tokens.output",
+        quantity: 3,
+      };
+      for (const _receipt of [1, 2]) {
+        await webhooks.requestAgentUsageEvent(
+          { runId: piRunId, events: [sandboxUsage] },
+          piClaim.sandboxHeaders,
+          [200],
+          usagePricingResolution,
+        );
+      }
+      await completeSandboxFirstPiRun({
+        actor,
+        run: { runId: piRunId, threadId },
+        claim: piClaim,
+        checkpointObjects,
+        prompt: piClaim.claim.prompt,
+        answer: `owned ${source} answer`,
+        outputTokens: 3,
+        usagePricingResolution,
+      });
+      await expectThreadPiTerminal(actor, threadId, piRunId);
+      const piBinding = await readThreadSessionBinding(context, threadId);
+      expect(piBinding.agent_session_id).not.toBe(
+        legacyBinding.agent_session_id,
+      );
+      const piHistory = await readPiConversationIdentityFixture(piRunId);
+      await expectExactPrivatePiMemoryAdmission({
+        orgId,
+        userId: actor.userId,
+        runId: piRunId,
+      });
+      const runState = await runStateStore.set(
+        readAgentRunState$,
+        { orgId, userId: actor.userId, runId: piRunId },
+        context.signal,
+      );
+      expect(runState.agent_run).toMatchObject({
+        triggerSource: `automation-${source}`,
+      });
+      await expectPiApiUsage(piRunId, "gpt-5.6-terra", "", {
+        input: 0,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
+      await accept(
+        setupApp({ context, routes: testWorkflowAutomationExecutionRoutes })(
+          testWorkflowAutomationExecutionContract,
+        ).dispatchCallbacks({
+          body: { run_id: piRunId, status: "completed", dispatch_count: 2 },
+        }),
+        [200],
+      );
+      await expectThreadPiTerminal(actor, threadId, piRunId);
+      expect(requests).toHaveLength(0);
+      await extractOwnedThreadPiMemory(actor, piRunId);
+
+      mockNow(now() + 1000);
+      const user = await sendChatRun(
+        actor,
+        { agentId, threadId, prompt: "continue this Automation conversation" },
+        "vm0",
+        usagePricingResolution,
+      );
+      await expectThreadPiTerminal(actor, threadId, user.runId);
+      expect(
+        (await readThreadSessionBinding(context, threadId)).agent_session_id,
+      ).toBe(piBinding.agent_session_id);
+      const userHistory = await readPiConversationIdentityFixture(user.runId);
+      expect(userHistory.piSessionId).toBe(piHistory.piSessionId);
+      expect(userHistory.sourceHistoryHash).not.toBe(
+        piHistory.sourceHistoryHash,
+      );
+      await expect(
+        readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+      ).resolves.toMatchObject({
+        piSessionId: piHistory.piSessionId,
+        sourceRunId: user.runId,
+        sourceHistoryHash: userHistory.sourceHistoryHash,
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ model: "gpt-5.6-terra" });
+      await expectPiApiUsage(user.runId, "gpt-5.6-terra", "", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
+      clearMockNow();
+    },
+    90_000,
+  );
+
+  it.each(["bootstrap", "continuation"] as const)(
+    "uses the exact owner subscription for Goal %s and preserves Pi session, budget and pause",
+    async (entry) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const origin =
+        entry === "bootstrap"
+          ? await api.createRun(actor, {
+              agentId,
+              prompt: "create a goal outside chat",
+              modelProvider: "anthropic-api-key",
+            })
+          : await sendChatRun(actor, {
+              agentId,
+              prompt: "create a goal inside chat",
+              model: "claude-sonnet-5",
+            });
+      const originClaim = await claimChatRun(runnerGroup, origin.runId);
+      const legacyBinding =
+        "threadId" in origin
+          ? await readThreadSessionBinding(context, origin.threadId)
+          : null;
+      const { oauth } = await configureSubscriptionPiModel(
+        actor,
+        { accountId: "goal-owner-account" },
+        "gpt-5.6-luna",
+      );
+      if ("threadId" in origin) {
+        await chat.updateThreadModelSelection(
+          actor,
+          origin.threadId,
+          "gpt-5.6-luna",
+          { codexServiceTier: "fast" },
+        );
+      }
+      mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+      mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const entered = [
+        createDeferredPromise<void>(context.signal),
+        createDeferredPromise<void>(context.signal),
+      ] as const;
+      const release = [
+        createDeferredPromise<void>(context.signal),
+        createDeferredPromise<void>(context.signal),
+      ] as const;
+      onTestFinished(() => {
+        for (const gate of release) {
+          if (!gate.settled()) {
+            gate.resolve(undefined);
+          }
+        }
+      });
+      const requests: {
+        readonly body: unknown;
+        readonly account: string | null;
+        readonly authorization: string | null;
+      }[] = [];
+      server.use(
+        http.post(
+          "https://chatgpt.com/backend-api/codex/responses",
+          async ({ request }) => {
+            const index = requests.length;
+            requests.push({
+              body: await readCodexRequestJson(request),
+              account: request.headers.get("chatgpt-account-id"),
+              authorization: request.headers.get("authorization"),
+            });
+            if (!entered[index] || !release[index]) {
+              return HttpResponse.json(
+                { error: "unexpected extra Goal turn" },
+                { status: 400 },
+              );
+            }
+            entered[index].resolve(undefined);
+            await release[index].promise;
+            return nativeCodexSseResponse(
+              piResponsesTextSse(`goal answer ${index}`, index),
+            );
+          },
+        ),
+      );
+      const goals = setupApp({ context, routes: goalsRoutes })(goalsContract);
+      await accept(
+        goals.create({
+          headers: threadPiGoalHeaders(actor, origin.runId),
+          body: { objective: "verify shared Pi Goal continuation" },
+        }),
+        [201],
+      );
+      if (entry === "continuation") {
+        await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
+      }
+      await entered[0].promise;
+      const goal = await readGoalThreadFixture({
+        orgId,
+        userId: actor.userId,
+        agentId,
+      });
+      if (!goal) {
+        throw new Error("Expected the owned Goal thread");
+      }
+      const [firstId] = (await readGoalQueueStateFixture(goal.threadId)).runIds;
+      if (!firstId) {
+        throw new Error("Expected the first Goal run");
+      }
+      const firstBinding = await readThreadSessionBinding(
+        context,
+        goal.threadId,
+      );
+      if (legacyBinding) {
+        expect(firstBinding.agent_session_id).not.toBe(
+          legacyBinding.agent_session_id,
+        );
+      }
+      release[0].resolve(undefined);
+      await entered[1].promise;
+      await accept(
+        goals.pauseForChatThread({
+          headers: sessionHeaders(actor),
+          params: { threadId: goal.threadId },
+        }),
+        [200],
+      );
+      const secondId = (
+        await readGoalQueueStateFixture(goal.threadId)
+      ).runIds.find((id) => {
+        return id !== firstId;
+      });
+      if (!secondId) {
+        throw new Error("Expected terminal Goal continuation");
+      }
+      mockNow(now() + 1000);
+      release[1].resolve(undefined);
+      await expectThreadPiTerminal(actor, goal.threadId, firstId);
+      await expectThreadPiTerminal(actor, goal.threadId, secondId);
+      expect(
+        (await readThreadSessionBinding(context, goal.threadId))
+          .agent_session_id,
+      ).toBe(firstBinding.agent_session_id);
+      const firstHistory = await readPiConversationIdentityFixture(firstId);
+      const secondHistory = await readPiConversationIdentityFixture(secondId);
+      expect(secondHistory.piSessionId).toBe(firstHistory.piSessionId);
+      await expect(
+        readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+      ).resolves.toMatchObject({
+        sourceRunId: secondId,
+        piSessionId: firstHistory.piSessionId,
+        sourceHistoryHash: secondHistory.sourceHistoryHash,
+      });
+      // Each turn inherits the budget captured when the Goal was created;
+      // continuation does not consume another delegation level.
+      for (const id of [firstId, secondId]) {
+        await expect(readRunAutonomyBudgetFixture(context, id)).resolves.toBe(
+          9,
+        );
+        await expectNoBuiltInModelUsage(id);
+        const state = await runStateStore.set(
+          readAgentRunState$,
+          { orgId, userId: actor.userId, runId: id },
+          context.signal,
+        );
+        expect(state.agent_run).toMatchObject({
+          triggerSource: "goal",
+        });
+      }
+      expect(requests).toHaveLength(2);
+      expect(requests).toStrictEqual(
+        requests.map(() => {
+          return expect.objectContaining({
+            account: "goal-owner-account",
+            authorization: `Bearer ${oauth.oauthTokenResponses[0]?.access_token}`,
+            body: expect.objectContaining({
+              model: "gpt-5.6-luna",
+              ...(entry === "continuation" ? { service_tier: "priority" } : {}),
+            }),
+          });
+        }),
+      );
+      const state = await accept(
+        goals.getForChatThread({
+          headers: sessionHeaders(actor),
+          params: { threadId: goal.threadId },
+        }),
+        [200],
+      );
+      expect(state.body.status).toBe("paused");
+      expect(
+        (await readGoalQueueStateFixture(goal.threadId)).runIds,
+      ).toHaveLength(2);
+      if (entry === "bootstrap") {
+        await cancelChatRun(actor, origin.runId, originClaim.sandboxHeaders);
+      }
+      await extractOwnedThreadPiMemory(actor, secondId);
+      clearMockNow();
+    },
+    90_000,
+  );
+});
 
 describe("CHAT-02: web chat send and client ids", () => {
   it("creates a web chat run with client-provided ids", async () => {
@@ -5507,6 +6200,7 @@ function expectApiKeyGptSandboxCarrier(
   route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   tier: "fast" | undefined,
 ): void {
+  expectPiConfigObservation(claim.runId, tier === undefined ? 2 : 3);
   expect(claim.piModelConfig).toStrictEqual({
     schemaVersion: tier === undefined ? 2 : 3,
     ...(tier === undefined ? {} : { serviceTier: "priority" }),
@@ -5888,6 +6582,7 @@ function warningCallsForRun(runId: string): readonly unknown[] {
 async function completeSandboxFirstPiRun(args: {
   readonly actor: ApiTestUser;
   readonly answer: string;
+  readonly outputTokens?: number;
   readonly checkpointObjects: Map<string, Buffer>;
   readonly claim: Awaited<ReturnType<typeof claimChatRun>>;
   readonly prompt: string;
@@ -5913,10 +6608,10 @@ async function completeSandboxFirstPiRun(args: {
     model: "gpt-5.6-terra",
     usage: {
       input: 0,
-      output: 0,
+      output: args.outputTokens ?? 0,
       cacheRead: 0,
       cacheWrite: 0,
-      totalTokens: 0,
+      totalTokens: args.outputTokens ?? 0,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
     stopReason: "stop",
@@ -6084,6 +6779,207 @@ function piResponsesDeveloperPrompt(rawBody: string | undefined): string {
   }
   return developer.content;
 }
+
+describe("thread-bound Pi terminal failures", () => {
+  it.each([
+    { source: "automation", status: "failed" },
+    { source: "automation", status: "cancelled" },
+    { source: "goal", status: "failed" },
+    { source: "goal", status: "cancelled" },
+  ] as const)(
+    "settles $source $status once without learning or Built-in fallback",
+    async ({ source, status }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const origin =
+        source === "goal"
+          ? await sendChatRun(actor, {
+              agentId,
+              prompt: "start a Goal",
+              model: "claude-sonnet-5",
+            })
+          : null;
+      const originClaim = origin
+        ? await claimChatRun(runnerGroup, origin.runId)
+        : null;
+      await configureSubscriptionPiModel(
+        actor,
+        { accountId: "terminal-owner" },
+        "gpt-5.6-luna",
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const entered = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<void>(context.signal);
+      onTestFinished(() => {
+        if (!release.settled()) {
+          release.resolve(undefined);
+        }
+      });
+      const requests: string[] = [];
+      server.use(
+        http.post(
+          "https://chatgpt.com/backend-api/codex/responses",
+          async ({ request }) => {
+            requests.push(request.url);
+            expect(request.headers.get("chatgpt-account-id")).toBe(
+              "terminal-owner",
+            );
+            entered.resolve(undefined);
+            await release.promise;
+            return HttpResponse.json(
+              {
+                error: {
+                  code: "invalid_api_key",
+                  message: "subscription rejected",
+                },
+              },
+              { status: 401 },
+            );
+          },
+        ),
+        http.post("https://api.openai.com/v1/responses", ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json(
+            { error: "unexpected Built-in fallback" },
+            { status: 400 },
+          );
+        }),
+      );
+      const goals = setupApp({ context, routes: goalsRoutes })(goalsContract);
+      let run: { readonly runId: string; readonly threadId: string };
+      if (origin && originClaim) {
+        await chat.updateThreadModelSelection(
+          actor,
+          origin.threadId,
+          "gpt-5.6-luna",
+        );
+        await accept(
+          goals.create({
+            headers: threadPiGoalHeaders(actor, origin.runId),
+            body: { objective: "preserve terminal failure semantics" },
+          }),
+          [201],
+        );
+        await completeChatRunOk(origin.runId, originClaim.sandboxHeaders);
+        await entered.promise;
+        const [runId] = (await readGoalQueueStateFixture(origin.threadId))
+          .runIds;
+        if (!runId) {
+          throw new Error("Expected the admitted Goal run");
+        }
+        run = { runId, threadId: origin.threadId };
+        if (status === "cancelled") {
+          await cancelChatRun(actor, runId);
+        }
+        release.resolve(undefined);
+        await waitForRunStatus(actor, runId, status, 10_000);
+      } else {
+        const workflowId = await createWorkflowsBddApi(context).createWorkflow(
+          actor,
+          { agentId, name: "pi-terminal" },
+        );
+        const created = await accept(
+          threadPiAutomationsClient().create({
+            headers: sessionHeaders(actor),
+            params: { workflowId },
+            body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+          }),
+          [201],
+        );
+        const started = await accept(
+          threadPiAutomationsClient().run({
+            headers: sessionHeaders(actor),
+            params: { id: created.body.id },
+          }),
+          [201],
+        );
+        const threadId = started.body.chatThreadId;
+        const runId = await lastThreadPiAutomationRun(actor, threadId);
+        run = { runId, threadId };
+        await flushWaitUntilForTest();
+        await api.heartbeatRunner(runnerGroup);
+        const claim = await claimGptPiSandbox(actor, runId, undefined);
+        const claimed = {
+          claim,
+          sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
+        };
+        expect(claimed.claim.piModelConfig).toMatchObject({
+          model: "gpt-5.6-luna",
+        });
+        if (status === "cancelled") {
+          await cancelChatRun(actor, runId, claimed.sandboxHeaders);
+        } else {
+          await failChatRun(
+            runId,
+            claimed.sandboxHeaders,
+            "subscription rejected",
+          );
+        }
+        await failChatRun(
+          runId,
+          claimed.sandboxHeaders,
+          "duplicate terminal delivery",
+        );
+      }
+      await flushWaitUntilForTest();
+      await accept(
+        setupApp({ context, routes: testWorkflowAutomationExecutionRoutes })(
+          testWorkflowAutomationExecutionContract,
+        ).dispatchCallbacks({
+          body: {
+            run_id: run.runId,
+            status: "failed",
+            error:
+              status === "cancelled"
+                ? "Run cancelled"
+                : "subscription rejected",
+            dispatch_count: 2,
+          },
+        }),
+        [200],
+      );
+      await flushWaitUntilForTest();
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { schemaVersion: 3, framework: "pi" },
+      });
+      await expectNoBuiltInModelUsage(run.runId);
+      await expect(
+        readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+      ).resolves.toBeNull();
+      const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+      expect(
+        events
+          .filter((event) => {
+            return (
+              event.runId === run.runId &&
+              isChatRunTerminalEventType(event.eventType)
+            );
+          })
+          .map((event) => {
+            return event.eventType;
+          }),
+      ).toStrictEqual([`run.${status}`]);
+      expect(requests).toHaveLength(source === "goal" ? 1 : 0);
+      if (source === "goal") {
+        const goal = await accept(
+          goals.getForChatThread({
+            headers: sessionHeaders(actor),
+            params: { threadId: run.threadId },
+          }),
+          [200],
+        );
+        expect(goal.body.status).toBe("paused");
+        expect(
+          (await readGoalQueueStateFixture(run.threadId)).runIds,
+        ).toHaveLength(1);
+      }
+    },
+    90_000,
+  );
+});
 
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
@@ -7283,16 +8179,10 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("keeps webhook completion failure and non-interactive source exclusions", async () => {
+  it("keeps failed and synthetic completions out of shared Pi learning", async () => {
     const cases = [
       ["failed status", {}, true],
-      ["goal controller", { triggerSource: "goal" as const }, false],
-      [
-        "scheduled automation",
-        { triggerSource: "automation-schedule" as const },
-        false,
-      ],
-      ["webhook", { triggerSource: "webhook" as const }, false],
+      ["synthetic run", { triggerSource: "test" as const }, false],
     ] as const;
     for (const [name, inputs, fails] of cases) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -7412,7 +8302,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, source.runId, sourceClaim.sandboxHeaders);
   }, 90_000);
 
-  it("admits exact Pi web histories with immutable launch policy and stale-lease fencing", async () => {
+  it("admits exact owned Pi histories with immutable launch policy and stale-lease fencing", async () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     expect(piMemoryStage1AdmissionPrerequisiteSkipReasonFixture()).toBeNull();
@@ -7431,7 +8321,7 @@ describe("CHAT-02: model-first provider policies", () => {
         generationEnabled: false,
       }),
     ).toBe("generation_disabled");
-    // A classified Web Chat source must still own a Chat Thread. The actual
+    // Every product source must still own a Chat Thread. The actual
     // threadless Phase 2 maintenance route is covered by the boundary test.
     expect(
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
@@ -7453,35 +8343,16 @@ describe("CHAT-02: model-first provider policies", () => {
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
         triggerSource: null,
       }),
-    ).toBe("source_not_interactive_chat");
+    ).toBe("invalid_source");
     expect(
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
         triggerSource: "unknown",
       }),
-    ).toBe("source_not_interactive_chat");
-    const expectedAdmissionBySource = {
-      web: null,
-      slack: null,
-      teams: null,
-      feishu: null,
-      email: "source_not_interactive_chat",
-      telegram: null,
-      agentphone: null,
-      github: null,
-      test: "source_not_interactive_chat",
-      agent: null,
-      webhook: "source_not_interactive_chat",
-      "automation-schedule": "source_not_interactive_chat",
-      "automation-event": "source_not_interactive_chat",
-      goal: "source_not_interactive_chat",
-    } as const satisfies Record<
-      (typeof triggerSourceSchema.options)[number],
-      "source_not_interactive_chat" | null
-    >;
+    ).toBe("invalid_source");
     for (const triggerSource of triggerSourceSchema.options) {
       expect(
         piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({ triggerSource }),
-      ).toBe(expectedAdmissionBySource[triggerSource]);
+      ).toBe(triggerSource === "test" ? "synthetic_source" : null);
     }
     const usagePricingResolution = await createGptUsagePricingResolution();
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
@@ -8194,6 +9065,15 @@ describe("CHAT-02: model-first provider policies", () => {
       const { actor, agentId } = await entitledChatActor();
       const usagePricingResolution = await createGptUsagePricingResolution();
       await configureCustomPiModel(actor, selectedModel, upstreamModel);
+      if (selectedModel === "deepseek-v4-pro") {
+        // Snapshot availability must not block an admitted Pi provider request.
+        context.mocks.axiom.ingest.mockImplementation((dataset) => {
+          if (dataset === "run-context") {
+            throw new Error("run-context ingest failed");
+          }
+          return true;
+        });
+      }
       mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
@@ -8248,6 +9128,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toMatchObject({
         launch_snapshot: { framework: "pi" },
       });
+      expectPiConfigObservation(run.runId, 1);
       expect(modelRequests).toStrictEqual([
         {
           body: expect.objectContaining({
@@ -8459,9 +9340,9 @@ describe("CHAT-02: model-first provider policies", () => {
       const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
       expect(claim.cliAgentType).toBe("pi");
       expect(claim.piSessionId).toBe(run.threadId);
+      expectPiConfigObservation(run.runId, 1);
       expect(claim.piModelConfig).toStrictEqual({
         provider: "openai",
-        api: "openai-responses",
         baseUrl: gateway.surface.apiBaseUrl,
         model: gateway.upstreamModel,
         catalogModel: selectedModel,
@@ -14033,7 +14914,6 @@ describe("CHAT-02: model-first provider policies", () => {
       prompt,
       piModelConfig: {
         provider: "openrouter",
-        api: "openai-responses",
         serviceTier: "priority",
       },
     });
@@ -14326,8 +15206,9 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(claimed.claim.piModelConfig).toMatchObject({
         provider: isDeepSeek ? "deepseek" : "openai",
         model: selectedModel,
-        api: "openai-responses",
       });
+      expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
+      expectPiConfigObservation(run.runId, 1);
       expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
       const sandboxUsageEvent = {
         idempotencyKey: randomUUID(),
@@ -14549,9 +15430,10 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claimed.claim.piSessionId).toBe(run.threadId);
     expect(claimed.claim.piModelConfig).toMatchObject({
       provider: "openrouter",
-      api: "openai-responses",
       serviceTier: "priority",
     });
+    expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
+    expectPiConfigObservation(run.runId, 1);
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       schemaVersion: 2,
       apiFirstTurn: {
@@ -17466,6 +18348,7 @@ describe("CHAT-02: run-level model overrides", () => {
       const sandboxHeaders = {
         authorization: `Bearer ${claim.sandboxToken}`,
       };
+      expectPiConfigObservation(run.runId, generation);
       expect(claim).toMatchObject({
         cliAgentType: "pi",
         piSessionId: run.threadId,
@@ -18946,6 +19829,9 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
     for (const actionType of [
+      "api_dispatch_prepare_context_select_connector_catalog",
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
       "api_dispatch_prepare_run_context",
       "api_dispatch_build_runner_job_payload",
       "api_dispatch_insert_run_with_concurrency",

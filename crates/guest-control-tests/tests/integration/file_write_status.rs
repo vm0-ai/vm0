@@ -49,7 +49,7 @@ async fn private_write_status_survives_quiesce_and_tracks_the_next_write() {
 async fn private_write_status_does_not_reopen_an_uncertain_or_quiescing_connection() {
     let h = Harness::new().await;
     let path = blocking_write_path(&h.dir, "private-diagnostic");
-    {
+    let blocked_status = {
         let write = h
             .host()
             .write_private_file(path.to_str().unwrap(), b"synthetic private content");
@@ -62,19 +62,30 @@ async fn private_write_status_does_not_reopen_an_uncertain_or_quiescing_connecti
             .quiesce_operations(QUERY_TIMEOUT)
             .await
             .unwrap_err();
-        let status = h.host().file_write_status(QUERY_TIMEOUT).await.unwrap();
+        // The child can publish its marker before the worker returns from
+        // spawning it and records WaitingForHelper. Observe that boundary
+        // through the server instead of treating the child marker as a fence.
+        let status = tokio::time::timeout(QUERY_TIMEOUT, async {
+            loop {
+                let status = h.host().file_write_status(QUERY_TIMEOUT).await.unwrap();
+                if status.stage == FileWriteStage::WaitingForHelper {
+                    break status;
+                }
+                assert_eq!(status.stage, FileWriteStage::StartingHelper);
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("worker did not reach WaitingForHelper while the helper was blocked");
         assert_ne!(status.sequence, 0);
         assert_eq!(status.stage, FileWriteStage::WaitingForHelper);
         assert_eq!(status.encode_payload().len(), 5);
         // Drop the unresolved write. Its operation token must remain fail-closed.
-    }
+        status
+    };
     assert_eq!(
-        h.host()
-            .file_write_status(QUERY_TIMEOUT)
-            .await
-            .unwrap()
-            .stage,
-        FileWriteStage::WaitingForHelper
+        h.host().file_write_status(QUERY_TIMEOUT).await.unwrap(),
+        blocked_status
     );
     assert!(h.host().try_fence_normal_operations().is_err());
     let later = h.dir.join("must-not-write");

@@ -7,7 +7,7 @@ import {
   type ComposerActions,
 } from "./composer-actions.ts";
 import {
-  ComposerCreateHeader,
+  ComposerCreateControls,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
 } from "./composer-create.tsx";
@@ -10528,7 +10528,6 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
       <CardContent className="p-0">
         <div ref={actions.bind} className="flex flex-col">
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
-          <ComposerCreateHeader signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} actions={actions} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
@@ -10560,6 +10559,7 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
+        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />

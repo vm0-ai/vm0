@@ -113,16 +113,6 @@ export function getCapturedPreviewBypassForTarget(
   return previewBypassForTarget(target, window.location, document.cookie);
 }
 
-export function addCapturedPreviewBypassHeader(
-  headers: Headers,
-  target: PreviewBypassTarget,
-): void {
-  const bypass = getCapturedPreviewBypassForTarget(target);
-  if (bypass) {
-    headers.set(VERCEL_PROTECTION_BYPASS_NAME, bypass);
-  }
-}
-
 export function buildPreviewBypassCookie(
   location: PreviewBypassCookieLocation,
 ): string | null {

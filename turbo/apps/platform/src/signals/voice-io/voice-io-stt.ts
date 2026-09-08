@@ -5,7 +5,7 @@ import {
   voiceIoQuotaContract,
   type AudioInputQuotaResponse,
 } from "@okouai/api-contracts/contracts/voice-io-quota";
-import { fetch$ } from "../fetch.ts";
+import { voiceIoSttContract } from "@okouai/api-contracts/contracts/voice-io-stt";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -20,7 +20,6 @@ import { logger } from "../log.ts";
 import {
   bestEffort,
   createDeferredPromise,
-  jsonParseOr,
   resetSignal,
   settle,
   tapError,
@@ -617,10 +616,6 @@ interface SttApiFailure {
   readonly message?: string;
 }
 
-type SttApiResult =
-  | { readonly ok: true; readonly text: string }
-  | ({ readonly ok: false } & SttApiFailure);
-
 interface TranscribeAudioBlobInput {
   readonly blob: Blob;
   readonly mimeType: string;
@@ -646,28 +641,6 @@ function createMediaRecorder(stream: MediaStream): MediaRecorder {
   return mimeType
     ? new MediaRecorder(stream, { mimeType })
     : new MediaRecorder(stream);
-}
-
-async function readSttApiResponse(
-  response: Response,
-  signal: AbortSignal,
-): Promise<SttApiResult> {
-  if (!response.ok) {
-    const body = jsonParseOr<{
-      error?: { code?: string; message?: string };
-    } | null>(await response.text(), null);
-    signal.throwIfAborted();
-    return {
-      ok: false,
-      status: response.status,
-      code: body?.error?.code,
-      message: body?.error?.message,
-    };
-  }
-
-  const result = (await response.json()) as { text: string };
-  signal.throwIfAborted();
-  return { ok: true, text: result.text.trim() };
 }
 
 export async function openMedia(signal: AbortSignal) {
@@ -752,7 +725,7 @@ const transcribeAudioBlob$ = command(
     signal: AbortSignal,
   ): Promise<SttSegmentResult> => {
     const { blob, mimeType, captureReason } = input;
-    const fetchFn = get(fetch$);
+    const client = get(apiClient$)(voiceIoSttContract);
     const formData = new FormData();
     const extension = mimeType.includes("mp4") ? "mp4" : "webm";
     const recordingStartedAt = get(internalRecordingStartedAt$);
@@ -778,11 +751,15 @@ const transcribeAudioBlob$ = command(
     });
 
     const response = await tapError(
-      fetchFn("/api/voice-io/stt", {
-        method: "POST",
-        body: formData,
+      accept(
+        client.post({
+          body: formData,
+          fetchOptions: { signal },
+        }),
+        [200, 402, 429],
         signal,
-      }),
+        { showErrorToast: false },
+      ),
       (error) => {
         L.error("STT fetch failed", error);
         toast.error(transcriptionFailedMessage());
@@ -793,14 +770,18 @@ const transcribeAudioBlob$ = command(
       return { ok: false, quotaExceeded: false };
     }
 
-    const result = await readSttApiResponse(response, signal);
-    if (!result.ok) {
-      if (isAudioInputQuotaFailure(result)) {
+    if (response.status !== 200) {
+      const failure: SttApiFailure = {
+        status: response.status,
+        code: response.body.error.code,
+        message: response.body.error.message,
+      };
+      if (isAudioInputQuotaFailure(failure)) {
         await set(openAudioInputQuotaRecovery$, signal);
         return { ok: false, quotaExceeded: true };
       }
 
-      logSttFailure(result, {
+      logSttFailure(failure, {
         recordedMime: mimeType,
         recordedSize: blob.size,
       });
@@ -808,7 +789,7 @@ const transcribeAudioBlob$ = command(
     }
 
     set(refreshAudioInputQuota$);
-    return { ok: true, text: result.text };
+    return { ok: true, text: response.body.text.trim() };
   },
 );
 

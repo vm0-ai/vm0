@@ -3,8 +3,10 @@
 This practice is about the test boundary.
 
 Tests should not control internal implementation. Tests should give the system
-the same context an external user can provide, then observe the result from the
-same surface an external user can see.
+the same context an external user can provide, then verify externally observable
+state or an HTTP response available through a production endpoint. Authenticated
+endpoints are external interfaces too; public accessibility does not mean
+anonymous access.
 
 This is the same context / control distinction we use elsewhere. A control-style
 test says: to exercise this case, directly set the internal state to the shape I
@@ -48,9 +50,13 @@ calling APIs.
 That means:
 
 1. When setting up state, call the real API that exists in production.
-2. When verifying results, call an API that an external user can call.
+2. When verifying results, call an API that an external user can call and
+   assert its status, headers, body, or effects observable in a later request.
 3. Auth, validation, serialization, idempotency, permissions, and
    no-existence-leak behavior should all be exercised through the endpoint.
+4. Webhook providers, runners, sandboxes, and integrations are external callers
+   too. Use the production endpoint appropriate to that actor and mock only its
+   external dependencies. Thin API helpers must preserve that boundary.
 
 For API tests, the database is not the external interface. DB schema is internal
 implementation.

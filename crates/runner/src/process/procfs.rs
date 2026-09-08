@@ -4,6 +4,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::types::{ProcessStat, process_stat_is_live};
 
+mod handle;
+pub(crate) use handle::ProcfsProcessHandle;
+
 #[derive(Debug, Eq, PartialEq)]
 enum CmdlineRead {
     Args(Vec<String>),

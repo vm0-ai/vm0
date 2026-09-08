@@ -40,6 +40,7 @@ import { server } from "../../../mocks/server";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import {
   mockStripeClient,
+  type StripeInvoice,
   type StripeInvoiceCreatePreviewParams,
 } from "../../external/stripe-client";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -14916,6 +14917,233 @@ describe("POST /api/billing/checkout/complete", () => {
   beforeEach(() => {
     setTierPrices();
   });
+
+  it.each(["plan", "usage pack"] as const)(
+    "reconciles a paid %s checkout before its webhook arrives without duplicating credits",
+    async (purchaseType) => {
+      mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+      mockNow(now());
+      setUsagePackPrices();
+      mockUsagePackCatalog();
+      mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+      const fixture = createOrgFixture();
+      authenticateOrg(fixture);
+      mockClerkOrganization(fixture);
+      const customerId = `cus_${randomUUID()}`;
+      const subscriptionId = `sub_${randomUUID()}`;
+      const sessionId = `cs_${randomUUID()}`;
+      const period = {
+        start: currentSecond(),
+        end: currentSecond() + 30 * 86_400,
+      };
+      context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [
+            {
+              role: "org:admin",
+              publicUserData: { userId: fixture.userId },
+              createdAt: now(),
+            },
+          ],
+        },
+      );
+      context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+        { data: [] },
+      );
+      context.mocks.stripe.customers.create.mockResolvedValue({
+        id: customerId,
+      });
+      let metadata: Readonly<Record<string, string>> = {};
+      context.mocks.stripe.checkout.sessions.create.mockImplementation(
+        (input) => {
+          metadata = stripeInputMetadata(input);
+          return Promise.resolve({
+            id: sessionId,
+            url: `https://checkout.stripe.com/session/${sessionId}`,
+          });
+        },
+      );
+      const app = setupApp({ context, routes: billingCheckoutRoutes });
+      if (purchaseType === "usage pack") {
+        await accept(
+          app(billingUsagePackCheckoutContract).create({
+            body: usagePackCheckoutBody(fixture.userId),
+            headers: { authorization: "Bearer clerk-session" },
+          }),
+          [200],
+        );
+      } else {
+        await accept(
+          app(billingCheckoutContract).create({
+            body: {
+              tier: "pro",
+              successUrl: `${APP_ORIGIN}/billing?billing=success`,
+              cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+            },
+            headers: { authorization: "Bearer clerk-session" },
+          }),
+          [200],
+        );
+      }
+
+      const items =
+        purchaseType === "usage pack"
+          ? [
+              { priceId: TEST_PRICE_USAGE_PACK_PLAN_PRO, amount: 0 },
+              { priceId: TEST_PRICE_USAGE_PACK_20, amount: 2000 },
+            ]
+          : [{ priceId: TEST_PRICE_PRO, amount: 2000 }];
+      const paidInvoice: StripeInvoice = {
+        id: `in_${randomUUID()}`,
+        customer: customerId,
+        metadata,
+        status: "paid",
+        amount_due: 2000,
+        amount_paid: 2000,
+        currency: "usd",
+        parent: {
+          subscription_details: { subscription: subscriptionId, metadata },
+        },
+        lines: {
+          has_more: false,
+          data: items.map(({ priceId, amount }) => {
+            return {
+              id: `il_${randomUUID()}`,
+              amount,
+              subtotal: amount,
+              quantity: 1,
+              price: { id: priceId },
+              period,
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            };
+          }),
+        },
+      };
+      const subscription = {
+        id: subscriptionId,
+        customer: customerId,
+        status: "active",
+        cancel_at_period_end: false,
+        cancel_at: null,
+        schedule: null,
+        trial_end: null,
+        metadata,
+        latest_invoice: paidInvoice,
+        items: {
+          data: items.map(({ priceId }) => {
+            return {
+              id: `si_${randomUUID()}`,
+              price: { id: priceId },
+              quantity: 1,
+              current_period_start: period.start,
+              current_period_end: period.end,
+            };
+          }),
+        },
+      };
+      context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+        id: sessionId,
+        mode: "subscription",
+        status: "complete",
+        customer: customerId,
+        subscription: subscriptionId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        ...subscription,
+        latest_invoice: { ...paidInvoice, status: "open", amount_paid: 0 },
+      });
+      const complete = async () => {
+        return await accept(
+          app(billingCheckoutContract).complete({
+            body: { sessionId },
+            headers: { authorization: "Bearer clerk-session" },
+          }),
+          [200],
+        );
+      };
+      expect((await complete()).body).toStrictEqual({ completed: false });
+      expect((await readBillingStatus(fixture)).tier).not.toBe("pro");
+
+      // Both requests must observe the unpaid local plan before either can
+      // project the newly paid invoice.
+      const bothRetrieving = createDeferredPromise<void>(context.signal);
+      let retrieves = 0;
+      context.mocks.stripe.subscriptions.retrieve.mockImplementation(
+        async () => {
+          retrieves += 1;
+          if (retrieves === 2) {
+            bothRetrieving.resolve();
+          }
+          await bothRetrieving.promise;
+          return subscription;
+        },
+      );
+      const responses = await Promise.all([complete(), complete()]);
+      const completedBody = {
+        completed: true,
+        googleAdsConversion: {
+          transactionId: paidInvoice.id,
+          valueUsd: 20,
+        },
+      };
+      for (const response of responses) {
+        expect(response.body).toStrictEqual(completedBody);
+      }
+      const statusBeforeWebhook = await readBillingStatus(fixture);
+      expect(statusBeforeWebhook).toMatchObject({
+        tier: "pro",
+        hasSubscription: true,
+        subscriptionStatus: "active",
+        currentPeriodEnd: new Date(period.end * 1000).toISOString(),
+        ...(purchaseType === "plan" ? { credits: 20_000 } : {}),
+      });
+      const readCredits = async () => {
+        return await accept(
+          setupApp({ context, routes: billingUsagePackCreditsRoutes })(
+            billingUsagePackCreditsContract,
+          ).get({ headers: { authorization: "Bearer clerk-session" } }),
+          [200],
+        );
+      };
+      const creditsBeforeWebhook = await readCredits();
+      if (purchaseType === "usage pack") {
+        expect(creditsBeforeWebhook.body).toMatchObject({
+          hasUsagePack: true,
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+        });
+        expect(creditsBeforeWebhook.body.creditGrants).toHaveLength(2);
+      }
+
+      expect((await complete()).body).toStrictEqual(completedBody);
+      const event = {
+        id: `evt_${randomUUID()}`,
+        created: currentSecond(),
+        type: "invoice.paid",
+        data: { object: paidInvoice },
+      };
+      context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+      await accept(
+        setupApp({ context, routes: webhooksStripeRoutes })(
+          webhookStripeContract,
+        ).post({
+          body: JSON.stringify(event),
+          extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
+        }),
+        [200],
+      );
+      await expect(readBillingStatus(fixture)).resolves.toStrictEqual(
+        statusBeforeWebhook,
+      );
+      expect((await readCredits()).body).toStrictEqual(
+        creditsBeforeWebhook.body,
+      );
+    },
+  );
 
   async function trackedSeed(values?: {
     readonly onboardingPaymentPending?: boolean;

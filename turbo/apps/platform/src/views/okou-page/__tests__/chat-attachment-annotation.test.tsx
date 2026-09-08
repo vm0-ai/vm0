@@ -7,6 +7,7 @@ import { expect, test, vi } from "vitest";
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  arrowAnnotation,
   ATTACHMENT_THREAD_ID,
   boxAnnotation,
   draftAttachment,
@@ -14,6 +15,7 @@ import {
   findNamedButton,
   mockAttachmentChat,
   mockPrivateUrlSequence,
+  penAnnotation,
   privateAttachmentUrl,
 } from "./chat-attachment-test-helpers.ts";
 import { fillComposer } from "./chat-test-helpers.ts";
@@ -367,4 +369,130 @@ test("A draft with marks but no annotated copy rebuilds it and can send", async 
   // Rebuilt from the original rather than presented as a failure.
   expect(imageReads).toBe(1);
   expect(screen.queryByLabelText(/Try again/)).toBeNull();
+});
+
+test("An arrow can be selected and re-aimed by dragging its tip", async () => {
+  const image = draftAttachment("arrow-flow.png", {
+    annotatedFileId: "draft-arrow-flow-annotated",
+    annotations: arrowAnnotation("aimable-arrow"),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("arrow-flow.png");
+  // The arrow used to render as decoration, so this click reached the canvas
+  // underneath and started a new stroke instead of selecting anything.
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  const tip = screen.getByTestId("annotation-handle-to");
+  expect(tip).toBeVisible();
+  expect(screen.getByTestId("annotation-handle-from")).toBeVisible();
+  // An arrow is aimed, not resized: it gets two ends rather than eight grips.
+  expect(screen.queryByTestId("annotation-handle-tl")).toBeNull();
+
+  fireEvent.pointerDown(tip, { clientX: 560, clientY: 300, pointerId: 2 });
+  fireEvent.pointerMove(surface, { clientX: 200, clientY: 450, pointerId: 2 });
+  fireEvent.pointerUp(surface, { clientX: 200, clientY: 450, pointerId: 2 });
+
+  await waitFor(() => {
+    expect(screen.getByTestId("annotation-handle-to")).toHaveStyle({
+      left: "25%",
+      top: "90%",
+    });
+  });
+});
+
+test("A freehand stroke can be selected and moved", async () => {
+  const image = draftAttachment("sketch.png", {
+    annotatedFileId: "draft-sketch-annotated",
+    annotations: penAnnotation("movable-stroke"),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("sketch.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  // A stroke has nothing to resize, so the dashed extent is the whole of what
+  // "selected" looks like on one.
+  const outline = screen.getByTestId("annotation-pen-outline");
+  expect(outline).toBeVisible();
+  expect(outline).toHaveStyle({ left: "20%", top: "25%" });
+
+  fireEvent.pointerDown(screen.getByTestId("annotation-mark-1"), {
+    clientX: 280,
+    clientY: 200,
+    pointerId: 3,
+  });
+  fireEvent.pointerMove(surface, { clientX: 360, clientY: 250, pointerId: 3 });
+  fireEvent.pointerUp(surface, { clientX: 360, clientY: 250, pointerId: 3 });
+
+  // Compared as numbers: the offset is accumulated in floating point, so the
+  // style lands on "30.000000000000004%" and an exact string match would be
+  // asserting the arithmetic rather than the move.
+  await waitFor(() => {
+    const moved = screen.getByTestId("annotation-pen-outline");
+    expect(Number.parseFloat(moved.style.left)).toBeCloseTo(30, 6);
+    expect(Number.parseFloat(moved.style.top)).toBeCloseTo(35, 6);
+  });
+});
+
+test("Enter confirms a note and one drag is a single undo step", async () => {
+  const user = userEvent.setup();
+  const image = draftAttachment("keyboard-plan.png", {
+    annotatedFileId: "draft-keyboard-plan-annotated",
+    annotations: boxAnnotation([{ id: "keyboard-mark", ordinal: 1 }]),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("keyboard-plan.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  const note = await screen.findByPlaceholderText(
+    "Say what should change here",
+  );
+  await fill(note, "Raise this panel");
+  // Enter had no binding at all: the only way out of the field was Escape or
+  // clicking off it.
+  await user.keyboard("{Enter}");
+  expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+  expect(
+    screen.getByTestId("annotation-note-label-keyboard-mark"),
+  ).toHaveTextContent("Raise this panel");
+
+  // Every pointer move used to push its own history entry, so undoing one
+  // gesture took one Cmd+Z per frame it lasted.
+  fireEvent.pointerDown(screen.getByTestId("annotation-mark-1"), {
+    clientX: 100,
+    clientY: 80,
+    pointerId: 4,
+  });
+  for (const clientX of [140, 180, 220, 260]) {
+    fireEvent.pointerMove(surface, { clientX, clientY: 140, pointerId: 4 });
+  }
+  fireEvent.pointerUp(surface, { clientX: 260, clientY: 140, pointerId: 4 });
+
+  const moved = screen.getByTestId("annotation-mark-1").style.left;
+  expect(moved).not.toBe("8%");
+
+  await user.keyboard("{Control>}z{/Control}");
+  await waitFor(() => {
+    expect(screen.getByTestId("annotation-mark-1")).toHaveStyle({ left: "8%" });
+  });
 });

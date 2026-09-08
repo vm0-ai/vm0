@@ -24,6 +24,7 @@ import {
   encryptStoredSecretValue,
 } from "./crypto.utils";
 import { extractCodexAccountEmailFromIdToken } from "./codex-auth-json-parser";
+import { invalidateCodexResetCreditExpiry } from "./codex-reset-credit-expiry.service";
 
 const MAX_PERSONAL_PROVIDER_ACCOUNTS = 10;
 const CODEX_TYPE = "codex-oauth-token";
@@ -724,6 +725,33 @@ async function applyAccountMutation(
   return { account, created: !selected };
 }
 
+function affectedCodexExpiryBindings(
+  args: Parameters<typeof selectMutationTarget>[0],
+): (string | null)[] {
+  if (args.type !== CODEX_TYPE) {
+    return [];
+  }
+  const selected = selectMutationTarget(args);
+  if (selected && "status" in selected) {
+    return [];
+  }
+  // Fence replaced/deleted rows even when reconnect changes upstream identity.
+  // Unrelated concrete accounts retain their values and Retry-After deadlines.
+  return [
+    null,
+    ...args.accounts
+      .filter((account) => {
+        return (
+          account.id === selected?.id ||
+          identityMatches(account, args.type, args.metadata)
+        );
+      })
+      .map((account) => {
+        return account.id;
+      }),
+  ];
+}
+
 export async function upsertPersonalModelProviderAccount(
   args: {
     readonly db: Db;
@@ -769,62 +797,82 @@ export async function upsertPersonalModelProviderAccount(
   }
   signal.throwIfAborted();
 
-  return await args.db.transaction(async (tx) => {
-    await lockModelProviderState(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-    });
-    signal.throwIfAborted();
-    const [providerRow] = await tx
-      .select()
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.type, args.type),
-        ),
-      )
-      .limit(1);
-    const provider =
-      providerRow ??
-      (await createLogicalProvider(tx, {
+  const expiryBindings = new Set<string | null>();
+  const invalidateExpiry = () => {
+    for (const binding of expiryBindings) {
+      invalidateCodexResetCreditExpiry(
+        { scope: "personal", orgId: args.orgId, userId: args.userId },
+        { binding },
+      );
+    }
+  };
+  return await args.db
+    .transaction(async (tx) => {
+      await lockModelProviderState(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
-        selectedModel: args.selectedModel,
-      }));
-    const accounts = await tx
-      .select()
-      .from(modelProviderAccounts)
-      .where(eq(modelProviderAccounts.modelProviderId, provider.id))
-      .orderBy(
-        asc(modelProviderAccounts.createdAt),
-        asc(modelProviderAccounts.id),
-      );
-    const metadata = accountMetadataValues({
-      type: args.type,
-      metadata: args.metadata,
-      secretValues: args.secretValues,
-    });
-    const result = await applyAccountMutation(tx, {
-      provider,
-      accounts,
-      type: args.type,
-      authMethod: args.authMethod,
-      mode: args.mode,
-      metadata,
-      encryptedSecrets,
-    });
-    if ("status" in result) {
-      return result;
-    }
-    return {
-      provider: accountResponse({ account: result.account, provider }),
-      created: result.created,
-    };
-  });
+      });
+      signal.throwIfAborted();
+      const [providerRow] = await tx
+        .select()
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, args.userId),
+            eq(modelProviders.type, args.type),
+          ),
+        )
+        .limit(1);
+      const provider =
+        providerRow ??
+        (await createLogicalProvider(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          type: args.type,
+          selectedModel: args.selectedModel,
+        }));
+      const accounts = await tx
+        .select()
+        .from(modelProviderAccounts)
+        .where(eq(modelProviderAccounts.modelProviderId, provider.id))
+        .orderBy(
+          asc(modelProviderAccounts.createdAt),
+          asc(modelProviderAccounts.id),
+        );
+      const metadata = accountMetadataValues({
+        type: args.type,
+        metadata: args.metadata,
+        secretValues: args.secretValues,
+      });
+      for (const binding of affectedCodexExpiryBindings({
+        accounts,
+        mode: args.mode,
+        type: args.type,
+        metadata,
+      })) {
+        expiryBindings.add(binding);
+      }
+      invalidateExpiry();
+      const result = await applyAccountMutation(tx, {
+        provider,
+        accounts,
+        type: args.type,
+        authMethod: args.authMethod,
+        mode: args.mode,
+        metadata,
+        encryptedSecrets,
+      });
+      if ("status" in result) {
+        return result;
+      }
+      return {
+        provider: accountResponse({ account: result.account, provider }),
+        created: result.created,
+      };
+    })
+    .finally(invalidateExpiry);
 }
 
 async function accountWithProvider(

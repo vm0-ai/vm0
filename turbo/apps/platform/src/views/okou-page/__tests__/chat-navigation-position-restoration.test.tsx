@@ -747,9 +747,6 @@ test("Preserve the reading position while entering and leaving sharing mode", as
     context,
     host: APP_HOST,
     path: `/chats/${SHARING_THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.SharedThreadSharing]: true,
-    },
   });
 
   const targetText = "Shareable message 3";

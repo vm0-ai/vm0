@@ -1,3 +1,4 @@
+import { fetchResource } from "../../lib/resource-fetch.ts";
 import { command, computed, state, type Command } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -278,13 +279,12 @@ async function loadPresentationTemplateHtmlPreview(
   },
   signal: AbortSignal,
 ): Promise<PresentationPreviewDraft | null> {
-  const response = await fetch(
+  const response = await fetchResource(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
-      credentials: "omit",
       mode: "cors",
-      signal,
     },
+    signal,
   );
   if (!response.ok) {
     throw new Error(`Failed to load template HTML (${response.status})`);
