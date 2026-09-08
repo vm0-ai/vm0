@@ -2957,7 +2957,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
