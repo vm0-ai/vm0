@@ -8,6 +8,21 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.566.3](https://github.com/vm0-ai/vm0/compare/api-v1.566.2...api-v1.566.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **billing:** handle already-paid auto-recharge invoices ([#32489](https://github.com/vm0-ai/vm0/issues/32489)) ([b5f4b95](https://github.com/vm0-ai/vm0/commit/b5f4b95777cb0561f692ba1228ee2699804f0932))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.3
+    * @okouai/db bumped to 1.245.12
+
 ## [1.566.2](https://github.com/vm0-ai/vm0/compare/api-v1.566.1...api-v1.566.2) (2026-09-08)
 
 

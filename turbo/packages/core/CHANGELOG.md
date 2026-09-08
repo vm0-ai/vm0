@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.634.3](https://github.com/vm0-ai/vm0/compare/core-v8.634.2...core-v8.634.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** normalize feature switch maintainer emails ([#32439](https://github.com/vm0-ai/vm0/issues/32439)) ([16d1e9a](https://github.com/vm0-ai/vm0/commit/16d1e9a9b2bcd80e20ae37dfd64584814c46b531))
+
 ## [8.634.2](https://github.com/vm0-ai/vm0/compare/core-v8.634.1...core-v8.634.2) (2026-09-08)
 
 

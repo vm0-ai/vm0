@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.7...runner-rs-v0.188.8) (2026-09-08)
+
+
+### Documentation
+
+* **python:** correct HTTP error log destination ([#32474](https://github.com/vm0-ai/vm0/issues/32474)) ([84d62e4](https://github.com/vm0-ai/vm0/commit/84d62e4d6b9d869fb33bf024e8d758e79e2c2dd2))
+
 ## [0.188.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.6...runner-rs-v0.188.7) (2026-09-08)
 
 ## [0.188.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.5...runner-rs-v0.188.6) (2026-09-08)
