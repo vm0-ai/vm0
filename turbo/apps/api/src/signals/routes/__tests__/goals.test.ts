@@ -1,6 +1,7 @@
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -420,13 +421,14 @@ describe("Goal retirement compatibility", () => {
       statusOnRelease: "running",
     });
     const claim = api.requestClaimRunnerJob(true, fixture.runId, [404]);
-    await expect
-      .poll(lock.waiterCount)
-      .toBeGreaterThan(0)
-      .finally(async () => {
-        lock.release();
-        await lock.done;
-      });
+    onTestFinished(async () => {
+      lock.release();
+      await lock.done;
+      await claim;
+    });
+    await expect.poll(lock.waiterCount).toBeGreaterThan(0);
+    lock.release();
+    await lock.done;
     expect((await claim).status).toBe(404);
     expect((await api.readRun(fixture.actor, fixture.runId)).status).toBe(
       "running",
