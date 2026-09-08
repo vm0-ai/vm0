@@ -893,7 +893,7 @@ impl FirecrackerSandbox {
         validate()?;
 
         let outcome = tokio::select! {
-            result = call(vsock) => {
+            result = call(Arc::clone(&vsock)) => {
                 GuestCallOutcome::Returned(result)
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -905,9 +905,45 @@ impl FirecrackerSandbox {
             GuestCallOutcome::Returned(Ok(value)) => Ok(value),
             GuestCallOutcome::Returned(Err(error)) => {
                 let backend_crashed = self.has_backend_crashed();
+                self.log_private_write_timeout_diagnostic(&vsock, &error)
+                    .await;
                 Err(Self::operation_error(operation, error, backend_crashed))
             }
             GuestCallOutcome::BackendCrashed => Err(Self::backend_crashed_error(operation)),
+        }
+    }
+
+    async fn log_private_write_timeout_diagnostic(
+        &self,
+        guest: &GuestControlClient,
+        error: &io::Error,
+    ) {
+        let Some(sequence) = error
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<guest_control_client::RequestTimeoutError>())
+            .and_then(guest_control_client::RequestTimeoutError::private_write_sequence)
+        else {
+            return;
+        };
+        // The write has already expired and normal operations remain fenced.
+        // This independent, read-only control probe must never replace the
+        // initiating error or extend the write's original 60-second budget.
+        match guest.file_write_status(Duration::from_secs(1)).await {
+            Ok(status) => warn!(
+                id = %self.id,
+                write_sequence = sequence,
+                observed_write_sequence = status.sequence,
+                guest_write_stage = status.stage.label(),
+                diagnostic_outcome = if status.sequence == sequence { "matched" } else { "different_request" },
+                "private file-write timeout guest diagnostic"
+            ),
+            Err(diagnostic_error) => warn!(
+                id = %self.id,
+                write_sequence = sequence,
+                diagnostic_outcome = "unavailable",
+                diagnostic_error_kind = ?diagnostic_error.kind(),
+                "private file-write timeout guest diagnostic"
+            ),
         }
     }
 
