@@ -91,7 +91,8 @@ _FLOW_STATE = "_model_provider_failure_flow_state"
 _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
 _MAX_RETRY_AFTER_SECONDS = 300
-_REPORT_TIMEOUT_SECONDS = 3
+# Allow API cold starts while keeping best-effort reporting and shutdown bounded.
+_REPORT_TIMEOUT_SECONDS = 10
 _REPORT_WORKERS = 4
 _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
 RUNNER_AUTH_ENV = "OKOU_MITM_RUNNER_TOKEN"
