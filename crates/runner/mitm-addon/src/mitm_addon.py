@@ -1895,7 +1895,7 @@ def _finish_response_handling(
         ):
             invalidate_cached_firewall_headers(cache_key, cache_entry_identity)
 
-    # Log errors to per-job proxy log and mitmproxy console
+    # Log HTTP error responses to the per-job proxy JSONL log.
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
         url_projection = project_url_for_proxy_log(original_url)
         log_proxy_entry(
