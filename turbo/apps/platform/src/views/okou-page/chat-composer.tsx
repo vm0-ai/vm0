@@ -5935,7 +5935,8 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
-  skipEnterAnimation,
+  onCloseComplete,
+  open,
   presentationItems,
   runtime,
   signals,
@@ -5943,7 +5944,8 @@ function TemplatePickerDialog({
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
-  skipEnterAnimation: boolean;
+  onCloseComplete: () => void;
+  open: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   runtime: TemplatePreviewRuntime;
   signals: ComposerSignals;
@@ -6034,7 +6036,6 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? importedPreviewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-open:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   // A persona pill filters the grid, ideation-gallery style.
@@ -6091,11 +6092,15 @@ function TemplatePickerDialog({
   };
 
   const closeTemplatePicker = () => {
+    onClose();
+  };
+
+  const completeTemplatePickerClose = () => {
     releasePreviewResources(runtime);
     resetImportedTemplatePicker();
     clearAvatarVoiceSelection();
     setPresentationGridScrollTop(0);
-    onClose();
+    onCloseComplete();
   };
 
   const handleSelectPresentation = (
@@ -6287,9 +6292,9 @@ function TemplatePickerDialog({
 
   return (
     <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           if (importedPreviewItem !== null) {
             closeImportedPreview();
             return;
@@ -6301,8 +6306,9 @@ function TemplatePickerDialog({
           closeTemplatePicker();
         }
       }}
-      onOpenChangeComplete={(open) => {
-        if (!open) {
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeTemplatePickerClose();
           return;
         }
         ownPreviewResources(runtime, pageSignal);
@@ -6316,9 +6322,6 @@ function TemplatePickerDialog({
           return $.artifacts.actions.close;
         })}
         className={dialogContentClassName}
-        overlayClassName={
-          skipEnterAnimation ? "okou-dialog-overlay-instant" : undefined
-        }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
@@ -6433,6 +6436,7 @@ function TemplatePickerDialog({
             signals={signals}
           />
         ) : null}
+        <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </DialogContent>
     </Dialog>
   );
@@ -6760,10 +6764,8 @@ function TemplatePickerButton({
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
+  const mounted = useGet(signals.template.templatePickerMounted$);
   const open = useGet(signals.template.templatePickerOpen$);
-  const skipEnterAnimation = useGet(
-    signals.template.templatePickerSkipEnterAnimation$,
-  );
   const category = useGet(signals.template.templatePickerCategory$);
   const explainerEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
@@ -6783,6 +6785,7 @@ function TemplatePickerButton({
             return $.artifacts.templates.template;
           });
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
+  const completeClose = useSet(signals.template.completeTemplatePickerClose$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
@@ -6847,15 +6850,18 @@ function TemplatePickerButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {open && (
+      {mounted && (
         <TemplatePickerDialog
           value={referenceValue ?? undefined}
           onChange={picker.onChange}
+          open={open}
           onClose={() => {
-            setReferenceValue(null);
             setOpen(false);
           }}
-          skipEnterAnimation={skipEnterAnimation}
+          onCloseComplete={() => {
+            setReferenceValue(null);
+            completeClose();
+          }}
           presentationItems={presentationItems}
           runtime={runtime}
           signals={signals}
@@ -10636,7 +10642,6 @@ export function ChatComposer({
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
-        <WebsiteTemplatePreviewDialogSlot signals={signals} />
         <ImageAnnotationEditor signals={signals.imageAnnotation} />
       </div>
     </>

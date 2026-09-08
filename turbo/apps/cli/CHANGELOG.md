@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.317.6](https://github.com/vm0-ai/vm0/compare/cli-v9.317.5...cli-v9.317.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** restrict slack reads to shared conversations ([#32692](https://github.com/vm0-ai/vm0/issues/32692)) ([0e57607](https://github.com/vm0-ai/vm0/commit/0e57607c9d8c0ca163c9a4df015479c5f6014879))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.417.1
+    * @okouai/core bumped to 8.637.2
+    * @okouai/pi-agent-runtime bumped to 1.23.4
+
 ## [9.317.5](https://github.com/vm0-ai/vm0/compare/cli-v9.317.4...cli-v9.317.5) (2026-09-08)
 
 

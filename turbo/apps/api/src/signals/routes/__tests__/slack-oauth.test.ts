@@ -174,6 +174,7 @@ describe("Slack OAuth API routes", () => {
       expect(scopes).not.toContain("assistant:write");
       expect(scopes).toContain("channels:history");
       expect(scopes).toContain("im:history");
+      expect(scopes).toContain("im:read");
       expect(scopes).toContain("commands");
       expect(scopes).toContain("users:read");
       expect(scopes).toContain("files:read");

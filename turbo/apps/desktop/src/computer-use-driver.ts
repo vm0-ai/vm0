@@ -314,7 +314,9 @@ export class ComputerUseDriverController {
     if (context?.backend.forceStop) {
       this.active = false;
       context.snapshots.clear();
-      context.disposal ??= context.backend.forceStop();
+      context.disposal ??= Promise.resolve().then(() =>
+        context.backend.forceStop?.(),
+      );
       // Observe a bounded cleanup rejection even while an old lease is hung.
       // Keep the original rejected promise as the replacement gate.
       void context.disposal.catch(() => {});
@@ -350,11 +352,11 @@ export class ComputerUseDriverController {
     if (!context) return Promise.resolve();
     this.retiringContext = context;
     if (context.leases === 0) context.resolveDrained();
-    const retirement = (async () => {
+    const retirement = Promise.resolve().then(async () => {
       // Quit may terminate native work; a healthy replacement must drain it.
       if (reason === "dispose") await context.drained;
       await this.dispose(context, reason);
-    })();
+    });
     this.retirement = retirement;
     this.onChange();
     void retirement.then(
@@ -376,9 +378,11 @@ export class ComputerUseDriverController {
     context: DriverGeneration,
     reason: ComputerUseNativeShutdownReason,
   ): Promise<void> {
-    context.disposal ??= context.backend.dispose(reason).then(() => {
-      context.snapshots.clear();
-    });
+    context.disposal ??= Promise.resolve()
+      .then(() => context.backend.dispose(reason))
+      .then(() => {
+        context.snapshots.clear();
+      });
     return context.disposal;
   }
 

@@ -5,6 +5,7 @@ import { chatThreadRenameContract } from "@okouai/api-contracts/contracts/chat-t
 
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -174,7 +175,15 @@ test.each([
   "Keep one focused emoji picker when resizing from $from to $to",
   async ({ desktop }) => {
     const viewport = context.mocks.browser.matchMedia(desktop);
-    await openEmojiPicker();
+    const searchInput = await openEmojiPicker();
+
+    // "eye" has 20 matches in the production emoji data. Search through the
+    // page before remounting so this responsive contract does not repeatedly
+    // build the unrelated full emoji grid.
+    await fill(searchInput, "eye");
+    await waitFor(() => {
+      expect(queryAllByRoleFast("button", emojiFeed())).toHaveLength(20);
+    });
 
     act(() => {
       viewport.setMatches(!desktop);
@@ -187,6 +196,8 @@ test.each([
       const searchInputs = screen.getAllByLabelText("Search emoji");
       expect(searchInputs).toHaveLength(1);
       expect(searchInputs[0]).toHaveFocus();
+      expect(searchInputs[0]).toHaveValue("eye");
+      expect(queryAllByRoleFast("button", emojiFeed())).toHaveLength(20);
     });
     expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
     expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(

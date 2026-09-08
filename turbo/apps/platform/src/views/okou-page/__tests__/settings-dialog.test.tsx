@@ -13,6 +13,7 @@ import { expect, test, vi } from "vitest";
 
 import {
   click,
+  holdElementAnimations,
   setupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
@@ -176,7 +177,14 @@ test("Offer only languages supported by the workspace", async () => {
     ).not.toBeInTheDocument();
   });
 
+  const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+  const finishCloseTransition = holdElementAnimations(settingsDialog);
   click(screen.getByLabelText("Close"));
+  expect(
+    new URL(window.location.href).searchParams.has("settings"),
+  ).toBeFalsy();
+  expect(settingsDialog).toBeVisible();
+  finishCloseTransition();
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", { name: "Settings" }),

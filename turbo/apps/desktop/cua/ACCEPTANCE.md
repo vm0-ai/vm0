@@ -11,7 +11,8 @@ requires matching signed identities.
 
 ## Choose an exact candidate
 
-Use the final-head delivery comment on #32395, which supplies the successful
+For the quit repair, use the final-head delivery comment on #32650 / PR #32673;
+older #32395 candidates predate that repair. The delivery record supplies the successful
 Desktop run, all three actual app artifacts, the verification artifact, exact
 IDs/digests/expiry, PR head, CI checkout and eventual merge. A version string
 alone is insufficient. In particular, the released `okou-desktop-v0.47.0` at
@@ -20,17 +21,17 @@ PR's identically versioned package came from different source.
 
 The retained macOS arm64 candidates are:
 
-| Actions artifact name                       | Configuration                                      | Installed identity                | Signing boundary                                            |
-| ------------------------------------------- | -------------------------------------------------- | --------------------------------- | ----------------------------------------------------------- |
-| `okou-desktop-macos-arm64-default-unsigned` | Default product, no runtime config                 | `Okou`, `ai.okou.desktop`         | Normally ad-hoc; inspect observed signature                 |
-| `okou-desktop-macos-arm64-unsigned`         | Explicit Okou / `https://app.okou.ai`              | `Okou`, `ai.okou.desktop`         | Production configuration is not a production release        |
-| `okou-desktop-macos-arm64-preview-unsigned` | This PR's platform preview URL                     | `Okou Dev`, `ai.okou.desktop.dev` | Separate identity; does not test production TCC persistence |
-| `okou-desktop-cua-verification`             | `default/`, `production/`, `preview/` JSON reports | Metadata only                     | Each lane has `package.json`, `dormant.json`, `probe.json`  |
+| Actions artifact name                       | Configuration                                      | Installed identity                | Signing boundary                                                          |
+| ------------------------------------------- | -------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------- |
+| `okou-desktop-macos-arm64-default-unsigned` | Default product, no runtime config                 | `Okou`, `ai.okou.desktop`         | Normally ad-hoc; inspect observed signature                               |
+| `okou-desktop-macos-arm64-unsigned`         | Explicit Okou / `https://app.okou.ai`              | `Okou`, `ai.okou.desktop`         | Production configuration is not a production release                      |
+| `okou-desktop-macos-arm64-preview-unsigned` | This PR's platform preview URL                     | `Okou Dev`, `ai.okou.desktop.dev` | Separate identity; does not test production TCC persistence               |
+| `okou-desktop-cua-verification`             | `default/`, `production/`, `preview/` JSON reports | Metadata only                     | Each lane has `package.json`, `dormant.json`, `probe.json`, `forced.json` |
 
 The historical artifact name “unsigned” includes Forge's ad-hoc signatures.
 `--signed` in the verifier means verifying the seal before allowing native
 post-sign bytes; it does not mean Developer ID or notarization. Read observed
-outer and four nested signatures, authorities, Team ID, designated requirements,
+outer, four upstream and two first-party native signatures, authorities, Team ID, designated requirements,
 Gatekeeper and stapling results from `package.json`. A matching Developer ID
 candidate may only come from already completed normal distribution. If none
 contains this implementation, signed-host/TCC/update acceptance stays pending;
@@ -59,6 +60,23 @@ establish an installed app's source ancestry. The report's actual bundle hashes
 can be compared with the verified candidate.
 
 ## Download and inspect without launching
+
+### Pending user checks for the quit repair
+
+After a separately authorized, exact-source signed candidate exists:
+
+- With CUA active, Cancel Quit and verify the same session can finish a command.
+- Confirm Quit during idle and pending work; record responsiveness, elapsed
+  time and independently verified helper/daemon absence, then reopen repeatedly.
+- Check Stop, sign-out/revocation and driver switching, including plugin and
+  recorder continuity during normal switching; verify no action is replayed.
+- Verify Developer ID identity, real TCC attribution/grant persistence and the
+  signed update/relaunch path. CI host labels and ad-hoc seals do not pass these.
+
+Every item remains `pending-user` until actually performed. Do not run the CI
+smoke or forced probe against a user's active profile.
+
+### Read-only inspection
 
 Download the outer Actions artifact archive using its exact link. Preserve it
 and verify SHA-256 against the API digest **before** extraction. On macOS:

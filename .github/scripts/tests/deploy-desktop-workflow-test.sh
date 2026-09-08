@@ -23,8 +23,8 @@ ruby -e '
 
   canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
   canonical_writer_counts = {
-    "OKOU_DESKTOP_PRODUCT" => [7, 2],
-    "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
+    "OKOU_DESKTOP_PRODUCT" => [8, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [13, 2],
     canonical_signing_identity => [0, 5],
   }
   canonical_writer_counts.each do |name, expected_counts|
@@ -45,6 +45,11 @@ ruby -e '
     smoke_environment = smoke.fetch("env").reject { |key, _| key == evidence_key }
     probe_environment = probe.fetch("env").reject { |key, _| key == evidence_key }
     raise "CUA probe must use the same canonical environment and conditions as ordinary smoke" unless probe_environment == smoke_environment && probe["if"] == smoke["if"]
+    forced = build.fetch("steps").find { |step| step["name"] == "Force blocked CUA cleanup in #{variant} artifact" }
+    raise "Each packaged variant must block real helper execution and prove forced cleanup" unless forced && forced.fetch("run").include?("--cua-forced-probe --signed")
+    raise "Forced evidence must stay separate from healthy lifecycle evidence" unless forced.fetch("env").fetch(evidence_key) == "#{evidence_root}/forced.json"
+    forced_environment = forced.fetch("env").reject { |key, _| key == evidence_key }
+    raise "Forced cleanup must use the same package environment and conditions" unless forced_environment == smoke_environment && forced["if"] == smoke["if"]
   end
   deploy = desktop.fetch("deploy-desktop")
   raise "deploy-desktop must depend on version detection" unless deploy.fetch("needs") == "detect-desktop-version"

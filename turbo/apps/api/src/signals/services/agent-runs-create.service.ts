@@ -482,7 +482,7 @@ function buildAgentToolsPrompt(args: {
     "- Slack messages: when the task explicitly asks to send or post to Slack, use `okou slack message send --help` for channels, DMs, and thread replies.",
     ...(args.slackReadEnabled
       ? [
-          "- Slack channel discovery and history: use `okou slack channel list --help` to find channel IDs and bot membership, then `okou slack message history --help` to read channel or bot DM history.",
+          "- Slack channel discovery and history: use `okou slack channel list --help` to find channels shared by the connected user and bot, then `okou slack message history --help` to read shared channel or bot DM history.",
         ]
       : []),
     "- Feishu messages: when the task explicitly asks to send or post to Feishu, use `okou feishu message send --help` for chats, DMs, and replies.",

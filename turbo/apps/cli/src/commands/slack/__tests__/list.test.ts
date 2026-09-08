@@ -16,7 +16,7 @@ describe("okou slack channel list", () => {
     listCommand.setOptionValue("limit", "100");
   });
 
-  it("shows unjoined public channels with their invitation destination", async () => {
+  it("shows a channel shared by the connected user and Okou", async () => {
     const channelUrl = "https://slack.com/app_redirect?team=T123&channel=C123";
     server.use(
       http.get(listUrl, () => {
@@ -26,7 +26,7 @@ describe("okou slack channel list", () => {
               id: "C123",
               name: "general",
               isPrivate: false,
-              isMember: false,
+              isMember: true,
               channelUrl,
             },
           ],
@@ -37,7 +37,7 @@ describe("okou slack channel list", () => {
     await listCommand.parseAsync(["node", "okou"]);
     const text = output.mock.calls.flat().join("\n");
     expect(text).toContain("#general");
-    expect(text).toContain("invite Okou first");
+    expect(text).toContain("shared");
     expect(text).toContain(channelUrl);
     expect(text).toContain("okou slack message history");
   });

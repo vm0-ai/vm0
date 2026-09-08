@@ -7,6 +7,7 @@ import type {
 import { expect, test } from "vitest";
 
 import {
+  holdElementAnimations,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -265,7 +266,10 @@ test("Preview and send a website template", async () => {
   if (!previewDialog) {
     throw new Error("Website preview dialog not found");
   }
+  const finishCloseTransition = holdElementAnimations(previewDialog);
   await user.click(buttonNamed("Website", previewDialog));
+  expect(previewDialog).toBeVisible();
+  finishCloseTransition();
   const returnedPicker = await waitFor(() => {
     const currentPicker = screen.getByRole("dialog");
     expect(

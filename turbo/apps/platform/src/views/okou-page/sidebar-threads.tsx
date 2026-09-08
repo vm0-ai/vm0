@@ -1,5 +1,4 @@
 import type { MouseEvent } from "react";
-import { timeout } from "signal-timers";
 import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -91,14 +90,7 @@ import { setThreadListNumberShortcutRoot$ } from "../../signals/okou-page/thread
 import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
-import {
-  PinnedThreadRow,
-  PinnedThreadDragAnnouncement,
-  PinnedThreadDragPreview,
-  PinnedThreadDropPlaceholder,
-  ThreadPinMoveMenuItems,
-} from "./sidebar-thread-reorder.tsx";
-import type { PinnedThreadDragSignals } from "../../signals/chat-page/chat-thread-pin-order.ts";
+import { ThreadPinMoveMenuItems } from "./sidebar-thread-reorder.tsx";
 import { equalArrays } from "../../lib/equality.ts";
 
 // The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
@@ -417,19 +409,17 @@ function ChatThreadItemLink({
 function ChatThreadItem({
   signals,
   shortcutNumber,
-  dragSignals,
 }: {
   signals: SidebarChatThreadItemSignals;
   shortcutNumber: number | undefined;
-  dragSignals: PinnedThreadDragSignals;
 }) {
   return (
-    <PinnedThreadRow signals={signals} dragSignals={dragSignals}>
+    <div className="group relative grid grid-cols-[minmax(0,1fr)_auto] items-center">
       <ChatThreadItemLink signals={signals} shortcutNumber={shortcutNumber} />
       <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
-    </PinnedThreadRow>
+    </div>
   );
 }
 
@@ -622,10 +612,8 @@ export function ChatThreadDialogs() {
 
 function VirtualizedChatThreads({
   listSignals,
-  scrollSignals,
 }: {
   listSignals: SidebarChatThreadListSignals;
-  scrollSignals: SidebarChatThreadScrollSignals;
 }) {
   const setShortcutRoot = useSet(setThreadListNumberShortcutRoot$);
   const searchOpen = useGet(threeColumnSearchOpen$);
@@ -636,7 +624,6 @@ function VirtualizedChatThreads({
   const startIndex = window.startIndex;
   const visibleItems = window.items;
 
-  const placement = useGet(scrollSignals.pinReorder.placement$);
   return (
     <div
       ref={setShortcutRoot}
@@ -644,38 +631,23 @@ function VirtualizedChatThreads({
       data-testid="sidebar-chat-threads-virtual-list"
       style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
-      <PinnedThreadDragAnnouncement signals={scrollSignals.pinReorder} />
-      <PinnedThreadDragPreview signals={scrollSignals.pinReorder} />
-      <PinnedThreadDropPlaceholder signals={scrollSignals.pinReorder} />
       {visibleItems.map((signals, visibleOffset) => {
         const index = startIndex + visibleOffset;
-        let visualIndex = index;
-        if (placement) {
-          const { sourceIndex, destinationIndex } = placement;
-          if (index === sourceIndex) {
-            visualIndex = destinationIndex;
-          } else if (index > sourceIndex && index <= destinationIndex) {
-            visualIndex--;
-          } else if (index >= destinationIndex && index < sourceIndex) {
-            visualIndex++;
-          }
-        }
         return (
           <div
             key={signals.threadId}
-            data-index={visualIndex}
+            data-index={index}
             data-testid="sidebar-chat-thread-virtual-row"
             className="absolute left-0 top-0 w-full pb-1"
             style={{
               transform: `translateY(${
-                visualIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
+                index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT
               }px)`,
             }}
           >
             <ChatThreadItem
               signals={signals}
               shortcutNumber={!searchOpen && index < 9 ? index + 1 : undefined}
-              dragSignals={scrollSignals.pinReorder}
             />
           </div>
         );
@@ -686,10 +658,8 @@ function VirtualizedChatThreads({
 
 function ChatThreads({
   listSignals,
-  scrollSignals,
 }: {
   listSignals: SidebarChatThreadListSignals;
-  scrollSignals: SidebarChatThreadScrollSignals;
 }) {
   const { t } = useTranslation();
   const unreadOnly = useGet(chatThreadOnlyUnread$);
@@ -708,12 +678,7 @@ function ChatThreads({
       </p>
     );
   }
-  return (
-    <VirtualizedChatThreads
-      listSignals={listSignals}
-      scrollSignals={scrollSignals}
-    />
-  );
+  return <VirtualizedChatThreads listSignals={listSignals} />;
 }
 
 function ChatThreadsListMenuTooltip() {
@@ -968,40 +933,6 @@ function ChatThreadsSkeleton() {
   );
 }
 
-function markPointerFocus(viewport: HTMLElement, signal: AbortSignal) {
-  signal.throwIfAborted();
-  const token = Math.random().toString(36);
-  viewport.dataset.sidebarPointerFocusToken = token;
-  const clearPointerFocus = () => {
-    if (viewport.dataset.sidebarPointerFocusToken !== token) {
-      return;
-    }
-
-    delete viewport.dataset.sidebarPointerFocusToken;
-  };
-  const clearPointerFocusOnAbort = () => {
-    clearPointerFocus();
-  };
-  signal.addEventListener("abort", clearPointerFocusOnAbort, { once: true });
-  timeout(
-    () => {
-      signal.removeEventListener("abort", clearPointerFocusOnAbort);
-      clearPointerFocus();
-    },
-    350,
-    { signal },
-  );
-}
-
-function consumePointerFocus(viewport: HTMLElement) {
-  if (!viewport.dataset.sidebarPointerFocusToken) {
-    return false;
-  }
-
-  delete viewport.dataset.sidebarPointerFocusToken;
-  return true;
-}
-
 function ChatThreadsContent({
   scrollSignals,
   contentClassName,
@@ -1075,7 +1006,7 @@ function ResolvedAgentChatThreadsContent({
           hidden
         />
       ) : null}
-      <ChatThreads listSignals={listSignals} scrollSignals={scrollSignals} />
+      <ChatThreads listSignals={listSignals} />
     </div>
   );
 }
@@ -1090,58 +1021,6 @@ function ExpandedChatThreadsContent({
   const { t } = useTranslation();
   const isScrolled = useGet(scrollSignals.isScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
-  const scrollToThread = useSet(scrollSignals.scrollToThread$);
-  const pageSignal = useGet(pageSignal$);
-  const focusThreadLink = (
-    viewport: HTMLElement,
-    threadId: string,
-  ): boolean => {
-    const link = Array.from(
-      viewport.querySelectorAll<HTMLAnchorElement>(
-        "[data-sidebar-chat-thread-id]",
-      ),
-    ).find((candidate) => {
-      return candidate.dataset.sidebarChatThreadId === threadId;
-    });
-    if (!link?.isConnected) {
-      return false;
-    }
-    link.focus({ preventScroll: true });
-    return true;
-  };
-  const focusThreadLinkOnNextFrame = (
-    viewport: HTMLElement,
-    threadId: string,
-  ) => {
-    const win = viewport.ownerDocument.defaultView;
-    const focus = () => {
-      focusThreadLink(viewport, threadId);
-    };
-    if (win?.requestAnimationFrame) {
-      win.requestAnimationFrame(focus);
-    } else {
-      queueMicrotask(focus);
-    }
-  };
-  const focusCurrentMainThreadLink = (viewport: HTMLElement) => {
-    if (
-      !currentMainThreadId ||
-      focusThreadLink(viewport, currentMainThreadId)
-    ) {
-      return;
-    }
-
-    const scrollAndFocusCurrentThread = async () => {
-      const scrolled = await scrollToThread(
-        { threadId: currentMainThreadId, align: "top" },
-        pageSignal,
-      );
-      if (scrolled) {
-        focusThreadLinkOnNextFrame(viewport, currentMainThreadId);
-      }
-    };
-    detach(scrollAndFocusCurrentThread(), Reason.DomCallback);
-  };
 
   return (
     <OverlayScrollArea
@@ -1153,18 +1032,6 @@ function ExpandedChatThreadsContent({
       })}
       data-testid="sidebar-scroll-area"
       tabIndex={currentMainThreadId ? 0 : undefined}
-      onPointerDownCapture={(event) => {
-        markPointerFocus(event.currentTarget, pageSignal);
-      }}
-      onFocus={(event) => {
-        if (event.target !== event.currentTarget) {
-          return;
-        }
-        if (consumePointerFocus(event.currentTarget)) {
-          return;
-        }
-        focusCurrentMainThreadLink(event.currentTarget);
-      }}
       style={{
         boxShadow: isScrolled ? "0 -1px 0 0 hsl(var(--border) / 0.4)" : "none",
       }}

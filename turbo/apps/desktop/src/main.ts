@@ -1064,11 +1064,11 @@ function refreshComputerUsePermissionsForState(): void {
 }
 
 async function prepareForQuitAndInstall(): Promise<void> {
+  await computerUseController.stopForQuit("update_relaunch");
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   applicationMenu.dispose();
   releaseKeepAwake();
-  await computerUseController.stopForQuit("update_relaunch");
 }
 
 // Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
@@ -1561,10 +1561,6 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    appIsQuitting = true;
-    applicationMenu.dispose();
-    releaseKeepAwake();
-    globalShortcut.unregisterAll();
     if (computerUseQuitPreparationComplete) {
       return;
     }
@@ -1579,10 +1575,14 @@ if (!hasSingleInstanceLock) {
           }
         } catch (error) {
           console.error("Unable to prepare Computer Use for app quit", error);
-        } finally {
-          computerUseQuitPreparationComplete = true;
-          app.quit();
+          return;
         }
+        appIsQuitting = true;
+        applicationMenu.dispose();
+        releaseKeepAwake();
+        globalShortcut.unregisterAll();
+        computerUseQuitPreparationComplete = true;
+        app.quit();
       })();
     }
   });
@@ -1604,12 +1604,14 @@ if (!hasSingleInstanceLock) {
       cuaProbeRuntime = new CuaEmbeddedRuntime({
         runtimeRoot: path.join(process.resourcesPath, "cua"),
         hostBundleId: config.identity.bundleId,
+        probeBlockCleanup: process.env.OKOU_DESKTOP_CUA_FORCE_PROBE === "1",
       });
       try {
         const result = await runCuaHostProbe(
           cuaProbeRuntime,
           process.env.OKOU_DESKTOP_CUA_CAPTURE === "1",
           app.getPath("userData"),
+          process.env.OKOU_DESKTOP_CUA_FORCE_PROBE === "1",
         );
         writeSync(
           1,

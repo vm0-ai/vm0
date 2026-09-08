@@ -8,6 +8,23 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.571.2](https://github.com/vm0-ai/vm0/compare/api-v1.571.1...api-v1.571.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** restrict slack reads to shared conversations ([#32692](https://github.com/vm0-ai/vm0/issues/32692)) ([0e57607](https://github.com/vm0-ai/vm0/commit/0e57607c9d8c0ca163c9a4df015479c5f6014879))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+    * @okouai/core bumped to 8.637.2
+    * @okouai/db bumped to 1.246.3
+    * @okouai/pi-agent-runtime bumped to 1.23.4
+
 ## [1.571.1](https://github.com/vm0-ai/vm0/compare/api-v1.571.0...api-v1.571.1) (2026-09-08)
 
 

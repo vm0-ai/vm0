@@ -4,6 +4,7 @@ import * as React from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 
 import { asChildRender } from "../../lib/base-ui-compat";
+import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 function DropdownMenu(props: MenuPrimitive.Root.Props) {
@@ -130,7 +131,8 @@ const DropdownMenuContent = React.forwardRef<
             ref={ref}
             data-slot="dropdown-menu-content"
             className={cn(
-              "max-h-[var(--available-height)] min-w-[8rem] origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none transition-[transform,opacity] duration-100 ease-out data-starting-style:opacity-0 data-starting-style:[transform:scale(0.98)] data-ending-style:opacity-0 data-ending-style:[transform:scale(0.98)] motion-reduce:transition-none dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]",
+              anchoredPopupTransitionClassName,
+              "max-h-[var(--available-height)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]",
               className,
             )}
             {...props}

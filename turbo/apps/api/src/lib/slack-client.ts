@@ -90,15 +90,21 @@ async function callSlackApi<T>(
   return data as T;
 }
 
-const conversationPageSchema = z.object({
+const sharedChannelPageSchema = z.object({
   channels: z.array(
     z.object({
       id: z.string(),
       name: z.string(),
       is_private: z.boolean(),
-      is_member: z.boolean(),
     }),
   ),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
+
+const sharedConversationPageSchema = z.object({
+  channels: z.array(z.object({ id: z.string() })),
   response_metadata: z
     .object({ next_cursor: z.string().optional() })
     .optional(),
@@ -112,17 +118,21 @@ const historyPageSchema = z.object({
     .optional(),
 });
 
-export async function listSlackChannelsPage(
+// For bot tokens, Slack defines `user` as an intersection with the bot's own
+// memberships, including private conversations shared by both identities.
+export async function listSharedSlackChannelsPage(
   token: string,
+  slackUserId: string,
   query: SlackChannelListQuery,
-  signal: AbortSignal,
+  signal?: AbortSignal,
 ) {
-  return conversationPageSchema.parse(
+  return sharedChannelPageSchema.parse(
     await callSlackApi<unknown>(
       token,
-      "conversations.list",
+      "users.conversations",
       {
         ...query,
+        user: slackUserId,
         types: "public_channel,private_channel",
         exclude_archived: true,
       },
@@ -141,54 +151,28 @@ export async function readSlackHistoryPage(
   );
 }
 
-interface SlackConversation {
-  id: string;
-  name: string;
-  is_channel: boolean;
-  is_group: boolean;
-  is_im: boolean;
-  is_member: boolean;
-  is_archived: boolean;
-}
-
-interface ConversationsListResponse {
-  ok: true;
-  channels: SlackConversation[];
-  response_metadata?: { next_cursor?: string };
-}
-
-export async function listConversations(
+export async function listSharedSlackChannels(
   token: string,
-  options?: {
-    types?: string;
-    excludeArchived?: boolean;
-    limit?: number;
-  },
+  slackUserId: string,
   signal?: AbortSignal,
 ): Promise<{ id: string; name: string }[]> {
   const channels: { id: string; name: string }[] = [];
   let cursor: string | undefined;
 
   do {
-    const result = await callSlackApi<ConversationsListResponse>(
+    const result = await listSharedSlackChannelsPage(
       token,
-      "conversations.list",
-      {
-        types: options?.types ?? "public_channel,private_channel",
-        exclude_archived: options?.excludeArchived ?? true,
-        limit: options?.limit ?? 200,
-        cursor,
-      },
+      slackUserId,
+      { limit: 200, cursor },
       signal,
     );
 
-    for (const ch of result.channels ?? []) {
-      if (ch.is_member && ch.id && ch.name) {
-        channels.push({ id: ch.id, name: ch.name });
-      }
-    }
-
-    cursor = result.response_metadata?.next_cursor;
+    channels.push(
+      ...result.channels.map((channel) => {
+        return { id: channel.id, name: channel.name };
+      }),
+    );
+    cursor = result.response_metadata?.next_cursor || undefined;
   } while (cursor);
 
   channels.sort((a, b) => {
@@ -196,6 +180,44 @@ export async function listConversations(
   });
 
   return channels;
+}
+
+export async function isSlackConversationShared(
+  token: string,
+  slackUserId: string,
+  conversationId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const types = conversationId.startsWith("D")
+    ? "im"
+    : "public_channel,private_channel";
+  let cursor: string | undefined;
+
+  do {
+    const result = sharedConversationPageSchema.parse(
+      await callSlackApi<unknown>(
+        token,
+        "users.conversations",
+        {
+          user: slackUserId,
+          types,
+          limit: 200,
+          cursor,
+        },
+        signal,
+      ),
+    );
+    if (
+      result.channels.some((channel) => {
+        return channel.id === conversationId;
+      })
+    ) {
+      return true;
+    }
+    cursor = result.response_metadata?.next_cursor || undefined;
+  } while (cursor);
+
+  return false;
 }
 
 interface SlackFileInfo {
