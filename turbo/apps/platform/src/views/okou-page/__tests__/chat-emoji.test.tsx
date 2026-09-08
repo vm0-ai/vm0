@@ -142,6 +142,9 @@ test("Change a thread icon before its save finishes", async () => {
   });
   expect(searchInput).toBeInTheDocument();
   renameResponse.resolve();
+  await waitFor(() => {
+    expect(searchInput).not.toBeInTheDocument();
+  });
 });
 
 test("Restore chat focus after closing the mobile emoji picker", async () => {

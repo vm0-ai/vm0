@@ -387,10 +387,9 @@ test("Refresh a private document on tab return while preserving an existing publ
     visibility.changeTo("visible");
   });
   await waitFor(() => {
-    expectOfficeViewerUrl(
-      within(dialog).getByTitle(`${filename} preview`),
-      refreshedUrl,
-    );
+    const refreshedFrame = within(dialog).getByTitle(`${filename} preview`);
+    expect(refreshedFrame).toBeVisible();
+    expectOfficeViewerUrl(refreshedFrame, refreshedUrl);
   });
   expect(screen.getByAltText(publicFilename)).toHaveAttribute(
     "src",

@@ -864,13 +864,6 @@ function ChatThreadEmojiMenuButton({
             closeMenu();
           }
         }}
-        onOpenChangeComplete={(nextOpen) => {
-          if (!nextOpen) {
-            chatThreadContainerElement(threadId)?.focus({
-              preventScroll: true,
-            });
-          }
-        }}
       >
         <Tooltip>
           <TooltipTrigger asChild>
@@ -904,7 +897,22 @@ function ChatThreadEmojiMenuButton({
             })}
           </TooltipContent>
         </Tooltip>
-        <PopoverContent align="start" className="w-80 p-0" finalFocus={false}>
+        <PopoverContent
+          align="start"
+          className="w-80 p-0"
+          finalFocus={() => {
+            // An open header replaced at a breakpoint keeps the new picker's focus.
+            if (!open) {
+              // Restore the keyboard root after the portal has detached.
+              queueMicrotask(() => {
+                chatThreadContainerElement(threadId)?.focus({
+                  preventScroll: true,
+                });
+              });
+            }
+            return false;
+          }}
+        >
           <ChatThreadEmojiPicker
             hasEmoji={Boolean(emoji)}
             onSelect={selectEmoji}
