@@ -1,20 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished, beforeEach } from "vitest";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import { testRuntimeStateContract } from "@okouai/api-contracts/contracts/test-runtime-state";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now } from "../../../lib/time";
+import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createDeferredPromise } from "../../utils";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testRuntimeStateRoutes } from "../test-runtime-state";
-import { goalsRoutes } from "../goals";
-import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createRouteMocks } from "./helpers/route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -69,7 +65,7 @@ function summaryCancellationRequest(signal: AbortSignal) {
   // background work finishes and cannot inject an independently owned task
   // AbortSignal. The existing runtime harness lets cancellation reach the real
   // summary boundary; every case aborts before persistence. Normal output and
-  // fallback cases below use the production Goal API and readback instead.
+  // fallback cases below use the production chat API and readback instead.
   return setupApp({
     context,
     routes: testRuntimeStateRoutes,
@@ -86,73 +82,45 @@ function summaryCancellationRequest(signal: AbortSignal) {
   });
 }
 
-async function prepareGoal() {
+async function prepareChatTitle() {
   const bdd = createBddApi(context);
   const runs = createRunsApi(context);
   const chat = createChatFilesBddApi(context);
   const actor = bdd.user();
-  if (!actor.orgId) {
-    throw new Error("Goal outcome tests require an organization");
-  }
-  const orgId = actor.orgId;
   bdd.acceptAgentStorageWrites();
   runs.acceptStorageDownloads();
   runs.acceptTelemetryIngest();
   runs.configureRunnerGroup();
   await runs.grantProEntitlement(actor);
   await runs.ensureOrgModelProvider(actor);
-  const agent = await bdd.createAgent(actor, { displayName: "Outcome goal" });
-  const sent = await accept(
-    chat.requestSendEvent(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "Prepare an observable goal",
-        model: "claude-sonnet-5",
-      },
-      [201],
-    ),
-    [201],
-  );
-  const runId = sent.body.runId;
-  if (runId === null) {
-    throw new Error("Expected a thread-linked run");
-  }
-  await flushWaitUntilForTest();
-  const client = setupApp({ context, routes: goalsRoutes })(goalsContract);
+  const agent = await bdd.createAgent(actor, { displayName: "Outcome title" });
+  let threadId: string | undefined;
   return {
     create: async () => {
-      const seconds = Math.floor(now() / 1000);
-      const token = signSandboxJwtForTests({
-        scope: "okou",
-        userId: actor.userId,
-        orgId,
-        runId,
-        capabilities: ["goal:user-control:write"],
-        iat: seconds,
-        exp: seconds + 600,
-      });
-      return await accept(
-        client.create({
-          headers: { authorization: `Bearer ${token}` },
-          body: { objective: secret },
-        }),
+      const sent = await accept(
+        chat.requestSendEvent(
+          actor,
+          {
+            agentId: agent.agentId,
+            prompt: secret,
+            model: "claude-sonnet-5",
+          },
+          [201],
+        ),
         [201],
       );
+      threadId = sent.body.threadId;
     },
     read: async () => {
-      createRouteMocks(context).clerk.session(
-        actor.userId,
-        orgId,
-        actor.orgRole,
-      );
-      return await accept(
-        client.getForChatThread({
-          headers: { authorization: "Bearer clerk-session" },
-          params: { threadId: sent.body.threadId },
-        }),
+      const events = await accept(
+        chat.requestThreadEvents(actor, {}, [200]),
         [200],
       );
+      return events.body.events.flatMap((event) => {
+        return event.chatThreadId === threadId && event.kind === "renamed"
+          ? [event.title]
+          : [];
+      });
     },
   };
 }
@@ -371,21 +339,23 @@ describe("auxiliary generation outcomes", () => {
   it.each(cases)(
     "records one bounded outcome for $name",
     async ({ response, outcome, reason }) => {
-      const goal = await prepareGoal();
+      const title = await prepareChatTitle();
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
-      server.use(http.post(endpoint, response));
-      const result = await goal.create();
-      await flushWaitUntilForTest();
-      expect(result.body).toStrictEqual({
-        objective: secret,
-        objectiveBrief: outcome === "success" ? "A usable summary" : secret,
-        status: "active",
+      createChatCallbacksApi(context).mockOpenRouterCompletions((body) => {
+        return body.messages[0]?.content.includes(
+          "Generate a short, descriptive title",
+        )
+          ? response()
+          : "Thinking";
       });
-      const persisted = await goal.read();
-      expect(persisted.body).toStrictEqual(result.body);
+      await title.create();
+      await flushWaitUntilForTest();
+      await expect(title.read()).resolves.toStrictEqual(
+        outcome === "success" ? ["A usable summary"] : [],
+      );
       expect(auxiliaryResults(context)).toStrictEqual([
         expect.objectContaining({
-          feature: "goal_objective_brief",
+          feature: "chat_title",
           outcome,
           reason,
         }),
@@ -405,17 +375,14 @@ describe("auxiliary generation outcomes", () => {
     },
   );
 
-  it("records missing optional generation configuration as a skip", async () => {
-    const goal = await prepareGoal();
+  it("skips optional title generation when configuration is missing", async () => {
+    const title = await prepareChatTitle();
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    const created = await goal.create();
-    const persisted = await goal.read();
-    expect(persisted.body).toStrictEqual(created.body);
-    expect(created.body.objectiveBrief).toBe(secret);
+    await title.create();
     await flushWaitUntilForTest();
-    expect(auxiliaryResults(context)).toStrictEqual([
-      expect.objectContaining({ outcome: "skipped", reason: "not_applicable" }),
-    ]);
+    await expect(title.read()).resolves.toStrictEqual([]);
+    // The title scheduler checks configuration before starting auxiliary work.
+    expect(auxiliaryResults(context)).toStrictEqual([]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
   });
 
@@ -426,7 +393,7 @@ describe("auxiliary generation outcomes", () => {
     "async-flush",
     "abort-ingest",
   ])("keeps generation successful with %s telemetry", async (mode) => {
-    const goal = await prepareGoal();
+    const title = await prepareChatTitle();
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
     server.use(
       http.post(endpoint, () => {
@@ -452,15 +419,9 @@ describe("auxiliary generation outcomes", () => {
         new Error("flush unavailable"),
       );
     }
-    const result = await goal.create();
+    await title.create();
     await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
-    expect(result.body).toStrictEqual({
-      objective: secret,
-      objectiveBrief: "A usable summary",
-      status: "active",
-    });
-    const persisted = await goal.read();
-    expect(persisted.body).toStrictEqual(result.body);
+    await expect(title.read()).resolves.toStrictEqual(["A usable summary"]);
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
     if (mode === "missing") {
       expect(auxiliaryResults(context)).toStrictEqual([]);
@@ -644,7 +605,7 @@ describe("auxiliary generation outcomes", () => {
   });
 
   it("measures interpretation and bounds duration when the clock moves backwards", async () => {
-    const goal = await prepareGoal();
+    const title = await prepareChatTitle();
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
     mockNow(1000);
     server.use(
@@ -653,7 +614,7 @@ describe("auxiliary generation outcomes", () => {
         return completion();
       }),
     );
-    await goal.create();
+    await title.create();
     await flushWaitUntilForTest();
     expect(auxiliaryResults(context)).toStrictEqual([
       expect.objectContaining({ outcome: "success", duration_ms: 0 }),
