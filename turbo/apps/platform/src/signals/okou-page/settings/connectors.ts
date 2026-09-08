@@ -1909,7 +1909,7 @@ export const connectConnectorExternalCode$ = command(
         });
         set(internalConnectorExternalCodeState$, (current) => {
           if (
-            !signal.aborted ||
+            (!signal.aborted && current.status !== "starting") ||
             requestId === null ||
             current.connectorSlug !== connectorSlug ||
             (current.status !== "starting" && current.status !== "pending") ||

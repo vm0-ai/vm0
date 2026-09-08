@@ -1305,6 +1305,52 @@ test("Show an OAuth startup failure in the provider window", async () => {
   });
 });
 
+test("Retry external-code startup after an account-count lookup fails", async () => {
+  mockConnectors(context, []);
+  let summariesAvailable = true;
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return summariesAvailable
+      ? respond(200, { summaries: [] })
+      : respond(500, {
+          error: { message: "Account list unavailable", code: "UNAVAILABLE" },
+        });
+  });
+  await setupPage({ context, path: "/connectors?keywords=aws" });
+  click(
+    await waitFor(() => {
+      return getConnectorAction("button", "Connect AWS");
+    }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "AWS" });
+
+  summariesAvailable = false;
+  click(getConnectorAction("button", "Start AWS sign-in", dialog));
+
+  await expect(
+    screen.findByText("Account list unavailable"),
+  ).resolves.toBeInTheDocument();
+  const retry = await waitFor(() => {
+    const button = getConnectorAction("button", "Start AWS sign-in", dialog);
+    expect(button).toBeEnabled();
+    return button;
+  });
+  expect(
+    within(dialog).queryByTestId("connector-external-code-input"),
+  ).toBeNull();
+
+  summariesAvailable = true;
+  click(retry);
+  await fill(
+    await within(dialog).findByTestId("connector-external-code-input"),
+    "AWS-CODE",
+  );
+  click(within(dialog).getByTestId("connector-external-code-complete"));
+
+  await expect(
+    screen.findByRole("dialog", { name: "Name your AWS account" }),
+  ).resolves.toBeInTheDocument();
+});
+
 test("Recover from external-code connection errors", async () => {
   let completes = 0;
   context.mocks.api(
