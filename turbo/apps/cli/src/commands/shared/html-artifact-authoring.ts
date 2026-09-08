@@ -209,6 +209,8 @@ export function createHtmlArtifactAuthoringPacket(
     `- Write the artifact under \`${outputDir}/\`.`,
     `- The entry file must be \`${outputDir}/index.html\`.`,
     "- Keep every local asset inside the same output directory.",
+    "- For private generated media, use `okou web download-file --help` to download by file ID; never embed authenticated API references or expiring preview/provider signatures in HTML.",
+    "- Image batch results may be relative asset paths rooted at the batch state directory. Copy its optimized WebP assets into this output bundle, reference them with relative paths, and preserve image dimensions.",
     "- Do not reference files from another project path.",
     "- Use descriptive filenames and canonical HTML: close non-void tags and double-quote attributes.",
     "- Prefer a single self-contained HTML file unless the artifact genuinely needs separate assets.",

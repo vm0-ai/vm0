@@ -616,7 +616,7 @@ interface RecordedImage {
   readonly contentType: string;
   readonly size: number;
   readonly url: string;
-  readonly embedUrl: string;
+  readonly embedUrl: string | undefined;
   readonly creditsCharged: number;
   readonly model: string;
   readonly provider: ImageProvider;
@@ -2297,6 +2297,32 @@ async function downloadBytePlusImage(
   };
 }
 
+function generatedImageMetadata(
+  generation: ParsedImageGeneration,
+  isPrivate: boolean,
+) {
+  return {
+    generatedBy: "zero-official-image",
+    model: generation.model,
+    provider: generation.provider,
+    imageSize: generation.imageSize,
+    quality: generation.quality,
+    background: generation.background,
+    outputFormat: generation.outputFormat,
+    ...(generation.outputCompression !== undefined
+      ? { outputCompression: generation.outputCompression }
+      : {}),
+    moderation: generation.moderation,
+    safetyTolerance: generation.safetyTolerance,
+    sourceUrl: isPrivate ? undefined : generation.sourceUrl,
+    seed: generation.seed,
+    sourceImageUrls: generation.sourceImageUrls,
+    maskImageUrl: generation.maskImageUrl,
+    inputFidelity: generation.inputFidelity,
+    imagePromptStrength: generation.imagePromptStrength,
+  };
+}
+
 export const recordGeneratedImage$ = command(
   async (
     { set },
@@ -2305,6 +2331,7 @@ export const recordGeneratedImage$ = command(
       readonly userId: string;
       readonly runId: string | undefined;
       readonly publicBrand: PublicBrand;
+      readonly privateArtifacts: boolean;
       readonly pricing: ImagePricing;
       readonly generation: ParsedImageGeneration;
       readonly recordArtifact?: boolean;
@@ -2317,6 +2344,8 @@ export const recordGeneratedImage$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: params.userId,
+        orgId: params.orgId,
+        privateArtifacts: params.privateArtifacts,
         filenamePrefix: "image",
         extension: extensionForFormat(params.generation.outputFormat),
         body: params.generation.imageBytes,
@@ -2342,26 +2371,10 @@ export const recordGeneratedImage$ = command(
           url,
           s3Key,
           publicBrand: params.publicBrand,
-          metadata: {
-            generatedBy: "zero-official-image",
-            model: params.generation.model,
-            provider: params.generation.provider,
-            imageSize: params.generation.imageSize,
-            quality: params.generation.quality,
-            background: params.generation.background,
-            outputFormat: params.generation.outputFormat,
-            ...(params.generation.outputCompression !== undefined
-              ? { outputCompression: params.generation.outputCompression }
-              : {}),
-            moderation: params.generation.moderation,
-            safetyTolerance: params.generation.safetyTolerance,
-            sourceUrl: params.generation.sourceUrl,
-            seed: params.generation.seed,
-            sourceImageUrls: params.generation.sourceImageUrls,
-            maskImageUrl: params.generation.maskImageUrl,
-            inputFidelity: params.generation.inputFidelity,
-            imagePromptStrength: params.generation.imagePromptStrength,
-          },
+          metadata: generatedImageMetadata(
+            params.generation,
+            artifact.isPrivate,
+          ),
         },
         signal,
       );
@@ -2406,7 +2419,7 @@ export const recordGeneratedImage$ = command(
       // Models such as seedream4 only emit PNG. Serving the stored object
       // through Cloudflare Image Resizing negotiates AVIF/WebP per request, so
       // pages embedding this image download a fraction of the PNG bytes.
-      embedUrl: r2ImageTransformUrl(url, {}),
+      embedUrl: artifact.isPrivate ? undefined : r2ImageTransformUrl(url, {}),
       creditsCharged: estimateImageCredits(
         params.generation.model,
         params.generation.billing,
@@ -2424,7 +2437,7 @@ export const recordGeneratedImage$ = command(
       revisedPrompt: params.generation.revisedPrompt,
       billingCategory: params.generation.billing[0]?.category,
       billingQuantity: params.generation.billing[0]?.quantity,
-      sourceUrl: params.generation.sourceUrl,
+      sourceUrl: artifact.isPrivate ? undefined : params.generation.sourceUrl,
       seed: params.generation.seed,
       sourceImageUrls: params.generation.sourceImageUrls,
       maskImageUrl: params.generation.maskImageUrl,

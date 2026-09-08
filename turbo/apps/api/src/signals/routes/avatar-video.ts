@@ -99,21 +99,27 @@ const submitAvatarVideoJob$ = command(
       return response;
     }
 
+    const references = args.options.audioUrl
+      ? await set(
+          resolveProviderReferenceUrls$,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            urls: [args.options.audioUrl],
+          },
+          signal,
+        )
+      : [];
+    if ("status" in references) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: references.body.error },
+        signal,
+      );
+      return references;
+    }
     const providerOptions = args.options.audioUrl
-      ? {
-          ...args.options,
-          audioUrl: (
-            await set(
-              resolveProviderReferenceUrls$,
-              {
-                orgId: args.orgId,
-                userId: args.userId,
-                urls: [args.options.audioUrl],
-              },
-              signal,
-            )
-          )[0],
-        }
+      ? { ...args.options, audioUrl: references[0] }
       : args.options;
     const handle = await submitJoggAiAvatarVideo(
       providerOptions,

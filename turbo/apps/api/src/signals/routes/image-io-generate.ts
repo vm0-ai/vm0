@@ -1,3 +1,4 @@
+import type { badRequestMessage } from "../../lib/error";
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
@@ -75,6 +76,7 @@ interface ImageJobArgs {
   readonly userId: string;
   readonly runId: string | undefined;
   readonly publicBrand: PublicBrand;
+  readonly privateArtifacts: boolean;
   readonly admission: RunBuiltInAdmission | null;
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
@@ -175,7 +177,9 @@ const resolveImageProviderReferences$ = command(
     { set },
     args: Pick<ImageJobArgs, "orgId" | "userId" | "options">,
     signal: AbortSignal,
-  ): Promise<ImageProviderReferences> => {
+  ): Promise<
+    ImageProviderReferences | ReturnType<typeof badRequestMessage>
+  > => {
     const sourceCount = args.options.sourceImageUrls.length;
     const urls = [
       ...args.options.sourceImageUrls,
@@ -186,6 +190,9 @@ const resolveImageProviderReferences$ = command(
       { orgId: args.orgId, userId: args.userId, urls },
       signal,
     );
+    if ("status" in resolved) {
+      return resolved;
+    }
     return {
       sourceImageUrls: resolved.slice(0, sourceCount),
       maskImageUrl: args.options.maskImageUrl
@@ -211,6 +218,14 @@ const submitImageProviderWebhookJob$ = command(
       );
     }
     const references = await set(resolveImageProviderReferences$, args, signal);
+    if ("status" in references) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: references.body.error },
+        signal,
+      );
+      return references;
+    }
     const handle = await submitFalImageQueueGeneration(
       args.options,
       references,
@@ -270,12 +285,10 @@ const executeBytePlusImageProviderJob$ = command(
     }
 
     const references = await set(resolveImageProviderReferences$, args, signal);
-    const generation = await generateBytePlusImage(
-      args.options,
-      references,
-      apiKey,
-      signal,
-    );
+    const generation =
+      "status" in references
+        ? references
+        : await generateBytePlusImage(args.options, references, apiKey, signal);
     signal.throwIfAborted();
     if (isErrorResponse(generation)) {
       await set(
@@ -299,6 +312,7 @@ const executeBytePlusImageProviderJob$ = command(
         userId: args.userId,
         runId: args.runId,
         publicBrand: args.publicBrand,
+        privateArtifacts: args.privateArtifacts,
         pricing: args.pricing,
         generation,
         usageIdempotency: {
@@ -457,7 +471,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return admission;
   }
 
-  await set(
+  const { privateArtifacts } = await set(
     createBuiltInGenerationJob$,
     {
       generationId,
@@ -486,6 +500,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       runId,
       publicBrand,
+      privateArtifacts,
       admission,
       options,
       pricing,

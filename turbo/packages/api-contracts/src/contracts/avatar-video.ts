@@ -72,7 +72,7 @@ export const avatarVideoGenerateResponseSchema = z.object({
   aspectRatio: avatarVideoAspectRatioSchema,
   screenStyle: avatarVideoScreenStyleSchema,
   caption: z.boolean(),
-  sourceUrl: z.url(),
+  sourceUrl: z.url().optional(),
 });
 
 export const avatarVideoAvatarSchema = z.object({

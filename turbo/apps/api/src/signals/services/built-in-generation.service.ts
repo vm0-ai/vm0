@@ -12,6 +12,10 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { publishBuiltInGenerationChanged } from "../external/realtime";
+import {
+  privateArtifactCreationEnabled,
+  artifactFileReference,
+} from "./private-artifact-storage.service";
 
 const ACTIVE_BUILT_IN_GENERATION_STATUSES = ["queued", "running"] as const;
 
@@ -39,6 +43,7 @@ interface CreateBuiltInGenerationJobArgs {
 }
 
 interface BuiltInGenerationRequestInternal {
+  readonly privateArtifacts?: boolean;
   readonly admissionId?: string;
   readonly publicBrand?: PublicBrand;
   readonly provider?:
@@ -74,6 +79,7 @@ interface BuiltInGenerationJobRow {
   readonly status: BuiltInGenerationStatus;
   readonly userId: string;
   readonly result: unknown;
+  readonly request: unknown;
   readonly error: BuiltInGenerationError | null;
   readonly createdAt: Date;
   readonly startedAt: Date | null;
@@ -108,6 +114,7 @@ export function builtInGenerationRequestWithInternal(
     ...request,
     [BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY]: compactObject({
       admissionId: internal.admissionId,
+      privateArtifacts: internal.privateArtifacts,
       publicBrand: internal.publicBrand,
       provider: internal.provider,
       providerJobId: internal.providerJobId,
@@ -124,6 +131,13 @@ export function builtInGenerationRequestWithInternal(
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function parsePrivateArtifactsPolicy(value: unknown): boolean | undefined {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new Error("Invalid built-in generation artifact storage policy");
+  }
+  return value;
 }
 
 export function readBuiltInGenerationRequestInternal(
@@ -147,6 +161,7 @@ export function readBuiltInGenerationRequestInternal(
     );
   }
   return {
+    privateArtifacts: parsePrivateArtifactsPolicy(value.privateArtifacts),
     admissionId:
       typeof value.admissionId === "string" ? value.admissionId : undefined,
     publicBrand:
@@ -186,6 +201,75 @@ export function builtInGenerationPublicBrand(request: unknown): PublicBrand {
   return readBuiltInGenerationRequestInternal(request).publicBrand ?? "vm0";
 }
 
+export function builtInGenerationIsPrivate(request: unknown): boolean {
+  // Unmarked historical jobs retain their original public storage policy.
+  return (
+    readBuiltInGenerationRequestInternal(request).privateArtifacts === true
+  );
+}
+
+const PRIVATE_RESULT_FIELDS = [
+  "id",
+  "filename",
+  "contentType",
+  "size",
+  "url",
+  "creditsCharged",
+  "model",
+  "provider",
+  "imageSize",
+  "quality",
+  "background",
+  "outputFormat",
+  "outputCompression",
+  "moderation",
+  "safetyTolerance",
+  "revisedPrompt",
+  "billingCategory",
+  "billingQuantity",
+  "seed",
+  "sourceImageUrls",
+  "maskImageUrl",
+  "inputFidelity",
+  "imagePromptStrength",
+  "durationSeconds",
+  "aspectRatio",
+  "duration",
+  "resolution",
+  "generateAudio",
+  "requestId",
+  "providerVideoId",
+  "avatarId",
+  "voiceId",
+  "inputType",
+  "screenStyle",
+  "caption",
+  "generationId",
+  "status",
+  "sessionId",
+  "videoId",
+  "styleId",
+  "orientation",
+  "providerStatus",
+] as const;
+
+function privateGenerationResult(result: unknown): Record<string, unknown> {
+  if (
+    !isRecord(result) ||
+    typeof result.url !== "string" ||
+    !artifactFileReference(result.url)?.id
+  ) {
+    throw new Error(
+      "Private generation result must reference an authenticated artifact",
+    );
+  }
+  return Object.fromEntries(
+    PRIVATE_RESULT_FIELDS.flatMap((key) => {
+      return Object.hasOwn(result, key) ? [[key, result[key]]] : [];
+    }),
+  );
+}
+
 function serializeBuiltInGenerationJob(
   job: BuiltInGenerationJobRow,
 ): BuiltInGenerationResponse {
@@ -193,7 +277,13 @@ function serializeBuiltInGenerationJob(
     generationId: job.id,
     type: job.type,
     status: job.status,
-    ...(isRecord(job.result) ? { result: job.result } : {}),
+    ...(isRecord(job.result)
+      ? {
+          result: builtInGenerationIsPrivate(job.request)
+            ? privateGenerationResult(job.result)
+            : job.result,
+        }
+      : {}),
     ...(job.error ? { error: job.error } : {}),
     createdAt: job.createdAt.toISOString(),
     startedAt: iso(job.startedAt),
@@ -248,10 +338,14 @@ async function publishJobSafely(job: BuiltInGenerationJobRow): Promise<void> {
 
 export const createBuiltInGenerationJob$ = command(
   async (
-    { set },
+    { get, set },
     args: CreateBuiltInGenerationJobArgs,
     signal: AbortSignal,
-  ): Promise<string> => {
+  ) => {
+    const privateArtifacts =
+      (args.type === "image" || args.type === "video") &&
+      (await get(privateArtifactCreationEnabled(args.orgId, args.userId)));
+    signal.throwIfAborted();
     const writeDb = set(writeDb$);
     const [job] = await writeDb
       .insert(builtInGenerationJobs)
@@ -261,21 +355,28 @@ export const createBuiltInGenerationJob$ = command(
         orgId: args.orgId,
         userId: args.userId,
         runId: args.runId ?? null,
-        request: args.request,
+        request: builtInGenerationRequestWithInternal(args.request, {
+          ...readBuiltInGenerationRequestInternal(args.request),
+          privateArtifacts,
+        }),
       })
       .returning({ id: builtInGenerationJobs.id });
     signal.throwIfAborted();
     if (!job) {
       throw new Error("Failed to create built-in generation job");
     }
-    return job.id;
+    return { id: job.id, privateArtifacts };
   },
 );
 
 export const getBuiltInGenerationJob$ = command(
   async (
     { set },
-    args: { readonly generationId: string; readonly orgId: string },
+    args: {
+      readonly generationId: string;
+      readonly orgId: string;
+      readonly userId: string;
+    },
     signal: AbortSignal,
   ): Promise<BuiltInGenerationResponse | null> => {
     const writeDb = set(writeDb$);
@@ -286,10 +387,10 @@ export const getBuiltInGenerationJob$ = command(
         status: builtInGenerationJobs.status,
         userId: builtInGenerationJobs.userId,
         result: builtInGenerationJobs.result,
+        request: builtInGenerationJobs.request,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         updatedAt: builtInGenerationJobs.updatedAt,
-        request: builtInGenerationJobs.request,
         startedAt: builtInGenerationJobs.startedAt,
         completedAt: builtInGenerationJobs.completedAt,
       })
@@ -303,6 +404,9 @@ export const getBuiltInGenerationJob$ = command(
       .limit(1);
     signal.throwIfAborted();
     if (!job) {
+      return null;
+    }
+    if (builtInGenerationIsPrivate(job.request) && job.userId !== args.userId) {
       return null;
     }
 
@@ -336,6 +440,7 @@ export const getBuiltInGenerationJob$ = command(
         status: builtInGenerationJobs.status,
         userId: builtInGenerationJobs.userId,
         result: builtInGenerationJobs.result,
+        request: builtInGenerationJobs.request,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         startedAt: builtInGenerationJobs.startedAt,
@@ -355,6 +460,7 @@ export const getBuiltInGenerationJob$ = command(
         status: builtInGenerationJobs.status,
         userId: builtInGenerationJobs.userId,
         result: builtInGenerationJobs.result,
+        request: builtInGenerationJobs.request,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         startedAt: builtInGenerationJobs.startedAt,
@@ -509,11 +615,25 @@ export const completeBuiltInGenerationJob$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    const [policy] = await writeDb
+      .select({ request: builtInGenerationJobs.request })
+      .from(builtInGenerationJobs)
+      .where(eq(builtInGenerationJobs.id, args.generationId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!policy) {
+      return;
+    }
+    // Apply the same external contract before persistence and realtime/polling
+    // serialization; provider fields must not become durable result identities.
+    const result = builtInGenerationIsPrivate(policy.request)
+      ? privateGenerationResult(args.result)
+      : args.result;
     const [job] = await writeDb
       .update(builtInGenerationJobs)
       .set({
         status: "completed",
-        result: args.result,
+        result,
         error: null,
         completedAt: nowDate(),
         updatedAt: nowDate(),
@@ -532,6 +652,7 @@ export const completeBuiltInGenerationJob$ = command(
         status: builtInGenerationJobs.status,
         userId: builtInGenerationJobs.userId,
         result: builtInGenerationJobs.result,
+        request: builtInGenerationJobs.request,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         startedAt: builtInGenerationJobs.startedAt,
@@ -576,6 +697,7 @@ export const failBuiltInGenerationJob$ = command(
         status: builtInGenerationJobs.status,
         userId: builtInGenerationJobs.userId,
         result: builtInGenerationJobs.result,
+        request: builtInGenerationJobs.request,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
         startedAt: builtInGenerationJobs.startedAt,

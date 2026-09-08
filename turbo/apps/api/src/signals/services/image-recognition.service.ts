@@ -203,7 +203,7 @@ export const imageRecognition$ = command(
       return notConfigured("Image recognition pricing is not configured");
     }
 
-    const [providerImageUrl] = await set(
+    const references = await set(
       resolveProviderReferenceUrls$,
       {
         orgId: args.auth.orgId,
@@ -214,6 +214,10 @@ export const imageRecognition$ = command(
     );
     signal.throwIfAborted();
     requestSignal.throwIfAborted();
+    if ("status" in references) {
+      return references;
+    }
+    const [providerImageUrl] = references;
     if (!providerImageUrl) {
       throw new Error("Expected a resolved image recognition URL");
     }

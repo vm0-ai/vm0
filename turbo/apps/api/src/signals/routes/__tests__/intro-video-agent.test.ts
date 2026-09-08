@@ -1,3 +1,7 @@
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { uploadsPrepareRoutes } from "../uploads-prepare";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
@@ -10,8 +14,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { apiTestS3PresignedUrl } from "../../../__tests__/mocks";
 
-import { testContext } from "../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import {
@@ -387,6 +391,9 @@ describe("Managed Intro Video Agent", () => {
     context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.s3.getSignedUrl.mockImplementation((_client, command) => {
+      return Promise.resolve(apiTestS3PresignedUrl(command));
+    });
     context.mocks.ably.createTokenRequest.mockResolvedValue({
       keyName: "test-key",
       timestamp: 1_700_000_000_000,
@@ -508,6 +515,62 @@ describe("Managed Intro Video Agent", () => {
       ]);
     },
   );
+
+  it("signs owned private references for Video Agent after rollback and rejects another owner's files", async () => {
+    const f = await fixture();
+    const provider = mockProvider();
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.PrivateArtifacts]: true,
+    });
+    const prepared = await accept(
+      setupApp({ context, routes: uploadsPrepareRoutes })(
+        uploadsContract,
+      ).prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          filename: "brief.pdf",
+          contentType: "application/pdf",
+          size: 128,
+          purpose: "artifact",
+        },
+      }),
+      [200],
+    );
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.PrivateArtifacts]: false,
+    });
+    context.mocks.s3.send.mockImplementation((command) => {
+      if (command instanceof HeadObjectCommand) {
+        expect(command.input.Bucket).toBe("test-private-artifacts");
+        return Promise.resolve({
+          ContentType: "application/pdf",
+          ContentLength: 128,
+        });
+      }
+      return Promise.resolve({});
+    });
+    const input = request({ fileUrls: [prepared.body.url] });
+    expect((await submit(f, input)).status).toBe(202);
+    expect(provider.submissions).toHaveLength(1);
+    expect(JSON.stringify(provider.submissions[0])).not.toContain(
+      prepared.body.url,
+    );
+    expect(context.mocks.s3.getSignedUrl.mock.calls.at(-1)).toMatchObject({
+      1: {
+        input: {
+          Bucket: "test-private-artifacts",
+          Key: `private-artifacts/${prepared.body.id}/brief.pdf`,
+        },
+      },
+      2: { expiresIn: 86_400 },
+    });
+    const other = await fixture();
+    const before = provider.submissions.length;
+    expect(
+      (await submit(other, request({ fileUrls: [prepared.body.url] }))).status,
+    ).toBe(400);
+    expect(provider.submissions).toHaveLength(before);
+  });
 
   it("leaves unspecified avatar and voice to Video Agent without inventing disable switches", async () => {
     const f = await fixture();
@@ -688,156 +751,182 @@ describe("Managed Intro Video Agent", () => {
     expect(provider.submissions).toHaveLength(1);
   });
 
-  it("keeps a slow session resumable and converges callback/status completion with one MP4 and charge", async () => {
-    const f = await fixture();
-    const provider = mockProvider();
-    const body = request();
-    const submittedAt = now();
-    expect((await submit(f, body)).status).toBe(202);
-    await withMockNowForTest(submittedAt + 45 * 60 * 1000, async () => {
-      const generic = await app(f).request(
-        `/api/built-in-generations/${body.requestId}`,
-        {
-          headers: { authorization: "Bearer clerk-session" },
-        },
-      );
-      expect(generic.status).toBe(200);
-      expect(record(await generic.json()).status).toBe("running");
+  it.each([false, true])(
+    "keeps a slow session resumable and converges callback/status completion with one MP4 and charge (private=%s)",
+    async (privateArtifacts) => {
+      const f = await fixture();
+      await updateFeatureSwitchesForUser(context, f, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
+      const provider = mockProvider();
+      const body = request();
+      const submittedAt = now();
+      expect((await submit(f, body)).status).toBe(202);
+      await updateFeatureSwitchesForUser(context, f, {
+        [FeatureSwitchKey.PrivateArtifacts]: !privateArtifacts,
+      });
+      await withMockNowForTest(submittedAt + 45 * 60 * 1000, async () => {
+        const generic = await app(f).request(
+          `/api/built-in-generations/${body.requestId}`,
+          {
+            headers: { authorization: "Bearer clerk-session" },
+          },
+        );
+        expect(generic.status).toBe(200);
+        expect(record(await generic.json()).status).toBe("running");
+        await expect(status(f, body.requestId)).resolves.toMatchObject({
+          status: "running",
+          sessionId: SESSION_ID,
+          videoId: null,
+        });
+      });
+      provider.sessionStatus = "generating";
+      provider.videoId = VIDEO_ID;
       await expect(status(f, body.requestId)).resolves.toMatchObject({
         status: "running",
         sessionId: SESSION_ID,
-        videoId: null,
+        videoId: VIDEO_ID,
       });
-    });
-    provider.sessionStatus = "generating";
-    provider.videoId = VIDEO_ID;
-    await expect(status(f, body.requestId)).resolves.toMatchObject({
-      status: "running",
-      sessionId: SESSION_ID,
-      videoId: VIDEO_ID,
-    });
-    provider.sessionStatus = "completed";
-    provider.videoStatus = "completed";
-    const downloadStarted = createDeferredPromise<void>(context.signal);
-    const releaseDownload = createDeferredPromise<void>(context.signal);
-    provider.beforeDownload = async () => {
-      downloadStarted.resolve(undefined);
-      await releaseDownload.promise;
-    };
-    const callback = provider.submissions[0]?.callback_url;
-    if (typeof callback !== "string") {
-      throw new Error("Expected a provider callback URL");
-    }
-    const callbackUrl = new URL(callback);
-    const callbackPath = `${callbackUrl.pathname}${callbackUrl.search}`;
-    const [completion] = await Promise.all([
-      app(f).request(callbackPath, {
-        method: "POST",
-        body: "{}",
-      }),
-      (async () => {
-        await downloadStarted.promise;
-        await expect(status(f, body.requestId)).resolves.toMatchObject({
-          status: "running",
-        });
-        releaseDownload.resolve(undefined);
-      })(),
-    ]);
-    expect(completion.status).toBe(200);
-    await flushWaitUntilForTest();
-    const completed = await status(f, body.requestId);
-    expect(completed).toMatchObject({
-      status: "completed",
-      sessionId: SESSION_ID,
-      videoId: VIDEO_ID,
-      filename: expect.stringMatching(/^intro-video-.*\.mp4$/u),
-      contentType: "video/mp4",
-      size: VIDEO_BYTES.byteLength,
-      durationSeconds: 61,
-      creditsCharged: 610,
-    });
-    expect(completed.url).toBeDefined();
-    expect(completed.url).not.toBe(VIDEO_URL);
-    expect(
-      (await app(f).request(callbackPath, { method: "POST", body: "{}" }))
-        .status,
-    ).toBe(200);
-    await expect(status(f, body.requestId)).resolves.toStrictEqual(completed);
-    expect(provider.submissions).toHaveLength(1);
-    expect(provider.videoDownloads).toBe(1);
-    expect(
-      context.mocks.s3.send.mock.calls.filter(([command]) => {
-        return (
+      provider.sessionStatus = "completed";
+      provider.videoStatus = "completed";
+      const downloadStarted = createDeferredPromise<void>(context.signal);
+      const releaseDownload = createDeferredPromise<void>(context.signal);
+      provider.beforeDownload = async () => {
+        downloadStarted.resolve(undefined);
+        await releaseDownload.promise;
+      };
+      const callback = provider.submissions[0]?.callback_url;
+      if (typeof callback !== "string") {
+        throw new Error("Expected a provider callback URL");
+      }
+      const callbackUrl = new URL(callback);
+      const callbackPath = `${callbackUrl.pathname}${callbackUrl.search}`;
+      const [completion] = await Promise.all([
+        app(f).request(callbackPath, {
+          method: "POST",
+          body: "{}",
+        }),
+        (async () => {
+          await downloadStarted.promise;
+          await expect(status(f, body.requestId)).resolves.toMatchObject({
+            status: "running",
+          });
+          releaseDownload.resolve(undefined);
+        })(),
+      ]);
+      expect(completion.status).toBe(200);
+      await flushWaitUntilForTest();
+      const completed = await status(f, body.requestId);
+      expect(completed).toMatchObject({
+        status: "completed",
+        sessionId: SESSION_ID,
+        videoId: VIDEO_ID,
+        filename: expect.stringMatching(/^intro-video-.*\.mp4$/u),
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+        durationSeconds: 61,
+        creditsCharged: 610,
+      });
+      expect(completed.url).toBeDefined();
+      if (privateArtifacts) {
+        expect(completed.url).toContain("/api/web/download-file?file_id=");
+      }
+      expect(completed.url).not.toBe(VIDEO_URL);
+      expect(
+        (await app(f).request(callbackPath, { method: "POST", body: "{}" }))
+          .status,
+      ).toBe(200);
+      await expect(status(f, body.requestId)).resolves.toStrictEqual(completed);
+      expect(provider.submissions).toHaveLength(1);
+      expect(provider.videoDownloads).toBe(1);
+      expect(
+        context.mocks.s3.send.mock.calls.filter(([command]) => {
+          return (
+            command instanceof PutObjectCommand &&
+            command.input.ContentType === "video/mp4"
+          );
+        }),
+      ).toHaveLength(1);
+      expect(
+        context.mocks.s3.send.mock.calls.filter(([command]) => {
+          return (
+            command instanceof PutObjectCommand &&
+            command.input.ContentType === "image/jpeg"
+          );
+        }),
+      ).toHaveLength(privateArtifacts ? 0 : 1);
+      await expect(credits(f)).resolves.toBe(9390);
+    },
+  );
+
+  it.each([false, true])(
+    "resumes invalid downloads and failed uploads with the same file identity and one charge (private=%s)",
+    async (privateArtifacts) => {
+      const f = await fixture();
+      await updateFeatureSwitchesForUser(context, f, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
+      const provider = mockProvider();
+      const body = request();
+      expect((await submit(f, body)).status).toBe(202);
+      await updateFeatureSwitchesForUser(context, f, {
+        [FeatureSwitchKey.PrivateArtifacts]: !privateArtifacts,
+      });
+      provider.sessionStatus = "completed";
+      provider.videoId = VIDEO_ID;
+      provider.videoStatus = "completed";
+      const uploadedKeys: string[] = [];
+      let firstUpload = true;
+      context.mocks.s3.send.mockImplementation((command) => {
+        if (
           command instanceof PutObjectCommand &&
           command.input.ContentType === "video/mp4"
-        );
-      }),
-    ).toHaveLength(1);
-    expect(
-      context.mocks.s3.send.mock.calls.filter(([command]) => {
-        return (
-          command instanceof PutObjectCommand &&
-          command.input.ContentType === "image/jpeg"
-        );
-      }),
-    ).toHaveLength(1);
-    await expect(credits(f)).resolves.toBe(9390);
-  });
-
-  it("resumes invalid downloads and failed uploads with the same file identity and one charge", async () => {
-    const f = await fixture();
-    const provider = mockProvider();
-    const body = request();
-    expect((await submit(f, body)).status).toBe(202);
-    provider.sessionStatus = "completed";
-    provider.videoId = VIDEO_ID;
-    provider.videoStatus = "completed";
-    const uploadedKeys: string[] = [];
-    let firstUpload = true;
-    context.mocks.s3.send.mockImplementation((command) => {
-      if (
-        command instanceof PutObjectCommand &&
-        command.input.ContentType === "video/mp4"
-      ) {
-        if (typeof command.input.Key !== "string") {
-          return Promise.reject(new Error("Expected an artifact object key"));
+        ) {
+          if (typeof command.input.Key !== "string") {
+            return Promise.reject(new Error("Expected an artifact object key"));
+          }
+          uploadedKeys.push(command.input.Key);
+          if (firstUpload) {
+            firstUpload = false;
+            return Promise.reject(
+              new Error("Temporary artifact upload failure"),
+            );
+          }
         }
-        uploadedKeys.push(command.input.Key);
-        if (firstUpload) {
-          firstUpload = false;
-          return Promise.reject(new Error("Temporary artifact upload failure"));
-        }
+        return Promise.resolve({});
+      });
+      for (const contentType of [null, "video/webm"]) {
+        provider.videoContentType = contentType;
+        const rejectedDownload = await app(f).request(
+          `/api/intro-video/agent/${body.requestId}`,
+          { headers: headers(f) },
+        );
+        expect(rejectedDownload.status).toBe(500);
+        expect(uploadedKeys).toHaveLength(0);
+        await expect(credits(f)).resolves.toBe(10_000);
       }
-      return Promise.resolve({});
-    });
-    for (const contentType of [null, "video/webm"]) {
-      provider.videoContentType = contentType;
-      const rejectedDownload = await app(f).request(
+      provider.videoContentType = "video/mp4";
+      const failedUpload = await app(f).request(
         `/api/intro-video/agent/${body.requestId}`,
         { headers: headers(f) },
       );
-      expect(rejectedDownload.status).toBe(500);
-      expect(uploadedKeys).toHaveLength(0);
+      expect(failedUpload.status).toBe(500);
       await expect(credits(f)).resolves.toBe(10_000);
-    }
-    provider.videoContentType = "video/mp4";
-    const failedUpload = await app(f).request(
-      `/api/intro-video/agent/${body.requestId}`,
-      { headers: headers(f) },
-    );
-    expect(failedUpload.status).toBe(500);
-    await expect(credits(f)).resolves.toBe(10_000);
-    await expect(status(f, body.requestId)).resolves.toMatchObject({
-      generationId: body.requestId,
-      status: "completed",
-      contentType: "video/mp4",
-      creditsCharged: 610,
-    });
-    expect(uploadedKeys).toHaveLength(2);
-    expect(uploadedKeys[1]).toBe(uploadedKeys[0]);
-    expect(provider.submissions).toHaveLength(1);
-    await expect(credits(f)).resolves.toBe(9390);
-  });
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        generationId: body.requestId,
+        status: "completed",
+        contentType: "video/mp4",
+        creditsCharged: 610,
+      });
+      expect(uploadedKeys).toHaveLength(2);
+      expect(uploadedKeys[1]).toBe(uploadedKeys[0]);
+      if (privateArtifacts) {
+        expect(uploadedKeys[0]).toMatch(/^private-artifacts\//u);
+      }
+      expect(provider.submissions).toHaveLength(1);
+      await expect(credits(f)).resolves.toBe(9390);
+    },
+  );
 
   it.each([
     {
