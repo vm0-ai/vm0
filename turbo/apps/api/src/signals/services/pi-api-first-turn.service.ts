@@ -1,3 +1,7 @@
+import {
+  retirePendingGoalRun,
+  type GoalRunRetirement,
+} from "./goal-retirement.service";
 import { createHash } from "node:crypto";
 
 import {
@@ -2118,7 +2122,7 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
   });
 });
 
-export const runPiApiFirstTurn$ = command(
+const runPiApiFirstTurnCore$ = command(
   async (
     { set },
     activation: PiApiFirstTurnActivation,
@@ -2245,5 +2249,28 @@ export const runPiApiFirstTurn$ = command(
       ownership,
       apiOwnershipExpired,
     );
+  },
+);
+
+/** Captured pending contexts must pass retirement before API-owned execution. */
+export const runPiApiFirstTurn$ = command(
+  async (
+    { set },
+    activation: PiApiFirstTurnActivation,
+    signal: AbortSignal,
+  ): Promise<
+    DispatchCompleteSideEffectsInput | GoalRunRetirement | undefined
+  > => {
+    const retired = await retirePendingGoalRun(set(writeDb$), activation.runId);
+    if (signal.aborted) {
+      L.debug("Pi activation aborted after Goal retirement check", {
+        runId: activation.runId,
+      });
+    }
+    if (retired) {
+      return { kind: "goal-retired", run: retired };
+    }
+    signal.throwIfAborted();
+    return await set(runPiApiFirstTurnCore$, activation, signal);
   },
 );

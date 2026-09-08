@@ -1754,6 +1754,64 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("mounts shared skills without granting Goal authority to a fresh manual run", async () => {
+    const names = ["goal", "workflow-setup"];
+    const versions = names.map((name) => {
+      const fullPath = `vm0-ai/vm0-skills/tree/fixture-${randomUUID()}/${name}`;
+      return {
+        name,
+        url: `https://github.com/${fullPath}`,
+        full_path: fullPath,
+        storage_name: `agent-skills@${fullPath}`,
+        version_hash: createHash("sha256").update(randomUUID()).digest("hex"),
+        size: 1024,
+        archive_size: 1024,
+        file_count: 1,
+        frontmatter: { name, description: `Historical ${name} skill fixture` },
+      };
+    });
+    onTestFinished(async () => {
+      await cleanupOwnedSkillsState(context, {
+        skillUrls: versions.map((version) => {
+          return version.url;
+        }),
+        storageNames: versions.map((version) => {
+          return version.storage_name;
+        }),
+      });
+    });
+    await seedCurrentSkillVersionsState(context, {
+      staleCommitSha: "goal-retirement-fixture",
+      versions,
+    });
+    const api = createRunsApi(
+      context,
+      Object.fromEntries(
+        versions.map((version) => {
+          return [version.name, version.storage_name];
+        }),
+      ),
+    );
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "ordinary manual request",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const mounts = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.map((mount) => {
+      return mount.mountPath;
+    });
+    expect(mounts).toContain("/home/user/.claude/skills/workflow-setup");
+    expect(mounts).not.toContain("/home/user/.claude/skills/goal");
+    expect(claim.appendSystemPrompt).toContain("# Agent Tools");
+    expect(claim.appendSystemPrompt).not.toContain("# Thread Goal");
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("advertises the intro-video skill and camera tooling only while its rollout switch is on", async () => {
     // Skill publication is independent of the dev-seed snapshot. Resolve this
     // request to an owned volume so concurrent tests never see a temporary
