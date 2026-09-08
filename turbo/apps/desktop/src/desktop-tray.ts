@@ -16,7 +16,6 @@ import { latestWinsGuard } from "./desktop-async-control";
 import type { DesktopRecorderState } from "./desktop-recorder-types";
 
 interface DesktopTrayControllerOptions {
-  readonly brandName: "Zero" | "Okou";
   readonly displayName: string;
   readonly iconPath: string;
   readonly disabledIconPath: string;
@@ -141,7 +140,6 @@ export class DesktopTrayController {
     this.refreshIcon(tray, computerUseState);
     const items = buildDesktopTrayMenuItems(
       {
-        brandName: this.options.brandName,
         computerUse: computerUseState,
         auth: this.authState,
         authLoading: this.authLoading,
@@ -183,19 +181,8 @@ export class DesktopTrayController {
   }
 
   private runningTrayIconFrameAt(index: number): DesktopTrayIconFrame {
-    if (this.options.brandName === "Okou") {
-      const { width, height } = this.iconForFrame("running").getSize();
-      return index % (width / height);
-    }
-
-    switch (index % 4) {
-      case 0:
-        return "disabled";
-      case 2:
-        return "online";
-      default:
-        return "running";
-    }
+    const { width, height } = this.iconForFrame("running").getSize();
+    return index % (width / height);
   }
 
   private iconPathForFrame(
@@ -257,25 +244,22 @@ export class DesktopTrayController {
 
     this.runningIconFrameIndex = 0;
     this.setTrayIconFrame(tray, this.runningTrayIconFrameAt(0));
-    this.runningIconTimer = setInterval(
-      () => {
-        const iconMode = this.iconModeForComputerUseState(
-          this.options.getComputerUseState(),
-        );
-        if (iconMode !== "running") {
-          this.stopRunningIconAnimation();
-          this.setTrayIconFrame(tray, iconMode);
-          return;
-        }
+    this.runningIconTimer = setInterval(() => {
+      const iconMode = this.iconModeForComputerUseState(
+        this.options.getComputerUseState(),
+      );
+      if (iconMode !== "running") {
+        this.stopRunningIconAnimation();
+        this.setTrayIconFrame(tray, iconMode);
+        return;
+      }
 
-        this.runningIconFrameIndex += 1;
-        this.setTrayIconFrame(
-          tray,
-          this.runningTrayIconFrameAt(this.runningIconFrameIndex),
-        );
-      },
-      this.options.brandName === "Okou" ? RUNNING_TRAY_ICON_FRAME_MS : 500,
-    );
+      this.runningIconFrameIndex += 1;
+      this.setTrayIconFrame(
+        tray,
+        this.runningTrayIconFrameAt(this.runningIconFrameIndex),
+      );
+    }, RUNNING_TRAY_ICON_FRAME_MS);
   }
 
   private stopRunningIconAnimation(): void {

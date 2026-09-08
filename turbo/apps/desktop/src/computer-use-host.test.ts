@@ -143,12 +143,10 @@ describe("ComputerUseHostRuntime", () => {
       .spyOn(os, "hostname")
       .mockReturnValue(" lancy-macbook-pro.local ");
 
-    expect(readSystemHostName("Zero Computer Use")).toBe(
-      "lancy-macbook-pro.local",
-    );
+    expect(readSystemHostName("Okou")).toBe("lancy-macbook-pro.local");
 
     hostname.mockReturnValue(" ");
-    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+    expect(readSystemHostName("Okou")).toBe("Okou");
   });
 
   it("does not register a host until manually started", async () => {

@@ -12,7 +12,7 @@ describe("desktop renderer URL", () => {
   });
 
   it("maps renderer URLs to packaged files", () => {
-    const distDir = "/Applications/Zero.app/Contents/Resources/app/dist";
+    const distDir = "/Applications/Okou.app/Contents/Resources/app/dist";
     expect(desktopRendererRoot(distDir)).toBe(path.join(distDir, "renderer"));
     expect(desktopRendererFilePath(desktopRendererUrl(), distDir)).toBe(
       path.join(distDir, "renderer", "index.html"),
@@ -26,7 +26,7 @@ describe("desktop renderer URL", () => {
   });
 
   it("rejects other protocol targets and path traversal", () => {
-    const distDir = "/Applications/Zero.app/Contents/Resources/app/dist";
+    const distDir = "/Applications/Okou.app/Contents/Resources/app/dist";
     expect(desktopRendererFilePath("https://app.vm0.ai/", distDir)).toBeNull();
     expect(
       desktopRendererFilePath("vm0-desktop://other/index.html", distDir),

@@ -575,8 +575,7 @@ jobs:
           dmg_artifact_path="apps/desktop/out/Okou-darwin-arm64-$DESKTOP_VERSION.dmg"
 
           node apps/desktop/scripts/sign-and-notarize-packaged-app.mjs \
-            --app "$app_dir" \
-            --product okou
+            --app "$app_dir"
           ditto -c -k --sequesterRsrc --keepParent \
             "$app_dir" \
             "$zip_artifact_path"
@@ -860,7 +859,6 @@ jobs:
           zip_url="https://github.com/${{ github.repository }}/releases/download/$OKOU_RELEASE_TAG/Okou-darwin-arm64-$DESKTOP_VERSION.zip"
           node apps/desktop/scripts/update-desktop-release-manifest.mjs \
             --manifest "$manifest_path" \
-            --product okou \
             --version "$DESKTOP_VERSION" \
             --zip-url "$zip_url" \
             --channel stable \

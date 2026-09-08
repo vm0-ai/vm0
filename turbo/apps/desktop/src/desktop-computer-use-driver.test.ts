@@ -225,16 +225,11 @@ function desktop(
   const native = nativeProcesses(events);
   const timers = controlledTimers();
   const config = resolveDesktopConfig(undefined, "okou");
-  const session = { cookies: { get: async () => [] } };
   const addClientHeaders = createDesktopClientHeaderInjector({
-    product: "okou",
     clientVersion: "1.2.3",
   });
   const authSession = new DesktopAuthSession({
-    product: "okou",
     apiBaseUrl: api,
-    cookieUrls: [config.webUrl, config.platformUrl],
-    cookieSource: session,
     addClientHeaders,
     tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
     selectOrgUrl: buildDesktopAuthSelectOrgUrl(config.authUrl, true),
@@ -319,7 +314,7 @@ function desktop(
           setTimeout: timers.schedule,
           clearTimeout: timers.clear,
         },
-        { product: "okou", session, getAuthSession: () => authSession },
+        { getAuthSession: () => authSession },
       ),
     refreshPermissions: permissions.refreshComputerUsePermissionState,
     getAuthState: () => authSession.getAuthState(),

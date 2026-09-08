@@ -14,5 +14,3 @@ Regenerate `icon.png`, `icon.icns`, and the 1x/2x tray PNGs from their SVG sourc
 ```bash
 pnpm -F @okouai/desktop assets:generate
 ```
-
-Files prefixed with `zero-` and `icon-zero.*` are retained for explicit legacy Zero builds.

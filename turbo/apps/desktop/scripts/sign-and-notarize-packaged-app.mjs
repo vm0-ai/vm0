@@ -35,7 +35,7 @@ function requiredEnvironmentVariable(name, value) {
 }
 
 function optionsFromArguments(argv) {
-  const options = { product: "zero" };
+  const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const name = argv[index];
     const value = argv[index + 1];
@@ -47,23 +47,18 @@ function optionsFromArguments(argv) {
       index += 1;
       continue;
     }
-    if (name === "--product") {
-      options.product = value;
-      index += 1;
-      continue;
-    }
     throw new Error(`Unknown argument: ${name}`);
   }
-  if (!options.appPath || !desktopIdentities[options.product]) {
+  if (!options.appPath) {
     throw new Error(
-      "Usage: sign-and-notarize-packaged-app.mjs --app <app-path> [--product zero|okou]",
+      "Usage: sign-and-notarize-packaged-app.mjs --app <app-path>",
     );
   }
   return options;
 }
 
 const options = optionsFromArguments(process.argv.slice(2));
-const expectedAppName = `${desktopIdentities[options.product].production.displayName}.app`;
+const expectedAppName = `${desktopIdentities.okou.production.displayName}.app`;
 const appStat = await stat(options.appPath);
 if (
   !appStat.isDirectory() ||

@@ -106,16 +106,11 @@ async function desktop(
   };
   const config = resolveDesktopConfig(undefined, "okou");
   const api = "https://api.vm0.ai";
-  const cookies = { cookies: { get: async () => [] } };
   const addClientHeaders = createDesktopClientHeaderInjector({
-    product: "okou",
     clientVersion: "1.2.3",
   });
   const auth = new DesktopAuthSession({
-    product: "okou",
     apiBaseUrl: api,
-    cookieUrls: [config.webUrl, config.platformUrl],
-    cookieSource: cookies,
     addClientHeaders,
     tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
     selectOrgUrl: buildDesktopAuthSelectOrgUrl(config.authUrl, true),
@@ -161,7 +156,7 @@ async function desktop(
           clearTimeout: clear,
           commandClock,
         },
-        { product: "okou", session: cookies, getAuthSession: () => auth },
+        { getAuthSession: () => auth },
       ),
   });
   notify = () => {

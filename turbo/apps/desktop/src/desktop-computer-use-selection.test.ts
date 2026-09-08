@@ -105,16 +105,11 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     found[1].run();
   };
   const headers = createDesktopClientHeaderInjector({
-    product: "okou",
     clientVersion: "1.2.3",
   });
-  const cookies = { cookies: { get: async () => [] } };
   let authChanged = () => {};
   const auth = new DesktopAuthSession({
-    product: "okou",
     apiBaseUrl: api,
-    cookieUrls: [],
-    cookieSource: cookies,
     addClientHeaders: headers,
     tokenUrl: `${api}/token`,
     selectOrgUrl: `${api}/select-org`,
@@ -216,7 +211,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
           setTimeout: schedule,
           clearTimeout: clear,
         },
-        { product: "okou", session: cookies, getAuthSession: () => auth },
+        { getAuthSession: () => auth },
       ),
   });
   const selection = new DesktopComputerUseDriverSelection({

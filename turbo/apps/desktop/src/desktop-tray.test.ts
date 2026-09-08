@@ -176,7 +176,6 @@ function computerUseState(
 function installController(getState: () => DesktopComputerUseState) {
   let active = true;
   const controller = new DesktopTrayController({
-    brandName: "Okou",
     displayName: "Okou",
     iconPath,
     disabledIconPath,
