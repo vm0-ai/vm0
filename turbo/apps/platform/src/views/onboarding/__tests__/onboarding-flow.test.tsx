@@ -375,7 +375,7 @@ test("Video production opens its template gallery", async () => {
   const selectedTab = await expectCreativeChoiceOpensTemplateGallery({
     option: "Video production",
     description: "Turn your ideas into video",
-    tab: "Video",
+    tab: "Creative video",
   });
   expect(selectedTab).toHaveAttribute("aria-selected", "true");
 });
