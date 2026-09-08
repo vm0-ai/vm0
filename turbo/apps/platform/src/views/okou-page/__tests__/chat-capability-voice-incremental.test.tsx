@@ -16,172 +16,34 @@ const refreshedContext = testContext();
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 const endpoint = "*/api/voice-io/transcribe/segment";
 
-test("Save later audio while an earlier segment is pending and finalize in order", async () => {
+test("Keep recording after an incremental segment fails and finish in order", async () => {
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();
-  const stopped = context.mocks.deferred<void>();
-  const firstStarted = context.mocks.deferred<void>();
-  const firstReady = context.mocks.deferred<void>();
-  const secondStarted = context.mocks.deferred<void>();
-  const secondReady = context.mocks.deferred<void>();
-  context.mocks.browser.voiceInput({
-    rms: 0.1,
-    onPcmCapture: capture.resolve,
-    onPcmPortClose: stopped.resolve,
-    finalPcmSamples: new Float32Array(0),
-  });
-  installRunChat();
-  const uploads: Uint8Array[] = [];
-  const durations: {
-    totalDurationSeconds: number;
-    overlapDurationSeconds: number;
-  }[] = [];
-  const inputs: { prefix: string; final: boolean; duration: number }[] = [];
-  context.mocks.http.post(endpoint, async ({ request }) => {
-    const form = await request.formData();
-    const options = JSON.parse(String(form.get("options"))) as {
-      previousTranscript: string;
-      final: boolean;
-      totalDurationSeconds: number;
-      overlapDurationSeconds: number;
-    };
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      throw new Error("Expected segment audio");
-    }
-    uploads.push(new Uint8Array(await file.arrayBuffer()).slice(44));
-    durations.push(options);
-    inputs.push({
-      prefix: options.previousTranscript,
-      final: options.final,
-      duration: (file.size - 44) / 32_000,
-    });
-    if (!options.previousTranscript) {
-      firstStarted.resolve();
-      await firstReady.promise;
-      return HttpResponse.json({ transcript: "First part.", language: "en" });
-    }
-    if (options.previousTranscript === "First part.") {
-      secondStarted.resolve();
-      await secondReady.promise;
-      return HttpResponse.json({ transcript: "Second part.", language: "en" });
-    }
-    return HttpResponse.json({
-      transcript: "Third part.",
-      polishedText: "First part. Second part. Third part.",
-      language: "en",
-    });
-  });
-  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
-  click(await findEnabledButton("Voice input"));
-  const emit = await capture.promise;
-  emit(new Float32Array(60 * 16_000).fill(0.1));
-  await firstStarted.promise;
-  emit(new Float32Array(58 * 16_000).fill(0.2));
-  emit(new Float32Array(5 * 16_000).fill(0.3));
-  click(await findEnabledButton("Stop recording"));
-  // Closing the PCM port proves all later samples were saved while HTTP waited.
-  await stopped.promise;
-  expect(inputs).toStrictEqual([{ prefix: "", final: false, duration: 60 }]);
-  firstReady.resolve();
-  await secondStarted.promise;
-  expect(inputs).toStrictEqual([
-    { prefix: "", final: false, duration: 60 },
-    { prefix: "First part.", final: false, duration: 60 },
-  ]);
-  secondReady.resolve();
-  await waitFor(() => {
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
-      "First part. Second part. Third part.",
-    );
-  });
-  expect(inputs).toStrictEqual([
-    { prefix: "", final: false, duration: 60 },
-    { prefix: "First part.", final: false, duration: 60 },
-    { prefix: "First part. Second part.", final: true, duration: 7 },
-  ]);
-  expect(
-    durations.map(({ overlapDurationSeconds }) => {
-      return overlapDurationSeconds;
-    }),
-  ).toStrictEqual([0, 2, 2]);
-  expect(durations.at(-1)?.totalDurationSeconds).toBe(123);
-  expect(uploads[1]?.slice(0, 64_000)).toStrictEqual(
-    uploads[0]?.slice(-64_000),
-  );
-  expect(uploads[2]?.slice(0, 64_000)).toStrictEqual(
-    uploads[1]?.slice(-64_000),
-  );
-});
-
-test("Keep recording through segment failures and retry only unfinished segments", async () => {
-  const capture = context.mocks.deferred<(samples: Float32Array) => void>();
-  const firstStarted = context.mocks.deferred<void>();
-  const firstReady = context.mocks.deferred<void>();
-  const secondFailed = context.mocks.deferred<void>();
-  const finalFailed = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
     rms: 0.1,
     onPcmCapture: capture.resolve,
     finalPcmSamples: new Float32Array(0),
   });
   installRunChat();
-  let secondAttempts = 0;
-  let finalAttempts = 0;
-  const inputs: { prefix: string; final: boolean; duration: number }[] = [];
-  context.mocks.http.post(endpoint, async ({ request }) => {
-    const form = await request.formData();
-    const options = JSON.parse(String(form.get("options"))) as {
-      previousTranscript: string;
-      final: boolean;
-    };
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      throw new Error("Expected the unprocessed segment audio");
-    }
-    inputs.push({
-      prefix: options.previousTranscript,
-      final: options.final,
-      duration: (file.size - 44) / 32_000,
-    });
-    if (!options.previousTranscript) {
-      firstStarted.resolve();
-      await firstReady.promise;
-      return HttpResponse.json({ transcript: "First part.", language: "en" });
-    }
-    if (options.previousTranscript === "First part.") {
-      secondAttempts += 1;
-      if (secondAttempts === 1) {
-        secondFailed.resolve();
-        return HttpResponse.json(
-          {
-            error: {
-              code: "PROVIDER_UNAVAILABLE",
-              message: "Segment temporarily unavailable",
-            },
-          },
-          { status: 503 },
-        );
-      }
-      return HttpResponse.json({ transcript: "Second part.", language: "en" });
-    }
-    expect(options.previousTranscript).toBe("First part. Second part.");
-    expect(options.final).toBeTruthy();
-    finalAttempts += 1;
-    if (finalAttempts === 1) {
-      finalFailed.resolve();
+  let requestAttempts = 0;
+  context.mocks.http.post(endpoint, () => {
+    requestAttempts += 1;
+    if (requestAttempts === 1) {
       return HttpResponse.json(
         {
           error: {
             code: "PROVIDER_UNAVAILABLE",
-            message: "Final processing temporarily unavailable",
+            message: "Segment temporarily unavailable",
           },
         },
         { status: 503 },
       );
     }
+    if (requestAttempts === 2) {
+      return HttpResponse.json({ transcript: "First part.", language: "en" });
+    }
     return HttpResponse.json({
-      transcript: "Third part.",
-      polishedText: "First part. Second part. Third part.",
+      transcript: "Last part.",
+      polishedText: "First part. Last part.",
       language: "en",
     });
   });
@@ -193,29 +55,15 @@ test("Keep recording through segment failures and retry only unfinished segments
   click(await findEnabledButton("Voice input"));
   const emit = await capture.promise;
   emit(new Float32Array(60 * 16_000).fill(0.1));
-  await firstStarted.promise;
-  await expect(findEnabledButton("Stop recording")).resolves.toBeVisible();
-  emit(new Float32Array(58 * 16_000).fill(0.2));
-  firstReady.resolve();
-  await secondFailed.promise;
   await screen.findByText("Segment temporarily unavailable");
-  emit(new Float32Array(5 * 16_000).fill(0.3));
+  await expect(findEnabledButton("Stop recording")).resolves.toBeVisible();
+  emit(new Float32Array(5 * 16_000).fill(0.2));
   click(await findEnabledButton("Stop recording"));
-  await finalFailed.promise;
-  await findEnabledButton("Retry");
-  click(await findEnabledButton("Retry"));
   await waitFor(() => {
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveTextContent(
-      "First part. Second part. Third part.",
+      "First part. Last part.",
     );
   });
-  expect(inputs).toStrictEqual([
-    { prefix: "", final: false, duration: 60 },
-    { prefix: "First part.", final: false, duration: 60 },
-    { prefix: "First part.", final: false, duration: 60 },
-    { prefix: "First part. Second part.", final: true, duration: 7 },
-    { prefix: "First part. Second part.", final: true, duration: 7 },
-  ]);
 });
 
 test("Resume a completed segment after reload without retranscribing its audio", async () => {

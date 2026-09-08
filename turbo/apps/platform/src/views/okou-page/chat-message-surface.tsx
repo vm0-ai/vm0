@@ -18,6 +18,12 @@ export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
 
+// Bare response icons share the 28px action-button rail when the run-work
+// information architecture is active. Their intrinsic width remains the
+// legacy layout when the feature is off.
+export const CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS =
+  "inline-flex shrink-0 items-center justify-center group-data-[run-work-folding]/chat:w-7";
+
 export const CHAT_THREAD_USER_MESSAGE_ROW_CLASS =
   "flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
@@ -40,7 +46,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_ROW_CLASS =
   "@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]";
 
 export const CHAT_THREAD_ASSISTANT_MESSAGE_ACTIONS_CLASS =
-  "flex items-center justify-between gap-2 -ml-1";
+  "flex items-center justify-between gap-2";
 
 // Consecutive user messages read as one burst. The copy button already sits
 // `mt-1` below its message, so this pull keeps the gap below it equally tight.

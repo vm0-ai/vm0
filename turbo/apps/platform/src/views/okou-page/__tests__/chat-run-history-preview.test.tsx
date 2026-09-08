@@ -136,37 +136,28 @@ test.each([
   },
 );
 
-test("Show the history step count in the work summary", async () => {
-  installRunChat({
-    activeRunIds: [RUN_ID],
-    chatEvents: [
-      promptEvent({
-        id: "step-count-input",
-        runId: RUN_ID,
-        seqId: 1,
-        text: "Count the work history",
-      }),
-      ...Array.from({ length: 5 }, (_, index) => {
-        return assistantEvent({
-          id: `step-count-${String(index)}`,
-          runId: RUN_ID,
-          seqId: index + 2,
-          text: `Step ${String(index + 1)}`,
-        });
-      }),
-    ],
-  });
-  await setupPage({
-    context,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
-  });
-  await readyChat();
+test("Hide the empty history step count from the work summary", async () => {
+  await setupRunWithOutputCount(1);
 
-  expect(document.querySelector("[data-chat-run-work]")).toHaveTextContent(
-    "4 steps",
-  );
+  const workSummary = document.querySelector("[data-chat-run-work]");
+  expect(workSummary).toBeVisible();
+  expect(workSummary).not.toHaveTextContent("0 steps");
+  expect(workSummary).not.toHaveTextContent("·");
 });
+
+test.each([
+  { outputCount: 2, expectedStepCount: "1 step" },
+  { outputCount: 5, expectedStepCount: "4 steps" },
+])(
+  "Show a non-empty history step count with $outputCount outputs",
+  async ({ outputCount, expectedStepCount }) => {
+    await setupRunWithOutputCount(outputCount);
+
+    expect(document.querySelector("[data-chat-run-work]")).toHaveTextContent(
+      expectedStepCount,
+    );
+  },
+);
 
 test("Expand history messages independently and preserve them across history changes", async () => {
   installRunChat({

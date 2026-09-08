@@ -14,6 +14,7 @@ import {
   colorTheme$,
   shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
+import { WorkspaceInset } from "./workspace-inset.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleAccountAction$);
@@ -26,7 +27,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell flex w-full bg-background"
+      className="okou-app okou-viewport-shell flex w-full bg-background md:bg-sidebar"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -42,9 +43,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
-        {children}
-      </div>
+      <WorkspaceInset>{children}</WorkspaceInset>
     </div>
   );
 }

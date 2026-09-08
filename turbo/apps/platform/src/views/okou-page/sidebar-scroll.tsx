@@ -64,11 +64,8 @@ export function OverlayScrollArea({
           {children}
         </ScrollArea.Content>
       </ScrollArea.Viewport>
-      {/* The track stays wide enough to grab; `justify-end` keeps the thumb
-          itself against the viewport's edge, clear of the trailing menu button
-          on the rows beside the workspace card. */}
       <ScrollArea.Scrollbar
-        className="m-px flex w-3 justify-end opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
+        className="pointer-events-none m-px flex w-3 justify-center opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0"
         data-testid="sidebar-scrollbar"
       >
         <ScrollArea.Thumb

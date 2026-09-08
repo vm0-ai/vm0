@@ -736,8 +736,7 @@ function ThreeColumnSearchDialogContainer() {
   );
 }
 
-/** Inset the chat list keeps beside the workspace card's existing gutter. */
-const CHAT_LIST_INSET = "pl-3 pr-1";
+const CHAT_LIST_INSET = "px-3";
 
 function ChatListColumn() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;

@@ -53,6 +53,7 @@ import {
   shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
+import { WorkspaceInset } from "./workspace-inset.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -364,7 +365,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background"
+      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background md:bg-sidebar"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -376,12 +377,12 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 okou-workspace-bg okou-workspace-card">
+      <WorkspaceInset>
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}
         {children}
-      </div>
+      </WorkspaceInset>
     </div>
   );
 }
