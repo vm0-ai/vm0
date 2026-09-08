@@ -237,7 +237,7 @@ describe("chat thread event sequence contract", () => {
     });
   });
 
-  it("requires video model fields while accepting pre-image-model payloads", () => {
+  it("accepts video model fields and pre-image-model payloads", () => {
     const selectedImageModel = imageModelIdSchema.parse("fal-ai/qwen-image");
     const createdAt = "2026-08-17T00:00:00.000Z";
     const imageModelEvent = {
@@ -256,12 +256,6 @@ describe("chat thread event sequence contract", () => {
       kind: "image_model_updated",
       selectedImageModel,
     });
-    expect(
-      chatThreadEventSchema.safeParse({
-        ...imageModelEvent,
-        selectedVideoModel: undefined,
-      }).success,
-    ).toBe(false);
 
     const snapshotThread = {
       id: "22222222-2222-4222-8222-222222222222",
@@ -284,12 +278,6 @@ describe("chat thread event sequence contract", () => {
       chatThreadsContract.snapshot.responses[200].safeParse(snapshotResponse)
         .success,
     ).toBe(true);
-    expect(
-      chatThreadsContract.snapshot.responses[200].safeParse({
-        ...snapshotResponse,
-        chatThreads: [{ ...snapshotThread, selectedVideoModel: undefined }],
-      }).success,
-    ).toBe(false);
   });
 
   it("rejects retired UUID-cursor API responses", () => {
