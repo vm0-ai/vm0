@@ -1955,6 +1955,44 @@
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
       "defaultAccountFor": "{{connector}} · Using default account: {{account}}",
+      "directory": {
+        "allCategories": "All",
+        "askAdmin": "Ask an admin to enable",
+        "browse": "Browse connectors",
+        "configure": "Configure",
+        "connected": "Connected",
+        "createCustom": "Create custom",
+        "customBadge": "Custom",
+        "detailAccounts": "Accounts",
+        "detailCategory": "Category",
+        "detailConnection": "Connection",
+        "detailMethod": "Method",
+        "detailPermissions": "Permissions",
+        "emptyCustomBody": "Build one from any HTTP API or MCP server, and Okou can use it like any other connector.",
+        "emptyCustomTitle": "No custom connectors yet",
+        "emptyYoursBody": "Connect an app and Okou can read and act in it for you.",
+        "emptyYoursTitle": "You haven't connected anything yet",
+        "keyMove": "move",
+        "keyOpen": "open",
+        "matchCount_one": "{{count}} match",
+        "matchCount_other": "{{count}} matches",
+        "matchedOn": "Matched on name, description, and tags",
+        "moreAccounts_one": "+{{count}}",
+        "moreAccounts_other": "+{{count}}",
+        "needsAttention": "Needs attention",
+        "noResultsBody": "Try a product name, or build your own from an API or MCP server.",
+        "noResultsTitle": "No connector matches “{{query}}”",
+        "openDetailAria": "Open {{connector}} details",
+        "otherCategory": "Other",
+        "permissionCount_one": "{{count}} permission",
+        "permissionCount_other": "{{count}} permissions",
+        "searchYours": "Search your connectors",
+        "showAll_one": "Show all {{count}}",
+        "showAll_other": "Show all {{count}}",
+        "tabCustom": "Custom",
+        "tabDiscover": "Discover",
+        "tabYours": "Your connectors"
+      },
       "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",
       "noUsableAccount": "No usable account",
@@ -2558,52 +2596,52 @@
           "menu": "AI"
         },
         "aiAgentApps": {
-          "label": "Agent Platforms and AI Apps",
-          "menu": "Agent Platforms"
+          "label": "Agent platforms and AI apps",
+          "menu": "Agent platforms"
         },
         "aiGeneralModels": {
-          "label": "General Models and Reasoning",
-          "menu": "General Models"
+          "label": "General models and reasoning",
+          "menu": "General models"
         },
         "aiImageVideo": {
-          "label": "Image / Video Generation",
-          "menu": "Image / Video"
+          "label": "Image / video generation",
+          "menu": "Image / video"
         },
         "aiMemoryTracingEval": {
-          "label": "Memory / Tracing / Evaluation",
-          "menu": "Memory / Tracing"
+          "label": "Memory / tracing / evaluation",
+          "menu": "Memory / tracing"
         },
         "aiVoiceAudio": {
-          "label": "Voice / Audio",
-          "menu": "Voice / Audio"
+          "label": "Voice / audio",
+          "menu": "Voice / audio"
         },
         "communicationCollaboration": {
-          "label": "Communication and Collaboration",
+          "label": "Communication and collaboration",
           "menu": "Communication"
         },
         "dataAutomationInfrastructure": {
-          "label": "Data, Automation, and Infrastructure",
-          "menu": "Data and Automation"
+          "label": "Data, automation, and infrastructure",
+          "menu": "Data and automation"
         },
         "docsFilesKnowledge": {
-          "label": "Docs, Files, and Knowledge",
+          "label": "Docs, files, and knowledge",
           "menu": "Documents"
         },
         "engineeringTeamExecution": {
-          "label": "Engineering and Team Execution",
+          "label": "Engineering and team execution",
           "menu": "Engineering"
         },
         "marketingContentGrowth": {
-          "label": "Marketing, Content, and Growth",
+          "label": "Marketing, content, and growth",
           "menu": "Marketing"
         },
         "meetingsScheduling": {
-          "label": "Meetings and Scheduling",
+          "label": "Meetings and scheduling",
           "menu": "Meetings"
         },
         "salesCrmBusinessOperations": {
-          "label": "Sales, CRM, and Business Operations",
-          "menu": "Sales and Business"
+          "label": "Sales, CRM, and business operations",
+          "menu": "Sales and business"
         }
       },
       "categoriesAria": "Connector categories",

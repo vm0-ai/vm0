@@ -453,6 +453,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
   },
+  [FeatureSwitchKey.ConnectorDirectory]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Connector directory in the chat composer: connected connectors separated from discovery, category browsing, per-connector detail, and keyboard navigation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

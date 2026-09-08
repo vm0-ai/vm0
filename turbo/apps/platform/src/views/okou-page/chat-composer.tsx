@@ -215,6 +215,7 @@ import {
 } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { ConnectorDirectoryDialog } from "./connector-directory-dialog.tsx";
 import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -10262,6 +10263,8 @@ function ComposerConnectorsSlot({
   const computerUse = useComposerComputerUse(signals);
   const { t } = useTranslation();
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const connectorDirectoryEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] === true;
   const connectorData = useLastResolved(signals.connector.data$);
   const addDialogCatalogItems =
     useLastResolved(signals.connector.addDialogCatalogItems$) ?? [];
@@ -10465,26 +10468,55 @@ function ComposerConnectorsSlot({
           updateConnectorUi({ selectedCustomConnectorId: null });
         }}
       />
-      {connectorUi.showAddDialog && (
-        <AddConnectorsDialog
-          signals={signals}
-          unconnected={unconnectedConnectors}
-          unconnectedCustom={unconnectedCustomConnectors}
-          connecting={actions.connecting}
-          connectHandlers={connectorConnectHandlers}
-          onConnectCustom={(connector) => {
-            updateConnectorUi({
-              showAddDialog: false,
-              selectedCustomConnectorId: connector.id,
-            });
-          }}
-          onClose={() => {
-            return updateConnectorUi({
-              showAddDialog: false,
-            });
-          }}
-        />
-      )}
+      {connectorUi.showAddDialog &&
+        (connectorDirectoryEnabled ? (
+          <ConnectorDirectoryDialog
+            state={connectorUi}
+            onUpdateState={updateConnectorUi}
+            connected={agentConnectors}
+            unconnected={unconnectedConnectors}
+            connectedCustom={agentCustomConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onConfigurePermissions={(connectorSlug) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                permissionConnectorSlug: connectorSlug,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ) : (
+          <AddConnectorsDialog
+            signals={signals}
+            unconnected={unconnectedConnectors}
+            unconnectedCustom={unconnectedCustomConnectors}
+            connecting={actions.connecting}
+            connectHandlers={connectorConnectHandlers}
+            onConnectCustom={(connector) => {
+              updateConnectorUi({
+                showAddDialog: false,
+                selectedCustomConnectorId: connector.id,
+              });
+            }}
+            onClose={() => {
+              return updateConnectorUi({
+                showAddDialog: false,
+              });
+            }}
+          />
+        ))}
     </>
   );
 }
