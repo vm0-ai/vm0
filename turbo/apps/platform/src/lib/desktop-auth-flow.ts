@@ -6,7 +6,7 @@ import {
 
 const PRODUCTION_APP_ORIGINS = [
   VM0_CLERK_PRIMARY_APP_ORIGIN,
-  resolveClerkProductionTopology("app.okou.ai").primaryAppOrigin,
+  resolveClerkProductionTopology().primaryAppOrigin,
 ] as const;
 
 const DESKTOP_AUTH_PATHS = [

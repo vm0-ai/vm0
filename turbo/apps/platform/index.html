@@ -227,32 +227,14 @@
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
         // Keep this decision in sync with
-        // src/lib/clerk-production-topology.ts: only an explicit rollback
-        // value selects the pre-cutover topology, and everything else fails
-        // closed to the deployed one.
-        var productionPrimaryAppDomain =
-          "__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
-            ? "app.vm0.ai"
-            : "app.okou.ai";
-        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
-        var satelliteDomain = null;
-        if (
-          production &&
-          okouPrimary &&
-          isDomainOrSubdomain(hostname, "vm0.ai")
-        ) {
-          satelliteDomain = "vm0.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app.okou.ai")
-        ) {
-          satelliteDomain = "app.okou.ai";
-        }
+        // src/lib/clerk-production-topology.ts: Okou owns primary auth and the
+        // whole vm0.ai domain is a satellite.
+        var satelliteDomain =
+          production && isDomainOrSubdomain(hostname, "vm0.ai")
+            ? "vm0.ai"
+            : null;
         var satellite = satelliteDomain !== null;
-        var authOrigin = satellite
-          ? "https://" + productionPrimaryAppDomain
-          : location.origin;
+        var authOrigin = satellite ? "https://app.okou.ai" : location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
           signInUrl: new URL("/sign-in", authOrigin).toString(),
@@ -266,7 +248,6 @@
         var bootstrap = {
           domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
-          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
         window.__okouClerkBootstrap = bootstrap;

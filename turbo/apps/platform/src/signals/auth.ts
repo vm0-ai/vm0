@@ -8,7 +8,6 @@ import {
 import {
   resolveClerkInstanceConfig,
   resolveClerkSatelliteConfig,
-  resolveConfiguredProductionPrimaryAppDomain,
 } from "../lib/clerk-instance-config.ts";
 import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
@@ -89,13 +88,9 @@ const MAX_URL_PORT = 65_535;
 function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
-  primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
 ): string {
   const currentUrl = new URL(currentOrigin);
-  if (
-    isOkouProductionHostname(currentUrl.hostname) &&
-    resolveClerkProductionTopology(primaryAppDomain).primaryBrand === "okou"
-  ) {
+  if (isOkouProductionHostname(currentUrl.hostname)) {
     currentUrl.hostname = `${service}.okou.ai`;
     return currentUrl.origin;
   }
@@ -110,19 +105,13 @@ function resolveAppOrigin(): string {
 export { resolveClerkSatelliteConfig };
 
 function resolveAuthOrigin(): string {
-  const primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain();
-  return resolveClerkProductionSatelliteDomain(
-    location.hostname,
-    primaryAppDomain,
-  )
-    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
+  return resolveClerkProductionSatelliteDomain(location.hostname)
+    ? resolveClerkProductionTopology().primaryAppOrigin
     : resolveAppOrigin();
 }
 
 export function resolvePrimaryClerkUserProfileUrl(): string {
-  return resolveClerkProductionTopology(
-    resolveConfiguredProductionPrimaryAppDomain(),
-  ).primaryUserProfileUrl;
+  return resolveClerkProductionTopology().primaryUserProfileUrl;
 }
 
 function parseUrl(value: string): URL | null {

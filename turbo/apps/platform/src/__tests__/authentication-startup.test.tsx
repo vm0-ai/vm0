@@ -12,10 +12,14 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-const PRIMARY_LOAD_OPTIONS = {
-  afterSignOutUrl: "https://app.vm0.ai/sign-in",
-  signInUrl: "https://app.vm0.ai/sign-in",
-  signUpUrl: "https://app.vm0.ai/sign-up",
+// The deployed topology: Okou owns primary auth, so a vm0.ai page is a
+// satellite that authenticates against app.okou.ai.
+const VM0_SATELLITE_LOAD_OPTIONS = {
+  afterSignOutUrl: "https://app.okou.ai/sign-in",
+  isSatellite: true,
+  satelliteAutoSync: true,
+  signInUrl: "https://app.okou.ai/sign-in",
+  signUpUrl: "https://app.okou.ai/sign-up",
 } as const;
 
 async function waitForReadySignIn(): Promise<void> {
@@ -31,9 +35,9 @@ function installEarlyBootstrap(options: {
   const originalClerk = Reflect.get(globalThis, "Clerk");
   Reflect.set(globalThis, "Clerk", options.clerk ?? mockedClerk);
   const bootstrap: NonNullable<Window["__okouClerkBootstrap"]> = {
-    loadOptions: PRIMARY_LOAD_OPTIONS,
+    domain: "vm0.ai",
+    loadOptions: VM0_SATELLITE_LOAD_OPTIONS,
     loaded: options.loaded,
-    productionPrimaryAppDomain: "app.vm0.ai",
     publishableKey: "test_production_key",
   };
   if (options.clerk) {
@@ -175,7 +179,7 @@ test("Cancelled locale startup does not adopt a replacement lifetime", async () 
 test("Authentication startup is reused without a duplicate load", async () => {
   const clerk = context.mocks.clerk();
   const clerkLoad = clerk.runtimePending();
-  const loaded = mockedClerk.load(PRIMARY_LOAD_OPTIONS);
+  const loaded = mockedClerk.load(VM0_SATELLITE_LOAD_OPTIONS);
   installEarlyBootstrap({ clerk: mockedClerk, loaded });
 
   const pageReady = setupPage({
@@ -204,11 +208,12 @@ test("Authentication startup retries after an early failure", async () => {
   await setupPage({
     context,
     host: "app.vm0.ai",
-    path: "/sign-in",
-    auth: null,
+    path: "/agents",
   });
 
-  await waitForReadySignIn();
+  await expect(
+    screen.findByRole("heading", { name: "Agents" }),
+  ).resolves.toBeInTheDocument();
   expect(clerk.resourceRequests).toStrictEqual([]);
   expect(clerk.loads).toHaveLength(1);
   expect(window.__okouClerkBootstrap?.loaded).toBeUndefined();
@@ -261,15 +266,13 @@ test("VM0 production uses production authentication", async () => {
   await setupPage({
     context,
     host: "app.vm0.ai",
-    path: "/sign-in",
-    auth: null,
+    path: "/agents",
   });
 
-  await waitForReadySignIn();
   expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    { domain: "vm0.ai", publishableKey: "test_production_key" },
   ]);
-  expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
+  expect(clerk.loads).toContainEqual(VM0_SATELLITE_LOAD_OPTIONS);
 });
 
 test("Authorized preview hosts use preview authentication", async () => {
