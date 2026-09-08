@@ -11,11 +11,8 @@ import type { ComponentProps, CSSProperties } from "react";
 import {
   platformOkouWordmarkDarkImg,
   platformOkouWordmarkLightImg,
-  platformVm0LogoDarkImg,
-  platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
-import type { BrandName } from "../../signals/branding.ts";
 import {
   AUTH_ERROR_ALERT_CLASS,
   AUTH_ERROR_ALERT_TEXT_CLASS,
@@ -77,26 +74,17 @@ const authV1ResendCodeLinkClass = cn(
 );
 
 // Clerk always adds `crossorigin="anonymous"` to its logo image. The public
-// static host only grants that native image path to app.okou.ai; previews and
-// the dormant VM0 surface retain the self-contained fallback.
-function transparentClerkLogoImageUrl(brandName: BrandName): string {
-  const { width, height } =
-    brandName === "Okou"
-      ? { width: 1934, height: 512 }
-      : { width: 100, height: 30 };
+// static host only grants that native image path to app.okou.ai; previews
+// retain the self-contained fallback without broadening that CORS boundary.
+function transparentClerkLogoImageUrl(): string {
+  const { width, height } = { width: 1934, height: 512 };
   return `data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27${width}%27 height=%27${height}%27 viewBox=%270 0 ${width} ${height}%27%3E%3C/svg%3E`;
 }
 
-function authV1LogoImageUrl(
-  theme: "light" | "dark",
-  brandName: BrandName,
-): string {
-  if (brandName === "Okou") {
-    return theme === "dark"
-      ? platformOkouWordmarkLightImg
-      : platformOkouWordmarkDarkImg;
-  }
-  return theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg;
+function authV1LogoImageUrl(theme: "light" | "dark"): string {
+  return theme === "dark"
+    ? platformOkouWordmarkLightImg
+    : platformOkouWordmarkDarkImg;
 }
 
 function authV1LogoElements(
@@ -138,9 +126,8 @@ export function getAuthV1ComponentAppearance(
   currentOrigin: string,
   mode: AuthV1ComponentMode,
 ): ClerkAppearance {
-  const logoImageUrl = authV1LogoImageUrl(theme, authBrand.brandName);
-  const usesNativeLogoImage =
-    authBrand.brandName === "Okou" && currentOrigin === "https://app.okou.ai";
+  const logoImageUrl = authV1LogoImageUrl(theme);
+  const usesNativeLogoImage = currentOrigin === "https://app.okou.ai";
 
   return {
     theme: "simple",
@@ -148,7 +135,7 @@ export function getAuthV1ComponentAppearance(
       elevation: "raised",
       logoImageUrl: usesNativeLogoImage
         ? logoImageUrl
-        : transparentClerkLogoImageUrl(authBrand.brandName),
+        : transparentClerkLogoImageUrl(),
       logoLinkUrl: authBrand.homeUrl,
       // Card.Root renders an outside logo on every step; inside headers omit
       // it during verification. This supported option keeps branding coherent.

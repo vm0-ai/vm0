@@ -123,7 +123,7 @@ export function mockTemplateObjectUrls(): void {
   let nextUrl = 0;
   mockUrlObjectMethods(() => {
     nextUrl += 1;
-    return `blob:https://app.vm0.ai/presentation-preview-${nextUrl}`;
+    return `blob:https://app.okou.ai/presentation-preview-${nextUrl}`;
   });
 }
 

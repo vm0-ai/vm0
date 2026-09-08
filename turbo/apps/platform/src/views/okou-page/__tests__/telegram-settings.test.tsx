@@ -119,7 +119,7 @@ test("An admin can set up a new Telegram bot", async () => {
   });
   click(getAction("button", "Next", dialog));
   await waitFor(() => {
-    expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
+    expect(screen.getByLabelText("Default agent")).toHaveTextContent("Okou");
   });
   const createStep = within(dialog).getByText(
     "Ready to create the integration",

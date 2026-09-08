@@ -19,7 +19,7 @@ import { connectorsRoutes } from "../connectors";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const API_ORIGIN = "https://api.vm0.ai";
+const API_ORIGIN = "https://api.okou.ai";
 
 function mockAuthenticatedSession(marker: string): void {
   mocks.clerk.session(marker, marker);
@@ -84,7 +84,7 @@ function createConnectorFixture(marker: string) {
 describe("connector OAuth state cleanup cron", () => {
   beforeEach(() => {
     mockEnv("OKOU_API_BACKEND_URL", API_ORIGIN);
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
   });

@@ -370,7 +370,7 @@ async function setupConnectedTeamsActor(
   } = {},
 ): Promise<ConnectedTeamsActor> {
   if (options.publicBrand === "okou") {
-    setupTeamsConnectTestEnv("https://app.vm0.ai");
+    setupTeamsConnectTestEnv("https://app.okou.ai");
   }
   const fixture = await trackTeamsFixture(
     Promise.resolve(teamsConnectFixture()),
@@ -702,7 +702,7 @@ describe("Teams chat callbacks", () => {
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: teams.fixture.teamsAppId,
-      teamsPublicBrand: "vm0",
+      teamsPublicBrand: "okou",
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
       teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
@@ -1128,7 +1128,7 @@ describe("Teams chat callbacks", () => {
       "Task completed successfully.",
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[Audit](https://app.vm0.ai/activities/${runId})`,
+      `[Audit](https://app.okou.ai/activities/${runId})`,
     );
     expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
     expect(teamsApi.reactionRequests).toStrictEqual([

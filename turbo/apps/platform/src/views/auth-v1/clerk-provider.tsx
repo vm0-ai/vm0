@@ -12,7 +12,6 @@ import {
   resolveAuthBrandContext,
   resolveAppAuthUrl,
   resolveAppUrl,
-  resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
 import { getClerkLocalization } from "./clerk-localization.ts";
 import { getAuthV1ProviderAppearance } from "./provider-appearance.ts";
@@ -38,7 +37,6 @@ export function AuthV1ClerkProvider({
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
-  const satelliteConfig = resolveClerkSatelliteConfig();
 
   const providerProps = {
     Clerk: clerk,
@@ -59,11 +57,5 @@ export function AuthV1ClerkProvider({
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/v1/sign-up"),
   };
-  return satelliteConfig ? (
-    <BaseClerkProvider {...providerProps} {...satelliteConfig}>
-      {children}
-    </BaseClerkProvider>
-  ) : (
-    <BaseClerkProvider {...providerProps}>{children}</BaseClerkProvider>
-  );
+  return <BaseClerkProvider {...providerProps}>{children}</BaseClerkProvider>;
 }

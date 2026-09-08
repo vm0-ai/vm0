@@ -11,12 +11,7 @@ import { delay } from "signal-timers";
 import { Webhook } from "svix";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-  fromDomainForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env, optionalEnv } from "../../lib/env";
@@ -162,11 +157,11 @@ function getResendClient(): Resend {
 }
 
 function apiUrl(): string {
-  return apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), EMAIL_PUBLIC_BRAND);
+  return apiBackendUrl() ?? webUrl();
 }
 
 function appUrl(): string {
-  return appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
+  return env("APP_URL");
 }
 
 function officialAutomationResultUnsubscribeUrl(
@@ -208,15 +203,15 @@ function getFromDomain(): string {
   if (!domain) {
     throw new Error("RESEND_FROM_DOMAIN is not configured");
   }
-  return fromDomainForPublicBrand(domain, EMAIL_PUBLIC_BRAND);
+  return domain;
 }
 
 export function buildFromAddress(): string {
-  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).assistantName} <okou@${getFromDomain()}>`;
+  return `${PUBLIC_BRAND_PRESENTATION.assistantName} <okou@${getFromDomain()}>`;
 }
 
 export function buildTeamFromAddress(): string {
-  return `${publicBrandPresentation(EMAIL_PUBLIC_BRAND).brandName} Team <support@${getFromDomain()}>`;
+  return `${PUBLIC_BRAND_PRESENTATION.brandName} Team <support@${getFromDomain()}>`;
 }
 
 function generateUnsubscribeToken(userId: string): string {
@@ -324,7 +319,6 @@ function renderTemplate(
     case "official-automation-result": {
       const rendered = renderOfficialAutomationResultEmail(
         template.props,
-        EMAIL_PUBLIC_BRAND,
         officialAutomationResultUnsubscribeUrl(headers),
       );
       if (rendered.fallback) {

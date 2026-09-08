@@ -7,22 +7,22 @@ import { internalApiBaseUrl } from "../internal-api-url";
 // (src/__tests__/setup.ts calls clearMockedEnv in afterEach).
 describe("internalApiBaseUrl", () => {
   it("uses OKOU_API_BACKEND_URL when set so internal API calls skip www", () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
 
-    expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
+    expect(internalApiBaseUrl()).toBe("https://api.okou.ai");
     expect(
       new URL(
         "/api/cron/process-usage-events",
         internalApiBaseUrl(),
       ).toString(),
-    ).toBe("https://api.vm0.ai/api/cron/process-usage-events");
+    ).toBe("https://api.okou.ai/api/cron/process-usage-events");
   });
 
   it("defaults to the API backend origin in production when the backend URL is unset", () => {
     mockEnv("ENV", "production");
     mockEnv("OKOU_API_BACKEND_URL", undefined);
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
 
     expect(internalApiBaseUrl()).toBe("https://vm0-api.vm6.ai");
   });

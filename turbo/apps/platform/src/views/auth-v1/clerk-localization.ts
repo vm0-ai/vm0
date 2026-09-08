@@ -1,4 +1,4 @@
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import type { TFunction } from "i18next";
 import {
   clerkLocalizationForLocale,
@@ -35,14 +35,12 @@ export function getClerkLocalization(
   clerkLocalizations: ClerkLocalizationCache,
   t: TFunction<"common">,
 ) {
-  const supportEmail = publicBrandPresentation(
-    brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+  const supportEmail = PUBLIC_BRAND_PRESENTATION.supportEmail;
   const localization = clerkLocalizationForLocale(clerkLocalizations, locale);
-  const brandedLocalization =
-    brandName === "Okou"
-      ? replaceClerkApplicationName(localization, brandName)
-      : localization;
+  const brandedLocalization = replaceClerkApplicationName(
+    localization,
+    brandName,
+  );
   const formCodeIncorrect =
     mode === "sign-in"
       ? t(($) => {

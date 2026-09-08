@@ -19,7 +19,7 @@ import {
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { DesktopAuthWindowRequest } from "./desktop-auth-window";
 
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const signedOut = { status: "signed_out", user: null, organization: null };
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

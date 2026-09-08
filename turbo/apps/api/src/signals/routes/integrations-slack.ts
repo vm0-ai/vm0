@@ -8,8 +8,8 @@ import {
 import { integrationsSlackDownloadFileContract } from "@okouai/api-contracts/contracts/integrations";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
 } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -20,7 +20,7 @@ import { and, eq } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import {
   slackOrgInstallation,
   slackOrgStatus,
@@ -133,7 +133,7 @@ const getSlackEnvironment$ = computed(
 
 const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const status = await get(
     slackOrgStatus({
       apiOrigin: getOAuthApiOrigin(get(request$).raw),
@@ -179,13 +179,9 @@ function contractErrorResponse(
   };
 }
 
-function buildConnectUrl(
-  workspaceId: string,
-  slackUserId: string,
-  publicBrand: PublicBrand,
-): string {
+function buildConnectUrl(workspaceId: string, slackUserId: string): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 function buildDisconnectedAppHomeView(args: {
@@ -193,7 +189,7 @@ function buildDisconnectedAppHomeView(args: {
   readonly slackUserId: string;
   readonly publicBrand: PublicBrand;
 }): SlackView {
-  const { assistantName } = publicBrandPresentation(args.publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "home",
     blocks: [
@@ -222,11 +218,7 @@ function buildDisconnectedAppHomeView(args: {
           {
             type: "button",
             text: { type: "plain_text", text: "Connect" },
-            url: buildConnectUrl(
-              args.workspaceId,
-              args.slackUserId,
-              args.publicBrand,
-            ),
+            url: buildConnectUrl(args.workspaceId, args.slackUserId),
             action_id: "home_login_prompt",
             style: "primary",
           },
@@ -236,8 +228,8 @@ function buildDisconnectedAppHomeView(args: {
   };
 }
 
-function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
-  const { assistantName, brandName } = publicBrandPresentation(publicBrand);
+function buildUninstalledAppHomeView(): SlackView {
+  const { assistantName, brandName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "home",
     blocks: [
@@ -269,7 +261,7 @@ function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
           {
             type: "button",
             text: { type: "plain_text", text: `Open ${brandName} Settings` },
-            url: `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works`,
+            url: `${env("APP_URL")}/works`,
             action_id: "home_open_settings",
             style: "primary",
           },
@@ -343,7 +335,7 @@ const uninstallSlackIntegration$ = command(
           }),
         ),
       );
-      const view = buildUninstalledAppHomeView(args.publicBrand);
+      const view = buildUninstalledAppHomeView();
       await Promise.allSettled(
         connections.map((connection) => {
           return client.publishAppHome(connection.slackUserId, view);
@@ -481,7 +473,7 @@ const disconnectSlackIntegration$ = command(
 const deleteSlackIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const query = get(deleteSlackIntegrationQuery$);
     const db = set(writeDb$);
 

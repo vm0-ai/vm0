@@ -41,7 +41,6 @@ test.each(["network", "missing export", "version mismatch"])(
       host: "app.okou.ai",
       path: "/v1/sign-in",
       auth: null,
-      primaryAppDomain: "app.okou.ai",
     });
 
     const alert = await screen.findByRole("alert");

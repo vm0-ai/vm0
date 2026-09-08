@@ -7,13 +7,13 @@ import {
   setupPage,
   startPage,
 } from "../../../__tests__/page-helper.ts";
-import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
+import { platformOkouWordmarkDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
 function setupSignedOutPage(path: string): Promise<void> {
-  return setupPage({ auth: null, context, host: "app.vm0.ai", path });
+  return setupPage({ auth: null, context, host: "app.okou.ai", path });
 }
 
 function okouBrandLink(): HTMLElement {
@@ -48,25 +48,25 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "outside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/svg\+xml,/u),
+    platformOkouWordmarkDarkImg,
   );
   expect(signIn).toHaveAttribute(
     "data-clerk-force-redirect-url",
-    "https://app.vm0.ai",
+    "https://app.okou.ai",
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",
-    "https://app.vm0.ai",
+    "https://app.okou.ai",
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-up-force-redirect-url",
-    "https://app.vm0.ai",
+    "https://app.okou.ai",
   );
-  expect(screen.getByAltText("VM0")).toHaveAttribute(
+  expect(screen.getByAltText("Okou")).toHaveAttribute(
     "src",
-    platformVm0LogoDarkImg,
+    platformOkouWordmarkDarkImg,
   );
-  expect(document.title).toBe("Sign in | VM0");
+  expect(document.title).toBe("Sign in | Okou");
   expect(clerk.uiRequests).toStrictEqual([
     "https://app.example.test/assets/clerk-ui-test.js",
   ]);
@@ -84,7 +84,7 @@ test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
 
   expect(screen.getByTestId("clerk-sign-in")).toHaveTextContent("/v1/sign-in");
   expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
-  expect(document.title).toBe("Sign in | VM0");
+  expect(document.title).toBe("Sign in | Okou");
 });
 
 test("The hosted sign-up form renders with an allowed redirect URL", async () => {
@@ -106,7 +106,7 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   expect(signUp).toHaveAttribute("data-clerk-logo-placement", "outside");
   expect(signUp).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/svg\+xml,/u),
+    platformOkouWordmarkDarkImg,
   );
   expect(signUp).toHaveAttribute(
     "data-clerk-fallback-redirect-url",
@@ -114,22 +114,22 @@ test("The hosted sign-up form renders with an allowed redirect URL", async () =>
   );
   expect(signUp).toHaveAttribute("data-clerk-force-redirect-url", redirectUrl);
   expect(screen.queryByTestId("clerk-google-one-tap")).not.toBeInTheDocument();
-  expect(document.title).toBe("Sign up | VM0");
+  expect(document.title).toBe("Sign up | Okou");
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-sign-in-start-action-link",
     "Sign up",
   );
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-provider-sign-in-url",
-    "https://app.vm0.ai/v1/sign-in",
+    "https://app.okou.ai/v1/sign-in",
   );
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-provider-sign-up-url",
-    "https://app.vm0.ai/v1/sign-up",
+    "https://app.okou.ai/v1/sign-up",
   );
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-user-banned-error",
-    expect.stringContaining("support@vm0.ai"),
+    expect.stringContaining("support@okou.ai"),
   );
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-form-code-incorrect-error",
@@ -155,7 +155,7 @@ test("The hosted form waits behind the skeleton until Clerk mounts it", async ()
   const page = await startPage({
     auth: null,
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/v1/sign-up",
   });
 
@@ -197,7 +197,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   expect(signIn).toHaveAttribute("data-clerk-logo-placement", "outside");
   expect(signIn).toHaveAttribute(
     "data-clerk-logo-image-url",
-    expect.stringMatching(/^data:image\/svg\+xml,/u),
+    platformOkouWordmarkDarkImg,
   );
   expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
     "data-sign-in-force-redirect-url",
@@ -205,7 +205,7 @@ test("A trusted Okou destination brands the hosted sign-in", async () => {
   );
   expect(document.title).toBe("Sign in | Okou");
   expect(screen.queryByAltText("VM0")).not.toBeInTheDocument();
-  expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+  expect(okouBrandLink()).toHaveAttribute("href", "/");
   expect(clerkProviderConfig()).toHaveAttribute(
     "data-clerk-sign-in-start-title",
     "Sign in to Okou",
@@ -247,7 +247,7 @@ test("Okou auth intent survives Clerk moving the redirect into the hash", async 
     redirectUrl,
   );
   expect(document.title).toBe("Sign up | Okou");
-  expect(okouBrandLink()).toHaveAttribute("href", "https://app.okou.ai");
+  expect(okouBrandLink()).toHaveAttribute("href", "/");
 });
 
 test("An untrusted redirect URL does not control the auth brand", async () => {
@@ -259,14 +259,13 @@ test("An untrusted redirect URL does not control the auth brand", async () => {
 
   expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
     "data-clerk-force-redirect-url",
-    "https://app.vm0.ai",
+    "https://app.okou.ai",
   );
-  expect(document.title).toBe("Sign in | VM0");
-  expect(screen.getByAltText("VM0")).toHaveAttribute(
+  expect(document.title).toBe("Sign in | Okou");
+  expect(screen.getByAltText("Okou")).toHaveAttribute(
     "src",
-    platformVm0LogoDarkImg,
+    platformOkouWordmarkDarkImg,
   );
-  expect(screen.queryByText("Okou")).not.toBeInTheDocument();
 });
 
 test("Ad-attributed sign-ups continue to onboarding with their attribution", async () => {
@@ -277,7 +276,7 @@ test("Ad-attributed sign-ups continue to onboarding with their attribution", asy
   const redirectUrl = new URL(
     screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
   );
-  expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+  expect(redirectUrl.origin).toBe("https://app.okou.ai");
   expect(redirectUrl.pathname).toBe("/onboarding");
   expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
   expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
@@ -285,7 +284,7 @@ test("Ad-attributed sign-ups continue to onboarding with their attribution", asy
 });
 
 test("Sign-up redirects to sibling origins of the current host are kept", async () => {
-  const redirectUrl = "https://www.vm0.ai/connector/success?vm0_theme=light";
+  const redirectUrl = "https://www.okou.ai/connector/success?vm0_theme=light";
   await setupSignedOutPage(
     `/v1/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
   );
@@ -302,7 +301,7 @@ test("Sign-up redirects to other environments fall back to onboarding", async ()
 
   expect(
     screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
-  ).toBe("https://app.vm0.ai/onboarding");
+  ).toBe("https://app.okou.ai/onboarding");
 });
 
 test("Hosted auth pages scroll inside the root safe area", async () => {
@@ -316,8 +315,8 @@ test("Hosted auth pages scroll inside the root safe area", async () => {
   expect(layout).toHaveClass("overflow-x-hidden");
   expect(layout).not.toHaveClass("overflow-hidden");
 
-  const logoImage = screen.getByAltText("VM0");
-  expect(logoImage).toHaveAttribute("crossorigin", "anonymous");
+  const logoImage = screen.getByAltText("Okou");
+  expect(logoImage).not.toHaveAttribute("crossorigin");
   const logo = logoImage.closest("a");
   expect(logo).toHaveClass("left-6");
   expect(logo).toHaveClass("top-6");

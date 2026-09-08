@@ -1,13 +1,5 @@
 import { z } from "zod";
-import {
-  resolveClerkProductionTopology,
-  VM0_CLERK_PRIMARY_APP_ORIGIN,
-} from "./clerk-production-topology.ts";
-
-const PRODUCTION_APP_ORIGINS = [
-  VM0_CLERK_PRIMARY_APP_ORIGIN,
-  resolveClerkProductionTopology("app.okou.ai").primaryAppOrigin,
-] as const;
+const PRODUCTION_APP_ORIGINS = ["https://app.okou.ai"] as const;
 
 const DESKTOP_AUTH_PATHS = [
   "/desktop-auth/start",

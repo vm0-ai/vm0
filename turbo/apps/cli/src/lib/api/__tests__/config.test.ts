@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getActiveOrg,
-  getActiveToken,
-  getApiUrl,
-  getCliPublicBrand,
-  getToken,
-} from "../config";
+import { getActiveOrg, getActiveToken, getApiUrl, getToken } from "../config";
 
 function buildFakeSandboxJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(
@@ -68,41 +62,6 @@ describe("Okou configuration", () => {
       vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
 
       await expect(getApiUrl()).resolves.toBe("https://api.okou.ai");
-    },
-  );
-
-  it("prefers the run-token public brand over the configured API URL", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildFakeSandboxJwt({
-        scope: "okou",
-        capabilities: [],
-        publicBrand: "okou",
-      }),
-    );
-    vi.stubEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-
-    expect(getCliPublicBrand()).toBe("okou");
-  });
-
-  it.each([
-    ["api.vm0.ai", "vm0"],
-    ["https://api.okou.ai", "okou"],
-  ] as const)(
-    "selects the %s API URL brand as %s",
-    (canonicalUrl, expectedBrand) => {
-      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
-
-      expect(getCliPublicBrand()).toBe(expectedBrand);
-    },
-  );
-
-  it.each([undefined, ""])(
-    "defaults the public brand to Okou when the canonical URL is %s",
-    (canonicalUrl) => {
-      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
-
-      expect(getCliPublicBrand()).toBe("okou");
     },
   );
 });

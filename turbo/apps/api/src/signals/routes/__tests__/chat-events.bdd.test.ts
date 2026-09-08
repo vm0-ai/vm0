@@ -205,7 +205,6 @@ import {
   readRunOutputMaterializationFixture,
   readRunUsageEventsFixture,
   releaseBddBuiltInModelKey,
-  removeChatCallbackPublicBrandFixture,
   replayPendingChatInputQueueEventFixture,
   replacePiSessionHistoryJsonlFixture,
   replaceThreadSessionBindingFixture,
@@ -1037,11 +1036,10 @@ async function claimChatRun(
   };
 }
 
-async function expectRunPublicBrandTransport(args: {
+async function expectRunAppContext(args: {
   readonly actor: ApiTestUser;
   readonly runId: string;
   readonly claim: RunnerClaim;
-  readonly publicBrand: PublicBrand;
   readonly appUrl: string;
 }): Promise<void> {
   if (!args.actor.orgId) {
@@ -1054,7 +1052,6 @@ async function expectRunPublicBrandTransport(args: {
   }
   expect(verifyOkouToken(token)).toMatchObject({
     runId: args.runId,
-    publicBrand: args.publicBrand,
   });
   const state = await runStateStore.set(
     readAgentRunState$,
@@ -1070,7 +1067,7 @@ async function expectRunPublicBrandTransport(args: {
       return callback.internalKind === "chat";
     }),
   ).toMatchObject({
-    payload: { publicBrand: args.publicBrand },
+    payload: { publicBrand: "okou" },
   });
 }
 
@@ -4841,7 +4838,7 @@ describe("CHAT-02: dispatch failure", () => {
 
 describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission with request-branded guidance through visible chat messages", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     const completed = await bdd.completeOnboarding(actor);
@@ -4959,34 +4956,6 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
     expect(afterRetry.events).toHaveLength(3);
-
-    const vm0Sent = await chat.requestSendEvent(
-      actor,
-      {
-        ...sendBody,
-        prompt: "blocked from the VM0 domain",
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    if (vm0Sent.status !== 201) {
-      throw new Error("Expected the VM0 blocked send to return 201");
-    }
-    expect(vm0Sent.body.runId).toBeNull();
-    const vm0Messages = await chat.listThreadEvents(
-      actor,
-      vm0Sent.body.threadId,
-    );
-    const vm0Guidance = assistantMessages(vm0Messages.events).find(
-      (message) => {
-        return message.eventType === "output.error";
-      },
-    );
-    if (!vm0Guidance) {
-      throw new Error("Expected VM0 insufficient-credits guidance");
-    }
-    expect(vm0Guidance.content).toContain("https://app.vm0.ai/?settings=usage");
-    expect(vm0Guidance.content).not.toContain("https://app.okou.ai");
   }, 60_000);
 });
 
@@ -21529,9 +21498,9 @@ describe("CHAT-02: queued attachments on auto-send", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: public-brand default assistant identity", () => {
-  it("keeps the default name as Okou across request brands without renaming custom agents", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+describe("CHAT-02: default assistant identity", () => {
+  it("keeps the default name as Okou through queued runs without renaming custom agents", async () => {
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     const onboarding = await bdd.readOnboardingStatus(actor);
@@ -21540,139 +21509,88 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       throw new Error("Expected the system default agent to exist");
     }
 
-    const brandPresentation = {
-      vm0: {
-        assistantName: "Okou",
-        otherAssistantName: "Zero",
-        appUrl: "https://app.vm0.ai",
-        contextId: "e1884e98-ab77-4eca-a420-90e591078804",
-      },
-      okou: {
-        assistantName: "Okou",
-        otherAssistantName: "Zero",
-        appUrl: "https://app.okou.ai",
-        contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
-      },
-    } satisfies Record<
-      PublicBrand,
+    const anchor = await sendChatRun(
+      actor,
       {
-        readonly assistantName: string;
-        readonly otherAssistantName: string;
-        readonly appUrl: string;
-        readonly contextId: string;
-      }
-    >;
+        agentId: defaultAgentId,
+        prompt: "start an Okou run",
+      },
+      "okou",
+    );
+    const anchorRun = await api.readRun(actor, anchor.runId);
+    expect(anchorRun.appendSystemPrompt).toContain("Your name is Okou.");
 
-    const expectCrossBrandQueuedRun = async (
-      anchorBrand: PublicBrand,
-      queuedBrand: PublicBrand,
-    ): Promise<void> => {
-      const anchorPresentation = brandPresentation[anchorBrand];
-      const queuedPresentation = brandPresentation[queuedBrand];
-      const anchor = await sendChatRun(
-        actor,
-        {
-          agentId: defaultAgentId,
-          prompt: `start a ${anchorBrand}-branded run`,
-        },
-        anchorBrand,
-      );
-      const anchorRun = await api.readRun(actor, anchor.runId);
-      expect(anchorRun.appendSystemPrompt).toContain(
-        `Your name is ${anchorPresentation.assistantName}.`,
-      );
-      expect(anchorRun.appendSystemPrompt).not.toContain(
-        `Your name is ${anchorPresentation.otherAssistantName}.`,
-      );
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    await expectRunAppContext({
+      actor,
+      runId: anchor.runId,
+      claim: anchorClaim.claim,
+      appUrl: "https://app.okou.ai",
+    });
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: defaultAgentId,
+        threadId: anchor.threadId,
+        prompt: "continue the Okou run",
+        clientEventId: queuedEventId,
+      },
+      [201],
+      { publicBrand: "okou" },
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the Okou follow-up to enter the chat queue");
+    }
+    expect(queued.body.runId).toBeNull();
 
-      const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-      await expectRunPublicBrandTransport({
-        actor,
-        runId: anchor.runId,
-        claim: anchorClaim.claim,
-        publicBrand: anchorBrand,
-        appUrl: anchorPresentation.appUrl,
-      });
-      const queuedEventId = randomUUID();
-      const queued = await chat.requestSendEvent(
-        actor,
-        {
-          agentId: defaultAgentId,
-          threadId: anchor.threadId,
-          prompt: `continue from the ${queuedBrand} domain`,
-          clientEventId: queuedEventId,
-        },
-        [201],
-        { publicBrand: queuedBrand },
-      );
-      if (queued.status !== 201) {
-        throw new Error(
-          `Expected the ${queuedBrand} follow-up to enter the chat queue`,
-        );
-      }
-      expect(queued.body.runId).toBeNull();
+    const rawQueuedEvent = (
+      await chat.listThreadEventRows(actor, anchor.threadId)
+    ).find((event) => {
+      return event.id === queuedEventId;
+    });
+    if (!rawQueuedEvent) {
+      throw new Error("Expected the queued Okou event in Raw Events");
+    }
+    expect(rawQueuedEvent).toMatchObject({
+      contextType: "web",
+      contextId: "0bdfae9e-63be-43dd-8193-a96e07787c20",
+    });
+    // The previous strict raw-row reader accepts this event because the new
+    // context uses existing outer fields and does not widen payload JSONB.
+    expect(rawQueuedEvent.payload).not.toHaveProperty("publicBrand");
 
-      const rawQueuedEvent = (
-        await chat.listThreadEventRows(actor, anchor.threadId)
-      ).find((event) => {
-        return event.id === queuedEventId;
-      });
-      if (!rawQueuedEvent) {
-        throw new Error(
-          `Expected the queued ${queuedBrand} event in Raw Events`,
-        );
-      }
-      expect(rawQueuedEvent).toMatchObject({
-        contextType: "web",
-        contextId: queuedPresentation.contextId,
-      });
-      // The previous strict raw-row reader accepts this event because the new
-      // context uses existing outer fields and does not widen payload JSONB.
-      expect(rawQueuedEvent.payload).not.toHaveProperty("publicBrand");
-
-      chatCallbacks.mockChatOutputEvents([]);
-      await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-      await flushWaitUntilForTest();
-      const promotedMessages = await waitForThreadMessages(
-        actor,
-        anchor.threadId,
-        (items) => {
-          return userMessages(items).some((message) => {
-            return (
-              message.revokesEventId === queuedEventId &&
-              message.runId !== undefined
-            );
-          });
-        },
-      );
-      const promoted = userMessages(promotedMessages.events).find((message) => {
-        return message.revokesEventId === queuedEventId;
-      });
-      if (!promoted?.runId) {
-        throw new Error(
-          `Expected the queued ${queuedBrand} message to auto-send`,
-        );
-      }
-      const promotedRun = await api.readRun(actor, promoted.runId);
-      expect(promotedRun.appendSystemPrompt).toContain(
-        `Your name is ${queuedPresentation.assistantName}.`,
-      );
-      expect(promotedRun.appendSystemPrompt).not.toContain(
-        `Your name is ${queuedPresentation.otherAssistantName}.`,
-      );
-      const promotedClaim = await claimChatRun(runnerGroup, promoted.runId);
-      await expectRunPublicBrandTransport({
-        actor,
-        runId: promoted.runId,
-        claim: promotedClaim.claim,
-        publicBrand: queuedBrand,
-        appUrl: queuedPresentation.appUrl,
-      });
-      await cancelChatRun(actor, promoted.runId);
-    };
-
-    await expectCrossBrandQueuedRun("okou", "vm0");
-    await expectCrossBrandQueuedRun("vm0", "okou");
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+    const promotedMessages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const promoted = userMessages(promotedMessages.events).find((message) => {
+      return message.revokesEventId === queuedEventId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued Okou message to auto-send");
+    }
+    const promotedRun = await api.readRun(actor, promoted.runId);
+    expect(promotedRun.appendSystemPrompt).toContain("Your name is Okou.");
+    const promotedClaim = await claimChatRun(runnerGroup, promoted.runId);
+    await expectRunAppContext({
+      actor,
+      runId: promoted.runId,
+      claim: promotedClaim.claim,
+      appUrl: "https://app.okou.ai",
+    });
+    await cancelChatRun(actor, promoted.runId);
 
     mockEnv("APP_URL", "https://preview.example.test");
     const customZero = await bdd.createAgent(actor, {
@@ -21689,19 +21607,18 @@ describe("CHAT-02: public-brand default assistant identity", () => {
     expect(customPrompt).toContain("Your name is Zero.");
     expect(customPrompt).not.toContain("Your name is Okou.");
     const customClaim = await claimChatRun(runnerGroup, customRun.runId);
-    await expectRunPublicBrandTransport({
+    await expectRunAppContext({
       actor,
       runId: customRun.runId,
       claim: customClaim.claim,
-      publicBrand: "okou",
       appUrl: "https://preview.example.test",
     });
 
     await cancelChatRun(actor, customRun.runId);
   }, 90_000);
 
-  it("posts brand-matched GitHub Audit links with a VM0 legacy fallback", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+  it("posts GitHub Audit links to the configured Okou app", async () => {
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     if (!actor.orgId) {
@@ -21736,57 +21653,34 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       ),
     );
 
-    const expectGitHubCallbackBrand = async (args: {
-      readonly requestBrand: PublicBrand;
-      readonly expectedBrand: PublicBrand;
-      readonly legacy: boolean;
-      readonly subjectNumber: number;
-    }): Promise<void> => {
-      const run = await sendChatRun(
-        actor,
-        {
-          agentId,
-          prompt: `deliver a ${args.requestBrand}-branded GitHub response`,
-        },
-        args.requestBrand,
-      );
-      const claim = await claimChatRun(runnerGroup, run.runId);
-      await setChatCallbackGitHubDeliveryFixture({
-        runId: run.runId,
-        remoteInstallationId: installation.remoteInstallationId,
-        repo: "vm0-ai/vm0",
-        subjectNumber: args.subjectNumber,
-        subjectKind: "issue",
+    const run = await sendChatRun(
+      actor,
+      {
         agentId,
-      });
-      if (args.legacy) {
-        await removeChatCallbackPublicBrandFixture(run.runId);
-      }
-
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "GitHub callback brand response"),
-      ]);
-      await completeChatRunOk(run.runId, claim.sandboxHeaders);
-      await flushWaitUntilForTest();
-
-      expect(postedComments.at(-1)).toContain(
-        `📋 [Audit](https://app.${args.expectedBrand === "okou" ? "okou.ai" : "vm0.ai"}/activities/${run.runId})`,
-      );
-    };
-
-    await expectGitHubCallbackBrand({
-      requestBrand: "okou",
-      expectedBrand: "okou",
-      legacy: false,
+        prompt: "deliver an Okou GitHub response",
+      },
+      "okou",
+    );
+    const claim = await claimChatRun(runnerGroup, run.runId);
+    await setChatCallbackGitHubDeliveryFixture({
+      runId: run.runId,
+      remoteInstallationId: installation.remoteInstallationId,
+      repo: "vm0-ai/vm0",
       subjectNumber: 1,
+      subjectKind: "issue",
+      agentId,
     });
-    await expectGitHubCallbackBrand({
-      requestBrand: "okou",
-      expectedBrand: "vm0",
-      legacy: true,
-      subjectNumber: 2,
-    });
-    expect(postedComments).toHaveLength(2);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "GitHub callback brand response"),
+    ]);
+    await completeChatRunOk(run.runId, claim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    expect(postedComments.at(-1)).toContain(
+      `📋 [Audit](https://app.okou.ai/activities/${run.runId})`,
+    );
+    expect(postedComments).toHaveLength(1);
   }, 90_000);
 });
 

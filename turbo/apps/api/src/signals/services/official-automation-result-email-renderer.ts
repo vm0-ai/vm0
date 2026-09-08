@@ -1,7 +1,6 @@
 import { convert } from "html-to-text";
 import MarkdownIt from "markdown-it";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import { safeSync, safeUrlParse } from "../utils";
 
@@ -215,17 +214,12 @@ const markdownRenderer = createMarkdownRenderer();
 
 function officialAutomationResultEmailHtml(
   props: OfficialAutomationResultEmailRenderProps,
-  publicBrand: PublicBrand,
   resultBodyHtml: string,
   unsubscribeUrl: string,
 ): string {
-  const presentation = publicBrandPresentation(publicBrand);
-  const assistantIdentity =
-    publicBrand === "okou"
-      ? `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`
-      : '<td width="32" height="32" align="center" valign="middle" bgcolor="#ed4e01" style="width:32px;height:32px;border-radius:9px;color:#ffffff;font-size:14px;font-weight:700;line-height:32px;mso-line-height-rule:exactly">0</td>';
-  const automationArticle = publicBrand === "okou" ? "an" : "a";
-  const footer = `Sent by ${automationArticle} ${escapeHtml(
+  const presentation = PUBLIC_BRAND_PRESENTATION;
+  const assistantIdentity = `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`;
+  const footer = `Sent by an ${escapeHtml(
     presentation.assistantName,
   )} automation &middot; <a href="${escapeHtml(
     props.manageUrl,
@@ -250,7 +244,6 @@ function plainTextFromHtml(html: string): string {
 
 export function renderOfficialAutomationResultEmail(
   props: OfficialAutomationResultEmailRenderProps,
-  publicBrand: PublicBrand,
   unsubscribeUrl: string,
 ): RenderedOfficialAutomationResultEmail {
   let attemptedHtmlBytes: number | null = null;
@@ -260,7 +253,6 @@ export function renderOfficialAutomationResultEmail(
   const renderAttempt = safeSync(() => {
     const html = officialAutomationResultEmailHtml(
       props,
-      publicBrand,
       markdownRenderer.render(props.resultText),
       unsubscribeUrl,
     );
@@ -289,7 +281,6 @@ export function renderOfficialAutomationResultEmail(
 
   const fallbackHtml = officialAutomationResultEmailHtml(
     props,
-    publicBrand,
     `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.58;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
       props.resultText,
     )}</pre>`,

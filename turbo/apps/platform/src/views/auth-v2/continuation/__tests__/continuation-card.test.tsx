@@ -61,7 +61,7 @@ function setupTaskPage(options: {
 }): Promise<void> {
   const memberships = options.memberships ?? [];
   const url = new URL(
-    options.url ?? "https://app.vm0.ai/sign-in/tasks/choose-organization",
+    options.url ?? "https://app.okou.ai/sign-in/tasks/choose-organization",
   );
   return setupPage({
     auth: {
@@ -126,7 +126,7 @@ test("A pending session can choose an organization and continue", async () => {
       ),
     ],
     taskKey: "choose-organization",
-    url: `https://app.vm0.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+    url: `https://app.okou.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.okou.ai/agents")}`,
   });
 
   await screen.findByRole("heading", {

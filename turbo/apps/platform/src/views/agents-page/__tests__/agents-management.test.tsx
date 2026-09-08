@@ -346,7 +346,7 @@ test("Open an agent's management page from its card", async () => {
   click(marketingBot);
 
   await screen.findByRole("heading", { name: "Marketing Bot" });
-  expect(document.title).toBe("Marketing Bot | VM0");
+  expect(document.title).toBe("Marketing Bot | Okou");
 });
 
 test("Review an agent's profile and instructions", async () => {

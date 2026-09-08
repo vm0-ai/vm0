@@ -66,7 +66,7 @@ test("Google sign-up callback failure returns a safe error", async () => {
 
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-up/sso-callback",
     auth: null,
   });
@@ -92,7 +92,7 @@ test("A completed Google sign-up recovers after refresh", async () => {
 
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-up/sso-callback?gclid=click-123&utm_campaign=summer",
     auth: null,
   });
@@ -125,7 +125,7 @@ test("Google sign-up with an existing account resumes the required sign-in step"
   });
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-up/sso-callback?utm_campaign=existing-account",
     auth: null,
   });
@@ -174,7 +174,7 @@ test("An existing Google identity transfers only once across callback recovery",
   mockedClerk.clientSignInCreate.mockReturnValueOnce(transfer.promise);
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-up/sso-callback?utm_campaign=transfer-once",
     auth: null,
   });
@@ -230,7 +230,7 @@ test("An incomplete existing Google account returns to sign-in", async () => {
 
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/sign-up/sso-callback?utm_campaign=transfer&redirect_url=${encodeURIComponent(
       redirectUrl,
     )}#/callback?attempt=1`,

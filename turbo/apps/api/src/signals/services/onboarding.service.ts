@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
-import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
+import { agentDisplayName } from "@okouai/core/public-brand";
 import { isValidTimeZone } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
@@ -141,7 +141,6 @@ function onboardingComplete(orgId: string): Computed<Promise<boolean>> {
 function defaultAgentInfo(
   orgId: string,
   composeId: string,
-  publicBrand: PublicBrand,
 ): Computed<Promise<DefaultAgentInfo | null>> {
   return computed(async (get): Promise<DefaultAgentInfo | null> => {
     const db = get(db$);
@@ -163,11 +162,10 @@ function defaultAgentInfo(
     const metadata: DefaultAgentMetadata = {};
     if (row.displayName !== null) {
       metadata.displayName =
-        agentDisplayNameForPublicBrand({
+        agentDisplayName({
           agentId: composeId,
           defaultAgentId: composeId,
           displayName: row.displayName,
-          publicBrand,
         }) ?? row.displayName;
     }
     if (row.description !== null) {
@@ -194,7 +192,6 @@ function defaultAgentInfo(
 
 export function onboardingStatus(
   auth: AuthContext,
-  publicBrand: PublicBrand,
 ): Computed<Promise<OnboardingStatusResponse>> {
   return computed(async (get): Promise<OnboardingStatusResponse> => {
     if (!auth.orgId) {
@@ -215,7 +212,7 @@ export function onboardingStatus(
     const agentId = await get(defaultAgentId(auth.orgId));
     const complete = await get(onboardingComplete(auth.orgId));
     const defaultAgent = agentId
-      ? await get(defaultAgentInfo(auth.orgId, agentId, publicBrand))
+      ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
     return {

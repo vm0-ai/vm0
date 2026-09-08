@@ -1,4 +1,4 @@
-// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
 
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -37,7 +37,7 @@ function setupOneTap(path = "/sign-in"): Promise<void> {
     auth: null,
     context,
     env: { VITE_POSTHOG_KEY: "phc_platform_test" },
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path,
   });
 }
@@ -78,8 +78,8 @@ test("A new One Tap account resumes sign-up and requires explicit legal consent"
   rejectMissingAccount();
   mockSignUpConfiguration({
     legalConsentEnabled: true,
-    privacyPolicyUrl: "https://vm0.ai/legal/privacy",
-    termsUrl: "https://vm0.ai/legal/terms",
+    privacyPolicyUrl: "https://okou.ai/legal/privacy",
+    termsUrl: "https://okou.ai/legal/terms",
   });
   mockedClerk.clientSignUpCreate.mockImplementationOnce(() => {
     mockSignUpResource({

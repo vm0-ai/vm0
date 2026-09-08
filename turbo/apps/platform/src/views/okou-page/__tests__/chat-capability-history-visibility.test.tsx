@@ -115,7 +115,7 @@ test("Keep a generic assistant failure readable", async () => {
         eventType: "output.error",
         content: null,
         error:
-          "## Release failed\n\nPlease **review these steps**:\n\n- Reopen the draft\n- Try again\n\n[View service status](https://status.vm0.ai/incidents/release)",
+          "## Release failed\n\nPlease **review these steps**:\n\n- Reopen the draft\n- Try again\n\n[View service status](https://status.okou.ai/incidents/release)",
         runId: "d0000000-0000-4000-a000-000000000822",
         seqId: 2,
         createdAt: "2026-08-01T10:00:02.000Z",
@@ -144,7 +144,7 @@ test("Keep a generic assistant failure readable", async () => {
   });
   expect(statusLink).toHaveAttribute(
     "href",
-    "https://status.vm0.ai/incidents/release",
+    "https://status.okou.ai/incidents/release",
   );
   expect(screen.queryByText(/## Release failed/u)).not.toBeInTheDocument();
 });

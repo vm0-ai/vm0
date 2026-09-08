@@ -217,7 +217,7 @@ async function claimChatRun(
 async function setupBrowserScenario() {
   mockNow(STARTED_AT_MS);
   mockEnv("OKOU_BROWSER_USE_API_KEY", "test-browser-use-key");
-  mockEnv("APP_URL", "https://app.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
   server.use(
     http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, () => {
       return new HttpResponse(null, { status: 204 });
@@ -306,22 +306,18 @@ async function reconcileBrowsers(
 }
 
 describe("okou browser route", () => {
-  it("projects the assistant name in run-required errors by authenticated brand", async () => {
+  it("reports run-required errors as Okou for current and legacy tokens", async () => {
     const { runs, actor } = await setupBrowserScenario();
 
-    for (const [publicBrand, origin, assistantName] of [
-      ["vm0", "https://app.okou.ai", "Zero"],
-      ["okou", "https://app.vm0.ai", "Okou"],
-    ] as const) {
+    for (const publicBrand of [undefined, "vm0", "okou"] as const) {
       const rejected = await requestBrowserUse({
         ...browserHeadersForRun(runs, actor, randomUUID(), publicBrand),
-        origin,
       });
       expect(rejected.status).toBe(400);
       await expect(rejected.json()).resolves.toStrictEqual({
         error: {
           code: "BROWSER_CHAT_THREAD_REQUIRED",
-          message: `Managed browsers can only be started from a ${assistantName} chat run`,
+          message: "Managed browsers can only be started from an Okou chat run",
         },
       });
     }
@@ -453,7 +449,7 @@ describe("okou browser route", () => {
       [200],
     );
     expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const vm0RunToken = runs.okouTokenForRunWithCapabilities(
       actor,
@@ -469,7 +465,7 @@ describe("okou browser route", () => {
       [200],
     );
     expect(new URL(vm0CreatedOnOkouApi.body.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const okouRunToken = runs.okouTokenForRunWithCapabilities(
       actor,
@@ -678,7 +674,7 @@ describe("okou browser route", () => {
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
       status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${createdInOtherThread.body.browser.threadId}`,
+      viewerUrl: `https://app.okou.ai/browsers/${createdInOtherThread.body.browser.threadId}`,
       screen: {
         width: 1440,
         height: 900,

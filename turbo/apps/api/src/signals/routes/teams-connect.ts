@@ -4,7 +4,6 @@ import { teamsConnectContract } from "@okouai/api-contracts/contracts/teams-conn
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import {
   connectTeamsInstallation$,
   disconnectTeamsConnection$,
@@ -13,6 +12,7 @@ import {
   teamsConnectStatus,
 } from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function errorResponse(
   status: 403 | 404,
@@ -29,7 +29,7 @@ function errorResponse(
 
 const getTeamsConnectStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const body = await get(
     teamsConnectStatus({
       orgId: auth.orgId,
@@ -43,7 +43,7 @@ const getTeamsConnectStatusInner$ = computed(async (get) => {
 
 const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   signal.throwIfAborted();
 
   const bodyResult = await get(bodyResultOf(teamsConnectContract.connect));

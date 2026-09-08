@@ -17,7 +17,6 @@ interface OkouClerkBootstrap {
   readonly loadOptions: OkouClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
   uiLoaded?: Promise<typeof ui>;
-  readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
   /**
    * Resolves the hosted UI constructor promise the page passed to its early

@@ -47,7 +47,7 @@ test("Do not send a presentation that failed to upload", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -79,7 +79,7 @@ test("Import a presentation deck into chat", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -113,7 +113,7 @@ test("Import a legacy presentation deck into an existing chat", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -147,7 +147,7 @@ test("Import a presentation deck from a new chat", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 

@@ -102,7 +102,7 @@ function setupAgentPage(options: {
   }
   return setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}?tab=${options.tab}`,
   });
 }
@@ -177,7 +177,7 @@ function setupTaskPage(options: {
   const memberships = options.memberships ?? [];
   return setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: options.path ?? "/sign-in/tasks/choose-organization",
     auth: {
       organization: { activeOrg: null, memberships },
@@ -267,7 +267,7 @@ test("Repeated workspace selection completes only once", async () => {
       membership("org_alpha", "Alpha Company"),
       membership("org_beta", "Beta Studio"),
     ],
-    path: `/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+    path: `/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.okou.ai/agents")}`,
     taskKey: "choose-organization",
   });
   const beta = await waitForButton("Continue with Beta Studio");
@@ -292,7 +292,7 @@ test("A protected page routes a member to workspace choice", async () => {
   const memberships = [membership("org_alpha", "Alpha Company")];
   await startPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
     auth: {
       organization: { activeOrg: null, memberships },
@@ -302,7 +302,7 @@ test("A protected page routes a member to workspace choice", async () => {
   });
 
   await waitFor(() => {
-    expect(location.origin).toBe("https://app.vm0.ai");
+    expect(location.origin).toBe("https://app.okou.ai");
     expect(location.pathname).toBe("/sign-in/tasks/choose-organization");
   });
 });
@@ -333,7 +333,7 @@ test("Session activation failure is shown without automatic retries", async () =
   );
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });

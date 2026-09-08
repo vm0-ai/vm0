@@ -357,16 +357,16 @@ test("Discover computers that are available for Computer Use", async () => {
   await expect(findButton("Connect my computer")).resolves.toBeVisible();
 });
 
-test("Guide VM0 users to the compatible Computer Use app", async () => {
+test("Guide users to the compatible Computer Use app", async () => {
   mockMacUserAgentData("arm");
   installRunChat();
 
-  await setupPage({ context, path: NEW_CHAT_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: NEW_CHAT_PATH, host: "app.okou.ai" });
 
   await readyChat();
-  const dialog = await openComputerDownloadDialog("Let Zero use your computer");
+  const dialog = await openComputerDownloadDialog("Let Okou use your computer");
   expect(dialog).toHaveTextContent(
-    "So Zero can work in your browser and apps for you",
+    "So Okou can work in your browser and apps for you",
   );
   expect(dialog).toHaveTextContent(
     "Requires an Apple silicon Mac with macOS 14 or newer",
@@ -379,29 +379,7 @@ test("Guide VM0 users to the compatible Computer Use app", async () => {
   );
 });
 
-test("Explain VM0 Computer Use incompatibility on an Intel Mac", async () => {
-  mockMacUserAgentData("x86_64");
-  installRunChat();
-
-  await setupPage({ context, path: NEW_CHAT_PATH, host: "app.vm0.ai" });
-
-  await readyChat();
-  const dialog = await openComputerDownloadDialog("Let Zero use your computer");
-  const incompatibility = fastControl(
-    "button",
-    "Requires an Apple silicon Mac",
-    dialog,
-  );
-  expect(incompatibility).toBeDisabled();
-  expect(dialog).toHaveTextContent("Intel Macs aren't supported");
-  expect(
-    queryAllByRoleFast("link", dialog).find((link) => {
-      return link.textContent?.trim() === "Download for macOS";
-    }),
-  ).toBeUndefined();
-});
-
-test("Explain Okou Computer Use incompatibility on an Intel Mac", async () => {
+test("Explain Computer Use incompatibility on an Intel Mac", async () => {
   mockMacUserAgentData("x86_64");
   installRunChat();
 

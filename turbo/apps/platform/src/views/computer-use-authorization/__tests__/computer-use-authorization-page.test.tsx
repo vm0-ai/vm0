@@ -120,7 +120,7 @@ test("An Intel Mac cannot download the unsupported computer-use app", async () =
   await setupPage({
     context,
     path: `/computer-use/authorize/${REQUEST_TOKEN}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(
@@ -137,42 +137,7 @@ test("An Intel Mac cannot download the unsupported computer-use app", async () =
   expect(getDownloadLink()).toBeUndefined();
 });
 
-test("A user with no online computer receives VM0 setup guidance", async () => {
-  mockAuthorizationRequest({
-    hosts: [
-      computerUseHost(OFFLINE_HOST_ID, "Offline Desktop", {
-        status: "offline",
-      }),
-    ],
-  });
-
-  await setupPage({
-    context,
-    path: `/computer-use/authorize/${REQUEST_TOKEN}`,
-    host: "app.vm0.ai",
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "No online computers" }),
-  ).resolves.toBeVisible();
-  expect(
-    screen.getByText(
-      "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
-    ),
-  ).toBeVisible();
-  expect(screen.queryByText("Offline Desktop")).toBeNull();
-  expect(
-    screen.getByText(
-      "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-    ),
-  ).toBeVisible();
-  expect(getDownloadLink()).toHaveAttribute(
-    "href",
-    expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
-  );
-});
-
-test("A user with no online computer receives Okou setup guidance", async () => {
+test("A user with no online computer receives setup guidance", async () => {
   mockAuthorizationRequest({
     hosts: [
       computerUseHost(OFFLINE_HOST_ID, "Offline Desktop", {
@@ -196,7 +161,6 @@ test("A user with no online computer receives Okou setup guidance", async () => 
     ),
   ).toBeVisible();
   expect(screen.queryByText("Offline Desktop")).toBeNull();
-  expect(screen.queryByText("Zero Computer Use")).toBeNull();
   expect(
     screen.getByText(
       "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
@@ -217,13 +181,13 @@ test("A Teams computer-use request names the Teams thread", async () => {
   await setupPage({
     context,
     path: `/computer-use/authorize/${REQUEST_TOKEN}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(screen.findByText("Teams Mac")).resolves.toBeVisible();
   expect(
     screen.getByText(
-      "Choose an online computer for Zero to use in this Teams thread.",
+      "Choose an online computer for Okou to use in this Teams thread.",
     ),
   ).toBeVisible();
 });

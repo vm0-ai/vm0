@@ -7,10 +7,11 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../../lib/time";
 import { safeJsonParse, safeSync, tapError } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   gitHubDeploymentStatusEventSchema,
   gitHubInstallationEventSchema,
@@ -327,7 +328,7 @@ const postGithubWebhook$ = command(
     }
 
     const request = get(request$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const headers = githubWebhookHeaders(request.raw.headers);
     if (!headers) {
       return jsonError("Missing GitHub webhook headers", 401);

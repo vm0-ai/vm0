@@ -26,7 +26,7 @@ describe("connector/providers/optimizely-cmp", () => {
       buildOptimizelyCmpAuthorizationUrl(
         authCodeGrant(),
         "client-id",
-        "https://app.vm0.ai/connectors/optimizely-cmp/callback",
+        "https://app.okou.ai/connectors/optimizely-cmp/callback",
         "oauth-state",
       ),
     );
@@ -34,7 +34,7 @@ describe("connector/providers/optimizely-cmp", () => {
     expect(`${url.origin}${url.pathname}`).toBe(AUTHORIZATION_URL);
     expect(url.searchParams.get("client_id")).toBe("client-id");
     expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.ai/connectors/optimizely-cmp/callback",
+      "https://app.okou.ai/connectors/optimizely-cmp/callback",
     );
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("scope")).toBe("openid profile offline_access");
@@ -74,7 +74,7 @@ describe("connector/providers/optimizely-cmp", () => {
         "client-id",
         "client-secret",
         "authorization-code",
-        "https://app.vm0.ai/connectors/optimizely-cmp/callback",
+        "https://app.okou.ai/connectors/optimizely-cmp/callback",
       ),
     ).resolves.toEqual({
       accessToken: "access-token",
@@ -92,7 +92,7 @@ describe("connector/providers/optimizely-cmp", () => {
       client_secret: "client-secret",
       code: "authorization-code",
       grant_type: "authorization_code",
-      redirect_uri: "https://app.vm0.ai/connectors/optimizely-cmp/callback",
+      redirect_uri: "https://app.okou.ai/connectors/optimizely-cmp/callback",
     });
   });
 

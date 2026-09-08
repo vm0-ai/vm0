@@ -96,7 +96,7 @@ describe("multipart user artifact uploads", () => {
       },
     });
     expect(response.body.url).toMatch(
-      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u,
     );
     const createCommand = context.mocks.s3.send.mock.calls
       .map(([command]) => {
@@ -112,7 +112,7 @@ describe("multipart user artifact uploads", () => {
       Metadata: {
         "artifact-id": response.body.id,
         filename: "recording.mp4",
-        "public-brand": "vm0",
+        "public-brand": "okou",
         "user-id": encodeURIComponent(userId),
       },
     });
@@ -139,13 +139,11 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toMatchObject({
       uploadUrl: "https://r2.example.com/upload?sig=test",
-      url: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
-      ),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u),
       uploadHeaders: {
         "x-amz-meta-artifact-id": response.body.id,
         "x-amz-meta-filename": "small.mp4",
-        "x-amz-meta-public-brand": "vm0",
+        "x-amz-meta-public-brand": "okou",
         "x-amz-meta-user-id": encodeURIComponent(userId),
       },
     });
@@ -240,7 +238,7 @@ describe("multipart user artifact uploads", () => {
           Metadata: {
             "artifact-id": artifactId,
             filename: "my recording.mp4",
-            "public-brand": "vm0",
+            "public-brand": "okou",
             "user-id": encodeURIComponent(userId),
           },
         });
@@ -263,9 +261,7 @@ describe("multipart user artifact uploads", () => {
 
     expect(response.body).toStrictEqual({
       id: artifactId,
-      url: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
-      ),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u),
     });
     const completeCommand = context.mocks.s3.send.mock.calls
       .map(([command]) => {

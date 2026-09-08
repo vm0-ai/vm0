@@ -19,7 +19,6 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -51,6 +50,7 @@ import {
 } from "../services/user-connectors.service";
 import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUBLIC_AGENT_LIMIT = 7;
 
@@ -306,7 +306,6 @@ const createAgentBody$ = bodyResultOf(agentsMainContract.create);
 
 const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
   const body = await get(createAgentBody$);
   signal.throwIfAborted();
   if (!body.ok) {
@@ -419,7 +418,7 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error(`Created Agent not found: ${agentId}`);
   }
 
-  return { status: 201 as const, body: agentResponse(agent, publicBrand) };
+  return { status: 201 as const, body: agentResponse(agent) };
 });
 
 const agentListResponse$ = computed(
@@ -427,9 +426,7 @@ const agentListResponse$ = computed(
     get,
   ): Promise<{ readonly status: 200; readonly body: AgentResponse[] }> => {
     const auth = get(organizationAuthContext$);
-    const agents = await get(
-      agentList(auth.orgId, auth.userId, get(publicBrand$)),
-    );
+    const agents = await get(agentList(auth.orgId, auth.userId));
     return { status: 200 as const, body: [...agents] };
   },
 );
@@ -442,7 +439,7 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     }),
   );
   if (!agent) {
@@ -529,7 +526,6 @@ const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
   const params = get(pathParamsOf(agentsByIdContract.update));
   const body = await get(updateAgentBody$);
@@ -599,7 +595,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: agentResponse(result.agent, publicBrand),
+    body: agentResponse(result.agent),
   };
 });
 
@@ -610,7 +606,6 @@ const updateAgentMetadataBody$ = bodyResultOf(
 const updateAgentMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(agentsByIdContract.updateMetadata));
     const body = await get(updateAgentMetadataBody$);
@@ -689,7 +684,7 @@ const updateAgentMetadataInner$ = command(
 
     return {
       status: 200 as const,
-      body: agentResponse(result.agent, publicBrand),
+      body: agentResponse(result.agent),
     };
   },
 );

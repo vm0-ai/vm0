@@ -2,12 +2,7 @@ import {
   connectorAuthCodeGrantCallbackOrigin,
   connectorOpenIdAuthGrantCallbackOrigin,
 } from "@okouai/connectors/connector-auth-method";
-import {
-  isConnectorAppOauthCallbackEnabled,
-  isConnectorDirectOkouOauthCallbackReady,
-} from "@okouai/connectors/app-oauth-callback";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
@@ -41,7 +36,6 @@ export function getConnectorOAuthCallbackUrlForMethod(args: {
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly connectorSlug: string;
   readonly callbackTarget: "app" | undefined;
-  readonly publicBrand: PublicBrand;
 }): string {
   if (args.method.grant.kind !== "auth-code") {
     throw new Error("Auth-code connector method required");
@@ -53,15 +47,9 @@ export function getConnectorOAuthCallbackUrlForMethod(args: {
     args.callbackTarget === "app" &&
     isConnectorAppOauthCallbackEnabled(args.connectorSlug)
   ) {
-    const configuredAppUrl = env("APP_URL");
-    const callbackAppUrl =
-      args.publicBrand === "okou" &&
-      isConnectorDirectOkouOauthCallbackReady(args.connectorSlug)
-        ? appUrlForPublicBrand(configuredAppUrl, "okou")
-        : configuredAppUrl;
     return new URL(
       `/connectors/${encodeURIComponent(args.connectorSlug)}/callback`,
-      callbackAppUrl,
+      env("APP_URL"),
     ).toString();
   }
   return new URL(

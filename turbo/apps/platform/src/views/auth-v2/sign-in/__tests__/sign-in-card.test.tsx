@@ -124,7 +124,7 @@ function setupSignInPage(
   options: SetupSignInPageOptions = {},
 ): Promise<void> {
   mockSignInResource(state);
-  const url = new URL(options.url ?? "https://app.vm0.ai/sign-in");
+  const url = new URL(options.url ?? "https://app.okou.ai/sign-in");
   return setupPage({
     context,
     host: url.hostname,
@@ -209,7 +209,7 @@ function signUpSwitchContext(): {
   const hash = `#/factor-one?step=code&redirect_url=${encodeURIComponent(redirectUrl)}`;
   return {
     expectedHref: `/sign-up?${searchParams.toString()}${hash}`,
-    url: `https://app.vm0.ai/sign-in?${searchParams.toString()}${hash}`,
+    url: `https://app.okou.ai/sign-in?${searchParams.toString()}${hash}`,
   };
 }
 
@@ -819,7 +819,7 @@ test("Google OAuth preserves trusted navigation context and completes once", asy
   await setupSignInPage(
     { status: "needs_identifier" },
     {
-      url: `https://app.vm0.ai/sign-in?${authSearch.toString()}${authHash}`,
+      url: `https://app.okou.ai/sign-in?${authSearch.toString()}${authHash}`,
     },
   );
 
@@ -949,7 +949,7 @@ test("A stalled Google One Tap prompt does not block ordinary sign-in", async ()
   await setupSignInPage({ status: "needs_identifier" });
 
   await expect(
-    screen.findByRole("region", { name: "Sign in to VM0" }),
+    screen.findByRole("region", { name: "Sign in to Okou" }),
   ).resolves.toBeVisible();
   await expect(screen.findByLabelText("Email address")).resolves.toBeEnabled();
   await expect(
@@ -974,7 +974,7 @@ test("Google One Tap is limited to the active base sign-in page", async () => {
 
   await setupSignInPage(
     { status: "needs_identifier" },
-    { url: "https://app.vm0.ai/sign-in/factor-one" },
+    { url: "https://app.okou.ai/sign-in/factor-one" },
   );
 
   await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
@@ -1079,7 +1079,7 @@ test("Google One Tap fails silently and can recover after navigation", async () 
     );
   });
   await expect(
-    screen.findByRole("region", { name: "Sign in to VM0" }),
+    screen.findByRole("region", { name: "Sign in to Okou" }),
   ).resolves.toBeVisible();
   await expect(screen.findByLabelText("Email address")).resolves.toBeEnabled();
 
@@ -1794,7 +1794,7 @@ test("Sign-in help returns the visitor to the chooser they came from", async () 
   );
   await expect(
     waitForRoleElement("link", "Email support"),
-  ).resolves.toHaveAttribute("href", "mailto:support@vm0.ai");
+  ).resolves.toHaveAttribute("href", "mailto:support@okou.ai");
   expect(roleElement("link", "Sign up")).toBeUndefined();
   expect(mockedClerk.signInPrepareFirstFactor).not.toHaveBeenCalled();
 
@@ -1886,7 +1886,7 @@ test("Okou account suspension errors use safe branded support information", asyn
   await setupSignInPage(
     { status: "needs_identifier" },
     {
-      url: `https://app.vm0.ai/sign-in?redirect_url=${encodeURIComponent(
+      url: `https://app.okou.ai/sign-in?redirect_url=${encodeURIComponent(
         "https://app.okou.ai/",
       )}`,
     },

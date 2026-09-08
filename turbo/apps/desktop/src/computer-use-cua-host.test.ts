@@ -134,7 +134,7 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", li
     },
   };
   const config = resolveDesktopConfig(undefined, "okou");
-  const api = "https://api.vm0.ai";
+  const api = "https://api.okou.ai";
   const addClientHeaders = createDesktopClientHeaderInjector({
     clientVersion: "1.2.3",
   });

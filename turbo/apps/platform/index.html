@@ -220,49 +220,16 @@
       (function () {
         var hostname = location.hostname.toLowerCase();
         var production =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
+          hostname === "okou.ai" || hostname.endsWith(".okou.ai");
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        // Keep this decision in sync with
-        // src/lib/clerk-production-topology.ts: only an explicit rollback
-        // value selects the pre-cutover topology, and everything else fails
-        // closed to the deployed one.
-        var productionPrimaryAppDomain =
-          "__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
-            ? "app.vm0.ai"
-            : "app.okou.ai";
-        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
-        var satelliteDomain = null;
-        if (
-          production &&
-          okouPrimary &&
-          isDomainOrSubdomain(hostname, "vm0.ai")
-        ) {
-          satelliteDomain = "vm0.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app.okou.ai")
-        ) {
-          satelliteDomain = "app.okou.ai";
-        }
-        var satellite = satelliteDomain !== null;
-        var authOrigin = satellite
-          ? "https://" + productionPrimaryAppDomain
-          : location.origin;
+        var authOrigin = location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
           signInUrl: new URL("/sign-in", authOrigin).toString(),
           signUpUrl: new URL("/sign-up", authOrigin).toString(),
         };
-        if (satellite) {
-          loadOptions.isSatellite = true;
-          loadOptions.satelliteAutoSync = true;
-        }
 
         // Clerk accepts its hosted UI constructor as a promise, so the core
         // starts now and only the v1 comparison routes resolve the UI.
@@ -272,17 +239,11 @@
         });
 
         var bootstrap = {
-          domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
-          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
           resolveClerkUI: resolveClerkUI,
         };
         window.__okouClerkBootstrap = bootstrap;
-
-        function isDomainOrSubdomain(value, domain) {
-          return value === domain || value.endsWith("." + domain);
-        }
 
         function isAuthV1Route(pathname) {
           return /^\/v1\/sign-(?:in|up)(?:\/|$)/.test(pathname || "");
@@ -322,10 +283,9 @@
         }
 
         // Direct v1 route entries start the installed UI alongside the app.
-        // Stable auth routes keep the platform-owned UI and satellite hosts
-        // hand authentication to the primary app without this download.
+        // Stable auth routes keep the platform-owned UI without this download.
         function startClerkUI() {
-          if (satellite || !isAuthV1Route(location.pathname)) return;
+          if (!isAuthV1Route(location.pathname)) return;
           var uiScript = document.createElement("script");
           uiScript.src = "__OKOU_CLERK_UI_SCRIPT_URL__";
           uiScript.type = "module";
@@ -365,9 +325,6 @@
         if (!script) throw new Error("Clerk core script is unavailable");
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;
-        if (satellite) {
-          script.dataset.clerkDomain = satelliteDomain;
-        }
         script.onerror = function () {
           script.remove();
         };

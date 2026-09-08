@@ -146,7 +146,6 @@ const agentAuth$ = command(
       orgId: agentAuth.orgId,
       runId: agentAuth.runId,
       capabilities: [...agentAuth.capabilities],
-      publicBrand: agentAuth.publicBrand,
       ...(agentAuth.computerUseHostId
         ? { computerUseHostId: agentAuth.computerUseHostId }
         : {}),
@@ -166,7 +165,6 @@ const agentAuth$ = command(
         tokenType: "agent" as const,
         userId: result.userId,
         runId: result.runId,
-        publicBrand: result.publicBrand,
       };
     }
 

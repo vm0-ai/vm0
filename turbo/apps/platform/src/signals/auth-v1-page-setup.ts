@@ -9,7 +9,6 @@ import {
   clerk$,
   clerkInstance$,
   ensureClerkUiLoaded$,
-  navigateSatelliteAuthRoute$,
   resolveAuthBrandContext,
 } from "./auth.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
@@ -22,10 +21,6 @@ const L = logger("AuthV1");
 
 function setupAuthV1Page(mode: AuthV1PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    if (await set(navigateSatelliteAuthRoute$, mode, signal)) {
-      return;
-    }
-
     const authBrand = resolveAuthBrandContext();
     set(
       updateDocumentTitle$,

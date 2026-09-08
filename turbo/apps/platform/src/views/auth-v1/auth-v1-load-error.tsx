@@ -1,5 +1,5 @@
 import { Button, Card, cn } from "@okouai/ui";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { hideAppSkeletonOnContentReadyRef$ } from "../../signals/app-skeleton.ts";
@@ -12,13 +12,11 @@ export function AuthV1LoadError() {
   const { t } = useTranslation();
   const contentReady = useSet(hideAppSkeletonOnContentReadyRef$);
   const authBrand = resolveAuthBrandContext();
-  const supportEmail = publicBrandPresentation(
-    authBrand.brandName === "Okou" ? "okou" : "vm0",
-  ).contactEmail;
+  const supportEmail = PUBLIC_BRAND_PRESENTATION.contactEmail;
   return (
     <AuthV1Layout authBrand={authBrand}>
       <div className="flex w-[var(--okou-auth-card-page-width)] max-w-[var(--okou-auth-card-max-width)] flex-col items-center gap-5">
-        <ProductBrandMark brandName={authBrand.brandName} size="compact" />
+        <ProductBrandMark size="compact" />
         <Card
           className="flex w-full flex-col gap-4 p-8 text-center"
           role="alert"

@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import {
   getBuiltInVisibleModels,
   isSupportedRunModel,
@@ -1098,7 +1098,7 @@ const handleConnectedCommand$ = command(
             db: args.db,
             message: args.message,
             title: "Already connected",
-            text: `Your Feishu account is already connected to ${publicBrandPresentation(args.installation.publicBrand).brandName}. Send a task to start working with your agent.`,
+            text: `Your Feishu account is already connected to ${PUBLIC_BRAND_PRESENTATION.brandName}. Send a task to start working with your agent.`,
             kind: "success",
           },
           signal,
