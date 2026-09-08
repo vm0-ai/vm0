@@ -5,6 +5,7 @@ import { chatThreadRenameContract } from "@okouai/api-contracts/contracts/chat-t
 
 import {
   click,
+  fill,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -62,19 +63,6 @@ function emojiFeed(): HTMLElement {
   return feed;
 }
 
-async function waitForEmojiPicker(): Promise<HTMLInputElement> {
-  const searchInput = await screen.findByLabelText("Search emoji");
-  if (!(searchInput instanceof HTMLInputElement)) {
-    throw new Error("Emoji search is not an input");
-  }
-  await waitFor(() => {
-    expect(document.querySelectorAll("[data-chat-thread-emoji]")).toHaveLength(
-      20,
-    );
-  });
-  return searchInput;
-}
-
 async function openEmojiPicker(): Promise<HTMLInputElement> {
   await setupEmojiPage();
   await waitFor(() => {
@@ -83,7 +71,11 @@ async function openEmojiPicker(): Promise<HTMLInputElement> {
 
   click(buttonByLabel("Change icon"));
 
-  return waitForEmojiPicker();
+  const searchInput = await screen.findByLabelText("Search emoji");
+  if (!(searchInput instanceof HTMLInputElement)) {
+    throw new Error("Emoji search is not an input");
+  }
+  return searchInput;
 }
 
 function setCategoryLayout(feed: HTMLElement): void {
@@ -144,7 +136,7 @@ test("Change a thread icon before its save finishes", async () => {
   const changeIcon = buttonByLabel("Change icon");
 
   click(changeIcon);
-  const searchInput = await waitForEmojiPicker();
+  const searchInput = await screen.findByLabelText("Search emoji");
   click(emojiButton("grinning face"));
   await waitFor(() => {
     expect(changeIcon).toHaveTextContent("😀");
@@ -166,7 +158,7 @@ test("Restore chat focus after closing the mobile emoji picker", async () => {
   const changeIcon = buttonByLabel("Change icon");
 
   click(changeIcon);
-  const searchInput = await waitForEmojiPicker();
+  const searchInput = await screen.findByLabelText("Search emoji");
   click(changeIcon);
   await waitFor(() => {
     expect(searchInput).not.toBeInTheDocument();
@@ -183,7 +175,15 @@ test.each([
   "Keep one focused emoji picker when resizing from $from to $to",
   async ({ desktop }) => {
     const viewport = context.mocks.browser.matchMedia(desktop);
-    await openEmojiPicker();
+    const searchInput = await openEmojiPicker();
+
+    // "eye" has 20 matches in the production emoji data. Search through the
+    // page before remounting so this responsive contract does not repeatedly
+    // build the unrelated full emoji grid.
+    await fill(searchInput, "eye");
+    await waitFor(() => {
+      expect(queryAllByRoleFast("button", emojiFeed())).toHaveLength(20);
+    });
 
     act(() => {
       viewport.setMatches(!desktop);
@@ -196,6 +196,8 @@ test.each([
       const searchInputs = screen.getAllByLabelText("Search emoji");
       expect(searchInputs).toHaveLength(1);
       expect(searchInputs[0]).toHaveFocus();
+      expect(searchInputs[0]).toHaveValue("eye");
+      expect(queryAllByRoleFast("button", emojiFeed())).toHaveLength(20);
     });
     expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
     expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(

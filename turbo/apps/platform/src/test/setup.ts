@@ -17,22 +17,6 @@ import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { clearAllDetached } from "../signals/utils.ts";
 
-vi.mock("../data/chat-thread-emoji.json", async (importOriginal) => {
-  const { default: groups } =
-    await importOriginal<typeof import("../data/chat-thread-emoji.json")>();
-  return {
-    default: groups.map((group) => {
-      return {
-        ...group,
-        // The picker adds nine frequently used items. One item from each
-        // category plus the first three food items keeps the test grid at 20
-        // buttons while retaining grinning face and watermelon coverage.
-        emojis: group.emojis.slice(0, group.name === "Food & Drink" ? 3 : 1),
-      };
-    }),
-  };
-});
-
 for (const [name, content] of [
   ["okou-app-git-commit-sha", "0123456789abcdef0123456789abcdef01234567"],
   ["okou-app-version", "0.540.0"],
