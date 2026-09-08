@@ -38,6 +38,17 @@ export async function retirePendingGoalRunInTransaction(
   tx: Tx,
   runId: string,
 ): Promise<RetiredGoalRun | null> {
+  // Ordinary runner claims must not join the Goal retirement lock protocol:
+  // Sandbox ownership can legitimately win while Pi publication holds it.
+  // This source-only probe authorizes no cancellation; revalidate the actual
+  // source and current status under the lifecycle and row locks below.
+  const [candidate] = await tx
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, runId), eq(agentRuns.triggerSource, "goal")));
+  if (!candidate) {
+    return null;
+  }
   await lockPiApiFirstTurnLifecycle(tx, runId);
   const [run] = await tx
     .select({
