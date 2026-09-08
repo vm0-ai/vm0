@@ -144,7 +144,7 @@ function preferenceClient() {
   );
 }
 
-/** The preference route only accepts a session, so zero tokens cannot seed it. */
+/** The preference route only accepts a session, so Okou run tokens cannot seed it. */
 async function setMemberMediaDefaults(fixture: AgentFixture): Promise<void> {
   createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
   await accept(
@@ -190,12 +190,10 @@ async function readCreatedThreadEvent(threadId: string, token: string) {
   return event;
 }
 
-describe("POST /api/zero/chat-threads", () => {
+describe("POST /api/chat-threads", () => {
   it("resolves only sparse connector selections during account deletion", async () => {
     const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, fixture, {});
     const firstResponse = await connectorApi.requestManualGrant(
       fixture.actor,
       "openai",
@@ -350,9 +348,7 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("creates and reads an exact built-in connector account selection", async () => {
     const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await updateFeatureSwitchesForUser(context, fixture, {});
     const connection = await connectorApi.connectManualGrant(
       fixture.actor,
       "openai",
@@ -426,11 +422,6 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     const foreignActor = bdd.user({ orgId: fixture.orgId });
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: foreignActor.userId, orgId: fixture.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     await store.set(
       seedOrgMembership$,
       { orgId: fixture.orgId, userId: foreignActor.userId },
@@ -565,13 +556,14 @@ describe("POST /api/zero/chat-threads", () => {
           target: { kind: "builtin", connectorSlug: "openai" },
         },
       }),
-      connectorAccountsClient().disconnectSingleAccount({
+      connectorAccountsClient().delete({
         headers: { authorization: "Bearer clerk-session" },
+        params: { connectionId: connection.id },
         body: { target: { kind: "builtin", connectorSlug: "openai" } },
       }),
     ]);
     expect([200, 400]).toContain(concurrentSelectionWrite.status);
-    expect(concurrentDisconnect.status).toBe(204);
+    expect(concurrentDisconnect.status).toBe(200);
     const afterDisconnect = await accept(
       connectorSelectionsClient().get({
         headers: { authorization: `Bearer ${token}` },
@@ -582,81 +574,9 @@ describe("POST /api/zero/chat-threads", () => {
     expect(afterDisconnect.body.selections).toStrictEqual([]);
   });
 
-  it("rejects connector selections while connector accounts are disabled", async () => {
-    const fixture = await seedAgent();
-    const connection = await connectorApi.connectManualGrant(
-      fixture.actor,
-      "openai",
-      "api-token",
-      { apiKey: "disabled-openai-key" },
-      fixture.agentId,
-    );
-    const token = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-
-    const response = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          model: WORKSPACE_DEFAULT_MODEL,
-          connectorSelections: [
-            {
-              connectionId: connection.id,
-              target: { kind: "builtin", connectorSlug: "openai" },
-            },
-          ],
-        },
-      }),
-      [404],
-    );
-    expect(response.body.error.code).toBe("NOT_FOUND");
-
-    const legacyCreated = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${token}` },
-        body: {
-          agentId: fixture.agentId,
-          model: WORKSPACE_DEFAULT_MODEL,
-        },
-      }),
-      [201],
-    );
-    await accept(
-      connectorSelectionsClient().get({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-      }),
-      [404],
-    );
-    await accept(
-      connectorSelectionsClient().update({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-        body: {
-          connectionId: connection.id,
-          target: { kind: "builtin", connectorSlug: "openai" },
-        },
-      }),
-      [404],
-    );
-    await accept(
-      connectorSelectionsClient().clear({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: legacyCreated.body.id },
-        body: { kind: "builtin", connectorSlug: "openai" },
-      }),
-      [404],
-    );
-  });
-
   it("creates exact custom HTTP and MCP connector selections", async () => {
     const fixture = await seedAgent();
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
     const httpConnector = await connectorApi.createCustomConnector(
@@ -776,15 +696,19 @@ describe("POST /api/zero/chat-threads", () => {
     );
 
     createRouteMocks(context).clerk.session(fixture.userId, fixture.orgId);
-    for (const customConnectorId of [httpConnector.id, mcpConnector.id]) {
+    for (const [customConnectorId, connectionId] of [
+      [httpConnector.id, httpConnectionId],
+      [mcpConnector.id, mcpConnectionId],
+    ] as const) {
       await accept(
-        connectorAccountsClient().disconnectSingleAccount({
+        connectorAccountsClient().delete({
           headers: { authorization: "Bearer clerk-session" },
+          params: { connectionId },
           body: {
             target: { kind: "custom", customConnectorId },
           },
         }),
-        [204],
+        [200],
       );
     }
     const afterDisconnect = await accept(
@@ -826,7 +750,7 @@ describe("POST /api/zero/chat-threads", () => {
     );
   });
 
-  it("creates a titled thread with ZERO_TOKEN chat-thread:write capability", async () => {
+  it("creates a titled thread with an Okou run token carrying chat-thread:write", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,
@@ -1009,85 +933,89 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("inherits priority from the run's chat thread and allows an explicit standard override", async () => {
-    const fixture = await seedAgent();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.CodexFastMode]: true,
-    });
-    const sourceToken = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-    });
-    const source = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${sourceToken}` },
-        body: {
-          agentId: fixture.agentId,
-          title: "Priority source",
-          model: PRIORITY_MODEL,
-          serviceTier: "priority",
-        },
-      }),
-      [201],
-    );
-    expect(source.body.serviceTier).toBe("priority");
-
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
+  it.each([FeatureSwitchKey.CodexFastMode, FeatureSwitchKey.ModelPickerMenu])(
+    "inherits priority from the run's chat thread and allows an explicit standard override with %s",
+    async (fastSwitch) => {
+      const fixture = await seedAgent();
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.CodexFastMode]: false,
+        [fastSwitch]: true,
+      });
+      const sourceToken = okouToken({
         userId: fixture.userId,
-        composeId: fixture.agentId,
-        triggerSource: "web",
-        chatThreadId: source.body.id,
-        selectedModel: PRIORITY_MODEL,
-      },
-      context.signal,
-    );
-    const inheritedToken = okouToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read", "chat-thread:write"],
-      runId,
-    });
+        orgId: fixture.orgId,
+        capabilities: ["chat-thread:read", "chat-thread:write"],
+      });
+      const source = await accept(
+        threadsClient().create({
+          headers: { authorization: `Bearer ${sourceToken}` },
+          body: {
+            agentId: fixture.agentId,
+            title: "Priority source",
+            model: PRIORITY_MODEL,
+            serviceTier: "priority",
+          },
+        }),
+        [201],
+      );
+      expect(source.body.serviceTier).toBe("priority");
 
-    const inherited = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${inheritedToken}` },
-        body: { agentId: fixture.agentId, title: "Inherited priority" },
-      }),
-      [201],
-    );
-    expect(inherited.body).toMatchObject({
-      selectedModel: PRIORITY_MODEL,
-      serviceTier: "priority",
-    });
-    const inheritedMetadata = await accept(
-      metadataClient().get({
-        headers: { authorization: `Bearer ${inheritedToken}` },
-        params: { id: inherited.body.id },
-      }),
-      [200],
-    );
-    expect(inheritedMetadata.body.serviceTier).toBe("priority");
-
-    const standard = await accept(
-      threadsClient().create({
-        headers: { authorization: `Bearer ${inheritedToken}` },
-        body: {
-          agentId: fixture.agentId,
-          title: "Explicit standard",
-          serviceTier: null,
+      const { runId } = await store.set(
+        seedRun$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          composeId: fixture.agentId,
+          triggerSource: "web",
+          chatThreadId: source.body.id,
+          selectedModel: PRIORITY_MODEL,
         },
-      }),
-      [201],
-    );
-    expect(standard.body).toMatchObject({
-      selectedModel: PRIORITY_MODEL,
-      serviceTier: null,
-    });
-  });
+        context.signal,
+      );
+      const inheritedToken = okouToken({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        capabilities: ["chat-thread:read", "chat-thread:write"],
+        runId,
+      });
+
+      const inherited = await accept(
+        threadsClient().create({
+          headers: { authorization: `Bearer ${inheritedToken}` },
+          body: { agentId: fixture.agentId, title: "Inherited priority" },
+        }),
+        [201],
+      );
+      expect(inherited.body).toMatchObject({
+        selectedModel: PRIORITY_MODEL,
+        serviceTier: "priority",
+      });
+      const inheritedMetadata = await accept(
+        metadataClient().get({
+          headers: { authorization: `Bearer ${inheritedToken}` },
+          params: { id: inherited.body.id },
+        }),
+        [200],
+      );
+      expect(inheritedMetadata.body.serviceTier).toBe("priority");
+
+      const standard = await accept(
+        threadsClient().create({
+          headers: { authorization: `Bearer ${inheritedToken}` },
+          body: {
+            agentId: fixture.agentId,
+            title: "Explicit standard",
+            serviceTier: null,
+          },
+        }),
+        [201],
+      );
+      expect(standard.body).toMatchObject({
+        selectedModel: PRIORITY_MODEL,
+        serviceTier: null,
+      });
+    },
+  );
 
   it("rejects an omitted model when the token has no run model to inherit", async () => {
     const fixture = await seedAgent();
@@ -1112,7 +1040,7 @@ describe("POST /api/zero/chat-threads", () => {
     });
   });
 
-  it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
+  it("rejects an Okou run token without chat-thread:write", async () => {
     const fixture = await seedAgent();
     const token = okouToken({
       userId: fixture.userId,

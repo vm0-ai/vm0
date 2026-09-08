@@ -1,5 +1,4 @@
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 
 import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
@@ -38,10 +37,7 @@ export async function resolveRunChatThreadModelContext(params: {
     userId: params.userId,
     threadId: params.threadId,
     persistRequestedCodexServiceTier: false,
-    codexFastModeEnabled: isFeatureEnabled(
-      FeatureSwitchKey.CodexFastMode,
-      featureSwitchContext,
-    ),
+    codexFastModeEnabled: isCodexFastModeEnabled(featureSwitchContext),
   });
   if (!resolved) {
     return badRequestMessage("Chat thread not found");

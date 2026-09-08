@@ -138,6 +138,27 @@ export {
   type ModelPoliciesMainContract,
 } from "./model-policies";
 export {
+  SSH_CONNECTION_LIMIT,
+  SSH_DISPLAY_NAME_MAX_LENGTH,
+  SSH_HOST_MAX_LENGTH,
+  SSH_PASSPHRASE_MAX_LENGTH,
+  SSH_PRIVATE_KEY_MAX_LENGTH,
+  SSH_USERNAME_MAX_LENGTH,
+  createSshConnectionRequestSchema,
+  resetSshConnectionHostKeyRequestSchema,
+  sshConnectionCredentialsInputSchema,
+  sshConnectionPathParamsSchema,
+  sshConnectionResponseSchema,
+  sshConnectionsContract,
+  sshConnectionsListResponseSchema,
+  sshConnectionsSummaryResponseSchema,
+  updateSshConnectionRequestSchema,
+  type CreateSshConnectionRequest,
+  type SshConnectionResponse,
+  type SshConnectionsContract,
+  type UpdateSshConnectionRequest,
+} from "./ssh-connections";
+export {
   createModelProviderConnectionRequestSchema,
   getModelProviderTypeForSurfaceProtocol,
   modelProviderConnectionResponseSchema,
@@ -220,6 +241,7 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   webhookUsageEventContract,
+  webhookPiMemoryPhase2UsageContract,
   type WebhookClerkContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
@@ -454,7 +476,7 @@ export {
   MODEL_PROVIDER_TYPES,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
@@ -468,15 +490,13 @@ export {
   getCustomModelPlaceholder,
   getDefaultOrgModelPolicySeed,
   // Provider compatibility
-  getProviderBaseUrl,
-  areProvidersCompatible,
   getCanonicalModelDisplayName,
   getProvidersForModel,
   getProviderRuntimeModel,
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
-  getVm0ModelPriceTier,
+  getBuiltInModelPriceTier,
   // Selectable provider filtering
   getSelectableProviderTypes,
   isBuiltInModelProviderType,
@@ -513,17 +533,17 @@ export {
   // Firewall gateway for model providers
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   getModelProviderFirewall,
-  // VM0 built-in provider
-  VM0_MODEL_TO_PROVIDER,
-  VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS,
-  VM0_MODEL_ALIAS_TO_MODEL,
-  getVm0BuiltInModelRouteCandidates,
-  getVm0BuiltInModelRouteVendors,
-  getVm0ConcreteProviderType,
-  getVm0Vendor,
-  getVm0ApiModel,
-  getVm0VisibleModels,
-  normalizeVm0ModelId,
+  // Built-in provider
+  BUILT_IN_MODEL_TO_PROVIDER,
+  BUILT_IN_MODEL_ROUTE_PROVIDERS,
+  BUILT_IN_MODEL_ALIAS_TO_MODEL,
+  getBuiltInModelRouteCandidates,
+  getBuiltInModelRouteVendors,
+  getBuiltInConcreteProviderType,
+  getBuiltInVendor,
+  getBuiltInApiModel,
+  getBuiltInVisibleModels,
+  normalizeBuiltInModelId,
   isLimitedFree1RestrictedRunModel,
 } from "./model-providers";
 export {
@@ -1760,6 +1780,14 @@ export {
   type BuiltInGenerationResponse,
 } from "./built-in-generation";
 export {
+  introVideoAgentContract,
+  introVideoAgentGenerateRequestSchema,
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentContract,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "./intro-video-agent";
+export {
   voiceIoPolishContract,
   voiceIoPolishRequestSchema,
   voiceIoPolishResponseSchema,
@@ -1768,6 +1796,13 @@ export {
   type VoiceIoPolishRequest,
   type VoiceIoPolishResponse,
 } from "./voice-io-polish";
+export {
+  voiceIoTranscribeContract,
+  voiceIoTranscribeResponseSchema,
+  VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
+  type VoiceIoTranscribeContract,
+  type VoiceIoTranscribeResponse,
+} from "./voice-io-transcribe";
 export {
   voiceIoQuotaContract,
   audioInputQuotaResponseSchema,

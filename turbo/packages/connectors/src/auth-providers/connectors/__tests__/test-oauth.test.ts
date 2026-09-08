@@ -58,7 +58,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
@@ -79,7 +79,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
@@ -96,7 +96,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
@@ -112,7 +112,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
@@ -157,19 +157,19 @@ describe("test-oauth provider URLs", () => {
   });
 
   it("keeps a concrete configured app URL ahead of VERCEL_URL", () => {
-    vi.stubEnv("APP_URL", "https://app.vm0.ai");
+    vi.stubEnv("APP_URL", "https://app.okou.ai");
     vi.stubEnv("VERCEL_URL", "pr-12962-www.vm6.ai");
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
 
-    expect(authorizationUrl.origin).toBe("https://app.vm0.ai");
+    expect(authorizationUrl.origin).toBe("https://app.okou.ai");
   });
 
   it("defaults to localhost when no configured URL is available", () => {
@@ -177,7 +177,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       ),
     );
@@ -192,7 +192,7 @@ describe("test-oauth provider URLs", () => {
       buildTestOAuthAuthorizationUrl(
         authCodeGrant(),
         "test-client",
-        "https://app.vm0.ai/callback",
+        "https://app.okou.ai/callback",
         "state-123",
       );
     }).toThrow("A concrete test-oauth app URL is required");

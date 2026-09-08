@@ -44,6 +44,12 @@ unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
   raise "deploy-app artifact identity must derive from the checked-out commit"
 end
 
+build_step = find_step.call("Build canonical app artifact")
+expected_axiom_token = "${{ github.event_name != 'pull_request' && vars.AXIOM_CLIENT_TELEMETRY_TOKEN || '' }}"
+unless build_step.dig("env", "VITE_AXIOM_CLIENT_TELEMETRY_TOKEN") == expected_axiom_token
+  raise "pull request preview builds must not receive the Axiom client telemetry token"
+end
+
 expected_deployment_url = "${{ steps.worker-deploy.outputs.url }}"
 if deploy_app.fetch("outputs").key?("deployment-url")
   raise "deploy-app must not expose a second provider deployment URL"
@@ -93,7 +99,7 @@ end
 unless deploy_source.include?('worker_secrets="$(mktemp)"') &&
     deploy_source.include?("umask 077") &&
     deploy_source.include?('if [[ "$EVENT_NAME" == "pull_request" ]]') &&
-    deploy_source.include?('CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL') &&
+    deploy_source.include?('CLERK_EDGE_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL') &&
     deploy_source.include?('unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY')
   raise "Worker preview deployment must create an ephemeral exact-origin secrets file"
 end

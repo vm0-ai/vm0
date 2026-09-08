@@ -38,7 +38,7 @@ describe("agentDrafts schema", () => {
     });
   });
 
-  it("exposes only canonical draft userMessage storage", () => {
+  it("exposes canonical document draft storage", () => {
     const columns = new Map(
       getTableConfig(agentDrafts).columns.map((column) => {
         return [column.name, column.notNull] as const;

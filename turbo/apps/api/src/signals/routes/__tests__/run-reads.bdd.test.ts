@@ -37,7 +37,7 @@ import {
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * zero run detail reads, queue position, event logs, and log reads) plus the RUN-01/02
+ * agent run detail reads, queue position, event logs, and log reads) plus the RUN-01/02
  * direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
@@ -445,7 +445,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       visibility: "private",
     });
 
-    // Seed a terminal zero-run session so a later queued run can carry a
+    // Seed a terminal agent-run session so a later queued run can carry a
     // continuation session link.
     const seedRun = await api.createRun(actor, {
       agentId: agent.agentId,
@@ -575,7 +575,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       status: "completed",
       prompt: "other run b",
     });
-    mustOk(detail, "Zero run detail");
+    mustOk(detail, "Agent run detail");
     expect(detail.body.startedAt).toBeDefined();
     expect(detail.body.completedAt).toBeDefined();
 
@@ -643,9 +643,9 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     });
     expect(queuedForeign.status).toBe("queued");
 
-    const zeroQueue = await api.readRunQueue(actor);
-    expect(zeroQueue.body.queue).toHaveLength(2);
-    expect(zeroQueue.body.queue[0]).toMatchObject({
+    const privacyQueue = await api.readRunQueue(actor);
+    expect(privacyQueue.body.queue).toHaveLength(2);
+    expect(privacyQueue.body.queue[0]).toMatchObject({
       position: 1,
       isOwner: true,
       runId: queuedOwn.runId,
@@ -653,7 +653,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       userEmail: actor.email,
       sessionLink: `/chat/${seedRun.sessionId}`,
     });
-    expect(zeroQueue.body.queue[1]).toMatchObject({
+    expect(privacyQueue.body.queue[1]).toMatchObject({
       position: 2,
       isOwner: false,
       runId: null,
@@ -663,7 +663,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       triggerSource: null,
       sessionLink: null,
     });
-    expect(JSON.stringify(zeroQueue.body)).not.toContain(
+    expect(JSON.stringify(privacyQueue.body)).not.toContain(
       "member queued secret",
     );
 
@@ -769,7 +769,7 @@ describe("RUN-03: cancel through the run cancel route", () => {
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
-    // A queued Zero run cancelled through the Zero route disappears from
+    // A queued agent run cancelled through the Zero route disappears from
     // the visible queue.
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -898,13 +898,13 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
         },
       },
     });
@@ -925,6 +925,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const run = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "create compressed checkpoint",
+      modelProviderType: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
@@ -976,6 +977,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const compressedContinuation = await api.createDirectRun(actor, {
       sessionId: run.sessionId,
       prompt: "continue with compressed ref",
+      modelProviderType: "anthropic-api-key",
     });
     const compressedClaim = await api.claimRunnerJob(
       compressedContinuation.runId,
@@ -1000,13 +1002,13 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_ENDPOINT", undefined);
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createDirectAgent(actor, {
       version: "1",
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
         },
       },
     });
@@ -1031,6 +1033,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const run = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "create zstd compressed checkpoint",
+      modelProviderType: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
     const headers = sandboxHeaders(claim.sandboxToken);
@@ -1082,6 +1085,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const compressedContinuation = await api.createDirectRun(actor, {
       sessionId: run.sessionId,
       prompt: "continue with zstd compressed ref",
+      modelProviderType: "anthropic-api-key",
     });
     const compressedClaim = await api.claimRunnerJob(
       compressedContinuation.runId,
@@ -1284,6 +1288,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
     const volumeArchiveSize = 12_345;
     storages.mockStoragePresignedUrls();
     storages.mockStorageObjectsExist(volumeArchiveSize);
@@ -1328,7 +1333,6 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
           volumes: ["data:/data"],
         },
       },
@@ -1367,6 +1371,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const r1 = await api.createDirectRun(actor, {
       agentId: compose.agentId,
       prompt: "pin the volume by version prefix",
+      modelProviderType: "anthropic-api-key",
       vars: { VOL_VERSION: versionPrefix },
       artifacts: [
         { name: "memory", mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH },
@@ -1435,7 +1440,6 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
       agents: {
         [composeName]: {
           framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "bdd-latest-inline-key" },
           volumes: ["data:/data"],
         },
       },
@@ -1527,6 +1531,7 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     const continued = await api.createDirectRun(actor, {
       sessionId: r1.sessionId,
       prompt: "continue the checkpointed session",
+      modelProviderType: "anthropic-api-key",
     });
     expect(continued.sessionId).toBe(r1.sessionId);
     const continuedClaim = await api.claimRunnerJob(continued.runId);
@@ -1821,13 +1826,13 @@ function timeCursorRows(
   }
 
   return rows.map((row, index) => {
-    if (!isAxiomRow(row) || typeof row._vm0Cursor === "string") {
+    if (!isAxiomRow(row) || typeof row._timeCursor === "string") {
       return row;
     }
 
     return {
       ...row,
-      _vm0Cursor: `cursor-${index.toString().padStart(4, "0")}`,
+      _timeCursor: `cursor-${index.toString().padStart(4, "0")}`,
     };
   });
 }
@@ -1849,7 +1854,6 @@ function expectTimeCursorAxiomResume(
   expected: {
     readonly cursor: string;
     readonly order: "asc" | "desc";
-    readonly hasCreatedAtBound?: boolean;
   },
 ): void {
   const apl = call[0];
@@ -1858,13 +1862,10 @@ function expectTimeCursorAxiomResume(
     noCache: true,
   });
   expect(apl).toContain(`| order by _time ${expected.order}`);
-  if (expected.hasCreatedAtBound) {
-    expect(apl).toContain("| where _time >= datetime(");
-  }
   expect(apl).not.toContain("| where _time > datetime(");
   expect(apl).not.toContain("| where _time < datetime(");
-  expect(apl).not.toContain("_vm0Cursor >");
-  expect(apl).not.toContain("_vm0Cursor <");
+  expect(apl).not.toContain("_timeCursor >");
+  expect(apl).not.toContain("_timeCursor <");
 }
 
 function networkHardeningRows(
@@ -2100,13 +2101,13 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    const zeroNetwork = await reads.requestAgentRunNetworkLogs(
+    const networkLogsRead = await reads.requestAgentRunNetworkLogs(
       actor,
       agentRun.runId,
       { limit: 4, order: "asc" },
       [200],
     );
-    if (zeroNetwork.status !== 200) {
+    if (networkLogsRead.status !== 200) {
       throw new Error("Expected the zero network log read to succeed");
     }
 
@@ -2160,7 +2161,7 @@ describe("RUN-04: agent run telemetry families", () => {
       "cursor-0003",
     );
 
-    expect(zeroNetwork.body).toStrictEqual({
+    expect(networkLogsRead.body).toStrictEqual({
       networkLogs: expectedNetworkLogs,
       hasMore: true,
       nextCursor: expectedNextCursor,
@@ -2183,7 +2184,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const networkRows = [
       {
         _time: timestamp,
-        _vm0Cursor: "network-a",
+        _timeCursor: "network-a",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2192,7 +2193,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: timestamp,
-        _vm0Cursor: "network-b",
+        _timeCursor: "network-b",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2201,7 +2202,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: laterTimestamp,
-        _vm0Cursor: "network-c",
+        _timeCursor: "network-c",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2228,7 +2229,7 @@ describe("RUN-04: agent run telemetry families", () => {
           cursor === undefined
             ? -1
             : networkRows.findIndex((row) => {
-                return row._vm0Cursor === cursor;
+                return row._timeCursor === cursor;
               });
         const startIndex =
           cursor === undefined
@@ -2296,7 +2297,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const descRows = [
       {
         _time: timestamp,
-        _vm0Cursor: "desc-a",
+        _timeCursor: "desc-a",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2305,7 +2306,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: timestamp,
-        _vm0Cursor: "desc-b",
+        _timeCursor: "desc-b",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2314,7 +2315,7 @@ describe("RUN-04: agent run telemetry families", () => {
       },
       {
         _time: olderTimestamp,
-        _vm0Cursor: "desc-c",
+        _timeCursor: "desc-c",
         runId,
         userId: actor.userId,
         type: "http",
@@ -2338,7 +2339,7 @@ describe("RUN-04: agent run telemetry families", () => {
           cursor === undefined
             ? -1
             : descRows.findIndex((row) => {
-                return row._vm0Cursor === cursor;
+                return row._timeCursor === cursor;
               });
         const startIndex =
           cursor === undefined
@@ -2641,13 +2642,13 @@ describe("RUN-04: agent run telemetry families", () => {
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD zero detail agent",
-      description: "Zero run detail reads.",
+      description: "Agent run detail reads.",
       visibility: "private",
     });
 
     const agentRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "zero run detail",
+      prompt: "agent run detail",
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(agentRun.runId);
@@ -2672,7 +2673,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const bareRun = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "zero run without snapshots",
+      prompt: "agent run without snapshots",
       modelProvider: "anthropic-api-key",
     });
 
@@ -2887,7 +2888,7 @@ describe("RUN-04: agent run telemetry families", () => {
     }
     expect(contextRead.body).toMatchObject({
       runId,
-      prompt: "zero run detail",
+      prompt: "agent run detail",
       cliAgentType: "claude-code",
       sessionId: "bdd-session-1",
       environment: { NODE_ENV: "production" },
@@ -3472,7 +3473,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
     // A claimed run's real Okou token reads the log surfaces by capability.
     const tokenRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
-      prompt: "zero token run",
+      prompt: "Okou run token log access",
       modelProvider: "anthropic-api-key",
     });
     const tokenClaim = await api.claimRunnerJob(tokenRun.runId);
@@ -3485,7 +3486,7 @@ describe("RUN-04/OPS-01: agent run logs", () => {
       {},
       [200],
     );
-    mustOk(tokenList, "the zero-token log list");
+    mustOk(tokenList, "the Okou-token log list");
     expect(
       tokenList.body.data.map((entry) => {
         return entry.id;

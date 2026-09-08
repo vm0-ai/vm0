@@ -120,9 +120,18 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
+    /// Optional gate that records and blocks every `start()` entry until released.
+    pub(crate) start_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) stop_behaviors: LifecycleBehaviors<()>,
+    /// Optional gate that blocks every `stop()` entry before its result is consumed.
+    pub(crate) stop_gate: Mutex<Option<MockLifecycleGate>>,
+    /// FIFO queue of kill behaviours consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    pub(crate) kill_behaviors: LifecycleBehaviors<()>,
+    /// Optional gate that blocks every `kill()` entry before its result is consumed.
+    pub(crate) kill_gate: Mutex<Option<MockLifecycleGate>>,
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default reusable outcome.
     pub(crate) park_behaviors: LifecycleBehaviors<SandboxParkOutcome>,
@@ -138,6 +147,8 @@ pub(crate) struct LifecycleOverrideState {
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     pub(crate) unpark_behaviors: LifecycleBehaviors<()>,
+    /// Optional gate that blocks every recorded `unpark()` entry until released.
+    pub(crate) unpark_gate: Mutex<Option<MockLifecycleGate>>,
     /// Optional gate that records and blocks every factory `destroy()` entry
     /// until released.
     pub(crate) destroy_gate: Mutex<Option<MockLifecycleGate>>,
@@ -148,6 +159,12 @@ pub(crate) struct LifecycleOverrideState {
     pub(crate) park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
     pub(crate) unpark_calls: Mutex<u32>,
+    /// Total terminal-only `unpark()` calls across all attached sandboxes.
+    pub(crate) terminal_unpark_calls: Mutex<u32>,
+    /// Total `stop()` calls across all attached sandboxes.
+    pub(crate) stop_calls: Mutex<u32>,
+    /// Total `kill()` calls across all attached sandboxes.
+    pub(crate) kill_calls: Mutex<u32>,
     /// Total factory `destroy()` calls across all factories built from this
     /// override set.
     pub(crate) destroy_calls: Mutex<u32>,
@@ -258,6 +275,8 @@ pub(crate) struct FactoryOverrideState {
     pub(crate) create_results: Mutex<VecDeque<Result<()>>>,
     /// Sandbox create configs observed across factories built with these overrides.
     pub(crate) create_configs: Mutex<Vec<SandboxConfig>>,
+    /// Optional gate that records and blocks every factory `create()` entry until released.
+    pub(crate) create_gate: Mutex<Option<MockLifecycleGate>>,
 }
 
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
@@ -771,6 +790,11 @@ impl MockSandboxOverrides {
         self.factory.create_configs.lock_ignoring_poison().clone()
     }
 
+    /// Block every factory `create()` call with a durable lifecycle gate.
+    pub fn set_create_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.factory.create_gate.lock_ignoring_poison() = Some(gate);
+    }
+
     /// Queue a `start()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_start_result(&self, result: Result<()>) {
@@ -778,6 +802,11 @@ impl MockSandboxOverrides {
             .start_results
             .lock_ignoring_poison()
             .push_back(result);
+    }
+
+    /// Block every `start()` call with a durable lifecycle gate.
+    pub fn set_start_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.start_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Return full run identities bound across all mock sandboxes.
@@ -814,6 +843,33 @@ impl MockSandboxOverrides {
     /// Used by runner tests to exercise panic-safe cleanup boundaries.
     pub fn push_stop_panic(&self, message: impl Into<String>) {
         self.lifecycle.stop_behaviors.push_panic(message);
+    }
+
+    /// Block every `stop()` call before consuming its queued result or panic.
+    pub fn set_stop_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.stop_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Queue a `kill()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_kill_result(&self, result: Result<()>) {
+        self.lifecycle.kill_behaviors.push_result(result);
+    }
+
+    /// Queue a `kill()` panic applied to the next factory-created sandbox.
+    /// Used by runner tests to exercise panic-safe cleanup boundaries.
+    pub fn push_kill_panic(&self, message: impl Into<String>) {
+        self.lifecycle.kill_behaviors.push_panic(message);
+    }
+
+    /// Block every `kill()` call before consuming its queued result or panic.
+    pub fn set_kill_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.kill_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Block every `unpark()` call after recording it and before consuming its result.
+    pub fn set_unpark_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.lifecycle.unpark_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue a `park()` result applied to the next factory-created sandbox.
@@ -889,6 +945,21 @@ impl MockSandboxOverrides {
     /// Total `unpark()` calls across all sandboxes built from this override set.
     pub fn unpark_call_count(&self) -> u32 {
         *self.lifecycle.unpark_calls.lock_ignoring_poison()
+    }
+
+    /// Total terminal-only `unpark()` calls across all attached sandboxes.
+    pub fn terminal_unpark_call_count(&self) -> u32 {
+        *self.lifecycle.terminal_unpark_calls.lock_ignoring_poison()
+    }
+
+    /// Total `stop()` calls across all attached sandboxes.
+    pub fn stop_call_count(&self) -> u32 {
+        *self.lifecycle.stop_calls.lock_ignoring_poison()
+    }
+
+    /// Total `kill()` calls across all attached sandboxes.
+    pub fn kill_call_count(&self) -> u32 {
+        *self.lifecycle.kill_calls.lock_ignoring_poison()
     }
 
     /// Total factory `destroy()` calls across all factories built from this

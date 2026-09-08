@@ -87,7 +87,7 @@ describe("unified run request contract", () => {
     },
   );
 
-  it("accepts only the canonical provider on internal Zero run requests", () => {
+  it("accepts only the canonical provider on internal agent run requests", () => {
     expect(
       runCreateBodySchema.safeParse({
         prompt: "run through Zero",

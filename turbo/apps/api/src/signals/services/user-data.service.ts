@@ -16,7 +16,7 @@ import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
 } from "@okouai/api-contracts/contracts/user-model-preference";
-import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
+import { isActiveRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { isImageModelId } from "@okouai/api-contracts/contracts/image-models";
 import { isVideoModelId } from "@okouai/api-contracts/contracts/video-models";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
@@ -124,6 +124,7 @@ export function userPreferences({
           orgMembersMetadata.cloudBrowserEnabledByDefault,
         theme: orgMembersMetadata.theme,
         colorTheme: orgMembersMetadata.colorTheme,
+        voiceInputModel: orgMembersMetadata.voiceInputModel,
         captureNetworkBodiesRemaining:
           orgMembersMetadata.captureNetworkBodiesRemaining,
       })
@@ -147,6 +148,7 @@ export function userPreferences({
         cloudBrowserEnabledByDefault: true,
         theme: null,
         colorTheme: null,
+        voiceInputModel: null,
         captureNetworkBodiesRemaining: 0,
       };
     }
@@ -165,6 +167,7 @@ export function userPreferences({
       cloudBrowserEnabledByDefault: row.cloudBrowserEnabledByDefault,
       theme: parseThemePreference(row.theme),
       colorTheme: parseColorTheme(row.colorTheme),
+      voiceInputModel: row.voiceInputModel,
       captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   });
@@ -193,7 +196,7 @@ export function userModelPreference({
       )
       .limit(1);
 
-    const selectedModel = isSupportedRunModel(row?.selectedModel)
+    const selectedModel = isActiveRunModel(row?.selectedModel)
       ? row.selectedModel
       : null;
     const serviceTier: ChatThreadServiceTier | null =
@@ -257,6 +260,10 @@ function mergeUserPreferences(
       existing.cloudBrowserEnabledByDefault,
     theme: preferences.theme ?? existing.theme ?? null,
     colorTheme: preferences.colorTheme ?? existing.colorTheme ?? null,
+    voiceInputModel:
+      preferences.voiceInputModel === undefined
+        ? existing.voiceInputModel
+        : preferences.voiceInputModel,
     captureNetworkBodiesRemaining:
       preferences.captureNetworkBodiesRemaining ??
       existing.captureNetworkBodiesRemaining,
@@ -286,6 +293,9 @@ function userPreferenceUpdateColumns(
     ...(preferences.theme !== undefined && { theme: preferences.theme }),
     ...(preferences.colorTheme !== undefined && {
       colorTheme: preferences.colorTheme,
+    }),
+    ...(preferences.voiceInputModel !== undefined && {
+      voiceInputModel: preferences.voiceInputModel,
     }),
     ...(preferences.captureNetworkBodiesRemaining !== undefined && {
       captureNetworkBodiesRemaining: preferences.captureNetworkBodiesRemaining,
@@ -332,6 +342,7 @@ export const updateUserPreferences$ = command(
         cloudBrowserEnabledByDefault: merged.cloudBrowserEnabledByDefault,
         theme: merged.theme,
         colorTheme: merged.colorTheme,
+        voiceInputModel: merged.voiceInputModel,
         captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
         createdAt: updatedAt,
         updatedAt,

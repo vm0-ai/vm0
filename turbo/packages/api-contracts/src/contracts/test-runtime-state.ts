@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import {
-  connectorRuntimeTargetsSchema,
-  piModelConfigV2Schema,
-} from "./runners";
+import { connectorRuntimeTargetsSchema } from "./runners";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 
 const c = initContract();
@@ -21,36 +18,36 @@ const builtInModelRuntimeRouteSchema = z.object({
 
 export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
-    action: z.literal("seed-vm0-built-in-default-model-key"),
+    action: z.literal("seed-built-in-default-model-key"),
     fixture_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("seed-vm0-built-in-model-key"),
-    fixture_id: z.uuid(),
-    selected_model: z.string(),
-  }),
-  z.object({
-    action: z.literal("delete-vm0-built-in-model-key"),
-    fixture_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("seed-vm0-built-in-model-candidate-keys"),
+    action: z.literal("seed-built-in-model-key"),
     fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("resolve-vm0-built-in-model-route"),
+    action: z.literal("delete-built-in-model-key"),
+    fixture_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("seed-built-in-model-candidate-keys"),
+    fixture_id: z.uuid(),
     selected_model: z.string(),
   }),
   z.object({
-    action: z.literal("set-vm0-built-in-candidate-cooldown"),
+    action: z.literal("resolve-built-in-model-route"),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
     unavailable_until: z.iso.datetime(),
   }),
   z.object({
-    action: z.literal("delete-vm0-built-in-candidate-cooldown"),
+    action: z.literal("delete-built-in-candidate-cooldown"),
     selected_model: z.string(),
     provider_type: z.string(),
     upstream_model: z.string(),
@@ -115,9 +112,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
-    action: z.literal("set-runner-job-pi-context-as-v2-writer"),
+    action: z.literal("set-runner-job-pi-context-as-versioned-writer"),
     run_id: z.uuid(),
-    pi_model_config: piModelConfigV2Schema,
+    // Stored rows can come from a future or invalid writer. The claim boundary
+    // must validate them, not this test-only fixture endpoint.
+    pi_model_config: z.record(z.string(), z.unknown()),
   }),
   z.object({
     action: z.literal("enable-queued-pi-ownership-transfer"),
@@ -265,10 +264,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("read-thread-session-conversation"),
-    thread_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("clear-thread-session-binding"),
     thread_id: z.uuid(),
   }),
   z.object({

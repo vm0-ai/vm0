@@ -3,18 +3,8 @@ import {
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
-import {
-  and,
-  eq,
-  inArray,
-  isNotNull,
-  lte,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, type SQL } from "drizzle-orm";
 
-import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 
@@ -22,8 +12,7 @@ const L = logger("connector-account-resolution");
 
 export type ConnectorAccountSelectionMode =
   | { readonly kind: "exact"; readonly sourceId: string }
-  | { readonly kind: "default" }
-  | { readonly kind: "target-only-client-singleton" };
+  | { readonly kind: "default" };
 
 export interface ConnectorAccountResolutionRequest {
   readonly target: ConnectorAccountTarget;
@@ -190,55 +179,6 @@ async function loadDefaultRows(
     );
 }
 
-async function loadTargetOnlyClientSingletonRows(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly requests: readonly ConnectorAccountResolutionRequest[];
-  },
-): Promise<readonly ConnectorAccountIdentityRow[]> {
-  const targets = args.requests.flatMap((request) => {
-    return request.selection.kind === "target-only-client-singleton"
-      ? [request.target]
-      : [];
-  });
-  if (targets.length === 0) {
-    return [];
-  }
-  const ranked = db.$with("target_only_connector_account_candidates").as(
-    db
-      .select({
-        ...identitySelection(),
-        selectionRank: sql`row_number() over (
-            partition by ${connectors.connectorSlug}, ${connectors.customConnectorId}
-            order by ${connectors.id}
-          )::integer`
-          .mapWith(pgIntegerDecoder)
-          .as("selection_rank"),
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          targetCondition(targets),
-        ),
-      ),
-  );
-  return await db
-    .with(ranked)
-    .select({
-      authMethod: ranked.authMethod,
-      connectorId: ranked.connectorId,
-      connectorSlug: ranked.connectorSlug,
-      customConnectorId: ranked.customConnectorId,
-      storageVersion: ranked.storageVersion,
-    })
-    .from(ranked)
-    .where(lte(ranked.selectionRank, 2));
-}
-
 function rowsByTarget(
   rows: readonly ConnectorAccountIdentityRow[],
 ): ReadonlyMap<string, readonly ConnectorAccountIdentityRow[]> {
@@ -279,24 +219,16 @@ export async function resolveConnectorAccounts(
     return new Map();
   }
   const normalizedRequests = [...requests.values()];
-  const [exactRows, defaultRows, targetOnlyClientSingletonRows] =
-    await Promise.all([
-      loadExactRows(db, { ...args, requests: normalizedRequests }),
-      loadDefaultRows(db, { ...args, requests: normalizedRequests }),
-      loadTargetOnlyClientSingletonRows(db, {
-        ...args,
-        requests: normalizedRequests,
-      }),
-    ]);
+  const [exactRows, defaultRows] = await Promise.all([
+    loadExactRows(db, { ...args, requests: normalizedRequests }),
+    loadDefaultRows(db, { ...args, requests: normalizedRequests }),
+  ]);
   const exactById = new Map(
     exactRows.map((row) => {
       return [row.connectorId, row] as const;
     }),
   );
   const defaultByTarget = rowsByTarget(defaultRows);
-  const targetOnlyClientSingletonByTarget = rowsByTarget(
-    targetOnlyClientSingletonRows,
-  );
   const resolutions = new Map<string, ConnectorAccountResolution>();
   for (const [key, request] of requests) {
     if (request.selection.kind === "exact") {
@@ -312,17 +244,9 @@ export async function resolveConnectorAccounts(
       );
       continue;
     }
-    const rows =
-      request.selection.kind === "default"
-        ? defaultByTarget.get(key)
-        : targetOnlyClientSingletonByTarget.get(key);
+    const rows = defaultByTarget.get(key);
     if (!rows || rows.length === 0) {
-      resolutions.set(
-        key,
-        request.selection.kind === "default"
-          ? { kind: "missing-default" }
-          : { kind: "missing" },
-      );
+      resolutions.set(key, { kind: "missing-default" });
     } else if (rows.length > 1) {
       resolutions.set(key, { kind: "ambiguous" });
     } else {
@@ -372,11 +296,6 @@ export async function resolveConnectorAccounts(
     defaultRequestCount: normalizedRequests.filter((request) => {
       return request.selection.kind === "default";
     }).length,
-    targetOnlyClientSingletonRequestCount: normalizedRequests.filter(
-      (request) => {
-        return request.selection.kind === "target-only-client-singleton";
-      },
-    ).length,
     ...outcomeCounts,
   });
   return resolutions;

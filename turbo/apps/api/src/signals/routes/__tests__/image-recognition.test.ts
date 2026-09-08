@@ -26,6 +26,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import { createRouteMocks } from "./helpers/route-test";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import { imageRecognitionRoutes } from "../image-recognition";
 import { usageRecordRoutes } from "../usage-record";
 
@@ -35,7 +36,7 @@ const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const STARTING_CREDITS = 1000;
 const EXPECTED_CHARGE = 3;
-const RECOGNITION_PRICING_ROWS = [
+const IMAGE_RECOGNITION_PRICING_ROWS = [
   {
     kind: "image-recognition",
     provider: "xiaomi/mimo-v2.5",
@@ -59,7 +60,7 @@ const RECOGNITION_PRICING_ROWS = [
   },
 ] as const;
 
-interface RecognitionActor extends ApiTestUser {
+interface ImageRecognitionActor extends ApiTestUser {
   readonly orgId: string;
   readonly runId: string;
 }
@@ -72,7 +73,7 @@ interface StoredObject {
 }
 
 function okouToken(
-  actor: RecognitionActor,
+  actor: ImageRecognitionActor,
   capabilities: readonly Capability[] = ["image-recognition:write"],
 ): string {
   return createRunsApi(context).okouTokenForRunWithCapabilities(
@@ -82,10 +83,10 @@ function okouToken(
   );
 }
 
-async function seedActor(): Promise<RecognitionActor> {
+async function seedImageRecognitionActor(): Promise<ImageRecognitionActor> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
-    throw new Error("Recognition tests require an organization");
+    throw new Error("Image recognition tests require an organization");
   }
   await seedOrgMetadata({
     orgId: actor.orgId,
@@ -93,7 +94,7 @@ async function seedActor(): Promise<RecognitionActor> {
     credits: STARTING_CREDITS,
   });
   const api = createRunsApi(context);
-  const name = `recognition-${randomUUID().slice(0, 8)}`;
+  const name = `image-recognition-${randomUUID().slice(0, 8)}`;
   const compose = await api.createDirectAgent(actor, {
     version: "1.0",
     agents: {
@@ -106,6 +107,40 @@ async function seedActor(): Promise<RecognitionActor> {
   const run = await api.createDirectRun(actor, {
     agentId: compose.agentId,
     prompt: "Recognize an uploaded image",
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role: actor.orgRole ?? "org:admin",
+        organization: { id: actor.orgId },
+        publicUserData: { userId: actor.userId },
+      },
+    ],
+  });
+  return { ...actor, orgId: actor.orgId, runId: run.runId };
+}
+
+async function seedAdmittedImageRecognitionActor(): Promise<ImageRecognitionActor> {
+  await seedBuiltInDefaultModelKey(context);
+  const bdd = createBddApi(context);
+  const api = createRunsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Image recognition tests require an organization");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.configureRunnerGroup();
+  const completed = await bdd.completeOnboarding(actor);
+  expect(completed.status).toBe(200);
+  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1 });
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Admitted recognition agent",
+    visibility: "private",
+  });
+  const run = await api.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "Recognize after credit exhaustion",
+    modelProvider: "built-in",
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
     data: [
@@ -136,7 +171,7 @@ function setStoredObjects(objects: readonly StoredObject[]): void {
   );
 }
 
-function requestRecognition(args: {
+function requestImageRecognition(args: {
   readonly token?: string;
   readonly fileId: string;
   readonly prompt?: string;
@@ -149,22 +184,24 @@ function requestRecognition(args: {
       ? { "x-vm0-client-request-id": args.clientRequestId }
       : {}),
   };
-  return setupApp({
+  const client = setupApp({
     context,
     routes: imageRecognitionRoutes,
     usagePricingResolution: args.usagePricingResolution,
-  })(imageRecognitionContract).recognize({
+  })(imageRecognitionContract);
+  const request = {
     headers,
     body: {
       fileId: args.fileId,
       prompt: args.prompt ?? "Describe this image",
     },
-  });
+  };
+  return client.imageRecognition(request);
 }
 
-async function createConfiguredRecognitionPricing(): Promise<UsagePricingFixture> {
+async function createConfiguredImageRecognitionPricing(): Promise<UsagePricingFixture> {
   const pricing = await createUsagePricingFixture({
-    configured: RECOGNITION_PRICING_ROWS,
+    configured: IMAGE_RECOGNITION_PRICING_ROWS,
   });
   onTestFinished(async () => {
     await pricing.cleanup();
@@ -172,9 +209,9 @@ async function createConfiguredRecognitionPricing(): Promise<UsagePricingFixture
   return pricing;
 }
 
-async function createMissingRecognitionPricing(): Promise<UsagePricingFixture> {
+async function createMissingImageRecognitionPricing(): Promise<UsagePricingFixture> {
   const pricing = await createUsagePricingFixture({
-    missing: RECOGNITION_PRICING_ROWS,
+    missing: IMAGE_RECOGNITION_PRICING_ROWS,
   });
   onTestFinished(async () => {
     await pricing.cleanup();
@@ -182,22 +219,22 @@ async function createMissingRecognitionPricing(): Promise<UsagePricingFixture> {
   return pricing;
 }
 
-async function seedBilling(
-  actor: RecognitionActor,
+async function seedImageRecognitionBilling(
+  actor: ImageRecognitionActor,
 ): Promise<UsagePricingFixture> {
   await seedOrgMetadata({
     orgId: actor.orgId,
     tier: "pro",
     credits: STARTING_CREDITS,
   });
-  return await createConfiguredRecognitionPricing();
+  return await createConfiguredImageRecognitionPricing();
 }
 
 function mockClerkUserLookup(): void {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
 }
 
-async function readUsageRecord(actor: RecognitionActor) {
+async function readUsageRecord(actor: ImageRecognitionActor) {
   mockClerkUserLookup();
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
@@ -216,7 +253,7 @@ async function readUsageRecord(actor: RecognitionActor) {
   return response.body.rows;
 }
 
-async function expectNoUsage(actor: RecognitionActor): Promise<void> {
+async function expectNoUsage(actor: ImageRecognitionActor): Promise<void> {
   await expect(
     store.set(
       readUsageStorageCounts$,
@@ -226,7 +263,7 @@ async function expectNoUsage(actor: RecognitionActor): Promise<void> {
   ).resolves.toStrictEqual({ raw: 0, hourly: 0 });
 }
 
-describe("POST /api/recognize", () => {
+describe("POST /api/image-recognition", () => {
   it("recognizes one owned image and settles each real invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
@@ -248,8 +285,8 @@ describe("POST /api/recognize", () => {
         });
       }),
     );
-    const actor = await seedActor();
-    const pricing = await seedBilling(actor);
+    const actor = await seedImageRecognitionActor();
+    const pricing = await seedImageRecognitionBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 1024 },
@@ -257,7 +294,7 @@ describe("POST /api/recognize", () => {
     const clientRequestId = randomUUID();
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
-      const response = await requestRecognition({
+      const response = await requestImageRecognition({
         token: okouToken(actor),
         fileId,
         prompt: "Read the warning",
@@ -308,21 +345,69 @@ describe("POST /api/recognize", () => {
     ]);
   });
 
+  it("continues an admitted run after credits are exhausted", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "An admitted run image." },
+            },
+          ],
+          usage: {
+            prompt_tokens: 3000,
+            completion_tokens: 1000,
+            prompt_tokens_details: { cached_tokens: 1000 },
+          },
+        });
+      }),
+    );
+    const actor = await seedAdmittedImageRecognitionActor();
+    const pricing = await createConfiguredImageRecognitionPricing();
+    await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
+    const fileId = randomUUID();
+    setStoredObjects([
+      { userId: actor.userId, id: fileId, filename: "screen.png", size: 1024 },
+    ]);
+
+    const response = await requestImageRecognition({
+      token: okouToken(actor),
+      fileId,
+      usagePricingResolution: pricing.resolution,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      text: "An admitted run image.",
+      metadata: { creditsCharged: EXPECTED_CHARGE },
+    });
+    await expect(
+      createRunsApi(context).readBillingStatus(actor),
+    ).resolves.toMatchObject({ credits: -EXPECTED_CHARGE });
+    await expect(readUsageRecord(actor)).resolves.toStrictEqual([
+      expect.objectContaining({
+        credits: EXPECTED_CHARGE,
+      }),
+    ]);
+  });
+
   it("enforces agent-only capability authorization before object access", async () => {
-    const actor = await seedActor();
+    const actor = await seedImageRecognitionActor();
     const fileId = randomUUID();
 
-    const unauthenticated = await requestRecognition({ fileId });
+    const unauthenticated = await requestImageRecognition({ fileId });
     expect(unauthenticated.status).toBe(401);
 
-    const missingCapability = await requestRecognition({
+    const missingCapability = await requestImageRecognition({
       token: okouToken(actor, ["file:write"]),
       fileId,
     });
     expect(missingCapability.status).toBe(403);
 
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const sessionResponse = await requestRecognition({
+    const sessionResponse = await requestImageRecognition({
       token: "clerk-session",
       fileId,
     });
@@ -331,7 +416,7 @@ describe("POST /api/recognize", () => {
   });
 
   it("rejects non-owned and invalid uploaded image metadata", async () => {
-    const actor = await seedActor();
+    const actor = await seedImageRecognitionActor();
     const otherUserFileId = randomUUID();
     const gifId = randomUUID();
     const emptyId = randomUUID();
@@ -361,7 +446,7 @@ describe("POST /api/recognize", () => {
       { fileId: oversizedId, status: 413, code: "IMAGE_TOO_LARGE" },
     ] as const;
     for (const testCase of cases) {
-      const response = await requestRecognition({
+      const response = await requestImageRecognition({
         token,
         fileId: testCase.fileId,
       });
@@ -382,15 +467,15 @@ describe("POST /api/recognize", () => {
         return HttpResponse.json({});
       }),
     );
-    const actor = await seedActor();
-    const configuredPricing = await createConfiguredRecognitionPricing();
+    const actor = await seedImageRecognitionActor();
+    const configuredPricing = await createConfiguredImageRecognitionPricing();
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.jpg", size: 100 },
     ]);
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
 
-    const noCredits = await requestRecognition({
+    const noCredits = await requestImageRecognition({
       token: okouToken(actor),
       fileId,
       usagePricingResolution: configuredPricing.resolution,
@@ -402,8 +487,8 @@ describe("POST /api/recognize", () => {
       tier: "pro",
       credits: STARTING_CREDITS,
     });
-    const missingPricing = await createMissingRecognitionPricing();
-    const noPricing = await requestRecognition({
+    const missingPricing = await createMissingImageRecognitionPricing();
+    const noPricing = await requestImageRecognition({
       token: okouToken(actor),
       fileId,
       usagePricingResolution: missingPricing.resolution,
@@ -435,14 +520,14 @@ describe("POST /api/recognize", () => {
         );
       }),
     );
-    const actor = await seedActor();
-    const pricing = await seedBilling(actor);
+    const actor = await seedImageRecognitionActor();
+    const pricing = await seedImageRecognitionBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "broken.png", size: 12 },
     ]);
 
-    const response = await requestRecognition({
+    const response = await requestImageRecognition({
       token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,
@@ -452,7 +537,7 @@ describe("POST /api/recognize", () => {
     expect(responseText).toContain("INVALID_IMAGE");
     expect(responseText).not.toContain("raw-provider-secret-detail");
 
-    const malformedType = await requestRecognition({
+    const malformedType = await requestImageRecognition({
       token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,
@@ -469,8 +554,8 @@ describe("POST /api/recognize", () => {
       { prompt_tokens: 10 },
       { completion_tokens: 10 },
     ] as const;
-    const actor = await seedActor();
-    const pricing = await seedBilling(actor);
+    const actor = await seedImageRecognitionActor();
+    const pricing = await seedImageRecognitionBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.webp", size: 12 },
@@ -490,7 +575,7 @@ describe("POST /api/recognize", () => {
           });
         }),
       );
-      const response = await requestRecognition({
+      const response = await requestImageRecognition({
         token: okouToken(actor),
         fileId,
         usagePricingResolution: pricing.resolution,
@@ -531,15 +616,15 @@ describe("POST /api/recognize", () => {
         });
       }),
     );
-    const actor = await seedActor();
-    const pricing = await seedBilling(actor);
+    const actor = await seedImageRecognitionActor();
+    const pricing = await seedImageRecognitionBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 12 },
     ]);
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
-      const response = await requestRecognition({
+      const response = await requestImageRecognition({
         token: okouToken(actor),
         fileId,
         usagePricingResolution: pricing.resolution,
@@ -555,8 +640,8 @@ describe("POST /api/recognize", () => {
 
   it("does not return text when settlement reports a billing error", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    const actor = await seedActor();
-    const pricing = await seedBilling(actor);
+    const actor = await seedImageRecognitionActor();
+    const pricing = await seedImageRecognitionBilling(actor);
     const pricingIdentity = pricing.resolution.find((entry) => {
       return (
         entry.kind === "image-recognition" &&
@@ -564,7 +649,9 @@ describe("POST /api/recognize", () => {
       );
     });
     if (!pricingIdentity) {
-      throw new Error("Recognition pricing fixture requires a lookup identity");
+      throw new Error(
+        "Image recognition pricing fixture requires a lookup identity",
+      );
     }
     server.use(
       http.post(OPENROUTER_URL, async () => {
@@ -589,7 +676,7 @@ describe("POST /api/recognize", () => {
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 12 },
     ]);
 
-    const response = await requestRecognition({
+    const response = await requestImageRecognition({
       token: okouToken(actor),
       fileId,
       usagePricingResolution: pricing.resolution,

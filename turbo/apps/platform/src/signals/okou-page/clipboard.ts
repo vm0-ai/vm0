@@ -4,9 +4,15 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { i18n } from "../../i18n/index.ts";
 import { CHAT_ATTACHMENT_HEADINGS } from "../../i18n/resources.ts";
-import { jsonParseOr, settle, throwIfAbort, withCleanup } from "../utils.ts";
+import {
+  isRecord,
+  jsonParseOr,
+  settle,
+  throwIfAbort,
+  withCleanup,
+} from "../utils.ts";
 
-const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-vm0-chat-message";
+const CHAT_MESSAGE_CLIPBOARD_ATTR = "data-okou-chat-message";
 
 export interface ChatClipboardAttachment {
   id: string | null;
@@ -20,10 +26,6 @@ export interface ChatClipboardPayload {
   text: string;
   attachments: ChatClipboardAttachment[];
   userMessage?: UserMessageDocument;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function isChatClipboardAttachment(
@@ -135,7 +137,7 @@ function formatMessageHtml(payload: ChatClipboardPayload): string {
     .map((attachment) => {
       const name = escapeHtml(attachment.filename);
       const url = escapeHtml(attachment.url);
-      return `<div><a href="${url}" data-vm0-attachment-id="${escapeHtml(attachment.id ?? "")}">${name}</a></div>`;
+      return `<div><a href="${url}" data-okou-attachment-id="${escapeHtml(attachment.id ?? "")}">${name}</a></div>`;
     })
     .join("");
   const attachmentsHtml = attachmentLinksHtml
@@ -296,6 +298,14 @@ export async function writeChatMessageToClipboard(
   }
 }
 
+function encodedChatMessageFromDocument(doc: Document): string | null {
+  return (
+    doc
+      .querySelector(`[${CHAT_MESSAGE_CLIPBOARD_ATTR}]`)
+      ?.getAttribute(CHAT_MESSAGE_CLIPBOARD_ATTR) ?? null
+  );
+}
+
 export function readChatMessageFromClipboard(
   clipboardData: DataTransfer,
 ): ChatClipboardPayload | null {
@@ -304,8 +314,7 @@ export function readChatMessageFromClipboard(
     return null;
   }
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const node = doc.querySelector(`[${CHAT_MESSAGE_CLIPBOARD_ATTR}]`);
-  const encoded = node?.getAttribute(CHAT_MESSAGE_CLIPBOARD_ATTR);
+  const encoded = encodedChatMessageFromDocument(doc);
   if (!encoded) {
     return null;
   }

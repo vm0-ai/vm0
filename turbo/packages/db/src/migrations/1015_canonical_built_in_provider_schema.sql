@@ -1,3 +1,0 @@
-ALTER TABLE "org_model_policies" DROP CONSTRAINT "chk_org_model_policies_builtin_route_no_provider_id";--> statement-breakpoint
-ALTER TABLE "org_model_policies" ALTER COLUMN "default_provider_type" SET DEFAULT 'built-in';--> statement-breakpoint
-ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_builtin_route_no_provider_id" CHECK (default_provider_type <> 'built-in' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL));

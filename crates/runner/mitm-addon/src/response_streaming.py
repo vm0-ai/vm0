@@ -46,7 +46,7 @@ _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
-_RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
+_RESPONSE_STREAM_CALLBACK = "_response_stream_callback"
 
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
 _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"
@@ -656,14 +656,12 @@ def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
 
     Called from ``response()`` before usage reporting. Pops
     ``_MODEL_JSON_USAGE_FINISH``, so repeated calls after the first are no-ops.
-    On success, writes ``metadata_keys.MODEL_PROVIDER_USAGE``; when a parser was
-    finalized, writes ``metadata_keys.MODEL_JSON_USAGE_FINALIZED`` so fallback
-    body parsing does not run. Parse failures are logged to ``proxy_log_path``.
+    On success, writes ``metadata_keys.MODEL_PROVIDER_USAGE``. Parse failures
+    are logged to ``proxy_log_path``.
     """
     finish = flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
     if finish is None:
         return
-    flow.metadata[metadata_keys.MODEL_JSON_USAGE_FINALIZED] = True
     usage_result, error = finish()
     if usage_result:
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_result

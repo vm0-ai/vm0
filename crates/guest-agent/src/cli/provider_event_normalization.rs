@@ -7,7 +7,8 @@ use crate::env::Framework;
 
 pub(super) fn normalize_for_sequencing(framework: Framework, event: Value) -> Vec<Value> {
     let events = match framework {
-        Framework::ClaudeCode | Framework::Pi => expand_message_content(event),
+        Framework::ClaudeCode => expand_message_content(event, false),
+        Framework::Pi => expand_message_content(event, true),
         Framework::Codex => expand_codex_file_changes(event),
     };
     events
@@ -59,7 +60,7 @@ fn codex_command_mut(event: &mut Value) -> Option<&mut Value> {
     item.get_mut("command")
 }
 
-fn expand_message_content(event: Value) -> Vec<Value> {
+fn expand_message_content(event: Value, retain_memory_citation_on_last: bool) -> Vec<Value> {
     let Value::Object(mut outer) = event else {
         return vec![event];
     };
@@ -81,13 +82,23 @@ fn expand_message_content(event: Value) -> Vec<Value> {
     }
 
     let blocks = std::mem::take(content);
+    let last_index = blocks.len() - 1;
+    let memory_citation = retain_memory_citation_on_last
+        .then(|| message.remove("memoryCitation"))
+        .flatten();
     let message = message.clone();
     blocks
         .into_iter()
-        .map(|block| {
+        .enumerate()
+        .map(|(index, block)| {
             let mut normalized_outer = outer.clone();
             let mut normalized_message = message.clone();
             normalized_message.insert("content".to_string(), Value::Array(vec![block]));
+            if index == last_index
+                && let Some(citation) = &memory_citation
+            {
+                normalized_message.insert("memoryCitation".to_string(), citation.clone());
+            }
             normalized_outer.insert("message".to_string(), Value::Object(normalized_message));
             Value::Object(normalized_outer)
         })
@@ -359,6 +370,37 @@ mod tests {
         assert_eq!(
             events[1].pointer("/message/content/0/name"),
             Some(&json!("Read"))
+        );
+    }
+
+    #[test]
+    fn pi_citation_metadata_stays_on_the_last_split_event() {
+        let events = normalize_for_sequencing(
+            Framework::Pi,
+            json!({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        { "type": "text", "text": "first" },
+                        { "type": "text", "text": "last" }
+                    ],
+                    "memoryCitation": {
+                        "entries": [{
+                            "path": "memory.md",
+                            "lineStart": 1,
+                            "lineEnd": 1,
+                            "note": "used"
+                        }],
+                        "rolloutIds": []
+                    }
+                }
+            }),
+        );
+        assert_eq!(events.len(), 2);
+        assert!(events[0].pointer("/message/memoryCitation").is_none());
+        assert_eq!(
+            events[1].pointer("/message/memoryCitation/entries/0/path"),
+            Some(&json!("memory.md"))
         );
     }
 }

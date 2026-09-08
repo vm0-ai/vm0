@@ -15,10 +15,9 @@ import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
 auth probe matrix. State is constructed only through public APIs (onboarding,
-CLI auth, and agents); the only mocks are the Clerk
-SDK boundary and the S3 accept for agent creation. Sandbox/zero/forged-PAT
-bearers are minted with the exported test token signers (api-bdd-github and
-api-bdd-computer-use precedent).
+CLI auth, and agents); the only mocks are the Clerk SDK boundary and the S3
+accept for agent creation. Sandbox, Okou run, and forged-PAT bearers are minted
+with the exported test token signers.
 */
 
 const context = testContext();
@@ -554,9 +553,9 @@ describe("AUTH-02 auth probe CLI PAT bearers", () => {
 describe("AUTH-01 sandbox and agent bearers", () => {
   it("resolves sandbox and agent bearers on the auth probe by capability opt-in", async () => {
     const sandboxActor = api.user();
-    const zeroMember = api.user();
-    const zeroAdmin = api.user();
-    const zeroOrphan = api.user();
+    const okouMember = api.user();
+    const okouAdmin = api.user();
+    const okouOrphan = api.user();
     cfg.mockSession(null);
 
     const sandbox = cfg.sandboxBearer(sandboxActor);
@@ -585,52 +584,49 @@ describe("AUTH-01 sandbox and agent bearers", () => {
       runId: sandbox.runId,
     });
 
-    const memberZero = cfg.zeroBearer(zeroMember, ["file:read"], "okou");
-    cfg.mockMembership(zeroMember, "org:member");
+    const memberOkou = cfg.okouBearer(okouMember, ["file:read"], "okou");
+    cfg.mockMembership(okouMember, "org:member");
     const memberProbe = await cfg.probeAuth(
-      { authorization: `Bearer ${memberZero.token}` },
+      { authorization: `Bearer ${memberOkou.token}` },
       { acceptAnySandboxCapability: "true" },
       [200],
     );
     expect(memberProbe.body).toStrictEqual({
       tokenType: "agent",
-      userId: zeroMember.userId,
-      orgId: zeroMember.orgId,
+      userId: okouMember.userId,
+      orgId: okouMember.orgId,
       orgRole: "member",
-      runId: memberZero.runId,
+      runId: memberOkou.runId,
       capabilities: ["file:read"],
-      publicBrand: "okou",
     });
 
-    const adminZero = cfg.zeroBearer(zeroAdmin, ["file:read", "file:write"]);
-    cfg.mockMembership(zeroAdmin, "org:admin");
+    const adminOkou = cfg.okouBearer(okouAdmin, ["file:read", "file:write"]);
+    cfg.mockMembership(okouAdmin, "org:admin");
     const adminProbe = await cfg.probeAuth(
-      { authorization: `Bearer ${adminZero.token}` },
+      { authorization: `Bearer ${adminOkou.token}` },
       { acceptAnySandboxCapability: "true" },
       [200],
     );
     expect(adminProbe.body).toStrictEqual({
       tokenType: "agent",
-      userId: zeroAdmin.userId,
-      orgId: zeroAdmin.orgId,
+      userId: okouAdmin.userId,
+      orgId: okouAdmin.orgId,
       orgRole: "admin",
-      runId: adminZero.runId,
+      runId: adminOkou.runId,
       capabilities: ["file:read", "file:write"],
-      publicBrand: "vm0",
     });
 
-    const orphanZero = cfg.zeroBearer(zeroOrphan, ["file:read"]);
-    cfg.mockMembership(zeroOrphan, null);
+    const orphanOkou = cfg.okouBearer(okouOrphan, ["file:read"]);
+    cfg.mockMembership(okouOrphan, null);
     const orphanProbe = await cfg.probeAuth(
-      { authorization: `Bearer ${orphanZero.token}` },
+      { authorization: `Bearer ${orphanOkou.token}` },
       { acceptAnySandboxCapability: "true" },
       [200],
     );
     expect(orphanProbe.body).toStrictEqual({
       tokenType: "agent",
-      userId: zeroOrphan.userId,
-      runId: orphanZero.runId,
-      publicBrand: "vm0",
+      userId: okouOrphan.userId,
+      runId: orphanOkou.runId,
     });
 
     const badSignature = await cfg.probeAuth(
@@ -650,7 +646,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     });
     cfg.mockMembership(admin, "org:admin");
 
-    const readCap = cfg.zeroBearer(admin, ["agent:read"]);
+    const readCap = cfg.okouBearer(admin, ["agent:read"]);
     const updated = await cfg.updateUserConnectors(
       { bearer: readCap.token },
       agent.agentId,
@@ -660,7 +656,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
     expect(readBack.enabledConnectorSlugs).toStrictEqual(["github"]);
 
-    const fileCap = cfg.zeroBearer(admin, ["file:read"]);
+    const fileCap = cfg.okouBearer(admin, ["file:read"]);
     const forbidden = await cfg.requestUpdateUserConnectors(
       { bearer: fileCap.token },
       agent.agentId,
@@ -709,9 +705,9 @@ describe("AUTH-01 sandbox and agent bearers", () => {
 
     cfg.mockClerkUsers([writeActor]);
     cfg.mockMembership(writeActor, null);
-    const zeroWrite = cfg.zeroBearer(writeActor, ["file:write"]);
-    const zeroWriteMe = await cfg.readMe({ bearer: zeroWrite.token });
-    expect(zeroWriteMe).toStrictEqual({
+    const okouWrite = cfg.okouBearer(writeActor, ["file:write"]);
+    const okouWriteMe = await cfg.readMe({ bearer: okouWrite.token });
+    expect(okouWriteMe).toStrictEqual({
       userId: writeActor.userId,
       email: writeActor.email,
       orgId: null,
@@ -719,9 +715,9 @@ describe("AUTH-01 sandbox and agent bearers", () => {
 
     cfg.mockClerkUsers([bareActor]);
     cfg.mockMembership(bareActor, null);
-    const zeroBare = cfg.zeroBearer(bareActor, []);
-    const zeroBareMe = await cfg.readMe({ bearer: zeroBare.token });
-    expect(zeroBareMe).toStrictEqual({
+    const okouBare = cfg.okouBearer(bareActor, []);
+    const okouBareMe = await cfg.readMe({ bearer: okouBare.token });
+    expect(okouBareMe).toStrictEqual({
       userId: bareActor.userId,
       email: bareActor.email,
       orgId: null,

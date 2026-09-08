@@ -9,7 +9,7 @@ import {
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
 
-export interface DraftAttachmentSnapshot extends PersistedAttachment {
+interface DraftAttachmentSnapshot extends PersistedAttachment {
   readonly annotatedFileId?: string;
   readonly annotations?: ImageAnnotation;
 }
@@ -42,19 +42,29 @@ export function buildDraftPersistencePayload(
           };
         })
       : null;
-  const hasUserMessageDraft =
+  const hasFallbackUserMessageDraft =
     content !== null ||
     source.generationTemplate !== undefined ||
     attachments !== null;
 
   let userMessage: UserMessageInputDocument | null = null;
-  if (hasUserMessageDraft) {
-    userMessage = source.editorDocument
-      ? source.editorDocument.toMessageDocument({
-          selectedTemplate: source.generationTemplate,
-          attachments: source.attachments,
-        })
-      : textToMessageDocument(source.input, undefined, source.attachments);
+  if (source.editorDocument) {
+    const serialized = source.editorDocument.toDraft({
+      selectedTemplate: source.generationTemplate,
+      attachments: source.attachments,
+    });
+    if (!serialized && hasFallbackUserMessageDraft) {
+      throw new Error("Failed to serialize composer draft");
+    }
+    if (serialized) {
+      userMessage = serialized.userMessage;
+    }
+  } else if (hasFallbackUserMessageDraft) {
+    userMessage = textToMessageDocument(
+      source.input,
+      undefined,
+      source.attachments,
+    );
     if (!userMessage) {
       throw new Error("Failed to serialize user-message draft");
     }

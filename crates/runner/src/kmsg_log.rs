@@ -1,7 +1,7 @@
 //! Monitor kernel log for iptables LOG entries from non-TCP VM traffic
 //! and write matching entries to per-run network JSONL files.
 //!
-//! The iptables rule added by `sandbox-fc` logs non-TCP packets with prefix
+//! The iptables rule added by `sandbox-firecracker` logs non-TCP packets with prefix
 //! `VM0:<peer_ip>:`. This module tails `dmesg -w`, parses those entries,
 //! and submits JSON rows through `NetworkLogManager` for per-run attribution
 //! and flushable file writes.
@@ -40,15 +40,21 @@ impl KmsgHandle {
         self.process.wait().await
     }
 
-    /// Kill the dmesg child when necessary and wait for it to be reaped.
-    pub(crate) async fn kill_and_reap_child(&mut self) {
-        self.process.kill_and_reap_child().await;
+    /// Start owned child cleanup without waiting for its completion.
+    pub(crate) fn start_child_cleanup(&mut self) {
+        self.process.start_child_cleanup();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_reap_gate(&mut self, gate: crate::child_cleanup::ReapGate) {
+        self.process.set_reap_gate(gate);
     }
 
     /// Stop the kmsg monitor and wait for cleanup.
-    pub async fn stop(self) {
-        self.process.stop().await;
+    pub async fn stop(self) -> crate::error::RunnerResult<()> {
+        self.process.stop().await?;
         info!("kmsg monitor stopped");
+        Ok(())
     }
 
     /// Create a noop handle for testing. No `dmesg` process is spawned.

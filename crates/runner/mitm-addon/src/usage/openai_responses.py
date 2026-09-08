@@ -5,11 +5,8 @@ model-provider usage billing:
 
 - SSE streams via ``create_openai_responses_sse_usage_extractor``, consumed by
   ``response_streaming.py`` for ``text/event-stream`` responses.
-- Non-streaming JSON bodies via ``create_openai_responses_json_usage_extractor``
-  for incremental parsing in ``response_streaming.py`` and
-  ``extract_openai_responses_usage_with_error_from_json`` for the
-  ``mitm_addon.py`` fallback used by legacy/test flows without
-  response-streaming parser state.
+- Non-streaming JSON bodies through provider field registration and result
+  mapping consumed by the shared response inspector in ``response_streaming.py``.
 - Single-frame WebSocket event JSON via
   ``inspect_openai_responses_client_event_json``,
   ``inspect_openai_responses_event_json``, and
@@ -27,11 +24,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
-from mitmproxy import http
-
-import body_decoding
 import openai_responses_events
-from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 
 from .json_probe import TopLevelStringFieldProbeResult, probe_top_level_string_field
 from .json_selective import (
@@ -982,50 +975,6 @@ class _OpenAIResponsesSseUsageHandler:
             self._extractor.feed(chunk[captured_len:])
 
 
-class OpenAIResponsesJsonUsageExtractor:
-    """Incrementally extract usage from content-decoded OpenAI Responses JSON.
-
-    Callers pass arbitrary JSON byte chunks to ``feed()`` and call ``finish()``
-    after the final chunk. HTTP content decoding and its errors are owned by the
-    caller.
-
-    ``finish()`` returns ``(usage, None)`` when a complete document produces at
-    least one valid platform usage category, including a category whose value is
-    zero. Non-empty model and response-id metadata accompany reportable usage.
-    It returns ``(None, error)`` when JSON parsing fails or an extractor bound is
-    exceeded, and ``(None, None)`` when a complete document has no reportable
-    usage category. Model or response-id metadata alone is not reportable.
-    """
-
-    def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(
-            scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS,
-            max_work_units=_RESPONSES_MAX_WORK_UNITS,
-        )
-
-    def feed(self, chunk: bytes) -> None:
-        self._extractor.feed(chunk)
-
-    def accepts_more_input(self) -> bool:
-        """Return whether the document parser can still consume input."""
-
-        return self._extractor.accepts_more_input()
-
-    def finish(self) -> tuple[dict | None, str | None]:
-        result = self._extractor.finish()
-        return model_json_usage_from_result(result)
-
-
-def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageExtractor:
-    """Create an incremental parser for content-decoded non-SSE Responses JSON.
-
-    The returned :class:`OpenAIResponsesJsonUsageExtractor` defines the
-    ``feed()`` / ``finish()`` lifecycle and result contract.
-    """
-
-    return OpenAIResponsesJsonUsageExtractor()
-
-
 def model_json_scalar_fields() -> dict:
     """Return Responses JSON fields selected for usage inspection."""
 
@@ -1044,45 +993,6 @@ def model_json_usage_from_result(
     if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
         return None, None
     return usage, None
-
-
-def _extract_openai_responses_usage_from_decoded_json_body(
-    body: bytes,
-) -> tuple[dict | None, str | None]:
-    if not body:
-        return None, None
-    extractor = create_openai_responses_json_usage_extractor()
-    extractor.feed(body)
-    return extractor.finish()
-
-
-def extract_openai_responses_usage_with_error_from_json(
-    body: bytes, headers: http.Headers | None
-) -> tuple[dict | None, str | None]:
-    """Extract usage from a complete non-streaming Responses JSON body.
-
-    ``headers`` may be mitmproxy response headers or ``None``. When headers are
-    provided, their content encoding controls one-shot decompression before
-    parsing; ``None`` skips decompression.
-
-    This is the diagnostic API: it returns ``(None, error)`` when decoding or
-    parsing fails, and ``(None, None)`` when the decoded body is empty or no
-    platform usage categories can be extracted from valid JSON. Otherwise
-    returns a dict keyed by platform model usage categories such as
-    ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_READ`` and ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
-    OpenAI ``input_tokens`` include cache reads and writes, so this extractor
-    partitions them into ordinary input, cache-read, and cache-creation categories
-    before reporting.
-    """
-
-    if headers:
-        body, decompress_error = body_decoding.decompress_json_usage_body(
-            body, headers, max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT
-        )
-        if decompress_error:
-            return None, decompress_error
-    return _extract_openai_responses_usage_from_decoded_json_body(body)
 
 
 def extract_openai_responses_usage_from_event(

@@ -1,7 +1,7 @@
 # React Commit Analysis
 
 This guide describes how to measure excessive React work, identify the state
-subscription that caused it, and reduce unnecessary work in the VM0 platform.
+subscription that caused it, and reduce unnecessary work in the Okou platform.
 The examples use `ccstate-react`, but the measurement method applies to any
 React external store.
 
@@ -69,7 +69,7 @@ loaded:
 (() => {
   const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   if (!hook) throw new Error("React DevTools hook is unavailable");
-  if (window.__vm0ReactCommitProfiler) return;
+  if (window.__okouReactCommitProfiler) return;
 
   const state = {
     profile: null,
@@ -94,7 +94,7 @@ loaded:
     return originalOnCommitFiberRoot?.apply(this, arguments);
   };
 
-  window.__vm0ReactCommitProfiler = {
+  window.__okouReactCommitProfiler = {
     start() {
       state.profile = {
         startedAt: performance.now(),
@@ -110,7 +110,7 @@ loaded:
     },
     uninstall() {
       hook.onCommitFiberRoot = originalOnCommitFiberRoot;
-      delete window.__vm0ReactCommitProfiler;
+      delete window.__okouReactCommitProfiler;
     },
   };
 })();
@@ -119,13 +119,13 @@ loaded:
 Start immediately before the measured action:
 
 ```js
-window.__vm0ReactCommitProfiler.start();
+window.__okouReactCommitProfiler.start();
 ```
 
 After the run finishes, retain both the total and timeline:
 
 ```js
-const result = window.__vm0ReactCommitProfiler.stop();
+const result = window.__okouReactCommitProfiler.stop();
 result;
 ```
 

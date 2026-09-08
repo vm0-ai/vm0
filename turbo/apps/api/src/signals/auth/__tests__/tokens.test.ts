@@ -78,29 +78,13 @@ describe("auth tokens", () => {
       orgId: "org_sandbox",
       runId: "run_sandbox",
     });
+    expect(verifyOkouToken(sandboxToken)).toBeNull();
     expect(verifyOkouToken(okouToken)).toStrictEqual({
       userId: "user_okou",
       orgId: "org_okou",
       runId: "run_okou",
       capabilities: ["file:write"],
-      publicBrand: "vm0",
     });
-  });
-
-  it("rejects a run token minted with the retired zero scope", () => {
-    const nowSeconds = currentSecond();
-    const retiredScopeToken = signSandboxJwtForTests({
-      scope: "zero",
-      userId: "user_zero",
-      orgId: "org_zero",
-      runId: "run_zero",
-      capabilities: ["file:read"],
-      iat: nowSeconds,
-      exp: nowSeconds + 60,
-    });
-
-    expect(isSandboxToken(retiredScopeToken)).toBeTruthy();
-    expect(verifyOkouToken(retiredScopeToken)).toBeNull();
   });
 
   it("generates a run token with the okou scope behind the sandbox prefix", () => {
@@ -109,7 +93,6 @@ describe("auth tokens", () => {
     expect(okouToken).toMatch(/^vm0_sandbox_/u);
     expect(decodeOkouTokenPayloadForTest(okouToken)).toMatchObject({
       scope: "okou",
-      publicBrand: "vm0",
     });
     expect(verifyOkouToken(okouToken)).toMatchObject({
       userId: "user_okou",
@@ -128,7 +111,6 @@ describe("auth tokens", () => {
       "org_shared",
       { [FeatureSwitchKey.Banking]: true },
       {
-        publicBrand: "okou",
         computerUseHostId,
         cloudBrowserEnabled: true,
         imageRecognitionAvailable: true,
@@ -141,7 +123,6 @@ describe("auth tokens", () => {
     const okouPayload = decodeOkouTokenPayloadForTest(okouToken);
     expect(okouPayload).toMatchObject({
       scope: "okou",
-      publicBrand: "okou",
       userId: "user_shared",
       runId: "run_shared",
       orgId: "org_shared",
@@ -165,7 +146,6 @@ describe("auth tokens", () => {
       userId: "user_shared",
       runId: "run_shared",
       orgId: "org_shared",
-      publicBrand: "okou",
       computerUseHostId,
       cloudBrowserEnabled: true,
       customConnectorSourceIds: {
@@ -191,7 +171,6 @@ describe("auth tokens", () => {
       orgId: "org_okou",
       runId: "run_okou",
       capabilities: ["file:read", "file:write"],
-      publicBrand: "vm0",
     });
   });
 
@@ -269,6 +248,18 @@ describe("auth tokens", () => {
     expect(verifyOkouToken(enabledToken)?.capabilities).toContain(
       "banking:read",
     );
+  });
+
+  it("gates Slack read capability without changing Slack write access", () => {
+    const disabled = generateOkouToken("user_slack", "run_slack", "org_slack", {
+      [FeatureSwitchKey.SlackRead]: false,
+    });
+    const enabled = generateOkouToken("user_slack", "run_slack", "org_slack", {
+      [FeatureSwitchKey.SlackRead]: true,
+    });
+    expect(verifyOkouToken(disabled)?.capabilities).not.toContain("slack:read");
+    expect(verifyOkouToken(disabled)?.capabilities).toContain("slack:write");
+    expect(verifyOkouToken(enabled)?.capabilities).toContain("slack:read");
   });
 
   it("grants social capability by default", () => {

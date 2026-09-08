@@ -17,13 +17,13 @@ export default [
       "src/**/*.spec.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   {
     files: ["src/index.ts", "src/node.ts"],
     rules: {
-      "vm0/no-re-export": "off",
+      "okou/no-re-export": "off",
     },
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),

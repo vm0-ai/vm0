@@ -48,7 +48,7 @@ export function ProviderIcon({
       alt=""
       className={cn(
         "shrink-0",
-        providerIconNeedsDarkInvert(type) && "zero-icon-mono",
+        providerIconNeedsDarkInvert(type) && "okou-icon-mono",
       )}
     />
   );

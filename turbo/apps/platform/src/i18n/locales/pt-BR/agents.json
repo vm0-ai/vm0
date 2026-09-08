@@ -36,22 +36,19 @@
     },
     "create": "Criar avatar personalizado",
     "description": "Escolha um estilo ou embaralhe para ter uma surpresa.",
-    "intensity": {
-      "chill": "Tranquilo",
-      "hyped": "Animado",
-      "normal": "Normal"
-    },
+    "editDescription": "Ajuste qualquer detalhe ou embaralhe para um novo visual.",
+    "editTitle": "Editar avatar",
     "nextStep": "Próxima etapa",
     "previousStep": "Etapa anterior",
     "randomize": "Gerar avatar aleatório",
     "shuffleHint": "Embaralhe e experimente um visual aleatório!",
     "steps": {
-      "angle": "Ângulo",
       "color": "Cor",
       "face": "Rosto",
       "hair": "Cabelo",
       "mood": "Humor",
-      "skin": "Pele"
+      "skin": "Pele",
+      "sweater": "Suéter"
     },
     "title": "Dê um rosto ao seu agente",
     "use": "Usar este avatar"
@@ -74,7 +71,6 @@
   "detail": {
     "chatWith": "Conversar com {{agentName}}",
     "defaultDescription": "Seu colega de equipe de IA, ajustado para você",
-    "noSelection": "Nenhum agente selecionado",
     "notFound": {
       "back": "Voltar para a equipe",
       "description": "O agente “{{agentId}}” não existe ou você não tem acesso a ele.",
@@ -617,8 +613,9 @@
     "resultCount_other": "{{count}} resultados",
     "searchAgents": "Buscar agentes...",
     "searching": "Pesquisando...",
-    "searchWorkspace": "Buscar chats, mensagens, fluxos de trabalho e artefatos...",
+    "searchWorkspace": "Pesquisar no espaço de trabalho...",
     "sections": {
+      "agents": "Agentes",
       "artifacts": "Artefatos",
       "chats": "Conversas",
       "messages": "Mensagens",

@@ -7,6 +7,7 @@ import {
   type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GoogleCalendarAutomationEventConfig,
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
@@ -31,6 +32,7 @@ import {
   type WorkflowAutomationCreateRequest,
   type WorkflowAutomationSummary,
   type WorkflowUpdateRequest,
+  type WorkflowAutomationUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
 import { MORNING_BRIEF_OFFICIAL_DEFINITION_NAME } from "@okouai/api-contracts/contracts/morning-brief-preference";
 
@@ -72,7 +74,7 @@ export interface WorkflowCopyFormState {
   readonly removeOriginal: boolean;
 }
 
-export type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
+type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 export type GmailTextOperator = "contains" | "containsAny" | "doesNotContain";
 export type GmailMatchField = GmailTextField | "threadId";
 export type GmailMatchOperator = GmailTextOperator | "is";
@@ -128,9 +130,30 @@ type WorkflowWebhookAutomationSummary = Extract<
   WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
+export type GoogleCalendarWorkflowAutomationSummary = Extract<
+  WorkflowAutomationSummary,
+  {
+    readonly kind: "event";
+    readonly eventType:
+      | "google-calendar-event-created"
+      | "google-calendar-event-updated"
+      | "google-calendar-event-cancelled";
+  }
+>;
 export type WorkflowAutomationEntry = WorkflowAutomationsListEntry;
 const WORKFLOW_DETAIL_FILE_PARAM = "file";
 const WORKFLOW_AUTOMATION_TARGET_PARAM = "automationId";
+
+export function isGoogleCalendarWorkflowAutomation(
+  automation: WorkflowAutomationSummary,
+): automation is GoogleCalendarWorkflowAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    (automation.eventType === "google-calendar-event-created" ||
+      automation.eventType === "google-calendar-event-updated" ||
+      automation.eventType === "google-calendar-event-cancelled")
+  );
+}
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   switch (route) {
@@ -233,6 +256,7 @@ const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
 );
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowAutomationId$ = state<string | null>(null);
+const internalEditingGoogleCalendarId$ = state("");
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
@@ -436,6 +460,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowAutomationId$, null);
+  set(internalEditingGoogleCalendarId$, "");
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowAutomationCreateDialog$, null);
   set(internalCreatedWorkflowWebhookAutomation$, null);
@@ -482,6 +507,16 @@ export const setEditingWorkflowAutomationId$ = command(
       set(internalEditingGmailMatchConditions$, {});
     }
     set(internalEditingWorkflowAutomationId$, automationId);
+  },
+);
+
+export const editingGoogleCalendarId$ = computed((get) => {
+  return get(internalEditingGoogleCalendarId$);
+});
+
+export const setEditingGoogleCalendarId$ = command(
+  ({ set }, calendarId: string) => {
+    set(internalEditingGoogleCalendarId$, calendarId);
   },
 );
 
@@ -771,20 +806,53 @@ export const allWorkflowAutomationEntries$ = computed(
   },
 );
 
+/** One response owner per workflow and reload generation. */
+const currentWorkflowDetailResource$ = computed((get) => {
+  get(workflowReloadVersion$);
+  const workflowId = get(currentWorkflowId$);
+  if (!workflowId) {
+    return null;
+  }
+  const client = get(apiClient$)(workflowsDetailContract);
+  const read = async (
+    signal?: AbortSignal,
+  ): Promise<WorkflowDetailResponse | null> => {
+    const result = await accept(
+      client.get({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    signal?.throwIfAborted();
+    return result.status === 404 ? null : result.body;
+  };
+  const response$ = state<Promise<WorkflowDetailResponse | null>>(read());
+  const refresh$ = command(async ({ set }, signal: AbortSignal) => {
+    const detail = await read(signal);
+    signal.throwIfAborted();
+    // Publish only authoritative successful reads. Failed/cancelled confirmation
+    // stays in its command loadable while the page retains the last real warning.
+    set(response$, Promise.resolve(detail));
+    return detail;
+  });
+  return { response$, refresh$ };
+});
+
 /** The workflow detail derived from the active route. */
 export const currentWorkflowDetail$ = computed(
   async (get): Promise<WorkflowDetailResponse | null> => {
-    get(workflowReloadVersion$);
-    const workflowId = get(currentWorkflowId$);
-    if (!workflowId) {
-      return null;
-    }
-    const client = get(apiClient$)(workflowsDetailContract);
-    const result = await accept(
-      client.get({ params: { workflowId } }),
-      [200, 404],
-    );
-    return result.status === 404 ? null : result.body;
+    const resource = get(currentWorkflowDetailResource$);
+    return resource ? await get(resource.response$) : null;
+  },
+);
+
+/** Refresh the same summary the open page renders, owned by the caller. */
+export const reloadCurrentWorkflowDetail$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const resource = get(currentWorkflowDetailResource$);
+    return resource ? await set(resource.refresh$, signal) : null;
   },
 );
 
@@ -1388,20 +1456,21 @@ export const revealWorkflowWebhookSecret$ = command(
   },
 );
 
-export const updateWorkflowGmailNewMessageAutomation$ = command(
+export const updateWorkflowAutomationEventConfig$ = command(
   async (
     { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GmailNewMessageEventConfig;
-    },
+    input: { readonly automationId: string } & Extract<
+      WorkflowAutomationUpdateRequest,
+      { readonly eventConfig: unknown }
+    >,
     signal: AbortSignal,
   ) => {
+    const { automationId, ...body } = input;
     const client = get(apiClient$)(workflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
+        params: { id: automationId },
+        body,
         fetchOptions: { signal },
       }),
       [200],
@@ -1411,77 +1480,38 @@ export const updateWorkflowGmailNewMessageAutomation$ = command(
   },
 );
 
-export const updateWorkflowGmailLabelAppliedAutomation$ = command(
+export const updateWorkflowGoogleCalendarAutomationEventConfig$ = command(
   async (
     { get, set },
     input: {
       readonly automationId: string;
-      readonly eventConfig: GmailLabelAppliedEventConfig;
+      readonly eventConfig: GoogleCalendarAutomationEventConfig;
     },
     signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
+  ): Promise<GoogleCalendarWorkflowAutomationSummary> => {
+    await set(updateWorkflowAutomationEventConfig$, input, signal);
+    const detail = await get(currentWorkflowDetail$);
     signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const updateWorkflowGithubWorkflowRunCompletedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig: GithubWorkflowRunCompletedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const updateWorkflowGithubWebhookAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly automationId: string;
-      readonly eventConfig:
-        | GithubPullRequestEventConfig
-        | GithubWorkflowJobCompletedEventConfig
-        | GithubPullRequestReviewSubmittedEventConfig
-        | GithubDeploymentStatusCreatedEventConfig
-        | GithubIssueCommentCreatedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.update({
-        params: { id: input.automationId },
-        body: { eventConfig: input.eventConfig },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
+    const automation = detail?.automations.find((candidate) => {
+      return candidate.id === input.automationId;
+    });
+    const eventMatches =
+      automation?.kind === "event" &&
+      ((automation.eventType === "google-calendar-event-created" &&
+        input.eventConfig.event === "event_created") ||
+        (automation.eventType === "google-calendar-event-updated" &&
+          input.eventConfig.event === "event_updated") ||
+        (automation.eventType === "google-calendar-event-cancelled" &&
+          input.eventConfig.event === "event_cancelled"));
+    if (
+      !automation ||
+      !isGoogleCalendarWorkflowAutomation(automation) ||
+      !eventMatches ||
+      automation.warning !== undefined
+    ) {
+      throw new Error("Google Calendar automation recovery did not complete");
+    }
+    return automation;
   },
 );
 

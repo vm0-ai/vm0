@@ -24,5 +24,5 @@ mod port;
 mod proxy;
 
 pub(crate) use log::{DnsReadinessLogObservation, inspect_readiness_log_segment};
-pub(crate) use port::reserve_port;
+pub(crate) use port::{DnsPortReservation, reserve_port};
 pub use proxy::{DnsProxy, start_on_reserved_port};

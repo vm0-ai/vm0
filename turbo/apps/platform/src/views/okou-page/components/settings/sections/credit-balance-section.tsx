@@ -373,7 +373,7 @@ function UsagePackMemberCard({ row }: { row: UsagePackMemberRow }) {
     <div
       role="listitem"
       data-testid={`usage-pack-member-credit-${member.userId}`}
-      className="overflow-hidden rounded-xl bg-card zero-border"
+      className="overflow-hidden rounded-xl bg-card okou-border"
     >
       <div className="px-5 py-4">
         <UsagePackMemberHeader credits={credits} member={member} />
@@ -501,7 +501,7 @@ function UsagePackMemberBalancesDialog({
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="zero-app flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        className="okou-app flex max-h-[85vh] max-w-3xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="shrink-0 border-b border-border/70 px-6 pb-4 pt-6">
           <DialogTitle>
@@ -577,7 +577,7 @@ function UsagePackCreditCard({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div
       data-testid="usage-pack-credit-card"
-      className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
+      className="overflow-hidden rounded-xl bg-card px-5 py-4 okou-border"
     >
       {creditsLoadable.state === "loading" && !data ? (
         <div className="space-y-2">
@@ -635,7 +635,6 @@ export function CreditBalanceSection() {
     <CreditBalanceCard
       onBuyCredits={goToBuyCredits}
       onComparePlans={goToComparePlans}
-      splitLayout
     />
   );
 

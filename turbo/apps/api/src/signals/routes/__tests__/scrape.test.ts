@@ -28,7 +28,11 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 
 const context = testContext();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
@@ -43,9 +47,19 @@ interface AuthHeaders {
 }
 
 interface RawScrapeRequestOptions {
+  readonly authHeaders?: AuthHeaders;
   readonly instanceSignal?: AbortSignal;
   readonly requestSignal?: AbortSignal;
   readonly usagePricingResolution?: UsagePricingFixture["resolution"];
+}
+
+class ClerkApiResponseTestError extends Error {
+  static readonly kind = "ClerkAPIResponseError";
+  readonly code = "api_response_error";
+
+  constructor(readonly status: number) {
+    super("Clerk request failed for user_sensitive and org_sensitive");
+  }
 }
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -89,7 +103,7 @@ async function rawScrapeRequest(
   const request = new Request("http://api.test/api/scrape", {
     method: "POST",
     headers: {
-      ...authenticate(actor),
+      ...(options.authHeaders ?? authenticate(actor)),
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
@@ -116,6 +130,26 @@ async function setActorCredits(
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await bootstrapOnboarding(actor);
   await setActorCredits(actor, 1000);
+}
+
+async function createAdmittedScrapeRun(actor: ApiTestUser): Promise<string> {
+  await seedBuiltInDefaultModelKey(context);
+  const bdd = createBddApi(context);
+  const runs = createRunsApi(context);
+  bdd.acceptAgentStorageWrites();
+  runs.configureRunnerGroup();
+  await bootstrapOnboarding(actor);
+  await setActorCredits(actor, 1);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Admitted scrape agent",
+    visibility: "private",
+  });
+  const run = await runs.createRun(actor, {
+    agentId: agent.agentId,
+    prompt: "Scrape after credit exhaustion",
+    modelProvider: "built-in",
+  });
+  return run.runId;
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -212,6 +246,213 @@ describe("okou scrape route", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: scrape:read",
     );
+  });
+
+  it("retries a transient Clerk membership failure before scraping with a CLI PAT", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    await fundActor(actor);
+    mockClerkMembership(context, actor, "org:admin");
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValueOnce(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: { sourceURL: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledOnce();
+    expect(firecrawlRequests).toBe(1);
+  });
+
+  it("returns a sanitized 503 when Clerk membership reads remain unavailable", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        usagePricingResolution: pricing.resolution,
+      },
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Authentication provider is temporarily unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(firecrawlRequests).toBe(0);
+    expect(afterCredits).toBe(beforeCredits);
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
+      "Clerk read unavailable during scrape authentication",
+      expect.objectContaining({
+        type: "provider_unavailable",
+        provider: "clerk",
+        provider_status: 521,
+        failure_class: "transient_read_exhausted",
+        method: "POST",
+        route: "/api/scrape",
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.error.mock.calls),
+    ).not.toContain("sensitive");
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("stops Clerk membership retries when the API instance is aborted", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    const controller = new AbortController();
+    const retryStarted = createDeferredPromise<void>(context.signal);
+    const abortError = new Error("client disconnected during Clerk retry");
+    abortError.name = "AbortError";
+    await fundActor(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+    context.mocks.signalTimers.delay.mockImplementation((_ms, options) => {
+      retryStarted.resolve(undefined);
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Expected Clerk retry delay to receive a signal");
+      }
+      return createDeferredPromise<void>(signal).promise;
+    });
+
+    const responsePromise = rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      {
+        authHeaders: { authorization: `Bearer ${token}` },
+        instanceSignal: controller.signal,
+      },
+    );
+    await retryStarted.promise;
+    controller.abort(abortError);
+    const response = await responsePromise;
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.users.getOrganizationMembershipList,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps successful Clerk membership misses on the unauthorized path", async () => {
+    const actor = createBddApi(context).user();
+    const { token } =
+      await createAuthOrgAgentsBddApi(context).createCliToken(actor);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { authHeaders: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(401);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("does not classify direct Clerk session failures as exhausted reads", async () => {
+    context.mocks.clerk.authenticateRequest.mockRejectedValue(
+      new ClerkApiResponseTestError(521),
+    );
+
+    const response = await rawScrapeRequest(
+      null,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { authHeaders: { authorization: "Bearer clerk-session" } },
+    );
+
+    expect(response.status).toBe(500);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).toHaveBeenCalledOnce();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalledWith(
+      "Clerk read unavailable during scrape authentication",
+      expect.anything(),
+    );
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
   });
 
   it("rejects scrape requests when the provider is not configured", async () => {
@@ -397,6 +638,93 @@ describe("okou scrape route", () => {
     const response = await accept(
       client(pricing.resolution)(scrapeContract).scrape({
         headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(firecrawlRequests).toBe(0);
+  });
+
+  it("continues an admitted run after credits are exhausted", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    const runId = await createAdmittedScrapeRun(actor);
+    await setActorCredits(actor, 0);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Admitted run",
+            metadata: { sourceURL: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+    const token = createRunsApi(context).okouTokenForRunWithCapabilities(
+      actor,
+      runId,
+      ["scrape:read"],
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(scrapeContract).scrape({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      creditsCharged: 4,
+      result: { markdown: "# Admitted run" },
+    });
+    await expect(credits(actor)).resolves.toBe(-4);
+  });
+
+  it("does not let admitted runs bypass plan suspension", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    configureProvider();
+    const pricing = await createScrapePricingFixture();
+    const runId = await createAdmittedScrapeRun(actor);
+    if (!actor.orgId) {
+      throw new Error("Scrape test actor must belong to an organization");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    let firecrawlRequests = 0;
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+    const token = createRunsApi(context).okouTokenForRunWithCapabilities(
+      actor,
+      runId,
+      ["scrape:read"],
+    );
+
+    const response = await accept(
+      client(pricing.resolution)(scrapeContract).scrape({
+        headers: { authorization: `Bearer ${token}` },
         body: {
           url: "https://example.com/page",
           format: "markdown",

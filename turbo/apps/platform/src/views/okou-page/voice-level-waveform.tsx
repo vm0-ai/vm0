@@ -1,4 +1,4 @@
-import type { VoiceLevelSample } from "../../signals/voice-io/voice-io-stt.ts";
+import type { VoiceLevelSample } from "../../signals/voice-io/voice-draft-capture.ts";
 
 export function VoiceLevelWaveform({
   samples,

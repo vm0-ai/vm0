@@ -6,10 +6,13 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
   type PiMemoryRecallSelection,
+  type PiMemoryPhase2Maintenance,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
-  type PiModelConfigLegacy as PiModelConfig,
+  type PiModelConfig,
+  type PiModelConfigLegacy,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
   piMemoryRecallSelectionSchema,
@@ -40,7 +43,7 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   hasAuthMethods,
   isBuiltInModelProviderType,
   isSupportedRunModel,
@@ -97,7 +100,6 @@ import {
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@okouai/core/github-url";
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
@@ -105,7 +107,11 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import { SEED_SKILLS, GOAL_SKILL_NAME } from "@okouai/core/seed-skills";
+import {
+  GOAL_SKILL_NAME,
+  INTRO_VIDEO_SKILL_NAME,
+  SEED_SKILLS,
+} from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -122,6 +128,7 @@ import { connectors } from "@okouai/db/schema/connector";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import type {
   AgentRunLaunchSnapshot,
@@ -177,6 +184,10 @@ import {
 } from "../../lib/error";
 import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypass";
 import { previewAutomationBypass$ } from "../context/hono";
+import {
+  systemSkillStorageResolution$,
+  type SystemSkillStorageResolution,
+} from "../context/system-skill-storage-resolution";
 import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
@@ -248,7 +259,7 @@ import {
 } from "./pi-resource-snapshot.service";
 import { readMemorySummaryProjection } from "./memory-summary-projection.service";
 import {
-  PI_API_FIRST_TURN_TIMEOUT_MS,
+  PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
   PI_API_FIRST_TURN_URL_TTL_SECONDS,
   piApiFirstTurnObjectKey,
   requirePiApiFirstTurnExecutionContext,
@@ -303,6 +314,7 @@ import {
   type QueueFirstRunSessionSnapshotState,
 } from "./chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./chat-first-assistant-event-metric.service";
+import { bindPiMemoryPhase2MaintenanceRun } from "./pi-memory-phase2-maintenance.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { resolveMediaModelsForRun } from "./run-media-model.service";
 import {
@@ -338,11 +350,14 @@ import {
   type RunMetadataValues,
 } from "./agent-run-metadata-write.service";
 import {
-  hasIncompatibleBuiltInModelRuntimeRoute,
   builtInModelRuntimeTarget,
-  type ModelRuntimeSessionRoute,
   type BuiltInModelRuntimeRoute,
 } from "./built-in-model-runtime-route.service";
+
+import {
+  canReuseSession,
+  type SessionExecutionIdentity,
+} from "./session-compatibility";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -390,7 +405,7 @@ type DbTransaction = Tx;
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
-  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou image-recognition --file <image-path> --prompt "<instruction>"`.';
 const RESTRICTED_EXPLICIT_CONTENT_PROMPT = [
   "# Restricted Explicit Content",
   "",
@@ -449,7 +464,7 @@ function withOkouTokenSecret(
   return {
     ...body,
     secrets: {
-      ...withoutLegacyZeroEntries(body.secrets),
+      ...withoutLegacyAgentRunEnvironmentEntries(body.secrets),
       OKOU_TOKEN: okouToken,
     },
   };
@@ -583,10 +598,23 @@ interface ResolvedAgentExecution {
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
-  readonly resumeSessionModelRoute?: ModelRuntimeSessionRoute;
+  readonly resumeSessionIdentity?: SessionExecutionIdentity;
 }
 
+interface ResolvedPrivateMaintenanceExecution extends Omit<
+  ResolvedAgentExecution,
+  "agentId" | "agentName"
+> {
+  readonly agentId: null;
+  readonly agentName?: never;
+}
+
+type ResolvedRunExecution =
+  | ResolvedAgentExecution
+  | ResolvedPrivateMaintenanceExecution;
+
 interface ProductAgentExecutionPlan {
+  readonly identity: "agent" | "pi-memory-phase2-maintenance";
   readonly content: AgentExecutionConfig;
 }
 
@@ -842,6 +870,7 @@ export function isThreadSessionSnapshotStale(
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly creditAdmitted: boolean;
   readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
@@ -876,7 +905,9 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
-  readonly credentialHeader?: NonNullable<PiModelConfig["credentialHeader"]>;
+  readonly credentialHeader?: NonNullable<
+    PiModelConfigLegacy["credentialHeader"]
+  >;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -986,6 +1017,8 @@ export interface CreateAgentRunArgs {
   readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
+  /** Immutable Intro Video eligibility captured with the caller's switch context. */
+  readonly introVideoEnabled?: boolean;
   readonly platformEnvironment?: Record<string, string>;
   // When set, system + workflow skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -999,12 +1032,14 @@ export interface CreateAgentRunArgs {
   readonly validateEnvironmentReferences?: boolean;
   readonly agentRunMetadata?: AgentRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
-  readonly enforceVm0Credits?: boolean;
+  readonly enforceBuiltInCredits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly queueFirstAssociation?: QueueFirstRunAssociation;
   readonly agentRunModelPin?: AgentRunModelPin;
   /** Immutable Pi eligibility captured by the caller's admission snapshot. */
   readonly piExecution: boolean;
+  /** Private non-interactive Pi memory maintenance input and claim fence. */
+  readonly piMemoryPhase2Maintenance?: PiMemoryPhase2Maintenance;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -1186,6 +1221,7 @@ function buildExactConnectorSkillVolume(args: {
 function buildLegacySystemSkillVolumes(
   skillNames: readonly string[],
   skillsRoot: string,
+  storageResolution: SystemSkillStorageResolution,
 ): readonly AdditionalVolume[] {
   return [...new Set(skillNames)].flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
@@ -1195,7 +1231,8 @@ function buildLegacySystemSkillVolumes(
     }
     return [
       {
-        name: getSkillStorageName(parsed.fullPath),
+        name:
+          storageResolution[skillName] ?? getSkillStorageName(parsed.fullPath),
         mountPath: skillMountPath(skillsRoot, parsed.skillName),
         system: true,
       },
@@ -1335,6 +1372,8 @@ function buildCustomConnectorSkillVolumes(
 function buildInjectedSkillVolumes(
   args: {
     readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly introVideoEnabled: boolean;
+    readonly systemSkillStorageResolution: SystemSkillStorageResolution;
     readonly allowedConnectorSlugs: readonly ConnectorSlug[];
     readonly connectorCatalogSelection: RunConnectorCatalogSelection;
     readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
@@ -1348,15 +1387,32 @@ function buildInjectedSkillVolumes(
   // part of a run, its accepted catalog skill remains executable and mountable.
   const systemSkillVolumes = [
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(SEED_SKILLS, skillsRoot).map((volume) => {
+      buildLegacySystemSkillVolumes(
+        SEED_SKILLS,
+        skillsRoot,
+        args.systemSkillStorageResolution,
+      ).map((volume) => {
         return { ...volume, baselineCandidate: true };
       }),
       "system_skill",
     ) ?? []),
     ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes([GOAL_SKILL_NAME], skillsRoot),
+      buildLegacySystemSkillVolumes(
+        [GOAL_SKILL_NAME],
+        skillsRoot,
+        args.systemSkillStorageResolution,
+      ),
       "system_skill",
     ) ?? []),
+    ...(args.introVideoEnabled
+      ? buildLegacySystemSkillVolumes(
+          [INTRO_VIDEO_SKILL_NAME],
+          skillsRoot,
+          args.systemSkillStorageResolution,
+        ).map((volume) => {
+          return { volume, source: "system_skill" as const };
+        })
+      : []),
     ...(args.connectorCatalogSelection.kind === "scoped"
       ? buildConnectorSkillVolumes(
           args.allowedConnectorSlugs,
@@ -1432,12 +1488,12 @@ function frameworkForProviderSelection(
   if (!isBuiltInModelProviderType(providerType)) {
     return getFrameworkForType(providerType);
   }
-  const vm0Model =
+  const builtInModel =
     selectedModel ?? MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-  if (!vm0Model) {
+  if (!builtInModel) {
     return null;
   }
-  return getFrameworkForType(getVm0ConcreteProviderType(vm0Model));
+  return getFrameworkForType(getBuiltInConcreteProviderType(builtInModel));
 }
 
 async function resolveRequestedRunFramework(
@@ -1659,7 +1715,7 @@ function withPinnedPiContinuationMemory(
 }
 
 function artifactsForRun(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
   readonly includeAutoMemory: boolean;
@@ -2390,7 +2446,7 @@ async function multiAuthModelProviderEnvironment(
   };
 }
 
-async function vm0ModelProviderEnvironment(
+async function builtInModelProviderEnvironment(
   db: Db,
   selectedModel: string,
   resolvedRoute?: BuiltInModelRuntimeRoute,
@@ -2461,7 +2517,7 @@ async function vm0ModelProviderEnvironment(
       const baseUrl = environment.OPENAI_BASE_URL;
       if (!baseUrl) {
         throw new Error(
-          `Missing OPENAI_BASE_URL for VM0 Codex provider ${route.providerType}`,
+          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
         );
       }
       codexRuntimeConfig = {
@@ -2498,6 +2554,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
+  readonly piExecution: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
@@ -2706,10 +2763,11 @@ async function resolveExactPersonalModelProviderAccount(
   if (
     !args.modelProviderId ||
     args.modelProviderCredentialScope === "org" ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProviderAccounts,
-      args.featureSwitchContext,
-    )
+    (!args.piExecution &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        args.featureSwitchContext,
+      ))
   ) {
     return null;
   }
@@ -2796,7 +2854,7 @@ async function resolveCandidateModelProviderEnvironment(
       args.selectedModelOverride ??
       row.selectedModel ??
       MODEL_PROVIDER_TYPES["built-in"].defaultModel;
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       selectedModel,
       args.builtInModelRuntimeRoute,
@@ -2867,7 +2925,7 @@ async function resolveModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (isBuiltInModelProviderType(args.modelProviderType)) {
-    const provider = await vm0ModelProviderEnvironment(
+    const provider = await builtInModelProviderEnvironment(
       db,
       args.selectedModelOverride ??
         MODEL_PROVIDER_TYPES["built-in"].defaultModel,
@@ -3092,7 +3150,7 @@ function mergeRecords<T>(
   return compactRecord(merged);
 }
 
-function withoutLegacyZeroEntries<T>(
+function withoutLegacyAgentRunEnvironmentEntries<T>(
   values: Readonly<Record<string, T>> | undefined,
 ): Record<string, T> | undefined {
   if (!values) {
@@ -5220,7 +5278,7 @@ function getRequiredFirewallExecutionMetadata(
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 const BASE_URL_VALIDATION_SECRET_TEMPLATE = [
   "$",
-  "{{ secrets.__VM0_FIREWALL_BASE_URL_VALIDATION }}",
+  "{{ secrets.__OKOU_FIREWALL_BASE_URL_VALIDATION }}",
 ].join("");
 
 function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
@@ -5747,14 +5805,14 @@ async function checkFinalRunAdmission(
     readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
-    readonly enforceVm0Credits: boolean;
+    readonly enforceBuiltInCredits: boolean;
     readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
 ): Promise<CreateRunErrorResult | null> {
-  if (args.enforceVm0Credits) {
+  if (args.enforceBuiltInCredits) {
     return await args.timing.measure(
-      "api_dispatch_check_vm0_credits",
+      "api_dispatch_check_built_in_credits",
       "nested",
       async () => {
         const availability = await resolveOrgCreditAvailability({
@@ -5930,12 +5988,6 @@ function resolvedSessionStorage(session: {
   };
 }
 
-function resolvedSessionModelRoute(
-  previousRun: ModelRuntimeSessionRoute | null,
-): Pick<ResolvedAgentExecution, "resumeSessionModelRoute"> {
-  return previousRun ? { resumeSessionModelRoute: previousRun } : {};
-}
-
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -5965,6 +6017,7 @@ function resolveBySessionId(
               conversation: {
                 id: conversations.id,
                 runId: conversations.runId,
+                cliAgentType: conversations.cliAgentType,
                 cliAgentSessionId: conversations.cliAgentSessionId,
                 cliAgentSessionHistory: conversations.cliAgentSessionHistory,
                 cliAgentSessionHistoryHash:
@@ -5978,9 +6031,7 @@ function resolveBySessionId(
                 id: agentRuns.id,
                 vars: agentRuns.vars,
                 storageMounts: agentRuns.storageMounts,
-                modelProvider: agentRuns.modelProvider,
-                modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-                modelRuntimeModel: agentRuns.modelRuntimeModel,
+                selectedModel: agentRuns.selectedModel,
               },
             })
             .from(agentSessions)
@@ -6043,7 +6094,10 @@ function resolveBySessionId(
         agentSessionId: snapshot.session.id,
         continuedFromAgentSessionId: snapshot.session.id,
         resumeSession,
-        ...resolvedSessionModelRoute(snapshot.previousRun),
+        resumeSessionIdentity: {
+          selectedModel: snapshot.previousRun?.selectedModel ?? null,
+          cliAgentType: conversation?.cliAgentType ?? null,
+        },
       };
     },
   );
@@ -6055,9 +6109,9 @@ function resolveAgentExecution(
   userId: string,
   orgId: string,
   options: ResolveAgentExecutionOptions,
-): Computed<Promise<ResolvedAgentExecution | CreateRunErrorResult>> {
+): Computed<Promise<ResolvedRunExecution | CreateRunErrorResult>> {
   return computed(
-    async (get): Promise<ResolvedAgentExecution | CreateRunErrorResult> => {
+    async (get): Promise<ResolvedRunExecution | CreateRunErrorResult> => {
       const testOnlyResolver = options.testOnlyResolveDirectRun;
       if (testOnlyResolver) {
         if (!body.sessionId && !body.agentId) {
@@ -6094,6 +6148,17 @@ function resolveAgentExecution(
         throw new Error(
           "Product Agent execution plan is required for canonical resolution",
         );
+      }
+      if (
+        productAgentExecutionPlan.identity === "pi-memory-phase2-maintenance"
+      ) {
+        return {
+          agentId: null,
+          ownerUserId: userId,
+          orgId,
+          content: productAgentExecutionPlan.content,
+          artifacts: [],
+        };
       }
       if (body.sessionId) {
         const sessionId = body.sessionId;
@@ -6239,7 +6304,7 @@ function agentRunModelProviderValues(
 }
 
 function prepareLaunchRunIdentity(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
 }): LaunchRunIdentity {
   return {
     runId: randomUUID(),
@@ -6318,7 +6383,7 @@ interface LaunchRunRowsArgs {
   readonly orgId: string;
   readonly identity: LaunchRunIdentity;
   readonly status: LaunchRunStatus;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly runStorageMounts: readonly PersistedStorageMount[] | undefined;
   readonly sessionStorageMounts: readonly PersistedStorageMount[] | undefined;
@@ -6336,13 +6401,14 @@ interface LaunchRunRowsArgs {
     | AgentRunOfficialWorkflowProvenance
     | undefined;
   readonly error: string | undefined;
+  readonly creditAdmitted: boolean;
 }
 
 interface LaunchSessionValues {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly agentId: string;
+  readonly agentId: string | null;
   readonly storageMounts: PersistedStorageMount[] | null;
   readonly conversationId: null;
 }
@@ -6371,6 +6437,7 @@ function launchRunValues(
     userId: args.userId,
     orgId: args.orgId,
     status: args.status,
+    creditAdmitted: args.creditAdmitted,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
@@ -6484,10 +6551,10 @@ function buildStoredPlatformEnvironment(args: {
 }): Record<string, string> {
   const platformEnvironment = {
     ...args.platformEnvironment,
-    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    CLI_PKG_URL: env("CLI_PKG_URL"),
   };
   return args.canonicalOkouRuntime
-    ? (withoutLegacyZeroEntries(platformEnvironment) ?? {})
+    ? (withoutLegacyAgentRunEnvironmentEntries(platformEnvironment) ?? {})
     : platformEnvironment;
 }
 
@@ -6499,7 +6566,9 @@ function buildStoredUntrustedEnvironment(args: {
     return args.expandedEnvironment;
   }
   return (
-    withoutLegacyZeroEntries(args.expandedEnvironment ?? undefined) ?? null
+    withoutLegacyAgentRunEnvironmentEntries(
+      args.expandedEnvironment ?? undefined,
+    ) ?? null
   );
 }
 
@@ -6508,7 +6577,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly chatThreadId: string | undefined;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly framework: SupportedFramework;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -6712,7 +6781,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
   const result = safeSync(() => {
     recordSandboxOperation({
       sandboxType: "runner",
-      actionType: "enqueue_zero_run",
+      actionType: "enqueue_agent_run",
       durationMs: 0,
       success: true,
       runId: args.runId,
@@ -6856,12 +6925,6 @@ function billableFirewallsForPermissions(args: {
   return [...modelFirewalls, ...connectorFirewalls];
 }
 
-function cliPackageUrlForPublicBrand(
-  publicBrand: PublicBrand | undefined,
-): string {
-  return staticUrlForPublicBrand(env("CLI_PKG_URL"), publicBrand ?? "vm0");
-}
-
 function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {
   if (count <= 0) {
     return "0";
@@ -6986,7 +7049,7 @@ interface BuildRunnerJobPayloadInput {
   readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
   readonly userId: string;
   readonly orgId: string;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
@@ -7011,6 +7074,7 @@ interface BuildRunnerJobPayloadInput {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly timing: ApiDispatchTimingCollector;
+  readonly piMemoryPhase2Maintenance: PiMemoryPhase2Maintenance | undefined;
 }
 
 interface PreparedPiLaunchResources {
@@ -7018,6 +7082,7 @@ interface PreparedPiLaunchResources {
   readonly launchConfig: PiLaunchConfig;
   readonly memoryRecall?: PiMemoryRecallSelection;
   readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
+  readonly sessionId: string;
 }
 
 function canonicalPiMemoryMount<
@@ -7190,20 +7255,16 @@ function piBaseSession(
 function storedExecutionContextWithPiResources(
   context: StoredExecutionContext,
   resources: PreparedPiLaunchResources | undefined,
-  chatThreadId: string | undefined,
   launchFramework: AgentRunLaunchSnapshot["framework"],
 ): StoredExecutionContext {
   const finalizedContext = { ...context, cliAgentType: launchFramework };
   if (resources === undefined) {
     return finalizedContext;
   }
-  if (chatThreadId === undefined) {
-    throw new Error("Pi sandbox execution requires a chat thread");
-  }
   return {
     ...finalizedContext,
     resumeSession: resources.resumeSession ?? null,
-    piSessionId: chatThreadId,
+    piSessionId: resources.sessionId,
     piLaunchConfig: resources.launchConfig,
     piModelConfig: resources.modelConfig,
   };
@@ -7227,6 +7288,7 @@ function preparePiLaunchResources(
     readonly piSandbox: PiModelConfig | undefined;
     readonly chatThreadId: string | undefined;
     readonly timing: ApiDispatchTimingCollector;
+    readonly maintenance: PiMemoryPhase2Maintenance | undefined;
   },
   signal: AbortSignal,
 ): Computed<Promise<PreparedPiLaunchResources | undefined>> {
@@ -7234,39 +7296,43 @@ function preparePiLaunchResources(
     if (args.piSandbox === undefined) {
       return undefined;
     }
-    if (args.chatThreadId === undefined) {
+    if (args.chatThreadId === undefined && args.maintenance === undefined) {
       throw new Error("Pi sandbox execution requires a chat thread");
     }
     const piSandbox = args.piSandbox;
-    const chatThreadId = args.chatThreadId;
+    const sessionId = args.chatThreadId ?? args.runId;
     return await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_prepare_pi_launch_resources",
       "nested",
       async () => {
-        const resumeSession = await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_prepare_pi_launch_resume_session",
-          "nested",
-          async () => {
-            return await resolveLatestPiResumeSession(
-              args.db,
-              chatThreadId,
-              args.agentSessionId,
+        const resumeSession = args.maintenance
+          ? undefined
+          : await measureApiDispatchTiming(
+              args.timing,
+              "api_dispatch_prepare_pi_launch_resume_session",
+              "nested",
+              async () => {
+                return await resolveLatestPiResumeSession(
+                  args.db,
+                  sessionId,
+                  args.agentSessionId,
+                );
+              },
             );
-          },
-        );
-        const memoryRecall = await resolvePiMemoryRecall(
-          {
-            db: args.db,
-            orgId: args.orgId,
-            userId: args.userId,
-            storageMounts: args.storageMounts,
-            persistedStorageMounts: args.persistedStorageMounts,
-            previousRunStorageMounts: args.previousRunStorageMounts,
-          },
-          signal,
-        );
+        const memoryRecall = args.maintenance
+          ? undefined
+          : await resolvePiMemoryRecall(
+              {
+                db: args.db,
+                orgId: args.orgId,
+                userId: args.userId,
+                storageMounts: args.storageMounts,
+                persistedStorageMounts: args.persistedStorageMounts,
+                previousRunStorageMounts: args.previousRunStorageMounts,
+              },
+              signal,
+            );
         const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
         const [manifestUrl, sessionUrl] = await Promise.all([
           get(
@@ -7300,14 +7366,19 @@ function preparePiLaunchResources(
               ),
               manifestUrl,
               sessionUrl,
-              deadlineAt: args.apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
-              baseSession: piBaseSession(resumeSession, chatThreadId),
+              deadlineAt:
+                args.apiStartTime + PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
+              baseSession: piBaseSession(resumeSession, sessionId),
               sandboxEventSequenceStart: 1,
             },
             ...(memoryRecall === undefined ? {} : { memoryRecall }),
+            ...(args.maintenance === undefined
+              ? {}
+              : { maintenance: args.maintenance }),
           },
           ...(memoryRecall === undefined ? {} : { memoryRecall }),
           resumeSession,
+          sessionId,
         };
       },
     );
@@ -7343,7 +7414,6 @@ function preparedRunnerJobBody(
     args.orgId,
     args.featureSwitchContext.overrides,
     {
-      publicBrand: args.okouTokenPublicBrand ?? "vm0",
       ...(args.okouTokenComputerUseHostId
         ? { computerUseHostId: args.okouTokenComputerUseHostId }
         : {}),
@@ -7375,6 +7445,14 @@ function buildRunnerJobPayload(
   signal: AbortSignal,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
+    const checkpointArtifacts = args.piMemoryPhase2Maintenance
+      ? args.artifacts.map((artifact) => {
+          return artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
+            artifact.mountPath === PI_MEMORY_ROOT
+            ? { ...artifact, missingRootPolicy: "fail" as const }
+            : artifact;
+        })
+      : args.artifacts;
     const group = preparedRunnerGroup(args.resolved.content);
     const body = preparedRunnerJobBody(args);
     const platformEnvironment = args.includeOkouTokenSecret
@@ -7394,7 +7472,7 @@ function buildRunnerJobPayload(
             agentOrgId: args.resolved.orgId,
             runtimeOrgId: args.orgId,
             userId: args.userId,
-            artifacts: args.artifacts,
+            artifacts: checkpointArtifacts,
             volumeVersionOverrides: body.volumeVersions,
             additionalVolumes: args.additionalVolumes,
             additionalVolumeSources: args.additionalVolumeSources,
@@ -7440,6 +7518,7 @@ function buildRunnerJobPayload(
           previousRunStorageMounts: args.resolved.previousRunStorageMounts,
           piSandbox: args.piSandbox,
           chatThreadId: args.chatThreadId,
+          maintenance: args.piMemoryPhase2Maintenance,
           timing: args.timing,
         },
         signal,
@@ -7448,7 +7527,6 @@ function buildRunnerJobPayload(
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
       piResources,
-      args.chatThreadId,
       args.launchSnapshot.framework,
     );
     const persistedStorageMounts = withPiMemoryRecallEpoch(
@@ -7477,7 +7555,7 @@ function buildRunnerJobPayload(
       runStorageMounts: persistedStorageMounts,
       sessionStorageMounts: sessionStorageMountsForPersistence({
         resolvedMounts: persistedStorageMounts,
-        artifacts: args.artifacts,
+        artifacts: checkpointArtifacts,
       }),
     };
   });
@@ -7510,6 +7588,7 @@ function preparedLaunchRowsArgs(args: {
     officialWorkflowProvenance:
       args.commit.context.officialWorkflowRun?.provenance,
     error: undefined,
+    creditAdmitted: args.status === "pending" && args.commit.creditAdmitted,
   };
 }
 
@@ -7613,6 +7692,25 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   );
   ctes.push(insertedRun);
 
+  const diagnosticRegistrationPayload =
+    agentRunConnectorDiagnosticRegistrationPayloadSchema.parse({
+      version: 1,
+      targets: args.payload.executionContext.connectorRuntimeTargets,
+    });
+  const insertedDiagnosticRegistration = args.tx
+    .$with("inserted_launch_connector_diagnostic_registration")
+    .as(
+      args.tx
+        .insert(agentRunConnectorDiagnosticRegistrations)
+        .values({
+          runId: returnedCteId(insertedRun),
+          payload: diagnosticRegistrationPayload,
+          createdAt,
+        })
+        .returning({ id: agentRunConnectorDiagnosticRegistrations.runId }),
+    );
+  ctes.push(insertedDiagnosticRegistration);
+
   appendLaunchCallbackCte({
     tx: args.tx,
     ctes,
@@ -7627,7 +7725,14 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     insertedRun,
     validatedThreadSession: args.validatedThreadSession,
   });
-  return { rowsArgs, createdAt, ctes, insertedRun, updatedThread };
+  return {
+    rowsArgs,
+    createdAt,
+    ctes,
+    insertedRun,
+    insertedDiagnosticRegistration,
+    updatedThread,
+  };
 }
 
 type AtomicLaunchCteContext = ReturnType<typeof buildAtomicLaunchCteContext>;
@@ -7694,7 +7799,11 @@ async function persistPendingAtomicLaunch(
       ),
     })
     .from(context.insertedRun)
-    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id));
+    .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .innerJoin(
+      context.insertedDiagnosticRegistration,
+      eq(context.insertedDiagnosticRegistration.id, context.insertedRun.id),
+    );
   if (!row || (context.updatedThread && !row.boundThreadId)) {
     throw new Error("Atomic pending launch persistence returned no row");
   }
@@ -7759,6 +7868,10 @@ async function persistQueuedAtomicLaunch(
     })
     .from(context.insertedRun)
     .innerJoin(insertedQueue, eq(insertedQueue.runId, context.insertedRun.id))
+    .innerJoin(
+      context.insertedDiagnosticRegistration,
+      eq(context.insertedDiagnosticRegistration.id, context.insertedRun.id),
+    )
     .crossJoin(visibleQueueDepth);
   if (!row || (context.updatedThread && !row.boundThreadId)) {
     throw new Error("Atomic queued launch persistence returned no row");
@@ -7983,6 +8096,7 @@ async function persistFailedLaunch(
     launchSnapshot: args.context.launchSnapshot,
     officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
     error: message,
+    creditAdmitted: false,
   });
   return {
     kind: "failed",
@@ -8254,6 +8368,7 @@ async function commitQueuedPreparedLaunch(
   if (persisted.kind !== "queued") {
     throw new Error("Queued launch persistence returned a pending result");
   }
+  await bindPreparedPiMemoryPhase2MaintenanceRun(tx, args, persisted.run.id);
   await activatePreparedLaunchUsageAllowance({
     tx,
     commit: args,
@@ -8284,6 +8399,7 @@ async function commitPendingPreparedLaunch(
   if (persisted.kind !== "pending") {
     throw new Error("Pending launch persistence returned a queued result");
   }
+  await bindPreparedPiMemoryPhase2MaintenanceRun(tx, args, persisted.run.id);
   await activatePreparedLaunchUsageAllowance({
     tx,
     commit: args,
@@ -8295,6 +8411,29 @@ async function commitPendingPreparedLaunch(
     runContextSnapshot: args.launch.runContextSnapshot,
     queueFirstClaim,
   };
+}
+
+async function bindPreparedPiMemoryPhase2MaintenanceRun(
+  tx: DbTransaction,
+  args: CommitPreparedLaunchArgs,
+  runId: string,
+): Promise<void> {
+  const maintenance = args.createArgs.piMemoryPhase2Maintenance;
+  if (!maintenance) {
+    return;
+  }
+  await bindPiMemoryPhase2MaintenanceRun(tx, {
+    runId,
+    binding: {
+      memoryStorageId: maintenance.memoryStorageId,
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      leaseToken: maintenance.leaseToken,
+      claimedRevision: maintenance.claimedRevision,
+      claimedBaseVersionId: maintenance.claimedBaseVersionId,
+      selectionDigest: maintenance.selectionDigest,
+    },
+  });
 }
 
 async function commitPreparedLaunchUnderLock(
@@ -8501,6 +8640,7 @@ function buildAtomicLaunchPayload(
       userTimezone: args.context.userTimezone,
       featureSwitchContext: args.context.featureSwitchContext,
       timing: args.timing,
+      piMemoryPhase2Maintenance: args.createArgs.piMemoryPhase2Maintenance,
     },
     signal,
   );
@@ -8544,7 +8684,7 @@ export const BEFORE_DISPATCH_CANCELLED_ERROR =
 
 interface PreparedRunContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly framework: SupportedFramework;
   readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -8620,6 +8760,7 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         builtInModelRuntimeRoute: args.builtInModelRuntimeRoute,
+        piExecution: args.piExecution,
         featureSwitchContext: options.featureSwitchContext,
       })
     : null;
@@ -8630,7 +8771,7 @@ async function resolveRunModelProvider(
   }
 
   if (
-    args.enforceVm0Credits &&
+    args.enforceBuiltInCredits &&
     isBuiltInModelProviderType(args.modelProviderType)
   ) {
     const creditGate =
@@ -8791,7 +8932,7 @@ async function loadRunConnectorContexts(
 async function buildResolvedRunBody(
   args: {
     readonly initialBody: CreateRunBody;
-    readonly resolved: ResolvedAgentExecution;
+    readonly resolved: ResolvedRunExecution;
     readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly canonicalOkouRuntime: boolean;
@@ -8807,7 +8948,7 @@ async function buildResolvedRunBody(
     runVars,
   });
   const vars = args.canonicalOkouRuntime
-    ? withoutLegacyZeroEntries(mergedVars)
+    ? withoutLegacyAgentRunEnvironmentEntries(mergedVars)
     : mergedVars;
   signal.throwIfAborted();
 
@@ -8830,13 +8971,13 @@ async function buildResolvedRunBody(
   return {
     ...body,
     secrets: args.canonicalOkouRuntime
-      ? withoutLegacyZeroEntries(mergedSecrets)
+      ? withoutLegacyAgentRunEnvironmentEntries(mergedSecrets)
       : mergedSecrets,
   };
 }
 
 function validateRunEnvironmentReferences(args: {
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
@@ -8906,19 +9047,27 @@ async function buildPreparedPermissionManifest(args: {
 
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly systemSkillStorageResolution: SystemSkillStorageResolution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly skillsRoot: string;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): PreparedAdditionalVolumes {
   const bodyAdditionalVolumes = args.body.additionalVolumes;
   const injectedSkillVolumes = buildInjectedSkillVolumes(
     {
       injectSkillVolumes: args.createArgs.injectSkillVolumes,
+      systemSkillStorageResolution: args.systemSkillStorageResolution,
+      introVideoEnabled:
+        args.createArgs.introVideoEnabled ??
+        isFeatureEnabled(
+          FeatureSwitchKey.IntroVideo,
+          args.featureSwitchContext,
+        ),
       allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
       connectorCatalogSelection: args.connectorCatalogSelection,
       officialWorkflowRun: args.officialWorkflowRun,
@@ -8942,7 +9091,7 @@ function preparedRunAdditionalVolumes(args: {
 
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -9048,6 +9197,27 @@ function agentRunResolutionOptions(
   ) {
     throw new Error(
       "Agent run preparation cannot mix product and direct-run resolution",
+    );
+  }
+  const privateMaintenanceIdentity =
+    productAgentExecutionPlan?.identity === "pi-memory-phase2-maintenance";
+  if (
+    privateMaintenanceIdentity !==
+    (args.piMemoryPhase2Maintenance !== undefined)
+  ) {
+    throw new Error(
+      "Pi memory maintenance payload and execution identity must match",
+    );
+  }
+  if (
+    privateMaintenanceIdentity &&
+    (args.body.agentId !== undefined ||
+      args.body.sessionId !== undefined ||
+      args.chatThreadId !== undefined ||
+      args.piExecution !== true)
+  ) {
+    throw new Error(
+      "Pi memory maintenance runs must use a private threadless identity",
     );
   }
   return {
@@ -9277,18 +9447,11 @@ async function resolvePreparedThreadConnectorSelections(
     readonly db: Db;
     readonly createArgs: CreateAgentRunArgs;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ): Promise<ThreadConnectorSelectionIds | CreateRunErrorResult | undefined> {
   const chatThreadId = args.createArgs.chatThreadId;
-  if (
-    chatThreadId === undefined ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.ConnectorAccounts,
-      args.featureSwitchContext,
-    )
-  ) {
+  if (chatThreadId === undefined) {
     return undefined;
   }
   const resolved = await resolveChatThreadConnectorSelections(args.db, {
@@ -9340,7 +9503,6 @@ async function prepareRunRuntimeContext(
         db: args.db,
         createArgs: args.createArgs,
         connectorScope: args.connectorScope,
-        featureSwitchContext,
       },
       signal,
     ),
@@ -9533,6 +9695,7 @@ async function connectorCatalogSelectionForRun(args: {
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly systemSkillStorageResolution: SystemSkillStorageResolution;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSelection: RunConnectorCatalogSelection;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -9540,7 +9703,7 @@ function prepareRunOutputMetadata(args: {
   readonly piSandbox: PiModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
-  readonly resolved: ResolvedAgentExecution;
+  readonly resolved: ResolvedRunExecution;
   readonly officialWorkflowRun: OfficialWorkflowRunObservation | undefined;
 }): {
   readonly artifacts: readonly ContextArtifact[];
@@ -9549,6 +9712,7 @@ function prepareRunOutputMetadata(args: {
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
+    systemSkillStorageResolution: args.systemSkillStorageResolution,
     connectorScope: args.connectorScope,
     connectorCatalogSelection: args.connectorCatalogSelection,
     customConnectorContext: args.customConnectorContext,
@@ -9651,24 +9815,13 @@ function prepareRunContexts(
 }
 
 function resolveCompatibleDirectResumeSession(args: {
-  readonly resolved: ResolvedAgentExecution;
-  readonly modelProvider: ResolvedModelProviderEnvironment | null;
-}): ResolvedAgentExecution {
-  if (!args.resolved.resumeSessionModelRoute) {
-    return args.resolved;
-  }
-  const runtimeRoute = args.modelProvider?.builtInModelRuntimeRoute;
-  const incompatible = hasIncompatibleBuiltInModelRuntimeRoute({
-    previous: args.resolved.resumeSessionModelRoute,
-    next: {
-      modelProvider: args.modelProvider?.type ?? null,
-      modelRuntimeProvider: runtimeRoute?.providerType ?? null,
-      modelRuntimeModel: runtimeRoute?.upstreamModel ?? null,
-    },
-  });
-  return incompatible
-    ? { ...args.resolved, resumeSession: undefined }
-    : args.resolved;
+  readonly resolved: ResolvedRunExecution;
+  readonly next: SessionExecutionIdentity;
+}): ResolvedRunExecution {
+  const previous = args.resolved.resumeSessionIdentity;
+  return previous && canReuseSession(previous, args.next)
+    ? args.resolved
+    : { ...args.resolved, resumeSession: undefined };
 }
 
 async function resolvePreparedOfficialWorkflowRun(
@@ -9747,13 +9900,16 @@ function prepareRunContext(
       }
       const { bodyContext, runtimeContext } = contexts;
       const { body } = bodyContext;
-      const resolved = resolveCompatibleDirectResumeSession({
-        resolved: bodyContext.resolved,
-        modelProvider: runtimeContext.modelProvider,
-      });
       const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         modelProvider: runtimeContext.modelProvider,
+      });
+      const resolved = resolveCompatibleDirectResumeSession({
+        resolved: bodyContext.resolved,
+        next: {
+          selectedModel: runtimeContext.modelProvider?.selectedModel ?? null,
+          cliAgentType: piSandbox ? "pi" : runtimeContext.framework,
+        },
       });
 
       const validation = await timing.measure(
@@ -9802,6 +9958,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
+              systemSkillStorageResolution: get(systemSkillStorageResolution$),
               connectorScope: runtimeContext.connectorScope,
               connectorCatalogSelection:
                 runtimeContext.connectorCatalogSelection,
@@ -9925,7 +10082,8 @@ function committedAtomicLaunchResponse(args: {
       runContextRegisteredAt,
       dispatchTimingsRegisteredAt,
     },
-    ...(args.committed.runnerJobPayload.executionContext.piLaunchConfig
+    ...(args.committed.runnerJobPayload.executionContext.piLaunchConfig &&
+    !args.committed.runnerJobPayload.executionContext.piLaunchConfig.maintenance
       ? {
           piApiFirstTurn: {
             runId: args.committed.run.id,
@@ -9979,6 +10137,7 @@ function flushQueueFirstClaimLostTiming(args: {
 interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
+  readonly creditAdmitted: boolean;
   readonly context: FinalizedPreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
   readonly phaseTiming: ApiDispatchPhaseCollector;
@@ -10184,6 +10343,7 @@ function createAtomicLaunchRun(
           return await commitPreparedLaunch({
             db: input.db,
             createArgs: input.args,
+            creditAdmitted: input.creditAdmitted,
             context: input.context,
             identity,
             callbackRows,
@@ -10359,6 +10519,9 @@ export const completeAgentRun$ = command(
       context.modelProvider?.type ?? args.modelProviderType;
     const selectedModel =
       context.modelProvider?.selectedModel ?? args.selectedModelOverride;
+    const creditAdmitted =
+      args.enforceBuiltInCredits === true &&
+      isBuiltInModelProviderType(context.modelProvider?.type);
     const admissionGate = await timing.measure(
       "api_dispatch_check_run_admission",
       "top_level",
@@ -10370,9 +10533,7 @@ export const completeAgentRun$ = command(
             userId: args.userId,
             modelProviderType,
             selectedModel,
-            enforceVm0Credits:
-              args.enforceVm0Credits === true &&
-              isBuiltInModelProviderType(context.modelProvider?.type),
+            enforceBuiltInCredits: creditAdmitted,
             timing,
           },
           signal,
@@ -10389,6 +10550,7 @@ export const completeAgentRun$ = command(
         {
           db,
           args,
+          creditAdmitted,
           context,
           timing,
           phaseTiming: input.prepared.phaseTiming,

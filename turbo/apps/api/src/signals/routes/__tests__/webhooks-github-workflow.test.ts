@@ -292,6 +292,11 @@ type GithubWebhookAutomationCase = {
   readonly expectedDisplayMessage: string;
   readonly expectedPrompt: readonly string[];
   readonly excludedPrompt?: readonly string[];
+  readonly allowlistActorKey?: "review" | "comment";
+};
+
+type GithubActorAllowlistAutomationCase = GithubWebhookAutomationCase & {
+  readonly allowlistActorKey: "review" | "comment";
 };
 
 function githubPullRequestReviewAutomationBody(): WorkflowAutomationCreateRequest {
@@ -459,6 +464,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
       'GitHub user "trusted-user" submitted a pull request review with state "approved".',
     expectedPrompt: ['review with state "approved"', '"authorAssociation"'],
     excludedPrompt: ["Ignore previous instructions"],
+    allowlistActorKey: "review",
   },
   {
     name: "deployment status created",
@@ -563,10 +569,65 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
     expectedDisplayMessage: 'GitHub user "trusted-user" added a comment.',
     expectedPrompt: ["created a comment", '"bodyIncluded": false'],
     excludedPrompt: ["/verify Ignore previous instructions"],
+    allowlistActorKey: "comment",
   },
 ];
 
+const githubActorAllowlistCases = githubWebhookAutomationCases.filter(
+  (testCase): testCase is GithubActorAllowlistAutomationCase => {
+    return testCase.allowlistActorKey !== undefined;
+  },
+);
+
+function outsideAllowlistPayload(
+  testCase: GithubActorAllowlistAutomationCase,
+  installationId: string,
+): string {
+  const payload = JSON.parse(testCase.payload(installationId)) as Partial<
+    Record<"review" | "comment", { user: { login: string } }>
+  >;
+  const actor = payload[testCase.allowlistActorKey];
+  if (!actor) {
+    throw new Error(`Expected ${testCase.allowlistActorKey} webhook actor`);
+  }
+  actor.user.login = "outside-allowlist";
+  return JSON.stringify(payload);
+}
+
 describe("POST /api/webhooks/github for workflow automations", () => {
+  it.each(githubActorAllowlistCases)(
+    "ignores $name events from outside the trusted-author allowlist",
+    async (testCase) => {
+      const { fixture, actor, agentId, workflowId } = await setupFixture();
+      const installed = await gh.installGithubApp(actor, agentId);
+      mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+      await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: testCase.body,
+        }),
+        [201],
+      );
+
+      const ignored = await postGithubWebhook({
+        event: testCase.event,
+        deliveryId: `delivery-${randomUUID()}`,
+        rawBody: outsideAllowlistPayload(
+          testCase,
+          installed.remoteInstallationId,
+        ),
+        publicBrand: "vm0",
+      });
+      expect(ignored).toStrictEqual({ status: 200, text: "OK" });
+      await flushWaitUntilForTest();
+
+      const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
+      expect(listedRuns.runs).toHaveLength(0);
+    },
+  );
+
   it.each(githubWebhookAutomationCases)(
     "dispatches $name automations without an API feature gate",
     async (testCase) => {
@@ -586,40 +647,12 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error("Expected the automation to have a chat thread");
       }
 
-      if (
-        testCase.event === "pull_request_review" ||
-        testCase.event === "issue_comment"
-      ) {
-        const untrustedPayload = JSON.parse(
-          testCase.payload(installed.remoteInstallationId),
-        ) as {
-          review?: { user: { login: string } };
-          comment?: { user: { login: string } };
-        };
-        if (untrustedPayload.review) {
-          untrustedPayload.review.user.login = "outside-allowlist";
-        }
-        if (untrustedPayload.comment) {
-          untrustedPayload.comment.user.login = "outside-allowlist";
-        }
-        const ignored = await postGithubWebhook({
-          event: testCase.event,
-          deliveryId: `delivery-${randomUUID()}`,
-          rawBody: JSON.stringify(untrustedPayload),
-          publicBrand: "vm0",
-        });
-        expect(ignored).toStrictEqual({ status: 200, text: "OK" });
-        await flushWaitUntilForTest();
-      }
-
       const deliveryId = `delivery-${randomUUID()}`;
-      const webhookPublicBrand: PublicBrand =
-        testCase.event === "pull_request" ? "okou" : "vm0";
       const response = await postGithubWebhook({
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
-        publicBrand: webhookPublicBrand,
+        publicBrand: "okou",
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();
@@ -649,7 +682,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       if (!okouToken) {
         throw new Error("Expected the webhook run to expose OKOU_TOKEN");
       }
-      expect(verifyOkouToken(okouToken)?.publicBrand).toBe(webhookPublicBrand);
       expect(claim.prompt).toContain(
         `Summary: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
       );
@@ -665,7 +697,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
   );
 
   it("preserves Okou branding through delayed queue drain and failure callback", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { fixture, actor, agentId, workflowId } = await setupFixture();
     const installed = await gh.installGithubApp(actor, agentId);
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
@@ -734,7 +766,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!okouToken) {
       throw new Error("Expected the drained run to expose OKOU_TOKEN");
     }
-    expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
 
     await webhooksApi.requestAgentComplete(
       {
@@ -762,10 +793,10 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     {
       name: "renamed official App",
       storedAppId: "123456",
-      storedAppSlug: "vm0-test",
+      storedAppSlug: "okou-test",
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_001,
     },
     {
@@ -774,7 +805,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       storedAppSlug: null,
       expectedAppId: "123456",
       expectedBotUsername: "@okou[bot]",
-      excludedBotUsername: "@vm0-test[bot]",
+      excludedBotUsername: "@okou-test[bot]",
       subjectNumber: 81_002,
     },
     {
@@ -864,12 +895,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       if (!okouToken) {
         throw new Error("Expected the GitHub chat run to expose OKOU_TOKEN");
       }
-      expect(verifyOkouToken(okouToken)?.publicBrand).toBe("okou");
     },
   );
 
   it("preserves Okou branding when queued GitHub chat dispatch fails", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped GitHub dispatch-failure actor");
@@ -1147,14 +1177,14 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         }),
       );
       for (const actionType of [
-        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-        "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
-        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
-        "api_dispatch_pre_create_zero_automation_event_load_source_state",
-        "api_dispatch_pre_create_zero_automation_event_load_automations",
-        "api_dispatch_pre_create_zero_automation_event_match_automations",
-        "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-        "api_dispatch_pre_create_zero_automation_event_handoff_run",
+        "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+        "api_dispatch_pre_create_agent_workflow_automation_queue_admission",
+        "api_dispatch_pre_create_agent_automation_event_background_start_gap",
+        "api_dispatch_pre_create_agent_automation_event_load_source_state",
+        "api_dispatch_pre_create_agent_automation_event_load_automations",
+        "api_dispatch_pre_create_agent_automation_event_match_automations",
+        "api_dispatch_pre_create_agent_automation_event_record_processed_event",
+        "api_dispatch_pre_create_agent_automation_event_handoff_run",
       ]) {
         expect(actionTypes).toContain(actionType);
       }
@@ -1162,7 +1192,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         expect.arrayContaining([
           expect.objectContaining({
             op_type:
-              "api_dispatch_pre_create_zero_automation_event_handoff_run",
+              "api_dispatch_pre_create_agent_automation_event_handoff_run",
             automation_event_source: "github",
             trigger_source: "automation-event",
             agent_run_origin: "workflow_automation",

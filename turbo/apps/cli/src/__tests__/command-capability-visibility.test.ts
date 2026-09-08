@@ -42,7 +42,7 @@ function buildCommands(): Command[] {
     new Command("people-search"),
     new Command("web-search"),
     new Command("social"),
-    new Command("recognize"),
+    new Command("image-recognition"),
     new Command("finance"),
     new Command("seo"),
     new Command("banking"),
@@ -85,7 +85,7 @@ function registeredCommandNames(prog: Command): string[] {
 }
 
 describe("decodeSandboxTokenPayload", () => {
-  it("should decode payload from a valid zero-scoped token", () => {
+  it("should decode payload from a valid okou-scoped token", () => {
     const token = buildOkouToken({
       userId: "user-1",
       runId: "run-1",
@@ -135,7 +135,7 @@ describe("decodeSandboxTokenPayload", () => {
     ).toBeUndefined();
   });
 
-  it("should return undefined for non-zero scope", () => {
+  it("should return undefined for a non-okou scope", () => {
     const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -167,29 +167,12 @@ describe("registerCommands", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should show presentation screenshots to staff workspaces", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildOkouToken({
-        userId: "user-staff",
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-        scope: "okou",
-        capabilities: [],
-      }),
-    );
-    const prog = new Command();
-
-    registerCommands(prog, [new Command("presentation")]);
-
-    expect(visibleCommandNames(prog)).toContain("presentation");
-  });
-
-  it("should hide presentation screenshots while their rollout is off", () => {
+  it("should show presentation screenshots to external workspaces", () => {
     vi.stubEnv(
       "OKOU_TOKEN",
       buildOkouToken({
@@ -203,7 +186,7 @@ describe("registerCommands", () => {
 
     registerCommands(prog, [new Command("presentation")]);
 
-    expect(hiddenCommandNames(prog)).toContain("presentation");
+    expect(visibleCommandNames(prog)).toContain("presentation");
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -246,7 +229,7 @@ describe("registerCommands", () => {
       "people-search",
       "web-search",
       "social",
-      "recognize",
+      "image-recognition",
       "finance",
       "seo",
       "banking",
@@ -259,12 +242,12 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
 
-  it("should hide run-only commands and keep global commands visible outside zero scope", () => {
+  it("should hide run-only commands and keep global commands visible outside the Okou run scope", () => {
     const token = buildOkouToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -273,7 +256,7 @@ describe("registerCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "image-recognition"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -405,18 +388,21 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(prog)).toContain("model-provider");
   });
 
-  it("should show slack when slack:write capability is present", () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: ["slack:write"],
-    });
-    vi.stubEnv("OKOU_TOKEN", token);
+  it.each(["slack:read", "slack:write"])(
+    "should show slack when %s capability is present",
+    (capability) => {
+      const token = buildOkouToken({
+        scope: "okou",
+        capabilities: [capability],
+      });
+      vi.stubEnv("OKOU_TOKEN", token);
 
-    const prog = buildProgram();
+      const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("slack");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
+      expect(visibleCommandNames(prog)).toContain("slack");
+      expect(visibleCommandNames(prog)).toContain("whoami");
+    },
+  );
 
   it("should show feishu when feishu:write capability is present", () => {
     const token = buildOkouToken({
@@ -789,11 +775,14 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(buildProgram())).toContain("browser");
   });
 
-  it("should expose recognition only to eligible Zero runs", () => {
+  it("should expose canonical image recognition only to eligible Okou runs", () => {
     vi.stubEnv("OKOU_TOKEN", undefined);
     const noTokenProgram = buildProgram();
-    expect(registeredCommandNames(noTokenProgram)).toContain("recognize");
-    expect(hiddenCommandNames(noTokenProgram)).toContain("recognize");
+    expect(registeredCommandNames(noTokenProgram)).toContain(
+      "image-recognition",
+    );
+    expect(hiddenCommandNames(noTokenProgram)).toContain("image-recognition");
+    expect(buildHelpText()).not.toContain("Recognize an image?");
 
     const missingCapabilityToken = buildOkouToken({
       scope: "okou",
@@ -802,7 +791,13 @@ describe("registerCommands", () => {
       capabilities: [],
     });
     vi.stubEnv("OKOU_TOKEN", missingCapabilityToken);
-    expect(hiddenCommandNames(buildProgram())).toContain("recognize");
+    const missingCapabilityProgram = buildProgram();
+    expect(hiddenCommandNames(missingCapabilityProgram)).toContain(
+      "image-recognition",
+    );
+    expect(
+      buildHelpText(decodeSandboxTokenPayload(missingCapabilityToken)),
+    ).not.toContain("Recognize an image?");
 
     const eligibleToken = buildOkouToken({
       scope: "okou",
@@ -811,9 +806,13 @@ describe("registerCommands", () => {
       capabilities: ["image-recognition:write"],
     });
     vi.stubEnv("OKOU_TOKEN", eligibleToken);
-    expect(visibleCommandNames(buildProgram())).toContain("recognize");
+    const eligibleProgram = buildProgram();
+    expect(visibleCommandNames(eligibleProgram)).toContain("image-recognition");
     expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
       "Recognize an image?",
+    );
+    expect(buildHelpText(decodeSandboxTokenPayload(eligibleToken))).toContain(
+      "okou image-recognition --file",
     );
   });
 

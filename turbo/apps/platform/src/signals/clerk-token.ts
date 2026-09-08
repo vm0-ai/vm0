@@ -8,7 +8,7 @@ interface ClerkTokenResources {
   readonly session?: ClerkTokenSession | null;
 }
 
-export interface ClerkTokenSource {
+interface ClerkTokenSource {
   readonly session: ClerkTokenSession | null | undefined;
   addListener(
     listener: (resources: ClerkTokenResources) => void,

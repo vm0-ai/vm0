@@ -436,7 +436,7 @@ describe("POST /api/integrations/slack/connect", () => {
             expect.objectContaining({
               type: "section",
               text: expect.objectContaining({
-                text: expect.stringContaining("*Connected to Zero*"),
+                text: expect.stringContaining("*Connected to Okou*"),
               }),
             }),
           ]),

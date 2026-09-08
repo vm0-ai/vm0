@@ -1,21 +1,25 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
-import { createDeferredPromise, onRef } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import {
   CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  getChatThreadVirtualListScrollMargin,
   type ChatThreadVirtualListScrollAlign,
 } from "../okou-page/sidebar-state.ts";
 import {
-  chatThreads$,
+  currentChatThreadListSignals$,
   currentChatThreadId$,
-  currentChatThreadListIds$,
+  type ChatThreadListSignals,
 } from "../agent-chat.ts";
 import {
   sidebarChatThreadItemSignalsRegistry$,
   type SidebarChatThreadItemSignals,
 } from "./sidebar-chat-thread-item.ts";
+
+import {
+  createPinnedThreadDragSignals,
+  type PinnedThreadDragSignals,
+} from "./chat-thread-pin-order.ts";
 
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 const CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE = 100;
@@ -25,16 +29,16 @@ export interface SidebarChatThreadWindow {
   readonly items: readonly SidebarChatThreadItemSignals[];
 }
 
-export interface SidebarChatThreadScrollMetrics {
-  readonly scrollTop: number;
-  readonly scrollHeight: number;
-  readonly clientHeight: number;
+export interface SidebarChatThreadListSignals {
+  readonly count$: Computed<number>;
+  readonly currentThreadListed$: Computed<boolean>;
+  readonly threadIds$: Computed<readonly string[]>;
+  readonly window$: Computed<SidebarChatThreadWindow>;
 }
 
-export interface SidebarChatThreadScrollThumbStyle {
-  readonly top: number;
-  readonly height: number;
-  readonly visible: boolean;
+interface SidebarChatThreadScrollMetrics {
+  readonly scrollTop: number;
+  readonly clientHeight: number;
 }
 
 export interface ScrollToThreadRequest {
@@ -43,15 +47,12 @@ export interface ScrollToThreadRequest {
 }
 
 export interface SidebarChatThreadScrollSignals {
+  readonly pinReorder: PinnedThreadDragSignals;
   readonly isScrolled$: Computed<boolean>;
-  readonly thumbStyle$: Computed<SidebarChatThreadScrollThumbStyle>;
-  readonly window$: Computed<Promise<SidebarChatThreadWindow>>;
+  readonly list$: Computed<Promise<SidebarChatThreadListSignals>>;
   readonly setScrollMetrics$: Command<void, [SidebarChatThreadScrollMetrics]>;
+  readonly refreshScrollViewport$: Command<void, []>;
   readonly setScrollViewport$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  readonly setVirtualListElement$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
   >;
@@ -68,68 +69,85 @@ export interface SidebarChatThreadScrollSignals {
 function emptyScrollMetrics(): SidebarChatThreadScrollMetrics {
   return {
     scrollTop: 0,
-    scrollHeight: 0,
     clientHeight: 0,
   };
 }
 
-function getScrollThumbStyle({
-  scrollTop,
-  scrollHeight,
-  clientHeight,
-}: SidebarChatThreadScrollMetrics): SidebarChatThreadScrollThumbStyle {
-  if (scrollHeight <= clientHeight) {
-    return { top: 0, height: 0, visible: false };
-  }
-  const ratio = clientHeight / scrollHeight;
-  const height = Math.max(ratio * clientHeight, 24);
-  const maxTop = clientHeight - height;
-  const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-  return { top, height, visible: true };
-}
-
 function createSidebarChatThreadDomSignals() {
-  const internalScrollViewport$ = state<HTMLElement | null>(null);
+  const internalViewportRuntime$ = state<{
+    readonly element: HTMLElement;
+    readonly signal: AbortSignal;
+    resizeScheduled: boolean;
+  } | null>(null);
   const internalScrollMetrics$ =
     state<SidebarChatThreadScrollMetrics>(emptyScrollMetrics());
-  const internalVirtualListElement$ = state<HTMLElement | null>(null);
 
   const scrollViewport$ = computed((get) => {
-    return get(internalScrollViewport$);
+    return get(internalViewportRuntime$)?.element ?? null;
   });
   const scrollMetrics$ = computed((get) => {
     return get(internalScrollMetrics$);
   });
-  const virtualListElement$ = computed((get) => {
-    return get(internalVirtualListElement$);
-  });
   const isScrolled$ = computed((get) => {
     return get(internalScrollMetrics$).scrollTop > 0;
   });
-  const thumbStyle$ = computed((get) => {
-    return getScrollThumbStyle(get(internalScrollMetrics$));
-  });
 
-  const bindScrollViewport$ = command(({ set }, viewport: HTMLElement) => {
-    set(internalScrollViewport$, viewport);
-    set(internalScrollMetrics$, {
-      scrollTop: viewport.scrollTop,
-      scrollHeight: viewport.scrollHeight,
-      clientHeight: viewport.clientHeight,
-    });
+  const measureScrollViewport$ = command(
+    ({ get, set }, viewport: HTMLElement) => {
+      const metrics = {
+        scrollTop: viewport.scrollTop,
+        clientHeight: viewport.clientHeight,
+      };
+      const previous = get(internalScrollMetrics$);
+      if (
+        previous.scrollTop === metrics.scrollTop &&
+        previous.clientHeight === metrics.clientHeight
+      ) {
+        return;
+      }
+      set(internalScrollMetrics$, metrics);
+    },
+  );
+  const refreshScrollViewport$ = command(({ get, set }) => {
+    const runtime = get(internalViewportRuntime$);
+    if (!runtime || runtime.resizeScheduled) {
+      return;
+    }
+    runtime.resizeScheduled = true;
+    // Layout refs and window resize events share one pending measurement.
+    // Read after the DOM commit, using the latest layout in this frame.
+    animationFrame(
+      () => {
+        runtime.resizeScheduled = false;
+        set(measureScrollViewport$, runtime.element);
+      },
+      { signal: runtime.signal },
+    );
   });
   const clearScrollViewport$ = command(
     ({ get, set }, viewport: HTMLElement) => {
-      if (get(internalScrollViewport$) !== viewport) {
+      if (get(internalViewportRuntime$)?.element !== viewport) {
         return;
       }
-      set(internalScrollViewport$, null);
+      set(internalViewportRuntime$, null);
       set(internalScrollMetrics$, emptyScrollMetrics());
     },
   );
   const setScrollViewport$ = onRef(
     command(({ set }, viewport: HTMLElement, signal: AbortSignal) => {
-      set(bindScrollViewport$, viewport);
+      set(internalViewportRuntime$, {
+        element: viewport,
+        signal,
+        resizeScheduled: false,
+      });
+      set(measureScrollViewport$, viewport);
+      window.addEventListener(
+        "resize",
+        () => {
+          set(refreshScrollViewport$);
+        },
+        { signal },
+      );
       signal.addEventListener(
         "abort",
         () => {
@@ -145,39 +163,13 @@ function createSidebarChatThreadDomSignals() {
     },
   );
 
-  const bindVirtualListElement$ = command(({ set }, element: HTMLElement) => {
-    set(internalVirtualListElement$, element);
-  });
-  const clearVirtualListElement$ = command(
-    ({ get, set }, element: HTMLElement) => {
-      if (get(internalVirtualListElement$) !== element) {
-        return;
-      }
-      set(internalVirtualListElement$, null);
-    },
-  );
-  const setVirtualListElement$ = onRef(
-    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-      set(bindVirtualListElement$, element);
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(clearVirtualListElement$, element);
-        },
-        { once: true },
-      );
-    }),
-  );
-
   return {
     isScrolled$,
-    thumbStyle$,
     scrollViewport$,
     scrollMetrics$,
-    virtualListElement$,
     setScrollViewport$,
     setScrollMetrics$,
-    setVirtualListElement$,
+    refreshScrollViewport$,
   };
 }
 
@@ -187,18 +179,15 @@ type SidebarChatThreadDomSignals = ReturnType<
 
 function getFixedVirtualRange({
   itemCount,
-  scrollMargin,
   scrollTop,
   viewportHeight,
 }: {
   itemCount: number;
-  scrollMargin: number;
   scrollTop: number;
   viewportHeight: number;
 }) {
-  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
   const requestedFirstVisibleIndex = Math.floor(
-    localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+    Math.max(0, scrollTop) / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   );
   const visibleCount = Math.max(
     1,
@@ -220,65 +209,61 @@ function getFixedVirtualRange({
   return { startIndex, endIndex };
 }
 
-export const sidebarChatThreadCount$ = computed(
-  async (get): Promise<number> => {
-    return (await get(currentChatThreadListIds$)).length;
-  },
-);
-
-export const currentChatThreadListed$ = computed(
-  async (get): Promise<boolean> => {
+function createSidebarChatThreadListSignals(
+  dom: SidebarChatThreadDomSignals,
+  list: ChatThreadListSignals,
+): SidebarChatThreadListSignals {
+  const itemSignals$ = computed((get) => {
+    return get(sidebarChatThreadItemSignalsRegistry$).reconcile(
+      get(list.threadIds$),
+    );
+  });
+  const count$ = computed((get): number => {
+    return get(list.threadIds$).length;
+  });
+  const currentThreadListed$ = computed((get): boolean => {
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       return false;
     }
-    return (await get(currentChatThreadListIds$)).includes(threadId);
-  },
-);
-
-function createSidebarChatThreadWindowSignal(
-  dom: SidebarChatThreadDomSignals,
-): Computed<Promise<SidebarChatThreadWindow>> {
-  return computed(async (get): Promise<SidebarChatThreadWindow> => {
-    const chatThreads = await get(chatThreads$);
+    return get(list.threadIds$).includes(threadId);
+  });
+  const window$ = computed((get): SidebarChatThreadWindow => {
+    const itemSignals = get(itemSignals$);
     const scrollViewport = get(dom.scrollViewport$);
     const scrollMetrics = get(dom.scrollMetrics$);
-    const virtualListElement = get(dom.virtualListElement$);
-    const scrollMargin = getChatThreadVirtualListScrollMargin(
-      scrollViewport,
-      virtualListElement,
-    );
     const measuredViewportHeight =
       scrollMetrics.clientHeight || scrollViewport?.clientHeight;
     const viewportHeight =
       measuredViewportHeight || CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
     const scrollTop = scrollViewport?.scrollTop ?? scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
-      itemCount: chatThreads.length,
-      scrollMargin,
+      itemCount: itemSignals.length,
       scrollTop,
       viewportHeight,
     });
     const resolvedEndIndex = measuredViewportHeight
       ? endIndex
       : Math.min(
-          chatThreads.length,
+          itemSignals.length,
           Math.max(
             endIndex,
             startIndex + CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE,
           ),
         );
-    const itemSignals = get(sidebarChatThreadItemSignalsRegistry$).reconcile(
-      chatThreads.map((thread) => {
-        return thread.id;
-      }),
-    );
 
     return {
       startIndex,
       items: itemSignals.slice(startIndex, resolvedEndIndex),
     };
   });
+
+  return {
+    count$,
+    currentThreadListed$,
+    threadIds$: list.threadIds$,
+    window$,
+  };
 }
 
 function createScrollVirtualListToIndexCommand(
@@ -295,21 +280,16 @@ function createScrollVirtualListToIndexCommand(
       }
 
       const scrollViewport = get(dom.scrollViewport$);
-      const virtualListElement = get(dom.virtualListElement$);
-      if (!scrollViewport || !virtualListElement) {
+      if (!scrollViewport) {
         return false;
       }
 
       const currentMetrics = get(dom.scrollMetrics$);
-      const scrollMargin = getChatThreadVirtualListScrollMargin(
-        scrollViewport,
-        virtualListElement,
-      );
       const viewportHeight =
         currentMetrics.clientHeight ||
         scrollViewport.clientHeight ||
         CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-      const rowTop = scrollMargin + index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+      const rowTop = index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
       const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
       const viewportTop = scrollViewport.scrollTop;
       const viewportBottom = viewportTop + viewportHeight;
@@ -326,7 +306,6 @@ function createScrollVirtualListToIndexCommand(
       scrollViewport.scrollTop = nextScrollTop;
       set(dom.setScrollMetrics$, {
         scrollTop: nextScrollTop,
-        scrollHeight: scrollViewport.scrollHeight,
         clientHeight: scrollViewport.clientHeight,
       });
       return true;
@@ -334,22 +313,14 @@ function createScrollVirtualListToIndexCommand(
   );
 }
 
-async function waitForAnimationFrame(signal: AbortSignal): Promise<void> {
-  signal.throwIfAborted();
-  const deferred = createDeferredPromise<void>(signal);
-  animationFrame(
-    () => {
-      if (!deferred.settled()) {
-        deferred.resolve(undefined);
-      }
-    },
-    { signal },
-  );
-  await deferred.promise;
-}
-
 function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals {
   const dom = createSidebarChatThreadDomSignals();
+  // The async boundary selects a list context. Its count and virtual window
+  // remain synchronous when thread events or scroll metrics change.
+  const list$ = computed(async (get): Promise<SidebarChatThreadListSignals> => {
+    const list = await get(currentChatThreadListSignals$);
+    return createSidebarChatThreadListSignals(dom, list);
+  });
   const scrollVirtualListToIndex$ = createScrollVirtualListToIndexCommand(dom);
   const scrollToThread$ = command(
     async (
@@ -359,16 +330,14 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
     ) => {
       const threadId = typeof request === "string" ? request : request.threadId;
       const align = typeof request === "string" ? "top" : request.align;
-      const threadIds = await get(currentChatThreadListIds$);
+      const list = await get(list$);
       signal.throwIfAborted();
 
-      const index = threadIds.indexOf(threadId);
+      const index = get(list.threadIds$).indexOf(threadId);
       if (index === -1) {
         return false;
       }
 
-      await waitForAnimationFrame(signal);
-      signal.throwIfAborted();
       return set(scrollVirtualListToIndex$, index, align);
     },
   );
@@ -383,12 +352,12 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
   );
 
   return {
+    pinReorder: createPinnedThreadDragSignals(),
     isScrolled$: dom.isScrolled$,
-    thumbStyle$: dom.thumbStyle$,
-    window$: createSidebarChatThreadWindowSignal(dom),
+    list$,
     setScrollMetrics$: dom.setScrollMetrics$,
     setScrollViewport$: dom.setScrollViewport$,
-    setVirtualListElement$: dom.setVirtualListElement$,
+    refreshScrollViewport$: dom.refreshScrollViewport$,
     scrollToThread$,
     scrollCurrentChatThreadOnRef$,
   };
@@ -398,6 +367,27 @@ export const responsiveSidebarChatThreadScrollSignals =
   createSidebarChatThreadScrollSignals();
 export const threeColumnSidebarChatThreadScrollSignals =
   createSidebarChatThreadScrollSignals();
+
+const refreshSidebarChatThreadLayout$ = command(({ set }) => {
+  set(responsiveSidebarChatThreadScrollSignals.refreshScrollViewport$);
+  set(threeColumnSidebarChatThreadScrollSignals.refreshScrollViewport$);
+});
+
+// Pinned entries and upgrade cards consume space beside the chat viewport.
+// Their committed insertion/removal, including async data updates, determines
+// when the remaining height needs to be measured again.
+export const refreshSidebarChatThreadLayoutOnRef$ = onRef(
+  command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
+    set(refreshSidebarChatThreadLayout$);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(refreshSidebarChatThreadLayout$);
+      },
+      { once: true },
+    );
+  }),
+);
 
 export const scrollToThread$ = command(
   async (

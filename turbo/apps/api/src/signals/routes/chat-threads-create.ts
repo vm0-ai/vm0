@@ -9,8 +9,6 @@ import {
   isImageModelId,
   type ImageModelId,
 } from "@okouai/api-contracts/contracts/image-models";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 
@@ -29,7 +27,6 @@ import {
 } from "../services/model-selection.service";
 import { chatThreadModelPinColumns } from "../services/chat-thread-model.service";
 import { chatThreadServiceTierFromCodex } from "../services/chat-thread-event.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
@@ -106,20 +103,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const writeDb = set(writeDb$);
   const connectorSelections = body.data.connectorSelections ?? [];
-  if (connectorSelections.length > 0) {
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(
-        FeatureSwitchKey.ConnectorAccounts,
-        featureSwitchContext,
-      )
-    ) {
-      return notFound("Resource not found");
-    }
-  }
   const callerRunId =
     auth.tokenType === "sandbox" || auth.tokenType === "agent"
       ? auth.runId

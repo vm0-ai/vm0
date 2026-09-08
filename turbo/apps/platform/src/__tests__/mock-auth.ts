@@ -5,6 +5,7 @@ import type {
   ClerkAPIError,
   CreateOrganizationParams,
   PasswordValidation,
+  UpdateUserPasswordParams,
 } from "@clerk/react/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
@@ -32,7 +33,7 @@ interface MockedClerkListenerOptions {
   readonly skipInitialEmit?: boolean;
 }
 
-export interface MockedInvitation {
+interface MockedInvitation {
   id: string;
   accept?: () => Promise<unknown>;
   publicOrganizationData?: {
@@ -64,7 +65,7 @@ export interface MockedClientSession {
   };
 }
 
-export interface MockedAuthV2Capabilities {
+interface MockedAuthV2Capabilities {
   readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
@@ -80,6 +81,11 @@ export type MockedSignInFactor =
       readonly strategy: "email_code" | "reset_password_email_code";
     }
   | { readonly strategy: "oauth_apple" | "oauth_google" | "passkey" }
+  | {
+      readonly phoneNumberId: string;
+      readonly safeIdentifier: string;
+      readonly strategy: "phone_code";
+    }
   | { readonly strategy: string };
 
 export interface MockedSignInResourceState {
@@ -117,7 +123,8 @@ interface MockedSignUpConfiguration {
   readonly attributes?: Partial<
     Record<
       Attribute,
-      Pick<AttributeData, "enabled" | "required" | "used_for_first_factor">
+      Pick<AttributeData, "enabled" | "required" | "used_for_first_factor"> &
+        Partial<Pick<AttributeData, "used_for_second_factor">>
     >
   >;
   readonly captchaEnabled?: boolean;
@@ -128,6 +135,29 @@ interface MockedSignUpConfiguration {
   readonly termsUrl?: string;
 }
 
+interface MockedSecurityPhone {
+  id: string;
+  phoneNumber: string;
+  verification: { status: string };
+  prepareVerification: () => Promise<void>;
+  attemptVerification: (params: {
+    code: string;
+  }) => Promise<MockedSecurityPhone>;
+  setReservedForSecondFactor: (params: {
+    reserved: boolean;
+  }) => Promise<MockedSecurityPhone & { backupCodes?: string[] }>;
+}
+
+const userUpdatePassword =
+  vi.fn<(params: UpdateUserPasswordParams) => Promise<void>>();
+const userCreateTOTP =
+  vi.fn<() => Promise<{ secret?: string; backupCodes?: string[] }>>();
+const userCreateBackupCode = vi.fn<() => Promise<{ codes: string[] }>>();
+const userVerifyTOTP =
+  vi.fn<(params: { code: string }) => Promise<{ backupCodes?: string[] }>>();
+const userCreatePhoneNumber =
+  vi.fn<(params: { phoneNumber: string }) => Promise<MockedSecurityPhone>>();
+
 interface MockedUser {
   id: string;
   fullName: string;
@@ -136,9 +166,20 @@ interface MockedUser {
   createdAt?: Date;
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
+  updatePassword: typeof userUpdatePassword;
+  createTOTP: typeof userCreateTOTP;
+  createBackupCode: typeof userCreateBackupCode;
+  backupCodeEnabled: boolean;
+  verifyTOTP: typeof userVerifyTOTP;
+  createPhoneNumber: typeof userCreatePhoneNumber;
+  phoneNumbers: MockedSecurityPhone[];
   createOrganizationEnabled: boolean;
   createOrganizationsLimit: number | null;
   organizationMemberships: MockedMembership[];
+  getOrganizationMemberships: (params: {
+    initialPage: number;
+    pageSize: number;
+  }) => Promise<{ data: MockedMembership[]; total_count: number }>;
   getOrganizationInvitations: (params?: {
     status?: string;
   }) => Promise<{ data: MockedInvitation[]; total_count: number }>;
@@ -236,9 +277,9 @@ let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
   captchaEnabled: false,
   captchaWidgetType: null,
   legalConsentEnabled: false,
-  privacyPolicyUrl: "https://vm0.ai/privacy",
+  privacyPolicyUrl: "https://okou.ai/privacy",
   progressive: true,
-  termsUrl: "https://vm0.ai/terms",
+  termsUrl: "https://okou.ai/terms",
 };
 let internalMockedPasswordValidation: PasswordValidation = {
   complexity: {},
@@ -336,15 +377,13 @@ export function mockSignUpConfiguration(
       (configuration.captchaEnabled ? "smart" : null),
     legalConsentEnabled: configuration.legalConsentEnabled ?? false,
     privacyPolicyUrl:
-      configuration.privacyPolicyUrl ?? "https://vm0.ai/privacy",
+      configuration.privacyPolicyUrl ?? "https://okou.ai/privacy",
     progressive: configuration.progressive ?? true,
-    termsUrl: configuration.termsUrl ?? "https://vm0.ai/terms",
+    termsUrl: configuration.termsUrl ?? "https://okou.ai/terms",
   };
 }
 
-export function mockSignUpPasswordValidation(
-  validation: PasswordValidation,
-): void {
+function mockSignUpPasswordValidation(validation: PasswordValidation): void {
   internalMockedPasswordValidation = validation;
 }
 
@@ -391,6 +430,13 @@ export function mockUser(
   if (user) {
     internalMockedUser = {
       ...user,
+      updatePassword: userUpdatePassword,
+      createTOTP: userCreateTOTP,
+      createBackupCode: userCreateBackupCode,
+      backupCodeEnabled: false,
+      verifyTOTP: userVerifyTOTP,
+      createPhoneNumber: userCreatePhoneNumber,
+      phoneNumbers: [],
       imageUrl: user.imageUrl,
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
@@ -398,6 +444,15 @@ export function mockUser(
       createOrganizationsLimit: user.createOrganizationsLimit ?? null,
       get organizationMemberships() {
         return internalMockedMemberships;
+      },
+      getOrganizationMemberships: ({ initialPage, pageSize }) => {
+        return Promise.resolve({
+          data: internalMockedMemberships.slice(
+            (initialPage - 1) * pageSize,
+            initialPage * pageSize,
+          ),
+          total_count: internalMockedMemberships.length,
+        });
       },
       getOrganizationInvitations: () => {
         return Promise.resolve({
@@ -559,6 +614,11 @@ function clearMockedAuth() {
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
   mockedClerk.createOrganization.mockReset();
+  userUpdatePassword.mockReset();
+  userCreateTOTP.mockReset();
+  userCreateBackupCode.mockReset();
+  userVerifyTOTP.mockReset();
+  userCreatePhoneNumber.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
   mockedClerk.sessionTouch.mockReset();
@@ -646,6 +706,14 @@ function clearMockedAuth() {
   );
   mockedClerk.buildSignInUrl.mockReset();
   mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
+  mockedClerk.buildSignUpUrl.mockReset();
+  mockedClerk.buildSignUpUrl.mockImplementation(defaultBuildSignUpUrlImpl);
+  mockedClerk.navigate.mockReset();
+  mockedClerk.navigate.mockImplementation(defaultNavigateImpl);
+  mockedClerk.redirectToSignIn.mockReset();
+  mockedClerk.redirectToSignIn.mockImplementation(defaultRedirectToSignInImpl);
+  mockedClerk.redirectToSignUp.mockReset();
+  mockedClerk.redirectToSignUp.mockImplementation(defaultRedirectToSignUpImpl);
   mockedClerk.initialize.mockReset();
 }
 
@@ -654,7 +722,15 @@ export function clearMockedAuthOnAbort(signal: AbortSignal): void {
 }
 
 const clerkListeners: MockedClerkListener[] = [];
-function defaultClerkStatusOn(): void {}
+const defaultClerkStatusOn: BrowserClerk["on"] = (
+  event,
+  handler,
+  options,
+): void => {
+  if (event === "status" && options?.notify) {
+    handler(internalMockedClerkLoaded ? "ready" : "loading");
+  }
+};
 
 export function emitMockedClerkEvent(): void {
   const resources = { session: mockedClerk.session };
@@ -950,9 +1026,10 @@ const defaultBuildUserProfileUrlImpl = () => {
   return "https://accounts.example.test/user";
 };
 
-interface MockedClerkLoadOptions {
-  isSatellite?: boolean;
+export interface MockedClerkLoadOptions {
+  afterSignOutUrl?: string;
   signInUrl?: string;
+  signUpUrl?: string;
   touchSession?: boolean;
 }
 
@@ -960,26 +1037,65 @@ interface MockedSignInRedirectOptions {
   redirectUrl?: string | null;
 }
 
-const defaultBuildSignInUrlImpl = (
+function defaultBuildAuthUrl(
+  configuredUrl: string | undefined,
+  fallbackPath: "/sign-in" | "/sign-up",
   options?: MockedSignInRedirectOptions,
-): string => {
+): string {
   if (!internalMockedClerkLoaded) {
     return "";
   }
 
-  const signInUrl = new URL(
-    internalMockedClerkLoadOptions.signInUrl ?? "/sign-in",
+  const authUrl = new URL(
+    configuredUrl ?? fallbackPath,
     window.location.origin,
   );
   const redirectUrl = new URL(
     options?.redirectUrl ?? window.location.href,
     window.location.origin,
   );
-  if (internalMockedClerkLoadOptions.isSatellite) {
-    redirectUrl.searchParams.set("__clerk_synced", "false");
-  }
-  signInUrl.searchParams.set("redirect_url", redirectUrl.toString());
-  return signInUrl.toString();
+  // Clerk serializes redirect options into the auth route's fragment.
+  const authHashParams = new URLSearchParams();
+  authHashParams.set("redirect_url", redirectUrl.toString());
+  authUrl.hash = `/?${authHashParams.toString()}`;
+  return authUrl.toString();
+}
+
+const defaultBuildSignInUrlImpl = (
+  options?: MockedSignInRedirectOptions,
+): string => {
+  return defaultBuildAuthUrl(
+    internalMockedClerkLoadOptions.signInUrl,
+    "/sign-in",
+    options,
+  );
+};
+
+const defaultBuildSignUpUrlImpl = (
+  options?: MockedSignInRedirectOptions,
+): string => {
+  return defaultBuildAuthUrl(
+    internalMockedClerkLoadOptions.signUpUrl,
+    "/sign-up",
+    options,
+  );
+};
+
+const defaultNavigateImpl: BrowserClerk["navigate"] = (to) => {
+  replaceState(null, "", to);
+  return Promise.resolve();
+};
+
+const defaultRedirectToSignInImpl: BrowserClerk["redirectToSignIn"] = async (
+  options,
+): Promise<void> => {
+  await defaultNavigateImpl(defaultBuildSignInUrlImpl(options));
+};
+
+const defaultRedirectToSignUpImpl: BrowserClerk["redirectToSignUp"] = async (
+  options,
+): Promise<void> => {
+  await defaultNavigateImpl(defaultBuildSignUpUrlImpl(options));
 };
 
 const defaultLoadImpl = (options?: MockedClerkLoadOptions) => {
@@ -1027,6 +1143,8 @@ async function defaultSetActiveImpl(
       ? "active"
       : (sourceSession?.status ?? "active"),
     user: {
+      ...internalMockedUser,
+      ...sourceSession?.user,
       organizationMemberships:
         sourceSession?.user?.organizationMemberships ??
         internalMockedUser?.organizationMemberships ??
@@ -1055,9 +1173,17 @@ type MockedCreateOrganization = (
 ) => Promise<{ readonly id: string }>;
 
 export const mockedClerk = {
+  userUpdatePassword,
+  userCreateTOTP,
+  userCreateBackupCode,
+  userVerifyTOTP,
+  userCreatePhoneNumber,
   initialize,
   get loaded() {
     return internalMockedClerkLoaded;
+  },
+  get status() {
+    return internalMockedClerkLoaded ? "ready" : "loading";
   },
   get user() {
     return internalMockedUser;
@@ -1072,12 +1198,16 @@ export const mockedClerk = {
     if (internalMockedClerkSessionSignedOut) {
       return null;
     }
+    if (!internalMockedSession) {
+      return null;
+    }
     const recoverableSession = internalMockedClientSessions.find((session) => {
       return session.status === "pending";
     });
     if (recoverableSession) {
       return {
         ...recoverableSession,
+        user: { ...internalMockedUser, ...recoverableSession.user },
         get lastActiveOrganizationId() {
           return internalMockedOrganization?.id ?? null;
         },
@@ -1203,9 +1333,18 @@ export const mockedClerk = {
       }
     };
   },
-  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(),
+  navigate: vi.fn<BrowserClerk["navigate"]>(defaultNavigateImpl),
+  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(
+    defaultRedirectToSignInImpl,
+  ),
+  redirectToSignUp: vi.fn<BrowserClerk["redirectToSignUp"]>(
+    defaultRedirectToSignUpImpl,
+  ),
   buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
     defaultBuildSignInUrlImpl,
+  ),
+  buildSignUpUrl: vi.fn<typeof defaultBuildSignUpUrlImpl>(
+    defaultBuildSignUpUrlImpl,
   ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.

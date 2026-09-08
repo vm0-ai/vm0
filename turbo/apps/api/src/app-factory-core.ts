@@ -14,7 +14,6 @@ import {
   desktopProductFromClientHeader,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { serializeError } from "@okouai/core/log-utils";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { Hono, type Context, type Next } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -43,6 +42,7 @@ import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat
 import { configureOfficialWorkflowReconciliationDispatcher } from "./signals/services/official-workflow-reconciliation-registration.service";
 import { configurePiApiFirstTurnDispatcher } from "./signals/services/pi-api-first-turn-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
+import type { SystemSkillStorageResolution } from "./signals/context/system-skill-storage-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -105,14 +105,10 @@ function captureError(error: unknown): void {
 
 function redirectToApp(context: Context): Response {
   const incoming = new URL(context.req.url);
-  const configuredAppUrl = env("APP_URL");
-  const appUrl =
-    incoming.hostname === "api.okou.ai"
-      ? appUrlForPublicBrand(configuredAppUrl, "okou")
-      : incoming.hostname === "api.vm0.ai"
-        ? appUrlForPublicBrand(configuredAppUrl, "vm0")
-        : configuredAppUrl;
-  const target = new URL(`${incoming.pathname}${incoming.search}`, appUrl);
+  const target = new URL(
+    `${incoming.pathname}${incoming.search}`,
+    env("APP_URL"),
+  );
   return context.redirect(target.toString());
 }
 
@@ -554,12 +550,14 @@ interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
   readonly usagePricingResolution?: UsagePricingResolution;
+  readonly systemSkillStorageResolution?: SystemSkillStorageResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
   usagePricingResolution,
+  systemSkillStorageResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
   configureOfficialWorkflowReconciliationDispatcher();
@@ -586,7 +584,7 @@ export function createAppWithRoutes({
 
   app.use("*", previewAutomationBypassMiddleware);
 
-  // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
+  // Browser cross-origin requests (e.g. https://app.okou.ai -> api.okou.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
   // matching a registered method, and so registered route responses receive
   // Access-Control-Allow-Origin without relying on the legacy web proxy.
@@ -606,14 +604,10 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // A route is registered at the path its contract declares, and nowhere else.
-  // Two stages used to sit here: one registered the branded paths migrated
-  // routes owed their released callers, which #31088 emptied and #31090
-  // removed, and one derived the canonical form of a branded declaration,
-  // which #31094 removed once nothing declared one. Uniqueness is asserted
-  // against the production route table in
-  // `__tests__/api-namespace-compatibility.test.ts`, not here — test apps
-  // deliberately compose overlapping route slices.
+  // A route is registered at the path its contract declares. Registration
+  // uniqueness is asserted against the production route table in
+  // `__tests__/route-registration.test.ts`, not here — test apps deliberately
+  // compose overlapping route slices.
   for (const entry of routes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(
@@ -621,6 +615,7 @@ export function createAppWithRoutes({
       route,
       signal,
       usagePricingResolution,
+      systemSkillStorageResolution,
     );
     app.on(route.method, route.path, routeHandler);
   }

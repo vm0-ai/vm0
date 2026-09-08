@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -14,6 +14,10 @@ use sandbox::{
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
+use super::super::env::guest_connector_account_context_file_path;
+use super::super::storage_baseline_observation::{
+    BaselineObservationTestEvent, StorageBaselineObserver,
+};
 use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_startup_boundaries,
     record_reuse_result,
@@ -27,10 +31,13 @@ use super::super::{
 };
 use super::support::{
     api_storage, context_with_env, default_params, make_reusable_idle_sandbox, minimal_context,
-    test_executor_config,
+    test_budget_lease, test_executor_config,
 };
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::http::{HttpClient, HttpClientConfig};
+use crate::idle_pool::{
+    IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult, ParkedIdleCandidate,
+};
 use crate::ids::RunId;
 use crate::provider::ApiClaimTiming;
 use crate::resource_budget::ResourceBudget;
@@ -42,6 +49,7 @@ use crate::telemetry::{
     RunnerResourceBudgetUtilizationBucket, RunnerStartupPath,
 };
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 #[test]
 fn elapsed_since_api_start_ms_returns_elapsed_duration() {
@@ -1178,7 +1186,7 @@ async fn execute_job_observes_exact_baseline_stability_per_profile_and_framework
 }
 
 #[tokio::test]
-async fn execute_job_serializes_concurrent_baseline_observations() {
+async fn execute_job_shares_baseline_observations_across_sequential_jobs() {
     const STABILITY: &str = "runner_storage_baseline_candidate_stability";
 
     let dir = tempfile::tempdir().unwrap();
@@ -1194,16 +1202,99 @@ async fn execute_job_serializes_concurrent_baseline_observations() {
         vec![baseline_storage("seed", "/seed", "version")],
     );
 
-    let (first, second) = tokio::join!(
-        execute_cancelled_observation(&config, first_context, &first_params),
-        execute_cancelled_observation(&config, second_context, &second_params),
+    let first = execute_cancelled_observation(&config, first_context, &first_params).await;
+    let second = execute_cancelled_observation(&config, second_context, &second_params).await;
+    assert_eq!(successful_bounded_outcome(&first, STABILITY), "first");
+    assert_eq!(successful_bounded_outcome(&second, STABILITY), "same");
+}
+
+#[test]
+fn baseline_observation_serializes_parallel_callers() {
+    const WAIT: Duration = Duration::from_secs(5);
+    const STABILITY: &str = "runner_storage_baseline_candidate_stability";
+
+    let (events, observations) = mpsc::channel();
+    let (release_first, first_release) = mpsc::channel();
+    let first_release = Mutex::new(Some(first_release));
+    let observer = StorageBaselineObserver::with_test_probe(move |event| match event {
+        BaselineObservationTestEvent::BeforeLock { .. } => events.send(event).unwrap(),
+        BaselineObservationTestEvent::BeforeFirstInsert => {
+            // Pause only the first caller, even if a split-lock regression lets
+            // another caller also observe a missing key.
+            let release = first_release.lock().unwrap().take();
+            if let Some(release) = release {
+                events.send(event).unwrap();
+                assert_ne!(
+                    release.recv_timeout(WAIT),
+                    Err(mpsc::RecvTimeoutError::Timeout)
+                );
+            }
+        }
+    });
+    let context = context_with_baseline(
+        "claude-code",
+        vec![baseline_storage("seed", "/seed", "version")],
     );
+    let params = default_params();
+    let record = |mut telemetry: JobTelemetry| {
+        observer.record(&context, &params, &mut telemetry);
+        telemetry
+    };
+    // Keep HTTP-client construction outside the coordinated contention window.
+    let first_telemetry = new_telemetry();
+    let second_telemetry = new_telemetry();
+
+    let (first, second) = std::thread::scope(|scope| {
+        // Own the sender inside the scope callback: unwinding disconnects the
+        // paused worker before scope cleanup joins it.
+        let release_first = release_first;
+        let first = scope.spawn(|| record(first_telemetry));
+        assert_eq!(
+            observations.recv_timeout(WAIT).unwrap(),
+            BaselineObservationTestEvent::BeforeLock { contended: false }
+        );
+        assert_eq!(
+            observations.recv_timeout(WAIT).unwrap(),
+            BaselineObservationTestEvent::BeforeFirstInsert
+        );
+
+        // The first caller has read the absent key but has not inserted it.
+        // A separate OS thread now enters the same production observer.
+        let second = scope.spawn(|| record(second_telemetry));
+        let second_entry = observations.recv_timeout(WAIT);
+        let released = release_first.send(());
+        drop(release_first);
+        let first = first.join();
+        let second = second.join();
+
+        assert_eq!(
+            second_entry.unwrap(),
+            BaselineObservationTestEvent::BeforeLock { contended: true },
+            "the first observation must hold the state lock between lookup and insertion"
+        );
+        released.unwrap();
+        (first.unwrap(), second.unwrap())
+    });
+
     let mut outcomes = [
         successful_bounded_outcome(&first, STABILITY),
         successful_bounded_outcome(&second, STABILITY),
     ];
     outcomes.sort();
     assert_eq!(outcomes, ["first", "same"]);
+
+    let subsequent = record(new_telemetry());
+    assert_eq!(successful_bounded_outcome(&subsequent, STABILITY), "same");
+    for telemetry in [&first, &second, &subsequent] {
+        for (action, expected) in [
+            ("runner_storage_baseline_candidate_count", "1"),
+            ("runner_storage_baseline_added_count", "0"),
+            ("runner_storage_baseline_removed_count", "0"),
+            ("runner_storage_baseline_changed_at_path_count", "0"),
+        ] {
+            assert_eq!(successful_bounded_outcome(telemetry, action), expected);
+        }
+    }
 }
 
 #[tokio::test]
@@ -1739,6 +1830,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
     let (_outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         &config,
         &default_params(),
@@ -1796,6 +1888,90 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_lacks_action(&telemetry, "workspace_drive_mount_guest_exec_unavailable");
 }
 
+#[tokio::test]
+async fn execute_job_claims_blank_sandbox_without_changing_cold_path_attribution() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let params = default_params();
+    let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(MockSandboxFactory::new()));
+    let sandbox_id = SandboxId::new_v4();
+    let mut sandbox = factory
+        .create(SandboxConfig {
+            id: sandbox_id,
+            resources: sandbox::ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 2048,
+            },
+            device_rate_limits: None,
+            workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+                size_mb: params.workspace_disk_mb,
+                seed_image: None,
+            }),
+        })
+        .await
+        .unwrap();
+    sandbox.start().await.unwrap();
+    ensure_workspace_drive_mounted(sandbox.as_ref(), sandbox_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        sandbox.park().await.unwrap(),
+        sandbox::SandboxParkOutcome::Reusable
+    );
+
+    let mut pool = IdlePool::new(IdlePoolConfig { max_idle: 0 });
+    let candidate = ParkedIdleCandidate::blank(
+        sandbox,
+        Arc::clone(&factory),
+        test_budget_lease(),
+        sandbox_id,
+        "vm0/default".into(),
+        None,
+    );
+    assert!(matches!(pool.park(candidate), ParkResult::Parked));
+    let reserved = pool
+        .reserve_blank("vm0/default", &None)
+        .expect("blank sandbox should be compatible");
+    let (idle_sandbox, budget_lease) = match reserved.try_unpark_for_run(RunId::new_v4()).await {
+        IdleUnparkResult::Reused {
+            sandbox,
+            budget_lease,
+        } => (*sandbox, budget_lease),
+        IdleUnparkResult::Failed { error, .. } => {
+            panic!("blank sandbox should unpark: {error}");
+        }
+    };
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, telemetry) = execute_job_reuse_with_hooks(
+        idle_sandbox,
+        SandboxReuseResult::PoolMiss,
+        minimal_context(),
+        &config,
+        &params,
+        RunCancellationSignals::hard_only(cancel),
+        ExecutionHooks::none(),
+    )
+    .await;
+
+    assert!(outcome.failure.is_none());
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::NotConfigured)
+    );
+    assert_has_action(&telemetry, "sandbox_reuse_miss");
+    assert_has_action(&telemetry, "sandbox_blank_pool_hit");
+    assert_lacks_action(&telemetry, "sandbox_reuse_hit");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
+    assert_lacks_action(&telemetry, "runner_guest_state_restore");
+
+    let mut sandbox = outcome.sandbox.expect("sandbox should remain alive");
+    sandbox.stop().await.unwrap();
+    factory.destroy(sandbox).await;
+    drop(budget_lease);
+}
+
 async fn assert_reused_private_write_timeout_telemetry(
     context: crate::types::ExecutionContext,
     stage: SandboxOperationTimeoutStage,
@@ -1811,7 +1987,6 @@ async fn assert_reused_private_write_timeout_telemetry(
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
-    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_files_result(Err(SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,
         stage,
@@ -1821,6 +1996,7 @@ async fn assert_reused_private_write_timeout_telemetry(
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
+        SandboxReuseResult::Reused,
         context,
         &config,
         &default_params(),
@@ -1847,32 +2023,35 @@ async fn assert_reused_private_write_timeout_telemetry(
     );
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    assert_eq!(overrides.private_write_file_calls().len(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
     assert_eq!(overrides.private_write_files_calls().len(), 1);
 }
 
-#[tokio::test]
-async fn reused_connector_account_context_timeout_records_failure_and_continues() {
+async fn assert_reused_required_private_batch_failure(
+    error: SandboxError,
+    expected_outcome: Option<&str>,
+) {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Err(SandboxError::OperationTimeout {
-        operation: SandboxOperation::WriteFile,
-        stage: SandboxOperationTimeoutStage::FrameWrite,
-        timeout_ms: 60_000,
-    }));
+    let expected_failure = format!("sandbox error: {error}");
+    overrides.push_private_write_files_result(Err(error));
     let sandbox = Box::new(MockSandbox::with_overrides(
-        "connector-account-context-timeout",
+        "required-private-batch-failure",
         Arc::clone(&overrides),
     ));
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    let context = minimal_context();
+    let expected_connector_context_path =
+        guest_connector_account_context_file_path(context.run_id).unwrap();
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
         idle_sandbox,
-        minimal_context(),
+        SandboxReuseResult::Reused,
+        context,
         &config,
         &default_params(),
         RunCancellationSignals::hard_only(cancel),
@@ -1885,25 +2064,106 @@ async fn reused_connector_account_context_timeout_records_failure_and_continues(
     )
     .await;
 
-    assert!(outcome.failure.is_none());
     let operations = telemetry.pending_ops_with_outcome_snapshot();
     let matching: Vec<_> = operations
         .iter()
-        .filter(|operation| operation.0 == "runner_connector_account_context_write")
+        .filter(|operation| operation.0 == "runner_required_private_files_write")
         .collect();
     assert_eq!(matching.len(), 1);
     assert!(!matching[0].1);
-    assert_eq!(matching[0].2.as_deref(), Some("frame_write"));
+    assert_eq!(matching[0].2.as_deref(), expected_outcome);
     assert_eq!(matching[0].3, None);
     assert_action_outcome(
         &telemetry,
-        "runner_connector_account_context_write",
+        "runner_required_private_files_write",
         false,
-        Some("connector account context unavailable"),
+        None,
     );
-    assert_has_action(&telemetry, "runner_agent_start_process");
-    assert_eq!(overrides.start_agent_process_calls().len(), 1);
-    assert_eq!(overrides.private_write_file_calls().len(), 2);
+
+    assert!(outcome.sandbox.is_some());
+    let failure = outcome
+        .failure
+        .expect("required private batch failure should stop the run");
+    assert_eq!(failure.error, expected_failure);
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    );
+    assert_lacks_action(&telemetry, "runner_agent_start_process");
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
+    assert_eq!(
+        private_batches[0].files[0].path,
+        expected_connector_context_path
+    );
+}
+
+#[tokio::test]
+async fn reused_required_private_batch_guest_failure_stops() {
+    assert_reused_required_private_batch_failure(
+        SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::Guest,
+            message: "permission denied".into(),
+        },
+        None,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reused_required_private_batch_before_frame_timeout_stops() {
+    assert_reused_required_private_batch_failure(
+        SandboxError::OperationTimeout {
+            operation: SandboxOperation::WriteFile,
+            stage: SandboxOperationTimeoutStage::BeforeFrameWrite,
+            timeout_ms: 60_000,
+        },
+        Some("before_frame_write"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reused_required_private_batch_frame_write_timeout_stops() {
+    assert_reused_required_private_batch_failure(
+        SandboxError::OperationTimeout {
+            operation: SandboxOperation::WriteFile,
+            stage: SandboxOperationTimeoutStage::FrameWrite,
+            timeout_ms: 60_000,
+        },
+        Some("frame_write"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reused_required_private_batch_terminal_response_timeout_stops() {
+    assert_reused_required_private_batch_failure(
+        SandboxError::OperationTimeout {
+            operation: SandboxOperation::WriteFile,
+            stage: SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+            timeout_ms: 60_000,
+        },
+        Some("await_terminal_response"),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reused_required_private_batch_backend_crash_stops() {
+    assert_reused_required_private_batch_failure(
+        SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::BackendCrashed,
+            message: "firecracker process crashed".into(),
+        },
+        None,
+    )
+    .await;
 }
 
 #[tokio::test]

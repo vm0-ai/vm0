@@ -280,8 +280,8 @@ export function mockCustomConnectorOAuth2Provider(
 }
 
 interface AutomaticMcpOAuthProviderOptions {
-  readonly registration: "cimd" | "dcr";
-  readonly authentication?: "none" | "oauth";
+  readonly registration: "cimd" | "dcr" | "none";
+  readonly authentication?: "invalid" | "none" | "oauth";
   readonly issuerParameterSupported?: boolean;
   readonly dcrTokenEndpointAuthMethod?:
     | "none"
@@ -289,6 +289,10 @@ interface AutomaticMcpOAuthProviderOptions {
     | "client_secret_post";
   readonly synchronizeAuthorizationServerDiscovery?: boolean;
   readonly dcrFailureStatus?: number;
+  readonly dcrFailureDescription?: string;
+  readonly invalidDcrResponse?: boolean;
+  readonly authorizationCodeSupported?: boolean;
+  readonly pkceS256Supported?: boolean;
   readonly discovery?: "challenge" | "well-known-oidc";
   readonly resourceMetadataStatus?: number;
   readonly challengeScope?: string | null;
@@ -314,6 +318,7 @@ interface AutomaticMcpOAuthProviderRecorder {
   readonly issuer: string;
   readonly registrationBodies: readonly Record<string, unknown>[];
   advertiseAuthorizationServers(issuers: readonly string[]): void;
+  setChallengeScope(scope: string | null): void;
   authorizationServerDiscoveryCalls(): number;
   readonly tokenBodies: readonly URLSearchParams[];
   readonly tokenAuthorizationHeaders: readonly (string | null)[];
@@ -345,11 +350,16 @@ export function mockAutomaticMcpOAuthProvider(
     issuer: options.metadataIssuer ?? issuer,
     authorization_endpoint: options.authorizationEndpoint ?? authorizationUrl,
     token_endpoint: tokenUrl,
-    response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
-    code_challenge_methods_supported: ["S256"],
+    response_types_supported:
+      options.authorizationCodeSupported === false ? ["token"] : ["code"],
+    grant_types_supported:
+      options.authorizationCodeSupported === false
+        ? ["refresh_token"]
+        : ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported:
+      options.pkceS256Supported === false ? ["plain"] : ["S256"],
     token_endpoint_auth_methods_supported:
-      options.registration === "cimd" ? ["none"] : [tokenEndpointAuthMethod],
+      options.registration === "dcr" ? [tokenEndpointAuthMethod] : ["none"],
     authorization_response_iss_parameter_supported:
       options.issuerParameterSupported ?? true,
     client_id_metadata_document_supported: options.registration === "cimd",
@@ -370,6 +380,10 @@ export function mockAutomaticMcpOAuthProvider(
   const tokenAuthorizationHeaders: (string | null)[] = [];
   let authorizationServerDiscoveryCallCount = 0;
   let advertisedAuthorizationServers: readonly string[] = [issuer];
+  let challengeScope =
+    options.challengeScope === undefined
+      ? "read write"
+      : options.challengeScope;
   let refreshAttempts = 0;
   let authorizationCodeAttempts = 0;
   const authorizationServerDiscoveryBarrier =
@@ -404,6 +418,9 @@ export function mockAutomaticMcpOAuthProvider(
       });
     }),
     http.post(endpoint, async ({ request }) => {
+      if (options.authentication === "invalid") {
+        return new HttpResponse(null, { status: 403 });
+      }
       if (options.authentication === "none") {
         const body = z
           .object({
@@ -426,10 +443,6 @@ export function mockAutomaticMcpOAuthProvider(
           },
         });
       }
-      const challengeScope =
-        options.challengeScope === undefined
-          ? "read write"
-          : options.challengeScope;
       const resourceMetadataParameter =
         options.discovery === "well-known-oidc"
           ? ""
@@ -499,9 +512,15 @@ export function mockAutomaticMcpOAuthProvider(
               options.dcrFailureStatus >= 500
                 ? "temporarily_unavailable"
                 : "invalid_client_metadata",
+            ...(options.dcrFailureDescription
+              ? { error_description: options.dcrFailureDescription }
+              : {}),
           },
           { status: options.dcrFailureStatus },
         );
+      }
+      if (options.invalidDcrResponse) {
+        return HttpResponse.json({ ...body, client_id: "" });
       }
       return HttpResponse.json({
         ...body,
@@ -554,6 +573,9 @@ export function mockAutomaticMcpOAuthProvider(
     advertiseAuthorizationServers(issuers: readonly string[]): void {
       advertisedAuthorizationServers = [...issuers];
     },
+    setChallengeScope(scope: string | null): void {
+      challengeScope = scope;
+    },
     authorizationServerDiscoveryCalls: () => {
       return authorizationServerDiscoveryCallCount;
     },
@@ -569,7 +591,7 @@ export function mockGitHubConnectorOAuth(
     readonly email?: string | null;
   } = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
 
@@ -611,7 +633,7 @@ interface StripeConnectorOAuthRecorder {
 export function mockStripeConnectorOAuth(
   options: StripeConnectorOAuthOptions = {},
 ): StripeConnectorOAuthRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_SECRET", "sk_test_marketplace_secret");
 
@@ -653,7 +675,7 @@ interface DatadogOAuthProviderRecorder {
 }
 
 export function mockDatadogConnectorOAuth(): DatadogOAuthProviderRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_ID", "datadog-client-id");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_SECRET", "datadog-client-secret");
 
@@ -816,7 +838,7 @@ interface GoogleDriveConnectorOAuthRecorder {
 export function mockGoogleDriveConnectorOAuth(
   options: GoogleDriveConnectorOAuthOptions = {},
 ): GoogleDriveConnectorOAuthRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   const recorded: GoogleDriveConnectorOAuthRecorder = { refreshBodies: [] };
@@ -891,7 +913,7 @@ interface GmailConnectorOAuthOptions {
 export function mockGmailConnectorOAuth(
   options: GmailConnectorOAuthOptions = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -935,7 +957,7 @@ export function mockGoogleFormsConnectorOAuth(
     readonly email?: string;
   } = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -1790,21 +1812,30 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async disconnectSingleBuiltinConnectorAccount(
+    async deleteDefaultBuiltinConnectorAccount(
       actor: ApiTestUser,
       connectorSlug: ConnectorSlug,
-      statuses: readonly (204 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
       const client = setupApp({ context, routes: connectorAccountRoutes })(
         connectorAccountsContract,
       );
-      await accept(
-        client.disconnectSingleAccount({
+      const response = await accept(
+        client.connections({
           headers: authenticate(actor),
-          body: { target: { kind: "builtin", connectorSlug } },
+          query: { kind: "builtin", connectorSlug, limit: 100 },
         }),
-        statuses,
+        [200, 404],
       );
+      if (response.status === 404) {
+        return;
+      }
+      const account = response.body.connections.find((candidate) => {
+        return candidate.isDefault;
+      });
+      if (!account) {
+        return;
+      }
+      await api.deleteBuiltinConnectorAccount(actor, connectorSlug, account.id);
     },
 
     async listBuiltinConnectorAccounts(
@@ -1932,7 +1963,7 @@ export function createConnectorBddApi(context: TestContext) {
             values,
             ...(options.agentId ? { agentId: options.agentId } : {}),
             ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
-            account: options.account ?? { intent: "single-account" },
+            account: options.account ?? { intent: "add" },
           },
         }),
         options.statuses,
@@ -1944,14 +1975,18 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
-      agentId?: string,
+      ...options: readonly [
+        agentId?: string,
+        account?: ConnectorAccountMutationIntent,
+      ]
     ): Promise<ConnectorResponse> {
+      const [agentId, account = { intent: "add" }] = options;
       const response = await api.requestManualGrant(
         actor,
         connectorSlug,
         authMethod,
         values,
-        { statuses: [200], agentId, authorizeAgent: true },
+        { statuses: [200], agentId, authorizeAgent: true, account },
       );
       expectStatus(response, 200);
       return response.body;
@@ -1983,7 +2018,7 @@ export function createConnectorBddApi(context: TestContext) {
             ...(options.callbackTarget
               ? { callbackTarget: options.callbackTarget }
               : {}),
-            account: options.account ?? { intent: "single-account" },
+            account: options.account ?? { intent: "add" },
           },
         }),
         options.statuses,
@@ -2174,8 +2209,7 @@ export function createConnectorBddApi(context: TestContext) {
         account?: ConnectorAccountMutationIntent,
       ]
     ) {
-      const [options, statuses, account = { intent: "single-account" }] =
-        request;
+      const [options, statuses, account = { intent: "add" }] = request;
       const client = setupApp({
         context,
         routes: connectorsOauthDeviceAuthRoutes,
@@ -2195,7 +2229,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       options?: Readonly<Record<string, string>>,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<ConnectorOauthDeviceAuthSessionStartResponse> {
       const response = await api.requestDeviceAuthStart(
         actor,
@@ -2252,7 +2286,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorSlug: ConnectorSlug,
       authMethod: ConnectorAuthMethodId,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2565,6 +2599,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       value: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2576,7 +2611,7 @@ export function createConnectorBddApi(context: TestContext) {
           headers: authenticate(actor),
           body: {
             values: [{ key: "secret", kind: "secret", value }],
-            account: { intent: "single-account" },
+            account,
           },
         }),
         statuses,
@@ -2588,12 +2623,14 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       value: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[] = [200],
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<void> {
       await api.requestSetCustomConnectorSecret(
         actor,
         connectorId,
         value,
         statuses,
+        account,
       );
     },
 
@@ -2602,7 +2639,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       values: readonly CustomConnectorValueInput[],
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2635,56 +2672,42 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestDisconnectSingleCustomConnectorAccount(
-      actor: ApiTestUser | null,
+    async deleteCustomConnectorAccount(
+      actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
+      connectionId: string,
+    ): Promise<void> {
       const client = setupApp({
         context,
         routes: connectorAccountRoutes,
       })(connectorAccountsContract);
-      return await accept(
-        client.disconnectSingleAccount({
+      await accept(
+        client.delete({
+          params: { connectionId },
           headers: authenticate(actor),
           body: {
             target: { kind: "custom", customConnectorId: connectorId },
           },
         }),
-        statuses,
+        [200],
       );
     },
 
-    async disconnectSingleCustomConnectorAccount(
+    async deleteDefaultCustomConnectorAccount(
       actor: ApiTestUser,
       connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 404 | 409)[] = [204],
     ): Promise<void> {
-      await api.requestDisconnectSingleCustomConnectorAccount(
+      const accounts = await api.listCustomConnectorAccounts(
         actor,
         connectorId,
-        statuses,
       );
-    },
-
-    async requestDisconnectSingleCustomConnectorAccountWithToken(
-      token: string,
-      connectorId: string,
-      statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
-    ) {
-      const client = setupApp({
-        context,
-        routes: connectorAccountRoutes,
-      })(connectorAccountsContract);
-      return await accept(
-        client.disconnectSingleAccount({
-          headers: { authorization: `Bearer ${token}` },
-          body: {
-            target: { kind: "custom", customConnectorId: connectorId },
-          },
-        }),
-        statuses,
-      );
+      const account = accounts.find((candidate) => {
+        return candidate.isDefault;
+      });
+      if (!account) {
+        return;
+      }
+      await api.deleteCustomConnectorAccount(actor, connectorId, account.id);
     },
 
     async requestStartCustomConnectorOAuth2(
@@ -2692,7 +2715,7 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500 | 502)[],
       agentId?: string,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ) {
       const client = setupApp({
         context,
@@ -2732,7 +2755,7 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       connectorId: string,
       baseUrl: string,
-      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+      account: ConnectorAccountMutationIntent = { intent: "add" },
     ): Promise<string> {
       const client = setupApp({
         baseUrl,

@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::constants::runners::PI_MODEL_CONFIG_CURRENT_GENERATION;
+use api_contracts::generated::constants::runners::{
+    PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+};
 use api_contracts::generated::types::runners::{
-    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2},
+    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2, PiModelConfigV3},
     storage::ArtifactEntryMissingRootPolicy,
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
@@ -207,16 +209,53 @@ fn is_pi_credential_secret_name(value: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
+enum PiModelConfigCommonError {
+    InvalidBaseUrl,
+    EmptyModel,
+    InvalidCatalogModel,
+}
+
+fn validate_pi_model_config_common(
+    base_url: &str,
+    model: &str,
+    catalog_model: Option<&serde_json::Value>,
+) -> Result<(), PiModelConfigCommonError> {
+    let parsed = url::Url::parse(base_url).map_err(|_| PiModelConfigCommonError::InvalidBaseUrl)?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(PiModelConfigCommonError::InvalidBaseUrl);
+    }
+    if model.is_empty() {
+        return Err(PiModelConfigCommonError::EmptyModel);
+    }
+    if catalog_model.is_some_and(|value| value.as_str().is_none_or(str::is_empty)) {
+        return Err(PiModelConfigCommonError::InvalidCatalogModel);
+    }
+    Ok(())
+}
+
 fn validate_legacy_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
     let model: PiModelConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi legacy model config is invalid: {error}"))?;
-    url::Url::parse(&model.base_url)
-        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
-    if model.model.is_empty() {
-        return Err("Pi model config model must not be empty".to_string());
-    }
+    validate_pi_model_config_common(&model.base_url, &model.model, value.get("catalogModel"))
+        .map_err(|error| match error {
+            PiModelConfigCommonError::InvalidBaseUrl => {
+                "Pi model config baseUrl is invalid".to_string()
+            }
+            PiModelConfigCommonError::EmptyModel => {
+                "Pi model config model must not be empty".to_string()
+            }
+            PiModelConfigCommonError::InvalidCatalogModel => {
+                "Pi model config catalogModel is invalid".to_string()
+            }
+        })?;
     if !is_pi_credential_secret_name(&model.credential_secret_name) {
         return Err("Pi model config credentialSecretName is invalid".to_string());
+    }
+    if value
+        .get("credentialHeader")
+        .is_some_and(|header| !is_valid_pi_credential_header(header))
+    {
+        return Err("Pi model config credentialHeader is invalid".to_string());
     }
     Ok(())
 }
@@ -376,16 +415,55 @@ fn validate_pi_v2_credential_bindings(
 fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> {
     let model: PiModelConfigV2 = serde_json::from_value(value.clone())
         .map_err(|error| format!("Pi model config v2 is invalid: {error}"))?;
-    if model.schema_version != i64::from(PI_MODEL_CONFIG_CURRENT_GENERATION) {
-        return Err("Pi model config schemaVersion is unsupported".to_string());
-    }
-    url::Url::parse(&model.base_url)
-        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
-    if model.model.is_empty() || model.model.encode_utf16().count() > 512 {
+    validate_pi_versioned_model_config(
+        value,
+        &model.base_url,
+        &model.model,
+        PI_MODEL_CONFIG_CURRENT_GENERATION,
+    )
+}
+
+fn validate_pi_model_config_v3(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfigV3 = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config v3 is invalid: {error}"))?;
+    let (base_url, model_name) = match &model {
+        PiModelConfigV3::OpenaiResponses {
+            base_url, model, ..
+        }
+        | PiModelConfigV3::OpenaiCodexResponses {
+            base_url, model, ..
+        } => (base_url, model),
+    };
+    validate_pi_versioned_model_config(
+        value,
+        base_url,
+        model_name,
+        PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+    )
+}
+
+fn validate_pi_versioned_model_config(
+    value: &serde_json::Value,
+    base_url: &str,
+    model: &str,
+    generation: u32,
+) -> Result<(), String> {
+    validate_pi_model_config_common(base_url, model, value.get("catalogModel")).map_err(
+        |error| match error {
+            PiModelConfigCommonError::InvalidBaseUrl => {
+                "Pi model config baseUrl is invalid".to_string()
+            }
+            PiModelConfigCommonError::EmptyModel => "Pi model config model is invalid".to_string(),
+            PiModelConfigCommonError::InvalidCatalogModel => {
+                "Pi model config catalogModel is invalid".to_string()
+            }
+        },
+    )?;
+    if model.encode_utf16().count() > 512 {
         return Err("Pi model config model is invalid".to_string());
     }
     let Some(object) = value.as_object() else {
-        return Err("Pi model config v2 is invalid".to_string());
+        return Err(format!("Pi model config v{generation} is invalid"));
     };
     if !has_exact_object_fields(
         object,
@@ -411,7 +489,7 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
             "credentialBindings",
         ],
     ) {
-        return Err("Pi model config v2 fields are invalid".to_string());
+        return Err(format!("Pi model config v{generation} fields are invalid"));
     }
     if object.get("transport").and_then(serde_json::Value::as_str) != Some("sse") {
         return Err("Pi model config transport must be sse".to_string());
@@ -419,12 +497,17 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
     if object
         .get("catalogModel")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|catalog_model| {
-            catalog_model.is_empty() || catalog_model.encode_utf16().count() > 512
-        })
+        .is_some_and(|catalog_model| catalog_model.encode_utf16().count() > 512)
     {
         return Err("Pi model config catalogModel is invalid".to_string());
     }
+    validate_pi_model_config_dialect(object, generation)
+}
+
+fn validate_pi_model_config_dialect(
+    object: &serde_json::Map<String, serde_json::Value>,
+    generation: u32,
+) -> Result<(), String> {
     let dialect = object
         .get("dialect")
         .and_then(serde_json::Value::as_str)
@@ -440,12 +523,21 @@ fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> 
         "openai-codex-responses"
             if provider != "openai-codex"
                 || object.contains_key("catalogModel")
-                || object.contains_key("serviceTier") =>
+                || (generation == PI_MODEL_CONFIG_CURRENT_GENERATION
+                    && object.contains_key("serviceTier")) =>
         {
             return Err("Pi Codex Responses route is invalid".to_string());
         }
         "openai-responses" | "openai-codex-responses" => {}
         _ => return Err("Pi model config dialect is unsupported".to_string()),
+    }
+    // Serde Option accepts null; the new wire contract permits omission only.
+    if generation == PI_MODEL_CONFIG_DIALECT_TIER_GENERATION {
+        for field in ["thinkingLevel", "serviceTier"] {
+            if object.get(field).is_some_and(serde_json::Value::is_null) {
+                return Err(format!("Pi model config {field} is invalid"));
+            }
+        }
     }
     validate_pi_v2_credential_bindings(
         object
@@ -462,6 +554,11 @@ fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
             if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_CURRENT_GENERATION)) =>
         {
             validate_pi_model_config_v2(value)
+        }
+        Some(serde_json::Value::Number(generation))
+            if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_DIALECT_TIER_GENERATION)) =>
+        {
+            validate_pi_model_config_v3(value)
         }
         Some(_) => Err("Pi model config generation is unsupported".to_string()),
     }
@@ -690,10 +787,7 @@ pub(super) fn guest_connector_account_context_file_path(run_id: RunId) -> Runner
     })
 }
 
-pub(super) async fn write_connector_account_context_file(
-    sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
-) -> RunnerResult<String> {
+fn build_connector_account_context(context: &ExecutionContext) -> RunConnectorAccountContext {
     let targets = context
         .connector_runtime_targets
         .iter()
@@ -716,54 +810,55 @@ pub(super) async fn write_connector_account_context_file(
             },
         })
         .collect();
-    let payload = serde_json::to_vec(&RunConnectorAccountContext {
+    RunConnectorAccountContext {
         schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
         targets,
-    })
-    .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
-    let file_path = guest_connector_account_context_file_path(context.run_id)?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-    Ok(file_path)
+    }
 }
 
 pub(super) struct RequiredAgentFiles {
-    pub(super) user_env_file: Option<String>,
+    pub(super) user_env_file: String,
     pub(super) run_payload_file: String,
 }
 
 pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
-    run_id: RunId,
-    user_env: &HashMap<String, String>,
+    context: &ExecutionContext,
+    user_env: &mut HashMap<String, String>,
     run_payload: &guest_contracts::env::RunPayload,
 ) -> RunnerResult<RequiredAgentFiles> {
-    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let connector_context_file = guest_connector_account_context_file_path(context.run_id)?;
+    let connector_context_bytes = serde_json::to_vec(&build_connector_account_context(context))
+        .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
+    user_env.insert(
+        guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
+        connector_context_file.clone(),
+    );
+    let user_env_file = guest_user_env_file_path(context.run_id)?;
+    let user_env_bytes = serde_json::to_vec(user_env)
+        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+    let run_payload_file = guest_run_payload_file_path(context.run_id)?;
     let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
 
-    let user_env_file = if user_env.is_empty() {
-        sandbox
-            .write_private_file(&run_payload_file, &run_payload_bytes)
-            .await?;
-        None
-    } else {
-        let user_env_file = guest_user_env_file_path(run_id)?;
-        let user_env_bytes = serde_json::to_vec(user_env)
-            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-        sandbox
-            .write_private_files(&[
-                WriteFileEntry {
-                    path: &user_env_file,
-                    content: &user_env_bytes,
-                },
-                WriteFileEntry {
-                    path: &run_payload_file,
-                    content: &run_payload_bytes,
-                },
-            ])
-            .await?;
-        Some(user_env_file)
-    };
+    // All bootstrap inputs are required. Keep context first so a failed account
+    // projection write prevents later writes, including in oversized fallback.
+    sandbox
+        .write_private_files(&[
+            WriteFileEntry {
+                path: &connector_context_file,
+                content: &connector_context_bytes,
+            },
+            WriteFileEntry {
+                path: &user_env_file,
+                content: &user_env_bytes,
+            },
+            WriteFileEntry {
+                path: &run_payload_file,
+                content: &run_payload_bytes,
+            },
+        ])
+        .await?;
 
     Ok(RequiredAgentFiles {
         user_env_file,

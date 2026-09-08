@@ -1,9 +1,10 @@
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isCodexFastModeModel,
   isBuiltInModelProviderType,
-  isLimitedFree1RestrictedRunModel,
+  getRunModelAccess,
+  RETIRED_RUN_MODEL_MESSAGE,
   isSupportedRunModel,
   isModelSupportedByProvider,
   modelProviderTypeSchema,
@@ -18,8 +19,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import type { ChatThreadServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
 import type { SupportedFramework } from "@okouai/core/frameworks";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
@@ -137,8 +137,10 @@ function modelAllowedForOrgPlan(args: {
   readonly selectedModel: string | null | undefined;
 }): boolean {
   return (
-    !args.capabilities.restrictedVm0Models ||
-    !isLimitedFree1RestrictedRunModel(args.selectedModel)
+    getRunModelAccess(
+      args.selectedModel,
+      args.capabilities.restrictedVm0Models,
+    ) === "allowed"
   );
 }
 
@@ -392,10 +394,7 @@ export async function resolveDefaultModelFirstPin(
           selectedModel: preferredRoute.selectedModel,
           codexFastModeEnabled:
             featureSwitchContext !== null &&
-            isFeatureEnabled(
-              FeatureSwitchKey.CodexFastMode,
-              featureSwitchContext,
-            ),
+            isCodexFastModeEnabled(featureSwitchContext),
         })
           ? "priority"
           : null;
@@ -525,6 +524,9 @@ export async function resolveModelSelectionPin(params: {
   | ReturnType<typeof insufficientCredits>
 > {
   const { db, orgId, userId, modelSelection } = params;
+  if (getRunModelAccess(modelSelection.selectedModel) === "retired") {
+    return badRequestMessage(RETIRED_RUN_MODEL_MESSAGE);
+  }
   const capabilities = modelRouteCapabilities(
     await loadOrgPlanCapabilities(db, orgId),
   );
@@ -671,7 +673,7 @@ export async function resolveModelFirstProviderAdmission(params: {
     ? getFrameworkForType(
         isBuiltInModelProviderType(knownProvider) &&
           isSupportedRunModel(selectedModel)
-          ? getVm0ConcreteProviderType(selectedModel)
+          ? getBuiltInConcreteProviderType(selectedModel)
           : knownProvider,
       )
     : null;
@@ -732,7 +734,7 @@ export async function validateCodexServiceTier(params: {
     params.orgId,
     params.userId,
   );
-  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+  if (!isCodexFastModeEnabled(featureSwitchContext)) {
     return badRequestMessage(
       "Codex fast mode is not enabled for this workspace",
     );

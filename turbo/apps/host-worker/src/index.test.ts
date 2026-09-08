@@ -192,18 +192,18 @@ function env(options: TestEnvOptions = {}): WorkerEnv {
 }
 
 describe("hosted site worker", () => {
-  it("allows the vm0 apex origin on preflight responses", async () => {
+  it("allows the okou apex origin on preflight responses", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/", {
         method: "OPTIONS",
-        headers: { Origin: "https://vm0.ai" },
+        headers: { Origin: "https://okou.ai" },
       }),
       env(),
     );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "https://vm0.ai",
+      "https://okou.ai",
     );
     expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
       "GET, HEAD, OPTIONS",
@@ -211,20 +211,16 @@ describe("hosted site worker", () => {
     expect(response.headers.get("Vary")).toBe("Origin");
   });
 
-  it("allows vm0 subdomain origins on hosted file responses", async () => {
+  it("rejects the retired vm0.ai origins", async () => {
     const response = await worker.fetch(
       new Request("https://demo.sites.vm0.io/", {
-        headers: { Origin: "https://app.vm0.ai:8443" },
+        headers: { Origin: "https://app.vm0.ai" },
       }),
       env(),
     );
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("<!doctype html>ok");
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "https://app.vm0.ai:8443",
-    );
-    expect(response.headers.get("Vary")).toBe("Origin");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it.each([

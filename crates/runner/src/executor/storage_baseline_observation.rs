@@ -82,9 +82,28 @@ struct Observation {
 /// persisted, hashed, or converted to stable pseudonyms.
 pub(crate) struct StorageBaselineObserver {
     previous: Mutex<HashMap<ObservationKey, Vec<CandidateIdentity>>>,
+    #[cfg(test)]
+    test_probe: Option<Box<dyn Fn(BaselineObservationTestEvent) + Send + Sync>>,
+}
+
+#[cfg(test)]
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum BaselineObservationTestEvent {
+    BeforeLock { contended: bool },
+    BeforeFirstInsert,
 }
 
 impl StorageBaselineObserver {
+    #[cfg(test)]
+    pub(super) fn with_test_probe(
+        probe: impl Fn(BaselineObservationTestEvent) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            test_probe: Some(Box::new(probe)),
+            ..Self::default()
+        }
+    }
+
     /// Record the current baseline-candidate observation and its bounded telemetry dimensions.
     ///
     /// Only read-only manifest entries with `baseline_candidate` set are considered. Their
@@ -167,11 +186,24 @@ impl StorageBaselineObserver {
         candidates: Vec<CandidateIdentity>,
     ) -> Observation {
         let candidate_count = candidates.len();
+        #[cfg(test)]
+        if let Some(probe) = &self.test_probe {
+            // Drop any acquired guard before the probe coordinates another caller.
+            let contended = matches!(
+                self.previous.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            );
+            probe(BaselineObservationTestEvent::BeforeLock { contended });
+        }
         let mut previous_by_key = self
             .previous
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(previous) = previous_by_key.get_mut(&key) else {
+            #[cfg(test)]
+            if let Some(probe) = &self.test_probe {
+                probe(BaselineObservationTestEvent::BeforeFirstInsert);
+            }
             previous_by_key.insert(key, candidates);
             return Observation {
                 outcome: "first",

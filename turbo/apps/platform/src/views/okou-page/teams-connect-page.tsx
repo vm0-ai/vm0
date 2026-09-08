@@ -1,6 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import { Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -15,36 +15,25 @@ import {
   type TeamsConnectPageStatus,
 } from "../../signals/okou-page/teams-connect-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
+import {
+  CenterText,
+  ConnectCheckingState,
+  ConnectErrorState,
+  ConnectInvalidLinkState,
+  ConnectSubmitButton,
+  PageShell,
+  SettingsBackLink,
+} from "./connect-page-shell.tsx";
 
 type PageStatus = TeamsConnectPageStatus | "checking" | "error";
 const teamsIconImg = settingsIconAssetUrl("teams");
 
-function BackLink() {
-  const { t } = useTranslation();
-  return (
-    <Link
-      pathname="/works"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
-    >
-      <ArrowLeft size={14} />
-      {t(($) => {
-        return $.connectors.providerConnect.common.backToSettings;
-      })}
-    </Link>
-  );
-}
-
 export function TeamsConnectPage() {
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
-      <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
-          <PageContent />
-        </div>
-      </div>
-    </div>
+    <PageShell>
+      <PageContent />
+    </PageShell>
   );
 }
 
@@ -56,14 +45,6 @@ function connectedLabel(params: URLSearchParams): string {
       return $.connectors.providerConnect.teams.providerName;
     })
   );
-}
-
-function teamsParam(
-  params: URLSearchParams,
-  primary: string,
-  fallback?: string,
-): string | null {
-  return params.get(primary) ?? (fallback ? params.get(fallback) : null);
 }
 
 function TeamsLogo({ size }: { readonly size: "sm" | "lg" }) {
@@ -85,76 +66,14 @@ function TeamsLogo({ size }: { readonly size: "sm" | "lg" }) {
   );
 }
 
-function ErrorState({ message }: { message: string }) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <AlertCircle size={40} className="text-destructive" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.connectionFailed;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {message}
-        </p>
-      </div>
-      <BackLink />
-    </>
-  );
-}
-
-function CheckingState() {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Loader2 size={40} className="animate-spin" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.checkingTitle;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {t(($) => {
-            return $.connectors.providerConnect.common.verifying;
-          })}
-        </p>
-      </div>
-    </>
-  );
-}
-
-function InvalidState() {
-  const { t } = useTranslation();
-  return (
-    <>
-      <AlertCircle size={40} className="" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.invalidLink;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {t(($) => {
-            return $.connectors.providerConnect.teams.invalidDescription;
-          })}
-        </p>
-      </div>
-      <BackLink />
-    </>
-  );
-}
-
 function PageContent() {
   const { t } = useTranslation();
   const params = useGet(searchParams$);
   const tenantId = params.get("tenantId");
   const teamsUserId = params.get("teamsUserId");
   const teamsAadObjectId = params.get("teamsAadObjectId");
-  const displayName = teamsParam(params, "teamsUserDisplayName", "displayName");
+  const displayName =
+    params.get("teamsUserDisplayName") ?? params.get("displayName");
 
   const effectiveError = useGet(effectiveTeamsError$);
   const statusLoadable = useLoadable(teamsConnectStatus$);
@@ -176,7 +95,7 @@ function PageContent() {
   };
 
   if (status === "error") {
-    return <ErrorState message={effectiveError} />;
+    return <ConnectErrorState message={effectiveError} />;
   }
 
   if (status === "success") {
@@ -188,21 +107,17 @@ function PageContent() {
     return (
       <>
         <CircleCheck size={40} className="text-emerald-500" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            {t(($) => {
-              return $.connectors.providerConnect.teams.successTitle;
-            })}
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {t(
-              ($) => {
-                return $.connectors.providerConnect.teams.successDescription;
-              },
-              { team: label, botName },
-            )}
-          </p>
-        </div>
+        <CenterText
+          title={t(($) => {
+            return $.connectors.providerConnect.teams.successTitle;
+          })}
+          body={t(
+            ($) => {
+              return $.connectors.providerConnect.teams.successDescription;
+            },
+            { team: label, botName },
+          )}
+        />
         <div className="flex flex-col gap-3 w-full">
           <Button
             size="default"
@@ -217,7 +132,7 @@ function PageContent() {
             })}
           </Button>
           <div className="flex justify-center">
-            <BackLink />
+            <SettingsBackLink />
           </div>
         </div>
       </>
@@ -225,21 +140,19 @@ function PageContent() {
   }
 
   if (status === "checking") {
-    return <CheckingState />;
+    return <ConnectCheckingState />;
   }
 
   if (tenantId && (teamsUserId || teamsAadObjectId)) {
     return (
       <>
         <TeamsLogo size="lg" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            {t(($) => {
-              return $.connectors.providerConnect.teams.connectTitle;
-            })}
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {displayName
+        <CenterText
+          title={t(($) => {
+            return $.connectors.providerConnect.teams.connectTitle;
+          })}
+          body={
+            displayName
               ? t(
                   ($) => {
                     return $.connectors.providerConnect.teams
@@ -249,30 +162,24 @@ function PageContent() {
                 )
               : t(($) => {
                   return $.connectors.providerConnect.teams.connectDescription;
-                })}
-          </p>
-        </div>
-        <Button
-          className="w-full"
-          size="default"
-          onClick={handleConnect}
-          disabled={connectLoading}
-        >
-          {connectLoading ? (
-            <Loader2 size={16} className="animate-spin mr-2" />
-          ) : null}
-          {connectLoading
-            ? t(($) => {
-                return $.connectors.actions.connecting;
-              })
-            : t(($) => {
-                return $.connectors.actions.connect;
-              })}
-        </Button>
-        <BackLink />
+                })
+          }
+        />
+        <ConnectSubmitButton
+          connecting={connectLoading}
+          onConnect={handleConnect}
+          spinnerClassName="animate-spin mr-2"
+        />
+        <SettingsBackLink />
       </>
     );
   }
 
-  return <InvalidState />;
+  return (
+    <ConnectInvalidLinkState
+      description={t(($) => {
+        return $.connectors.providerConnect.teams.invalidDescription;
+      })}
+    />
+  );
 }

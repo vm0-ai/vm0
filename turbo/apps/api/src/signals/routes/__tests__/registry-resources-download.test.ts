@@ -32,12 +32,72 @@ function client() {
 
 describe("registry resource download", () => {
   const CURRENT_PRESENTATION_SHA256 =
-    "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394";
+    "387b2fb59ecac95dbe3b4e6f27d7e6ebda3ce4be317227f6506f87d02e264fc0";
+
+  it("downloads the current presentation template HEAD by resource id", async () => {
+    const id = "template:html-ppt-schoolhouse-runbook";
+    const anchorVersionId =
+      "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403";
+    const headVersionId = "a".repeat(64);
+    const s3Key = "registry-fixture/schoolhouse-runbook/latest";
+    const fixture = await seedPrivateRegistryResourceVersionFixture({
+      storageName: `registry-resource@${id}`,
+      versionId: anchorVersionId,
+      s3Key: "registry-fixture/schoolhouse-runbook/anchor",
+      size: 4321,
+      archiveSize: 1234,
+      fileCount: 12,
+      headVersion: {
+        versionId: headVersionId,
+        s3Key,
+        size: 5432,
+        archiveSize: 2345,
+        fileCount: 13,
+      },
+    });
+    onTestFinished(fixture.cleanup);
+
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/registry/schoolhouse-runbook-latest.tar.gz",
+    );
+
+    const response = await accept(
+      client().downloadPresentationTemplate({
+        headers: authHeaders(),
+        query: { id },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://r2.example.com/registry/schoolhouse-runbook-latest.tar.gz",
+    });
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+    expect(signedCommand).toMatchObject({
+      input: {
+        Bucket: "registry-resource-test",
+        Key: `${s3Key}/archive.tar.gz`,
+      },
+    });
+  });
+
+  it("keeps non-presentation resources off the current-template route", async () => {
+    const response = await accept(
+      client().downloadPresentationTemplate({
+        headers: authHeaders(),
+        query: { id: "image-style:vm0-illustration" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
 
   it("downloads the presentation archive for the current registry digest", async () => {
     const id = "template:html-ppt-schoolhouse-runbook";
     const versionId =
-      "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c";
+      "5968097de13a9a0dda66c464cdd744a53f2018442610775eef4630d21b74c403";
     const s3Key = "registry-fixture/schoolhouse-runbook/version";
     const fixture = await seedPrivateRegistryResourceVersionFixture({
       storageName: `registry-resource@${id}`,
@@ -97,54 +157,69 @@ describe("registry resource download", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("downloads a manually published image style archive through the route", async () => {
-    const id = "image-style:vm0-illustration";
-    const sha256 =
-      "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37";
-    const versionId =
-      "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966";
-    const s3Key = "registry-fixture/vm0-illustration/version";
-    const fixture = await seedPrivateRegistryResourceVersionFixture({
-      storageName: `registry-resource@${id}`,
-      versionId,
-      s3Key,
-      size: 6054,
-      archiveSize: 2621,
-      fileCount: 1,
-    });
-    onTestFinished(fixture.cleanup);
+  it.each([
+    {
+      slug: "vm0-illustration",
+      sha256:
+        "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37",
+      versionId:
+        "820d2e2ce81805d935e4098d5b6f2899967c2ad5c0af4586f794010c6db66966",
+    },
+    {
+      slug: "emboss-deboss",
+      sha256:
+        "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
+      versionId:
+        "e84748dd61e087cc15f12d9f9ecf19d68de790d747e0075b3f9bb6be38975e95",
+    },
+  ])(
+    "downloads the pinned $slug image style archive through the route",
+    async ({ slug, sha256, versionId }) => {
+      const id = `image-style:${slug}`;
+      const s3Key = `registry-fixture/${slug}/version`;
+      const fixture = await seedPrivateRegistryResourceVersionFixture({
+        storageName: `registry-resource@${id}`,
+        versionId,
+        s3Key,
+        size: 6054,
+        archiveSize: 2621,
+        fileCount: 1,
+      });
+      onTestFinished(fixture.cleanup);
 
-    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
-    context.mocks.s3.getSignedUrl.mockResolvedValue(
-      "https://r2.example.com/registry/vm0-illustration.tar.gz",
-    );
+      mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+      context.mocks.s3.getSignedUrl.mockResolvedValue(
+        `https://r2.example.com/registry/${slug}.tar.gz`,
+      );
 
-    const response = await accept(
-      client().download({
-        headers: authHeaders(),
-        query: { id, expectedSha256: sha256 },
-      }),
-      [200],
-    );
+      const response = await accept(
+        client().download({
+          headers: authHeaders(),
+          query: { id, expectedSha256: sha256 },
+        }),
+        [200],
+      );
 
-    expect(response.body).toStrictEqual({
-      url: "https://r2.example.com/registry/vm0-illustration.tar.gz",
-      id,
-      type: "tar.gz",
-      sha256,
-      expiresInSeconds: 900,
-      versionId,
-      fileCount: 1,
-      size: 6054,
-    });
-    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
-    expect(signedCommand).toMatchObject({
-      input: {
-        Bucket: "registry-resource-test",
-        Key: `${s3Key}/archive.tar.gz`,
-      },
-    });
-  });
+      expect(response.body).toStrictEqual({
+        url: `https://r2.example.com/registry/${slug}.tar.gz`,
+        id,
+        type: "tar.gz",
+        sha256,
+        expiresInSeconds: 900,
+        versionId,
+        fileCount: 1,
+        size: 6054,
+      });
+      const signedCommand =
+        context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+      expect(signedCommand).toMatchObject({
+        input: {
+          Bucket: "registry-resource-test",
+          Key: `${s3Key}/archive.tar.gz`,
+        },
+      });
+    },
+  );
 
   it("downloads the presentation reverse-template guide through the route", async () => {
     const id = "skill:presentation-reverse-template";

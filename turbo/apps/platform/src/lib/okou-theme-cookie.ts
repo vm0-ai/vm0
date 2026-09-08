@@ -1,12 +1,12 @@
 import type { ThemePreference } from "@okouai/api-contracts/contracts/user-preferences";
 import { isOkouHostname } from "./platform-host.ts";
 
-export const OKOU_THEME_COOKIE_NAME = "__Secure-okou-theme";
-export const OKOU_THEME_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+const OKOU_THEME_COOKIE_NAME = "__Secure-okou-theme";
+const OKOU_THEME_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 const OKOU_THEME_COOKIE_VERSION = "v1";
 
-export function decodeOkouThemePreference(
+function decodeOkouThemePreference(
   value: string | null,
 ): ThemePreference | null {
   if (!value?.startsWith(`${OKOU_THEME_COOKIE_VERSION}.`)) {
@@ -21,11 +21,11 @@ export function decodeOkouThemePreference(
     : null;
 }
 
-export function encodeOkouThemePreference(preference: ThemePreference): string {
+function encodeOkouThemePreference(preference: ThemePreference): string {
   return `${OKOU_THEME_COOKIE_VERSION}.${preference}`;
 }
 
-export function readOkouThemePreferenceCookie(
+function readOkouThemePreferenceCookie(
   cookieHeader: string,
 ): ThemePreference | null {
   const prefix = `${OKOU_THEME_COOKIE_NAME}=`;
@@ -41,7 +41,7 @@ export function readOkouThemePreferenceCookie(
   return null;
 }
 
-export function resolveOkouThemeCookieDomain(
+function resolveOkouThemeCookieDomain(
   hostname: string,
 ): ".okou.ai" | ".omby.ai" | null {
   const normalizedHostname = hostname.toLowerCase();
@@ -60,7 +60,7 @@ export function resolveOkouThemeCookieDomain(
   return null;
 }
 
-export function serializeOkouThemePreferenceCookie(
+function serializeOkouThemePreferenceCookie(
   preference: ThemePreference,
   hostname: string,
 ): string | null {

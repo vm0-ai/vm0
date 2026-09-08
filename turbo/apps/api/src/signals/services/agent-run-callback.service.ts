@@ -35,6 +35,7 @@ import {
   handleWorkflowAutomationResultEmailInternalCallback$,
 } from "./internal-workflow-automation-result-email-callback.service";
 import { handleTerminalGoalContinuation$ } from "./goal-continuation.service";
+import { handlePiMemoryPhase2MaintenanceCallback } from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("AgentRunCallback");
 
@@ -232,6 +233,13 @@ const dispatchInternalCallback$ = command(
           handleWorkflowAutomationResultEmailInternalCallback$,
           input.envelope,
           signal,
+        );
+      }
+      case "pi-memory:phase2": {
+        const db = set(writeDb$);
+        return await handlePiMemoryPhase2MaintenanceCallback(
+          db,
+          input.envelope,
         );
       }
     }
@@ -642,6 +650,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "workflow-automation:result-email": {
       return await handleWorkflowAutomationResultEmailInternalCallback(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "pi-memory:phase2": {
+      return await handlePiMemoryPhase2MaintenanceCallback(
         input.db,
         callbackEnvelope(input),
       );

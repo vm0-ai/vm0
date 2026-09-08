@@ -19,6 +19,7 @@ import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import {
   basicTemplate,
@@ -77,6 +78,32 @@ const TERMINAL_RUN_STATUSES = [
   "cancelled",
   "timeout",
 ] as const satisfies readonly TestTerminalRunStatus[];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firewallAuthTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      if (!isRecord(event) || event.run_id !== runId) {
+        return false;
+      }
+      return (
+        event.op_type === "firewall_auth_prepare" ||
+        event.op_type === "firewall_auth_resolve" ||
+        event.op_type === "firewall_auth_admit"
+      );
+    });
+  });
+}
 
 async function firewallRun(existingActor?: ApiTestUser): Promise<{
   readonly actor: ApiTestUser;
@@ -246,7 +273,9 @@ describe("FW-1: firewall auth boundaries", () => {
 describe("FW-2: template resolution without connector refresh", () => {
   it("resolves secret, var, and basic templates across headers, base, and query", async () => {
     const fw = createFirewallApi(context);
-    const { headers } = await firewallRun();
+    const { headers, runId } = await firewallRun();
+
+    context.mocks.axiom.sdkIngest.mockClear();
 
     const resolved = await fw.requestFirewallAuth(
       headers,
@@ -305,6 +334,42 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(resolved.body.resolvedSecrets).toContain("BASE_SECRET");
     expect(resolved.body.resolvedSecrets).toContain("QUERY_SECRET");
     expect(resolved.body.resolvedSecrets).toContain("SCRAPENINJA_TOKEN");
+
+    await flushWaitUntilForTest();
+    const timingEvents = firewallAuthTimingEventsForRun(runId);
+    expect(
+      timingEvents.map((event) => {
+        return event.op_type;
+      }),
+    ).toStrictEqual([
+      "firewall_auth_prepare",
+      "firewall_auth_resolve",
+      "firewall_auth_admit",
+    ]);
+    for (const event of timingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          sandbox_type: "runner",
+          run_id: runId,
+          duration_ms: expect.any(Number),
+          success: true,
+        }),
+      );
+      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+    }
+    const serializedTimingEvents = JSON.stringify(timingEvents);
+    for (const sensitiveValue of [
+      "secret-value",
+      "rapidapi-secret",
+      "base-secret",
+      "query-secret",
+      "encryptedSecrets",
+      "authHeaders",
+    ]) {
+      expect(serializedTimingEvents).not.toContain(sensitiveValue);
+    }
   });
 
   it("reports unresolvable template references as connector-not-configured", async () => {
@@ -372,7 +437,7 @@ describe("FW-2: template resolution without connector refresh", () => {
       "X-Email": "current@example.test",
     });
 
-    await connectorsApi.disconnectSingleBuiltinConnectorAccount(actor, "jira");
+    await connectorsApi.deleteDefaultBuiltinConnectorAccount(actor, "jira");
     const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
     if (disconnected.status !== 424) {
       throw new Error("Expected disconnected builtin connector auth to fail");
@@ -928,9 +993,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       failureReason,
       connectedAfterFailure,
     }) => {
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, {
         registration,
         initialExpiresIn: 3600,
@@ -943,7 +1008,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       const { actor, headers } = await firewallRun();
       await connectors.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.CustomConnectorMcp]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       });
       const mcp = await connectors.createCustomConnector(actor, {
         kind: "mcp",
@@ -1293,7 +1357,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       "X-AWS-Session-Token": oldCredentials.sessionToken,
     });
 
-    await connectors.disconnectSingleBuiltinConnectorAccount(actor, "aws");
+    await connectors.deleteDefaultBuiltinConnectorAccount(actor, "aws");
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {
@@ -1726,7 +1790,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     onTestFinished(() => {
       mockOptionalEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS", undefined);
     });
-    const { actor, headers } = await firewallRun();
+    const { actor, headers, runId } = await firewallRun();
     await fw.seedTestConnector(actor, {
       connectorSlug: "test-oauth",
       authMethod: "oauth",
@@ -1754,6 +1818,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       })),
     };
 
+    context.mocks.axiom.sdkIngest.mockClear();
     const timedOut = await fw.requestFirewallAuth(headers, body, [502]);
     if (timedOut.status !== 502) {
       throw new Error("Expected the refresh timeout to fail with 502");
@@ -1761,6 +1826,20 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     expect(timedOut.body.error.code).toBe("TOKEN_REFRESH_FAILED");
     expect(timedOut.body.error.failureReason).toBe("upstream_provider");
     expect(timedOut.body.error.connectors).toStrictEqual(["test-oauth"]);
+
+    await flushWaitUntilForTest();
+    expect(firewallAuthTimingEventsForRun(runId)).toStrictEqual([
+      expect.objectContaining({
+        op_type: "firewall_auth_prepare",
+        run_id: runId,
+        success: true,
+      }),
+      expect.objectContaining({
+        op_type: "firewall_auth_resolve",
+        run_id: runId,
+        success: false,
+      }),
+    ]);
 
     // The connector was not flagged for reconnect: with the normal timeout
     // restored and a fast provider, the next call refreshes successfully.
@@ -2203,6 +2282,7 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
 describe("FW-8: static access tokens and unavailable sources", () => {
   it("requires reconnect for expired static tokens and syncs current ones", async () => {
     const fw = createFirewallApi(context);
+    const connectors = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
       connectorSlug: "test-oauth-device",
@@ -2228,13 +2308,32 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     expect(expired.body.error.failureReason).toBe("reconnect_required");
     expect(expired.body.error.connectors).toStrictEqual(["test-oauth-device"]);
 
+    const [expiredAccount] = await connectors.listBuiltinConnectorAccounts(
+      actor,
+      "test-oauth-device",
+    );
+    if (!expiredAccount) {
+      throw new Error("Expected the expired device account");
+    }
+    await connectors.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      expiredAccount.id,
+    );
+
     await fw.seedTestConnector(actor, {
       connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "current-device",
       expiresIn: 3600,
     });
-    const synced = await fw.requestFirewallAuth(headers, body, [200]);
+    const currentBody = {
+      ...body,
+      ...(await exactSecretConnectorSources(actor, {
+        TEST_OAUTH_DEVICE_TOKEN: "test-oauth-device",
+      })),
+    };
+    const synced = await fw.requestFirewallAuth(headers, currentBody, [200]);
     if (synced.status !== 200) {
       throw new Error("Expected current static token to resolve");
     }

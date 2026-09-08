@@ -14,7 +14,8 @@
 //! - The guest writer owns child stdin. It sends `get_state`, waits until the
 //!   private startup record is installed, sends the initial `prompt`, and then
 //!   delivers accepted active-input frames. The stdout loop routes `response`
-//!   records into the writer's response channel.
+//!   records into the writer's bounded response channel without waiting for
+//!   capacity.
 //! - The stdout loop owns child stdout. It retains each ordinary raw record in
 //!   the best-effort local agent transcript, projects supported records into
 //!   the existing public event shape, and passes projected events through
@@ -115,10 +116,9 @@
 //! cancellable stdin write itself, that write returns an interruption error
 //! before an abort can be written; this is a distinct early-write failure path.
 //! The final guest control result records `Run cancelled by user` and the
-//! `UserCancellation` termination reason. Current Pi tool-result events do not
-//! carry a `vm0_user_cancelled` field: that marker was removed with Chat Tool
-//! Activity in #30215. Claude-only replay filtering is enabled outside this
-//! module; Pi does not set `replay_user_messages`.
+//! `UserCancellation` termination reason. Pi tool-result events remain ordinary
+//! tool results. Claude-only replay filtering is enabled outside this module;
+//! Pi does not set `replay_user_messages`.
 //!
 //! ## Record admission and projection
 //!
@@ -126,14 +126,18 @@
 //! startup boundary. The common loop records the raw JSONL line locally even
 //! when the record has no public projection. The routing contract is:
 //!
-//! - `response`: every response is routed to the command channel. Only the
-//!   first successful `get_state` response emits `system/init`; prompt, steer,
-//!   abort, and other responses are acknowledgement records only. The raw
-//!   response remains in the local transcript.
+//! - `response`: every response is routed to the command channel. Admission is
+//!   bounded by count and by retained stdout-record bytes. The byte budget is
+//!   held while the response is queued or being validated by the writer. Only
+//!   the first successful `get_state` response emits `system/init`; prompt,
+//!   steer, abort, and other responses are acknowledgement records only. The
+//!   raw response remains in the local transcript.
 //! - `message_end` with an assistant message: the latest assistant terminal
 //!   state is cached. Supported content is emitted as an `assistant` event;
-//!   empty content, unknown content blocks, and assistant messages with no
-//!   supported content emit no public event, but their raw records remain local.
+//!   Empty content, unknown content blocks, and assistant messages with no
+//!   supported content emit no public event unless a hidden citation was
+//!   extracted; citation-only messages emit an empty assistant event carrying
+//!   structured provenance. Their raw records remain local.
 //! - `message_end` with a `toolResult` message: required tool-result fields are
 //!   validated and one public `user` event containing one `tool_result` block is
 //!   emitted. The raw record remains local. Other message roles are ignored
@@ -150,8 +154,9 @@
 //!
 //! After projection, assistant and user events with multiple content blocks
 //! are split by `provider_event_normalization` into one independently
-//! sequenced public event per block. The source order is retained, and common
-//! masking and bounded delivery happen after that normalization.
+//! sequenced public event per block. Citation metadata stays only on the final
+//! split assistant event. The source order is retained, and common masking and
+//! bounded delivery happen after that normalization.
 //!
 //! ## Public event shapes
 //!
@@ -201,8 +206,7 @@
 //! Tool-result text blocks retain their text. Image blocks become base64 image
 //! sources with `mimeType` mapped to `media_type` and `data` mapped to
 //! `data`; unsupported result content blocks are omitted. The resulting `user`
-//! event is a tool result, not a replayable prompt, and has no
-//! `vm0_user_cancelled` field.
+//! event is classified as a tool result rather than a replayable prompt.
 //!
 //! ## Terminal result and failure ownership
 //!
@@ -225,20 +229,69 @@
 //! user cancellation can subsequently override the final guest control
 //! diagnostic, but it does not mutate the public tool-result shape.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
+use super::pi_memory_citation::{CitationProjection, project_segments};
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use crate::error::AgentError;
 
 const PI_RPC_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const PI_RPC_RESPONSE_QUEUE_CAPACITY: usize = 2;
+const PI_RPC_RESPONSE_MAX_RETAINED_BYTES: usize =
+    guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE: &str = "vm0_pi_api_first_turn_boundary";
 const MAX_EVENT_SEQUENCE_NUMBER: u32 = i32::MAX as u32;
+
+pub(super) struct PiRpcResponse {
+    value: Value,
+    _retained_bytes: OwnedSemaphorePermit,
+}
+
+pub(super) struct PiRpcResponseSender {
+    tx: mpsc::Sender<PiRpcResponse>,
+    retained_bytes: Arc<Semaphore>,
+}
+
+pub(super) fn response_channel() -> (PiRpcResponseSender, mpsc::Receiver<PiRpcResponse>) {
+    let (tx, rx) = mpsc::channel(PI_RPC_RESPONSE_QUEUE_CAPACITY);
+    (
+        PiRpcResponseSender {
+            tx,
+            retained_bytes: Arc::new(Semaphore::new(PI_RPC_RESPONSE_MAX_RETAINED_BYTES)),
+        },
+        rx,
+    )
+}
+
+impl PiRpcResponseSender {
+    fn try_send(&self, value: Value, record_bytes: usize) -> Result<(), AgentError> {
+        let available_bytes = self.retained_bytes.available_permits();
+        let retained_bytes = Arc::clone(&self.retained_bytes)
+            .try_acquire_many_owned(record_bytes as u32)
+            .map_err(|_| {
+                AgentError::Execution(format!(
+                    "Pi RPC response byte buffer exhausted: response is {record_bytes} bytes, {available_bytes} of {PI_RPC_RESPONSE_MAX_RETAINED_BYTES} bytes available"
+                ))
+            })?;
+        let response = PiRpcResponse {
+            value,
+            _retained_bytes: retained_bytes,
+        };
+        match self.tx.try_send(response) {
+            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => Err(AgentError::Execution(format!(
+                "Pi RPC response queue exceeded {PI_RPC_RESPONSE_QUEUE_CAPACITY} pending responses"
+            ))),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -392,14 +445,14 @@ struct PiAssistantTerminal {
 }
 
 impl PiAssistantTerminal {
-    fn from_message(message: &Value) -> Self {
+    fn from_message(message: &Value, preserve_empty_result: bool) -> Self {
         let stop_reason = message.get("stopReason").and_then(Value::as_str);
         let failed = matches!(stop_reason, Some("error" | "aborted"));
         let result = message
             .get("errorMessage")
             .and_then(Value::as_str)
             .map_or_else(|| assistant_text(message), ToString::to_string);
-        let result = if result.is_empty() {
+        let result = if result.is_empty() && !preserve_empty_result {
             stop_reason.map_or_else(String::new, |reason| format!("Pi model turn {reason}"))
         } else {
             result
@@ -433,13 +486,14 @@ impl PiRpcProjection {
     pub(super) fn project(
         &mut self,
         record: Value,
-        responses: &mpsc::UnboundedSender<Value>,
+        responses: &PiRpcResponseSender,
+        record_bytes: usize,
     ) -> Result<Option<Value>, AgentError> {
         if self.terminal_error {
             return Ok(None);
         }
         match record.get("type").and_then(Value::as_str) {
-            Some("response") => self.project_response(record, responses),
+            Some("response") => self.project_response(record, responses, record_bytes),
             Some("message_end") => self.project_message_end(record),
             Some("agent_settled") => Ok(Some(self.project_agent_settled())),
             Some("extension_error") => {
@@ -459,7 +513,8 @@ impl PiRpcProjection {
     fn project_response(
         &mut self,
         response: Value,
-        responses: &mpsc::UnboundedSender<Value>,
+        responses: &PiRpcResponseSender,
+        record_bytes: usize,
     ) -> Result<Option<Value>, AgentError> {
         let command = response.get("command").and_then(Value::as_str);
         let projected = if command == Some("get_state")
@@ -497,7 +552,7 @@ impl PiRpcProjection {
         } else {
             None
         };
-        let _ = responses.send(response);
+        responses.try_send(response, record_bytes)?;
         Ok(projected)
     }
 
@@ -521,9 +576,13 @@ impl PiRpcProjection {
         &mut self,
         mut message: Value,
     ) -> Result<Option<Value>, AgentError> {
-        self.assistant_terminal = Some(PiAssistantTerminal::from_message(&message));
+        let citation_projection = normalize_assistant_citations(&mut message);
+        self.assistant_terminal = Some(PiAssistantTerminal::from_message(
+            &message,
+            citation_projection.citation.is_some(),
+        ));
         let content = assistant_content(&mut message)?;
-        if content.is_empty() {
+        if content.is_empty() && citation_projection.citation.is_none() {
             return Ok(None);
         }
         let timestamp = message
@@ -577,13 +636,21 @@ impl PiRpcProjection {
                 ),
             ),
         ]);
-        let projected_message = owned_object([
+        let mut projected_message = owned_object([
             ("id", Value::String(id)),
             ("role", Value::from("assistant")),
             ("content", Value::Array(content)),
             ("model", Value::String(model.to_string())),
             ("usage", usage),
         ]);
+        if let Some(citation) = citation_projection.citation
+            && let Value::Object(fields) = &mut projected_message
+        {
+            fields.insert(
+                "memoryCitation".to_string(),
+                serde_json::to_value(citation)?,
+            );
+        }
         Ok(Some(owned_object([
             ("type", Value::from("assistant")),
             ("message", projected_message),
@@ -648,6 +715,61 @@ impl PiRpcProjection {
             "duration_ms": self.started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
         })
     }
+}
+
+fn normalize_assistant_citations(message: &mut Value) -> CitationProjection {
+    let mut segments: Vec<String> = message
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|block| {
+            (block.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| block.get("text").and_then(Value::as_str))
+                .flatten()
+                .map(ToString::to_string)
+        })
+        .collect();
+    let error_index = message
+        .get("errorMessage")
+        .and_then(Value::as_str)
+        .map(|error| {
+            let index = segments.len();
+            segments.push(error.to_string());
+            index
+        });
+    let segment_refs: Vec<&str> = segments.iter().map(String::as_str).collect();
+    let projection = project_segments(&segment_refs);
+    let mut text_index = 0;
+    if let Some(blocks) = message.get_mut("content").and_then(Value::as_array_mut) {
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("text") {
+                continue;
+            }
+            if let Some(text) = block.get_mut("text") {
+                *text = Value::String(
+                    projection
+                        .visible_segments
+                        .get(text_index)
+                        .cloned()
+                        .unwrap_or_default(),
+                );
+            }
+            text_index += 1;
+        }
+    }
+    if let Some(error_index) = error_index
+        && let Some(error) = message.get_mut("errorMessage")
+    {
+        *error = Value::String(
+            projection
+                .visible_segments
+                .get(error_index)
+                .cloned()
+                .unwrap_or_default(),
+        );
+    }
+    projection
 }
 
 fn owned_object<const N: usize>(fields: [(&str, Value); N]) -> Value {
@@ -790,12 +912,13 @@ async fn write_command_with_cancellation(
 }
 
 async fn wait_for_response(
-    responses: &mut mpsc::UnboundedReceiver<Value>,
+    responses: &mut mpsc::Receiver<PiRpcResponse>,
     expected_id: &str,
     expected_command: &str,
     allow_unmatched: bool,
 ) -> Result<(), AgentError> {
     while let Some(response) = responses.recv().await {
+        let response = &response.value;
         let response_id = response.get("id").and_then(Value::as_str);
         if response_id != Some(expected_id) {
             if allow_unmatched {
@@ -828,7 +951,7 @@ async fn wait_for_response(
 
 async fn abort(
     stdin: &mut tokio::process::ChildStdin,
-    responses: &mut mpsc::UnboundedReceiver<Value>,
+    responses: &mut mpsc::Receiver<PiRpcResponse>,
     run_id: &str,
 ) -> Result<(), AgentError> {
     let id = format!("{run_id}:pi:abort");
@@ -842,7 +965,7 @@ async fn abort(
 
 async fn request_prompt(
     stdin: &mut tokio::process::ChildStdin,
-    responses: &mut mpsc::UnboundedReceiver<Value>,
+    responses: &mut mpsc::Receiver<PiRpcResponse>,
     id: &str,
     message: &str,
     cancellation: &CancellationToken,
@@ -869,7 +992,7 @@ async fn request_prompt(
 
 async fn request_steer(
     stdin: &mut tokio::process::ChildStdin,
-    responses: &mut mpsc::UnboundedReceiver<Value>,
+    responses: &mut mpsc::Receiver<PiRpcResponse>,
     id: &str,
     message: &str,
     cancellation: &CancellationToken,
@@ -896,7 +1019,7 @@ async fn request_steer(
 
 async fn deliver_active_input(
     stdin: &mut tokio::process::ChildStdin,
-    responses: &mut mpsc::UnboundedReceiver<Value>,
+    responses: &mut mpsc::Receiver<PiRpcResponse>,
     active_input: &ActiveInputWriter,
     frame: &ActiveInputFrame,
     ownership_transfer_mode: PiRpcOwnershipTransferMode,
@@ -934,7 +1057,7 @@ pub(super) async fn write_commands(
     run_id: &str,
     prompt: &str,
     mut active_input: ActiveInputWriter,
-    mut responses: mpsc::UnboundedReceiver<Value>,
+    mut responses: mpsc::Receiver<PiRpcResponse>,
     ownership_transfer_mode: tokio::sync::oneshot::Receiver<PiRpcOwnershipTransferMode>,
     cancellation: CancellationToken,
 ) -> Result<(), AgentError> {
@@ -1103,7 +1226,7 @@ mod tests {
 
     #[test]
     fn projection_uses_agent_settled_as_the_terminal_event() {
-        let (responses, _rx) = mpsc::unbounded_channel();
+        let (responses, _rx) = response_channel();
         let mut projection = PiRpcProjection::new("run", "session");
         assert!(
             projection
@@ -1120,18 +1243,23 @@ mod tests {
                         }
                     }),
                     &responses,
+                    0,
                 )
                 .expect("message should project")
                 .is_some()
         );
         assert!(
             projection
-                .project(json!({ "type": "agent_end", "messages": [] }), &responses)
+                .project(
+                    json!({ "type": "agent_end", "messages": [] }),
+                    &responses,
+                    0,
+                )
                 .expect("agent_end should be ignored")
                 .is_none()
         );
         let result = projection
-            .project(json!({ "type": "agent_settled" }), &responses)
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
             .expect("agent_settled should project")
             .expect("agent_settled should emit result");
         assert_eq!(result["type"], "result");
@@ -1139,10 +1267,128 @@ mod tests {
     }
 
     #[test]
+    fn projection_hides_citations_in_assistant_and_terminal_result() {
+        let hidden = "<oai-mem-citation><citation_entries>memory.md:2-3|note=[used]</citation_entries><rollout_ids>019c6e27-e55b-73d1-87d8-4e01f1f75043</rollout_ids></oai-mem-citation>";
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            { "type": "text", "text": format!("before{}", &hidden[..12]) },
+                            { "type": "text", "text": format!("{}after", &hidden[12..]) },
+                        ],
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "stop",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-bearing assistant should emit");
+        assert_eq!(assistant["message"]["content"][0]["text"], "before");
+        assert_eq!(assistant["message"]["content"][1]["text"], "after");
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "memory.md"
+        );
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["rolloutIds"][0],
+            "019c6e27-e55b-73d1-87d8-4e01f1f75043"
+        );
+
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "before\n\nafter");
+        assert!(!result.to_string().contains("oai-mem-citation"));
+    }
+
+    #[test]
+    fn citation_only_projection_keeps_provenance_without_fallback_text() {
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{
+                            "type": "text",
+                            "text": "<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries></oai-mem-citation>"
+                        }],
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "stop",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-only assistant should emit");
+        assert_eq!(assistant["message"]["content"], json!([]));
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "x"
+        );
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "");
+    }
+
+    #[test]
+    fn projection_hides_citations_in_terminal_error_text() {
+        let (responses, _rx) = response_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let assistant = projection
+            .project(
+                json!({
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "errorMessage": "failed<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries></oai-mem-citation>",
+                        "model": "model",
+                        "timestamp": 1,
+                        "usage": {},
+                        "stopReason": "error",
+                    }
+                }),
+                &responses,
+                0,
+            )
+            .expect("message should project")
+            .expect("citation-bearing error should emit");
+        assert_eq!(assistant["message"]["content"], json!([]));
+        assert_eq!(
+            assistant["message"]["memoryCitation"]["entries"][0]["path"],
+            "x"
+        );
+        let result = projection
+            .project(json!({ "type": "agent_settled" }), &responses, 0)
+            .expect("settled event should project")
+            .expect("settled event should emit");
+        assert_eq!(result["result"], "failed");
+        assert!(!result.to_string().contains("oai-mem-citation"));
+    }
+
+    #[test]
     fn projection_moves_large_tool_payload_allocations() {
         const LARGE_PAYLOAD_BYTES: usize = 1024 * 1024;
 
-        let (responses, _rx) = mpsc::unbounded_channel();
+        let (responses, _rx) = response_channel();
         let mut projection = PiRpcProjection::new("run", "session");
         let tool_call = json!({
             "type": "message_end",
@@ -1169,7 +1415,7 @@ mod tests {
         let argument_ptr = argument.as_ptr();
 
         let tool_call = projection
-            .project(tool_call, &responses)
+            .project(tool_call, &responses, 0)
             .expect("tool call should project")
             .expect("tool call should emit an event");
         let projected_argument = tool_call
@@ -1210,7 +1456,7 @@ mod tests {
         let image_data_ptr = image_data.as_ptr();
 
         let tool_result = projection
-            .project(tool_result, &responses)
+            .project(tool_result, &responses, 0)
             .expect("tool result should project")
             .expect("tool result should emit an event");
         let projected_text = tool_result
@@ -1229,7 +1475,7 @@ mod tests {
 
     #[test]
     fn projection_validates_get_state_session_identity() {
-        let (responses, mut rx) = mpsc::unbounded_channel();
+        let (responses, mut rx) = response_channel();
         let mut projection = PiRpcProjection::new("run", "session");
         let event = projection
             .project(
@@ -1244,6 +1490,7 @@ mod tests {
                     },
                 }),
                 &responses,
+                1,
             )
             .expect("state should project")
             .expect("state should emit init");
@@ -1253,14 +1500,14 @@ mod tests {
             "/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl"
         );
         assert_eq!(
-            rx.try_recv().expect("response should be routed")["id"],
+            rx.try_recv().expect("response should be routed").value["id"],
             "state"
         );
     }
 
     #[test]
     fn projection_discards_buffered_records_after_extension_failure() {
-        let (responses, _rx) = mpsc::unbounded_channel();
+        let (responses, _rx) = response_channel();
         let mut projection = PiRpcProjection::new("run", "session");
         let error = projection
             .project(
@@ -1270,6 +1517,7 @@ mod tests {
                     "error": "forced extension failure",
                 }),
                 &responses,
+                0,
             )
             .expect_err("checkpoint failure should terminate projection");
         assert!(error.to_string().contains("forced extension failure"));
@@ -1289,13 +1537,14 @@ mod tests {
                         }
                     }),
                     &responses,
+                    0,
                 )
                 .expect("buffered message should be discarded")
                 .is_none()
         );
         assert!(
             projection
-                .project(json!({ "type": "agent_settled" }), &responses)
+                .project(json!({ "type": "agent_settled" }), &responses, 0)
                 .expect("buffered terminal event should be discarded")
                 .is_none()
         );
@@ -1323,7 +1572,7 @@ mod tests {
             controller.handle_control_payload(&serde_json::to_vec(&payload).expect("payload")),
             ActiveInputControlOutcome::Accepted
         );
-        let (response_tx, response_rx) = mpsc::unbounded_channel();
+        let (response_tx, response_rx) = response_channel();
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
         let writer = tokio::spawn(write_commands(
             stdin,
@@ -1338,7 +1587,7 @@ mod tests {
         let state = next_command(&mut stdout).await;
         assert_eq!(state["type"], "get_state");
         response_tx
-            .send(json!({
+            .try_send(json!({
                 "id": state["id"],
                 "type": "response",
                 "command": "get_state",
@@ -1347,7 +1596,7 @@ mod tests {
                     "sessionId": "session",
                     "sessionFile": "/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl",
                 },
-            }))
+            }), 1)
             .expect("state response should route");
         assert!(
             tokio::time::timeout(
@@ -1367,12 +1616,15 @@ mod tests {
         assert_eq!(initial["message"], "initial prompt");
         assert!(initial.get("streamingBehavior").is_none());
         response_tx
-            .send(json!({
-                "id": initial["id"],
-                "type": "response",
-                "command": "prompt",
-                "success": true,
-            }))
+            .try_send(
+                json!({
+                    "id": initial["id"],
+                    "type": "response",
+                    "command": "prompt",
+                    "success": true,
+                }),
+                1,
+            )
             .expect("initial prompt response should route");
 
         let steer = next_command(&mut stdout).await;
@@ -1381,12 +1633,15 @@ mod tests {
         assert_eq!(steer["message"], "steer this turn");
         assert!(steer.get("streamingBehavior").is_none());
         response_tx
-            .send(json!({
-                "id": delivery_id,
-                "type": "response",
-                "command": "steer",
-                "success": true,
-            }))
+            .try_send(
+                json!({
+                    "id": delivery_id,
+                    "type": "response",
+                    "command": "steer",
+                    "success": true,
+                }),
+                1,
+            )
             .expect("steer response should route");
         controller.close_terminal();
 
@@ -1426,7 +1681,7 @@ mod tests {
             controller.handle_control_payload(&serde_json::to_vec(&payload).expect("payload")),
             ActiveInputControlOutcome::Accepted
         );
-        let (response_tx, response_rx) = mpsc::unbounded_channel();
+        let (response_tx, response_rx) = response_channel();
         let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
         let writer = tokio::spawn(write_commands(
             stdin,
@@ -1441,12 +1696,15 @@ mod tests {
         let state = next_command(&mut stdout).await;
         assert_eq!(state["type"], "get_state");
         response_tx
-            .send(json!({
-                "id": state["id"],
-                "type": "response",
-                "command": "get_state",
-                "success": true,
-            }))
+            .try_send(
+                json!({
+                    "id": state["id"],
+                    "type": "response",
+                    "command": "get_state",
+                    "success": true,
+                }),
+                1,
+            )
             .expect("state response should route");
         startup_tx
             .send(PiRpcOwnershipTransferMode::SettledSessionContinuation)
@@ -1456,12 +1714,15 @@ mod tests {
         assert_eq!(initial["type"], "prompt");
         assert_eq!(initial["message"], "original prompt");
         response_tx
-            .send(json!({
-                "id": initial["id"],
-                "type": "response",
-                "command": "prompt",
-                "success": true,
-            }))
+            .try_send(
+                json!({
+                    "id": initial["id"],
+                    "type": "response",
+                    "command": "prompt",
+                    "success": true,
+                }),
+                1,
+            )
             .expect("startup acknowledgement should route");
 
         let continuation = next_command(&mut stdout).await;
@@ -1469,12 +1730,15 @@ mod tests {
         assert_eq!(continuation["type"], "prompt");
         assert_eq!(continuation["message"], "newly owned continuation");
         response_tx
-            .send(json!({
-                "id": delivery_id,
-                "type": "response",
-                "command": "prompt",
-                "success": true,
-            }))
+            .try_send(
+                json!({
+                    "id": delivery_id,
+                    "type": "response",
+                    "command": "prompt",
+                    "success": true,
+                }),
+                1,
+            )
             .expect("continuation acknowledgement should route");
         controller.close_terminal();
 

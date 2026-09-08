@@ -343,7 +343,7 @@ function BankingActionCardLoading() {
   return (
     <div
       data-testid="banking-action-card-loading"
-      className="zero-chat-card flex min-h-[88px] w-full items-center justify-center p-3"
+      className="okou-chat-card flex min-h-[88px] w-full items-center justify-center p-3"
     >
       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
     </div>
@@ -356,7 +356,7 @@ function BankingActionCardError({ signals }: { signals: BankingSignals }) {
   return (
     <div
       data-testid="banking-action-card-error"
-      className="zero-chat-card flex min-h-[88px] w-full items-center gap-3 p-3"
+      className="okou-chat-card flex min-h-[88px] w-full items-center gap-3 p-3"
     >
       <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1 text-sm text-muted-foreground">
@@ -388,7 +388,7 @@ function LoadedBankingActionCard({
     <div
       data-testid="banking-action-card"
       className={cn(
-        "zero-chat-card w-full p-3 text-left",
+        "okou-chat-card w-full p-3 text-left",
         compact &&
           "flex min-h-[88px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
       )}

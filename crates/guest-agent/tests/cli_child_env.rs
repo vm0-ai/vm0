@@ -22,6 +22,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         .ok_or("test user HOME path must be UTF-8")?
         .to_string();
     let rejected_config_dir = tmp.path().join("rejected-claude-config");
+    let rejected_npm_cache = tmp.path().join("rejected-npm-cache");
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
@@ -67,8 +68,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         &user_env_path,
         serde_json::to_vec(&serde_json::json!({
             "CUSTOM_USER_ENV": "visible-to-cli",
-            "VM0_FUTURE_RUNNER_KEY": "ordinary-vm0-value",
-            "VM0_PROMPT": "ordinary-user-prompt",
+            "CUSTOM_FUTURE_KEY": "ordinary-user-value",
+            "CUSTOM_PROMPT": "ordinary-user-prompt",
             "CUSTOM_API_TOKEN": "ordinary-user-token",
             "BASH_ENV": "/tmp/user-bash-env",
             "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
@@ -76,6 +77,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "HOME": user_home_str,
             "CLAUDE_CONFIG_DIR": rejected_config_dir,
             "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
+            "npm_config_cache": rejected_npm_cache,
+            "NPM_CONFIG_CACHE": "/tmp/rejected-uppercase-npm-cache",
         }))?,
     )?;
     unsafe {
@@ -167,8 +170,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("visible-to-cli")
     );
     for (key, expected_value) in [
-        ("VM0_FUTURE_RUNNER_KEY", "ordinary-vm0-value"),
-        ("VM0_PROMPT", "ordinary-user-prompt"),
+        ("CUSTOM_FUTURE_KEY", "ordinary-user-value"),
+        ("CUSTOM_PROMPT", "ordinary-user-prompt"),
         ("CUSTOM_API_TOKEN", "ordinary-user-token"),
     ] {
         assert_eq!(cli_env.get(key).map(String::as_str), Some(expected_value));
@@ -218,6 +221,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("false")
     );
     assert!(cli_env.contains_key("PATH"));
+    assert_eq!(
+        cli_env.get("npm_config_cache").map(String::as_str),
+        Some("/home/user/workspace/.vm0/cache/npm")
+    );
+    assert!(!cli_env.contains_key("NPM_CONFIG_CACHE"));
 
     for key in [
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,

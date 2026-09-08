@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 
 import { mockOptionalEnv } from "../../../../lib/env";
@@ -16,6 +15,7 @@ import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
+import { openRouterModelContractError } from "./openrouter-model-contract";
 import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -27,10 +27,25 @@ type OrgModelPolicies = z.infer<
 >["policies"];
 
 const openRouterCompletionBodySchema = z.object({
+  model: z.string(),
+  max_tokens: z.number().optional(),
+  reasoning: z.object({ effort: z.string() }).optional(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
 });
 
 type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
+
+/**
+ * A completion the upstream cut short. `generateTextWithUsage` rejects any
+ * `finish_reason` other than `"stop"`, so tests use this to prove a starved
+ * token budget discards the partial text instead of persisting it.
+ */
+interface TruncatedOpenRouterCompletion {
+  readonly content: string;
+  readonly finishReason: "length";
+}
+
+type OpenRouterCompletionResult = string | TruncatedOpenRouterCompletion;
 
 interface StoredS3Object {
   readonly bucket: string;
@@ -218,10 +233,9 @@ export function createChatCallbacksApi(context: TestContext) {
     });
   }
 
-  function pushSubscriptionsClient(publicBrand: PublicBrand) {
+  function pushSubscriptionsClient() {
     return setupAppWithRoutes({
-      baseUrl:
-        publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+      baseUrl: "https://api.okou.ai",
       context,
       routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);
@@ -253,13 +267,10 @@ export function createChatCallbacksApi(context: TestContext) {
       };
     },
 
-    async registerPushSubscription(
-      actor: ApiTestUser,
-      publicBrand: PublicBrand = "vm0",
-    ): Promise<string> {
+    async registerPushSubscription(actor: ApiTestUser): Promise<string> {
       const endpoint = `https://push.example.test/send/${randomUUID()}`;
       await accept(
-        pushSubscriptionsClient(publicBrand).register({
+        pushSubscriptionsClient().register({
           headers: authenticate(context, actor),
           body: {
             endpoint,
@@ -301,15 +312,30 @@ export function createChatCallbacksApi(context: TestContext) {
      * system prompt and returns the completion text.
      */
     mockOpenRouterCompletions(
-      handler: (body: OpenRouterCompletionBody) => string | Promise<string>,
+      handler: (
+        body: OpenRouterCompletionBody,
+      ) => OpenRouterCompletionResult | Promise<OpenRouterCompletionResult>,
     ): void {
       server.use(
         http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
           const body = openRouterCompletionBodySchema.parse(
             await request.json(),
           );
+          const contractError = openRouterModelContractError(body);
+          if (contractError) {
+            return contractError;
+          }
+          const result = await handler(body);
           return HttpResponse.json({
-            choices: [{ message: { content: await handler(body) } }],
+            choices: [
+              typeof result === "string"
+                ? { finish_reason: "stop", message: { content: result } }
+                : {
+                    finish_reason: result.finishReason,
+                    native_finish_reason: "MAX_TOKENS",
+                    message: { content: result.content },
+                  },
+            ],
           });
         }),
       );

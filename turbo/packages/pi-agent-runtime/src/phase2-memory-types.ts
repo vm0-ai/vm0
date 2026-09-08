@@ -1,6 +1,6 @@
 import type { PiAgentModelConfig } from "./types";
 
-export const PI_MEMORY_PHASE2_MAINTENANCE_REASONING = "medium" as const;
+export const PI_MEMORY_PHASE2_MAINTENANCE_REASONING = "max" as const;
 export const PI_MEMORY_PHASE2_WORKSPACE_DIFF_MAX_BYTES = 4 * 1024 * 1024;
 export const PI_MEMORY_PHASE2_MEMORY_MAX_BYTES = 8 * 1024 * 1024;
 export const PI_MEMORY_PHASE2_PREPARED_MAX_BYTES = 128 * 1024 * 1024;

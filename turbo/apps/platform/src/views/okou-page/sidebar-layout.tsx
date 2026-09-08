@@ -11,7 +11,10 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { Button, cn, useMediaQuery } from "@okouai/ui";
 import { Sidebar } from "./sidebar.tsx";
-import { AutomationMenuButton } from "./chat-thread-page.tsx";
+import {
+  AutomationMenuButton,
+  ChatThreadHeaderTitle,
+} from "./chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
@@ -29,14 +32,10 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/okou-page/mobile-breadcrumb.ts";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import {
-  closeSettingsModal$,
-  openSettingsDialogAt$,
-  settingsDialogOpen$,
-} from "../../signals/okou-page/settings/settings-dialog.ts";
+import { openSettingsDialogAt$ } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
+import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
 import {
   InstallBanner,
   IosInstallModal,
@@ -50,12 +49,11 @@ import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subsc
 import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import {
-  applyColorThemeDocumentAttributes,
-  applyNewUiDocumentAttribute,
-  applyTypefaceDocumentAttribute,
   colorTheme$,
+  shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
+import { WorkspaceInset } from "./workspace-inset.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -132,10 +130,14 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
-function MobileArtifactsButtonLeaf() {
+function useCurrentThread() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  return leftThread ?? rightThread;
+}
+
+function MobileArtifactsButtonLeaf() {
+  const thread = useCurrentThread();
 
   if (!thread) {
     return null;
@@ -145,10 +147,8 @@ function MobileArtifactsButtonLeaf() {
 }
 
 function MobileAutomationButtonLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
+  const thread = useCurrentThread();
   const { t } = useTranslation();
-  const thread = leftThread ?? rightThread;
 
   if (!thread) {
     return null;
@@ -198,9 +198,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function MobileShareButtonLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  const thread = useCurrentThread();
   return thread ? <MobileShareButtonInner thread={thread} /> : null;
 }
 
@@ -243,9 +241,7 @@ function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
 }
 
 function MobileSharingOverlayLeaf() {
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
-  const thread = leftThread ?? rightThread;
+  const thread = useCurrentThread();
   return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
 }
 
@@ -271,6 +267,7 @@ function MobileTopBar() {
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
 
   const activeId = useGet(activeRoute$);
+  const thread = useCurrentThread();
 
   return (
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
@@ -291,7 +288,11 @@ function MobileTopBar() {
       >
         <Menu size={18} />
       </Button>
-      {breadcrumb && (
+      {activeId === "chat" ? (
+        <div className="flex-1 min-w-0">
+          {thread && <ChatThreadHeaderTitle thread={thread} />}
+        </div>
+      ) : breadcrumb ? (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
@@ -318,26 +319,11 @@ function MobileTopBar() {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="flex-1" />
       )}
-      {!breadcrumb && <div className="flex-1" />}
       <MobileTopBarActions activeId={activeId} />
     </div>
-  );
-}
-
-function SettingsDialogMount() {
-  const dialogOpen = useGet(settingsDialogOpen$);
-  const closeSettingsModal = useSet(closeSettingsModal$);
-
-  return (
-    <SettingsDialog
-      open={dialogOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          closeSettingsModal();
-        }
-      }}
-    />
   );
 }
 
@@ -356,7 +342,7 @@ function MobileSidebarMount() {
       <Sidebar isDesktop={false} />
       <div
         data-sidebar-expanded={expanded || undefined}
-        className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
+        className="okou-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
         aria-label={t(($) => {
           return $.appShell.sidebar.mobile.overlay;
         })}
@@ -373,24 +359,13 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
-  const geistTypefaceEnabled =
-    features[FeatureSwitchKey.GeistTypeface] ?? false;
-  const newUiEnabled = features[FeatureSwitchKey.NewUi] ?? false;
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
+  const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
   return (
     <div
-      ref={(element) => {
-        applyColorThemeDocumentAttributes(
-          element !== null && gradientColorThemesEnabled,
-          colorTheme,
-        );
-        applyTypefaceDocumentAttribute(
-          element !== null && geistTypefaceEnabled,
-        );
-        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
-      }}
-      className="zero-app zero-viewport-shell flex w-full bg-background"
+      ref={shellDocumentAttributesRef}
+      className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background md:bg-sidebar"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
@@ -402,12 +377,12 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
+      <WorkspaceInset>
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}
         {children}
-      </div>
+      </WorkspaceInset>
     </div>
   );
 }

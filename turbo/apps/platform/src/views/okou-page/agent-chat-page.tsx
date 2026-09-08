@@ -257,7 +257,7 @@ function PinPill() {
             disabled={pinSaving}
             variant="quiet"
             size="icon-2xs"
-            className="absolute -top-0.5 -right-0.5 rounded-full zero-border bg-background shadow-sm hover:shadow-md disabled:opacity-50"
+            className="absolute -top-0.5 -right-0.5 rounded-full okou-border bg-background shadow-sm hover:shadow-md disabled:opacity-50"
             aria-label={t(($) => {
               return $.sidebar.pin;
             })}
@@ -355,7 +355,10 @@ export function AgentChatPage() {
       <GrowthEntryHeader />
 
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
-        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[20vh] sm:pb-[10vh]">
+        <div
+          data-testid="agent-chat-scroll-content"
+          className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-[max(3rem,var(--sab))] sm:pt-[20vh] sm:pb-[max(10vh,var(--sab))]"
+        >
           <div className="flex items-center gap-4 w-full">
             <ChatAgentAvatar agentId={currentChatAgentId} />
             <div className="flex-1 min-w-0 flex items-center gap-3">

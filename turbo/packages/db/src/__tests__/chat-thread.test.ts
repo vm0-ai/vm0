@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { chatThreads } from "../schema/chat-thread";
 
 describe("chatThreads schema", () => {
-  it("exposes only canonical draft userMessage storage", () => {
+  it("exposes canonical document draft storage", () => {
     const columns = new Map(
       getTableConfig(chatThreads).columns.map((column) => {
         return [column.name, column.notNull] as const;

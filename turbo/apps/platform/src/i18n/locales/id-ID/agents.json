@@ -36,22 +36,19 @@
     },
     "create": "Buat avatar kustom",
     "description": "Pilih gaya atau tekan acak untuk kejutan.",
-    "intensity": {
-      "chill": "Santai",
-      "hyped": "Semangat",
-      "normal": "Normal"
-    },
+    "editDescription": "Ubah bagian mana pun, atau tekan acak untuk tampilan baru.",
+    "editTitle": "Edit avatar",
     "nextStep": "Langkah berikutnya",
     "previousStep": "Langkah sebelumnya",
     "randomize": "Acak avatar",
     "shuffleHint": "Acak — coba tampilan acak!",
     "steps": {
-      "angle": "Sudut",
       "color": "Warna",
       "face": "Wajah",
       "hair": "Rambut",
       "mood": "Suasana hati",
-      "skin": "Kulit"
+      "skin": "Kulit",
+      "sweater": "Sweter"
     },
     "title": "Beri agen Anda wajah",
     "use": "Gunakan avatar ini"
@@ -74,7 +71,6 @@
   "detail": {
     "chatWith": "Chat dengan {{agentName}}",
     "defaultDescription": "Rekan kerja AI Anda, disesuaikan untuk Anda",
-    "noSelection": "Belum ada agen dipilih",
     "notFound": {
       "back": "Kembali ke tim",
       "description": "Agen “{{agentId}}” tidak ada atau Anda tidak memiliki akses ke sana.",
@@ -615,8 +611,9 @@
     "resultCount_other": "{{count}} hasil",
     "searchAgents": "Cari agen...",
     "searching": "Mencari...",
-    "searchWorkspace": "Cari chat, pesan, alur kerja, dan artefak...",
+    "searchWorkspace": "Cari di ruang kerja...",
     "sections": {
+      "agents": "Agen",
       "artifacts": "Artefak",
       "chats": "Chat",
       "messages": "Pesan",

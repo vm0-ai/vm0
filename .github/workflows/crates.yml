@@ -1,5 +1,8 @@
 name: Crates
 
+env:
+  npm_config_audit: "false"
+
 on:
   pull_request:
   push:
@@ -69,9 +72,9 @@ jobs:
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
-      sandbox-fc-changed: ${{ steps.detect.outputs.sandbox-fc-changed }}
+      sandbox-firecracker-changed: ${{ steps.detect.outputs.sandbox-firecracker-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
-      vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
+      guest-control-tests-changed: ${{ steps.detect.outputs.guest-control-tests-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
       metal-job-ref: ${{ steps.runner-job-ref.outputs.job-ref }}
       runner-image-job-ref: ${{ steps.runner-job-ref.outputs.image-job-ref }}
@@ -112,9 +115,9 @@ jobs:
           check_crate ably-subscriber
           check_crate api-contracts
           check_crate runner
-          check_crate sandbox-fc
+          check_crate sandbox-firecracker
           check_crate nbd-cow
-          check_crate vsock-test
+          check_crate guest-control-tests
           check_crate xtask
 
           # Aggregate: true if any crate or CI config changed
@@ -326,13 +329,13 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
-      - name: Lint vsock-guest production configuration
+      - name: Lint guest-control-server production configuration
         if: |
-          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.guest-control-tests-changed == 'true' ||
           needs.detect.outputs.ci-changed == 'true'
         run: |
           cd crates
-          cargo clippy -p vsock-guest --release --no-default-features --all-targets
+          cargo clippy -p guest-control-server --release --no-default-features --all-targets
 
       - name: Build documentation
         run: |
@@ -349,9 +352,9 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
-      - name: Run vsock-guest production configuration tests
+      - name: Run guest-control-server production configuration tests
         if: |
-          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.guest-control-tests-changed == 'true' ||
           needs.detect.outputs.ci-changed == 'true'
         run: |
           test "$(id -u)" -eq 0
@@ -382,24 +385,24 @@ jobs:
             --shell /bin/sh user
           install -d -m 0755 -o user -g vm0-identity-primary /home/user
           install -m 0755 \
-            crates/vsock-guest/tests/fixtures/guest-write-file-identity-probe.sh \
+            crates/guest-control-server/tests/fixtures/guest-write-file-identity-probe.sh \
             /sbin/guest-write-file
 
           cd crates
-          cargo test -p vsock-guest --release --no-default-features \
+          cargo test -p guest-control-server --release --no-default-features \
             --lib \
             exec_operation::tests::stdout_drain_spawn_failure_returns_wait_failed_and_cleans_registry -- \
             --exact
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_write_file_identity_matches_sudo_policy
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_exec_identity_matches_sandbox_user
           HOME=/root USER=root LOGNAME=root \
-            cargo test -p vsock-guest --release --no-default-features \
+            cargo test -p guest-control-server --release --no-default-features \
               --test production_identity -- \
               --ignored --exact production_env_script_remains_until_operation_cleanup
 
@@ -631,6 +634,81 @@ jobs:
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
           ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
+
+  runner-rootfs-process-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
+    needs: [detect, runner-host-groups]
+    if: |
+      needs.detect.outputs.metal-job-ref != '' && (
+        needs.detect.outputs.ci-changed == 'true' ||
+        needs.detect.outputs.runner-changed == 'true'
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-host-groups.outputs.matrix || '[]') }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_TRIPLE: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: crates -> target
+          shared-key: ${{ matrix.cacheSuffix }}-rootfs-process
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile rootfs process tests for ${{ matrix.label }}
+        working-directory: crates
+        run: |
+          TEST_BIN=$(cargo test --no-run --profile ci --target "$TARGET_TRIPLE" \
+            -p runner --bin runner --message-format=json | \
+            jq -r 'select(.reason == "compiler-artifact" and .target.name == "runner" and .profile.test) | .executable // empty')
+          test -n "$TEST_BIN"
+          cp "$TEST_BIN" target/runner-rootfs-process-test
+          echo "TEST_BIN=crates/target/runner-rootfs-process-test" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run rootfs process ownership tests on metal
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$JOB_REF" "$HOSTS")
+          REMOTE="${METAL_USER}@${HOST}"
+          REMOTE_BIN="/tmp/runner-rootfs-process-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RUNNER_HOST_GROUP_ID}"
+          scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
+          ssh "$REMOTE" sh -s -- "$REMOTE_BIN" <<'REMOTE_TEST'
+          set -eu
+          trap 'rm -f -- "$1"' EXIT
+          # An outer PID namespace also contains the test's deliberately stopped
+          # workers if its controller is killed before the RAII guard can resume them.
+          sudo unshare --mount --pid --fork --kill-child --mount-proc \
+            --propagation private -- "$1" --ignored --exact \
+            cmd::build::scripts::process_tests::rootfs_process_ownership --nocapture
+          REMOTE_TEST
 
       - name: Report peak memory
         if: always()
@@ -920,7 +998,7 @@ jobs:
     if: |
       !cancelled() &&
       needs.runner-build.result == 'success' && (
-        needs.detect.outputs.sandbox-fc-changed == 'true' ||
+        needs.detect.outputs.sandbox-firecracker-changed == 'true' ||
         needs.detect.outputs.ci-changed == 'true'
       )
     timeout-minutes: 15
@@ -943,7 +1021,7 @@ jobs:
         run: |
           cd crates
           cargo test --no-run --release --target "$TARGET_TRIPLE" \
-            -p sandbox-fc --test host_cpu_fairness
+            -p sandbox-firecracker --test host_cpu_fairness
           TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" \
             -name 'host_cpu_fairness-*' -executable -type f | head -1)
           if [ -z "$TEST_BIN" ]; then
@@ -989,6 +1067,7 @@ jobs:
       - runner-behavior-lane-d
       - host-cpu-fairness-test
       - nbd-cow-test
+      - runner-rootfs-process-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
     steps:
@@ -1040,6 +1119,7 @@ jobs:
           check_result "runner-behavior-lane-d" "${{ needs.runner-behavior-lane-d.result }}" "true"
           check_result "host-cpu-fairness-test" "${{ needs.host-cpu-fairness-test.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
+          check_result "runner-rootfs-process-test" "${{ needs.runner-rootfs-process-test.result }}" "true"
 
           echo "::endgroup::"
           exit $FAILED

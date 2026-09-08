@@ -17,9 +17,13 @@ import {
   Input,
   Switch,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@okouai/ui";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Wand } from "lucide-react";
 import {
   Alert,
   AlertDescription,
@@ -40,6 +44,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   serializeAvatarSvgConfig,
   type AvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
@@ -99,7 +104,7 @@ function AvatarSettingsControl({
   isDefaultAgent: boolean;
   avatarUrl: string | null;
   alt: string;
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: AvatarSvgConfig, signal: AbortSignal) => Promise<void>;
 }) {
   if (isDefaultAgent) {
     return (
@@ -111,19 +116,60 @@ function AvatarSettingsControl({
     );
   }
 
+  // An existing avatar is its own edit entry, so the dashed circle stays
+  // exclusive to the empty state and never reads as "add another avatar".
   const resolved = resolveAvatarSvgConfig(avatarUrl);
   return (
-    <>
-      {resolved && (
-        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
-          <AvatarSvgPreview
-            config={resolved}
-            className="h-full w-full rounded-full"
-          />
-        </div>
-      )}
-      <AvatarMaker onConfirm={onConfirm} />
-    </>
+    <AvatarMaker
+      avatarUrl={avatarUrl}
+      onConfirm={onConfirm}
+      trigger={
+        resolved
+          ? (openMaker) => {
+              return <AvatarEditButton config={resolved} onClick={openMaker} />;
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+function AvatarEditButton({
+  config,
+  onClick,
+}: {
+  config: ResolvedAvatarSvgConfig;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation("agents");
+  const label = t(($) => {
+    return $.avatar.actions.customize;
+  });
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            className="relative shrink-0 rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label={label}
+          >
+            <AvatarSvgPreview
+              config={config}
+              className="h-12 w-12 rounded-full border-2 border-primary ring-2 ring-primary/20"
+            />
+            <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
+              <Wand size={10} />
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -188,7 +234,7 @@ export function SettingsTab({
   visibility: initialVisibility = "public",
   canEditVisibility = true,
   updateSettings$,
-  inputId = "zero-agent-name",
+  inputId = "okou-agent-name",
   isDefaultAgent = false,
   onDelete,
   deleteWorkflows = [],
@@ -312,7 +358,7 @@ export function SettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            visibility,
+            ...(canEditVisibility ? { visibility } : {}),
           },
           pageSignal,
         );
@@ -337,7 +383,7 @@ export function SettingsTab({
   return (
     <>
       <div className="mx-auto max-w-[900px]">
-        <Card className="zero-card overflow-hidden">
+        <Card className="okou-card overflow-hidden">
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
               label={t(($) => {
@@ -358,7 +404,7 @@ export function SettingsTab({
                     isDefaultAgent={isDefaultAgent}
                     avatarUrl={avatarUrl}
                     alt={resolvedAgentName}
-                    onConfirm={async (cfg) => {
+                    onConfirm={async (cfg, signal) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       patchForm({
                         agentId,
@@ -370,10 +416,11 @@ export function SettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          visibility,
+                          ...(canEditVisibility ? { visibility } : {}),
                         },
-                        pageSignal,
+                        signal,
                       );
+                      signal.throwIfAborted();
                       toast.success(
                         t(($) => {
                           return $.profile.saved;
@@ -487,7 +534,7 @@ export function SettingsTab({
                           "w-full min-w-0 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           tone === opt
                             ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
-                            : "zero-chip text-muted-foreground hover:text-foreground",
+                            : "okou-chip text-muted-foreground hover:text-foreground",
                         )}
                       >
                         {toneCopy[opt].label}
@@ -496,7 +543,7 @@ export function SettingsTab({
                   })}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full zero-border"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -505,12 +552,12 @@ export function SettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="zero-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
                         {toneCopy[tone].user}
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                      <div className="okou-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
                         {toneCopy[tone].agent}
                       </div>
                     </div>

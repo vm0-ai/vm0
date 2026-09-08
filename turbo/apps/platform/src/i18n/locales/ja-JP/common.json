@@ -394,6 +394,7 @@
         "sendMessage": "メッセージを送信する",
         "setIcon": "アイコンの設定 (Ctrl+Shift+1-9)",
         "showShortcuts": "ショートカットを表示する",
+        "togglePin": "チャットをピン留め／解除する",
         "toggleSidebar": "サイドバーの切り替え"
       },
       "title": "キーボードショートカット"
@@ -628,7 +629,6 @@
       "renameImportedTemplate": "テンプレート名を変更",
       "searchConnector": "テンプレートを検索",
       "searchConnectors": "テンプレートを検索",
-      "selected": "テンプレート: {{title}}",
       "selectStyle": "スタイル {{style}} を選択してください",
       "selectTemplate": "テンプレート {{title}} を選択します",
       "selectVideo": "ビデオ テンプレート {{title}} を選択してください",
@@ -1006,6 +1006,20 @@
       "accessNotAllowed": "アクセスは許可されていません。",
       "userBanned": "このアカウントでのアクティビティが {{brandName}} 利用規約に違反したため、アカウントへのアクセスが停止されました。ご質問がある場合は、{{supportEmail}} までお問い合わせください。"
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop にサインインしました。このウィンドウを閉じられます。",
+        "connecting": "デスクトップのセッションを接続しています。",
+        "consumed": "Desktop でサインインを完了しています。このウィンドウを開いたままにしてください。",
+        "failed": "サインインを完了できませんでした。Desktop からやり直すか、このブラウザーで再試行してください。",
+        "no-workspaces": "ウェブアプリでワークスペースを作成するか参加してから、Desktop で再度サインインしてください。",
+        "pending": "Desktop を開いてサインインを続けてください。",
+        "selecting": "このコンピューターで使うワークスペースを選んでください。"
+      },
+      "reopen": "Desktop を開く",
+      "retry": "再試行",
+      "title": "Desktop にサインイン"
+    },
     "documentTitles": {
       "signIn": "サインイン",
       "signUp": "サインアップ"
@@ -1021,19 +1035,35 @@
       "continuation": {
         "activationErrorDescription": "サインインを完了できませんでした。最初からやり直してください。",
         "activationErrorTitle": "サインインを完了できませんでした",
+        "backupDescription": "コードを安全な場所に保管してください。電話を利用できなくなった場合、各コードを1回ずつ使用できます。",
+        "backupTitle": "バックアップコードを保存",
         "chooseOrganizationDescription": "{{brandName}} に進む組織を選択してください。",
         "chooseOrganizationTitle": "組織を選択",
         "completeDescription": "{{brandName}} に移動しています。",
         "completeTitle": "サインイン完了",
+        "createOrganization": "組織を作成",
+        "invitationError": "この招待を承認できませんでした。もう一度お試しいただくか、リンクの有効期限が切れている場合は新しい招待を依頼してください。",
+        "joinOrganization": "{{organizationName}}に参加",
         "loadingDescription": "アカウントに必要な次の手順を確認しています。",
         "loadingTitle": "サインインを完了しています",
         "noOrganizationsDescription": "このアカウントで利用できる組織がありません。組織の管理者にアクセスを依頼してから、最初からやり直してください。",
         "noOrganizationsTitle": "利用できる組織がありません",
+        "organizationName": "組織名",
+        "passwordTaskError": "パスワードを更新できませんでした。より強力なパスワードを選んで、もう一度お試しください。",
+        "phoneNumberLabel": "電話番号",
         "recoveryAction": "最初からやり直す",
+        "savedCodes": "コードを保存しました",
         "secondFactorDescription": "このサインインには、このページでサポートされていない追加の確認手順が必要です。別のサインイン方法を試すには、最初からやり直してください。",
         "secondFactorTitle": "追加の確認が必要です",
+        "securityDescription": "本人確認のための2つ目の方法を追加します。",
+        "securityTitle": "2段階認証を設定",
         "selectOrganization": "{{organizationName}} で続行",
+        "sendCode": "コードを送信",
+        "setupKey": "セットアップキー",
+        "setupKeyDescription": "このセットアップキーを認証アプリに追加し、生成されたコードを入力してください。",
         "signedInAs": "{{identifier}} としてサインイン中",
+        "taskComplete": "セキュリティ設定を保存しました。続行してサインインを完了してください。",
+        "taskError": "この手順を完了できませんでした。入力内容を確認して、もう一度お試しください。",
         "unsupportedDescription": "このページでサポートされていない認証手順がアカウントから返されました。別のサインイン方法を試すには、最初からやり直してください。",
         "unsupportedTitle": "サインイン手順を利用できません"
       },
@@ -1044,7 +1074,12 @@
       "signIn": {
         "addAccount": "アカウントを追加",
         "appleMethod": "Appleで続ける",
+        "authenticatorMethod": "認証アプリを使用",
+        "authenticatorSubtitle": "認証アプリに表示されるコードを入力してください。",
         "back": "戻る",
+        "backupCodeLabel": "バックアップコード",
+        "backupCodeMethod": "バックアップコードを使用",
+        "backupCodeSubtitle": "2段階認証の設定時に保存した未使用のバックアップコードを入力してください。",
         "chooseAccountSubtitle": "続行するアカウントを選択してください。",
         "chooseAccountTitle": "アカウントを選択",
         "chooseMethodSubtitle": "問題が発生していますか？これらの方法を使用してサインインすることができます。",
@@ -1071,6 +1106,7 @@
         "hidePassword": "パスワードを非表示",
         "identifierLabel": "メールアドレスまたはユーザー名",
         "identifierPlaceholder": "メールアドレスまたはユーザー名を入力してください",
+        "invalidCode": "コードが正しくありません。もう一度お試しください。",
         "lastUsed": "最後に使用したもの",
         "methodsHelpPrompt": "これらの方法を利用できませんか？",
         "newPasswordLabel": "新しいパスワード",
@@ -1089,6 +1125,9 @@
         "passwordResetMethod": "パスワードをリセット",
         "passwordSubtitle": "アカウントに関連付けられたパスワードを入力してください",
         "passwordTitle": "パスワードを入力",
+        "phoneCodeMethod": "{{identifier}} に SMS を送信",
+        "phoneCodeSubtitle": "携帯電話に送信された確認コードを入力してください。",
+        "phoneCodeTitle": "携帯電話を確認",
         "recoveryMethodsDivider": "または、別の方法でサインイン",
         "recoveryTitle": "パスワードをお忘れですか？",
         "resendCode": "コードを再送信",
@@ -1096,6 +1135,8 @@
         "resetPassword": "パスワードをリセット",
         "resetPasswordCodeSubtitle": "まず、メールアドレスに送信されたコードを入力してください",
         "resetPasswordCodeTitle": "パスワードをリセット",
+        "secondFactorSubtitle": "ログインの確認方法を選択してください。",
+        "secondFactorTitle": "ログインを確認",
         "separator": "または",
         "showPassword": "パスワードを表示",
         "signOutOfOtherSessions": "他のすべてのデバイスからサインアウト",
@@ -1106,6 +1147,7 @@
         "useAnotherMethod": "別の方法を使用する",
         "usernameLabel": "ユーザー名",
         "usernamePlaceholder": "ユーザー名を入力してください",
+        "verificationCodeExpired": "このコードは無効です。新しいコードを入力してください。",
         "verify": "確認する"
       },
       "signUp": {
@@ -1359,38 +1401,22 @@
     },
     "plans": {
       "cancellationNotice": "{{plan}} プランはキャンセルされ、{{date}} に終了します。",
-      "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
       "compare": "プランを比較する",
       "compareAll": "すべてのプランを比較する",
-      "currentPlan": "現在の計画",
       "custom": {
         "name": "カスタム"
       },
       "customAccess": "{{value}} 同時実行によるカスタム アクセス",
       "customCancellationNotice": "カスタム プランは {{date}} に終了します。",
-      "customCheckoutUnavailable": "カスタム ワークスペースは、Pro または Team チェックアウトに切り替えることができません。",
       "downgrade": "ダウングレード",
       "downgradeNotice": "{{currentPlan}} プランは、{{date}} の {{targetPlan}} にダウングレードされます。",
       "downgradesOn": "{{date}} の {{plan}} にダウングレード",
       "downgradeTo": "{{plan}} にダウングレード",
       "endsOn": "{{date}} に終了",
       "features": {
-        "byok": "独自の LLM キーを持参する",
-        "communitySupport": "コミュニティサポート",
-        "emailSupport": "メールサポート",
-        "existingCredits": "既存の無料クレジットのみ",
-        "oneConcurrentRun": "1つの同時実行",
-        "prioritySupport": "優先サポート",
-        "sharedAndPrivateAgents": "共有エージェント7個、プライベートは無制限",
-        "tenConcurrentRuns": "10 個の同時実行",
-        "twoConcurrentRuns": "2つの同時実行",
-        "unlimitedAgents": "無制限の合計エージェント",
-        "voiceInputFree": "音声入力（メンバーごとに累計10リクエスト・1日10分）",
-        "voiceInputPro": "音声入力（メンバーごとに1日300リクエスト・200分）",
-        "voiceInputTeam": "音声入力（メンバーごとに1日500リクエスト・500分）"
+        "byok": "独自の LLM キーを持参する"
       },
       "free": {
-        "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
       "highlights": {
@@ -1417,7 +1443,6 @@
         "name": "限定無料"
       },
       "loadError": "請求ステータスを読み込めませんでした。",
-      "manageSubscription": "サブスクリプションの管理",
       "namedPlan": "{{plan}} プラン",
       "noActivePlan": "有効なプランはありません",
       "noActiveSubscription": "有効なサブスクリプションがありません",
@@ -1425,11 +1450,9 @@
         "name": "計画なし"
       },
       "perMonth": "/月",
-      "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
         "description": "日々のエージェント業務を、メンバー単位の料金で。",
-        "legacyDescription": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -1438,7 +1461,6 @@
       "selectedPlan": "選択したプラン",
       "team": {
         "description": "エージェントを一日中動かし続けるチームに。",
-        "legacyDescription": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",
@@ -1541,13 +1563,11 @@
       "subscriptionChangeConfirmed": "サブスクリプションの変更が確認されました。"
     },
     "usage": {
-      "added": "{{date}} を追加しました",
       "allowance": {
         "day": "{{value}}日",
         "hour": "{{value}}時間",
         "left": "残り {{value}}",
         "minute": "{{value}}分",
-        "remaining": "{{remaining}} / {{total}} クレジット",
         "remainingAria": "使用許容量 {{label}} が残っています",
         "resets": "{{date}}にリセット",
         "resetsRaw": "リセット: {{value}}",
@@ -1568,15 +1588,12 @@
         "teamPlan": "Teamプラン"
       },
       "creditAdditions": "クレジットの追加",
-      "creditsRemaining_one": "{{value}} クレジットが残っています",
-      "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
       "grantsTable": {
         "credits": "クレジット",
         "date": "日付",
         "left": "残り"
       },
-      "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
       "orgCredits": "組織クレジット",
@@ -1851,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "エージェント",
       "configureModel": "モデルの構成",
+      "create": {
+        "addStyle": "スタイルを追加",
+        "addTemplate": "テンプレートを追加",
+        "exit": "作成モードを終了",
+        "image": "画像を作成",
+        "imagePlaceholder": "作成したい画像を説明してください…",
+        "presentation": "プレゼンテーションを作成",
+        "presentationPlaceholder": "プレゼンテーションのテーマは何ですか？",
+        "settingsAdjusted": "このモデルに合わせて一部の動画設定を調整しました",
+        "title": "作成",
+        "video": "動画を作成",
+        "videoPlaceholder": "作成したい動画を説明してください…"
+      },
       "createWorkflow": "ワークフローの作成",
       "imageModelForThisChat": "このチャットの画像モデル",
       "message": "メッセージ",
@@ -1863,7 +1893,6 @@
       "threadSuggestions": "チャットスレッド",
       "useForFutureChats": "今後のチャットでも使用",
       "videoModelForThisChat": "このチャットの動画モデル",
-      "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
         "empty": "一致するワークフローがありません",
         "loading": "ワークフローを読み込んでいます...",
@@ -1909,7 +1938,6 @@
       "accountForThread": "このスレッドのアカウント",
       "add": "{{connectorName}} を追加",
       "addConnectors": "コネクタの追加",
-      "authorizationFailed": "{{connectorName}} は接続されましたが、{{agentName}} に対して認証できませんでした",
       "authorized": "{{connectorName}} が接続され、{{agentName}} に対して承認されました",
       "available_one": "接続可能なコネクタ ({{count}})",
       "available_other": "接続可能なコネクタ ({{count}})",
@@ -1983,84 +2011,78 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "自動 · Okou におまかせ",
+        "autoDescription": "ご要望に合う HeyGen の公開プレゼンターを選択",
         "heading": "アバターを選択",
-        "help": "プレゼンターを選ぶか、アバターなしで続行します",
+        "label": "アバター",
         "none": "アバターなし",
-        "placementHeading": "発表者をどこに配置しますか？",
-        "placementLeft": "左 — スライドは右側に配置",
-        "placementOverlay": "スライドの上 — スライドが画面全体に広がる",
-        "placementRight": "右 — スライドは左側に配置"
+        "noneDescription": "プレゼンターなしで動画を作成",
+        "previewLook": "{{name}} の外見をプレビュー"
       },
-      "cardDescription": "ファイルや画面録画を完成した動画に変換",
-      "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
-      "desktop": {
-        "checkingCompatibility": "互換性の確認",
-        "description": "画面録画は {{desktopProductName}} デスクトップアプリで行います。任意のウィンドウをキャプチャし、クリックした位置も記録します。",
-        "download": "macOS をダウンロード",
-        "handoffDetail": "録画はここで開き、アバターと音声を選べる状態になります。",
-        "handoffTitle": "自動的にこのウィザードに戻ります",
-        "heading": "{{desktopProductName}} Desktop で録画",
-        "illustration": "録画は {{desktopProductName}} Desktop で行います",
-        "installDetail": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
-        "installTitle": "{{desktopProductName}} Desktop をダウンロードしてインストール",
-        "recordDetail": "終わったら同じメニューから停止します。",
-        "recordTitle": "メニューバーから録画を開始",
-        "unsupportedIntelMac": "AppleシリコンMacが必要です"
+      "cardDescription": "アイデアや資料を完成した動画に変換",
+      "catalog": {
+        "empty": "HeyGen の公開オプションはありません。",
+        "error": "HeyGen の一覧を読み込めませんでした。",
+        "loading": "さらに読み込み中",
+        "reload": "一覧を再読み込み",
+        "retry": "再試行"
       },
+      "description": "資料を追加してご要望を説明し、必要に応じて HeyGen のスタイル、アバター、音声を選んでください。",
       "errors": {
-        "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
-        "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
+        "sendFailed": "チャットスレッドを作成できませんでした。リクエストはこの画面に残っているので、もう一度お試しください。",
+        "uploadFailed": "一部のファイルをアップロードできませんでした。削除するか、もう一度お試しください。"
       },
       "footer": {
-        "back": "戻る",
-        "createInChat": "チャットで作成",
-        "download": "素材をダウンロード",
-        "next": "次へ"
+        "cancel": "キャンセル",
+        "create": "動画を作成",
+        "hint": "指示やファイルを追加してください"
       },
-      "review": {
-        "avatar": "アバター",
-        "heading": "イントロビデオを確認",
-        "help": "{{assistantName}} が新しいチャットスレッドで受け取る設定を確認してください",
-        "instructions": "編集指示",
-        "source": "素材",
-        "voice": "音声"
+      "format": {
+        "auto": "自動",
+        "output": "出力の画面比率"
+      },
+      "heading": "イントロビデオを作成",
+      "help": "資料の追加やご要望の説明、またはその両方から始められます。あとは Okou におまかせください。",
+      "prompt": {
+        "label": "動画で何を伝えたいですか？",
+        "placeholder": "目的、対象者、言語、雰囲気など、大切なことを説明してください"
       },
       "source": {
-        "documentDescription": "スライドをナレーション付きイントロビデオに変換",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "スライドをアップロード",
-        "heading": "どのように始めますか？",
-        "help": "手元のスライドをアップロードするか、{{desktopProductName}} Desktop で画面を録画してください",
-        "recordDescription": "デスクトップアプリでデモを録画",
-        "recordDetail": "macOS 版 {{desktopProductName}} Desktop が必要です",
-        "recordTitle": "画面を録画",
-        "uploadDescription": "コンピュータからファイルを選択",
-        "uploadTitle": "ソースをアップロード"
+        "drop": "ここにファイルをドロップ、またはクリックしてアップロード",
+        "remove": "{{filename}} を削除"
       },
-      "sourceReview": {
-        "format": "形式",
-        "heading": "素材の準備ができました",
-        "help": "続行する前にファイルを確認してください",
-        "inAccount": "アカウント内",
-        "replace": "素材を置き換える",
-        "saved": "保存先",
-        "source": "素材"
-      },
-      "steps": {
-        "avatar": "アバター",
-        "label": "イントロビデオの手順",
-        "review": "確認",
-        "source": "素材",
-        "voice": "音声"
+      "style": {
+        "auto": "Okou におまかせ",
+        "browseGroups": "スタイルから探す",
+        "description": "スタイルはシーン、トランジション、テキストの表示、テンポを決めます。",
+        "groups": {
+          "cinematic": "映画と写真",
+          "handmade": "手作りと素材",
+          "iconic-artist": "アートとデザイン",
+          "other": "その他のスタイル",
+          "pop-culture": "ポップカルチャー",
+          "print": "印刷と出版",
+          "retro-tech": "レトロテックとインターフェース"
+        },
+        "heading": "参考にするスタイルを選択",
+        "label": "スタイル参考",
+        "preview": "{{title}} のプレビュー",
+        "previewUnavailable": "このスタイルの動画プレビューはありません。"
       },
       "title": "イントロビデオを作成",
       "voice": {
+        "auto": "Okou におまかせ",
+        "autoDescription": "Okou が最適な HeyGen の公開音声を選択",
+        "default": "デフォルト · アバターに合わせる",
+        "defaultDescription": "選択したアバターのデフォルト音声を使用",
+        "defaultForAvatar": "デフォルト · {{avatar}}",
+        "defaultForAvatarDescription": "{{avatar}} の HeyGen デフォルト音声を使用",
         "heading": "音声を選択",
-        "help": "続行する前にサンプルを再生できます",
+        "label": "音声",
         "none": "ナレーションなし",
-        "noneDescription": "ナレーションを使わず字幕中心の動画を作成",
+        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",
         "original": "元の音声",
-        "originalDescription": "アップロードした動画または録画の音声を維持"
+        "originalDescription": "選択した元の音声を保持し、生成音声は追加しません"
       }
     },
     "mail": {
@@ -2173,6 +2195,7 @@
     "run": {
       "automatedRun": "自動実行",
       "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
+      "collapseHistoryMessage": "履歴メッセージを折りたたむ: {{message}}",
       "collapseWorkHistory": "作業履歴を折りたたむ",
       "creditUsage": "クレジット使用量",
       "done": {
@@ -2214,6 +2237,9 @@
       "keepGoingAt": "続ける · {{timestamp}}",
       "modelChangedTo": "モデルを{{model}}に変更しました",
       "queueEllipsis": "行列...",
+      "relatedArtifactCount_one": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifactCount_other": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifacts": "関連するアーティファクト",
       "selectedModelAppliesAfterCurrentRun": "選択した{{model}}モデルはこの実行後に適用されます",
       "thinking": {
         "assembling": "部品を組み立て中...",
@@ -2262,14 +2288,20 @@
       "draft": "草案",
       "empty": "会話を開始するとここに表示されます",
       "markUnread": "未読にする",
+      "movePinDown": "下に移動",
+      "movePinUp": "上に移動",
       "newChatWith": "{{agentName}} との新しいチャット",
       "noUnread": "未読のチャットはありません",
       "openChatMenu": "チャットメニューを開く",
       "openListMenu": "チャットリストメニューを開く",
       "pin": "チャットをピン留めする",
+      "pinDropAfter": "「{{title}}」の後に配置",
+      "pinDropBefore": "「{{title}}」の前に配置",
       "pinned": "ピン留め済み",
       "rename": "チャットの名前を変更する",
       "renameDescription": "このチャット スレッドの新しい名前を入力します。",
+      "reorderInstructions": "ドラッグして並べ替えます。スペースキーで選択し、矢印キーで移動、スペースキーで配置、Escキーでキャンセルします。",
+      "reorderThread": "「{{title}}」を並べ替え",
       "titlePlaceholder": "チャットのタイトル",
       "unpin": "チャットの固定を解除する",
       "unread": "未読",
@@ -2392,11 +2424,9 @@
     },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
+      "cleanupFailed": "テキストは追加されましたが、保存済みの録音を削除できませんでした。",
       "confirmRecording": "OK",
-      "draft": "音声ドラフト",
-      "draftTooLong": "この音声ドラフトは長すぎます。新しい録音を開始してください。",
-      "finishDraft": "仕上げる",
-      "finishingDraft": "仕上げ中...",
+      "discarding": "音声の下書きを削除中...",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
       "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
@@ -2405,9 +2435,13 @@
       "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
-      "removeDraft": "音声ドラフトを削除",
+      "removeDraft": "音声の下書きを削除",
+      "restoreFailed": "音声の下書きを読み込めませんでした。再試行してください。",
+      "retry": "再試行",
+      "retryReady": "録音は保持されています。文字起こしを再試行してください。",
       "starting": "音声入力を開始する",
       "stopRecording": "録音を停止する",
+      "storageFailed": "音声を保存できませんでした。再試行で復元できるのは、この端末に保存済みの音声のみです。",
       "transcribing": "文字起こし",
       "transcribingProgress": "転記中...",
       "transcriptionFailed": "音声の転写に失敗しました。もう一度やり直してください。"
@@ -2676,6 +2710,18 @@
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
         "continueWithAutomatic": "続行すると、Okou がこの MCP サーバーの認証方法を確認します。",
         "description": "シークレットは保存時に暗号化され、ファイアウォールによって送信リクエストに挿入されます。環境変数としてエージェントに公開されることはありません。",
+        "errors": {
+          "authenticationResponseInvalid": "MCP サーバーからサポートされていない認証レスポンスが返されました。MCP エンドポイントと認証設定を確認するか、サーバー管理者にお問い合わせください。",
+          "authorizationUnsupported": "OAuth プロバイダーは自動認証で必要な認可要件をサポートしていません。互換性のあるクライアント認証情報をすでにお持ちの場合のみカスタム OAuth を使用するか、Okou サポートにお問い合わせください。",
+          "bindingChanged": "MCP OAuth の認可サーバーまたはクライアント登録が変更されました。コネクターアカウントを再接続して、もう一度お試しください。",
+          "clientRegistrationConflict": "接続済みアカウントが使用中のため、既存の自動 OAuth クライアントでは必要な権限を要求できません。該当アカウントを切断して再接続するか、登録済みのクライアント認証情報でカスタム OAuth を使用してください。",
+          "clientRegistrationInvalid": "OAuth プロバイダーから無効なクライアント登録情報が返されました。サーバー管理者に問い合わせるか、有効な登録済みクライアント認証情報をすでにお持ちの場合はカスタム OAuth を使用してください。",
+          "clientRegistrationRejected": "OAuth プロバイダーが自動クライアント登録を拒否しました。サポート対象の MCP クライアントまたは登録メタデータが制限されている可能性があります。プロバイダーがサポートする MCP クライアントを使用するか、登録済みのクライアント認証情報をすでにお持ちの場合のみカスタム OAuth を使用するか、Okou サポートにお問い合わせください。",
+          "clientRegistrationUnavailable": "OAuth プロバイダーはサポート対象の自動クライアント登録方法を提供していません。登録済みのクライアント認証情報をすでにお持ちの場合はカスタム OAuth を使用するか、Okou サポートにお問い合わせください。",
+          "discoveryInvalid": "MCP サーバーの OAuth ディスカバリメタデータが不完全または不整合です。サーバーを管理している場合は公開メタデータを修正するか、サーバー管理者にお問い合わせください。",
+          "providerUnavailable": "MCP OAuth プロバイダーは一時的に利用できないか、リクエストを制限しています。時間をおいて再試行し、プロバイダーの稼働状況を確認してください。",
+          "unsafeUrl": "MCP サーバーが公開 HTTPS エンドポイントではない OAuth URL を通知しました。サーバーが通知する OAuth URL を修正してから、もう一度お試しください。"
+        },
         "save": "保存",
         "saving": "保存中…",
         "title": "{{connector}} を接続します"
@@ -2748,12 +2794,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "その他のオプション",
-      "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
-        "disconnected": "切断されました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -2794,7 +2838,6 @@
       "always": "いつも",
       "clearSearch": "権限検索のクリア",
       "descriptionAgent": "このエージェントがこのコネクタ経由で実行できるアクションを構成します。",
-      "descriptionWorkflow": "このワークフローがこのコネクタ経由で実行できるアクションを構成します。",
       "find": "権限の検索",
       "findPlaceholder": "権限を検索...",
       "forTarget": "{{target}} の場合",
@@ -3258,15 +3301,13 @@
       "redirectTitle": "{{connector}} にリダイレクトしています…"
     },
     "toasts": {
-      "connected": "{{connector}} が接続されました",
-      "disconnected": "{{connector}} が切断されました"
+      "connected": "{{connector}} が接続されました"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "リクエストが失敗しました",
-      "sharedDatabaseUnavailable": "アプリで問題が発生しました。少し待ってから、ページを更新してもう一度お試しください。"
+      "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
@@ -3503,6 +3544,7 @@
         "cozy-parlor": "コージーパーラー",
         "crowd-ink": "クラウドインク",
         "editorial-flatfolk": "社説フラットフォーク",
+        "emboss-deboss": "エンボス＆デボス",
         "endpaper": "見返し",
         "flat-poster": "フラットポスター",
         "folk-muse": "フォークミューズ",
@@ -4951,6 +4993,12 @@
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
+        "menu": {
+          "adjustSettings": "{{model}} の設定を調整",
+          "backToModels": "モデルに戻る",
+          "changeModel": "{{category}}モデルを変更、{{model}}",
+          "chatSettings": "チャット設定"
+        },
         "models": "モデル",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
@@ -5012,6 +5060,7 @@
         "remaining_one": "リセット残り{{value}}回",
         "remaining_other": "リセット残り{{value}}回",
         "remainingUnavailable": "残りのリセット回数を取得できません",
+        "remainingUnknown": "リセット —",
         "remainingWithExpiry_other": "リセット残り{{value}}回 · 有効期限{{expiry}}",
         "title": "Codexの使用量をリセットしますか？"
       },
@@ -5080,8 +5129,12 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "新しいチャットでエージェントがクラウドブラウザを使用できるようにします",
+          "description": "新しいチャットでクラウドブラウザを既定でオンにします。各チャットで変更できます。",
           "title": "クラウドブラウザ"
+        },
+        "defaultModel": {
+          "description": "チャットまたは実行で別のモデルを選択しない限り使用されます。",
+          "title": "デフォルトモデル"
         },
         "description": "新しいチャットの初期設定とメッセージの送信方法を選択します。",
         "sectionTitle": "チャット"
@@ -5135,6 +5188,32 @@
           "workerLoading": "読み込み中",
           "workerTitle": "共有ワーカーの接続診断",
           "workerUnavailable": "利用不可"
+        },
+        "indexedDb": {
+          "countExplanation": "件数は読み取り専用トランザクションで取得し、レコード本体は読み取りません。",
+          "description": "Shared Worker が管理するローカルチャットキャッシュのレコード件数を確認します。",
+          "loading": "IndexedDB ストレージを読み込んでいます...",
+          "measurementUnavailable": "スナップショットの測定に失敗しました。再試行してください。",
+          "measureSnapshot": "スナップショットを測定",
+          "measuring": "測定中...",
+          "records": "レコード",
+          "refresh": "更新",
+          "schema": "スキーマ",
+          "snapshotDescription": "1件のレコードに多数のスレッドが含まれる場合があります。サイズはデータベースの管理領域を除く UTF-8 JSON の推定値で、読み取り時間にはサイズの推定処理を含みません。",
+          "snapshotEmpty": "キャッシュにスレッドのスナップショットがありません。",
+          "snapshotPayload": "推定データサイズ",
+          "snapshotReadDuration": "IndexedDB 読み取り時間",
+          "snapshotThreads": "スナップショット内のスレッド数",
+          "snapshotTitle": "スレッドのスナップショット",
+          "stores": "オブジェクトストア",
+          "title": "IndexedDB ストレージ",
+          "unavailable": "IndexedDB ストレージを利用できません。"
+        },
+        "voiceInput": {
+          "default": "デフォルト（{{model}}）",
+          "description": "音声入力 v2 のモデルを選択します。文字起こしモデルは {{model}} で文章を整えます。",
+          "title": "音声入力モデル",
+          "unavailable": "利用できないモデル（{{model}}）"
         }
       },
       "language": {
@@ -5388,7 +5467,7 @@
     "displayNames": {
       "avatar": "アバター",
       "finance": "金融",
-      "imageRecognize": "画像認識",
+      "imageRecognition": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
       "seo": "SEO",
@@ -5450,6 +5529,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "対応が必要 — 配信を一時停止中",
         "addAction": "カレンダーのオートメーションを追加する",
         "addAria": "Google Calendar オートメーションを追加",
         "addDescriptionCancelled": "Google Calendar イベントがキャンセルされたときに、このワークフローを実行します。",
@@ -5458,16 +5538,29 @@
         "addTitle": "Google Calendar オートメーションを追加",
         "calendarId": "カレンダーID",
         "calendarIdPlaceholder": "プライマリー",
+        "calendarNotFoundDescription": "このカレンダーは利用できなくなりました。このオートメーションを再開するには、別のカレンダーを選択してください。",
         "cancelledDescription": "カレンダーイベントがキャンセルされたときに実行されます。",
         "cancelledRule": "カレンダー {{calendar}} イベントがキャンセルされた場合",
         "cancelledTitle": "Google Calendar イベントがキャンセルされました",
+        "cancelRecovery": "キャンセル",
+        "changeAria": "Google Calendar オートメーションを変更",
+        "changeCalendar": "カレンダーを変更",
+        "checkingRecovery": "この自動化を再開できるか確認しています…",
+        "checkRecoveryStatus": "状態を確認",
         "createdDescription": "カレンダーイベントの作成時に実行します。",
         "createdRule": "カレンダー {{calendar}} が新しいイベントを取得したとき",
         "createdTitle": "Google Calendar イベントが作成されました",
+        "enabledIntent": "有効",
+        "reconnectDescription": "このオートメーションを再開するには、Google Calendar を再接続する必要があります。",
+        "reconnectGoogleCalendar": "Google Calendar を再接続",
+        "recoveryStatus": "Google カレンダーの復旧",
+        "recoveryUnconfirmed": "復旧を確認できませんでした。この自動化の警告を確認してから、状態を再確認してください。",
+        "saveCalendar": "カレンダーを保存",
         "summary": "カレンダー {{calendar}}",
         "updatedDescription": "カレンダーイベントが更新されたときに実行します。",
         "updatedRule": "カレンダー {{calendar}} イベントが更新されたとき",
-        "updatedTitle": "Google Calendar イベントが更新されました"
+        "updatedTitle": "Google Calendar イベントが更新されました",
+        "updateError": "このカレンダーを変更できませんでした。もう一度お試しください。"
       },
       "chat": {
         "addAction": "チャットオートメーションを追加する",
@@ -6043,6 +6136,7 @@
       }
     },
     "list": {
+      "actionRequired": "対応が必要",
       "agentEmpty": "このエージェントとして実行されるワークフローはまだありません。",
       "all": "すべて",
       "allAgents": "すべてのエージェント",
@@ -6060,6 +6154,7 @@
       },
       "noWorkflows": "ワークフローなし",
       "open": "{{title}} を開く",
+      "openRecovery": "{{title}} の復旧を開く",
       "runsAs": "として実行",
       "runsAsAria": "{{agent}} として実行",
       "section": {

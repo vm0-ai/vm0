@@ -1,20 +1,24 @@
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
 import { CopyButton } from "@okouai/ui";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
-import { Loader2, Image } from "lucide-react";
+import { File, Image, Loader2, Video } from "lucide-react";
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
 import {
   escapeHtmlTags,
-  markdownCardKey,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
+import { openMarkdownArtifact$ } from "../../signals/okou-page/markdown-artifact-preview.ts";
+import type {
+  ArtifactKind,
+  ArtifactSignals,
+} from "../../signals/chat-page/artifact-card-signals.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
-import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
+import { isImageUrl, isSafeMediaUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
 import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
@@ -59,10 +63,12 @@ function PlainLink({ href, children, ...rest }: MarkdownAnchorProps) {
 
 function MediaImage({
   src,
+  url,
   alt,
   load,
 }: {
-  src: string;
+  src: string | undefined;
+  url: string;
   alt: string;
   load: ImageLoadSignals;
 }) {
@@ -85,7 +91,7 @@ function MediaImage({
         const threadId = event.currentTarget.closest<HTMLElement>(
           "[data-chat-thread-container-id]",
         )?.dataset.chatThreadContainerId;
-        openImageLightbox(threadId ? { threadId, url: src } : src);
+        openImageLightbox(threadId ? { threadId, url } : url);
       }}
       className="my-1 inline-grid aspect-[10/9] w-[200px] max-w-full cursor-pointer grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] align-top overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >
@@ -101,59 +107,96 @@ function MediaImage({
           )}
         </span>
       )}
-      <img
-        key={src}
-        src={src}
-        alt={alt}
-        loading="lazy"
-        onLoad={markLoaded}
-        onError={markFailed}
-        className={`col-start-1 row-start-1 block h-full w-full min-h-0 min-w-0 object-contain ${
-          showPlaceholder ? "opacity-0" : ""
-        }`}
-      />
+      {src !== undefined && (
+        <img
+          key={src}
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onLoad={markLoaded}
+          onError={markFailed}
+          className={`col-start-1 row-start-1 block h-full w-full min-h-0 min-w-0 object-contain ${
+            showPlaceholder ? "opacity-0" : ""
+          }`}
+        />
+      )}
     </button>
   );
 }
 
+function ArtifactLinkIcon({ kind }: { readonly kind: ArtifactKind }) {
+  const iconProps = {
+    "aria-hidden": true,
+    className: "mr-1 inline-block align-[-0.1em]",
+    size: 14,
+  };
+  if (kind === "image") {
+    return (
+      <Image {...iconProps} data-testid="markdown-artifact-link-icon-image" />
+    );
+  }
+  if (kind === "video") {
+    return (
+      <Video {...iconProps} data-testid="markdown-artifact-link-icon-video" />
+    );
+  }
+  return <File {...iconProps} data-testid="markdown-artifact-link-icon-file" />;
+}
+
 function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
-  if (!href || !isSafeMediaUrl(href)) {
-    return (
-      <PlainLink href={href} {...rest}>
-        {children}
-      </PlainLink>
-    );
-  }
-
-  if (isImageUrl(href)) {
-    const load = rest.node?.data?.imageLoadSignals;
-    if (load) {
-      const alt = typeof children === "string" ? children : "";
-      return <MediaImage src={href} alt={alt} load={load} />;
-    }
-    // A tree parsed during render carries no load signals; the destination
-    // stays an ordinary link.
-    return (
-      <PlainLink href={href} {...rest}>
-        {children}
-      </PlainLink>
-    );
-  }
-
-  if (isVideoUrl(href)) {
-    return (
-      <video
-        src={href}
-        controls
-        className="max-h-96 max-w-full my-1 rounded-lg border border-foreground/10"
-      />
-    );
-  }
-
+  const openArtifact = useSet(openMarkdownArtifact$);
+  const openImageLightbox = useSet(openImageLightbox$);
+  const card = rest.node?.data?.card;
   return (
-    <PlainLink href={href} {...rest}>
+    <PlainLink
+      href={href}
+      {...rest}
+      onClick={(event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        if (card?.kind === "artifact") {
+          event.preventDefault();
+          openArtifact(card);
+        } else if (href && isSafeMediaUrl(href) && isImageUrl(href)) {
+          event.preventDefault();
+          const threadId = event.currentTarget.closest<HTMLElement>(
+            "[data-chat-thread-container-id]",
+          )?.dataset.chatThreadContainerId;
+          openImageLightbox(threadId ? { threadId, url: href } : href);
+        }
+      }}
+    >
+      {card?.kind === "artifact" && (
+        <ArtifactLinkIcon kind={card.signals.kind} />
+      )}
       {children}
     </PlainLink>
+  );
+}
+
+function ArtifactImage({
+  signals,
+  alt,
+}: {
+  signals: ArtifactSignals;
+  alt: string;
+}) {
+  const src = useLastResolved(signals.resourceUrl$);
+  return (
+    <MediaImage
+      src={src}
+      url={signals.url}
+      alt={alt}
+      load={signals.previewImageLoad}
+    />
   );
 }
 
@@ -181,11 +224,50 @@ function PlainImageRenderer(props: MarkdownImageProps) {
 
 function MediaImageRenderer(props: MarkdownImageProps) {
   const { src, alt, ...rest } = props;
+  const card = props.node?.data?.card;
+  if (card?.kind === "artifact") {
+    return card.signals.kind === "image" ? (
+      <ArtifactImage signals={card.signals} alt={alt ?? ""} />
+    ) : (
+      <MarkdownCardView card={card} label={alt} />
+    );
+  }
   const load = props.node?.data?.imageLoadSignals;
   if (typeof src === "string" && isSafeMediaUrl(src) && load) {
-    return <MediaImage src={src} alt={alt ?? ""} load={load} />;
+    return <MediaImage src={src} url={src} alt={alt ?? ""} load={load} />;
   }
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
+}
+
+function containsBlockArtifact(node: Element): boolean {
+  return node.children.some((child) => {
+    if (child.type !== "element") {
+      return false;
+    }
+    const card = child.data?.card;
+    return (
+      (child.tagName === "img" &&
+        card?.kind === "artifact" &&
+        card.signals.kind !== "image") ||
+      containsBlockArtifact(child)
+    );
+  });
+}
+
+function MediaParagraphRenderer({
+  children,
+  node,
+  ...props
+}: ComponentPropsWithoutRef<"p"> & MarkdownNodeProp) {
+  // Document cards contain block elements, which cannot live inside a <p>.
+  if (node && containsBlockArtifact(node)) {
+    return (
+      <div {...props} className="okou-markdown-card">
+        {children}
+      </div>
+    );
+  }
+  return <p {...props}>{children}</p>;
 }
 
 function MarkdownSpanRenderer(props: MarkdownSpanProps) {
@@ -210,7 +292,7 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   // consecutive cards sit border-to-border.
   if (data?.card) {
     return (
-      <div className="zero-markdown-card">
+      <div className="okou-markdown-card">
         <MarkdownCardView card={data.card} />
       </div>
     );
@@ -240,8 +322,9 @@ const PLAIN_MARKDOWN_COMPONENTS = {
   div: MarkdownDivRenderer,
 } as const;
 
-export const MEDIA_MARKDOWN_COMPONENTS = {
+const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
+  p: MediaParagraphRenderer,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
   span: MarkdownSpanRenderer,
@@ -336,4 +419,3 @@ export function Markdown({
 // The signal layer loads this module as the single rich-content boundary, so
 // parsing and rendering arrive together instead of creating a second network
 // waterfall after a rich tree has been prepared.
-export { markdownCardKey, parseMarkdownTree };

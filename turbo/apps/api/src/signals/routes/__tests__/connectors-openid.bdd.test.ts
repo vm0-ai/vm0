@@ -45,13 +45,13 @@ function mockSession(actor: TestActor): void {
 }
 
 function mockSteamRuntimeEnv(): void {
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
 }
 
 async function startSteamOpenId(
   actor: TestActor,
-  account: ConnectorAccountMutationIntent = { intent: "single-account" },
+  account: ConnectorAccountMutationIntent = { intent: "add" },
 ): Promise<URL> {
   mockSession(actor);
   const response = await accept(
@@ -195,10 +195,10 @@ describe("Steam OpenID connector", () => {
       "https://steamcommunity.com/openid/login",
     );
     expect(authorizationUrl.searchParams.get("openid.realm")).toBe(
-      "https://api.vm0.ai/",
+      "https://api.okou.ai/",
     );
     expect(authorizationUrl.searchParams.get("openid.return_to")).toMatch(
-      /^https:\/\/api\.vm0\.ai\/api\/connectors\/steam\/callback\?state=[0-9a-f]{64}$/u,
+      /^https:\/\/api\.okou\.ai\/api\/connectors\/steam\/callback\?state=[0-9a-f]{64}$/u,
     );
 
     await completeSteamOpenIdCallback(authorizationUrl);
@@ -284,7 +284,8 @@ describe("Steam OpenID connector", () => {
     expect(connector.body).toStrictEqual(initial.body);
 
     const replacementAuthorizationUrl = await startSteamOpenId(actor, {
-      intent: "single-account",
+      intent: "reconnect",
+      connectionId: initial.body.id,
     });
     await completeSteamOpenIdCallback(replacementAuthorizationUrl);
     mockSession(actor);
@@ -311,7 +312,7 @@ describe("Steam OpenID connector", () => {
       ).start({
         params: { connectorSlug: "github" },
         headers: authHeaders(),
-        body: { authMethod: "oauth", account: { intent: "single-account" } },
+        body: { authMethod: "oauth", account: { intent: "add" } },
       }),
       [400],
     );

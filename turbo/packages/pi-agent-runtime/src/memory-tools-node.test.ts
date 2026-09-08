@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
+  access,
   mkdir,
   mkdtemp,
+  readFile,
   rename,
   rm,
   symlink,
@@ -20,6 +22,8 @@ import type {
 } from "./api-types";
 import {
   createPiMemoryTools,
+  PI_MEMORY_AD_HOC_NOTE_MAX_BYTES,
+  PI_MEMORY_AD_HOC_NOTE_UPSTREAM_COMMIT,
   PI_MEMORY_TOOL_MAX_DIRECTORY_ENTRIES,
   PI_MEMORY_TOOL_MAX_DURATION_MS,
   PI_MEMORY_TOOL_MAX_FILE_BYTES,
@@ -41,7 +45,14 @@ const SELECTION = {
 };
 const TRUNCATION_MARKER =
   "[truncated: a deterministic memory tool cap was reached]";
+const AD_HOC_NOTE_FILENAME = "2026-09-05T15-30-00-remember-review-style.md";
 const temporaryDirectories: string[] = [];
+
+type MemoryToolName =
+  | "add_ad_hoc_note"
+  | "memories_list"
+  | "memories_read"
+  | "memories_search";
 
 afterEach(async () => {
   await Promise.all(
@@ -63,11 +74,17 @@ async function put(root: string, path: string, content: string | Buffer) {
   await writeFile(target, content);
 }
 
+function adHocNotePath(root: string, filename = AD_HOC_NOTE_FILENAME): string {
+  return join(root, "extensions", "ad_hoc", "notes", filename);
+}
+
 function tools(args: {
   readonly root: string;
   readonly events?: PiMemoryToolSourceUse[];
   readonly now?: () => number;
   readonly afterValidatedOpen?: (path: string) => Promise<void>;
+  readonly beforeAdHocNoteCreate?: (path: string) => Promise<void>;
+  readonly afterAdHocNoteCreate?: (path: string) => Promise<void>;
   readonly sinkThrows?: boolean;
   readonly mode?: "api-first" | "sandbox";
   readonly selection?: PiMemoryRecallSelection;
@@ -77,9 +94,23 @@ function tools(args: {
     selection: args.selection ?? SELECTION,
     memoryRoot: args.root,
     ...(args.now === undefined ? {} : { now: args.now }),
-    ...(args.afterValidatedOpen === undefined
+    ...(args.afterValidatedOpen === undefined &&
+    args.beforeAdHocNoteCreate === undefined &&
+    args.afterAdHocNoteCreate === undefined
       ? {}
-      : { testHooks: { afterValidatedOpen: args.afterValidatedOpen } }),
+      : {
+          testHooks: {
+            ...(args.afterValidatedOpen === undefined
+              ? {}
+              : { afterValidatedOpen: args.afterValidatedOpen }),
+            ...(args.beforeAdHocNoteCreate === undefined
+              ? {}
+              : { beforeAdHocNoteCreate: args.beforeAdHocNoteCreate }),
+            ...(args.afterAdHocNoteCreate === undefined
+              ? {}
+              : { afterAdHocNoteCreate: args.afterAdHocNoteCreate }),
+          },
+        }),
     onSourceUse(event) {
       args.events?.push(event);
       if (args.sinkThrows) {
@@ -89,10 +120,7 @@ function tools(args: {
   });
 }
 
-function namedTool(
-  registry: ReturnType<typeof tools>,
-  name: "memories_list" | "memories_read" | "memories_search",
-) {
+function namedTool(registry: ReturnType<typeof tools>, name: MemoryToolName) {
   const tool = registry.find((candidate) => {
     return candidate.name === name;
   });
@@ -104,7 +132,7 @@ function namedTool(
 
 async function executeText(
   registry: ReturnType<typeof tools>,
-  name: "memories_list" | "memories_read" | "memories_search",
+  name: MemoryToolName,
   params: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<{ readonly text: string; readonly details: unknown }> {
@@ -177,6 +205,365 @@ describe("first-party Pi memory tools", () => {
     expect(read.text).toContain("2: Needle in root\n3: Tail");
     expect(read.text).not.toContain("1: Index");
     expect(read.details).toStrictEqual({});
+  });
+
+  it("pins the Codex-compatible ad-hoc note schema and provenance", async () => {
+    const root = await memoryRoot();
+    const tool = namedTool(tools({ root }), "add_ad_hoc_note");
+
+    expect(PI_MEMORY_AD_HOC_NOTE_UPSTREAM_COMMIT).toBe(
+      "5adb68a49933ae446bf11935662c83dba55a0804",
+    );
+    expect(JSON.parse(JSON.stringify(tool.parameters))).toStrictEqual({
+      additionalProperties: false,
+      properties: {
+        filename: {
+          description:
+            "Name of the note file to create, in YYYY-MM-DDTHH-MM-SS-<slug>.md format. The slug must use only lowercase ASCII letters, digits, and hyphens.",
+          maxLength: 128,
+          minLength: 24,
+          pattern:
+            "^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-[a-z0-9][a-z0-9-]{0,79}\\.md$",
+          type: "string",
+        },
+        note: {
+          description:
+            "Verbatim Markdown note to stage in ad-hoc memory notes.",
+          maxLength: PI_MEMORY_AD_HOC_NOTE_MAX_BYTES,
+          minLength: 1,
+          type: "string",
+        },
+      },
+      required: ["filename", "note"],
+      type: "object",
+    });
+  });
+
+  it("stages verbatim notes at exact bounds and reports only local staging", async () => {
+    const root = await memoryRoot();
+    const registry = tools({ root });
+    const note = "\n# Review style\r\n\r\nKeep comments concise.\n";
+
+    const staged = await executeText(registry, "add_ad_hoc_note", {
+      filename: AD_HOC_NOTE_FILENAME,
+      note,
+    });
+
+    expect(staged).toStrictEqual({
+      text: `{"status":"staged","path":"extensions/ad_hoc/notes/${AD_HOC_NOTE_FILENAME}"}`,
+      details: {},
+    });
+    expect(await readFile(adHocNotePath(root))).toStrictEqual(
+      Buffer.from(note, "utf8"),
+    );
+    expect(staged.text).not.toMatch(/durable|published|storageVersionId/u);
+
+    const nextRunRegistry = tools({ root });
+    const searched = await executeText(nextRunRegistry, "memories_search", {
+      query: "comments concise",
+      path: "extensions/ad_hoc/notes",
+    });
+    expect(searched.text).toContain(
+      `extensions/ad_hoc/notes/${AD_HOC_NOTE_FILENAME}:4: Keep comments concise.`,
+    );
+    const read = await executeText(nextRunRegistry, "memories_read", {
+      path: `extensions/ad_hoc/notes/${AD_HOC_NOTE_FILENAME}`,
+    });
+    expect(read.text).toContain("2: # Review style");
+
+    const minFilename = "2026-09-05T15-30-01-a.md";
+    expect(Buffer.byteLength(minFilename)).toBe(24);
+    await expect(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: minFilename,
+        note: "x",
+      }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('"staged"') });
+
+    const maxFilename = `2026-09-05T15-30-01-${"a".repeat(80)}.md`;
+    const maxNote = "é".repeat(PI_MEMORY_AD_HOC_NOTE_MAX_BYTES / 2);
+    await expect(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: maxFilename,
+        note: maxNote,
+      }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('"staged"') });
+    expect(await readFile(adHocNotePath(root, maxFilename))).toHaveLength(
+      PI_MEMORY_AD_HOC_NOTE_MAX_BYTES,
+    );
+
+    await expectSanitizedFailure(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: "2026-09-05T15-30-02-too-large.md",
+        note: `${maxNote}x`,
+      }),
+      root,
+    );
+  });
+
+  it("rejects malformed, empty, and non-exact ad-hoc note arguments", async () => {
+    const root = await memoryRoot();
+    const registry = tools({ root });
+    const invalidArguments: readonly Record<string, unknown>[] = [
+      {},
+      { filename: AD_HOC_NOTE_FILENAME },
+      { note: "missing filename" },
+      { filename: AD_HOC_NOTE_FILENAME, note: "ok", extra: true },
+      { filename: 1, note: "wrong type" },
+      { filename: AD_HOC_NOTE_FILENAME, note: null },
+      { filename: AD_HOC_NOTE_FILENAME, note: " \n\t\r " },
+      { filename: AD_HOC_NOTE_FILENAME, note: "\ud800" },
+      { filename: "../2026-09-05T15-30-00-escape.md", note: "no" },
+      { filename: "/2026-09-05T15-30-00-absolute.md", note: "no" },
+      { filename: "2026-09-05T15-30-00-path\\escape.md", note: "no" },
+      { filename: "2026-09-05T15-30-00-upper-Case.md", note: "no" },
+      { filename: "2026-09-05T15-30-00-unicode-é.md", note: "no" },
+      { filename: "2026-09-05T15:30:00-colons.md", note: "no" },
+      { filename: "2026-09-05T15-30-00-.md", note: "no" },
+      {
+        filename: `2026-09-05T15-30-00-${"a".repeat(81)}.md`,
+        note: "no",
+      },
+      {
+        filename: `2026-09-05T15-30-00-safe\u0000.md`,
+        note: "no",
+      },
+    ];
+
+    for (const params of invalidArguments) {
+      await expectSanitizedFailure(
+        executeText(registry, "add_ad_hoc_note", params),
+        root,
+      );
+    }
+    await expect(readFile(adHocNotePath(root))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("never overwrites an existing ad-hoc note or follows a target symlink", async () => {
+    const root = await memoryRoot();
+    const registry = tools({ root });
+    await executeText(registry, "add_ad_hoc_note", {
+      filename: AD_HOC_NOTE_FILENAME,
+      note: "original note",
+    });
+
+    await expect(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "replacement note",
+      }),
+    ).rejects.toThrow("already exists");
+    expect(await readFile(adHocNotePath(root), "utf8")).toBe("original note");
+
+    const outside = await memoryRoot();
+    const outsideFile = join(outside, "outside.md");
+    await writeFile(outsideFile, "outside remains unchanged");
+    const symlinkFilename = "2026-09-05T15-30-01-linked.md";
+    await symlink(outsideFile, adHocNotePath(root, symlinkFilename));
+    await expectSanitizedFailure(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: symlinkFilename,
+        note: "must not escape",
+      }),
+      root,
+    );
+    expect(await readFile(outsideFile, "utf8")).toBe(
+      "outside remains unchanged",
+    );
+  });
+
+  it("rejects symlinked roots and every fixed directory component", async () => {
+    const symlinkParent = await memoryRoot();
+    const outsideRoot = await memoryRoot();
+    const linkedRoot = join(symlinkParent, "memory-link");
+    await symlink(outsideRoot, linkedRoot, "dir");
+    await expectSanitizedFailure(
+      executeText(tools({ root: linkedRoot }), "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "must not follow a root symlink",
+      }),
+      linkedRoot,
+    );
+    await expect(access(adHocNotePath(outsideRoot))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const componentCases = [
+      ["extensions"],
+      ["extensions", "ad_hoc"],
+      ["extensions", "ad_hoc", "notes"],
+    ] as const;
+    for (const components of componentCases) {
+      const root = await memoryRoot();
+      const outside = await memoryRoot();
+      const parentComponents = components.slice(0, -1);
+      const parent = join(root, ...parentComponents);
+      await mkdir(parent, { recursive: true });
+      await symlink(outside, join(root, ...components), "dir");
+
+      await expectSanitizedFailure(
+        executeText(tools({ root }), "add_ad_hoc_note", {
+          filename: AD_HOC_NOTE_FILENAME,
+          note: "must not follow a component symlink",
+        }),
+        root,
+      );
+      await expect(
+        access(join(outside, AD_HOC_NOTE_FILENAME)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+
+  it("rejects non-directory components without creating a note", async () => {
+    const root = await memoryRoot();
+    await writeFile(join(root, "extensions"), "not a directory");
+
+    await expectSanitizedFailure(
+      executeText(tools({ root }), "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "must not replace a component",
+      }),
+      root,
+    );
+    expect(await readFile(join(root, "extensions"), "utf8")).toBe(
+      "not a directory",
+    );
+  });
+
+  it("fails closed when the memory root is replaced before file creation", async () => {
+    const root = await memoryRoot();
+    const movedRoot = `${root}-moved`;
+    temporaryDirectories.push(movedRoot);
+    const registry = tools({
+      root,
+      async beforeAdHocNoteCreate() {
+        await rename(root, movedRoot);
+        await mkdir(root);
+      },
+    });
+
+    await expectSanitizedFailure(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "must not survive a root race",
+      }),
+      root,
+    );
+    await expect(access(adHocNotePath(root))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(access(adHocNotePath(movedRoot))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("fails closed when an opened directory component is replaced", async () => {
+    const root = await memoryRoot();
+    const oldAdHoc = join(root, "extensions", "ad_hoc-old");
+    const registry = tools({
+      root,
+      async beforeAdHocNoteCreate() {
+        await rename(join(root, "extensions", "ad_hoc"), oldAdHoc);
+        await mkdir(join(root, "extensions", "ad_hoc", "notes"), {
+          recursive: true,
+        });
+      },
+    });
+
+    await expectSanitizedFailure(
+      executeText(registry, "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "must not survive a component race",
+      }),
+      root,
+    );
+    await expect(access(adHocNotePath(root))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      access(join(oldAdHoc, "notes", AD_HOC_NOTE_FILENAME)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails closed on cancellation, timeout, and I/O failure", async () => {
+    const cancelledRoot = await memoryRoot();
+    const controller = new AbortController();
+    const cancelledRegistry = tools({
+      root: cancelledRoot,
+      async afterAdHocNoteCreate() {
+        controller.abort();
+      },
+    });
+    await expectSanitizedFailure(
+      executeText(
+        cancelledRegistry,
+        "add_ad_hoc_note",
+        { filename: AD_HOC_NOTE_FILENAME, note: "cancelled" },
+        controller.signal,
+      ),
+      cancelledRoot,
+    );
+    await expect(access(adHocNotePath(cancelledRoot))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const timedOutRoot = await memoryRoot();
+    let timedOut = false;
+    const timedOutRegistry = tools({
+      root: timedOutRoot,
+      now() {
+        return timedOut ? PI_MEMORY_TOOL_MAX_DURATION_MS : 0;
+      },
+      async afterAdHocNoteCreate() {
+        timedOut = true;
+      },
+    });
+    await expectSanitizedFailure(
+      executeText(timedOutRegistry, "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "timed out",
+      }),
+      timedOutRoot,
+    );
+    await expect(access(adHocNotePath(timedOutRoot))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const ioRoot = await memoryRoot();
+    const ioRegistry = tools({
+      root: ioRoot,
+      async afterAdHocNoteCreate() {
+        throw Object.assign(new Error("simulated disk failure"), {
+          code: "EIO",
+        });
+      },
+    });
+    await expectSanitizedFailure(
+      executeText(ioRegistry, "add_ad_hoc_note", {
+        filename: AD_HOC_NOTE_FILENAME,
+        note: "must be rolled back",
+      }),
+      ioRoot,
+    );
+    await expect(access(adHocNotePath(ioRoot))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("never executes an API-first filesystem mutation", async () => {
+    const parent = await memoryRoot();
+    const missingRoot = join(parent, "api-worker-must-not-create");
+
+    await expect(
+      executeText(
+        tools({ root: missingRoot, mode: "api-first" }),
+        "add_ad_hoc_note",
+        { filename: AD_HOC_NOTE_FILENAME, note: "sandbox only" },
+      ),
+    ).rejects.toThrow("sandbox ownership transfer");
+    await expect(access(missingRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects every hostile path form and every .git segment", async () => {

@@ -3,7 +3,7 @@
 //! Runs as PID 1 inside a Firecracker VM. PID 1 synchronously waits for blocked
 //! child and shutdown signals, then reaps every available zombie.
 //!
-//! Like tini, guest-init forks a child process (PID 2) to run vsock-guest.
+//! Like tini, guest-init forks a child process (PID 2) to run guest-control-server.
 //! PID 1 then enters an event-driven supervision loop, waiting for the child to
 //! exit while also reaping orphaned zombie processes.
 //!
@@ -14,7 +14,7 @@
 //!   PID 2 or orphaned process has been reaped.
 //! - After escalating shutdown to SIGKILL, PID 1 switches to blocking
 //!   `waitpid(child_pid, 0)` to reap PID 2.
-//! - PID 2 (vsock-guest) calls `waitpid(pid)` for the commands it spawns. While
+//! - PID 2 (guest-control-server) calls `waitpid(pid)` for the commands it spawns. While
 //!   PID 2 owns those children, PID 1 cannot reap them, so the processes do not
 //!   race and PID 2 does not see `ECHILD` from PID 1's reaper.
 //! - PID 1's generic and targeted waits run sequentially in the same thread, so
@@ -22,10 +22,10 @@
 //!
 //! Startup sequence:
 //! 1. Initialize guest filesystems, environment, and cgroup v2 exec containment.
-//!    Failure is fatal before `vsock-guest` is forked.
+//!    Failure is fatal before `guest-control-server` is forked.
 //! 2. Configure PID 1 signals and block supervised signals
 //! 3. Fork child process
-//! 4. Child (PID 2): restore its inherited signal mask, run vsock-guest
+//! 4. Child (PID 2): restore its inherited signal mask, run guest-control-server
 //! 5. Parent (PID 1): wait for child and shutdown events
 
 mod init;
@@ -54,9 +54,9 @@ fn main() {
     };
     eprintln!("[guest-init] PID 1 signals configured");
 
-    // Step 3: Fork child process for vsock-guest
+    // Step 3: Fork child process for guest-control-server
     // SAFETY: fork() is called before any threads are spawned, so it is safe.
-    // The child will run vsock-guest; the parent stays as PID 1 reaper.
+    // The child will run guest-control-server; the parent stays as PID 1 reaper.
     let child_pid = unsafe { libc::fork() };
     if child_pid < 0 {
         eprintln!("[guest-init] FATAL: fork() failed");
@@ -75,10 +75,10 @@ fn main() {
             }
         }
 
-        let code = match vsock_guest::run(None) {
+        let code = match guest_control_server::run(None) {
             Ok(()) => 0,
             Err(e) => {
-                vsock_guest::log("ERROR", &format!("Fatal: {e}"));
+                guest_control_server::log("ERROR", &format!("Fatal: {e}"));
                 1
             }
         };
@@ -92,12 +92,12 @@ fn main() {
     }
 
     // === Parent process (PID 1) ===
-    eprintln!("[guest-init] vsock-guest forked as pid={child_pid}");
+    eprintln!("[guest-init] guest-control-server forked as pid={child_pid}");
 
     // Step 5: Wait for child and shutdown events while reaping orphans.
     match pid1::supervise(&signal_context, child_pid, SHUTDOWN_GRACE_PERIOD) {
         Ok(exit_code) => {
-            eprintln!("[guest-init] vsock-guest exited with code {exit_code}");
+            eprintln!("[guest-init] guest-control-server exited with code {exit_code}");
             std::process::exit(exit_code);
         }
         Err(error) => {

@@ -57,6 +57,7 @@ import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now, withNowScopeForTest } from "../../../../lib/time";
 import { createDeferredPromise } from "../../../utils";
 import type { UsagePricingResolution } from "../../../context/usage-pricing-resolution";
+import type { SystemSkillStorageResolution } from "../../../context/system-skill-storage-resolution";
 import {
   createDirectAgentExecutionFixture,
   createDirectRunFixture,
@@ -174,11 +175,13 @@ const runRoutes = [
 function runApp(
   context: TestContext,
   usagePricingResolution?: UsagePricingResolution,
+  systemSkillStorageResolution?: SystemSkillStorageResolution,
 ) {
   return setupAppWithRoutes({
     context,
     routes: runRoutes,
     ...(usagePricingResolution === undefined ? {} : { usagePricingResolution }),
+    systemSkillStorageResolution,
   });
 }
 
@@ -268,7 +271,10 @@ function runnerHeartbeatBody(
   };
 }
 
-export function createRunsApi(context: TestContext) {
+export function createRunsApi(
+  context: TestContext,
+  systemSkillStorageResolution?: SystemSkillStorageResolution,
+) {
   const defaultRunnerIdentity = {
     runnerId: randomUUID(),
     heartbeatGeneration: 1,
@@ -322,23 +328,6 @@ export function createRunsApi(context: TestContext) {
   }
 
   return {
-    async requestRemovedAgentRunCreation(actor: ApiTestUser): Promise<number> {
-      const { authorization } = authenticate(context, actor);
-      const app = createAppWithRoutes({
-        signal: context.signal,
-        routes: runRoutes,
-      });
-      const response = await app.request("/api/zero/runs", {
-        method: "POST",
-        headers: {
-          ...(authorization === undefined ? {} : { authorization }),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ agentId: randomUUID(), prompt: "removed" }),
-      });
-      return response.status;
-    },
-
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
       mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
@@ -489,7 +478,11 @@ export function createRunsApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ) {
       const response = await accept(
-        runApp(context)(runFixtureContract).create({
+        runApp(
+          context,
+          undefined,
+          systemSkillStorageResolution,
+        )(runFixtureContract).create({
           headers: authenticate(context, actor),
           ...(publicBrand === "okou"
             ? { extraHeaders: { origin: "https://app.okou.ai" } }
@@ -811,7 +804,7 @@ export function createRunsApi(context: TestContext) {
       publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
-        throw new Error("Zero run tokens require an org-scoped actor");
+        throw new Error("Agent run tokens require an org-scoped actor");
       }
       const seconds = Math.floor(now() / 1000);
       return signSandboxJwtForTests({

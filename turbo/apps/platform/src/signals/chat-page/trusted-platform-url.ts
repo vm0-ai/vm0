@@ -1,7 +1,6 @@
-import {
-  resolvePlatformOriginForTarget,
-  rewritePlatformHostname,
-} from "../api-base.ts";
+import { rewritePlatformHostname } from "@okouai/core/platform-service-origin";
+
+import { resolvePlatformOriginForTarget } from "../api-base.ts";
 
 const PREVIEW_PLATFORM_DOMAINS = ["vm6.ai", "vm7.ai"] as const;
 const PLATFORM_SERVICE_HOSTNAME_PATTERN = /(^|-)(platform|app|www|api)\./u;
@@ -62,10 +61,7 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
 
 export function isTrustedPlatformHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase();
-  if (
-    normalizedHostname === "app.vm0.ai" ||
-    normalizedHostname === "app.okou.ai"
-  ) {
+  if (normalizedHostname === "app.okou.ai") {
     return true;
   }
 

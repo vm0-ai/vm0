@@ -1,0 +1,6 @@
+display_hashing_flow.py:7: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+display_hashing_flow.py:16: use metadata_keys.FIREWALL_NAME for flow.metadata access
+display_hashing_flow.py:25: use metadata_keys.ORIGINAL_URL for flow.metadata access
+display_hashing_flow.py:33: use metadata_keys.CAPTURE_BODY for flow.metadata access
+display_hashing_flow.py:41: use metadata_keys.SANDBOX_PROXY_LOG_PATH for flow.metadata access
+display_hashing_flow.py:59: use metadata_keys.NETWORK_LOG_TARGET for flow.metadata access

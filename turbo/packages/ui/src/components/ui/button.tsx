@@ -21,6 +21,11 @@ const buttonVariants = cva(
           "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive-hover active:bg-destructive-pressed",
+        // Halts something in flight without discarding it -- pausing a run.
+        // `destructive` is reserved for deletes, so this takes the lighter
+        // Coral stop and reads as an interruption rather than a warning.
+        interrupt:
+          "bg-interrupt text-interrupt-foreground hover:bg-interrupt-hover active:bg-interrupt-pressed",
         outline:
           "border-[0.7px] border-[hsl(var(--gray-400))] bg-background hover:bg-state-hover active:bg-state-pressed text-foreground",
         secondary:

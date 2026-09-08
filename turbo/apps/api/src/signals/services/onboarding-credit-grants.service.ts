@@ -8,7 +8,7 @@ import type { Tx } from "../../lib/db-types";
 
 const L = logger("onboarding-credit-grants.service");
 
-export const LIMITED_FREE_ONBOARDING_CREDITS = 3000;
+export const LIMITED_FREE_ONBOARDING_CREDITS = 1000;
 
 const ONBOARDING_CREDIT_SOURCE = "onboarding";
 const ONBOARDING_CREDIT_IDEMPOTENCY_KEY = "limited-free-onboarding";

@@ -125,6 +125,8 @@ _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 # Release: auth marker is popped by terminal cleanup.
 # _REQUEST_HEADERS_TERMINATED is a flow-local sentinel for request() early exit.
 _HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+# Match the existing 64 KiB HTTP/2/SigV4 minimum per-field accounting budget.
+_MAX_REQUEST_HEADER_FIELDS = 2048
 _MAX_REQUEST_HEADER_NAME_BYTES = 4096
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
@@ -748,6 +750,13 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
     request_header_fields = flow.request.headers.fields
+    if len(request_header_fields) > _MAX_REQUEST_HEADER_FIELDS:
+        # A local response waits for body completion. Kill before mitmproxy's
+        # Expect lookup instead of retaining or rescanning the rejected tuple.
+        flow.request.headers.fields = ()
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        flow.kill()
+        return None
     if any(len(name) > _MAX_REQUEST_HEADER_NAME_BYTES for name, _value in request_header_fields):
         # Mitmproxy performs an Expect lookup after this hook, so rejected names
         # must be gone before control returns while ordinary protocol fields stay.
@@ -1834,7 +1843,6 @@ def _finish_response_handling(
 ) -> None:
 
     request_size = _request_size(flow)
-    stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
     model_provider_failure.finish_http_response(flow)
 
@@ -1863,35 +1871,6 @@ def _finish_response_handling(
     response_streaming.finalize_model_sse_usage(flow)
     response_streaming.finalize_model_json_usage(flow, proxy_log_path)
 
-    # Report proxy-extracted usage for model provider responses.
-    # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body only for legacy/test flows that did not pass through
-    # responseheaders() and therefore have no incremental extractor.
-    if (
-        not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
-        and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
-        and stream_buf
-        and response_streaming.uses_model_json_fallback(
-            flow,
-            websocket_header_work_limit=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
-        )
-    ):
-        model_protocol = response_streaming.model_usage_protocol(flow)
-        json_usage, json_error = usage.extract_model_usage_with_error_from_json(
-            model_protocol,
-            bytes(stream_buf),
-            flow.response.headers if flow.response else None,
-        )
-        if json_usage:
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
-        elif json_error is not None:
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                "Model provider JSON usage extraction failed",
-                type="usage_event",
-                error=json_error,
-            )
     terminal_usage.report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
@@ -1916,7 +1895,7 @@ def _finish_response_handling(
         ):
             invalidate_cached_firewall_headers(cache_key, cache_entry_identity)
 
-    # Log errors to per-job proxy log and mitmproxy console
+    # Log HTTP error responses to the per-job proxy JSONL log.
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
         url_projection = project_url_for_proxy_log(original_url)
         log_proxy_entry(

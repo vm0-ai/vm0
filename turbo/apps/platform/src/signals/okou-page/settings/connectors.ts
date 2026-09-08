@@ -14,12 +14,8 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
-  connectorAccountsContract,
-  type ConnectorAccountMutationIntent,
-} from "@okouai/api-contracts/contracts/connector-accounts";
-import {
-  connectorScopeDiffContract,
   connectorExternalCodeSessionContract,
   connectorOauthDeviceAuthSessionContract,
   connectorOpenIdStartContract,
@@ -41,7 +37,6 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectors$,
-  deleteConnector$,
   relatedConnectorCatalog,
   reloadConnectors$,
 } from "../../external/connectors.ts";
@@ -61,17 +56,18 @@ import {
 } from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
-import { subagents$ } from "../../agent.ts";
+import { agents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
+import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
-import {
-  singleAccountConnectorMutation,
-  type PlatformConnector,
-  type PlatformConnectorCatalogStatusItem,
+import type {
+  PlatformConnector,
+  PlatformConnectorAccountMutationIntent,
+  PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 import {
   connectorAccountConnectionExists,
@@ -88,7 +84,7 @@ type PostConnectOptions = {
   readonly authorizeVisibleAgents?: boolean;
   readonly connectorLabel?: string;
   readonly agentId?: string;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly useDefaultConnectorProjection?: boolean;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
@@ -100,11 +96,35 @@ export interface ConnectorConnectionResult {
 }
 
 function shouldAuthorizeAgent(options: PostConnectOptions): boolean {
-  return (
-    options.account === undefined ||
-    Boolean(options.authorizeVisibleAgents || options.agentId)
-  );
+  return Boolean(options.authorizeVisibleAgents || options.agentId);
 }
+
+const resolveConnectorPostConnectOptions$ = command(
+  async (
+    { get },
+    connectorSlug: ConnectorSlug,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<PostConnectOptions> => {
+    if (!options.authorizeVisibleAgents) {
+      return options;
+    }
+    const authorizeVisibleAgents =
+      options.account.intent === "add" &&
+      (await readConnectorAccountMutationVersion(
+        get(apiClient$),
+        { kind: "builtin", connectorSlug },
+        options.account,
+        signal,
+      )) === 0;
+    return { ...options, authorizeVisibleAgents };
+  },
+);
+
+const reloadConnectorConnectionState$ = command(({ set }) => {
+  set(reloadConnectors$);
+  set(reloadConnectorAccountSummaries$);
+});
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
@@ -115,7 +135,7 @@ const DAY_MS = 24 * HOUR_MS;
 type ConnectorConnectLaunchMode = "browser-auth" | "no-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
-export type ConnectorCatalogBrowserAuthMethodDetail =
+type ConnectorCatalogBrowserAuthMethodDetail =
   PublicConnectorCatalogAuthMethodDetail & {
     readonly grantKind: BrowserAuthGrantKind;
   };
@@ -182,7 +202,7 @@ function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
   return grantKind === "none";
 }
 
-export function getConnectorStatusAuthMethod(
+function getConnectorStatusAuthMethod(
   connector: PlatformConnectorCatalogStatusItem,
   authMethod: ConnectorAuthMethodId,
 ): PublicConnectorCatalogAuthMethodDetail | null {
@@ -236,7 +256,7 @@ export function getConnectorStatusConnectLaunchMode(
   return getConnectorStatusDirectConnectMethod(connector)?.kind ?? "modal";
 }
 
-export function getAvailableStatusAuthCodeAuthMethod(
+function getAvailableStatusAuthCodeAuthMethod(
   connector: PlatformConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
@@ -553,6 +573,7 @@ type ActiveConnectorExternalCodeState = {
   readonly expiresAtMs: number;
   readonly code: string;
   readonly errorMessage: string | null;
+  readonly authorizeVisibleAgents: boolean;
 };
 
 export type ConnectorOAuthDeviceAuthState =
@@ -746,17 +767,11 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-export type ConnectorScopeReviewSelection =
-  | {
-      readonly kind: "default";
-      readonly connectorSlug: ConnectorSlug;
-    }
-  | {
-      readonly kind: "account";
-      readonly connectorSlug: ConnectorSlug;
-      readonly connectionId: string;
-      readonly authMethod: ConnectorAuthMethodId;
-    };
+export interface ConnectorScopeReviewSelection {
+  readonly connectorSlug: ConnectorSlug;
+  readonly connectionId: string;
+  readonly authMethod: ConnectorAuthMethodId;
+}
 
 const internalScopeReviewSelection$ =
   state<ConnectorScopeReviewSelection | null>(null);
@@ -770,21 +785,11 @@ export const scopeDiff$ = computed(async (get) => {
     return null;
   }
   const createClient = get(apiClient$);
-  if (selection.kind === "account") {
-    const client = createClient(connectorAccountsContract);
-    const result = await accept(
-      client.scopeDiff({
-        params: { connectionId: selection.connectionId },
-        query: { connectorSlug: selection.connectorSlug },
-      }),
-      [200],
-    );
-    return result.body;
-  }
-  const client = createClient(connectorScopeDiffContract);
+  const client = createClient(connectorAccountsContract);
   const result = await accept(
-    client.getScopeDiff({
-      params: { connectorSlug: selection.connectorSlug },
+    client.scopeDiff({
+      params: { connectionId: selection.connectionId },
+      query: { connectorSlug: selection.connectorSlug },
     }),
     [200],
   );
@@ -853,12 +858,12 @@ const authorizeConnectorForVisibleAgents$ = command(
     connectorSlug: ConnectorSlug,
     signal: AbortSignal,
   ): Promise<void> => {
-    const visibleSubagents = await get(subagents$);
+    const visibleAgents = await get(agents$);
     signal.throwIfAborted();
     const client = get(apiClient$)(userConnectorsContract);
     await withCleanup(
       Promise.all(
-        visibleSubagents.map(async (agent) => {
+        visibleAgents.map(async (agent) => {
           await accept(
             client.update({
               params: { id: agent.agentId },
@@ -940,7 +945,7 @@ export const submitManualGrant$ = command(
       connectorSlug,
       authMethod,
       inputValues,
-      options,
+      options: requestedOptions,
     }: SubmitManualGrantParams,
     signal: AbortSignal,
   ): Promise<ConnectorConnectionResult | false> => {
@@ -960,13 +965,19 @@ export const submitManualGrant$ = command(
     let connectorStateChanged = false;
     return await withCleanup(
       (async () => {
+        const options = await set(
+          resolveConnectorPostConnectOptions$,
+          connectorSlug,
+          requestedOptions,
+          signal,
+        );
         const createClient = get(apiClient$);
         const connectorClient = createClient(connectorManualGrantContract);
         const result = await accept(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: options.account ?? singleAccountConnectorMutation,
+              account: options.account,
               authMethod,
               ...(shouldAuthorizeAgent(options)
                 ? { authorizeAgent: true as const }
@@ -997,7 +1008,7 @@ export const submitManualGrant$ = command(
           return current?.id === flow.id ? null : current;
         });
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1017,7 +1028,11 @@ type ConnectNoAuthParams = {
 export const connectConnectorNoAuth$ = command(
   async (
     { get, set },
-    { connectorSlug, authMethod, options }: ConnectNoAuthParams,
+    {
+      connectorSlug,
+      authMethod,
+      options: requestedOptions,
+    }: ConnectNoAuthParams,
     signal: AbortSignal,
   ): Promise<ConnectorConnectionResult | false> => {
     if (
@@ -1036,13 +1051,19 @@ export const connectConnectorNoAuth$ = command(
     let connectorStateChanged = false;
     return await withCleanup(
       (async () => {
+        const options = await set(
+          resolveConnectorPostConnectOptions$,
+          connectorSlug,
+          requestedOptions,
+          signal,
+        );
         const createClient = get(apiClient$);
         const connectorClient = createClient(connectorNoAuthGrantContract);
         const result = await accept(
           connectorClient.connect({
             params: { connectorSlug },
             body: {
-              account: options.account ?? singleAccountConnectorMutation,
+              account: options.account,
               authMethod,
               ...(shouldAuthorizeAgent(options)
                 ? { authorizeAgent: true as const }
@@ -1072,7 +1093,7 @@ export const connectConnectorNoAuth$ = command(
           return current?.id === flow.id ? null : current;
         });
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1156,45 +1177,6 @@ export const justConnectedSlugs$ = computed((get) => {
   return get(internalJustConnectedSlugs$);
 });
 
-/**
- * Disconnect a connector and clear its optimistic "just connected" flag.
- *
- * Without this cleanup, a connector that was connected earlier in the session
- * stays in the Connected section of /connectors after disconnect because the
- * optimistic override in relatedCatalogItems$ wins over the fresh
- * `connected = false` from the API (regression #10272).
- */
-export const disconnectConnector$ = command(
-  async (
-    { set },
-    connectorSlug: ConnectorSlug,
-    connectorLabel: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await set(deleteConnector$, connectorSlug, signal);
-    signal.throwIfAborted();
-    set(internalJustConnectedSlugs$, (prev) => {
-      if (!prev.has(connectorSlug)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.delete(connectorSlug);
-      return next;
-    });
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.connectors.toasts.disconnected;
-        },
-        { connector: connectorLabel },
-      ),
-      {
-        id: `connector-disconnected-${connectorSlug}`,
-      },
-    );
-  },
-);
-
 function createConnectorConnectFlowState(
   connectorSlug: ConnectorSlug,
 ): ConnectorConnectFlowState {
@@ -1234,7 +1216,7 @@ function connectorOAuthDeviceAuthStartBody(
 ) {
   const optionEntries = Object.entries(args.startOptions ?? {});
   return {
-    account: args.options.account ?? singleAccountConnectorMutation,
+    account: args.options.account,
     authMethod: args.authMethod,
     ...(shouldAuthorizeAgent(args.options)
       ? { authorizeAgent: true as const }
@@ -1487,7 +1469,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
       })(),
       () => {
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -1569,7 +1551,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
     args: ConnectConnectorOAuthDeviceAuthParams,
     signal: AbortSignal,
   ): Promise<ConnectorConnectionResult | false> => {
-    const { connectorSlug, authMethod, options } = args;
+    const { connectorSlug, authMethod } = args;
     if (
       connectorConnectOperationIsActive({
         authCodeConnectorSlug: get(internalPollingOAuthAuthCodeConnectorSlug$),
@@ -1602,11 +1584,17 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const client = createClient(connectorOauthDeviceAuthSessionContract, {
           apiBase: OAUTH_API_BASE,
         });
+        const options = await set(
+          resolveConnectorPostConnectOptions$,
+          connectorSlug,
+          args.options,
+          flowSignal,
+        );
         const startResponse = await tapError(
           accept(
             client.create({
               params: { connectorSlug },
-              body: connectorOAuthDeviceAuthStartBody(args),
+              body: connectorOAuthDeviceAuthStartBody({ ...args, options }),
               fetchOptions: { signal: flowSignal },
             }),
             [200],
@@ -1723,7 +1711,7 @@ type ConnectConnectorExternalCodeParams = {
   readonly connectorSlug: ConnectorSlug;
   readonly authMethod: ConnectorAuthMethodId;
   readonly agentId?: string;
-  readonly account?: ConnectorAccountMutationIntent;
+  readonly account: PlatformConnectorAccountMutationIntent;
   readonly authorizeVisibleAgents?: boolean;
 };
 
@@ -1857,14 +1845,20 @@ export const connectConnectorExternalCode$ = command(
         const client = createClient(connectorExternalCodeSessionContract, {
           apiBase: OAUTH_API_BASE,
         });
+        const options = await set(
+          resolveConnectorPostConnectOptions$,
+          connectorSlug,
+          args,
+          flowSignal,
+        );
         const startResponse = await tapError(
           accept(
             client.create({
               params: { connectorSlug },
               body: {
-                account: args.account ?? singleAccountConnectorMutation,
+                account: args.account,
                 authMethod,
-                ...(shouldAuthorizeAgent(args)
+                ...(shouldAuthorizeAgent(options)
                   ? { authorizeAgent: true as const }
                   : {}),
                 ...(args.agentId ? { agentId: args.agentId } : {}),
@@ -1905,6 +1899,7 @@ export const connectConnectorExternalCode$ = command(
           expiresAtMs: now() + secondsToMilliseconds(startResult.expiresIn),
           code: "",
           errorMessage: null,
+          authorizeVisibleAgents: options.authorizeVisibleAgents ?? false,
         });
         return true;
       })(),
@@ -1914,7 +1909,7 @@ export const connectConnectorExternalCode$ = command(
         });
         set(internalConnectorExternalCodeState$, (current) => {
           if (
-            !signal.aborted ||
+            (!signal.aborted && current.status !== "starting") ||
             requestId === null ||
             current.connectorSlug !== connectorSlug ||
             (current.status !== "starting" && current.status !== "pending") ||
@@ -2026,6 +2021,7 @@ const completeConnectorExternalCode$ = command(
           connectorSlug,
           {
             ...options,
+            authorizeVisibleAgents: current.authorizeVisibleAgents,
             clearSelectedConnector: true,
             reloadConnectors: false,
           },
@@ -2039,7 +2035,7 @@ const completeConnectorExternalCode$ = command(
       })(),
       () => {
         if (connectorStateChanged) {
-          set(reloadConnectors$);
+          set(reloadConnectorConnectionState$);
         }
       },
     );
@@ -2130,7 +2126,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   agentId: string | undefined,
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   useDefaultConnectorProjection: boolean,
 ) {
   // Snapshot taken on the first body invocation: `null` marks "no connector
@@ -2141,7 +2137,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
   let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
 
   return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
-    if (!useDefaultConnectorProjection && account.intent !== "single-account") {
+    if (!useDefaultConnectorProjection) {
       const currentVersion = await readConnectorAccountMutationVersion(
         get(apiClient$),
         { kind: "builtin", connectorSlug },
@@ -2222,7 +2218,7 @@ const defaultConnectorProjectionMatchesAuthMethod$ = command(
 );
 
 function getDefaultConnectorProjectionConnectionId(
-  account: ConnectorAccountMutationIntent,
+  account: PlatformConnectorAccountMutationIntent,
   expectedConnectionId: string | null,
   useDefaultConnectorProjection: boolean,
 ): string | null {
@@ -2237,14 +2233,14 @@ function getDefaultConnectorProjectionConnectionId(
 function createExpectedConnectorConnectionAvailableCommand(
   connectorSlug: ConnectorSlug,
   expectedConnectionId: string | null,
-  useDefaultConnectorProjection: boolean,
+  requiresAccountMutation: boolean,
   onConnectorChanged$: ReturnType<
     typeof createConnectorOAuthAuthCodeChangedCommand
   >,
 ) {
   return command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      if (useDefaultConnectorProjection) {
+      if (requiresAccountMutation) {
         return await set(onConnectorChanged$, signal);
       }
       return expectedConnectionId
@@ -2268,14 +2264,16 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       readonly connectorLabel: string;
       readonly connectorIcon: PublicConnectorCatalogIcon;
       readonly agentId: string | undefined;
-      readonly account: ConnectorAccountMutationIntent;
-      readonly authorizeAgent: boolean;
-      readonly beforeStart: (signal: AbortSignal) => Promise<void>;
+      readonly account: PlatformConnectorAccountMutationIntent;
+      readonly beforeStart: (
+        signal: AbortSignal,
+      ) => Promise<PostConnectOptions>;
     },
     signal: AbortSignal,
   ): Promise<{
     readonly authWindow: Window | null;
     readonly connectionId: string | null;
+    readonly options: PostConnectOptions;
   }> => {
     const standalone = isStandaloneMode();
     if (isConnectorAppOauthCallbackEnabled(args.connectorSlug)) {
@@ -2311,7 +2309,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
 
     let navigated = false;
     let connectionId: string | null = null;
-    await withCleanup(
+    const options = await withCleanup(
       (async () => {
         if (!isBrowserAuthGrantKind(args.method.grantKind)) {
           throw new Error(
@@ -2319,7 +2317,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
           );
         }
 
-        await args.beforeStart(signal);
+        const options = await args.beforeStart(signal);
         signal.throwIfAborted();
 
         const startResult =
@@ -2332,7 +2330,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                   body: {
                     account: args.account,
                     authMethod: args.method.id,
-                    ...(args.authorizeAgent
+                    ...(shouldAuthorizeAgent(options)
                       ? { authorizeAgent: true as const }
                       : {}),
                     ...(args.agentId ? { agentId: args.agentId } : {}),
@@ -2349,7 +2347,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                   body: {
                     account: args.account,
                     authMethod: args.method.id,
-                    ...(args.authorizeAgent
+                    ...(shouldAuthorizeAgent(options)
                       ? { authorizeAgent: true as const }
                       : {}),
                     ...(isConnectorAppOauthCallbackEnabled(args.connectorSlug)
@@ -2370,6 +2368,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
         } else if (standalone) {
           window.location.href = startResult.body.authorizationUrl;
         }
+        return options;
       })(),
       () => {
         if (authWindow && !navigated) {
@@ -2388,7 +2387,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     );
     signal.throwIfAborted();
 
-    return { authWindow, connectionId };
+    return { authWindow, connectionId, options };
   },
 );
 
@@ -2398,8 +2397,8 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
     args: {
       readonly connectorSlug: ConnectorSlug;
       readonly method: PublicConnectorCatalogAuthMethodDetail;
-      readonly options: BrowserAuthPostConnectOptions;
-      readonly account: ConnectorAccountMutationIntent;
+      readonly options: PostConnectOptions;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly onConnectorChanged$: ReturnType<
         typeof createConnectorOAuthAuthCodeChangedCommand
       >;
@@ -2423,7 +2422,8 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       createExpectedConnectorConnectionAvailableCommand(
         connectorSlug,
         expectedConnectionId,
-        options.useDefaultConnectorProjection ?? false,
+        account.intent === "reconnect" ||
+          (options.useDefaultConnectorProjection ?? false),
         onConnectorChanged$,
       );
     const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
@@ -2467,11 +2467,8 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
 
     let completedConnectionId = expectedConnectionId;
     if (waitResult === "popupClosed") {
-      const expectedConnected = expectedConnectionId
+      const connectedAfterClose = expectedConnectionId
         ? await set(expectedConnectionAvailable$, signal)
-        : false;
-      const connectedAfterClose = expectedConnected
-        ? true
         : // Older API responses omit the exact ID. Remove this bounded account
           // mutation fallback with the final rollout contraction in #28571.
           await set(onConnectorChanged$, signal);
@@ -2479,18 +2476,14 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       if (!connectedAfterClose) {
         return false;
       }
-      if (!expectedConnected && !expectedConnectionId) {
-        completedConnectionId = null;
-      }
     } else if (!expectedConnectionId) {
       completedConnectionId =
         account.intent === "reconnect" ? account.connectionId : null;
     }
 
-    set(reloadConnectors$);
+    set(reloadConnectorConnectionState$);
     const isConnected =
-      (!options.useDefaultConnectorProjection &&
-        account.intent !== "single-account") ||
+      !options.useDefaultConnectorProjection ||
       (await set(
         defaultConnectorProjectionMatchesAuthMethod$,
         connectorSlug,
@@ -2540,7 +2533,7 @@ export const connectConnectorOAuthAuthCode$ = command(
     }
 
     const flow = createConnectorConnectFlowState(connectorSlug);
-    const account = options.account ?? singleAccountConnectorMutation;
+    const account = options.account;
     set(internalConnectFlowState$, flow);
     set(internalPollingOAuthAuthCodeConnectorSlug$, connectorSlug);
 
@@ -2566,9 +2559,15 @@ export const connectConnectorOAuthAuthCode$ = command(
             connectorIcon: options.connectorIcon,
             agentId: options.agentId,
             account,
-            authorizeAgent: shouldAuthorizeAgent(options),
             beforeStart: async (sig) => {
+              const resolvedOptions = await set(
+                resolveConnectorPostConnectOptions$,
+                connectorSlug,
+                options,
+                sig,
+              );
               await set(onConnectorChanged$, sig);
+              return resolvedOptions;
             },
           },
           signal,
@@ -2579,7 +2578,7 @@ export const connectConnectorOAuthAuthCode$ = command(
           {
             connectorSlug,
             method,
-            options,
+            options: oauthStart.options,
             account,
             onConnectorChanged$,
             oauthStart,

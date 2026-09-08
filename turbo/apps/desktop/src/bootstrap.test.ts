@@ -20,7 +20,8 @@ vi.mock("electron", () => ({ app: mocks.app }));
 vi.mock("./config", () => ({
   resolveDesktopConfig: () => ({
     platformUrl: new URL("https://app.okou.ai"),
-    webUrl: new URL("https://www.vm0.ai"),
+    webUrl: new URL("https://www.okou.ai"),
+    authUrl: new URL("https://app.okou.ai"),
     environment: "production",
     identity: {
       product: "okou",
@@ -33,6 +34,7 @@ vi.mock("./config", () => ({
       authScheme: "ai.okou.desktop",
     },
     sessionPartition: "persist:vm0-desktop-production",
+    authPartition: "persist:okou-desktop-auth-test",
     allowedAppOrigins: new Set(["https://app.okou.ai"]),
   }),
 }));
@@ -42,7 +44,7 @@ vi.mock("./bootstrap-degraded", () => ({
 }));
 
 vi.mock("./desktop-api-base-url", () => ({
-  resolveComputerUseApiBaseUrl: () => "https://api.vm0.ai",
+  resolveComputerUseApiBaseUrl: () => "https://api.okou.ai",
 }));
 
 vi.mock("./desktop-auto-updates", () => ({

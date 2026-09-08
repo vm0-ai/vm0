@@ -4,6 +4,12 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 const expectedBindings = [
   {
     method: "POST",
+    path: "/api/webhooks/agent/pi-memory-phase2/usage",
+    rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
+    rustConstName: "SEND",
+  },
+  {
+    method: "POST",
     path: "/api/runners/poll",
     rustModulePath: ["runners", "poll"],
     rustConstName: "POLL",

@@ -1,5 +1,6 @@
 import type { PiAgentModelConfig } from "./types";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
+import type { PiMemoryCitation } from "@okouai/api-contracts/contracts/pi-memory-citations";
 
 export interface PiPreheatedAgentsFile {
   readonly path: string;
@@ -145,9 +146,13 @@ export type PiApiAssistantStopReason =
 
 export interface PiApiAssistantMessage {
   readonly content: readonly PiApiAssistantContent[];
+  /** Private, bounded provenance removed from every user-visible text field. */
+  readonly memoryCitation?: PiMemoryCitation;
   readonly model: string;
   readonly responseId?: string;
   readonly stopReason: PiApiAssistantStopReason;
+  /** Content-free product classification; native provider diagnostics stay private. */
+  readonly failureReason?: "reconnect_required" | "usage_limit";
   readonly timestamp: number;
   readonly usage: {
     readonly input: number;

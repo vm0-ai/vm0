@@ -11,7 +11,7 @@ import { now } from "../../lib/time";
 import { tapError } from "../utils";
 import { writeRunMetadata } from "./agent-run-metadata-write.service";
 
-const L = logger("api:zero:chat-first-assistant-message-metric");
+const L = logger("api:chat-first-assistant-message-metric");
 
 export function recordFirstAssistantEventEligibility(args: {
   readonly runId: string;

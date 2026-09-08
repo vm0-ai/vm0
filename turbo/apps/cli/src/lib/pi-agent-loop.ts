@@ -1,8 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { open, readFile, rename, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import {
   CANONICAL_PI_SESSION_DIR,
   PI_AGENT_DIR,
+  PI_MEMORY_ROOT,
   piLaunchPayloadSchema,
   piModelConfigSchema,
   type PiLaunchPayload,
@@ -10,6 +12,7 @@ import {
 import {
   materializePiAgentModelConfig,
   runPiOfficialRpcMode,
+  runPiMemoryPhase2MountedConsolidation,
   type PiAgentModelConfig,
   type PiMemoryRecallOutcome,
   type PiMemoryToolSourceUse,
@@ -26,6 +29,7 @@ const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE =
   "vm0_pi_api_first_turn_boundary";
+const PI_MEMORY_PHASE2_VALIDATION_FILENAME = "maintenance-validation.json";
 
 function recordPiMemoryRecallOutcome(
   runId: string,
@@ -153,7 +157,103 @@ export async function runPiSandboxAgentLoop(args: {
   readonly cwd?: string;
   readonly agentDir?: string;
   readonly sessionDir?: string;
+  readonly memoryRoot?: string;
+  readonly maintenanceValidationFile?: string;
 }): Promise<void> {
+  const maintenance = args.config.launchPayload.launchConfig.maintenance;
+  if (maintenance) {
+    const validationFile =
+      args.maintenanceValidationFile ??
+      join(
+        dirname(requiredEnv(process.env, PI_LAUNCH_PAYLOAD_FILE_ENV)),
+        PI_MEMORY_PHASE2_VALIDATION_FILENAME,
+      );
+    await unlink(validationFile).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    });
+    const usageFile = join(dirname(validationFile), "maintenance-usage.json");
+    const attempts: {
+      readonly responseId: string;
+      readonly usage: {
+        readonly input: number;
+        readonly output: number;
+        readonly cacheRead: number;
+        readonly cacheWrite: number;
+        readonly reasoning: number;
+      };
+    }[] = [];
+    const usageBinding = {
+      schemaVersion: 1,
+      runId: args.config.runId,
+      memoryStorageId: maintenance.memoryStorageId,
+      claimedRevision: maintenance.claimedRevision,
+      claimedBaseVersionId: maintenance.claimedBaseVersionId,
+      leaseToken: maintenance.leaseToken,
+      selectionDigest: maintenance.selectionDigest,
+    } as const;
+    // A reused runtime directory must not attribute an earlier attempt's usage.
+    await unlink(usageFile).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    });
+    const result = await runPiMemoryPhase2MountedConsolidation(
+      {
+        memoryRoot: args.memoryRoot ?? PI_MEMORY_ROOT,
+        memoryStorageId: maintenance.memoryStorageId,
+        claimedRevision: maintenance.claimedRevision,
+        claimedBaseVersionId: maintenance.claimedBaseVersionId,
+        leaseToken: maintenance.leaseToken,
+        selectionDigest: maintenance.selectionDigest,
+        selected: maintenance.selected.map((candidate) => {
+          return {
+            ...candidate,
+            sourceCompletedAt: new Date(candidate.sourceCompletedAt),
+          };
+        }),
+        model: args.config.model,
+        async onUsage(event) {
+          if (attempts.length >= 256) {
+            throw new Error("Pi memory maintenance usage bound exceeded");
+          }
+          attempts.push({ responseId: event.responseId, usage: event.usage });
+          const temporary = `${usageFile}.tmp`;
+          const file = await open(temporary, "w", 0o600);
+          try {
+            await file.writeFile(
+              JSON.stringify({ ...usageBinding, attempts }),
+              "utf8",
+            );
+            await file.sync();
+          } finally {
+            await file.close();
+          }
+          await rename(temporary, usageFile);
+        },
+      },
+      AbortSignal.timeout(2 * 60 * 60 * 1000),
+    );
+    const marker = {
+      schemaVersion: 1,
+      runId: args.config.runId,
+      memoryStorageId: maintenance.memoryStorageId,
+      claimedRevision: maintenance.claimedRevision,
+      claimedBaseVersionId: maintenance.claimedBaseVersionId,
+      leaseToken: maintenance.leaseToken,
+      selectionDigest: maintenance.selectionDigest,
+      validatedVersionId: result.validatedVersionId,
+    } as const;
+    const file = await open(validationFile, "wx", 0o600);
+    try {
+      await file.writeFile(JSON.stringify(marker), "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    return;
+  }
   const sessionDir = args.sessionDir ?? CANONICAL_PI_SESSION_DIR;
   const handoff = await resolvePiApiFirstTurnHandoff({
     config: args.config.launchPayload.launchConfig.apiFirstTurn,

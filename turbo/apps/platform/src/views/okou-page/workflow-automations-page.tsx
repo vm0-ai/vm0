@@ -79,8 +79,6 @@ import {
 } from "../workflows-page/workflow-shared.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../signals/chat-page/workflow-prompt-action";
 
-export { CREATE_WORKFLOW_WITH_CHAT_PROMPT };
-
 const CREATE_AUTOMATION_CHAT_PROMPT =
   "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
@@ -1053,7 +1051,7 @@ export function CreateWorkflowAutomationDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="zero-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
+      <DialogContent className="okou-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
         <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
           <DialogTitle className="text-base font-semibold">
             {creatingAutomationInChat

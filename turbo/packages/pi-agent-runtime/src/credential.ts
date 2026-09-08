@@ -175,16 +175,17 @@ export async function materializePiAgentModelConfig(args: {
 
   const accessTokenBinding = requiredBinding(args.config, "access-token");
   const accountIdBinding = requiredBinding(args.config, "account-id");
-  const [apiKey, accountId] = await Promise.all([
-    resolvedCredentialValue({
-      binding: accessTokenBinding,
-      resolveCredential: args.resolveCredential,
-    }),
-    resolvedCredentialValue({
-      binding: accountIdBinding,
-      resolveCredential: args.resolveCredential,
-    }),
-  ]);
+  // Subscription credentials are one ordered bundle. The access token may be
+  // refreshed at this boundary, so the matching account ID must only be read
+  // after that refresh has settled.
+  const apiKey = await resolvedCredentialValue({
+    binding: accessTokenBinding,
+    resolveCredential: args.resolveCredential,
+  });
+  const accountId = await resolvedCredentialValue({
+    binding: accountIdBinding,
+    resolveCredential: args.resolveCredential,
+  });
   return {
     ...route,
     api: dialect,

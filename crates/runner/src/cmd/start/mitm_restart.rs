@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tracing::{error, info, warn};
 
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::proxy;
 use crate::retry::RetryState;
 
@@ -13,11 +13,43 @@ pub(super) const MITM_BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// Stop retrying mitmproxy after this many consecutive failures.
 pub(super) const MITM_MAX_CONSECUTIVE_FAILURES: u32 = 20;
 
-pub(super) type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<proxy::ManagedMitmdump>>;
+pub(super) type MitmRestartHandle =
+    tokio::task::JoinHandle<Result<proxy::ManagedMitmdump, proxy::MitmRestartError>>;
+
+/// Startup failures may retry, but an unknown old-child cleanup outcome must
+/// stop recovery instead of racing a new child against the fallback reaper.
+pub(super) async fn recv_mitm_restart(
+    handle: &mut Option<MitmRestartHandle>,
+) -> RunnerResult<Result<proxy::ManagedMitmdump, String>> {
+    let Some(task) = handle.as_mut() else {
+        return std::future::pending().await;
+    };
+    let result = task.await;
+    *handle = None;
+    match result {
+        Ok(Ok(child)) => Ok(Ok(child)),
+        Ok(Err(proxy::MitmRestartError::Startup(error))) => Ok(Err(error.to_string())),
+        Ok(Err(proxy::MitmRestartError::Cleanup(error))) => Err(RunnerError::Internal(format!(
+            "old mitmdump cleanup failed: {error}"
+        ))),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "mitmproxy recovery task failed: {error}"
+        ))),
+    }
+}
+
+pub(super) fn stop_mitm_retries(
+    crash_rx: &mut tokio::sync::mpsc::Receiver<()>,
+    retry: &mut RetryState<MitmRestartHandle>,
+) {
+    crash_rx.close();
+    while crash_rx.try_recv().is_ok() {}
+    retry.clear_timer();
+}
 
 /// Spawn a background mitm restart task when the backoff timer fires
 /// and no restart is already in flight.
-pub(super) async fn maybe_spawn_mitm_restart(
+pub(super) fn maybe_spawn_mitm_restart(
     mitm: &mut proxy::MitmProxy,
     crash_rx: &mut tokio::sync::mpsc::Receiver<()>,
     retry: &mut RetryState<MitmRestartHandle>,
@@ -33,10 +65,8 @@ pub(super) async fn maybe_spawn_mitm_restart(
     // `stopping` Arc, locked to `true` before kill — so this only
     // sweeps pre-existing entries.
     while crash_rx.try_recv().is_ok() {}
-    retry.handle = Some(match mitm.begin_restart().await {
-        Ok(params) => tokio::spawn(params.spawn()),
-        Err(error) => tokio::spawn(async move { Err(error) }),
-    });
+    let params = mitm.begin_restart();
+    retry.handle = Some(tokio::spawn(params.spawn()));
 }
 
 /// Handle the result of a background mitm restart task.
@@ -92,25 +122,23 @@ pub(super) fn handle_mitm_restart_result(
 pub(super) async fn finish_mitm_restart_before_shutdown(
     mitm: &mut proxy::MitmProxy,
     retry: &mut RetryState<MitmRestartHandle>,
-) {
-    let Some(handle) = retry.handle.take() else {
-        return;
-    };
+) -> RunnerResult<()> {
+    if retry.handle.is_none() {
+        return Ok(());
+    }
 
     info!("waiting for in-flight mitmproxy restart before shutdown");
-    match handle.await {
-        Ok(Ok(child)) => {
+    match recv_mitm_restart(&mut retry.handle).await? {
+        Ok(child) => {
             info!("mitmproxy restart completed during shutdown");
             mitm.complete_restart(child);
             retry.on_success();
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             warn!(error = %e, "mitmproxy restart failed during shutdown");
         }
-        Err(e) => {
-            warn!(error = %e, "mitmproxy restart task failed during shutdown");
-        }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -119,7 +147,6 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::retry::recv_retry;
 
     /// Create a MitmProxy for testing (does not start mitmdump).
     async fn test_mitm() -> (
@@ -163,7 +190,7 @@ mod tests {
         let future_deadline = Instant::now() + Duration::from_secs(60);
         retry.restart_at = Some(future_deadline);
 
-        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry);
 
         assert_eq!(retry.restart_at, Some(future_deadline));
         assert!(retry.handle.is_none());
@@ -172,7 +199,7 @@ mod tests {
         crash_tx.try_send(()).unwrap();
         retry.restart_at = Some(Instant::now() - Duration::from_secs(1));
 
-        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry);
 
         assert!(retry.restart_at.is_none());
         assert_eq!(
@@ -187,7 +214,7 @@ mod tests {
         let in_flight_deadline = Instant::now() - Duration::from_secs(1);
         retry.restart_at = Some(in_flight_deadline);
 
-        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry).await;
+        maybe_spawn_mitm_restart(&mut mitm, &mut crash_rx, &mut retry);
 
         assert_eq!(retry.restart_at, Some(in_flight_deadline));
         assert_eq!(
@@ -196,7 +223,7 @@ mod tests {
         );
         assert_eq!(crash_rx.try_recv(), Ok(()));
 
-        let result = recv_retry(&mut retry.handle).await;
+        let result = recv_mitm_restart(&mut retry.handle).await.unwrap();
         assert!(retry.handle.is_none());
         assert!(result.is_err());
 
@@ -313,7 +340,9 @@ mod tests {
             Ok(proxy::ManagedMitmdump::unmanaged(child))
         }));
 
-        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry).await;
+        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry)
+            .await
+            .unwrap();
 
         assert!(retry.handle.is_none());
         assert!(
@@ -332,10 +361,14 @@ mod tests {
             Some(MITM_MAX_CONSECUTIVE_FAILURES),
         );
         retry.handle = Some(tokio::spawn(async {
-            Err(crate::error::RunnerError::Internal("spawn failed".into()))
+            Err(proxy::MitmRestartError::Startup(
+                crate::error::RunnerError::Internal("spawn failed".into()),
+            ))
         }));
 
-        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry).await;
+        finish_mitm_restart_before_shutdown(&mut mitm, &mut retry)
+            .await
+            .unwrap();
 
         assert!(retry.handle.is_none());
         assert!(mitm.usage_flush_target().is_none());

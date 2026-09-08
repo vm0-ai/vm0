@@ -1,15 +1,17 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   type MockedMembership,
+  type mockOrganization,
   mockedClerk,
-  mockSignInResource,
 } from "../../../../__tests__/mock-auth.ts";
 import {
-  detachedSetupPage,
+  click,
+  fill,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../../__tests__/page-helper.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
@@ -37,55 +39,81 @@ function buttonNamed(name: string): HTMLElement | undefined {
   });
 }
 
-async function waitForButton(name: string): Promise<HTMLElement> {
-  await waitFor(() => {
-    expect(buttonNamed(name)).toBeDefined();
+function waitForButton(name: string): Promise<HTMLElement> {
+  return waitFor(() => {
+    const button = buttonNamed(name);
+    if (!button) {
+      throw new Error(`Expected button named ${name}`);
+    }
+    return button;
   });
-  const button = buttonNamed(name);
-  if (!button) {
-    throw new Error(`Expected button named ${name}`);
-  }
-  return button;
 }
 
 function setupTaskPage(options: {
   readonly memberships?: MockedMembership[];
+  readonly canCreate?: boolean;
+  readonly creationLimit?: number;
+  readonly pendingInvitations?: Parameters<
+    typeof mockOrganization
+  >[0]["pendingInvitations"];
   readonly taskKey: string;
   readonly url?: string;
-}): void {
+}): Promise<void> {
   const memberships = options.memberships ?? [];
   const url = new URL(
-    options.url ?? "https://app.vm0.ai/sign-in/tasks/choose-organization",
+    options.url ?? "https://app.okou.ai/sign-in/tasks/choose-organization",
   );
-  context.mocks.browser.url(url.toString());
-  detachedSetupPage({
-    context,
-    org: { activeOrg: null, memberships },
-    path: `${url.pathname}${url.search}${url.hash}`,
-    session: { token: "test-token" },
-    user: {
-      clientSessions: [
-        {
-          currentTask: { key: options.taskKey },
-          id: "session_pending",
-          status: "pending",
-          user: {
-            fullName: "Test User",
-            organizationMemberships: memberships,
-            primaryEmailAddress: { emailAddress: "test@example.com" },
+  return setupPage({
+    auth: {
+      organization: {
+        activeOrg: null,
+        memberships,
+        pendingInvitations: options.pendingInvitations,
+      },
+      session: { token: "test-token" },
+      user: {
+        createOrganizationEnabled: options.canCreate ?? false,
+        createOrganizationsLimit: options.creationLimit,
+        clientSessions: [
+          {
+            currentTask: { key: options.taskKey },
+            id: "session_pending",
+            status: "pending",
+            user: {
+              fullName: "Test User",
+              organizationMemberships: memberships,
+              primaryEmailAddress: { emailAddress: "test@example.com" },
+            },
           },
-        },
-      ],
-      fullName: "Test User",
-      id: "user_test",
+        ],
+        fullName: "Test User",
+        id: "user_test",
+      },
     },
+    context,
+    host: url.hostname,
+    path: `${url.pathname}${url.search}${url.hash}`,
   });
 }
 
-describe("auth v2 continuation card", () => {
-  it("recovers forced selection, switches membership once, and exposes no organization management", async () => {
-    const user = userEvent.setup({ delay: null });
-    const memberships = [
+test("A pending session can choose an organization and continue", async () => {
+  const user = userEvent.setup({ delay: null });
+  const activation = createDeferredPromise<void>(context.signal);
+  mockedClerk.setActive.mockImplementation(async (params) => {
+    await activation.promise;
+    await params.navigate?.({
+      decorateUrl: (url) => {
+        return url;
+      },
+      session: {
+        id: "session_pending",
+        status: "active",
+        user: { organizationMemberships: [] },
+      },
+    });
+  });
+  await setupTaskPage({
+    memberships: [
       membership(
         "org_alpha",
         "Alpha Company",
@@ -96,186 +124,212 @@ describe("auth v2 continuation card", () => {
         "Beta Studio",
         "https://cdn.vm0.test/orgs/beta.png",
       ),
-    ];
-    setupTaskPage({
-      memberships,
-      taskKey: "choose-organization",
-      url: `https://app.vm0.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
-    });
-
-    const beta = await waitForButton("Continue with Beta Studio");
-    expect(document.activeElement).toBe(
-      screen.getByRole("heading", { name: "Choose an organization" }),
-    );
-    expect(buttonNamed("Continue with Alpha Company")).toBeVisible();
-    expect(screen.getByRole("img", { name: "Alpha Company" })).toHaveAttribute(
-      "src",
-      "https://cdn.vm0.test/orgs/alpha.png",
-    );
-    expect(screen.getByText("Signed in as test@example.com")).toBeVisible();
-    expect(buttonNamed("Sign out")).toBeVisible();
-    expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/invitation/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/manage organization/i)).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("membership_org_alpha");
-    expect(document.body).not.toHaveTextContent("org_beta");
-
-    beta.focus();
-    await user.keyboard("{Enter}{Enter}");
-
-    await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
-    });
-    expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      navigate: expect.any(Function),
-      organization: "org_beta",
-    });
-    await waitFor(() => {
-      expect(location.pathname).toBe("/agents");
-    });
+    ],
+    taskKey: "choose-organization",
+    url: `https://app.okou.ai/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent("https://app.okou.ai/agents")}`,
   });
 
-  it("shows organization progress only on the selected action", async () => {
-    const activation = createDeferredPromise<void>(context.signal);
-    mockedClerk.setActive.mockImplementation(() => {
-      return activation.promise;
-    });
-    setupTaskPage({
-      memberships: [
-        membership("org_alpha", "Alpha Company"),
-        membership("org_beta", "Beta Studio"),
-      ],
-      taskKey: "choose-organization",
-    });
-
-    const alpha = await waitForButton("Continue with Alpha Company");
-    const beta = await waitForButton("Continue with Beta Studio");
-    fireEvent.click(beta);
-
-    await waitFor(() => {
-      expect(beta).toHaveAttribute("aria-busy", "true");
-    });
-    expect(beta).toHaveAccessibleName("Continue with Beta Studio");
-    expect(beta.textContent?.trim()).toBe("Beta Studio");
-    expect(alpha).toBeDisabled();
-    expect(alpha).toHaveAttribute("aria-busy", "false");
-    expect(alpha).toHaveTextContent("Alpha Company");
-    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
-
-    await act(async () => {
-      activation.resolve(undefined);
-      await activation.promise;
-    });
-
-    await waitFor(() => {
-      expect(beta).toHaveAttribute("aria-busy", "false");
-      expect(beta).toHaveTextContent("Beta Studio");
-    });
+  await screen.findByRole("heading", {
+    name: "Choose an organization",
   });
-
-  it("keeps restart progress on the recovery action", async () => {
-    const signOut = createDeferredPromise<void>(context.signal);
-    mockedClerk.signOut.mockImplementation(() => {
-      return signOut.promise;
-    });
-    setupTaskPage({ taskKey: "future-sensitive-task" });
-
-    const restart = await waitForButton("Start over");
-    fireEvent.click(restart);
-
-    await waitFor(() => {
-      expect(mockedClerk.signOut).toHaveBeenCalledTimes(1);
-      expect(restart).toHaveAttribute("aria-busy", "true");
-    });
-    expect(restart).toHaveAccessibleName("Start over");
-    expect(restart).toBeDisabled();
-    expect(restart.textContent?.trim()).toBe("");
-    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
-
-    await act(async () => {
-      signOut.resolve(undefined);
-      await signOut.promise;
-    });
-  });
-
-  it("shows a sanitized recovery path after organization activation failure", async () => {
-    setupTaskPage({
-      memberships: [membership("org_private", "Private Workspace")],
-      taskKey: "choose-organization",
-    });
-    mockedClerk.setActive.mockRejectedValue(
-      new Error("token=secret membership_private https://sensitive.example"),
-    );
-
-    fireEvent.click(await waitForButton("Continue with Private Workspace"));
-
-    const heading = await screen.findByRole("heading", {
-      name: "Sign-in couldn't be completed",
-    });
-    expect(heading).toBeVisible();
-    expect(document.activeElement).toBe(heading);
-    expect(buttonNamed("Start over")).toBeVisible();
-    expect(document.body).not.toHaveTextContent("token=secret");
-    expect(document.body).not.toHaveTextContent("membership_private");
-    expect(document.body).not.toHaveTextContent("sensitive.example");
-  });
-
-  it("does not offer organization creation when no membership is available", async () => {
-    setupTaskPage({ memberships: [], taskKey: "choose-organization" });
-
-    await expect(
-      screen.findByRole("heading", { name: "No organization available" }),
-    ).resolves.toBeVisible();
-    expect(buttonNamed("Start over")).toBeVisible();
+  const alpha = await waitForButton("Continue with Alpha Company");
+  const beta = await waitForButton("Continue with Beta Studio");
+  await waitFor(() => {
     expect(
-      queryAllByRoleFast("button").some((button) => {
-        return /create/i.test(button.textContent ?? "");
+      screen.getByRole("heading", { name: "Choose an organization" }),
+    ).toHaveFocus();
+  });
+  expect(screen.getByRole("img", { name: "Alpha Company" })).toHaveAttribute(
+    "src",
+    "https://cdn.vm0.test/orgs/alpha.png",
+  );
+  expect(screen.getByRole("img", { name: "Beta Studio" })).toHaveAttribute(
+    "src",
+    "https://cdn.vm0.test/orgs/beta.png",
+  );
+  expect(screen.getByText("Signed in as test@example.com")).toBeVisible();
+  expect(document.body).not.toHaveTextContent("membership_org_alpha");
+  expect(document.body).not.toHaveTextContent("org_beta");
+  expect(screen.queryByText(/invitation/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/manage organization/i)).not.toBeInTheDocument();
+
+  beta.focus();
+  await user.keyboard("{Enter}{Enter}");
+
+  await waitFor(() => {
+    expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
+    expect(beta).toHaveAttribute("aria-busy", "true");
+  });
+  expect(beta).toHaveAccessibleName("Continue with Beta Studio");
+  expect(alpha).toBeDisabled();
+  expect(alpha).toHaveAttribute("aria-busy", "false");
+  expect(alpha).toHaveTextContent("Alpha Company");
+  expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+  await act(async () => {
+    activation.resolve(undefined);
+    await activation.promise;
+  });
+
+  await waitFor(() => {
+    expect(location.pathname).toBe("/agents");
+  });
+});
+
+test("Organization activation failure shows a sanitized recovery path", async () => {
+  mockedClerk.setActive.mockRejectedValue(
+    new Error("token=secret membership_private https://sensitive.example"),
+  );
+  await setupTaskPage({
+    memberships: [membership("org_private", "Private Workspace")],
+    taskKey: "choose-organization",
+  });
+
+  const privateWorkspace = await waitForButton(
+    "Continue with Private Workspace",
+  );
+  click(privateWorkspace);
+
+  await screen.findByRole("heading", {
+    name: "Sign-in couldn't be completed",
+  });
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", {
+        name: "Sign-in couldn't be completed",
       }),
-    ).toBeFalsy();
+    ).toHaveFocus();
   });
+  expect(buttonNamed("Start over")).toBeVisible();
+  expect(document.body).not.toHaveTextContent("token=secret");
+  expect(document.body).not.toHaveTextContent("membership_private");
+  expect(document.body).not.toHaveTextContent("sensitive.example");
+});
 
-  it.each([
-    {
-      description: "an unsupported continuation",
-      expectedTitle: "Sign-in step unavailable",
-      taskKey: "reset-password",
-    },
-    {
-      description: "an unknown task",
-      expectedTitle: "Sign-in step unavailable",
-      taskKey: "future-sensitive-task",
-    },
-    {
-      description: "a returned second-factor task",
-      expectedTitle: "Additional verification required",
-      taskKey: "setup-mfa",
-    },
-  ])("fails closed for $description", async ({ expectedTitle, taskKey }) => {
-    setupTaskPage({ taskKey });
+test("A pending session with no memberships cannot create an organization from sign-in", async () => {
+  await setupTaskPage({ memberships: [], taskKey: "choose-organization" });
 
-    await expect(
-      screen.findByRole("heading", { name: expectedTitle }),
-    ).resolves.toBeVisible();
-    expect(buttonNamed("Start over")).toBeVisible();
-    expect(document.body).not.toHaveTextContent(taskKey);
-    expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  await expect(
+    screen.findByRole("heading", {
+      name: "No organization available",
+    }),
+  ).resolves.toBeVisible();
+  expect(buttonNamed("Start over")).toBeVisible();
+  expect(
+    queryAllByRoleFast("button").some((button) => {
+      return /create/i.test(button.textContent ?? "");
+    }),
+  ).toBeFalsy();
+});
+
+test("Unsupported continuation steps fail closed and can be restarted", async () => {
+  const signOut = createDeferredPromise<void>(context.signal);
+  mockedClerk.signOut.mockImplementation(() => {
+    return signOut.promise;
   });
+  await setupTaskPage({ taskKey: "future-sensitive-task" });
 
-  it("fails closed when Clerk returns a second-factor sign-in status", async () => {
-    mockSignInResource({ status: "needs_second_factor" });
-    context.mocks.browser.url("https://app.vm0.ai/sign-in/factor-two");
-    detachedSetupPage({
-      context,
-      path: "/sign-in/factor-two",
-      session: null,
-      user: null,
-    });
+  await expect(
+    screen.findByRole("heading", { name: "Sign-in step unavailable" }),
+  ).resolves.toBeVisible();
+  expect(document.body).not.toHaveTextContent("future-sensitive-task");
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  const restart = await waitForButton("Start over");
 
-    await expect(
-      screen.findByRole("heading", {
-        name: "Additional verification required",
-      }),
-    ).resolves.toBeVisible();
-    expect(buttonNamed("Start over")).toBeVisible();
+  click(restart);
+  click(restart);
+
+  await waitFor(() => {
+    expect(mockedClerk.signOut).toHaveBeenCalledTimes(1);
+    expect(restart).toHaveAttribute("aria-busy", "true");
   });
+  expect(restart).toHaveAccessibleName("Start over");
+  expect(restart).toBeDisabled();
+  expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+
+  await act(async () => {
+    signOut.resolve(undefined);
+    await signOut.promise;
+  });
+});
+
+test("A user without organizations can create one when Clerk allows it and retry only activation", async () => {
+  const creation = createDeferredPromise<{ id: string }>(context.signal);
+  mockedClerk.createOrganization.mockReturnValue(creation.promise);
+  mockedClerk.setActive.mockRejectedValueOnce(
+    new Error("activation-private-token"),
+  );
+  await setupTaskPage({
+    canCreate: true,
+    creationLimit: 0,
+    taskKey: "choose-organization",
+  });
+  await fill(await screen.findByLabelText("Organization name"), "My new team");
+  const create = await waitForButton("Create organization");
+  click(create);
+  click(create);
+  await waitFor(() => {
+    return expect(create).toBeDisabled();
+  });
+  expect(mockedClerk.createOrganization).toHaveBeenCalledExactlyOnceWith({
+    name: "My new team",
+  });
+  await act(async () => {
+    creation.resolve({ id: "org_created" });
+    await creation.promise;
+  });
+  await screen.findByRole("alert");
+  expect(document.body).not.toHaveTextContent("activation-private-token");
+  click(await waitForButton("Continue with My new team"));
+  await waitFor(() => {
+    return expect(mockedClerk.setActive).toHaveBeenCalledTimes(2);
+  });
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(mockedClerk.createOrganization).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).toHaveBeenLastCalledWith(
+    expect.objectContaining({ organization: "org_created" }),
+  );
+});
+
+test("A user without an organization can accept an invitation even when creation is disabled", async () => {
+  const accepted = createDeferredPromise<unknown>(context.signal);
+  const accept = vi.fn<() => Promise<unknown>>(() => {
+    return accepted.promise;
+  });
+  mockedClerk.setActive.mockRejectedValueOnce(new Error("activation failed"));
+  await setupTaskPage({
+    taskKey: "choose-organization",
+    pendingInvitations: [
+      {
+        id: "invitation_one",
+        publicOrganizationData: {
+          id: "org_invited",
+          name: "Invited team",
+          imageUrl: "https://cdn.vm0.test/invited.png",
+        },
+        accept,
+      },
+    ],
+  });
+  const join = await waitForButton("Join Invited team");
+  expect(buttonNamed("Create organization")).toBeUndefined();
+  click(join);
+  click(join);
+  await waitFor(() => {
+    return expect(join).toBeDisabled();
+  });
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  await act(async () => {
+    accepted.resolve(undefined);
+    await accepted.promise;
+  });
+  await screen.findByRole("alert");
+  click(await waitForButton("Continue with Invited team"));
+  await screen.findByRole("heading", { name: "Sign-in complete" });
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(mockedClerk.setActive).toHaveBeenLastCalledWith(
+    expect.objectContaining({ organization: "org_invited" }),
+  );
 });

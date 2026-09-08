@@ -147,7 +147,7 @@ function CatalogConnectorCard({
       )}
       aria-disabled={busy}
       className={cn(
-        "zero-card overflow-hidden text-left",
+        "okou-card overflow-hidden text-left",
         busy ? "cursor-default" : "cursor-pointer",
       )}
       onClick={handleConnect}
@@ -287,7 +287,7 @@ function ConnectionConnectorCard({
   const { t } = useTranslation();
   const connectionStatus = connectorCurrentConnectionStatus(connector);
   return (
-    <div className="zero-card flex flex-col">
+    <div className="okou-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           <ConnectorIcon icon={connector.icon} size={20} />
@@ -485,7 +485,7 @@ function AccountsConnectorCard({
   return (
     <div
       className={cn(
-        "zero-card relative flex flex-col text-left",
+        "okou-card relative flex flex-col text-left",
         showDescription && "overflow-hidden",
         canActivate && "cursor-pointer",
       )}
@@ -696,7 +696,7 @@ function ActionConnectorCard({
     <div
       data-testid="connector-action-card"
       className={cn(
-        "zero-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between",
+        "okou-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
     >

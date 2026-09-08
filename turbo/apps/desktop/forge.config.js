@@ -1,5 +1,6 @@
 const os = require("node:os");
 const path = require("node:path");
+const { cuaSigningBinaries } = require("./scripts/cua-signing");
 
 const packageMetadata = require("./package.json");
 const desktopBrandAssets = require("./src/desktop-brand-assets.json");
@@ -52,9 +53,7 @@ function desktopNotarizeOptions() {
   };
 }
 
-const { identity: desktopIdentity, product: desktopProduct } =
-  resolveDesktopBuildConfig();
-const desktopAssets = desktopBrandAssets[desktopProduct];
+const { identity: desktopIdentity } = resolveDesktopBuildConfig();
 const osxNotarize = desktopNotarizeOptions();
 
 // Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.
@@ -76,6 +75,7 @@ async function signPackagedDarwinApps(_forgeConfig, packageResult) {
 
     await sign({
       app: appPath,
+      binaries: cuaSigningBinaries(appPath),
       batchCodesignCalls: true,
       identity: codeSigningIdentity,
       identityValidation: codeSigningIdentity !== "-",
@@ -95,13 +95,18 @@ async function signPackagedDarwinApps(_forgeConfig, packageResult) {
 
 module.exports = {
   hooks: {
+    prePackage: async (_forgeConfig, platform, arch) => {
+      if (platform !== "darwin" || arch !== "arm64") {
+        throw new Error("The bundled CUA runtime supports only macOS arm64");
+      }
+    },
     postPackage: signPackagedDarwinApps,
   },
   packagerConfig: {
     name: desktopIdentity.displayName,
     executableName: desktopIdentity.displayName,
     appBundleId: desktopIdentity.bundleId,
-    icon: path.join(__dirname, "assets", desktopAssets.appIconBaseName),
+    icon: path.join(__dirname, "assets", desktopBrandAssets.appIconBaseName),
     extendInfo: {
       CFBundleIconFile: "icon.icns",
       LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,
@@ -113,6 +118,7 @@ module.exports = {
     extraResource: [
       path.join(__dirname, "native", "dist", "native"),
       path.join(__dirname, "dist", "mcp"),
+      path.join(__dirname, "native", "dist", "cua"),
     ],
     protocols: [
       {
@@ -124,6 +130,8 @@ module.exports = {
       /^\/node_modules($|\/)/,
       /^\/src($|\/)/,
       /^\/native($|\/)/,
+      /^\/cua($|\/)/,
+      /^\/\.cache($|\/)/,
       /^\/scripts($|\/)/,
       /^\/\.turbo($|\/)/,
       /^\/\.npmrc$/,

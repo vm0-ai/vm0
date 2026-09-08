@@ -10,9 +10,9 @@ use crate::error::{RunnerError, RunnerResult};
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
-/// Webhook delivery drain is handled before SIGTERM; this only bounds
-/// mitmproxy's own graceful process exit.
-const STOP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Usage webhook drain is handled before SIGTERM. Leave room for the addon's
+/// ten-second model-provider report drain, final JSONL flush, and process exit.
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Owns the direct PyInstaller bootloader, its process group, and the private
 /// directory containing its one-file extraction.
@@ -22,6 +22,8 @@ pub(crate) struct ManagedMitmdump {
     leader_reaped: bool,
     launch: Option<tempfile::TempDir>,
     runtime: Option<Arc<MitmdumpRuntime>>,
+    #[cfg(test)]
+    reap_gate: Option<crate::child_cleanup::ReapGate>,
 }
 
 impl ManagedMitmdump {
@@ -42,6 +44,8 @@ impl ManagedMitmdump {
             leader_reaped: false,
             launch: Some(launch),
             runtime: Some(runtime),
+            #[cfg(test)]
+            reap_gate: None,
         })
     }
 
@@ -53,6 +57,7 @@ impl ManagedMitmdump {
             leader_reaped: false,
             launch: None,
             runtime: None,
+            reap_gate: None,
         }
     }
 
@@ -80,6 +85,11 @@ impl ManagedMitmdump {
     }
 
     pub(super) async fn force_stop(mut self) -> RunnerResult<()> {
+        let _progress = crate::cleanup_progress::CleanupProgress::start(
+            "mitmdump",
+            "force_stop",
+            crate::cleanup_progress::CleanupIdentity::Process(self.id()),
+        );
         let is_running = self
             .try_wait()
             .map_err(|error| RunnerError::Internal(format!("check mitmdump process: {error}")))?
@@ -146,11 +156,20 @@ impl ManagedMitmdump {
         let Some(child) = self.child.as_mut() else {
             return Ok(());
         };
+        #[cfg(test)]
+        if let Some(gate) = self.reap_gate.take() {
+            gate.wait().await;
+        }
         child.wait().await.map_err(|error| {
             RunnerError::Internal(format!("wait for killed mitmdump process: {error}"))
         })?;
         self.leader_reaped = true;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_reap_gate(&mut self, gate: crate::child_cleanup::ReapGate) {
+        self.reap_gate = Some(gate);
     }
 
     async fn close_launch(&mut self) -> RunnerResult<()> {

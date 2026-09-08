@@ -8,6 +8,7 @@ import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
 import { TelegramConnectPage } from "../../views/okou-page/telegram-connect-page.tsx";
 import { parseTelegramConnectParams } from "./telegram-connect-params.ts";
+import { pollTelegramConnectDomainStatus$ } from "./telegram-connect-signals.ts";
 
 export const setupTelegramConnectPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -29,6 +30,9 @@ export const setupTelegramConnectPage$ = command(
         return $.connectors.providerConnect.telegram.connectTitle;
       }),
     );
-    await set(hideAppSkeleton$, signal);
+    await Promise.all([
+      set(hideAppSkeleton$, signal),
+      set(pollTelegramConnectDomainStatus$, signal),
+    ]);
   },
 );

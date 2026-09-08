@@ -296,8 +296,8 @@ async function refreshUsageAllowanceEntitlementFromStripe(
   };
 }
 
-async function lockUsageAllowanceOrg(
-  tx: UsageAllowanceStore,
+export async function lockOrgCredits(
+  tx: Pick<Db, "execute">,
   orgId: string,
 ): Promise<void> {
   await tx.execute(
@@ -616,11 +616,11 @@ async function resolveUsageAllowanceAvailabilityInTransaction(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<UsageAllowanceAvailability | null> {
-  await lockUsageAllowanceOrg(tx, orgId);
+  await lockOrgCredits(tx, orgId);
   return await resolveUsageAllowanceAvailabilityForLockedOrg(tx, orgId);
 }
 
-async function resolveUsageAllowanceAvailabilityForLockedOrg(
+export async function resolveUsageAllowanceAvailabilityForLockedOrg(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<UsageAllowanceAvailability | null> {
@@ -635,7 +635,7 @@ export async function activateUsageAllowanceWindowsForRun(
     readonly runCreatedAt: Date;
   },
 ): Promise<UsageAllowanceAvailability | null> {
-  await lockUsageAllowanceOrg(tx, args.orgId);
+  await lockOrgCredits(tx, args.orgId);
   const windows = await ensureWindowsForRun(tx, args);
   return windows ? availabilityFromWindows(windows) : null;
 }
@@ -648,7 +648,7 @@ export async function resolveUsageAllowanceAvailabilityForRun(
   },
 ): Promise<UsageAllowanceAvailability | null> {
   return await db.transaction(async (tx) => {
-    await lockUsageAllowanceOrg(tx, args.orgId);
+    await lockOrgCredits(tx, args.orgId);
     const runCreatedAt = await loadRunCreatedAt(tx, args);
     if (!runCreatedAt) {
       return null;

@@ -4,7 +4,7 @@ from typing import Literal
 
 type ConnectorRuntimeKind = Literal["builtin", "custom"]
 
-CONNECTOR_RUNTIME_KIND_MARKER = "_vm0ConnectorRuntimeKind"
+CONNECTOR_RUNTIME_KIND_MARKER = "_connectorRuntimeKind"
 
 
 def connector_runtime_kind(firewall: dict) -> ConnectorRuntimeKind | None:

@@ -132,7 +132,7 @@ describe("POST /api/integrations/slack/message", () => {
       modelProvider: "openrouter-api-key",
     });
     // Product run creation authenticates through the Clerk session mocks;
-    // restore the membership-list mock the zero-token auth path relies on.
+    // restore the membership-list mock the Okou-token auth path relies on.
     await store.set(
       seedOrgMembership$,
       { orgId: base.orgId, userId: base.userId, role: "admin" },

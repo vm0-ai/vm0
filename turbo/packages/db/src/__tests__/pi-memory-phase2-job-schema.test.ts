@@ -39,8 +39,9 @@ describe("Pi memory Phase 2 job schema", () => {
     ).toStrictEqual([
       "idx_pi_memory_phase2_jobs_claimable",
       "idx_pi_memory_phase2_jobs_user_export",
+      "idx_pi_memory_phase2_jobs_maintenance_run",
     ]);
-    expect(config.columns).toHaveLength(26);
+    expect(config.columns).toHaveLength(36);
   });
 
   it("pins every status, revision, retry, selection, and payload boundary", () => {
@@ -67,6 +68,8 @@ describe("Pi memory Phase 2 job schema", () => {
       "pi_memory_phase2_jobs_retry_count_check",
       "pi_memory_phase2_jobs_error_class_check",
       "pi_memory_phase2_jobs_version_ids_check",
+      "pi_memory_phase2_jobs_execution_fence_check",
+      "pi_memory_phase2_jobs_maintenance_history_check",
       "pi_memory_phase2_jobs_conflict_check",
       "pi_memory_phase2_jobs_publication_check",
       "pi_memory_phase2_jobs_selection_check",
@@ -82,6 +85,12 @@ describe("Pi memory Phase 2 job schema", () => {
     expect(checks.pi_memory_phase2_jobs_error_class_check).toContain("{0,127}");
     expect(checks.pi_memory_phase2_jobs_version_ids_check).toContain(
       "claimed_base_version_id",
+    );
+    expect(checks.pi_memory_phase2_jobs_execution_fence_check).toContain(
+      "sandbox_lease_token",
+    );
+    expect(checks.pi_memory_phase2_jobs_maintenance_history_check).toContain(
+      "last_maintenance_checkpoint_id",
     );
     expect(checks.pi_memory_phase2_jobs_conflict_check).toContain(
       "last_conflicting_head_version_id",

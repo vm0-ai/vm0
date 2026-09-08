@@ -121,11 +121,9 @@ function googleAnalyticsClientIdFromCookie(
   return /^\d+\.\d+$/.test(clientId) ? clientId : undefined;
 }
 
-// First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
-// the shared .vm0.ai cookie. A satellite on another registrable domain cannot
-// read this cookie, so its URL params remain the handoff mechanism and are
-// recorded before any primary-domain auth redirect. Re-collected through the
-// whitelist so only known params are persisted.
+// First-touch attribution forwarded across the www -> app hop in the shared
+// registrable-domain cookie. Re-collected through the whitelist so only known
+// params are persisted.
 function collectAttributionFromCookie(cookieString: string): string {
   const stored = readCookie(ACQUISITION_ATTRIBUTION_COOKIE, cookieString);
   if (!stored) {
@@ -167,7 +165,7 @@ export const recordAdAttribution$ = command(
     }
 
     // Prefer params on the current URL (an ad pointing straight at the app),
-    // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
+    // otherwise fall back to the shared cookie set by the marketing site.
     const serializedAttribution =
       collectAttributionParams(searchParams).toString() ||
       collectAttributionFromCookie(cookieString);

@@ -1,11 +1,11 @@
-use super::FileEntry;
+use super::{FileEntry, PiMemoryPhase2CheckpointAttestation};
 use crate::constants;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use api_contracts::generated::types::webhooks::agent::storages::{
     commit as storage_commit, prepare as storage_prepare,
 };
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use serde::Serialize;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -15,6 +15,7 @@ pub(super) struct PrepareSnapshotRequest<'a> {
     pub(super) storage_id: &'a str,
     pub(super) files: &'a [FileEntry],
     pub(super) parent_version_id: &'a str,
+    pub(super) maintenance_attestation: Option<&'a PiMemoryPhase2CheckpointAttestation>,
 }
 
 pub(super) struct PreparedSnapshot {
@@ -46,6 +47,7 @@ pub(super) struct CommitSnapshotRequest<'a> {
     pub(super) parent_version_id: &'a str,
     pub(super) files: &'a [FileEntry],
     pub(super) message: Option<&'a str>,
+    pub(super) maintenance_attestation: Option<&'a PiMemoryPhase2CheckpointAttestation>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +58,8 @@ struct PrepareSnapshotPayload<'a> {
     files: &'a [FileEntry],
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_version_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    maintenance_attestation: Option<&'a PiMemoryPhase2CheckpointAttestation>,
 }
 
 #[derive(Serialize)]
@@ -69,6 +73,8 @@ struct CommitSnapshotPayload<'a> {
     files: &'a [FileEntry],
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    maintenance_attestation: Option<&'a PiMemoryPhase2CheckpointAttestation>,
 }
 
 pub(super) async fn prepare_snapshot(
@@ -80,6 +86,7 @@ pub(super) async fn prepare_snapshot(
         storage_id: request.storage_id,
         files: request.files,
         parent_version_id: non_empty_str(request.parent_version_id),
+        maintenance_attestation: request.maintenance_attestation,
     };
 
     let url = http
@@ -138,6 +145,7 @@ pub(super) async fn commit_snapshot(
         parent_version_id: non_empty_str(request.parent_version_id),
         files: request.files,
         message: request.message,
+        maintenance_attestation: request.maintenance_attestation,
     };
 
     let url = http.storage_commit_url()?;

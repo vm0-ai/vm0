@@ -1,1 +1,0 @@
-ALTER TABLE "morning_brief_deliveries" ADD COLUMN "public_brand" text DEFAULT 'vm0' NOT NULL;

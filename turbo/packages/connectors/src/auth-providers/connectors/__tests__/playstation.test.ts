@@ -72,7 +72,7 @@ function mockPlaystationProfile(): void {
         );
         return HttpResponse.json({
           accountId: "psn-account-123",
-          onlineId: "vm0-player",
+          onlineId: "okou-player",
         });
       },
     ),
@@ -174,13 +174,13 @@ describe("PlayStation external-code provider", () => {
         refreshToken: "playstation-refresh-token",
         idToken: jwtPayload({ sub: "psn-account-123" }),
         accountId: "psn-account-123",
-        onlineId: "vm0-player",
+        onlineId: "okou-player",
       },
       expiresIn: 3600,
       scopes: ["psn:mobile.v2.core", "psn:clientapp"],
       userInfo: {
         id: "psn-account-123",
-        username: "vm0-player",
+        username: "okou-player",
         email: null,
       },
     });
@@ -252,7 +252,7 @@ describe("PlayStation external-code provider", () => {
     ).resolves.toMatchObject({
       userInfo: {
         id: "psn-account-123",
-        username: "vm0-player",
+        username: "okou-player",
       },
     });
     expect(cookieHeader).toBe("npsso=test-npsso");

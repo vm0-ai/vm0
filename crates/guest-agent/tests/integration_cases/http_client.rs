@@ -23,9 +23,9 @@ const RESPONSE_LIMIT_TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const EXPECTED_SUCCESS_RESPONSE_BODY_LIMIT_BYTES: usize = 5 * 1024 * 1024;
 const EXPECTED_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 64 * 1024;
 const EXPECTED_SUCCESS_RESPONSE_BODY_LIMIT_DIAGNOSTIC: &str =
-    "VM0 API response body exceeds the configured limit";
+    "API response body exceeds the configured limit";
 const EXPECTED_ERROR_RESPONSE_BODY_LIMIT_DIAGNOSTIC: &str =
-    "HTTP 400 Bad Request: VM0 API error response body exceeds the configured limit";
+    "HTTP 400 Bad Request: API error response body exceeds the configured limit";
 
 struct HeldOpenResponseServer {
     base_url: String,

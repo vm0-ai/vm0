@@ -1,3 +1,4 @@
+import { AVATAR_COMPOSER_ASSET_VERSION } from "@okouai/core/agent-avatar";
 import {
   platformPublicStaticUrl,
   platformStaticAssetUrl,
@@ -9,6 +10,12 @@ function pageAssetUrl(path: string): string {
 
 export function avatarSvgAssetUrl(filename: string): string {
   return pageAssetUrl(`assets/avatar-svg/${filename}`);
+}
+
+export function avatarComposerAssetUrl(path: string): string {
+  return pageAssetUrl(
+    `assets/avatar-svg-v2/${AVATAR_COMPOSER_ASSET_VERSION}/${path}`,
+  );
 }
 
 export const emptyArtifactImg = pageAssetUrl("assets/empty-artifact.webp");
@@ -26,7 +33,7 @@ export const emptySearchImg = pageAssetUrl(
   "assets/empty-search-b4e60a8e07b8.webp",
 );
 export const thinkingSpinnerImg = platformPublicStaticUrl(
-  "https://static.vm0.io/public/okou-transparent.svg",
+  "https://static.okou.io/public/okou-transparent.svg",
 );
 export const computerUseIllustrationImg = pageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",
@@ -34,9 +41,6 @@ export const computerUseIllustrationImg = pageAssetUrl(
 export const noConnectorImg = pageAssetUrl("assets/no-connector.webp");
 export const noPermissionIllustration = pageAssetUrl(
   "assets/no-permission-illustration.webp",
-);
-export const planFreeImg = pageAssetUrl(
-  "components/org-manage/assets/plan-free.webp",
 );
 export const planProImg = pageAssetUrl(
   "components/org-manage/assets/plan-pro.webp",

@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { GoogleCalendarWatchActionRequiredReason } from "@okouai/api-contracts/contracts/workflows";
 import { connectors } from "./connector";
 import { workflowAutomations } from "./workflow";
 import type { GoogleCalendarEventSnapshot } from "@okouai/db/jsonb-contracts/google-calendar-event";
@@ -39,6 +40,10 @@ export const googleCalendarWatchStates = pgTable(
     watchExpirationAt: timestamp("watch_expiration_at").notNull(),
     lastWatchRenewedAt: timestamp("last_watch_renewed_at").notNull(),
     needsRewatch: boolean("needs_rewatch").notNull().default(false),
+    actionRequiredReason: varchar("action_required_reason", {
+      length: 64,
+    }).$type<GoogleCalendarWatchActionRequiredReason>(),
+    actionRequiredAt: timestamp("action_required_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

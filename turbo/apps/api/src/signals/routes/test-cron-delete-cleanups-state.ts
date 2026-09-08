@@ -120,7 +120,7 @@ async function seedConnectorStates(
         userId: body.marker,
         orgId: body.marker,
         redirectUri: "https://example.test/oauth/callback",
-        accountMutation: { intent: "single-account" as const },
+        accountMutation: { intent: "add" as const },
         expiresAt: new Date(expiredStart + index),
       };
     },
@@ -137,7 +137,7 @@ async function seedConnectorStates(
       userId: body.marker,
       orgId: body.marker,
       redirectUri: "https://example.test/oauth/callback",
-      accountMutation: { intent: "single-account" },
+      accountMutation: { intent: "add" },
       expiresAt: cutoff,
     },
     {
@@ -147,7 +147,7 @@ async function seedConnectorStates(
       userId: body.marker,
       orgId: body.marker,
       redirectUri: "https://example.test/oauth/callback",
-      accountMutation: { intent: "single-account" },
+      accountMutation: { intent: "add" },
       expiresAt: new Date(cutoff.getTime() + 60 * 60_000),
     },
   ]);

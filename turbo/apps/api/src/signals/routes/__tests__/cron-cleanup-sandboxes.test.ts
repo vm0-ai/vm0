@@ -8,6 +8,8 @@ import {
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
+  type AgentRunConnectorDiagnosticRegistrationPayload,
   runnersConnectorRuntimeSyncContract,
 } from "@okouai/api-contracts/contracts/runners";
 import {
@@ -55,6 +57,8 @@ const THREADLESS_FORWARD_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const THREADLESS_TEST_NOW_MS = Date.parse("2026-08-03T06:00:00.000Z");
 // Mirrors THREADLESS_RUN_SWEEP_LIMIT in threadless-run-cleanup.service.ts.
 const THREADLESS_SWEEP_LIMIT = 20;
+// Mirrors CONNECTOR_DIAGNOSTIC_REGISTRATION_CLEANUP_BATCH_SIZE.
+const CONNECTOR_DIAGNOSTIC_REGISTRATION_SWEEP_LIMIT = 20;
 const NON_TEST_TRIGGER_SOURCES: readonly TriggerSource[] =
   triggerSourceSchema.options.filter((source) => {
     return source !== "test";
@@ -350,6 +354,47 @@ async function insertRunnerJobEntry(
   });
 }
 
+async function insertConnectorDiagnosticRegistration(
+  fixture: RunFixture,
+  args?: { readonly createdAt?: Date },
+): Promise<void> {
+  await postCronCleanupState({
+    action: "seed-connector-diagnostic-registration",
+    run_id: fixture.runId,
+    payload: { version: 1, targets: [] },
+    created_at: args?.createdAt?.toISOString(),
+  });
+}
+
+async function findConnectorDiagnosticRegistration(
+  runId: string,
+): Promise<AgentRunConnectorDiagnosticRegistrationPayload | null> {
+  const response = await postCronCleanupState({
+    action: "get-connector-diagnostic-registration",
+    run_id: runId,
+  });
+  const registration = recordField(
+    response,
+    "connector_diagnostic_registration",
+  );
+  return registration
+    ? agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
+        registration["payload"],
+      )
+    : null;
+}
+
+async function transitionRunTerminal(
+  fixture: RunFixture,
+  status: "completed" | "failed" | "timeout" | "cancelled",
+): Promise<void> {
+  await postCronCleanupState({
+    action: "transition-run-terminal",
+    run_id: fixture.runId,
+    status,
+  });
+}
+
 async function insertExportJob(args: {
   readonly status: string;
   readonly createdAt?: Date;
@@ -537,6 +582,118 @@ describe("sandbox cleanup", () => {
         errors: [],
       },
     });
+  });
+
+  it.each(["completed", "failed", "timeout", "cancelled"] as const)(
+    "deletes a connector diagnostic registration when its run becomes %s",
+    async (status) => {
+      const fixture = await trackRun(
+        insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
+      );
+      await insertConnectorDiagnosticRegistration(fixture);
+      await expect(
+        findConnectorDiagnosticRegistration(fixture.runId),
+      ).resolves.toStrictEqual({ version: 1, targets: [] });
+
+      await transitionRunTerminal(fixture, status);
+
+      await expect(
+        findConnectorDiagnosticRegistration(fixture.runId),
+      ).resolves.toBeNull();
+    },
+  );
+
+  it("cascades connector diagnostic registration deletion with its run", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
+    );
+    await insertConnectorDiagnosticRegistration(fixture);
+
+    await postCronCleanupState({ action: "delete-run", run_id: fixture.runId });
+
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects an invalid connector diagnostic registration payload", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
+    );
+
+    const response = await requestCronCleanupState({
+      action: "seed-connector-diagnostic-registration",
+      run_id: fixture.runId,
+      payload: { version: 1, targets: [{ kind: "builtin" }] },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
+  });
+
+  it("compensates terminal registration residue without expiring old active state", async () => {
+    const terminal = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+    );
+    const active = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
+    );
+    const oldRegistrationTime = new Date("1990-01-01T00:00:00.000Z");
+    await insertConnectorDiagnosticRegistration(terminal, {
+      createdAt: oldRegistrationTime,
+    });
+    await insertConnectorDiagnosticRegistration(active, {
+      createdAt: oldRegistrationTime,
+    });
+
+    await cleanupRegisteredFixtures();
+
+    await expect(
+      findConnectorDiagnosticRegistration(terminal.runId),
+    ).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(active.runId),
+    ).resolves.toStrictEqual({ version: 1, targets: [] });
+  });
+
+  it("bounds connector diagnostic registration compensation and converges", async () => {
+    const fixtures: RunFixture[] = [];
+    for (
+      let index = 0;
+      index < CONNECTOR_DIAGNOSTIC_REGISTRATION_SWEEP_LIMIT + 1;
+      index++
+    ) {
+      const fixture = await trackRun(
+        insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
+      );
+      await insertConnectorDiagnosticRegistration(fixture, {
+        createdAt: new Date(Date.UTC(1990, 0, 1, 0, 0, index)),
+      });
+      fixtures.push(fixture);
+    }
+
+    await cleanupRegisteredFixtures();
+
+    const first = fixtures[0];
+    const last = fixtures.at(-1);
+    if (!first || !last) {
+      throw new Error("Expected bounded registration cleanup fixtures");
+    }
+
+    await expect(
+      findConnectorDiagnosticRegistration(first.runId),
+    ).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(last.runId),
+    ).resolves.toStrictEqual({ version: 1, targets: [] });
+
+    await cleanupRegisteredFixtures();
+
+    await expect(
+      findConnectorDiagnosticRegistration(last.runId),
+    ).resolves.toBeNull();
   });
 
   it("leaves the audited pre-forward threadless cohort discoverable", async () => {
@@ -1048,6 +1205,7 @@ describe("sandbox cleanup", () => {
       }),
     );
     await insertRunnerJobEntry(fixture, farFuture());
+    await insertConnectorDiagnosticRegistration(fixture);
     context.mocks.ably.publish.mockClear();
 
     const response = await cleanupRegisteredFixtures();
@@ -1067,6 +1225,9 @@ describe("sandbox cleanup", () => {
       error: "Run timed out while pending (never started)",
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
     expect(
       context.mocks.ably.publish.mock.calls.filter(([channel]) => {
         return channel === "cancel";
@@ -1260,6 +1421,7 @@ describe("sandbox cleanup", () => {
       insertRunFixture({ status: "queued", createdAt: minutesAgo(130) }),
     );
     await insertQueueEntry(fixture, minutesAgo(1));
+    await insertConnectorDiagnosticRegistration(fixture);
 
     const response = await cleanupRegisteredFixtures();
 
@@ -1278,6 +1440,9 @@ describe("sandbox cleanup", () => {
       error: "Queued run expired (exceeded queue TTL)",
     });
     await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    await expect(
+      findConnectorDiagnosticRegistration(fixture.runId),
+    ).resolves.toBeNull();
   });
 
   it("cleans up queued runs missing queue entries after the grace threshold", async () => {

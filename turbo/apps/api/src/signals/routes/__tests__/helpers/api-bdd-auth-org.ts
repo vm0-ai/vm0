@@ -1455,28 +1455,42 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           params: { id: connectorId },
           body: {
             values: [{ key: "secret", kind: "secret", value }],
-            account: { intent: "single-account" },
+            account: { intent: "add" },
           },
         }),
         [200],
       );
     },
 
-    async disconnectSingleCustomConnectorAccount(
+    async deleteDefaultCustomConnectorAccount(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         connectorAccountsContract,
       );
+      const accounts = await accept(
+        client.connections({
+          headers: authenticate(actor),
+          query: { kind: "custom", customConnectorId: connectorId },
+        }),
+        [200],
+      );
+      const account = accounts.body.connections.find((candidate) => {
+        return candidate.isDefault;
+      });
+      if (!account) {
+        return;
+      }
       await accept(
-        client.disconnectSingleAccount({
+        client.delete({
+          params: { connectionId: account.id },
           headers: authenticate(actor),
           body: {
             target: { kind: "custom", customConnectorId: connectorId },
           },
         }),
-        [204],
+        [200],
       );
     },
 

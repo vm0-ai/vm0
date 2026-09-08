@@ -7,6 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { accept } from "../../lib/accept.ts";
+import { nowDate } from "../../lib/time.ts";
 import {
   captureChatThreadMetadataShortcut$,
   type ChatThreadMetadataShortcutOutcome,
@@ -33,7 +34,9 @@ import { queryChatThreadEventSharedDatabase$ } from "../shared-database.ts";
 import type {
   ChatThreadEventView,
   OptimisticChatThreadEvent,
+  OptimisticChatThreadEventInput,
 } from "./chat-thread-event-types.ts";
+import { reconcilePinnedThreadDragSessions$ } from "./chat-thread-pin-drag-lifecycle.ts";
 
 interface ChatThreadEventData {
   readonly snapshot: readonly ChatThreadSnapshotProjection[];
@@ -240,6 +243,7 @@ const applySharedChatThreadEventResult$ = command(
       snapshot: state.snapshot?.chatThreads ?? [],
       events: state.events,
     });
+    set(reconcilePinnedThreadDragSessions$);
     set(syncCurrentChatThreadDocumentTitle$, signal);
     if (phase === "local") {
       const loaded = get(initialLocalChatThreadEventsLoadedDeferred$);
@@ -342,20 +346,6 @@ export const eventDrivenChatThreads$ = computed((get) => {
     get(allChatThreadsEvents$),
   );
 });
-
-const eventDrivenChatThreadMap$ = computed((get) => {
-  return new Map(
-    get(eventDrivenChatThreads$).map((thread) => {
-      return [thread.id, thread] as const;
-    }),
-  );
-});
-
-export function eventDrivenChatThread(threadId: string) {
-  return computed((get) => {
-    return get(eventDrivenChatThreadMap$).get(threadId) ?? null;
-  });
-}
 
 export function optimisticChatThreadCreateUnsettled(threadId: string) {
   return computed((get): boolean => {
@@ -630,7 +620,18 @@ const syncCurrentChatThreadDocumentTitle$ = command(
 );
 
 export const registerOptimisticChatThreadEvent$ = command(
-  ({ set }, event: OptimisticChatThreadEvent) => {
+  ({ set }, input: OptimisticChatThreadEventInput) => {
+    const event: OptimisticChatThreadEvent = {
+      title: null,
+      selectedModel: null,
+      serviceTier: null,
+      computerUseHostId: null,
+      cloudBrowserEnabled: false,
+      selectedVideoModel: null,
+      selectedImageModel: null,
+      createdAt: nowDate().toISOString(),
+      ...input,
+    };
     set(optimisticChatThreadEventsState$, (events) => {
       if (
         events.some((existing) => {
@@ -641,6 +642,7 @@ export const registerOptimisticChatThreadEvent$ = command(
       }
       return [...events, event];
     });
+    set(reconcilePinnedThreadDragSessions$);
   },
 );
 
@@ -659,19 +661,12 @@ export const touchOptimisticChatThreadSort$ = command(
       kind: "sort_touched",
       chatThreadId: args.threadId,
       agentId: args.agentId,
-      title: null,
-      selectedModel: null,
-      serviceTier: null,
-      computerUseHostId: null,
-      cloudBrowserEnabled: false,
-      selectedVideoModel: null,
-      selectedImageModel: null,
       createdAt: args.createdAt,
-    } satisfies OptimisticChatThreadEvent);
+    });
   },
 );
 
-export const reconcileOptimisticChatThreadEvents$ = command(
+const reconcileOptimisticChatThreadEvents$ = command(
   ({ set }, persisted: ChatThreadEventData) => {
     set(optimisticChatThreadEventsState$, (events) => {
       return filterUnsettledOptimisticChatThreadEvents(events, persisted);

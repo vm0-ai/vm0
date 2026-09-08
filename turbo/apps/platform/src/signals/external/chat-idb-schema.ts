@@ -10,9 +10,18 @@ export const CHAT_EVENT_ROWS_STORE = "chat_events";
 export const CHAT_EVENT_ROWS_ORDER_INDEX = "byThreadAndSeq";
 export const CHAT_EVENT_CURSOR_STORE = "chat_event_cursors";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
+export const CHAT_THREAD_SNAPSHOT_ID = "current";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
 export const CHAT_THREAD_EVENTS_ORDER_INDEX = "bySeqId";
+
+export const CHAT_IDB_STORE_NAMES = [
+  CHAT_EVENT_ROWS_STORE,
+  CHAT_EVENT_CURSOR_STORE,
+  CHAT_THREAD_SNAPSHOT_STORE,
+  CHAT_THREAD_EVENTS_STORE,
+  CHAT_THREAD_EVENT_SYNC_STORE,
+] as const;
 
 function createChatEventRowsStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_EVENT_ROWS_STORE, { keyPath: "id" });

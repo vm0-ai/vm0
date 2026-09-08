@@ -2154,7 +2154,7 @@ async function dispatchGmailAutomationEvent(
   "dispatched" | "duplicate" | "skipped" | { readonly kind: "run_error" }
 > {
   const processed = await args.timing.measure(
-    "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+    "api_dispatch_pre_create_agent_automation_event_record_processed_event",
     async () => {
       return await insertGmailProcessedEvent(args, signal);
     },
@@ -2340,7 +2340,7 @@ async function dispatchGmailNewMessageHistoryEvent(
   signal: AbortSignal,
 ): Promise<GmailDispatchStateResult> {
   const message = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_external_events",
+    "api_dispatch_pre_create_agent_automation_event_load_external_events",
     async () => {
       return await cachedGmailMessageContext(
         {
@@ -2362,7 +2362,7 @@ async function dispatchGmailNewMessageHistoryEvent(
   for (const automation of args.automations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const matches = await runTiming.measure(
-      "api_dispatch_pre_create_zero_automation_event_match_automations",
+      "api_dispatch_pre_create_agent_automation_event_match_automations",
       () => {
         return (
           isGmailNewMessageAutomation(automation) &&
@@ -2428,7 +2428,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
   for (const automation of labelAutomations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const matches = await runTiming.measure(
-      "api_dispatch_pre_create_zero_automation_event_match_automations",
+      "api_dispatch_pre_create_agent_automation_event_match_automations",
       async () => {
         return await labelAppliedAutomationMatchesEvent(
           {
@@ -2471,7 +2471,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
 
   for (const match of matchingAutomations) {
     match.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_automation_event_load_external_events",
+      "api_dispatch_pre_create_agent_automation_event_load_external_events",
       messageStartedAt,
       messageFinishedAt,
     );
@@ -2581,7 +2581,7 @@ async function hasCurrentGmailWatchConsumer(
   signal: AbortSignal,
 ): Promise<boolean> {
   const hasConsumer = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_automations",
+    "api_dispatch_pre_create_agent_automation_event_load_automations",
     async () => {
       return await hasEnabledGmailConsumer(
         {
@@ -2634,7 +2634,7 @@ async function dispatchGmailWatchState(
   }
 
   const access = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_source_state",
+    "api_dispatch_pre_create_agent_automation_event_load_source_state",
     async () => {
       return await resolveGmailAccess(
         {
@@ -2653,7 +2653,7 @@ async function dispatchGmailWatchState(
   }
 
   const history = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_external_events",
+    "api_dispatch_pre_create_agent_automation_event_load_external_events",
     async () => {
       return await listGmailHistory(
         {
@@ -2687,7 +2687,7 @@ async function dispatchGmailWatchState(
   }
 
   const automations = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_automations",
+    "api_dispatch_pre_create_agent_automation_event_load_automations",
     async () => {
       return await loadGmailEventAutomations(args, signal);
     },
@@ -2737,7 +2737,7 @@ const startGmailWorkflowRun$ = command(
     signal: AbortSignal,
   ): Promise<"ok" | "error" | "superseded"> => {
     const runInput = await args.timing.measure(
-      "api_dispatch_pre_create_zero_automation_event_build_run_input",
+      "api_dispatch_pre_create_agent_automation_event_build_run_input",
       () => {
         const context = gmailTriggerContext({
           workflowName: args.automation.workflowName,
@@ -2842,7 +2842,7 @@ export const dispatchGmailPubSubPush$ = command(
     );
     const db = set(writeDb$);
     const states = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_automation_event_load_source_state",
+      "api_dispatch_pre_create_agent_automation_event_load_source_state",
       async () => {
         return await loadGmailWatchStates(
           {

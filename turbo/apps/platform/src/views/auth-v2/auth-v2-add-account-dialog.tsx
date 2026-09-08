@@ -36,7 +36,7 @@ function AuthV2AddAccountDialogContent({
       }}
     >
       <DialogContent
-        className="zero-app max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[25rem] gap-0 overflow-y-auto border-0 bg-transparent p-0 shadow-none [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:z-10"
+        className="okou-app max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[25rem] gap-0 overflow-y-auto border-0 bg-transparent p-0 shadow-none [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:z-10"
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}

@@ -59,7 +59,7 @@ fn clear_run_metadata_env() {
 }
 
 fn capture_raw(log_path: &Path) -> TestResult<GuestConfigRaw> {
-    guest_common::log::clear_system_log_file();
+    guest_telemetry::log::clear_system_log_file();
     let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
     assert!(
         !log_path.exists(),

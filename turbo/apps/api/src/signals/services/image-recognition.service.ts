@@ -177,7 +177,11 @@ export const imageRecognition$ = command(
     }
     const hasCredits = await set(
       checkBillableOperationCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        runId: args.auth.runId,
+      },
       requestSignal,
     );
     signal.throwIfAborted();

@@ -4,7 +4,6 @@ import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,7 +20,6 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
@@ -43,7 +41,7 @@ const FORM_ID = `1FAIpQLScWebhookGoogleFormsTest${randomUUID().replaceAll("-", "
 const FORM_URL = `https://docs.google.com/forms/d/${FORM_ID}/edit`;
 const FORM_TITLE = "Customer survey";
 const TOPIC_NAME = "projects/vm0-ai-488909/topics/forms-events";
-const AUDIENCE = "https://api.vm0.ai/api/webhooks/google-forms";
+const AUDIENCE = "https://api.okou.ai/api/webhooks/google-forms";
 const PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const RUNNER_GROUP = "vm0/google-forms-webhook-test";
@@ -333,14 +331,6 @@ async function setupGoogleFormsAutomation() {
     name: "google-forms-response-workflow",
   });
   mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-  await updateFeatureSwitchesForUser(
-    context,
-    { orgId: actor.orgId, userId: actor.userId },
-    {
-      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    },
-  );
   mockGoogleFormsConnectorOAuth();
   await workflows.connectConnector(actor, "google-forms");
   const connector = await connectors.readConnectorBySlug(actor, "google-forms");
@@ -576,11 +566,6 @@ describe("Google Forms Pub/Sub webhook", () => {
         name: `google-forms-${suffix}-workflow`,
       });
       mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-      await updateFeatureSwitchesForUser(
-        context,
-        { orgId: actor.orgId, userId: actor.userId },
-        { [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true },
-      );
       mockGoogleFormsConnectorOAuth();
       await workflows.connectConnector(actor, "google-forms");
       mocks.clerk.session(actor.userId, actor.orgId, "org:member");
@@ -690,14 +675,6 @@ describe("Google Forms Pub/Sub webhook", () => {
       name: "google-forms-second-account-workflow",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
-    );
     mockGoogleFormsConnectorOAuth();
     await workflows.connectConnector(actor, "google-forms");
     const firstConnector = await connectors.readConnectorBySlug(
@@ -1052,7 +1029,7 @@ describe("Google Forms Pub/Sub webhook", () => {
       "google-forms",
       "oauth",
       agentId,
-      { intent: "single-account" },
+      { intent: "add" },
     );
     const replaceState = new URL(
       replaceOauth.authorizationUrl,
@@ -1068,17 +1045,40 @@ describe("Google Forms Pub/Sub webhook", () => {
       actor,
       "google-forms",
     );
-    expect(replacedAccounts).toStrictEqual([
-      expect.objectContaining({
-        id: firstConnector.id,
-        externalEmail: "bdd-google-forms-replaced@example.test",
+    const replacementAccount = replacedAccounts.find((account) => {
+      return account.externalEmail === "bdd-google-forms-replaced@example.test";
+    });
+    if (!replacementAccount) {
+      throw new Error("Expected the replacement Google Forms account");
+    }
+    expect(replacementAccount.id).not.toBe(firstConnector.id);
+    expect(replacedAccounts).toHaveLength(2);
+    expect(formsApi.watchIds).toHaveLength(2);
+
+    const deletedFirst = await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(),
+        params: { connectionId: firstConnector.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "google-forms" },
+        },
       }),
-    ]);
+      [200],
+    );
+    expect(deletedFirst.body).toStrictEqual({
+      deletedConnectionId: firstConnector.id,
+      resolvedSelectionCount: 0,
+      promotedDefaultConnectionId: replacementAccount.id,
+    });
     expect(formsApi.watchIds).toHaveLength(3);
     const replacementWatchId = formsApi.watchIds[2];
     if (!replacementWatchId) {
       throw new Error("Expected a replacement Google Forms watch");
     }
+    expect(formsApi.stoppedWatchIds).toStrictEqual([
+      secondWatchId,
+      firstWatchId,
+    ]);
     const replacedAccountPush = await postWebhook(
       formsPushBody("pubsub-replaced-account", firstWatchId),
     );
@@ -1090,7 +1090,7 @@ describe("Google Forms Pub/Sub webhook", () => {
     const deletedLast = await accept(
       connectorAccountsClient().delete({
         headers: authHeaders(),
-        params: { connectionId: firstConnector.id },
+        params: { connectionId: replacementAccount.id },
         body: {
           target: { kind: "builtin", connectorSlug: "google-forms" },
         },
@@ -1098,12 +1098,13 @@ describe("Google Forms Pub/Sub webhook", () => {
       [200],
     );
     expect(deletedLast.body).toStrictEqual({
-      deletedConnectionId: firstConnector.id,
+      deletedConnectionId: replacementAccount.id,
       resolvedSelectionCount: 0,
       promotedDefaultConnectionId: null,
     });
     expect(formsApi.stoppedWatchIds).toStrictEqual([
       secondWatchId,
+      firstWatchId,
       replacementWatchId,
     ]);
     const removedLastAccountPush = await postWebhook(

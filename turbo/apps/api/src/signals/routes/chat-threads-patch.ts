@@ -21,7 +21,6 @@ const patchInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-
   const result = await set(
     updateChatThreadDraft$,
     {

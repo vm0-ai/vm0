@@ -6,7 +6,6 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -17,6 +16,18 @@ export type AgentPhoneUserLink = typeof agentphoneUserLinks.$inferSelect;
 
 const AGENTPHONE_EMAIL_HANDLE_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/u;
 const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
+
+/**
+ * Handles that address the assistant in a group conversation. Every public
+ * brand answers to all of them, because group members do not know which brand
+ * the deployment presents and the VM0 brand still calls the assistant "Zero".
+ */
+const AGENTPHONE_MENTION_PATTERN = /(^|\s)@(zero|vm0|okou)\b/iu;
+
+/** Whether free-form message text addresses the assistant by handle. */
+export function isAgentPhoneMentionText(value: string): boolean {
+  return AGENTPHONE_MENTION_PATTERN.test(value);
+}
 
 export function isAgentPhoneChannel(value: string): value is AgentPhoneChannel {
   return value === "imessage" || value === "sms" || value === "mms";
@@ -273,5 +284,5 @@ export async function resolveAgentPhoneAuditLogsUrl(
   if (!enabled) {
     return undefined;
   }
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }

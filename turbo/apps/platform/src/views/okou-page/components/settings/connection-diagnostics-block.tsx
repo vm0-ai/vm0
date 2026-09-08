@@ -51,23 +51,23 @@ function ConnectionDiagnosticsSummary({
         <span className="text-sm font-medium text-foreground">{title}</span>
         <span className="text-sm text-muted-foreground">{description}</span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.connectionDiagnostics
                 .connection;
             })}
             : {connectionState}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.connectionDiagnostics.channel;
             })}
             : {channelState}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {diagnostics.snapshot.visibilityState}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {diagnostics.snapshot.online
               ? t(($) => {
                   return $.settings.preferences.debug.connectionDiagnostics
@@ -78,7 +78,7 @@ function ConnectionDiagnosticsSummary({
                     .offline;
                 })}
           </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
+          <span className="okou-badge rounded-md px-2 py-0.5">
             {diagnostics.snapshot.focused
               ? t(($) => {
                   return $.settings.preferences.debug.connectionDiagnostics
@@ -241,7 +241,7 @@ export function ConnectionDiagnosticsPanel({
   readonly title: string;
 }) {
   return (
-    <details className="group overflow-hidden rounded-xl bg-card zero-border">
+    <details className="group overflow-hidden rounded-xl bg-card okou-border">
       <ConnectionDiagnosticsSummary
         description={description}
         diagnostics={diagnostics}

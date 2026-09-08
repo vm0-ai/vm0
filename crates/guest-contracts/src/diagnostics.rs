@@ -709,6 +709,8 @@ impl FailureClass {
 pub enum FailureReason {
     /// The session history exceeded the checkpoint size limit.
     SessionHistoryLimit,
+    /// The run reached its execution time limit.
+    ExecutionTimeout,
     /// The provider account has insufficient credits.
     InsufficientCredits,
     /// The configured API key is invalid.
@@ -749,6 +751,7 @@ impl FailureReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::SessionHistoryLimit => "session_history_limit",
+            Self::ExecutionTimeout => "execution_timeout",
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
@@ -775,6 +778,7 @@ impl From<FailureReason>
     fn from(reason: FailureReason) -> Self {
         match reason {
             FailureReason::SessionHistoryLimit => Self::SessionHistoryLimit,
+            FailureReason::ExecutionTimeout => Self::ExecutionTimeout,
             FailureReason::InsufficientCredits => Self::InsufficientCredits,
             FailureReason::InvalidApiKey => Self::InvalidApiKey,
             FailureReason::InvalidCredentials => Self::InvalidCredentials,
@@ -835,6 +839,16 @@ pub enum AgentFramework {
     Codex,
     /// Pi native agent loop.
     Pi,
+}
+
+impl From<crate::env::CliFramework> for AgentFramework {
+    fn from(framework: crate::env::CliFramework) -> Self {
+        match framework {
+            crate::env::CliFramework::ClaudeCode => Self::ClaudeCode,
+            crate::env::CliFramework::Codex => Self::Codex,
+            crate::env::CliFramework::Pi => Self::Pi,
+        }
+    }
 }
 
 impl AgentFramework {
@@ -948,6 +962,28 @@ impl PromptMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_framework_projects_to_diagnostic_wire_values() {
+        for (framework, expected, wire_value) in [
+            (
+                crate::env::CliFramework::ClaudeCode,
+                AgentFramework::ClaudeCode,
+                "claude_code",
+            ),
+            (
+                crate::env::CliFramework::Codex,
+                AgentFramework::Codex,
+                "codex",
+            ),
+            (crate::env::CliFramework::Pi, AgentFramework::Pi, "pi"),
+        ] {
+            let projected = AgentFramework::from(framework);
+
+            assert_eq!(projected, expected);
+            assert_eq!(projected.as_str(), wire_value);
+        }
+    }
 
     #[test]
     fn prompt_metadata_classifies_safe_shapes_without_content() {
@@ -1460,6 +1496,7 @@ mod tests {
     fn failure_reason_maps_exhaustively_to_the_public_completion_contract() {
         for (reason, expected) in [
             (FailureReason::SessionHistoryLimit, "session_history_limit"),
+            (FailureReason::ExecutionTimeout, "execution_timeout"),
             (FailureReason::InsufficientCredits, "insufficient_credits"),
             (FailureReason::InvalidApiKey, "invalid_api_key"),
             (FailureReason::InvalidCredentials, "invalid_credentials"),

@@ -58,14 +58,6 @@ button {
   overflow: hidden;
 }
 
-.desktop-product-zero {
-  --brand: #ed4e01;
-  --brand-hover: #ff6a1f;
-  --brand-press: #d54501;
-  --brand-soft: rgba(237, 78, 1, 0.1);
-  --brand-ring: rgba(237, 78, 1, 0.3);
-}
-
 .app-header {
   -webkit-app-region: drag;
   position: relative;
@@ -1103,17 +1095,6 @@ button {
   user-select: none;
 }
 
-.desktop-brand-mark-zero {
-  border-radius: 50%;
-  background: #ffffff;
-}
-
-.desktop-brand-mark-zero img {
-  width: 92%;
-  height: 92%;
-  transform: translateY(4%);
-}
-
 .desktop-brand-mark-init {
   box-shadow:
     0 6px 20px -8px rgba(20, 23, 29, 0.2),
@@ -1134,13 +1115,16 @@ button {
   animation: brand-mark-breathe 3.4s ease-in-out infinite;
 }
 
+.desktop-product-okou .desktop-brand-mark-init,
+.desktop-product-okou .desktop-brand-mark-hero {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .desktop-brand-mark-offline {
   box-shadow: 0 0 0 1px rgba(20, 23, 29, 0.08);
   opacity: 0.62;
-}
-
-.desktop-brand-mark-zero.desktop-brand-mark-offline {
-  filter: grayscale(0.85);
 }
 
 @keyframes brand-mark-breathe {
@@ -1518,13 +1502,6 @@ button {
   }
 }
 
-.desktop-product-zero .step-index,
-.desktop-product-zero .button-primary,
-.desktop-product-zero .go-online-button,
-.desktop-product-zero .arrival-label {
-  color: #ffffff;
-}
-
 .screenshot-lightbox {
   position: fixed;
   inset: 0;
@@ -1689,4 +1666,32 @@ button {
   .runtime-error-log-row span {
     text-align: left;
   }
+}
+.driver-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.driver-choice select {
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px 12px;
+}
+
+.driver-status {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.driver-choice select:hover {
+  border-color: rgba(30, 38, 52, 0.24);
+}
+.driver-choice select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }

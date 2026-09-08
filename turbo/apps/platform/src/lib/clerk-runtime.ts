@@ -16,16 +16,12 @@ interface ClerkRuntimeLoadOptions {
   readonly signUpUrl: string;
 }
 
-export interface ClerkBrowserRuntime {
+interface ClerkBrowserRuntime {
   readonly clerk: PlatformClerk;
   readonly loaded: Promise<void>;
 }
 
-type EarlyClerkBootstrap = NonNullable<Window["__vm0ClerkBootstrap"]>;
-
-function globalProperty(name: string): unknown {
-  return Reflect.get(globalThis, name);
-}
+type EarlyClerkBootstrap = NonNullable<Window["__okouClerkBootstrap"]>;
 
 export type PlatformClerk = BrowserClerk & {
   readonly __internal_environment?: EnvironmentResource;
@@ -76,7 +72,7 @@ function adoptEarlyClerkRuntime(
   clerk: PlatformClerk,
   options: ClerkRuntimeOptions,
 ): ClerkBrowserRuntime | null {
-  const bootstrap = window.__vm0ClerkBootstrap;
+  const bootstrap = window.__okouClerkBootstrap;
   if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
     return null;
   }
@@ -97,26 +93,24 @@ function adoptEarlyClerkRuntime(
   };
 }
 
-export function startClerkBrowserRuntime(
+export async function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
 ): Promise<ClerkBrowserRuntime> {
-  return (async () => {
-    await loadClerkJSScript({
-      __internal_clerkJSVersion: CLERK_JS_VERSION,
-      domain: options.domain,
-      publishableKey: options.publishableKey,
-    });
-    const clerk = globalProperty("Clerk");
-    if (!isBrowserClerk(clerk)) {
-      throw new Error("Clerk browser script did not expose a valid runtime");
-    }
-    const earlyRuntime = adoptEarlyClerkRuntime(clerk, options);
-    if (earlyRuntime) {
-      return earlyRuntime;
-    }
+  await loadClerkJSScript({
+    __internal_clerkJSVersion: CLERK_JS_VERSION,
+    domain: options.domain,
+    publishableKey: options.publishableKey,
+  });
+  const clerk: unknown = Reflect.get(globalThis, "Clerk");
+  if (!isBrowserClerk(clerk)) {
+    throw new Error("Clerk browser script did not expose a valid runtime");
+  }
+  const earlyRuntime = adoptEarlyClerkRuntime(clerk, options);
+  if (earlyRuntime) {
+    return earlyRuntime;
+  }
 
-    patchSharedClerkInstance(clerk);
-    const loaded = clerk.load(options.loadOptions);
-    return { clerk, loaded };
-  })();
+  patchSharedClerkInstance(clerk);
+  const loaded = clerk.load(options.loadOptions);
+  return { clerk, loaded };
 }

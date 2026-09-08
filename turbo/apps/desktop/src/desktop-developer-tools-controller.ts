@@ -5,7 +5,6 @@ const OKOU_DEBUG_FEATURE_SWITCH_KEY = "_debug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
   "computerUseDesktopPlugins";
 const INTRO_VIDEO_FEATURE_SWITCH_KEY = "introVideo";
-const DESKTOP_SCREEN_RECORDING_FEATURE_SWITCH_KEY = "desktopScreenRecording";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,6 +24,7 @@ function featureSwitchEnabledFromBody(value: unknown, key: string): boolean {
 }
 
 interface DeveloperToolsControllerOptions {
+  readonly getSessionAuthority: () => object | null;
   /**
    * Session-authenticated fetch of the zero feature-switches endpoint
    * (`getAuthSession().fetchWithSessionAuth(...)` in production).
@@ -33,9 +33,8 @@ interface DeveloperToolsControllerOptions {
   /** Propagates the `computerUseDesktopPlugins` switch to the plugin manager. */
   readonly setFilesystemPluginFeatureEnabled: (enabled: boolean) => void;
   /**
-   * Propagates the effective intro-video recording availability to the
-   * recorder. Turning either required switch off must release the native
-   * helper, not just hide the entry point.
+   * Propagates the `introVideo` switch to the recorder. Turning it off must
+   * release the native helper, not just hide the entry point.
    */
   readonly setScreenRecordingFeatureEnabled: (enabled: boolean) => void;
   /** Zero-arg "something changed" signal; defaults to a no-op. */
@@ -61,19 +60,19 @@ export class DeveloperToolsController {
 
   private available = false;
   private enabled = false;
+  private resolved = false;
+  private revision = 0;
+  private authorization: { readonly session: object } | null = null;
   private readonly refresh = latestWinsSingleFlight(
     () => this.refreshAvailability(),
     {
       onError: (error) => {
         this.logRefreshError(error);
-        this.setAvailability(false);
-        this.setFilesystemPluginFeatureEnabled(false);
-        this.setScreenRecordingFeatureEnabled(false);
       },
     },
   );
 
-  constructor(options: DeveloperToolsControllerOptions) {
+  constructor(private readonly options: DeveloperToolsControllerOptions) {
     this.fetchFeatureSwitches = options.fetchFeatureSwitches;
     this.setFilesystemPluginFeatureEnabled =
       options.setFilesystemPluginFeatureEnabled;
@@ -88,6 +87,18 @@ export class DeveloperToolsController {
       available: this.available,
       enabled: this.available && this.enabled,
     };
+  }
+
+  getAvailability(): "unresolved" | "available" | "unavailable" {
+    if (!this.resolved) return "unresolved";
+    return this.getAuthorization() ? "available" : "unavailable";
+  }
+
+  getAuthorization(): object | null {
+    return this.available &&
+      this.authorization?.session === this.options.getSessionAuthority()
+      ? this.authorization
+      : null;
   }
 
   setEnabled(enabled: boolean): DesktopDeveloperToolsState {
@@ -105,6 +116,14 @@ export class DeveloperToolsController {
    * follow-up refresh once it settles.
    */
   requestRefresh(): void {
+    this.revision++;
+    this.resolved = false;
+    this.authorization = null;
+    // Withdrawal is synchronous; no old response can authorize a new session.
+    this.available = false;
+    // Keep the independent panel preference across a same-session refresh;
+    // an actual denial below clears it.
+    this.onChange();
     this.refresh();
   }
 
@@ -119,34 +138,54 @@ export class DeveloperToolsController {
   }
 
   private async refreshAvailability(): Promise<void> {
-    const response = await this.fetchFeatureSwitches();
-    if (response.status === 401) {
+    const revision = this.revision;
+    const session = this.options.getSessionAuthority();
+    const current = () =>
+      revision === this.revision &&
+      session === this.options.getSessionAuthority();
+    try {
+      const response = await this.fetchFeatureSwitches();
+      if (!current()) return;
+      if (response.status === 401) {
+        this.resolved = true;
+        this.setAvailability(false);
+        this.setFilesystemPluginFeatureEnabled(false);
+        this.setScreenRecordingFeatureEnabled(false);
+        this.onChange();
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(
+          `Desktop developer tools feature switch failed: ${response.status}`,
+        );
+      }
+      const body: unknown = await response.json();
+      if (!current()) return;
+      this.resolved = true;
+      this.authorization = session ? { session } : null;
+      this.setAvailability(
+        session !== null &&
+          featureSwitchEnabledFromBody(body, OKOU_DEBUG_FEATURE_SWITCH_KEY),
+      );
+      this.setFilesystemPluginFeatureEnabled(
+        featureSwitchEnabledFromBody(
+          body,
+          COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY,
+        ),
+      );
+      this.setScreenRecordingFeatureEnabled(
+        featureSwitchEnabledFromBody(body, INTRO_VIDEO_FEATURE_SWITCH_KEY),
+      );
+      this.onChange();
+    } catch (error) {
+      if (!current()) return;
+      this.resolved = true;
+      this.authorization = null;
       this.setAvailability(false);
       this.setFilesystemPluginFeatureEnabled(false);
       this.setScreenRecordingFeatureEnabled(false);
-      return;
+      this.onChange();
+      throw error;
     }
-    if (!response.ok) {
-      throw new Error(
-        `Desktop developer tools feature switch failed: ${response.status}`,
-      );
-    }
-    const body: unknown = await response.json();
-    this.setAvailability(
-      featureSwitchEnabledFromBody(body, OKOU_DEBUG_FEATURE_SWITCH_KEY),
-    );
-    this.setFilesystemPluginFeatureEnabled(
-      featureSwitchEnabledFromBody(
-        body,
-        COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY,
-      ),
-    );
-    this.setScreenRecordingFeatureEnabled(
-      featureSwitchEnabledFromBody(body, INTRO_VIDEO_FEATURE_SWITCH_KEY) &&
-        featureSwitchEnabledFromBody(
-          body,
-          DESKTOP_SCREEN_RECORDING_FEATURE_SWITCH_KEY,
-        ),
-    );
   }
 }

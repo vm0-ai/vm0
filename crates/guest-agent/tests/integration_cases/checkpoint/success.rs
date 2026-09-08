@@ -269,13 +269,25 @@ async fn checkpoint_rejects_prepare_response_without_upload_url() {
 }
 
 #[tokio::test]
-async fn checkpoint_reports_session_history_upload_stage_and_final_status() {
+async fn checkpoint_reports_failed_session_history_upload_as_unavailable() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
     let mut runtime = runtime_from_process_env().unwrap();
     runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _system_log_guard = SystemLogOverrideGuard::set(runtime.paths.system_log_file());
     let _files_guard = SessionCheckpointFilesGuard::new();
+    let artifact_dir = tempfile::tempdir().unwrap();
+    let missing_artifact_mount = artifact_dir.path().join("missing-memory");
+    runtime.config.artifacts = vec![guest_agent::env::ArtifactEnv {
+        name: "memory".to_string(),
+        mount_path: missing_artifact_mount.to_string_lossy().into_owned(),
+        storage_id: "memory-storage-id".to_string(),
+        version_id: "preserved-memory-version".to_string(),
+        missing_root_policy: Some(
+            api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy::PreserveParentVersion,
+        ),
+    }];
     let session_id = "aeaeaeae-aeae-4eae-8eae-aeaeaeaeaeae";
     let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
     std::fs::write(&history_path, &history).unwrap();
@@ -297,27 +309,57 @@ async fn checkpoint_reports_session_history_upload_stage_and_final_status() {
         when.method(PUT).path(upload_path);
         then.status(502);
     });
+    let artifact_snapshot = json!({
+        "checkpoint": {
+            "artifactSnapshots": [{
+                "name": "memory",
+                "version": "preserved-memory-version",
+                "mountPath": missing_artifact_mount,
+                "missingRootPolicy": "preserveParentVersion",
+            }],
+        },
+    })
+    .to_string();
     let complete_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/complete");
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(r#"{"exitCode":0}"#)
+            .json_body_includes(
+                r#"{"checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            )
+            .json_body_includes(artifact_snapshot);
         then.status(200)
             .json_body(json!({"success": true, "status": "completed"}));
     });
 
-    let error = guest_agent::checkpoint::prepare_checkpoint_for_runtime(
-        &runtime,
-        &checkpoint_session_metadata(&runtime),
-    )
-    .await
-    .err()
-    .expect("failed history upload should fail checkpoint preparation");
+    create_bounded_checkpoint(&runtime).await.unwrap();
 
-    assert_eq!(
-        error.to_string(),
-        "checkpoint: session history upload failed: http: PUT presigned failed after 3 attempts; last failure: HTTP 502"
-    );
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(3).await;
-    complete_mock.assert_calls_async(0).await;
+    complete_mock.assert_calls_async(1).await;
+
+    let operations = std::fs::read_to_string(runtime.paths.sandbox_ops_file()).unwrap();
+    let upload_operation = operations
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .into_iter()
+        .find(|operation| operation["action_type"] == "session_history_s3_upload")
+        .expect("session history upload operation");
+    assert_eq!(upload_operation["success"], false);
+    assert_eq!(
+        upload_operation["error"],
+        "http: PUT presigned failed after 3 attempts; last failure: HTTP 502"
+    );
+
+    let system_log = std::fs::read_to_string(runtime.paths.system_log_file()).unwrap();
+    assert!(system_log.contains(
+        "[ERROR] [sandbox:guest-agent] Session history upload failed; continuing checkpoint \
+         without history: http: PUT presigned failed after 3 attempts; last failure: HTTP 502"
+    ));
+    assert!(!system_log.contains(upload_path));
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
 }
 
 #[tokio::test]

@@ -1,5 +1,9 @@
-import type { PiModelConfigLegacy as PiModelConfig } from "@okouai/api-contracts/contracts/runners";
-import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
+import {
+  PI_MODEL_CONFIG_CURRENT_GENERATION,
+  PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+  type PiModelConfig,
+  type PiModelConfigLegacy,
+} from "@okouai/api-contracts/contracts/runners";
 import {
   getModelProviderPiEndpoint,
   getSecretNameForType,
@@ -12,11 +16,12 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
-import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import { GATEWAY_RUNTIME_SECRET_NAME } from "./model-provider-gateway-runtime";
+import { isPiGptModel } from "./pi-gpt-model";
 
 /**
  * Resolve non-secret model metadata shared by the sandbox Pi runtime and the
@@ -30,22 +35,70 @@ function normalizedBaseUrl(url: string): string {
 
 interface PiRuntimeContract {
   readonly api: "openai-responses";
-  readonly thinkingLevel?: PiModelConfig["thinkingLevel"];
-  readonly serviceTier?: PiModelConfig["serviceTier"];
+  readonly thinkingLevel?: PiModelConfigLegacy["thinkingLevel"];
+  readonly serviceTier?: PiModelConfigLegacy["serviceTier"];
 }
 
 type PiCatalogProvider = "deepseek" | "openai";
 
+const GPT_API_KEY_PI_ROUTES = {
+  "openai-api-key": {
+    productProviderType: "openai-api-key",
+    provider: "openai",
+    modelPrefix: "",
+    endpoint: getModelProviderPiEndpoint("openai-api-key", "openai-responses"),
+    credentialSecretName: "OPENAI_API_KEY",
+  },
+  "openrouter-codex": {
+    productProviderType: "openrouter-codex",
+    provider: "openrouter",
+    modelPrefix: "openai/",
+    endpoint: getModelProviderPiEndpoint(
+      "openrouter-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "OPENROUTER_API_KEY",
+  },
+  "vercel-ai-gateway-codex": {
+    productProviderType: "vercel-ai-gateway-codex",
+    provider: "openai",
+    modelPrefix: "openai/",
+    endpoint: getModelProviderPiEndpoint(
+      "vercel-ai-gateway-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "VERCEL_AI_GATEWAY_API_KEY",
+  },
+} as const;
+
+type GptApiKeyPiProviderType = keyof typeof GPT_API_KEY_PI_ROUTES;
+
+export function isGptApiKeyPiProviderType(
+  value: string | null | undefined,
+): value is GptApiKeyPiProviderType {
+  return (
+    value !== null &&
+    value !== undefined &&
+    Object.hasOwn(GPT_API_KEY_PI_ROUTES, value)
+  );
+}
+
+function gptApiKeyPiRoute(
+  value: string | null | undefined,
+): (typeof GPT_API_KEY_PI_ROUTES)[GptApiKeyPiProviderType] | null {
+  return isGptApiKeyPiProviderType(value) ? GPT_API_KEY_PI_ROUTES[value] : null;
+}
+
 function piCatalogProvider(
   selectedModel: string | null | undefined,
 ): PiCatalogProvider | null {
+  if (isPiGptModel(selectedModel)) {
+    return "openai";
+  }
   switch (selectedModel) {
     case "deepseek-v4-flash":
     case "deepseek-v4-pro": {
       return "deepseek";
-    }
-    case "gpt-5.6-terra": {
-      return "openai";
     }
     default: {
       return null;
@@ -58,11 +111,12 @@ function piRuntimeContract(args: {
   readonly selectedModel: string;
   readonly codexServiceTier: "fast" | undefined;
 }): PiRuntimeContract {
-  if (args.selectedModel === "gpt-5.6-terra") {
+  if (isPiGptModel(args.selectedModel)) {
     return {
       api: "openai-responses",
-      thinkingLevel: "low",
-      ...(isBuiltInModelProviderType(args.providerType) &&
+      thinkingLevel: "max",
+      ...((isBuiltInModelProviderType(args.providerType) ||
+        args.providerType === "custom-openai-responses") &&
       args.codexServiceTier === "fast"
         ? { serviceTier: "priority" as const }
         : {}),
@@ -90,34 +144,56 @@ function piProvider(
   }
 }
 
+function isFastGptPiProvider(
+  modelProviderType: string | null | undefined,
+  builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined,
+): boolean {
+  return (
+    modelProviderType === "codex-oauth-token" ||
+    modelProviderType === "custom-openai-responses" ||
+    isGptApiKeyPiProviderType(modelProviderType) ||
+    (isBuiltInModelProviderType(modelProviderType) &&
+      (builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
+        builtInModelRuntimeRoute?.providerType === "openrouter-codex"))
+  );
+}
+
+/**
+ * Route canonical chat threads by model and provider policy. Trigger source is
+ * intentionally absent so every queued connector shares the same admission.
+ */
 export function shouldUsePiExecution(args: {
   readonly chatThreadId: string | undefined;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
   readonly codexServiceTier: "fast" | undefined;
   readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
-  readonly triggerSource: TriggerSource;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): boolean {
   const catalogProvider = piCatalogProvider(args.selectedModel);
   const isExistingPiModel = catalogProvider === "deepseek";
-  const isStandardTerra =
+  const isStandardGpt =
     catalogProvider === "openai" && args.codexServiceTier === undefined;
-  const isFastTerra =
+  const isFastGpt =
     catalogProvider === "openai" &&
     args.codexServiceTier === "fast" &&
-    isBuiltInModelProviderType(args.modelProviderType) &&
-    (args.builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
-      args.builtInModelRuntimeRoute?.providerType === "openrouter-codex") &&
-    isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
+    isFastGptPiProvider(
+      args.modelProviderType,
+      args.builtInModelRuntimeRoute,
+    ) &&
+    isCodexFastModeEnabled(args.featureSwitchContext);
   const isPiModelProvider =
     isBuiltInModelProviderType(args.modelProviderType) ||
-    args.modelProviderType === "custom-openai-responses";
+    args.modelProviderType === "custom-openai-responses" ||
+    (args.modelProviderType === "codex-oauth-token" &&
+      (isStandardGpt || isFastGpt)) ||
+    (gptApiKeyPiRoute(args.modelProviderType) !== null &&
+      (isStandardGpt || isFastGpt));
   return (
     args.chatThreadId !== undefined &&
-    isWebChatTriggerSource(args.triggerSource) &&
+    args.chatThreadId.length > 0 &&
     isPiModelProvider &&
-    (isExistingPiModel || isStandardTerra || isFastTerra) &&
+    (isExistingPiModel || isStandardGpt || isFastGpt) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
 }
@@ -128,7 +204,79 @@ interface PiModelProviderConfigInput {
   readonly environment: Record<string, string>;
   readonly selectedModel: string | null;
   readonly inlineFirewall?: boolean;
-  readonly credentialHeader?: PiModelConfig["credentialHeader"];
+  readonly credentialHeader?: PiModelConfigLegacy["credentialHeader"];
+}
+
+function resolveCodexSubscriptionPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  if (
+    provider.type !== "codex-oauth-token" ||
+    !isPiGptModel(provider.selectedModel) ||
+    provider.inlineFirewall === true ||
+    provider.credentialHeader !== undefined ||
+    (provider.concreteType !== undefined &&
+      provider.concreteType !== "codex-oauth-token") ||
+    provider.environment.OPENAI_MODEL !== provider.selectedModel ||
+    !provider.environment.CHATGPT_ACCESS_TOKEN?.trim() ||
+    !provider.environment.CHATGPT_ACCOUNT_ID?.trim()
+  ) {
+    return null;
+  }
+  const endpoint = getModelProviderPiEndpoint(
+    "codex-oauth-token",
+    "openai-codex-responses",
+  );
+  if (!endpoint) {
+    return null;
+  }
+  const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
+  if (
+    configuredBaseUrl &&
+    normalizedBaseUrl(configuredBaseUrl) !== normalizedBaseUrl(endpoint.baseUrl)
+  ) {
+    return null;
+  }
+  const config = {
+    ...(codexServiceTier === "fast"
+      ? {
+          schemaVersion: PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+          serviceTier: codexServiceTier,
+        }
+      : { schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION }),
+    dialect: "openai-codex-responses",
+    transport: "sse",
+    provider: "openai-codex",
+    baseUrl: endpoint.baseUrl,
+    model: provider.selectedModel,
+    thinkingLevel: "max",
+    credentialBindings: [
+      {
+        kind: "access-token",
+        environment: "CHATGPT_ACCESS_TOKEN",
+        secretName: "CHATGPT_ACCESS_TOKEN",
+      },
+      {
+        kind: "account-id",
+        environment: "CHATGPT_ACCOUNT_ID",
+        secretName: "CHATGPT_ACCOUNT_ID",
+      },
+    ],
+  } satisfies PiModelConfig;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: "sandbox-access-token-placeholder",
+    accountId: "sandbox-account-id-placeholder",
+    dialect: config.dialect,
+    transport: config.transport,
+    thinkingLevel: config.thinkingLevel,
+    serviceTier: codexServiceTier,
+  })
+    ? config
+    : null;
 }
 
 function resolveCustomGatewayPiModelConfig(
@@ -177,6 +325,75 @@ function resolveCustomGatewayPiModelConfig(
     : null;
 }
 
+function resolveGptApiKeyPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  const route = gptApiKeyPiRoute(provider.type);
+  if (
+    !route ||
+    !isPiGptModel(provider.selectedModel) ||
+    provider.inlineFirewall === true ||
+    provider.credentialHeader !== undefined ||
+    (provider.concreteType !== undefined &&
+      provider.concreteType !== route.productProviderType) ||
+    !route.endpoint ||
+    getSecretNameForType(route.productProviderType) !==
+      route.credentialSecretName ||
+    provider.environment.OPENAI_MODEL !==
+      `${route.modelPrefix}${provider.selectedModel}` ||
+    !provider.environment.OPENAI_API_KEY?.trim()
+  ) {
+    return null;
+  }
+  const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
+  if (
+    configuredBaseUrl &&
+    normalizedBaseUrl(configuredBaseUrl) !==
+      normalizedBaseUrl(route.endpoint.baseUrl)
+  ) {
+    return null;
+  }
+  const serviceTier = codexServiceTier === "fast" ? "priority" : undefined;
+  const config = {
+    ...(serviceTier === undefined
+      ? { schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION }
+      : {
+          schemaVersion: PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+          serviceTier,
+        }),
+    dialect: "openai-responses",
+    transport: "sse",
+    provider: route.provider,
+    baseUrl: route.endpoint.baseUrl,
+    model: `${route.modelPrefix}${provider.selectedModel}`,
+    ...(route.productProviderType === "vercel-ai-gateway-codex"
+      ? { catalogModel: provider.selectedModel }
+      : {}),
+    thinkingLevel: "max",
+    credentialBindings: [
+      {
+        kind: "api-key",
+        environment: "OPENAI_API_KEY",
+        secretName: route.credentialSecretName,
+      },
+    ],
+  } satisfies PiModelConfig;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    ...(config.catalogModel ? { catalogModel: config.catalogModel } : {}),
+    apiKey: "sandbox-secret",
+    dialect: config.dialect,
+    transport: config.transport,
+    thinkingLevel: config.thinkingLevel,
+    serviceTier,
+  })
+    ? config
+    : null;
+}
+
 export function resolvePiSandboxModelConfig(
   provider: PiModelProviderConfigInput | null,
   codexServiceTier: "fast" | undefined = undefined,
@@ -184,8 +401,14 @@ export function resolvePiSandboxModelConfig(
   if (!provider || !provider.selectedModel) {
     return null;
   }
+  if (provider.type === "codex-oauth-token") {
+    return resolveCodexSubscriptionPiModelConfig(provider, codexServiceTier);
+  }
   if (provider.type === "custom-openai-responses") {
     return resolveCustomGatewayPiModelConfig(provider, codexServiceTier);
+  }
+  if (isGptApiKeyPiProviderType(provider.type)) {
+    return resolveGptApiKeyPiModelConfig(provider, codexServiceTier);
   }
   if (provider.inlineFirewall) {
     return null;

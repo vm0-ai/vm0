@@ -278,23 +278,9 @@ describe("GET /api/connector-catalog", () => {
       invertInDarkMode: false,
       scale: 2,
     });
-
-    const okouResponse = await accept(
-      client.list({
-        headers,
-        extraHeaders: { origin: "https://app.okou.ai" },
-      }),
-      [200],
-    );
-    const okouOpenai = okouResponse.body.connectors.find((connector) => {
-      return connector.slug === "openai";
-    });
-    expect(okouOpenai?.icon.url).toBe(
-      "https://static.okou.io/test-fixtures/connectors/openai.svg",
-    );
   });
 
-  it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
+  it("accepts an Okou run token carrying connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededOrgs.push(
@@ -326,7 +312,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.connectors.length).toBeGreaterThan(0);
   });
 
-  it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
+  it("rejects an Okou run token missing connector:read with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededOrgs.push(
@@ -386,7 +372,7 @@ describe("GET /api/connector-catalog", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("rejects diagnostics ZERO_TOKEN calls even with connector:read", async () => {
+  it("rejects diagnostics calls from Okou run tokens even with connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededOrgs.push(
@@ -541,7 +527,7 @@ describe("GET /api/connector-catalog", () => {
     expect(descriptionSearch.body.connectors).toStrictEqual([]);
   });
 
-  it("rejects catalog status ZERO_TOKEN calls without connector:read", async () => {
+  it("rejects catalog status calls from Okou run tokens without connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     seededOrgs.push(
@@ -916,6 +902,7 @@ describe("GET /api/connector-catalog", () => {
       [200],
     );
 
+    expect(listResponse.body.connectors.length).toBeGreaterThan(0);
     for (const connector of listResponse.body.connectors) {
       const detailResponse = await accept(
         client.get({

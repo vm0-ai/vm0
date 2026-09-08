@@ -14,7 +14,7 @@ export default [
       "src/**/*.spec.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),

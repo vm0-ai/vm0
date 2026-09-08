@@ -20,8 +20,8 @@ from unittest.mock import patch
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
@@ -101,7 +101,9 @@ class _LifecycleSocket(_REAL_SOCKET):
 
 @dataclass
 class _LifecycleSocketFactory:
+    constructor_errors: tuple[OSError | None, ...] = ()
     tcp_nodelay_errors: tuple[OSError | None, ...] = ()
+    constructor_families: list[int] = field(default_factory=list)
     sockets: list[_LifecycleSocket] = field(default_factory=list)
 
     def __call__(
@@ -113,6 +115,15 @@ class _LifecycleSocketFactory:
     ) -> socket.socket:
         if fileno is not None:
             return _REAL_SOCKET(family, socket_type, proto, fileno)
+        constructor_index = len(self.constructor_families)
+        self.constructor_families.append(family)
+        constructor_error = (
+            self.constructor_errors[constructor_index]
+            if constructor_index < len(self.constructor_errors)
+            else None
+        )
+        if constructor_error is not None:
+            raise constructor_error
         socket_index = len(self.sockets)
         tcp_nodelay_error = (
             self.tcp_nodelay_errors[socket_index]
@@ -129,12 +140,14 @@ class _LifecycleSocketFactory:
         return created
 
 
-@dataclass(frozen=True)
+@dataclass
 class _OrderedResolver:
     expected_host: str
     addresses: tuple[str, ...]
+    lookups: list[str] = field(default_factory=list)
 
     async def lookup_ip(self, host: str) -> list[str]:
+        self.lookups.append(host)
         assert host == self.expected_host
         return list(self.addresses)
 
@@ -302,21 +315,63 @@ async def _trickle_until_peer_disconnect(
     peer_closed.set()
 
 
-def _create_tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext]:
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+def _create_tls_server(
+    tmp_path: Path,
+    *,
+    hostname: str = "localhost",
+) -> tuple[ssl.SSLContext, Path]:
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Firewall auth test CA")])
     now = datetime.datetime.now(datetime.UTC)
+    ca_certificate = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False
+        )
+        .sign(ca_key, hashes.SHA256())
+    )
+    ca_path = tmp_path / "ca.pem"
+    ca_path.write_bytes(ca_certificate.public_bytes(serialization.Encoding.PEM))
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)])
     certificate = (
         x509.CertificateBuilder()
         .subject_name(name)
-        .issuer_name(name)
+        .issuer_name(ca_name)
         .public_key(private_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(minutes=1))
+        .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(private_key, hashes.SHA256())
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .sign(ca_key, hashes.SHA256())
     )
     certificate_path = tmp_path / "localhost-cert.pem"
     private_key_path = tmp_path / "localhost-key.pem"
@@ -331,9 +386,11 @@ def _create_tls_contexts(tmp_path: Path) -> tuple[ssl.SSLContext, ssl.SSLContext
 
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     server_context.load_cert_chain(certificate_path, private_key_path)
-    client_context = ssl.create_default_context(cafile=str(certificate_path))
-    client_context.set_alpn_protocols(["http/1.1"])
-    return server_context, client_context
+    return server_context, ca_path
+
+
+def _tls_trust_environment(ca_path: Path) -> dict[str, str]:
+    return {"SSL_CERT_FILE": str(ca_path), "SSL_CERT_DIR": "", "SSLKEYLOGFILE": ""}
 
 
 class TestFetchFirewallHeaders:
@@ -1260,6 +1317,97 @@ class TestFirewallAuthSuccessParser:
 
 
 class TestFirewallAuthAsyncTransport:
+    async def test_https_trusted_matching_certificate_sends_and_caches_auth(
+        self, mitm_ctx, tmp_path: Path
+    ):
+        server_context, ca_path = _create_tls_server(tmp_path)
+        requests: list[_RawHttpRequest] = []
+        cache_key = auth_cache_key()
+        request = firewall_auth_request(
+            auth_headers={"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        )
+        expected_headers = {"Authorization": "Bearer resolved-test-token"}
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer, headers=expected_headers)
+
+        async with _run_test_server(handle_client, ssl_context=server_context) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT | _tls_trust_environment(ca_path)),
+                patch.object(
+                    auth_client,
+                    "_dns_resolver",
+                    _OrderedResolver(expected_host="localhost", addresses=("127.0.0.1",)),
+                ),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"https://localhost:{port}"),
+            ):
+                result = await auth_cache.get_firewall_headers(cache_key, request)
+                cached = await auth_cache.get_firewall_headers(cache_key, request)
+
+        assert result["headers"] == expected_headers
+        assert result["cache_hit"] is False
+        assert cached["headers"] == expected_headers
+        assert cached["cache_hit"] is True
+        assert len(requests) == 1
+        assert requests[0].method == "POST"
+        assert requests[0].target == "/api/webhooks/agent/firewall/auth"
+        assert requests[0].headers["authorization"] == "Bearer tok-xyz"
+        assert requests[0].body == request.to_bytes()
+
+    @pytest.mark.parametrize(
+        ("hostname", "trusted", "error_message"),
+        [
+            pytest.param("localhost", False, "unable to get local issuer", id="untrusted-issuer"),
+            pytest.param("wrong.example", True, "Hostname mismatch", id="wrong-hostname"),
+        ],
+    )
+    async def test_https_rejects_invalid_peer_without_sending_or_caching_auth(
+        self, mitm_ctx, tmp_path: Path, hostname: str, trusted: bool, error_message: str
+    ):
+        server_context, ca_path = _create_tls_server(tmp_path, hostname=hostname)
+        if not trusted:
+            unrelated_ca_dir = tmp_path / "unrelated"
+            unrelated_ca_dir.mkdir()
+            _, ca_path = _create_tls_server(unrelated_ca_dir)
+        requests: list[_RawHttpRequest] = []
+        socket_factory = _LifecycleSocketFactory()
+        cache_key = auth_cache_key()
+        request = firewall_auth_request(
+            auth_headers={"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer, headers={"Authorization": "Bearer forged-token"})
+
+        async with _run_test_server(handle_client, ssl_context=server_context) as port:
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT | _tls_trust_environment(ca_path)),
+                patch.object(
+                    auth_client,
+                    "_dns_resolver",
+                    _OrderedResolver(expected_host="localhost", addresses=("127.0.0.1",)),
+                ),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"https://localhost:{port}"),
+            ):
+                for attempt in range(2):
+                    with pytest.raises(ssl.SSLCertVerificationError, match=error_message):
+                        await auth_cache.get_firewall_headers(cache_key, request)
+                    assert cached_headers(cache_key) is None
+                    assert requests == []
+                    assert len(socket_factory.sockets) == attempt + 1
+                    assert all(sock.fileno() == -1 for sock in socket_factory.sockets)
+
     @pytest.mark.parametrize(
         "framing",
         [
@@ -1430,6 +1578,81 @@ class TestFirewallAuthAsyncTransport:
         assert failed_socket.close_call_count == 1
         assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
         assert winner_socket.shutdown_calls == []
+
+    async def test_uses_later_address_after_socket_creation_failure(self, mitm_ctx):
+        requests: list[_RawHttpRequest] = []
+        loop = asyncio.get_running_loop()
+        socket_factory = _LifecycleSocketFactory(
+            constructor_errors=(OSError(errno.EAFNOSUPPORT, "address family unsupported"), None)
+        )
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("2001:db8::1", "192.0.2.1"),
+        )
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        async with _run_test_server(handle_client) as port:
+            connect_probe = _SimultaneousSockConnect(
+                loop.sock_connect,
+                ("127.0.0.1", port),
+                participant_count=1,
+            )
+            expected_address: _SocketAddress = ("192.0.2.1", port)
+            with (
+                patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+                patch.object(auth_client, "_dns_resolver", resolver),
+                patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+                patch.object(loop, "sock_connect", new=connect_probe),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert resolver.lookups == ["firewall-auth.invalid"]
+        assert socket_factory.constructor_families == [socket.AF_INET6, socket.AF_INET]
+        assert connect_probe.attempted_addresses == [expected_address]
+        assert connect_probe.completed_addresses == [expected_address]
+        assert len(socket_factory.sockets) == 1
+        winner_socket = socket_factory.sockets[0]
+        assert winner_socket.setsockopt_calls == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]
+        assert winner_socket.shutdown_calls == []
+        assert winner_socket.fileno() == -1
+
+    async def test_propagates_final_socket_creation_error(self, mitm_ctx):
+        final_error = OSError(errno.EMFILE, "file table overflow")
+        socket_factory = _LifecycleSocketFactory(
+            constructor_errors=(
+                OSError(errno.EAFNOSUPPORT, "address family unsupported"),
+                final_error,
+            )
+        )
+        resolver = _OrderedResolver(
+            expected_host="firewall-auth.invalid",
+            addresses=("2001:db8::1", "192.0.2.1"),
+        )
+
+        with (
+            patch.dict(os.environ, _EMPTY_PROXY_ENVIRONMENT),
+            patch.object(auth_client, "_dns_resolver", resolver),
+            patch.object(auth_client.socket, "socket", side_effect=socket_factory),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            mitm_ctx(api_url="http://firewall-auth.invalid"),
+            pytest.raises(OSError, match=r"file table overflow$") as exc_info,
+        ):
+            await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert exc_info.value is final_error
+        assert resolver.lookups == ["firewall-auth.invalid"]
+        assert socket_factory.constructor_families == [socket.AF_INET6, socket.AF_INET]
+        assert socket_factory.sockets == []
 
     async def test_retries_next_resolved_address_after_connect_failure(self, mitm_ctx):
         class OrderedResolver:
@@ -1748,10 +1971,11 @@ class TestFirewallAuthAsyncTransport:
             patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             mitm_ctx(api_url="http://firewall-auth.invalid"),
-            pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+            pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
         ):
             await auth_client.fetch_firewall_headers(firewall_auth_request())
 
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.CONNECT
         assert [address[0] for address in connect_probe.attempted_addresses] == list(pending_hosts)
         assert {address[0] for address in connect_probe.cancelled_addresses} == set(pending_hosts)
         assert connect_probe.max_active_count == 3
@@ -1815,9 +2039,43 @@ class TestFirewallAuthAsyncTransport:
             await asyncio.wait_for(request_received.wait(), timeout=2.0)
             await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
 
-        assert str(exc_info.value) == "Firewall auth fetch deadline exceeded"
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_BODY
+        assert str(exc_info.value) == ("Firewall auth fetch deadline exceeded during response_body")
         assert "sensitive-encrypted-secrets" not in str(exc_info.value)
         assert "sensitive-sandbox-token" not in str(exc_info.value)
+
+    async def test_total_deadline_attributes_a_stalled_response_header_wait(self, mitm_ctx):
+        request_received = asyncio.Event()
+        peer_closed = asyncio.Event()
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await _read_raw_http_request(reader)
+            request_received.set()
+            with suppress(ConnectionResetError):
+                while await reader.read(64 * 1024):
+                    pass
+            peer_closed.set()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_client) as port:
+            with (
+                mitm_ctx(api_url=f"http://127.0.0.1:{port}"),
+                patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+            await asyncio.wait_for(request_received.wait(), timeout=2.0)
+            await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
+
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_HEADERS
+        assert str(exc_info.value) == (
+            "Firewall auth fetch deadline exceeded during response_headers"
+        )
 
     async def test_total_deadline_aborts_a_stalled_tls_handshake(self, mitm_ctx):
         handshake_started = asyncio.Event()
@@ -1850,12 +2108,14 @@ class TestFirewallAuthAsyncTransport:
                 patch.dict(os.environ, proxy_environment),
                 mitm_ctx(api_url=f"https://127.0.0.1:{port}"),
                 patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.5),
-                pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
             ):
                 await auth_client.fetch_firewall_headers(firewall_auth_request())
 
             await asyncio.wait_for(handshake_started.wait(), timeout=2.0)
             await asyncio.wait_for(peer_closed.wait(), timeout=2.0)
+
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.TLS
 
     async def test_total_deadline_cancels_dns_lookup_before_connect(self, mitm_ctx):
         class BlockingResolver:
@@ -1889,10 +2149,11 @@ class TestFirewallAuthAsyncTransport:
             patch.object(auth_client, "_dns_resolver", resolver),
             patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.05),
             mitm_ctx(api_url="http://firewall-auth.invalid"),
-            pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+            pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
         ):
             await auth_client.fetch_firewall_headers(firewall_auth_request())
 
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.DNS
         assert resolver.started.is_set()
         assert resolver.cancelled.is_set()
 
@@ -1948,6 +2209,11 @@ class TestFirewallAuthAsyncTransport:
         assert all(
             isinstance(result, auth_client.FirewallAuthDeadlineExceededError)
             for result in shared_results
+        )
+        assert all(
+            result.phase is auth_client.FirewallAuthFetchPhase.RESPONSE_BODY
+            for result in shared_results
+            if isinstance(result, auth_client.FirewallAuthDeadlineExceededError)
         )
         assert len({id(result) for result in shared_results}) == 1
         assert retry["headers"] == {}
@@ -2215,19 +2481,21 @@ class TestFirewallAuthAsyncTransport:
                 patch.object(auth_client, "FIREWALL_AUTH_FETCH_DEADLINE_SECONDS", 0.1),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
                 mitm_ctx(api_url="https://platform.example"),
-                pytest.raises(auth_client.FirewallAuthDeadlineExceededError),
+                pytest.raises(auth_client.FirewallAuthDeadlineExceededError) as exc_info,
             ):
                 await auth_client.fetch_firewall_headers(firewall_auth_request())
 
             await asyncio.wait_for(connect_received.wait(), timeout=2.0)
             await asyncio.wait_for(proxy_peer_closed.wait(), timeout=2.0)
 
+        assert exc_info.value.phase is auth_client.FirewallAuthFetchPhase.PROXY_CONNECT
+
     async def test_https_proxy_connect_preserves_origin_tls_and_isolates_credentials(
         self,
         mitm_ctx,
         tmp_path: Path,
     ):
-        server_context, client_context = _create_tls_contexts(tmp_path)
+        server_context, ca_path = _create_tls_server(tmp_path)
         origin_requests: list[_RawHttpRequest] = []
         proxy_requests: list[_RawHttpRequest] = []
 
@@ -2266,8 +2534,10 @@ class TestFirewallAuthAsyncTransport:
             async with _run_test_server(handle_proxy) as proxy_port:
                 proxy_url = f"http://proxy-user:proxy-password@127.0.0.1:{proxy_port}"
                 with (
-                    patch.dict(os.environ, _https_proxy_environment(proxy_url)),
-                    patch.object(auth_client, "_https_context", client_context),
+                    patch.dict(
+                        os.environ,
+                        _https_proxy_environment(proxy_url) | _tls_trust_environment(ca_path),
+                    ),
                     patch.object(platform_api, "VERCEL_BYPASS", ""),
                     mitm_ctx(api_url=f"https://localhost:{origin_port}"),
                 ):
@@ -2291,7 +2561,7 @@ class TestFirewallAuthAsyncTransport:
         mitm_ctx,
         tmp_path: Path,
     ):
-        server_context, client_context = _create_tls_contexts(tmp_path)
+        server_context, ca_path = _create_tls_server(tmp_path)
         origin_requests: list[_RawHttpRequest] = []
         proxy_requests: list[_RawHttpRequest] = []
         proxy_peer_closed = asyncio.Event()
@@ -2341,9 +2611,9 @@ class TestFirewallAuthAsyncTransport:
                 with (
                     patch.dict(
                         os.environ,
-                        _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                        _https_proxy_environment(f"http://127.0.0.1:{proxy_port}")
+                        | _tls_trust_environment(ca_path),
                     ),
-                    patch.object(auth_client, "_https_context", client_context),
                     patch.object(platform_api, "VERCEL_BYPASS", ""),
                     mitm_ctx(api_url=f"https://localhost:{origin_port}"),
                     pytest.raises(

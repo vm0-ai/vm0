@@ -19,6 +19,8 @@ export const computedKeySchema = z.enum([
   "chat-thread-indicators",
   "computer-use-hosts",
   "connection-diagnostics",
+  "indexeddb-diagnostics",
+  "indexeddb-snapshot-measurement",
   "queue-data",
 ]);
 
@@ -37,10 +39,40 @@ export const listedComputerUseHostSchema = z
 
 export type ListedComputerUseHost = z.infer<typeof listedComputerUseHostSchema>;
 
+const indexedDbDiagnosticsSchema = z
+  .object({
+    version: z.number().int().nonnegative(),
+    stores: z.array(
+      z
+        .object({
+          name: z.string().min(1),
+          recordCount: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export type IndexedDbDiagnostics = z.infer<typeof indexedDbDiagnosticsSchema>;
+
+const indexedDbSnapshotMeasurementSchema = z
+  .object({
+    threadCount: z.number().int().nonnegative(),
+    payloadBytes: z.number().int().nonnegative(),
+    readDurationMs: z.number().nonnegative(),
+  })
+  .strict();
+
+export type IndexedDbSnapshotMeasurement = z.infer<
+  typeof indexedDbSnapshotMeasurementSchema
+>;
+
 interface ComputedValueMap {
   readonly "chat-thread-indicators": ChatThreadIndicators;
   readonly "computer-use-hosts": ListedComputerUseHost[];
   readonly "connection-diagnostics": ConnectionDiagnostics;
+  readonly "indexeddb-diagnostics": IndexedDbDiagnostics;
+  readonly "indexeddb-snapshot-measurement": IndexedDbSnapshotMeasurement | null;
   readonly "queue-data": QueueResponse;
 }
 
@@ -62,6 +94,12 @@ export function parseComputedValue(
   }
   if (computedKey === "connection-diagnostics") {
     return connectionDiagnosticsSchema.parse(value);
+  }
+  if (computedKey === "indexeddb-diagnostics") {
+    return indexedDbDiagnosticsSchema.parse(value);
+  }
+  if (computedKey === "indexeddb-snapshot-measurement") {
+    return indexedDbSnapshotMeasurementSchema.nullable().parse(value);
   }
   return queueResponseSchema.parse(value);
 }

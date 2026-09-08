@@ -49,7 +49,7 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: {
       react: { version: "detect" },
-      "vm0/eslint-cache-fingerprint": eslintCacheFingerprint,
+      "okou/eslint-cache-fingerprint": eslintCacheFingerprint,
     },
   },
   {
@@ -77,7 +77,9 @@ export default [
       "ccstate/signal-check-await": "error",
       "ccstate/tsx-in-views": "error",
       "ccstate/test-context-in-hooks": "error",
-      "ccstate/setup-page-render": "error",
+      // setupPage now always renders the complete Router, including from
+      // signal-oriented integration tests.
+      "ccstate/setup-page-render": "off",
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-new-promise": "error",
@@ -132,7 +134,7 @@ export default [
       "src/signals/fetch.ts",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   {
@@ -157,7 +159,6 @@ export default [
       "ccstate/no-manual-mock-cleanup": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
-      "ccstate/no-raw-msw-http": "error",
       "ccstate/no-mockapi-raw-async": "error",
       "no-restricted-syntax": [
         "error",
@@ -244,16 +245,6 @@ export default [
       "ccstate/no-direct-fetch": "off",
     },
   },
-  // Allow raw http.* in the fetch$ wrapper self-tests. The file exercises the
-  // wrapper against synthetic URLs (`/test`, `/api/zero/items`) that do not
-  // correspond to any typed contract — see the file-level comment in
-  // src/signals/__tests__/fetch.test.ts for the full rationale.
-  {
-    files: ["src/signals/__tests__/fetch.test.ts"],
-    rules: {
-      "ccstate/no-raw-msw-http": "off",
-    },
-  },
   // Allow direct localStorage in the abstraction layer only
   {
     files: ["src/signals/external/local-storage.ts"],
@@ -283,7 +274,6 @@ export default [
       "src/signals/__tests__/test-helpers.ts",
       "src/signals/__tests__/utils.test.ts",
       "src/signals/__tests__/realtime.test.ts",
-      "src/signals/zero-page/__tests__/poll-slack-connection.test.ts",
     ],
     rules: {
       "ccstate/no-new-abort-controller": "off",

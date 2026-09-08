@@ -7,7 +7,6 @@ import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installatio
 import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { logger } from "../../lib/log";
 import { env } from "../../lib/env";
 import { buildFeishuNoticeMessage } from "../../lib/feishu-message-card";
@@ -77,6 +76,7 @@ const feishuInboundMessageSchema = z.object({
   threadId: z.string().nullable(),
   openId: z.string(),
   text: z.string(),
+  promptText: z.string(),
   file: feishuPromptFileSchema.nullable(),
 });
 
@@ -296,7 +296,7 @@ function canonicalFeishuLaunchContext(args: {
 }): CanonicalFeishuLaunchContext {
   return {
     conversationHistory: args.conversationHistory,
-    messageText: args.message.text,
+    messageText: args.message.promptText,
     messageFiles: [
       ...(args.message.file ? [args.message.file] : []),
       ...args.files,
@@ -330,7 +330,7 @@ function feishuInboundUserMessage(
   chatOpenUrl: string,
 ) {
   return createUserMessageDocument({
-    text: message.file ? null : message.text,
+    text: message.file ? null : message.promptText,
     files: (message.file ? [message.file] : []).map((file) => {
       return {
         id: file.fileId,
@@ -451,7 +451,7 @@ async function notifyQueuedFeishuRun(
   }
   const message = buildFeishuNoticeMessage({
     title: "Run queued",
-    text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/?queue=1)`,
+    text: `Concurrency limit reached. Will start automatically when a slot is available.\n\n[View queue](${env("APP_URL")}/?queue=1)`,
     kind: "warning",
   });
   if (!shouldReplyInFeishuThread(args.message)) {

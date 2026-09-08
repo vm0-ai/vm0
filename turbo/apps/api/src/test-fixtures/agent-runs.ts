@@ -12,6 +12,7 @@ import { createStore, state } from "ccstate";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import type { AgentRunLaunchSnapshot } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -64,6 +65,52 @@ export async function clearRunLaunchSnapshotFixture(
     .returning({ id: agentRuns.id });
   if (rows.length !== 1) {
     throw new Error("Expected one Run launch snapshot to clear");
+  }
+}
+
+/**
+ * Test-only historical-row fixture.  Completion reads this persisted value
+ * after the runner has claimed the run, which lets API tests exercise the
+ * compatibility decoder without changing a production writer.
+ */
+export async function setRunLaunchSnapshotFixture(
+  runId: string,
+  launchSnapshot: AgentRunLaunchSnapshot | null,
+): Promise<void> {
+  const rows = await db()
+    .update(agentRuns)
+    .set({ launchSnapshot })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run launch snapshot to update");
+  }
+}
+
+export async function setRunPiMemoryAdmissionInputsFixture(
+  runId: string,
+  inputs: {
+    readonly triggerSource?: TriggerSource;
+    readonly chatThreadId?: string | null;
+  },
+): Promise<void> {
+  if (inputs.triggerSource === undefined && inputs.chatThreadId === undefined) {
+    return;
+  }
+  const rows = await db()
+    .update(agentRuns)
+    .set({
+      ...(inputs.triggerSource === undefined
+        ? {}
+        : { triggerSource: inputs.triggerSource }),
+      ...(inputs.chatThreadId === undefined
+        ? {}
+        : { chatThreadId: inputs.chatThreadId }),
+    })
+    .where(eq(agentRuns.id, runId))
+    .returning({ id: agentRuns.id });
+  if (rows.length !== 1) {
+    throw new Error("Expected one Run admission input to update");
   }
 }
 
@@ -236,6 +283,7 @@ async function loadDirectSessionSnapshot(
           conversation: {
             id: conversations.id,
             runId: conversations.runId,
+            cliAgentType: conversations.cliAgentType,
             cliAgentSessionId: conversations.cliAgentSessionId,
             cliAgentSessionHistory: conversations.cliAgentSessionHistory,
             cliAgentSessionHistoryHash:
@@ -245,9 +293,7 @@ async function loadDirectSessionSnapshot(
           previousRun: {
             id: agentRuns.id,
             vars: agentRuns.vars,
-            modelProvider: agentRuns.modelProvider,
-            modelRuntimeProvider: agentRuns.modelRuntimeProvider,
-            modelRuntimeModel: agentRuns.modelRuntimeModel,
+            selectedModel: agentRuns.selectedModel,
           },
         })
         .from(agentSessions)
@@ -319,9 +365,10 @@ async function resolveDirectSessionRun(
     agentSessionId: snapshot.session.id,
     continuedFromAgentSessionId: snapshot.session.id,
     resumeSession,
-    ...(snapshot.previousRun
-      ? { resumeSessionModelRoute: snapshot.previousRun }
-      : {}),
+    resumeSessionIdentity: {
+      selectedModel: snapshot.previousRun?.selectedModel ?? null,
+      cliAgentType: conversation?.cliAgentType ?? null,
+    },
   };
 }
 
@@ -554,10 +601,14 @@ export async function setRunModelRuntimeRouteFixture(args: {
   readonly runId: string;
   readonly modelRuntimeProvider: string | null;
   readonly modelRuntimeModel: string | null;
+  readonly selectedModel?: string;
 }): Promise<void> {
   const updated = await db()
     .update(agentRuns)
     .set({
+      ...(args.selectedModel !== undefined && {
+        selectedModel: args.selectedModel,
+      }),
       modelRuntimeProvider: args.modelRuntimeProvider,
       modelRuntimeModel: args.modelRuntimeModel,
     })

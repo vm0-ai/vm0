@@ -25,7 +25,6 @@ import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./avatar-video";
-import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -238,10 +237,11 @@ const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
 );
 
 const chatThreadArtifactGoogleDriveAccountReadyShape = {
-  // New App -> old API fallback. Current APIs always emit this marker after
-  // resolving the thread account, credentials, and agent authorization.
-  // Keep it optional while pre-marker APIs remain available for rollback.
-  accountReady: z.literal(true).optional(),
+  /**
+   * Emitted after the thread account, credentials, and agent authorization
+   * resolve. The disconnected variant carries no readiness marker.
+   */
+  accountReady: z.literal(true),
 };
 
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
@@ -326,21 +326,16 @@ const chatThreadSnapshotProjectionSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   pinnedAt: z.string().nullable(),
+  // Optional for existing snapshots and browser caches without manual ordering.
+  pinOrder: z.string().nullable().optional(),
   renamedAt: z.string().nullable(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
-  // Rollout fallback. Optional so a payload without the field still parses:
-  // from an API deployed before this change (DB/API skew, observed max ~102min)
-  // and from IndexedDB rows an older bundle wrote (old web clients, ~2d).
   // Loose rather than the catalog enum so a pin whose model later leaves the
   // catalog still parses; the strict enum applies on the write path.
-  // Remove once the client floor passes the build that introduced the field and
-  // cached rows have resynced, together with the two `?? null` reads in
-  // chat-thread-event.service.ts and chat-thread-event-replay.ts.
-  // Follow-up: https://github.com/vm0-ai/vm0/issues/26765
-  selectedVideoModel: z.string().nullable().optional(),
+  selectedVideoModel: z.string().nullable(),
   // Keep this optional for pre-field browser rows and loose rather than
   // imageModelIdSchema so a stored model that later leaves the catalog remains
   // replayable. New write contracts validate against the shared schema.
@@ -368,11 +363,13 @@ const chatThreadEventSchema = z.object({
   chatThreadId: z.string().uuid(),
   agentId: z.string().uuid(),
   title: z.string().nullable(),
+  // On sort_touched, this changes pin rank instead of activity recency.
+  pinOrder: z.string().nullable().optional(),
   selectedModel: z.string().nullable().default(null),
   serviceTier: chatThreadServiceTierSchema.nullable().default(null),
   computerUseHostId: z.string().uuid().nullable().default(null),
   cloudBrowserEnabled: z.boolean().optional(),
-  selectedVideoModel: z.string().nullable().optional(),
+  selectedVideoModel: z.string().nullable(),
   selectedImageModel: z.string().nullable().optional(),
   createdAt: z.string(),
 });
@@ -525,14 +522,6 @@ const userMessageTemplatePartSchema = z
   })
   .strict();
 
-const userMessageVoicePartSchema = z
-  .object({
-    type: z.literal("voice"),
-    id: z.string().uuid(),
-    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
-  })
-  .strict();
-
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
@@ -589,7 +578,6 @@ const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
 
 const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
-  userMessageVoicePartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
@@ -1097,10 +1085,10 @@ const chatThreadModelSelectionUpdateBodySchema = z.object({
 /**
  * Text-to-video parameters chosen for this send only.
  *
- * Deliberately not persisted anywhere: the API renders them into the run's
- * system prompt and forgets them, so a reload starts from the effective
- * model's defaults again. The model itself is absent because it is already
- * resolved from the thread pin and the member default the run carries.
+ * Deliberately not persisted as structured settings: the API renders them into
+ * the run's agent prompt, so a reload starts from the effective model's
+ * defaults again. The model itself is absent because it is already resolved
+ * from the thread pin and the member default the run carries.
  */
 const chatRunVideoOptionsRequestSchema = z
   .object({
@@ -1460,7 +1448,12 @@ export const chatThreadPinContract = c.router({
     path: "/api/chat-threads/:id/pin",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    query: z.object({ eventId: chatThreadEventIdSchema.optional() }).optional(),
+    query: z
+      .object({
+        eventId: chatThreadEventIdSchema.optional(),
+        pinOrder: z.string().min(2).max(2048).optional(),
+      })
+      .optional(),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -1469,6 +1462,27 @@ export const chatThreadPinContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Pin a chat thread to the top of the sidebar",
+  },
+});
+
+export const chatThreadPinOrderContract = c.router({
+  reorder: {
+    method: "POST",
+    path: "/api/chat-threads/:id/pin-order",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      pinOrder: z.string().min(2).max(2048),
+      eventId: chatThreadEventIdSchema,
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Set a pinned chat thread's order",
   },
 });
 
@@ -1967,6 +1981,7 @@ export type ChatThreadMarkUnreadContract = typeof chatThreadMarkUnreadContract;
 export type ChatThreadMarkAgentReadContract =
   typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
+export type ChatThreadPinOrderContract = typeof chatThreadPinOrderContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;

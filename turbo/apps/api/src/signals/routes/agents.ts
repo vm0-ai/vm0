@@ -6,19 +6,19 @@ import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/a
 import {
   agentsByIdContract,
   agentsMainContract,
+  type AgentResponse,
   type AgentVisibility,
 } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   DEFAULT_AGENT_AVATAR_URL,
-  randomPresetAvatar,
+  randomAvatarUrl,
 } from "@okouai/core/agent-avatar";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -50,6 +50,7 @@ import {
 } from "../services/user-connectors.service";
 import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUBLIC_AGENT_LIMIT = 7;
 
@@ -210,6 +211,13 @@ function visibilityOwnerError(
     return null;
   }
 
+  // Old web/app -> new API: already-open clients can keep sending unchanged
+  // visibility for about two days. Remove after the client-version floor
+  // excludes builds before #31731; tracked by #31732.
+  if (requestedVisibility === existing.visibility) {
+    return null;
+  }
+
   return forbidden("Only the agent owner can update agent visibility");
 }
 
@@ -298,7 +306,6 @@ const createAgentBody$ = bodyResultOf(agentsMainContract.create);
 
 const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
   const body = await get(createAgentBody$);
   signal.throwIfAborted();
   if (!body.ok) {
@@ -325,11 +332,14 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   };
 
+  const avatarUrl =
+    body.data.avatarUrl === undefined ? randomAvatarUrl() : body.data.avatarUrl;
+
   const metadata = {
     displayName: body.data.displayName ?? null,
     description: body.data.description ?? null,
     sound: body.data.sound ?? null,
-    avatarUrl: body.data.avatarUrl ?? randomPresetAvatar(),
+    avatarUrl,
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
@@ -408,16 +418,18 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error(`Created Agent not found: ${agentId}`);
   }
 
-  return { status: 201 as const, body: agentResponse(agent, publicBrand) };
+  return { status: 201 as const, body: agentResponse(agent) };
 });
 
-const listAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const agents = await get(
-    agentList(auth.orgId, auth.userId, get(publicBrand$)),
-  );
-  return { status: 200 as const, body: [...agents] };
-});
+const agentListResponse$ = computed(
+  async (
+    get,
+  ): Promise<{ readonly status: 200; readonly body: AgentResponse[] }> => {
+    const auth = get(organizationAuthContext$);
+    const agents = await get(agentList(auth.orgId, auth.userId));
+    return { status: 200 as const, body: [...agents] };
+  },
+);
 
 const getAgentInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -427,7 +439,7 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     }),
   );
   if (!agent) {
@@ -514,7 +526,6 @@ const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
   const params = get(pathParamsOf(agentsByIdContract.update));
   const body = await get(updateAgentBody$);
@@ -584,7 +595,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: agentResponse(result.agent, publicBrand),
+    body: agentResponse(result.agent),
   };
 });
 
@@ -595,7 +606,6 @@ const updateAgentMetadataBody$ = bodyResultOf(
 const updateAgentMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(agentsByIdContract.updateMetadata));
     const body = await get(updateAgentMetadataBody$);
@@ -629,7 +639,9 @@ const updateAgentMetadataInner$ = command(
       const permissionError = requireAgentPermission(
         existing.owner,
         member,
-        "update agent profile",
+        body.data.avatarUrl === undefined
+          ? "update agent profile"
+          : "update agent avatar",
         { visibility: existing.visibility },
       );
       if (permissionError) {
@@ -672,7 +684,7 @@ const updateAgentMetadataInner$ = command(
 
     return {
       status: 200 as const,
-      body: agentResponse(result.agent, publicBrand),
+      body: agentResponse(result.agent),
     };
   },
 );
@@ -895,7 +907,7 @@ export const agentsRoutes: readonly RouteEntry[] = [
   },
   {
     route: agentsMainContract.list,
-    handler: authRoute(agentReadAuth, listAgentsInner$),
+    handler: authRoute(agentReadAuth, agentListResponse$),
   },
   {
     route: agentsByIdContract.get,

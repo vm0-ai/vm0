@@ -42,7 +42,7 @@ const NEWER_WEB_CLIENT_VERSION = MINIMUM_WEB_CLIENT_VERSION.replace(
 const { mockFlushLogs } = vi.hoisted(() => {
   return {
     // eslint-disable-next-line api/no-test-vi-mocks
-    mockFlushLogs: vi.fn(),
+    mockFlushLogs: vi.fn<typeof import("../lib/log").flushLogs>(),
   };
 });
 
@@ -635,12 +635,12 @@ describe("createApp", () => {
   describe("not found", () => {
     it.each([
       [
-        "/sign-in?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
-        "https://pr-123-app.vm6.ai/sign-in?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
+        "/sign-in?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
+        "https://pr-123-app.vm6.ai/sign-in?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
       ],
       [
-        "/sign-up/verify?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
-        "https://pr-123-app.vm6.ai/sign-up/verify?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
+        "/sign-up/verify?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
+        "https://pr-123-app.vm6.ai/sign-up/verify?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
       ],
     ])("redirects %s to the configured app origin", async (path, expected) => {
       mockEnv("APP_URL", "https://pr-123-app.vm6.ai");
@@ -658,15 +658,15 @@ describe("createApp", () => {
     it.each([
       [
         "https://api.okou.ai",
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
         "/sign-in?redirect_url=%2Fchats",
         "https://app.okou.ai/sign-in?redirect_url=%2Fchats",
       ],
       [
-        "https://api.vm0.ai",
+        "https://api.okou.ai",
         "https://app.okou.ai",
         "/sign-up/verify?redirect_url=%2Fonboarding",
-        "https://app.vm0.ai/sign-up/verify?redirect_url=%2Fonboarding",
+        "https://app.okou.ai/sign-up/verify?redirect_url=%2Fonboarding",
       ],
     ])(
       "redirects auth requests on %s to its matching app domain",
@@ -835,12 +835,12 @@ describe("createApp", () => {
       });
       const response = await app.request("/health", {
         method: "GET",
-        headers: { origin: "https://app.vm0.ai" },
+        headers: { origin: "https://app.okou.ai" },
       });
 
       expect(response.status).toBe(200);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
       );
       expect(response.headers.get("access-control-allow-credentials")).toBe(
         "true",
@@ -919,10 +919,10 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/org", {
+      const response = await app.request("/api/chat-threads", {
         method: "OPTIONS",
         headers: {
-          origin: "https://app.vm0.ai",
+          origin: "https://app.okou.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
             "authorization,x-client-version,x-client-type,x-client-product,x-client-session-id,x-client-request-id,x-chat-event-schema-version",
@@ -931,7 +931,7 @@ describe("createApp", () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
       );
       expect(response.headers.get("access-control-allow-methods")).toContain(
         "GET",
@@ -958,7 +958,7 @@ describe("createApp", () => {
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/zero/org", {
+      const response = await app.request("/api/chat-threads", {
         method: "OPTIONS",
         headers: {
           origin: "https://pr-20640-app.omby.ai",
@@ -1096,25 +1096,46 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the failure-reason reader floor before route matching", async () => {
+    it.each([
+      { method: "POST", path: "/api/connectors/github/oauth/start" },
+      { method: "PUT", path: "/api/custom-connectors/example/values" },
+      { method: "DELETE", path: "/api/connectors/github" },
+    ])(
+      "force-upgrades singleton-producing App bundles before $method $path route matching",
+      async ({ method, path }) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request(path, {
+          method,
+          headers: {
+            [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+            [CLIENT_VERSION_HEADER]: "0.843.0",
+          },
+        });
+
+        expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Client update required",
+        });
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      },
+    );
+
+    it("force-upgrades prereleases below the supported App release", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/api/connectors/github", {
-        method: "DELETE",
+      const response = await app.request("/health", {
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.829.5",
+          [CLIENT_VERSION_HEADER]: `${MINIMUM_WEB_CLIENT_VERSION}-rc.1`,
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.830.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Client update required",
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
     it("rejects pre-MCP-reader app clients before custom connector route matching", async () => {
@@ -1137,27 +1158,33 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("upgrades retired memory viewer clients before route matching", async () => {
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const response = await app.request("/api/zero/memory", {
-        method: "GET",
-        headers: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.621.0",
-        },
-      });
+    it.each(["0.621.0", "0.843.1", "0.855.1", "0.856.0"])(
+      "force-upgrades App %s before current route matching",
+      async (version) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request("/api/chat-threads", {
+          method: "GET",
+          headers: {
+            [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+            [CLIENT_VERSION_HEADER]: version,
+          },
+        });
 
-      expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Client update required",
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
-    });
+        expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+        await expect(response.json()).resolves.toStrictEqual({
+          error: "Client update required",
+        });
+        expect(response.headers.get("cache-control")).toBe("no-store");
+      },
+    );
 
-    it("allows the canonical web client floor", async () => {
+    it.each([
+      MINIMUM_WEB_CLIENT_VERSION,
+      `${MINIMUM_WEB_CLIENT_VERSION}+build.1`,
+    ])("allows the canonical web client floor %s", async (version) => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1166,7 +1193,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
+          [CLIENT_VERSION_HEADER]: version,
         },
       });
 
@@ -1189,7 +1216,42 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("does not force upgrade other client types", async () => {
+    it.each([CLIENT_TYPE_CLI, CLIENT_TYPE_DESKTOP])(
+      "does not force upgrade %s clients",
+      async (clientType) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const response = await app.request("/health", {
+          headers: {
+            [CLIENT_TYPE_HEADER]: clientType,
+            [CLIENT_VERSION_HEADER]: "0.599.18",
+          },
+        });
+
+        expect(response.status).toBe(200);
+      },
+    );
+
+    it.each([undefined, "", "development"])(
+      "preserves App requests without a parseable version (%s)",
+      async (version) => {
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const headers = new Headers({ [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP });
+        if (version !== undefined) {
+          headers.set(CLIENT_VERSION_HEADER, version);
+        }
+        const response = await app.request("/health", { headers });
+
+        expect(response.status).toBe(200);
+      },
+    );
+
+    it("preserves requests without a client type", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1197,8 +1259,7 @@ describe("createApp", () => {
       const response = await app.request("/health", {
         method: "GET",
         headers: {
-          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
-          [CLIENT_VERSION_HEADER]: "0.599.18",
+          [CLIENT_VERSION_HEADER]: "0.843.0",
         },
       });
 
@@ -1216,7 +1277,7 @@ describe("createApp", () => {
       const response = await app.request("https://api.vm0.test/health", {
         method: "GET",
         headers: {
-          "user-agent": "zero-test-agent",
+          "user-agent": "okou-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
           "x-client-version": MINIMUM_WEB_CLIENT_VERSION,
           "x-client-type": CLIENT_TYPE_DESKTOP,
@@ -1236,7 +1297,7 @@ describe("createApp", () => {
         host: "api.vm0.test",
         path_template: "/health",
         remote_addr: "203.0.113.10",
-        user_agent: "zero-test-agent",
+        user_agent: "okou-test-agent",
         x_client_version: MINIMUM_WEB_CLIENT_VERSION,
         x_client_type: CLIENT_TYPE_DESKTOP,
         x_client_product: DESKTOP_PRODUCT_OKOU,

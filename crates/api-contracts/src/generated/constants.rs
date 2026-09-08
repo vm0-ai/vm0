@@ -130,6 +130,9 @@ pub mod runners {
     /// Current dialect-aware Pi model configuration generation.
     pub const PI_MODEL_CONFIG_CURRENT_GENERATION: u32 = 2;
 
+    /// Additive Pi generation with dialect-constrained request tiers.
+    pub const PI_MODEL_CONFIG_DIALECT_TIER_GENERATION: u32 = 3;
+
     /// Legacy unversioned Pi model configuration generation.
     pub const PI_MODEL_CONFIG_LEGACY_GENERATION: u32 = 1;
 

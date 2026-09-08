@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.13.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.2...guest-contracts-v0.13.3) (2026-09-08)
+
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.1...guest-contracts-v0.13.2) (2026-09-08)
+
+
+### Documentation
+
+* **guest-contracts:** document read helper directory side effects ([#32476](https://github.com/vm0-ai/vm0/issues/32476)) ([1070d0e](https://github.com/vm0-ai/vm0/commit/1070d0e6e2cebebfd415d6618210fa83b1e91cd2))
+
+## [0.13.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.0...guest-contracts-v0.13.1) (2026-09-07)
+
+
+### Refactoring
+
+* **rust:** align workspace crate names with responsibilities ([#32307](https://github.com/vm0-ai/vm0/issues/32307)) ([39d81ce](https://github.com/vm0-ai/vm0/commit/39d81cedeb3c324ea48c3190e47ffb6c63bb28d9))
+
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.35...guest-contracts-v0.13.0) (2026-09-07)
+
+
+### Features
+
+* **rpc:** add generic guest-to-runner transport and sandbox fencing ([#32161](https://github.com/vm0-ai/vm0/issues/32161)) ([847d733](https://github.com/vm0-ai/vm0/commit/847d733315462a73b0aae20f992737b9df289bf9))
+
+## [0.12.35](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.34...guest-contracts-v0.12.35) (2026-09-05)
+
+## [0.12.34](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.33...guest-contracts-v0.12.34) (2026-09-05)
+
+## [0.12.33](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.32...guest-contracts-v0.12.33) (2026-09-05)
+
+## [0.12.32](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.31...guest-contracts-v0.12.32) (2026-09-04)
+
+
+### Refactoring
+
+* **agent:** centralize cli framework selector parsing ([#31768](https://github.com/vm0-ai/vm0/issues/31768)) ([b98056f](https://github.com/vm0-ai/vm0/commit/b98056feab6c029fc4de1e61e4dcaf6e4d9fda94))
+
+## [0.12.31](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.30...guest-contracts-v0.12.31) (2026-09-04)
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+
+## [0.12.30](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.29...guest-contracts-v0.12.30) (2026-09-04)
+
+
+### Documentation
+
+* **rust:** clarify optional storage id on writeback manifest entries ([#31583](https://github.com/vm0-ai/vm0/issues/31583)) ([0ec28e6](https://github.com/vm0-ai/vm0/commit/0ec28e6947bdb647d1ad80f734b99cf2e5ed14a6))
+
 ## [0.12.29](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.28...guest-contracts-v0.12.29) (2026-09-03)
 
 ## [0.12.28](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.27...guest-contracts-v0.12.28) (2026-09-03)

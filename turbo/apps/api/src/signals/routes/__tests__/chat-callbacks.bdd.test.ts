@@ -8,7 +8,7 @@ import {
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
@@ -18,7 +18,6 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -55,8 +54,8 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
-import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
-import { testBrowserReconcileRoutes } from "../test-browser-reconcile";
+import { seedBuiltInModelKey } from "./helpers/runtime-state";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { goalsRoutes } from "../goals";
 
 /**
@@ -81,33 +80,33 @@ function goalsClient() {
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
-  "api_dispatch_pre_create_zero_chat_callback_";
+  "api_dispatch_pre_create_agent_chat_callback_";
 const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
-  "api_dispatch_pre_create_zero_goal_drain_";
+  "api_dispatch_pre_create_agent_goal_drain_";
 const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_pre_entry",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_run_thread_lookup",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_notify_running_run",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff",
 ] as const;
 const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_built_in_route",
 ] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+  "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
   ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
-  "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
-  "api_dispatch_pre_create_zero_goal_drain_load_event",
-  "api_dispatch_pre_create_zero_goal_drain_load_event_lock_thread",
-  "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
-  "api_dispatch_pre_create_zero_goal_drain_load_target",
-  "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
-  "api_dispatch_pre_create_zero_goal_drain_model_context_load_initial_feature_switches",
-  "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_persisted_model_policy",
-  "api_dispatch_pre_create_zero_goal_drain_build_run_input",
-  "api_dispatch_pre_create_zero_goal_drain_handoff_run",
+  "api_dispatch_pre_create_agent_goal_drain_event_queue_age",
+  "api_dispatch_pre_create_agent_goal_drain_load_event",
+  "api_dispatch_pre_create_agent_goal_drain_load_event_lock_thread",
+  "api_dispatch_pre_create_agent_goal_drain_load_event_select_candidate",
+  "api_dispatch_pre_create_agent_goal_drain_load_target",
+  "api_dispatch_pre_create_agent_goal_drain_resolve_model_context",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches",
+  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy",
+  "api_dispatch_pre_create_agent_goal_drain_build_run_input",
+  "api_dispatch_pre_create_agent_goal_drain_handoff_run",
 ] as const;
 const GOAL_CAPABILITIES = [
   "goal:read",
@@ -572,9 +571,9 @@ async function expectCancellationRecoveryPending(
     .toBe(expected);
 }
 
-function cancellationRecoveryReconcileClient() {
-  return setupApp({ context, routes: testBrowserReconcileRoutes })(
-    testBrowserReconcileContract,
+function cancellationRecoveryCleanupClient() {
+  return setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+    testCronCleanupSandboxesStateContract,
   );
 }
 
@@ -583,9 +582,12 @@ async function reconcileCancellationRecoveryFixtures(
   ...additionalChatThreadIds: string[]
 ): Promise<void> {
   await accept(
-    cancellationRecoveryReconcileClient().reconcile({
+    cancellationRecoveryCleanupClient().cleanup({
       body: {
-        chat_thread_ids: [chatThreadId, ...additionalChatThreadIds],
+        chatThreadIds: [chatThreadId, ...additionalChatThreadIds],
+        runIds: [],
+        orgIds: [],
+        exportJobIds: [],
       },
     }),
     [200],
@@ -868,16 +870,16 @@ function timingEventsForAction(
 function isGoalDrainWaitingTimingAction(actionType: string): boolean {
   return (
     actionType ===
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
-    actionType === "api_dispatch_pre_create_zero_goal_drain_event_queue_age"
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
+    actionType === "api_dispatch_pre_create_agent_goal_drain_event_queue_age"
   );
 }
 
 function isGoalSchedulerTimingAction(actionType: string): boolean {
   return (
     actionType ===
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap" ||
-    actionType.startsWith("api_dispatch_pre_create_zero_goal_drain_scheduler_")
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
+    actionType.startsWith("api_dispatch_pre_create_agent_goal_drain_scheduler_")
   );
 }
 
@@ -885,7 +887,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   readonly runId: string;
   readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
   readonly builtInModelContext: boolean;
-  readonly skippedHigherPriorityDrains?: boolean;
+  readonly skippedHigherPriorityDrains: boolean;
   readonly forbiddenValues: readonly string[];
 }): Promise<void> {
   const expectedActionTypes = [
@@ -944,7 +946,7 @@ async function expectGoalDrainPreCreateTiming(args: {
 
   const schedulerStartGap = timingEventsForAction(
     goalDrainEvents,
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
   )[0];
   if (!schedulerStartGap) {
     throw new Error("Expected goal scheduler start gap timing");
@@ -958,20 +960,25 @@ async function expectGoalDrainPreCreateTiming(args: {
   );
   expect(schedulerPhaseDuration).toBe(Number(schedulerStartGap.duration_ms));
   const higherPriorityDrainDurations = [
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-    "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+    "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
   ].map((actionType) => {
     return timingEventsForAction(goalDrainEvents, actionType)[0]?.duration_ms;
   });
+  const numericHigherPriorityDrainDurations = [
+    expect.any(Number),
+    expect.any(Number),
+  ];
+  const expectedHigherPriorityDrainDurations = args.skippedHigherPriorityDrains
+    ? [0, 0]
+    : numericHigherPriorityDrainDurations;
   expect(higherPriorityDrainDurations).toStrictEqual(
-    args.skippedHigherPriorityDrains
-      ? [0, 0]
-      : [expect.any(Number), expect.any(Number)],
+    expectedHigherPriorityDrainDurations,
   );
 
   const entrypointGapEvents = timingEventsForAction(
     allEvents,
-    "api_dispatch_pre_create_zero_entrypoint_gap",
+    "api_dispatch_pre_create_agent_entrypoint_gap",
   );
   expect(entrypointGapEvents).toHaveLength(1);
   const entrypointGap = entrypointGapEvents[0];
@@ -994,7 +1001,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   expect(
     timingEventsForAction(
       allEvents,
-      "api_dispatch_pre_create_zero_resolve_agent_id",
+      "api_dispatch_pre_create_agent_resolve_agent_id",
     ),
   ).toHaveLength(1);
   const preCreateEvents = timingEventsForAction(
@@ -1126,7 +1133,11 @@ describe("CHAT-02: completed chat callback", () => {
         titlePrompts.push(body.messages[1]?.content ?? "");
         return "Debugging Node Apps";
       }
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (
+        systemContent.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
         followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
@@ -1248,11 +1259,11 @@ describe("CHAT-02: completed chat callback", () => {
     expect(followupPrompts[0]).not.toContain("queued next turn");
     expect(followupSystemPrompts).toStrictEqual([
       expect.stringContaining(
-        'The "prompt" values are shown as plain text, not rendered as Markdown',
+        "The prompt values are displayed as plain text, not rendered as Markdown",
       ),
     ]);
     expect(followupSystemPrompts[0]).toContain(
-      "Supported built-in generation tasks:",
+      "Supported generation types are:",
     );
     expect(followupSystemPrompts[0]).not.toContain("VM0");
 
@@ -1459,18 +1470,18 @@ describe("CHAT-02: completed chat callback", () => {
     expect(secondClaim.apiStartTime).toBe(apiStartedAt);
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
-      ["api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age"],
+      ["api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age"],
     );
     expect(
       timingEventsForAction(
         timingEvents,
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
       ),
     ).toStrictEqual([
       expect.objectContaining({
         duration_ms: dequeuedAt - queuedMessageCreatedAt,
         op_type:
-          "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
+          "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
       }),
     ]);
     const secondHeaders = {
@@ -1513,18 +1524,6 @@ describe("CHAT-02: completed chat callback", () => {
   it("uses the optimized prompt and userMessage semantics for recommended follow-ups", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped chat actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-        orgRole: actor.orgRole,
-      },
-      { [FeatureSwitchKey.FollowUpOptimize]: true },
-    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -1630,6 +1629,26 @@ describe("CHAT-02: completed chat callback", () => {
       "These are quick replies, not task briefs.",
     );
     expect(followupSystemPrompts[0]).toContain(
+      "Usefulness is a hard requirement and takes priority",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "asks the assistant to take a concrete next action",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "makes or requests a decision, selection, constraint, or adjustment",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "asks a substantive question whose answer reduces uncertainty or changes the next step",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Never output a pure acknowledgement, thanks, praise, sympathy, status reaction, or conversation closer.",
+    );
+    expect(followupSystemPrompts[0]).toContain('"知道了"');
+    expect(followupSystemPrompts[0]).toContain(
+      "silently validate every suggestion",
+    );
+    expect(followupSystemPrompts[0]).toContain("Never pad with social filler.");
+    expect(followupSystemPrompts[0]).toContain(
       "Match the user's language and conversational tone.",
     );
     expect(followupSystemPrompts[0]).toContain(
@@ -1666,7 +1685,7 @@ describe("CHAT-02: completed chat callback", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         followupRequests += 1;
         return [
           "[",
@@ -1713,6 +1732,218 @@ describe("CHAT-02: completed chat callback", () => {
     expect(marker).not.toHaveProperty("recommendedFollowups");
   });
 
+  it("pins the model, reasoning effort, and token budget of every fast-path completion", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const requestsBySite = new Map<
+      string,
+      { model: string; max_tokens?: number; reasoning?: { effort: string } }
+    >();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      const record = {
+        model: body.model,
+        ...(body.max_tokens === undefined
+          ? {}
+          : { max_tokens: body.max_tokens }),
+        ...(body.reasoning === undefined ? {} : { reasoning: body.reasoning }),
+      };
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        requestsBySite.set("title", record);
+        return "Budget Pinning";
+      }
+      if (systemContent.includes("recommended follow-up messages")) {
+        requestsBySite.set("followups", record);
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      if (systemContent.includes("one short notification sentence")) {
+        requestsBySite.set("notification", record);
+        return "The task finished";
+      }
+      if (systemContent.includes("agent run in at most 50 words")) {
+        requestsBySite.set("runSummary", record);
+        return "Generated summary";
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Explain how token budgets interact with reasoning",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    // Reasoning tokens are drawn from the same budget as the answer, so a
+    // budget sized for a non-reasoning model starves the answer entirely.
+    expect(requestsBySite.get("title")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 512,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("followups")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 1024,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("notification")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 512,
+      reasoning: { effort: "low" },
+    });
+    expect(requestsBySite.get("runSummary")).toStrictEqual({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 768,
+      reasoning: { effort: "low" },
+    });
+  });
+
+  it("discards a token-limited notification summary instead of pushing truncated text", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const truncatedSummary = "The task finished by writing the migration pl";
+    let notificationRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("one short notification sentence")) {
+        notificationRequests += 1;
+        return { content: truncatedSummary, finishReason: "length" };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Truncated Notification";
+      }
+      if (systemContent.includes("recommended follow-up messages")) {
+        return JSON.stringify([{ prompt: "Keep going", kind: "talk" }]);
+      }
+      return "Generated summary";
+    });
+
+    const prompt = "Summarize the migration plan";
+    const run = await startChatRun(actor, { agentId, prompt });
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(notificationRequests).toBe(1);
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.some(
+          (call) => {
+            const payload = pushPayload(call) as Record<string, unknown>;
+            return (
+              payload.title === prompt.slice(0, 60) &&
+              payload.body === "Your task is complete"
+            );
+          },
+        );
+      })
+      .toBe(true);
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.some((call) => {
+        const payload = pushPayload(call) as Record<string, unknown>;
+        return payload.body === truncatedSummary;
+      }),
+    ).toBeFalsy();
+  });
+
+  it("leaves the thread untitled when the title completion is token-limited", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let titleRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titleRequests += 1;
+        return {
+          content: "A Truncated Title That Must Not",
+          finishReason: "length",
+        };
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Plan the token budget migration",
+    });
+    await flushWaitUntilForTest();
+
+    expect(titleRequests).toBe(1);
+    // A truncated title used to be persisted verbatim. It must now be dropped
+    // so the next round can retry rather than pinning a half-written title.
+    await expect(
+      readThreadTitleFromEvents(actor, run.threadId),
+    ).resolves.toBeNull();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await waitForRunStatus(actor, run.runId, "cancelled");
+  });
+
+  it("suppresses token-limited recommended follow-ups instead of storing partial JSON", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let followupRequests = 0;
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("recommended follow-up messages")) {
+        followupRequests += 1;
+        return {
+          content: JSON.stringify([
+            { prompt: "Keep going with the migration", kind: "talk" },
+          ]).slice(0, 40),
+          finishReason: "length",
+        };
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Truncated Follow-ups";
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Explain how truncated follow-ups are handled",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The final assistant answer"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    expect(followupRequests).toBe(1);
+    const after = await chat.listThreadEvents(actor, run.threadId);
+    const marker = lifecycleMarkers(after.events, run.runId, "completed")[0];
+    if (!marker) {
+      throw new Error("Expected a completed lifecycle marker");
+    }
+    expect(marker).not.toHaveProperty("recommendedFollowups");
+  });
+
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1744,7 +1975,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       await openRouterGate.wait();
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         return JSON.stringify([
           { prompt: "Review the queued result", kind: "talk" },
         ]);
@@ -1797,17 +2028,17 @@ describe("CHAT-02: completed chat callback", () => {
       "chat_callback_auto_send",
     );
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
-      "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+      "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+      "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+      "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
     ]);
 
     context.mocks.ably.publish.mockClear();
@@ -1959,7 +2190,7 @@ describe("CHAT-02: completed chat callback", () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     await enableGoalWorkflows(actor);
-    await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
+    await seedBuiltInModelKey(context, "claude-sonnet-5");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-5",
@@ -2178,6 +2409,7 @@ Goal CLI:
       runId: continuation.runId,
       schedulerOrigin: "terminal_callback_fallback",
       builtInModelContext: false,
+      skippedHigherPriorityDrains: false,
       forbiddenValues: [
         goalBrief,
         actor.userId,
@@ -2797,8 +3029,8 @@ Goal CLI:
     }
     const lostGoalTiming = goalDrainPreCreateTimingEventsForRun(lostGoalRunId);
     for (const actionType of [
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
+      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
     ]) {
       expect(timingEventsForAction(lostGoalTiming, actionType)).toStrictEqual([
         expect.objectContaining({
@@ -3485,21 +3717,21 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [
-        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-        "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-        "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-        "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-        "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+        "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+        "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+        "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+        "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+        "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
       ],
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
-      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_agent_chat_callback_insert_assistant_items",
     ]);
   }, 90_000);
 
@@ -3823,9 +4055,42 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
       [503],
     );
     expect(response.status).toBe(503);
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "EVENT_DELIVERY_UNAVAILABLE",
+        message: "Agent event delivery is temporarily unavailable",
+      },
+    });
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
+    const backpressureLogs = context.mocks.axiomLogging.info.mock.calls.filter(
+      ([message]) => {
+        return (
+          message === "Required database run output projection backpressured"
+        );
+      },
+    );
+    expect(backpressureLogs).toHaveLength(1);
+    const fields = backpressureLogs[0]?.[1];
+    if (!isRecord(fields)) {
+      throw new Error("Expected structured projection backpressure fields");
+    }
+    expect(fields).toMatchObject({
+      runId: run.runId,
+      firstSequence: 0,
+      lastSequence: 0,
+      errorCode: "55P03",
+      retryable: true,
+    });
+    expect(Object.keys(fields).sort()).toStrictEqual([
+      "context",
+      "errorCode",
+      "firstSequence",
+      "lastSequence",
+      "retryable",
+      "runId",
+    ]);
     expect(
       context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
         return (
@@ -3834,7 +4099,7 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
           fields.runId === run.runId
         );
       }),
-    ).toBeTruthy();
+    ).toBeFalsy();
     held.release();
     await held.done;
   }, 30_000);
@@ -4440,182 +4705,159 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
 });
 
 describe("CHAT-02: drain-time admission failure", () => {
-  it.each([
-    {
-      publicBrand: "okou",
-      anchorBrand: "vm0",
-      expectedUrl: "https://app.okou.ai/?settings=billing&billingView=credits",
-      otherOrigin: "https://app.vm0.ai",
-    },
-    {
-      publicBrand: "vm0",
-      anchorBrand: "okou",
-      expectedUrl: "https://app.vm0.ai/?settings=billing&billingView=credits",
-      otherOrigin: "https://app.okou.ai",
-    },
-  ] as const)(
-    "terminalizes a queued $publicBrand Web message when credits are lost before drain",
-    async ({ publicBrand, anchorBrand, expectedUrl, otherOrigin }) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      if (!actor.orgId) {
-        throw new Error("Expected an org-scoped Web chat actor");
-      }
-      const startedAt = now();
-      mockNow(startedAt);
-      onTestFinished(() => {
-        clearMockNow();
-      });
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
+  it("terminalizes a queued Web message when credits are lost before drain", async () => {
+    mockEnv("APP_URL", "https://app.okou.ai");
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Web chat actor");
+    }
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-      const anchor = await startChatRun(
-        actor,
-        {
-          agentId,
-          prompt: "finish after queued Web credit loss",
-        },
-        { publicBrand: anchorBrand },
-      );
-      const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
-      const queuedEventId = randomUUID();
-      const queuedPrompt = "reject this queued Web message after credit loss";
-      const queued = await chat.requestSendEvent(
-        actor,
-        {
-          agentId,
-          threadId: anchor.threadId,
-          prompt: queuedPrompt,
-          clientEventId: queuedEventId,
-        },
-        [201],
-        { publicBrand },
-      );
-      if ("error" in queued.body) {
-        throw new Error(queued.body.error.message);
-      }
-      expect(queued.body.runId).toBeNull();
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish after queued Web credit loss",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queuedPrompt = "reject this queued Web message after credit loss";
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in queued.body) {
+      throw new Error(queued.body.error.message);
+    }
+    expect(queued.body.runId).toBeNull();
 
-      await seedOrgMetadata({
-        orgId: actor.orgId,
-        tier: "pro-suspend",
-        credits: 0,
-      });
-      await upsertOrgPlanEntitlementFixture({
-        orgId: actor.orgId,
-        status: "suspended",
-        canBuyCredits: true,
-      });
-      context.mocks.ably.publish.mockClear();
-      context.mocks.ably.publish.mockRejectedValue(
-        new Error("Injected queued Web admission realtime failure"),
-      );
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Web admission realtime failure"),
+    );
 
-      await completeChatRunOk(anchor.runId, anchorHeaders);
-      await flushWaitUntilForTest();
-      context.mocks.ably.publish.mockResolvedValue(undefined);
-      const terminal = await waitForThreadMessages(
-        actor,
-        anchor.threadId,
-        (events) => {
-          return (
-            userMessages(events).some((event) => {
-              return (
-                event.eventType === "input.rejected" &&
-                event.revokesEventId === queuedEventId &&
-                event.error === "insufficient_credits"
-              );
-            }) &&
-            assistantMessages(events).some((event) => {
-              return (
-                event.eventType === "output.error" &&
-                event.error === "insufficient_credits"
-              );
-            })
-          );
-        },
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "insufficient_credits"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "insufficient_credits"
+            );
+          })
+        );
+      },
+    );
+    const original = userMessages(terminal.events).find((event) => {
+      return event.id === queuedEventId;
+    });
+    expect(original).toMatchObject({
+      eventType: "input.prompt",
+    });
+    expect(original ? chatEventDisplayText(original) : null).toBe(queuedPrompt);
+    const replacements = userMessages(terminal.events).filter((event) => {
+      return event.revokesEventId === queuedEventId;
+    });
+    expect(replacements).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "insufficient_credits",
+      }),
+    ]);
+    const errors = assistantMessages(terminal.events).filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "insufficient_credits"
       );
-      const original = userMessages(terminal.events).find((event) => {
-        return event.id === queuedEventId;
-      });
-      expect(original).toMatchObject({
-        eventType: "input.prompt",
-      });
-      expect(original ? chatEventDisplayText(original) : null).toBe(
-        queuedPrompt,
-      );
-      const replacements = userMessages(terminal.events).filter((event) => {
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toContain("Add credits");
+    expect(errors[0]?.content).toContain(
+      "https://app.okou.ai/?settings=billing&billingView=credits",
+    );
+    expect(errors[0]?.content).not.toContain("https://app.vm0.ai");
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${anchor.threadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await reconcileCancellationRecoveryFixtures(anchor.threadId);
+    const retried = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in retried.body) {
+      throw new Error(retried.body.error.message);
+    }
+    expect(retried.body.runId).toBeNull();
+    await flushWaitUntilForTest();
+
+    const afterRecovery = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(
+      userMessages(afterRecovery.events).filter((event) => {
         return event.revokesEventId === queuedEventId;
-      });
-      expect(replacements).toStrictEqual([
-        expect.objectContaining({
-          eventType: "input.rejected",
-          error: "insufficient_credits",
-        }),
-      ]);
-      const errors = assistantMessages(terminal.events).filter((event) => {
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(afterRecovery.events).filter((event) => {
         return (
           event.eventType === "output.error" &&
           event.error === "insufficient_credits"
         );
-      });
-      expect(errors).toHaveLength(1);
-      expect(errors[0]?.content).toContain("Add credits");
-      expect(errors[0]?.content).toContain(expectedUrl);
-      expect(errors[0]?.content).not.toContain(otherOrigin);
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        `chatThreadMessageCreated:${anchor.threadId}`,
-        null,
-      );
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        "threadListChanged",
-        null,
-      );
-      mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
-      await reconcileCancellationRecoveryFixtures(anchor.threadId);
-      const retried = await chat.requestSendEvent(
-        actor,
-        {
-          agentId,
-          threadId: anchor.threadId,
-          prompt: queuedPrompt,
-          clientEventId: queuedEventId,
-        },
-        [201],
-        { publicBrand },
-      );
-      if ("error" in retried.body) {
-        throw new Error(retried.body.error.message);
-      }
-      expect(retried.body.runId).toBeNull();
-      await flushWaitUntilForTest();
-
-      const afterRecovery = await chat.listThreadEvents(actor, anchor.threadId);
-      expect(
-        userMessages(afterRecovery.events).filter((event) => {
-          return event.revokesEventId === queuedEventId;
-        }),
-      ).toHaveLength(1);
-      expect(
-        assistantMessages(afterRecovery.events).filter((event) => {
-          return (
-            event.eventType === "output.error" &&
-            event.error === "insufficient_credits"
-          );
-        }),
-      ).toHaveLength(1);
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
-    },
-    90_000,
-  );
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+  }, 90_000);
 
   it("terminalizes a queued Web message with neutral copy when every built-in route is unavailable", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -4710,7 +4952,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   it("formats failed-run errors and notifies, without auto-sending", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
-    await seedVm0BuiltInModelKey(context, "gpt-5.6-sol");
+    await seedBuiltInModelKey(context, "gpt-5.6-sol");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-5",
@@ -4796,6 +5038,12 @@ describe("CHAT-02: failed chat callbacks", () => {
           "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
         failureReason: "provider_overloaded",
         selectedModel: "claude-sonnet-5",
+      },
+      {
+        prompt: "round eleven",
+        error: "Contradictory runner failure",
+        expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+        failureReason: "execution_timeout",
       },
     ];
 
@@ -5026,7 +5274,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
@@ -5118,7 +5366,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5128,7 +5376,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5145,7 +5393,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5153,7 +5401,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "member",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.okou.ai/?settings=model",
     );
   }, 90_000);
 });
@@ -5297,7 +5545,7 @@ describe("CHAT-02: auto-send after failures", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       const systemContent = body.messages[0]?.content ?? "";
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (systemContent.includes("recommended follow-up messages")) {
         followupRequests += 1;
         await followupGate.wait();
         return JSON.stringify([
@@ -5525,22 +5773,22 @@ describe("CHAT-02: auto-send after failures", () => {
     const timingEvents = await expectChatCallbackPreCreateTimingActions(
       claimed.runId,
       [
-        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
-        "api_dispatch_pre_create_zero_chat_callback_prepare_failed",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_queue_age",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_agent",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
-        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+        "api_dispatch_pre_create_agent_chat_callback_load_terminal",
+        "api_dispatch_pre_create_agent_chat_callback_prepare_failed",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_queue_age",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_agent",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_agent_chat_callback_auto_send_publish_signals",
       ],
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
-      "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
-      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
-      "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+      "api_dispatch_pre_create_agent_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_agent_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_agent_chat_callback_insert_lifecycle_marker",
+      "api_dispatch_pre_create_agent_chat_callback_load_followup_context",
     ]);
     expect(claimed.userMessage?.parts).toContainEqual(
       expect.objectContaining({
@@ -5996,18 +6244,14 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 });
 
 describe("CHAT-02: push notification gating", () => {
-  it("uses each subscription's public brand for the VAPID contact identity", async () => {
+  it("uses the Okou VAPID contact identity for every subscription", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     chatCallbacks.enableVapid();
-    const vm0Endpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "vm0",
-    );
-    const okouEndpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "okou",
-    );
+    const endpoints = [
+      await chatCallbacks.registerPushSubscription(actor),
+      await chatCallbacks.registerPushSubscription(actor),
+    ];
 
     const run = await startChatRun(actor, {
       agentId,
@@ -6024,30 +6268,19 @@ describe("CHAT-02: push notification gating", () => {
       .toBe(2);
     await flushWaitUntilForTest();
 
-    const vm0Call = context.mocks.webpush.sendNotification.mock.calls.find(
-      (call) => {
-        return isRecord(call[0]) && call[0].endpoint === vm0Endpoint;
-      },
-    );
-    const okouCall = context.mocks.webpush.sendNotification.mock.calls.find(
-      (call) => {
-        return isRecord(call[0]) && call[0].endpoint === okouEndpoint;
-      },
-    );
-    expect(vm0Call?.[2]).toStrictEqual({
-      vapidDetails: {
-        subject: "mailto:contact@vm0.ai",
-        publicKey: "bdd-vapid-public-key",
-        privateKey: "bdd-vapid-private-key",
-      },
-    });
-    expect(okouCall?.[2]).toStrictEqual({
-      vapidDetails: {
-        subject: "mailto:contact@okou.ai",
-        publicKey: "bdd-vapid-public-key",
-        privateKey: "bdd-vapid-private-key",
-      },
-    });
+    for (const endpoint of endpoints) {
+      const notification =
+        context.mocks.webpush.sendNotification.mock.calls.find((call) => {
+          return isRecord(call[0]) && call[0].endpoint === endpoint;
+        });
+      expect(notification?.[2]).toStrictEqual({
+        vapidDetails: {
+          subject: "mailto:contact@okou.ai",
+          publicKey: "bdd-vapid-public-key",
+          privateKey: "bdd-vapid-private-key",
+        },
+      });
+    }
   }, 60_000);
 
   it("suppresses completed run pushes while the thread has an active goal", async () => {

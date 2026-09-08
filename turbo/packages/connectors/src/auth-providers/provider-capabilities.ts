@@ -1311,6 +1311,110 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "optimizely-cmp",
+    authMethodId: "oauth",
+    contract: {
+      client: {
+        kind: "static-confidential-env",
+        clientIdEnv: "OPTIMIZELY_CMP_OAUTH_CLIENT_ID",
+        clientSecretEnv: "OPTIMIZELY_CMP_OAUTH_CLIENT_SECRET",
+      },
+      grant: {
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: ["accessToken", "refreshToken"],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "token-revoke",
+        inputNames: ["refreshToken"],
+      },
+    },
+  },
+  {
+    connectorSlug: "oto",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
+    connectorSlug: "noyo",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret"],
+        outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
+    connectorSlug: "resource-guru",
+    authMethodId: "oauth",
+    contract: {
+      client: {
+        kind: "static-confidential-env",
+        clientIdEnv: "RESOURCE_GURU_OAUTH_CLIENT_ID",
+        clientSecretEnv: "RESOURCE_GURU_OAUTH_CLIENT_SECRET",
+      },
+      grant: {
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: ["accessToken", "refreshToken"],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "outlook-calendar",
     authMethodId: "oauth",
     contract: {
@@ -1380,6 +1484,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
       access: {
         kind: "refresh-token",
         inputNames: ["clientId", "clientSecret"],
+        outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
+    connectorSlug: "procountor",
+    authMethodId: "api-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["apiKey", "clientId", "clientSecret", "redirectUri"],
         outputNames: ["accessToken"],
         platformSecrets: [],
       },
@@ -1491,6 +1620,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
         kind: "refresh-token",
         inputNames: ["clientId", "clientSecret", "scope"],
         outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
+    connectorSlug: "reckon",
+    authMethodId: "oauth-refresh-token",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["clientId", "clientSecret", "redirectUri", "refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
         platformSecrets: [],
       },
       revoke: {

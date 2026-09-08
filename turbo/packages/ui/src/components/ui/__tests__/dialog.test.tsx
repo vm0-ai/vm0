@@ -12,11 +12,11 @@ describe("Dialog", () => {
       </Dialog>,
     );
 
-    const overlay = document.querySelector(".zero-dialog-overlay");
+    const overlay = document.querySelector(".okou-dialog-overlay");
     expect(overlay).toBeInTheDocument();
-    expect(overlay).toHaveClass("zero-dialog-overlay");
+    expect(overlay).toHaveClass("okou-dialog-overlay");
     expect(screen.getByRole("dialog", { name: "Default dialog" })).toHaveClass(
-      "zero-dialog-content",
+      "okou-dialog-content",
     );
   });
 
@@ -34,7 +34,7 @@ describe("Dialog", () => {
       </Dialog>,
     );
 
-    expect(document.querySelectorAll(".zero-dialog-overlay")).toHaveLength(2);
+    expect(document.querySelectorAll(".okou-dialog-overlay")).toHaveLength(2);
   });
 
   it("can leave close controls to a custom dialog header", () => {

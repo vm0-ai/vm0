@@ -27,7 +27,7 @@ function connectorSlugFromPath(
   return parsed.success ? parsed.data : null;
 }
 
-function connectorIconFromSearchParams(
+export function connectorIconFromSearchParams(
   searchParams: URLSearchParams,
 ): PublicConnectorCatalogIcon | undefined {
   const url = searchParams.get("iconUrl");

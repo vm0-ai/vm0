@@ -35,6 +35,8 @@ def _registered_key_name(node: ast.AST) -> str | None:
 
 
 def _static_string_value(node: ast.AST) -> str | None:
+    if isinstance(node, ast.keyword) and node.arg is not None:
+        return node.arg
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.JoinedStr):

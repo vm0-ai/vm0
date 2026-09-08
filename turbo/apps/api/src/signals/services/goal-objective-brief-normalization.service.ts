@@ -1,16 +1,7 @@
+import { stripMarkdown } from "../../lib/strip-markdown";
+
 const OBJECTIVE_BRIEF_MAX_CHARS = 140;
 const DEFAULT_GOAL_OBJECTIVE_BRIEF = "Untitled goal";
-
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*_]{3,}\s*$/gm, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
 
 export function compactGoalObjectiveBriefText(text: string): string {
   return stripMarkdown(text).replace(/\s+/g, " ").trim();

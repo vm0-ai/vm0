@@ -14,6 +14,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { i18n } from "../../i18n/index.ts";
+import type { RestorableAttachment } from "./chat-draft.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 import { avatarTemplateSelection } from "./avatar-template-selection.ts";
@@ -26,7 +27,6 @@ export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
-export const VOICE_DRAFT_NODE_NAME = "voiceDraft";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export type MessageDocumentAttachment = PersistedAttachment & {
@@ -44,6 +44,13 @@ export interface EditorDocumentSnapshot {
   readonly toMessageDocument: (
     context?: EditorDocumentContext,
   ) => UserMessageInputDocument | null;
+  readonly toDraft: (
+    context?: EditorDocumentContext,
+  ) => EditorDraftDocument | null;
+}
+
+export interface EditorDraftDocument {
+  readonly userMessage: UserMessageInputDocument;
 }
 
 export function shouldUseUserMessage(
@@ -137,17 +144,6 @@ function inlineTemplatePart(
     titleSnapshot: title,
     template: parsedTemplate.data,
   };
-}
-
-function voiceDraftPart(
-  node: ProseMirrorNode,
-): Extract<UserMessagePart, { type: "voice" }> | null {
-  const id: unknown = node.attrs.id;
-  const transcript: unknown = node.attrs.transcript;
-  if (typeof id !== "string" || typeof transcript !== "string") {
-    return null;
-  }
-  return { type: "voice", id, transcript };
 }
 
 function appendParagraphParts(
@@ -324,11 +320,7 @@ function selectedTemplateNodeCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
-    if (
-      nodeName === "paragraph" ||
-      nodeName === FEEDBACK_ITEM_NODE_NAME ||
-      nodeName === VOICE_DRAFT_NODE_NAME
-    ) {
+    if (nodeName === "paragraph" || nodeName === FEEDBACK_ITEM_NODE_NAME) {
       continue;
     }
     if (nodeName !== TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -362,15 +354,23 @@ function appendFeedbackGroup(
   return { nextIndex: index, emitted: feedbackParts.length > 0 };
 }
 
-/**
- * Converts the current composer snapshot into its editor-independent business
- * document. External files are normalized after the leading template chip and
- * before the text body, matching their current composer presentation order.
- */
-export function editorDocToMessageDocument(
+function completedEditorDraft(
+  parts: readonly UserMessagePart[],
+): EditorDraftDocument | null {
+  if (parts.length === 0) {
+    return null;
+  }
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
+  return parsed.success ? { userMessage: parsed.data } : null;
+}
+
+function editorDocToDraftDocument(
   document: ProseMirrorNode,
   context: EditorDocumentContext = {},
-): UserMessageInputDocument | null {
+): EditorDraftDocument | null {
   if (document.type.name !== "doc") {
     return null;
   }
@@ -383,7 +383,7 @@ export function editorDocToMessageDocument(
     return null;
   }
 
-  let previousPromptSection: "paragraph" | "feedback" | "voice" | null = null;
+  let previousPromptSection: "paragraph" | "feedback" | null = null;
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -409,15 +409,6 @@ export function editorDocToMessageDocument(
       }
       continue;
     }
-    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
-      const part = voiceDraftPart(node);
-      if (!part) {
-        return null;
-      }
-      parts.push(part);
-      previousPromptSection = "voice";
-      continue;
-    }
     if (previousPromptSection === "paragraph") {
       appendTextPart(parts, "\n");
     }
@@ -433,11 +424,19 @@ export function editorDocToMessageDocument(
     return null;
   }
 
-  const parsed = userMessageInputDocumentSchema.safeParse({
-    version: 1,
-    parts,
-  });
-  return parsed.success ? parsed.data : null;
+  return completedEditorDraft(parts);
+}
+
+/**
+ * Converts the current composer snapshot into its editor-independent business
+ * document. External files are normalized after the leading template chip and
+ * before the text body, matching their current composer presentation order.
+ */
+export function editorDocToMessageDocument(
+  document: ProseMirrorNode,
+  context: EditorDocumentContext = {},
+): UserMessageInputDocument | null {
+  return editorDocToDraftDocument(document, context)?.userMessage ?? null;
 }
 
 /**
@@ -454,6 +453,9 @@ export function createEditorDocumentSnapshot(
     },
     toMessageDocument(context: EditorDocumentContext = {}) {
       return editorDocToMessageDocument(document, context);
+    },
+    toDraft(context: EditorDocumentContext = {}) {
+      return editorDocToDraftDocument(document, context);
     },
   });
 }
@@ -640,6 +642,12 @@ function flushRestoredParagraph(state: RestoredEditorState): void {
   state.trailingParagraph = false;
 }
 
+function flushPendingRestoredParagraph(state: RestoredEditorState): void {
+  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+    flushRestoredParagraph(state);
+  }
+}
+
 function appendRestoredText(state: RestoredEditorState, text: string): void {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
@@ -654,46 +662,19 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   }
 }
 
-function appendRestoredVoiceDraft(
-  state: RestoredEditorState,
-  part: Extract<UserMessagePart, { type: "voice" }>,
-): void {
-  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-    flushRestoredParagraph(state);
-  }
-  state.content.push({
-    type: VOICE_DRAFT_NODE_NAME,
-    attrs: {
-      id: part.id,
-      transcript: part.transcript,
-      status: "failed",
-      visible: true,
-    },
-  });
-}
-
-/**
- * Restores the editor-owned portion of a business document. File parts stay in
- * the existing external attachment state and therefore do not become Tiptap
- * nodes. Newlines are canonically restored as paragraph boundaries.
- */
-export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
-  const parsed = userMessageDocumentSchema.safeParse(value);
-  if (!parsed.success) {
-    return null;
-  }
-
+function restoredEditorDoc(userMessage: UserMessageDocument): JSONContent {
   const state: RestoredEditorState = {
     content: [],
     paragraphContent: [],
     trailingParagraph: false,
   };
   let feedbackIndex = 0;
-  const feedbackCount = parsed.data.parts.filter((part) => {
+  const parts = userMessage?.parts ?? [];
+  const feedbackCount = parts.filter((part) => {
     return part.type === "feedback";
   }).length;
 
-  for (const part of parsed.data.parts) {
+  for (const part of parts) {
     if (part.type === "text") {
       appendRestoredText(state, part.text);
       continue;
@@ -714,14 +695,8 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
       state.trailingParagraph = false;
       continue;
     }
-    if (part.type === "voice") {
-      appendRestoredVoiceDraft(state, part);
-      continue;
-    }
     if (part.type === "feedback") {
-      if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-        flushRestoredParagraph(state);
-      }
+      flushPendingRestoredParagraph(state);
       state.content.push({
         type: FEEDBACK_ITEM_NODE_NAME,
         attrs: {
@@ -756,16 +731,29 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
     }
   }
 
-  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
-    flushRestoredParagraph(state);
-  }
-  if (
-    state.content.length === 0 ||
-    state.content.at(-1)?.type === VOICE_DRAFT_NODE_NAME
-  ) {
+  flushPendingRestoredParagraph(state);
+  if (state.content.length === 0) {
     state.content.push({ type: "paragraph" });
   }
   return { type: "doc", content: state.content };
+}
+
+/**
+ * Restores the editor-owned portion of a business document. File parts stay in
+ * the existing external attachment state and therefore do not become Tiptap
+ * nodes. Newlines are canonically restored as paragraph boundaries.
+ */
+export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
+  const parsed = userMessageDocumentSchema.safeParse(value);
+  return parsed.success ? restoredEditorDoc(parsed.data) : null;
+}
+
+/** Restores only the persisted user message portion of a composer draft. */
+export function draftToEditorDoc(userMessage: unknown): JSONContent | null {
+  const parsedUserMessage = userMessageDocumentSchema.safeParse(userMessage);
+  return parsedUserMessage.success
+    ? restoredEditorDoc(parsedUserMessage.data)
+    : null;
 }
 
 /** Serializes the business document to the same plain prompt representation. */
@@ -800,11 +788,6 @@ export function messageDocumentToPrompt(value: unknown): string | null {
     flushFeedback();
     if (part.type === "text") {
       inlineText += part.text;
-    } else if (part.type === "voice") {
-      flushInlineText();
-      if (part.transcript.length > 0) {
-        blocks.push(part.transcript);
-      }
     } else if (part.type === "chat_thread") {
       inlineText += serializeChatThreadMention(
         part.threadId,
@@ -853,13 +836,6 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
     flushFeedback();
     if (part.type === "text") {
       inlineText += part.text;
-      continue;
-    }
-    if (part.type === "voice") {
-      flushInlineText();
-      if (part.transcript.length > 0) {
-        blocks.push(part.transcript);
-      }
       continue;
     }
     if (part.type === "chat_thread") {
@@ -912,4 +888,39 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
   flushFeedback();
   flushInlineText();
   return blocks.join("\n\n");
+}
+
+export interface RestoredDraftState {
+  readonly content: string;
+  readonly userMessage: UserMessageDocument | null;
+  readonly attachments: RestorableAttachment[];
+}
+
+/** Restorable composer attachments for the file parts a draft document still references. */
+export function userMessageDraftAttachments(
+  document: UserMessageDocument,
+  attachments: readonly PersistedAttachment[],
+): RestorableAttachment[] {
+  const attachmentById = new Map(
+    attachments.map((attachment) => {
+      return [attachment.id, attachment] as const;
+    }),
+  );
+  return document.parts.flatMap((part) => {
+    if (part.type !== "file") {
+      return [];
+    }
+    const attachment = attachmentById.get(part.fileId);
+    return attachment
+      ? [
+          {
+            ...attachment,
+            ...(part.annotatedFileId
+              ? { annotatedFileId: part.annotatedFileId }
+              : {}),
+            ...(part.annotations ? { annotations: part.annotations } : {}),
+          },
+        ]
+      : [];
+  });
 }

@@ -42,7 +42,7 @@ const mocks = createRouteMocks(context);
 const storages = createStoragesBddApi(context);
 
 const OFFICIAL_BOT_TOKEN = "9876543210:fake-test-token";
-const OFFICIAL_BOT_USERNAME = "official_zero_bot";
+const OFFICIAL_BOT_USERNAME = "official_okou_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-test-webhook-secret";
 
 function configureOfficialBotEnv(): void {
@@ -81,12 +81,13 @@ function mintOkouToken(args: {
   });
 }
 
-function telegramOauthHead(contentLength: string, expectedOrigin?: string) {
+function telegramOauthHead(
+  contentLength: string,
+  observedOrigins: (string | null)[] = [],
+) {
   return http.head("https://oauth.telegram.org/auth", ({ request }) => {
     const url = new URL(request.url);
-    if (expectedOrigin) {
-      expect(url.searchParams.get("origin")).toBe(expectedOrigin);
-    }
+    observedOrigins.push(url.searchParams.get("origin"));
     return new HttpResponse(null, {
       headers: { "content-length": contentLength },
     });
@@ -227,6 +228,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the token has no active organization membership", async () => {
+    expect.hasAssertions();
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
     });
@@ -252,6 +254,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
+    expect.hasAssertions();
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({
       context,
@@ -436,6 +439,7 @@ describe("GET /api/integrations/telegram", () => {
   });
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -783,6 +787,7 @@ describe("GET /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -932,7 +937,8 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
     mockEnv("APP_URL", "https://app.example.com");
-    server.use(telegramOauthHead("2048", "https://app.example.com"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead("2048", observedOrigins));
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -958,6 +964,7 @@ describe("GET /api/integrations/telegram/link", () => {
         domainConfigured: true,
       },
     });
+    expect(observedOrigins).toStrictEqual(["https://app.example.com"]);
   });
 
   it("returns official bot link status with the login bot id", async () => {
@@ -1090,6 +1097,7 @@ describe("POST /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -1350,7 +1358,7 @@ describe("POST /api/integrations/telegram/link", () => {
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          origin: "https://app.vm0.ai",
+          origin: "https://app.okou.ai",
         },
         body: JSON.stringify({
           telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
@@ -1413,7 +1421,7 @@ describe("POST /api/integrations/telegram/link", () => {
         OFFICIAL_BOT_TOKEN,
       ),
     };
-    const vm0Response = await accept(
+    const response = await accept(
       client.link({
         headers: { authorization: `Bearer ${token}` },
         body,
@@ -1421,20 +1429,7 @@ describe("POST /api/integrations/telegram/link", () => {
       [409],
     );
 
-    expect(vm0Response.body.error).toStrictEqual({
-      code: "CONFLICT",
-      message: `This Telegram account is already connected to another VM0 organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
-    });
-
-    const okouResponse = await accept(
-      client.link({
-        headers: { authorization: `Bearer ${token}` },
-        extraHeaders: { origin: "https://app.okou.ai" },
-        body,
-      }),
-      [409],
-    );
-    expect(okouResponse.body.error).toStrictEqual({
+    expect(response.body.error).toStrictEqual({
       code: "CONFLICT",
       message: `This Telegram account is already connected to another Okou organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
     });
@@ -1470,7 +1465,7 @@ describe("POST /api/integrations/telegram/link", () => {
       telegramBotId,
       telegramAuth: makeTelegramAuth(99_004, "taken_tg"),
     };
-    const vm0Response = await accept(
+    const response = await accept(
       client.link({
         headers: { authorization: `Bearer ${token}` },
         body,
@@ -1478,21 +1473,8 @@ describe("POST /api/integrations/telegram/link", () => {
       [409],
     );
 
-    expect(vm0Response.body.error.code).toBe("CONFLICT");
-    expect(vm0Response.body.error.message).toContain(
-      "already connected to another VM0 account",
-    );
-
-    const okouResponse = await accept(
-      client.link({
-        headers: { authorization: `Bearer ${token}` },
-        extraHeaders: { origin: "https://app.okou.ai" },
-        body,
-      }),
-      [409],
-    );
-    expect(okouResponse.body.error.code).toBe("CONFLICT");
-    expect(okouResponse.body.error.message).toContain(
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toContain(
       "already connected to another Okou account",
     );
   });

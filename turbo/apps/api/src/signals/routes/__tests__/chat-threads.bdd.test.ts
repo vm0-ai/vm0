@@ -20,7 +20,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
@@ -44,8 +43,12 @@ import {
   startChatEventInsertTransactionFixture,
 } from "../../../test-fixtures/chat-events";
 import {
+  deleteChatThreadEventMarkerFixture,
   holdChatThreadEventInsertTransactionFixture,
+  insertCanonicalOrphanChatThreadEventFixture,
   insertChatThreadEventTransactionFixture,
+  readChatThreadEventIdsFixture,
+  setChatThreadSnapshotBoundaryFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
@@ -71,9 +74,8 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
-import { seedVm0BuiltInDefaultModelKey } from "./helpers/runtime-state";
+import { seedBuiltInDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -390,13 +392,93 @@ function stateFromAuthorizationUrl(authorizationUrl: string): string {
   return state;
 }
 
-async function allThreadEvents(actor: ApiTestUser) {
-  const response = await chat.requestThreadEvents(actor, {}, [200]);
+async function threadEventPage(actor: ApiTestUser, sinceSeqId?: number) {
+  const response = await chat.requestThreadEvents(
+    actor,
+    sinceSeqId === undefined ? {} : { sinceSeqId },
+    [200],
+  );
   expect(response.status).toBe(200);
   if (response.status !== 200) {
     throw new Error("Expected chat thread events to load");
   }
-  return response.body.events;
+  return response.body;
+}
+
+async function expectExpiredThreadEventCursor(
+  actor: ApiTestUser,
+  sinceSeqId: number,
+): Promise<void> {
+  const response = await chat.requestThreadEvents(actor, { sinceSeqId }, [410]);
+  expect(response.body).toStrictEqual({
+    error: {
+      message: "Chat thread events cursor has expired",
+      code: "CHAT_THREAD_EVENTS_EXPIRED",
+    },
+  });
+}
+
+async function allThreadEvents(actor: ApiTestUser) {
+  return (await threadEventPage(actor)).events;
+}
+
+async function createSnapshotCursorScenario(label: string) {
+  mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped chat actor");
+  }
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: `${label} agent`,
+  });
+  const firstEventId = randomUUID();
+  const thread = await chat.createThread(actor, {
+    agentId: agent.agentId,
+    title: `${label} thread`,
+    eventId: firstEventId,
+  });
+  const markerEventId = randomUUID();
+  await chat.renameThread(actor, thread.id, `${label} marker`, markerEventId);
+
+  const events = await allThreadEvents(actor);
+  const firstEvent = events.find((event) => {
+    return event.id === firstEventId;
+  });
+  const markerEvent = events.find((event) => {
+    return event.id === markerEventId;
+  });
+  if (!firstEvent || !markerEvent) {
+    throw new Error("Expected snapshot cursor lifecycle events");
+  }
+
+  await compactChatThreadSnapshots();
+  const snapshot = await chat.getThreadSnapshot(actor);
+  const { latestEventId, latestSeqId } = snapshot;
+  expect(latestEventId).toBe(markerEvent.id);
+  expect(latestSeqId).toBe(markerEvent.seqId);
+  if (latestEventId === null || latestSeqId === null) {
+    throw new Error("Expected a non-empty snapshot cursor");
+  }
+  return {
+    actor,
+    orgId: actor.orgId,
+    agent,
+    thread,
+    firstEvent,
+    snapshot: { latestEventId, latestSeqId },
+  };
+}
+
+async function deleteSnapshotCursorMarker(
+  scenario: Awaited<ReturnType<typeof createSnapshotCursorScenario>>,
+): Promise<void> {
+  await deleteChatThreadEventMarkerFixture({
+    userId: scenario.actor.userId,
+    orgId: scenario.orgId,
+    eventId: scenario.snapshot.latestEventId,
+    seqId: scenario.snapshot.latestSeqId,
+  });
 }
 
 type ThreadArtifacts = Awaited<ReturnType<typeof chat.listThreadArtifacts>>;
@@ -510,13 +592,13 @@ function goalsClient() {
   return setupApp({ context, routes: goalsRoutes })(goalsContract);
 }
 
-function zeroCapabilityHeaders(
+function okouCapabilityHeaders(
   actor: ApiTestUser,
   runId: string,
   capabilities: readonly Capability[],
 ): { readonly authorization: string } {
   if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for zero auth");
+    throw new Error("Expected an org-scoped actor for Okou run authentication");
   }
   const seconds = Math.floor(now() / 1000);
   return {
@@ -532,12 +614,12 @@ function zeroCapabilityHeaders(
   };
 }
 
-/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
+/** Okou run bearer with goal capabilities, as issued to sandboxes. */
 function goalHeaders(
   actor: ApiTestUser,
   runId: string,
 ): { readonly authorization: string } {
-  return zeroCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
+  return okouCapabilityHeaders(actor, runId, GOAL_CAPABILITIES);
 }
 
 async function createThreadGoal(
@@ -675,14 +757,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const apiClient = setupApp({ context, routes: chatThreadRoutes })(
       chatThreadsContract,
     );
-    const zeroHeaders = zeroCapabilityHeaders(
+    const okouHeaders = okouCapabilityHeaders(
       actor,
       randomUUID(),
       CHAT_THREAD_READ_CAPABILITIES,
     );
 
     const snapshot = await accept(
-      apiClient.snapshot({ headers: zeroHeaders }),
+      apiClient.snapshot({ headers: okouHeaders }),
       [200],
     );
     expect(snapshot.body).toStrictEqual({
@@ -691,7 +773,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: null,
     });
     const events = await accept(
-      apiClient.events({ headers: zeroHeaders, query: {} }),
+      apiClient.events({ headers: okouHeaders, query: {} }),
       [200],
     );
     expect(events.body).toStrictEqual({
@@ -914,6 +996,605 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       },
     });
   });
+
+  it("keeps no-snapshot cursors anchored to real scoped rows", async () => {
+    const actor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "No-snapshot cursor agent",
+    });
+    const firstEventId = randomUUID();
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "No-snapshot cursor thread",
+      eventId: firstEventId,
+    });
+    const [firstEvent] = await allThreadEvents(actor);
+    if (!firstEvent || firstEvent.id !== firstEventId) {
+      throw new Error("Expected the initial chat-thread lifecycle event");
+    }
+
+    await expect(
+      threadEventPage(actor, firstEvent.seqId),
+    ).resolves.toStrictEqual({ events: [], hasMore: false });
+
+    // Reusing the event ID commits the reserved sequence without inserting a
+    // second event, matching an allocation gap from a failed/idempotent write.
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Reserve a lifecycle event gap",
+      firstEventId,
+    );
+    await expectExpiredThreadEventCursor(actor, firstEvent.seqId + 1);
+  });
+
+  it("reads an exact markerless snapshot watermark atomically", async () => {
+    const scenario = await createSnapshotCursorScenario("Markerless cursor");
+    const { actor, agent, firstEvent, snapshot, thread } = scenario;
+
+    // The unbounded read proves that the covered cursor row still physically
+    // exists even though the snapshot watermark makes it intentionally stale.
+    expect(
+      (await allThreadEvents(actor)).some((event) => {
+        return event.id === firstEvent.id;
+      }),
+    ).toBeTruthy();
+    await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
+    await deleteSnapshotCursorMarker(scenario);
+
+    const held = await holdChatThreadEventInsertTransactionFixture({
+      userId: actor.userId,
+      orgId: scenario.orgId,
+      chatThreadId: thread.id,
+      agentId: agent.agentId,
+      title: "Committed after the snapshot cursor read",
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+
+    await expect(
+      threadEventPage(actor, snapshot.latestSeqId),
+    ).resolves.toStrictEqual({ events: [], hasMore: false });
+
+    held.release();
+    await held.done;
+    await expect(
+      threadEventPage(actor, snapshot.latestSeqId),
+    ).resolves.toStrictEqual({
+      events: [expect.objectContaining({ id: held.event.id })],
+      hasMore: false,
+    });
+  });
+
+  it("validates real cursors after a markerless snapshot watermark", async () => {
+    const scenario = await createSnapshotCursorScenario("Real cursor");
+    const { actor, snapshot, thread } = scenario;
+    await deleteSnapshotCursorMarker(scenario);
+
+    const laterEventId = randomUUID();
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Later real lifecycle event",
+      laterEventId,
+    );
+    const afterSnapshotCursor = await threadEventPage(
+      actor,
+      snapshot.latestSeqId,
+    );
+    const [laterEvent] = afterSnapshotCursor.events;
+    if (!laterEvent || laterEvent.id !== laterEventId) {
+      throw new Error("Expected the later lifecycle event");
+    }
+    expect(afterSnapshotCursor.hasMore).toBeFalsy();
+
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Reserve a post-snapshot gap",
+      laterEventId,
+    );
+    const postSnapshotGapSeqId = laterEvent.seqId + 1;
+    await expectExpiredThreadEventCursor(actor, postSnapshotGapSeqId);
+
+    const nextRealEventId = randomUUID();
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Real event after the allocation gap",
+      nextRealEventId,
+    );
+    const afterLaterCursor = await threadEventPage(actor, laterEvent.seqId);
+    const [nextRealEvent] = afterLaterCursor.events;
+    if (!nextRealEvent || nextRealEvent.id !== nextRealEventId) {
+      throw new Error("Expected the real lifecycle event after the gap");
+    }
+    expect(nextRealEvent.seqId).toBe(postSnapshotGapSeqId + 1);
+    expect(afterLaterCursor.hasMore).toBeFalsy();
+
+    await expect(
+      threadEventPage(actor, nextRealEvent.seqId),
+    ).resolves.toStrictEqual({
+      events: [],
+      hasMore: false,
+    });
+
+    const peer = bdd.user({ orgId: scenario.orgId });
+    const peerAgent = await bdd.createAgent(peer, {
+      displayName: "Cross-user cursor agent",
+    });
+    await chat.createThread(peer, {
+      agentId: peerAgent.agentId,
+      title: "Cross-user cursor thread",
+    });
+    await expectExpiredThreadEventCursor(peer, nextRealEvent.seqId);
+
+    const otherOrgActor = bdd.user({ userId: actor.userId });
+    await api.ensureOrgModelProvider(otherOrgActor);
+    const otherOrgAgent = await bdd.createAgent(otherOrgActor, {
+      displayName: "Cross-organization cursor agent",
+    });
+    await chat.createThread(otherOrgActor, {
+      agentId: otherOrgAgent.agentId,
+      title: "Cross-organization cursor thread",
+    });
+    await expectExpiredThreadEventCursor(otherOrgActor, nextRealEvent.seqId);
+    await expectExpiredThreadEventCursor(actor, 999_999);
+  });
+
+  it("paginates a markerless snapshot tail without gaps or duplicates", async () => {
+    const scenario = await createSnapshotCursorScenario("Paginated cursor");
+    const { actor, snapshot, thread } = scenario;
+    await deleteSnapshotCursorMarker(scenario);
+    const lifecyclePageSize = 1000;
+    const paginationEvents = Array.from(
+      { length: lifecyclePageSize + 1 },
+      (_, index) => {
+        return {
+          id: randomUUID(),
+          title: `Pagination lifecycle event ${index}`,
+        };
+      },
+    );
+    await Promise.all(
+      paginationEvents.map(async (event) => {
+        await chat.renameThread(actor, thread.id, event.title, event.id);
+      }),
+    );
+
+    const firstPage = await threadEventPage(actor, snapshot.latestSeqId);
+    expect(firstPage.events).toHaveLength(lifecyclePageSize);
+    expect(firstPage.hasMore).toBeTruthy();
+    const firstPageCursor = firstPage.events.at(-1);
+    if (!firstPageCursor) {
+      throw new Error("Expected the first snapshot tail page cursor");
+    }
+
+    const secondPage = await threadEventPage(actor, firstPageCursor.seqId);
+    expect(secondPage.events).toHaveLength(1);
+    expect(secondPage.hasMore).toBeFalsy();
+
+    const pagedEvents = [...firstPage.events, ...secondPage.events];
+    const pagedSeqIds = pagedEvents.map((event) => {
+      return event.seqId;
+    });
+    expect(pagedSeqIds).toStrictEqual(
+      [...pagedSeqIds].sort((left, right) => {
+        return left - right;
+      }),
+    );
+    const pagedEventIds = pagedEvents.map((event) => {
+      return event.id;
+    });
+    const expectedTailEventIds = paginationEvents.map((event) => {
+      return event.id;
+    });
+    expect(new Set(pagedEventIds).size).toBe(expectedTailEventIds.length);
+    expect([...pagedEventIds].sort()).toStrictEqual(
+      [...expectedTailEventIds].sort(),
+    );
+  }, 90_000);
+
+  it("keeps markerless snapshot watermarks monotonic across stale projection refresh", async () => {
+    const snapshotAt = now();
+    mockNow(snapshotAt);
+    const scenario = await createSnapshotCursorScenario(
+      "Monotonic markerless compaction",
+    );
+    const { actor, firstEvent, thread } = scenario;
+    const removedAgent = await bdd.createAgent(actor, {
+      displayName: "Removed snapshot projection agent",
+    });
+    const removedThreadEventId = randomUUID();
+    const removedThread = await chat.createThread(actor, {
+      agentId: removedAgent.agentId,
+      title: "Removed snapshot projection thread",
+      eventId: removedThreadEventId,
+    });
+
+    await compactChatThreadSnapshots();
+    const boundary = await chat.getThreadSnapshot(actor);
+    expect(boundary.latestEventId).toBe(removedThreadEventId);
+    expect(boundary.chatThreads).toContainEqual(
+      expect.objectContaining({ id: removedThread.id }),
+    );
+    if (boundary.latestEventId === null || boundary.latestSeqId === null) {
+      throw new Error("Expected the advanced snapshot boundary");
+    }
+
+    // Reusing an older retained event ID reserves a sequence but inserts no
+    // event. The live thread still changes, giving stale compaction a
+    // projection-only update to apply without treating the allocator gap as a
+    // cursor boundary.
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Projection refreshed without a lifecycle event",
+      firstEvent.id,
+    );
+    for (const event of [
+      firstEvent,
+      {
+        id: scenario.snapshot.latestEventId,
+        seqId: scenario.snapshot.latestSeqId,
+      },
+      { id: boundary.latestEventId, seqId: boundary.latestSeqId },
+    ]) {
+      await deleteChatThreadEventMarkerFixture({
+        userId: actor.userId,
+        orgId: scenario.orgId,
+        eventId: event.id,
+        seqId: event.seqId,
+      });
+    }
+    chat.mockObjectStorageObjectsExist();
+    await authOrg.deleteAgent(actor, removedAgent.agentId);
+    await expect(
+      threadEventPage(actor, boundary.latestSeqId),
+    ).resolves.toStrictEqual({ events: [], hasMore: false });
+
+    mockNow(snapshotAt + DAY_MS + 1);
+    const staleCompact = await compactChatThreadSnapshots();
+    expect(staleCompact.eventsApplied).toBe(0);
+    expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
+    const preserved = await chat.getThreadSnapshot(actor);
+    expect({
+      latestEventId: preserved.latestEventId,
+      latestSeqId: preserved.latestSeqId,
+    }).toStrictEqual({
+      latestEventId: boundary.latestEventId,
+      latestSeqId: boundary.latestSeqId,
+    });
+    expect(preserved.chatThreads).toContainEqual(
+      expect.objectContaining({
+        id: thread.id,
+        title: "Projection refreshed without a lifecycle event",
+      }),
+    );
+    expect(
+      preserved.chatThreads.some((entry) => {
+        return entry.id === removedThread.id;
+      }),
+    ).toBeFalsy();
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: scenario.orgId,
+        eventIds: [
+          firstEvent.id,
+          scenario.snapshot.latestEventId,
+          boundary.latestEventId,
+        ],
+      }),
+    ).resolves.toStrictEqual([]);
+
+    const laterEventId = randomUUID();
+    await chat.renameThread(
+      actor,
+      thread.id,
+      "Real lifecycle event after allocator gap",
+      laterEventId,
+    );
+    const markerlessTail = await threadEventPage(actor, boundary.latestSeqId);
+    expect(markerlessTail).toStrictEqual({
+      events: [expect.objectContaining({ id: laterEventId })],
+      hasMore: false,
+    });
+    const [laterEvent] = markerlessTail.events;
+    if (!laterEvent) {
+      throw new Error("Expected the real event after the allocator gap");
+    }
+    expect(laterEvent.seqId).toBe(boundary.latestSeqId + 2);
+    await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
+
+    const advancedCompact = await compactChatThreadSnapshots();
+    expect(advancedCompact.eventsApplied).toBeGreaterThanOrEqual(1);
+    const advanced = await chat.getThreadSnapshot(actor);
+    expect({
+      latestEventId: advanced.latestEventId,
+      latestSeqId: advanced.latestSeqId,
+    }).toStrictEqual({
+      latestEventId: laterEvent.id,
+      latestSeqId: laterEvent.seqId,
+    });
+
+    await compactChatThreadSnapshots();
+    const repeated = await chat.getThreadSnapshot(actor);
+    expect({
+      latestEventId: repeated.latestEventId,
+      latestSeqId: repeated.latestSeqId,
+    }).toStrictEqual({
+      latestEventId: laterEvent.id,
+      latestSeqId: laterEvent.seqId,
+    });
+  }, 90_000);
+
+  it("prunes covered lifecycle events in retry-safe deterministic batches", async () => {
+    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    mockOptionalEnv("CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE", "2");
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped retention actor");
+    }
+    await api.ensureOrgModelProvider(actor);
+    const liveAgent = await bdd.createAgent(actor, {
+      displayName: "Bounded retention live agent",
+    });
+    const deletedAgent = await bdd.createAgent(actor, {
+      displayName: "Bounded retention deleted agent",
+    });
+    const liveThread = await chat.createThread(actor, {
+      agentId: liveAgent.agentId,
+      title: "Bounded retention live thread",
+    });
+    const deletedThread = await chat.createThread(actor, {
+      agentId: liveAgent.agentId,
+      title: "Bounded retention deleted thread",
+    });
+    const deletedAgentThread = await chat.createThread(actor, {
+      agentId: deletedAgent.agentId,
+      title: "Bounded retention deleted Agent thread",
+    });
+    const retentionCutoff = Date.parse("1800-01-01T00:00:00.000Z");
+    const retainedAtBoundary = new Date(retentionCutoff);
+
+    const liveCovered = await insertChatThreadEventTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: liveThread.id,
+      agentId: liveAgent.agentId,
+      title: "First covered retention event",
+      createdAt: retainedAtBoundary,
+    });
+    const deletedThreadCovered = await insertChatThreadEventTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: deletedThread.id,
+      agentId: liveAgent.agentId,
+      title: "Covered event for a deleted thread",
+      createdAt: retainedAtBoundary,
+    });
+    const deletedAgentCovered = await insertChatThreadEventTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: deletedAgentThread.id,
+      agentId: deletedAgent.agentId,
+      title: "Covered event for a deleted Agent",
+      createdAt: retainedAtBoundary,
+    });
+    const secondLiveCovered = await insertChatThreadEventTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: liveThread.id,
+      agentId: liveAgent.agentId,
+      title: "Second covered retention event",
+      createdAt: retainedAtBoundary,
+    });
+
+    await chat.deleteThread(actor, deletedThread.id);
+    chat.mockObjectStorageObjectsExist();
+    await authOrg.deleteAgent(actor, deletedAgent.agentId);
+    const nullAgentMarker = await insertCanonicalOrphanChatThreadEventFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: deletedThread.id,
+      createdAt: retainedAtBoundary,
+    });
+    const coveredEventIds = [
+      liveCovered.id,
+      deletedThreadCovered.id,
+      deletedAgentCovered.id,
+      secondLiveCovered.id,
+      nullAgentMarker.id,
+    ];
+    const snapshotAt = new Date(retentionCutoff + 7 * DAY_MS);
+    await setChatThreadSnapshotBoundaryFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      latestEventId: nullAgentMarker.id,
+      latestEventSeqId: nullAgentMarker.seqId,
+      updatedAt: snapshotAt,
+    });
+
+    mockNow(snapshotAt);
+    let boundaryCompact = await compactChatThreadSnapshots();
+    for (
+      let attempt = 0;
+      attempt < 4 && boundaryCompact.scopes > 0;
+      attempt++
+    ) {
+      expect(boundaryCompact.eventsPruned).toBe(0);
+      boundaryCompact = await compactChatThreadSnapshots();
+    }
+    expect(boundaryCompact).toMatchObject({ scopes: 0, eventsPruned: 0 });
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        eventIds: coveredEventIds,
+      }),
+    ).resolves.toStrictEqual(coveredEventIds);
+
+    const concurrentAppend = await holdChatThreadEventInsertTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: liveThread.id,
+      agentId: liveAgent.agentId,
+      title: "Concurrent event above the committed snapshot watermark",
+      createdAt: retainedAtBoundary,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      concurrentAppend.release();
+      await concurrentAppend.done;
+    });
+
+    mockNow(snapshotAt.getTime() + 1);
+    const overlappingCompactions = await Promise.all([
+      compactChatThreadSnapshots(),
+      compactChatThreadSnapshots(),
+    ]);
+    expect(
+      overlappingCompactions
+        .map((result) => {
+          return result.eventsPruned;
+        })
+        .sort((left, right) => {
+          return left - right;
+        }),
+    ).toStrictEqual([2, 2]);
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        eventIds: coveredEventIds,
+      }),
+    ).resolves.toStrictEqual([nullAgentMarker.id]);
+
+    const converged = await compactChatThreadSnapshots();
+    expect(converged.eventsPruned).toBe(1);
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        eventIds: coveredEventIds,
+      }),
+    ).resolves.toStrictEqual([]);
+    const retry = await compactChatThreadSnapshots();
+    expect(retry.eventsPruned).toBe(0);
+
+    concurrentAppend.release();
+    await concurrentAppend.done;
+    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
+    const isolatedActor = bdd.user({ userId: actor.userId });
+    if (!isolatedActor.orgId) {
+      throw new Error("Expected an organization-scoped isolation actor");
+    }
+    expect(isolatedActor.orgId).not.toBe(actor.orgId);
+    await api.ensureOrgModelProvider(isolatedActor);
+    const isolatedAgent = await bdd.createAgent(isolatedActor, {
+      displayName: "Same-user other-org retention agent",
+    });
+    const isolatedBoundaryId = randomUUID();
+    const isolatedThread = await chat.createThread(isolatedActor, {
+      agentId: isolatedAgent.agentId,
+      title: "Same-user other-org retention thread",
+      eventId: isolatedBoundaryId,
+    });
+    const isolatedBoundary = (await allThreadEvents(isolatedActor)).find(
+      (threadEvent) => {
+        return threadEvent.id === isolatedBoundaryId;
+      },
+    );
+    if (!isolatedBoundary) {
+      throw new Error("Expected the isolation snapshot boundary event");
+    }
+    await setChatThreadSnapshotBoundaryFixture({
+      userId: isolatedActor.userId,
+      orgId: isolatedActor.orgId,
+      latestEventId: isolatedBoundary.id,
+      latestEventSeqId: isolatedBoundary.seqId,
+      updatedAt: new Date(snapshotAt.getTime() + 1),
+    });
+    const isolatedAboveWatermark =
+      await insertChatThreadEventTransactionFixture({
+        userId: isolatedActor.userId,
+        orgId: isolatedActor.orgId,
+        chatThreadId: isolatedThread.id,
+        agentId: isolatedAgent.agentId,
+        title: "Old event above only the isolated scope watermark",
+        createdAt: retainedAtBoundary,
+      });
+    const compactionBlocker = bdd.user({ userId: actor.userId });
+    await api.ensureOrgModelProvider(compactionBlocker);
+    const blockerAgent = await bdd.createAgent(compactionBlocker, {
+      displayName: "Above-watermark compaction blocker",
+    });
+    await chat.createThread(compactionBlocker, {
+      agentId: blockerAgent.agentId,
+      title: "Keep the retention scope out of this snapshot batch",
+    });
+
+    const aboveWatermarkCompact = await compactChatThreadSnapshots();
+    expect(aboveWatermarkCompact.eventsPruned).toBe(0);
+    const unchangedBoundary = await chat.getThreadSnapshot(actor);
+    expect({
+      latestEventId: unchangedBoundary.latestEventId,
+      latestSeqId: unchangedBoundary.latestSeqId,
+    }).toStrictEqual({
+      latestEventId: nullAgentMarker.id,
+      latestSeqId: nullAgentMarker.seqId,
+    });
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        eventIds: [concurrentAppend.event.id],
+      }),
+    ).resolves.toStrictEqual([concurrentAppend.event.id]);
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: isolatedActor.userId,
+        orgId: isolatedActor.orgId,
+        eventIds: [isolatedAboveWatermark.id],
+      }),
+    ).resolves.toStrictEqual([isolatedAboveWatermark.id]);
+
+    const nextTailEvent = await insertChatThreadEventTransactionFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      chatThreadId: liveThread.id,
+      agentId: liveAgent.agentId,
+      title: "Second event above the committed snapshot watermark",
+      createdAt: retainedAtBoundary,
+    });
+    await expect(
+      readChatThreadEventIdsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        eventIds: [concurrentAppend.event.id, nextTailEvent.id],
+      }),
+    ).resolves.toStrictEqual([concurrentAppend.event.id, nextTailEvent.id]);
+
+    const markerlessTail = await threadEventPage(actor, nullAgentMarker.seqId);
+    expect(
+      markerlessTail.events.map((event) => {
+        return { id: event.id, seqId: event.seqId };
+      }),
+    ).toStrictEqual([
+      {
+        id: concurrentAppend.event.id,
+        seqId: concurrentAppend.event.seqId,
+      },
+      { id: nextTailEvent.id, seqId: nextTailEvent.seqId },
+    ]);
+    expect(markerlessTail.hasMore).toBeFalsy();
+    await expectExpiredThreadEventCursor(actor, liveCovered.seqId);
+  }, 90_000);
 
   it("keeps concurrent thread event sequence reservation atomic through commit", async () => {
     const owner = bdd.user();
@@ -1145,12 +1826,22 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       Date.parse(liveCreateEvent.createdAt) + 7 * DAY_MS;
     mockNow(retentionBoundary);
     await compactChatThreadSnapshots();
-    const retainedBoundaryCursor = await chat.requestThreadEvents(
+    expect(
+      (await allThreadEvents(actor)).some((event) => {
+        return event.id === liveCreateEvent.id;
+      }),
+    ).toBeTruthy();
+    const coveredBoundaryCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: liveCreateEvent.seqId },
-      [200],
+      [410],
     );
-    expect(retainedBoundaryCursor.status).toBe(200);
+    expect(coveredBoundaryCursor.body).toStrictEqual({
+      error: {
+        message: "Chat thread events cursor has expired",
+        code: "CHAT_THREAD_EVENTS_EXPIRED",
+      },
+    });
 
     mockNow(retentionBoundary + 1);
     const retentionCompact = await compactChatThreadSnapshots();
@@ -1169,30 +1860,35 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
     await compactChatThreadSnapshots();
-    const retainedDeletedAgentAnchor = await chat.requestThreadEvents(
+    const coveredDeletedAgentCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: deletedCreateEvent.seqId },
-      [200],
+      [410],
     );
-    expect(retainedDeletedAgentAnchor.status).toBe(200);
+    expect(coveredDeletedAgentCursor.body).toStrictEqual({
+      error: {
+        message: "Chat thread events cursor has expired",
+        code: "CHAT_THREAD_EVENTS_EXPIRED",
+      },
+    });
     expect(
       (await allThreadEvents(actor)).some((event) => {
         return event.agentId === deletedAgent.agentId;
       }),
     ).toBeFalsy();
 
-    const retainedAnchorCursor = await chat.requestThreadEvents(
+    const markerlessSnapshotCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: compactedSnapshot.latestSeqId ?? undefined },
       [200],
     );
-    expect(retainedAnchorCursor.status).toBe(200);
-    if (retainedAnchorCursor.status !== 200) {
+    expect(markerlessSnapshotCursor.status).toBe(200);
+    if (markerlessSnapshotCursor.status !== 200) {
       throw new Error(
-        "Expected retained snapshot anchor event to be queryable",
+        "Expected the markerless snapshot cursor to remain valid",
       );
     }
-    expect(retainedAnchorCursor.body.events).toStrictEqual([]);
+    expect(markerlessSnapshotCursor.body.events).toStrictEqual([]);
   });
   it("keeps thread detail independent from thread model projection state", async () => {
     const { actor, agentId } = await entitledChatActor(
@@ -2484,7 +3180,7 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const fixture = await seedVm0BuiltInDefaultModelKey(context);
+    const fixture = await seedBuiltInDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
     expect(fixture.selectedModel).toBe(selectedModel);
 
@@ -2589,7 +3285,7 @@ describe("CHAT-03 run usage events", () => {
       agentId,
       prompt: "record zero-credit usage",
     });
-    const { sandboxHeaders: zeroSandboxHeaders } = await claimChatRun(
+    const { sandboxHeaders: okouSandboxHeaders } = await claimChatRun(
       runnerGroup,
       agentRun.runId,
     );
@@ -2606,10 +3302,10 @@ describe("CHAT-03 run usage events", () => {
           },
         ],
       },
-      zeroSandboxHeaders,
+      okouSandboxHeaders,
       [200],
     );
-    await completeChatRunOk(agentRun.runId, zeroSandboxHeaders);
+    await completeChatRunOk(agentRun.runId, okouSandboxHeaders);
     await flushWaitUntilForTest();
 
     const [zeroUsageEvent] = await usageEventsForRun(
@@ -3048,8 +3744,9 @@ describe("CHAT-01 chat search index", () => {
           return HttpResponse.json({
             choices: [
               {
+                finish_reason: "stop",
                 message: {
-                  content: body.includes("concise follow-up prompts")
+                  content: body.includes("recommended follow-up messages")
                     ? JSON.stringify([
                         { prompt: followupOnlyNeedle, kind: "talk" },
                       ])
@@ -3534,6 +4231,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected",
@@ -3613,6 +4312,8 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       actor,
       "google-drive",
       "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: connected.id },
     );
     await connectorsApi.completeOauthCallback("google-drive", {
       code: "drive-reconnected-again",
@@ -3642,10 +4343,6 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     if (!actor.orgId) {
       throw new Error("Expected an entitled chat actor with an organization");
     }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const objectStore = chatCallbacks.acceptChatObjectStorage();
 

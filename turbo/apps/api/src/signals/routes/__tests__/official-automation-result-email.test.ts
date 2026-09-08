@@ -130,7 +130,7 @@ async function setupScenario(): Promise<Scenario> {
 
 async function startRun(
   scenario: Scenario,
-  origin = "https://app.vm0.ai",
+  origin = "https://app.okou.ai",
 ): Promise<string> {
   const response = await accept(
     automationsClient().run({
@@ -247,8 +247,8 @@ function unsubscribeToken(userId: string): string {
 }
 
 beforeEach(() => {
-  mockEnv("APP_URL", "https://app.vm0.ai");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   mockEnv("RESEND_API_KEY", "official-result-email-resend-key");
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   mockEnv("RESEND_WEBHOOK_SECRET", "whsec_test");
@@ -338,7 +338,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       expect.arrayContaining([
         expect.objectContaining({
           internalKind: "chat",
-          payload: expect.objectContaining({ publicBrand: "vm0" }),
+          payload: expect.objectContaining({ publicBrand: "okou" }),
         }),
       ]),
     );
@@ -371,6 +371,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     if (!item) {
       throw new Error("Expected a Morning Brief result email");
     }
+    expect(item.subject).toBe("Morning Brief");
     const manageUrl =
       "https://app.okou.ai/agents?settings=preference&focus=morning-brief";
     const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
@@ -490,7 +491,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       }),
     ).resolves.toStrictEqual({ items: [], claim: null });
 
-    mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
+    mockEnv("RESEND_FROM_DOMAIN", "okou.io");
     const redrive = await accept(
       executionClient().dispatchCallbacks({
         body: { run_id: runId, status: "completed", dispatch_count: 8 },
@@ -554,7 +555,7 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(send).toMatchObject({
       from: "Okou <okou@okou.io>",
       to: scenario.actor.email,
-      subject: 'Official <script> & " result completed',
+      subject: 'Official <script> & " result',
       headers: {
         "List-Unsubscribe": `<https://api.okou.ai/api/email/unsubscribe?token=${unsubscribeToken(scenario.actor.userId)}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

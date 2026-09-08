@@ -13,7 +13,7 @@ import {
 const roots: string[] = [];
 
 async function tempRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "zero-host-"));
+  const root = await mkdtemp(join(tmpdir(), "okou-host-"));
   roots.push(root);
   return root;
 }

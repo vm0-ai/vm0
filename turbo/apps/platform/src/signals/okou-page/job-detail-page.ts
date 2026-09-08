@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
+import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // JobPermissionsTab UI state
@@ -31,6 +32,13 @@ export const permSearch$ = computed((get) => {
 export const setPermSearch$ = command(({ set }, value: string) => {
   set(internalPermSearch$, value);
 });
+
+export const focusPermSearchRef$ = onRef(
+  command((_context, input: HTMLInputElement, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    input.focus();
+  }),
+);
 
 const internalPermSearchActive$ = state(false);
 export const permSearchActive$ = computed((get) => {

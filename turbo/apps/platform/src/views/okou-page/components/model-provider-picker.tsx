@@ -3,11 +3,11 @@ import {
   useGet,
   useLastLoadable,
   useLastResolved,
-  useLoadable,
   useSet,
 } from "ccstate-react";
 import {
   Check,
+  ChevronDown,
   Cpu,
   Image as ImageIcon,
   MessageCircle,
@@ -15,6 +15,10 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Button,
   Select,
   SelectContent,
   SelectGroup,
@@ -49,7 +53,6 @@ import {
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
-import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import {
   DEFAULT_MODEL_PLAN_CAPABILITIES,
   modelAllowedForPlan,
@@ -63,17 +66,20 @@ import {
 } from "../../../signals/okou-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../signals/page-signal";
 import { resolveExplicitModelSelection$ } from "../../../signals/okou-page/model-default-selection";
-import { modelPickerPanelHeightRef$ } from "../../../signals/okou-page/model-picker-panel-height";
 import { detach, Reason } from "../../../signals/utils";
 import {
   getMediaModelPriceTierLabel,
   getModelBrandIconType,
-  getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
+  getBuiltInModelPriceTier,
+  getBuiltInModelPriceTierLabel,
   type ModelPriceTier,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 import { settingsIconAssetUrl } from "./settings/settings-icon-assets";
+
+import type { ModelPickerMenuSignals } from "../../../signals/okou-page/model-picker-menu.ts";
+import { PriceTierBadge } from "./model-picker-price-tier.tsx";
+import { ModelPickerMenuContent } from "./model-picker-menu.tsx";
 
 export interface ModelProviderSelection {
   selectedModel: SupportedRunModel;
@@ -144,16 +150,14 @@ interface ModelProviderPickerProps {
   modal?: boolean;
   // When true, picker is read-only for the current caller state.
   disabled?: boolean;
-  /**
-   * When false, the trigger renders only the explicit value. Existing thread
-   * composers use this because thread model state comes from event projection,
-   * not user/workspace defaults.
-   */
-  resolveDefaultSelection?: boolean;
   /** Enables the inline Codex Fast choices in the model list. */
   codexFastModeEnabled?: boolean;
+  /** Lets settings callers clear a personal choice and inherit workspace default. */
+  showInheritOption?: boolean;
   /** Media-model category panel state for composer callers. */
   mediaModelPanel?: MediaModelPanelState;
+  /** Composer-owned navigation for the compact model menu rollout. */
+  menuSignals?: ModelPickerMenuSignals;
   /** Model omitted from this caller's list of available choices. */
   excludedModel?: SupportedRunModel;
 }
@@ -171,29 +175,6 @@ const CODEX_FAST_SELECTED_PREFIX = "__codex_fast_selected__:";
 // the disabled variant to stop the measuring item from bleeding through.
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
   "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
-
-function PriceTierBadge({
-  tier,
-  description,
-}: {
-  tier: ModelPriceTier;
-  description: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
-            {tier}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {description}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 function ByokBadge() {
   const { t } = useTranslation();
@@ -215,7 +196,7 @@ function ByokBadge() {
   );
 }
 
-function ProBadge() {
+export function ProBadge() {
   const { t } = useTranslation();
   return (
     <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
@@ -282,54 +263,6 @@ function getModelFirstIconType(model: string): ModelProviderType | undefined {
   }
   return getProvidersForModel(model).find((type) => {
     return !isBuiltInModelProviderType(type);
-  });
-}
-
-function resolveModelFirstDefault(
-  value: ModelProviderSelection | null,
-  userPreference: { selectedModel: string | null } | null | undefined,
-  policies: OrgModelPolicy[],
-): ModelProviderSelection | null {
-  const validUserDefault =
-    userPreference?.selectedModel &&
-    isSupportedRunModel(userPreference.selectedModel) &&
-    policies.some((policy) => {
-      return (
-        policy.model === userPreference.selectedModel &&
-        policy.routeStatus === "valid"
-      );
-    })
-      ? {
-          selectedModel: userPreference.selectedModel,
-        }
-      : null;
-  const validWorkspaceDefault = policies.find((policy) => {
-    return (
-      policy.isDefault &&
-      policy.routeStatus === "valid" &&
-      isSupportedRunModel(policy.model)
-    );
-  });
-  return (
-    value ??
-    validUserDefault ??
-    (validWorkspaceDefault
-      ? {
-          selectedModel: validWorkspaceDefault.model,
-        }
-      : null)
-  );
-}
-
-function selectablePoliciesForPlan(
-  policies: OrgModelPolicy[],
-  modelCapabilities: ModelPlanCapabilities,
-): OrgModelPolicy[] {
-  if (modelCapabilities.supportByok && !modelCapabilities.restrictedVm0Models) {
-    return policies;
-  }
-  return policies.filter((policy) => {
-    return modelPolicyAllowedForPlan(policy, modelCapabilities);
   });
 }
 
@@ -416,29 +349,19 @@ function ModelFirstDisabledPickerLabel({
   placeholder,
   mobileIconTrigger,
   triggerClassName,
-  userPreference,
-  policies,
   codexFastModeEnabled,
   fastLabel,
 }: Pick<
   ModelProviderPickerProps,
-  | "value"
-  | "placeholder"
-  | "compactTrigger"
-  | "mobileIconTrigger"
-  | "triggerClassName"
+  "value" | "placeholder" | "mobileIconTrigger" | "triggerClassName"
 > & {
   placeholder: string;
-  compactTrigger: boolean;
   mobileIconTrigger: boolean;
-  policies: OrgModelPolicy[];
-  userPreference: { selectedModel: string | null } | null | undefined;
   codexFastModeEnabled: boolean;
   fastLabel: string;
 }) {
-  const resolved = resolveModelFirstDefault(value, userPreference, policies);
   const label = selectionLabel({
-    selection: resolved,
+    selection: value,
     placeholder,
     codexFastModeEnabled,
     fastLabel,
@@ -452,7 +375,7 @@ function ModelFirstDisabledPickerLabel({
       )}
     >
       <ModelFirstTriggerLabel
-        selection={resolved}
+        selection={value}
         placeholder={placeholder}
         mobileIcon={mobileIconTrigger}
         codexFastModeEnabled={codexFastModeEnabled}
@@ -540,7 +463,7 @@ function ModelFirstPolicyRowContent({
   const builtInPriceTier = isBuiltInModelProviderType(
     policy.defaultProviderType,
   )
-    ? getVm0ModelPriceTier(policy.model)
+    ? getBuiltInModelPriceTier(policy.model)
     : undefined;
   const restricted = !modelPolicyAllowedForPlan(policy, modelCapabilities);
   return (
@@ -552,7 +475,7 @@ function ModelFirstPolicyRowContent({
       {builtInPriceTier !== undefined ? (
         <PriceTierBadge
           tier={builtInPriceTier}
-          description={getVm0ModelPriceTierLabel(builtInPriceTier)}
+          description={getBuiltInModelPriceTierLabel(builtInPriceTier)}
         />
       ) : (
         <ByokBadge />
@@ -673,6 +596,8 @@ function ModelFirstPolicyItems({
   selection,
   modelCapabilities,
   codexFastModeEnabled,
+  placeholder,
+  showInheritOption,
   showSeparator = true,
   showModelsLabel = true,
 }: {
@@ -680,6 +605,8 @@ function ModelFirstPolicyItems({
   selection: ModelProviderSelection | null;
   modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
+  placeholder: string;
+  showInheritOption: boolean;
   showSeparator?: boolean;
   /** When false, the media-model header already carries the category title. */
   showModelsLabel?: boolean;
@@ -693,6 +620,9 @@ function ModelFirstPolicyItems({
     });
   return (
     <>
+      {showInheritOption && (
+        <SelectItem value={INHERIT_SENTINEL}>{placeholder}</SelectItem>
+      )}
       {showSeparator && (!hasExplicitSelectedPolicy || policies.length > 0) && (
         <SelectSeparator className="my-0" />
       )}
@@ -1048,12 +978,7 @@ function MediaModelPanelRow({ option }: { option: MediaModelPanelOption }) {
       onClick={option.onSelect}
     >
       {option.icon}
-      {/* Not `flex-1`: run-model rows sit inside a shrink-to-fit `SelectItem`
-          text slot, so their price badge trails the model name instead of
-          parking at the row's right edge. These rows are plain buttons that do
-          span the row, so the label must stay shrink-to-fit for the badge to
-          land in the same place. */}
-      <span className="min-w-0 truncate">{option.label}</span>
+      <span className="min-w-0 flex-1 truncate">{option.label}</span>
       <PriceTierBadge
         tier={option.priceTier}
         description={getMediaModelPriceTierLabel(option.priceTier)}
@@ -1099,10 +1024,7 @@ function ModelPickerListHeader({
     // floating in a band nearly four times its own ink. `py-1` seats the
     // switch on the same 4px inset the rows sit on, and `-mb-1` takes back the
     // list's `gap-1` so the header's own padding is the whole distance.
-    <div
-      data-model-picker-header
-      className="sticky top-0 z-10 -mx-1 -mt-1 -mb-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2"
-    >
+    <div className="sticky top-0 z-10 -mx-1 -mt-1 -mb-1 flex items-center gap-2 bg-card py-1 pl-3 pr-2">
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -1184,6 +1106,7 @@ interface ModelFirstModelPickerContentBaseProps {
   codexFastModeEnabled: boolean;
   fastLabel: string;
   mediaModelPanel: MediaModelPanelState | undefined;
+  showInheritOption: boolean;
 }
 
 function ModelFirstModelPickerContentLayout({
@@ -1195,6 +1118,7 @@ function ModelFirstModelPickerContentLayout({
   codexFastModeEnabled,
   fastLabel,
   mediaModelPanel,
+  showInheritOption,
 }: ModelFirstModelPickerContentBaseProps) {
   const { t } = useTranslation();
   const activeMediaModelCategoryId = mediaModelPanel?.activeCategory;
@@ -1204,32 +1128,13 @@ function ModelFirstModelPickerContentLayout({
     },
   );
   const mediaModelPanelOpen = activeMediaModelCategory !== undefined;
-  const setPanelHeightRef = useSet(modelPickerPanelHeightRef$);
   return (
-    <SelectContent
-      // Categories hold different numbers of rows, so switching one for
-      // another changes how tall this popup is; the ref animates between the
-      // two heights instead of letting it snap.
-      ref={setPanelHeightRef}
-      className={cn(
-        // The same width every model picker uses. The wider panel width was
-        // there for the media rows' variant segments, which sat beside the
-        // model name; now that a family contributes one row, the widest row is
-        // a name beside a badge again.
-        "min-w-[260px]",
-        // No row-count cap: a fixed one made the popup taller than the space it
-        // had on short viewports and shorter than its own list on tall ones.
-        // The image category was the list that outgrew it, so switching to it
-        // animated the popup up to the cap, stopped short of the height the
-        // animation was still travelling to, and then dropped a scrollbar in
-        // when the animation restored the overflow. The available height is
-        // the only real limit, and the popup carries its own list under it.
-        "max-h-[var(--available-height)]",
-      )}
-    >
+    <SelectContent className="min-w-[260px] max-h-[var(--available-height)]">
       {/* A media-model panel replaces the model rows, so keep the selected run
           model measurable the same way a hidden select value is. */}
-      {(mediaModelPanelOpen || isHiddenModelFirstSelectValue(selectValue)) && (
+      {(mediaModelPanelOpen ||
+        (isHiddenModelFirstSelectValue(selectValue) &&
+          !(showInheritOption && selectValue === INHERIT_SENTINEL))) && (
         <SelectItem
           value={selectValue}
           className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
@@ -1263,7 +1168,9 @@ function ModelFirstModelPickerContentLayout({
           selection={selection}
           modelCapabilities={modelCapabilities}
           codexFastModeEnabled={codexFastModeEnabled}
-          showSeparator={false}
+          placeholder={placeholder}
+          showInheritOption={showInheritOption}
+          showSeparator={showInheritOption}
           showModelsLabel={!mediaModelPanel}
         />
       )}
@@ -1273,8 +1180,6 @@ function ModelFirstModelPickerContentLayout({
 
 interface ModelFirstModelPickerState {
   policies: OrgModelPolicy[];
-  selectablePolicies: OrgModelPolicy[];
-  selectableValue: ModelProviderSelection | null;
   selection: ModelProviderSelection | null;
   selectValue: string;
   triggerAriaLabel: string;
@@ -1282,20 +1187,16 @@ interface ModelFirstModelPickerState {
 
 function resolveModelFirstModelPickerState({
   value,
-  userPreference,
   policyResponse,
   modelCapabilities,
-  resolveDefaultSelection,
   placeholder,
   codexFastModeEnabled,
   fastLabel,
   excludedModel,
 }: {
   value: ModelProviderSelection | null;
-  userPreference: { selectedModel: string | null } | null | undefined;
   policyResponse: { policies: OrgModelPolicy[] } | null | undefined;
   modelCapabilities: ModelPlanCapabilities;
-  resolveDefaultSelection: boolean;
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
@@ -1304,30 +1205,13 @@ function resolveModelFirstModelPickerState({
   const policies = (policyResponse?.policies ?? []).filter((policy) => {
     return policy.model !== excludedModel;
   });
-  const selectablePolicies = selectablePoliciesForPlan(
-    policies,
-    modelCapabilities,
-  );
-  const selectableValue = selectionAllowedValue(
-    value,
-    policies,
-    modelCapabilities,
-  );
-  const resolved = resolveDefaultSelection
-    ? resolveModelFirstDefault(
-        selectableValue,
-        userPreference,
-        selectablePolicies,
-      )
-    : selectableValue;
+  const selection = selectionAllowedValue(value, policies, modelCapabilities);
   return {
     policies,
-    selectablePolicies,
-    selectableValue,
-    selection: resolved,
-    selectValue: modelFirstSelectValue(resolved),
+    selection,
+    selectValue: modelFirstSelectValue(selection),
     triggerAriaLabel: selectionLabel({
-      selection: resolved,
+      selection,
       placeholder,
       codexFastModeEnabled,
       fastLabel,
@@ -1341,24 +1225,20 @@ function ModelFirstSelectPicker({
   placeholder,
   triggerClassName,
   mobileIconTrigger,
-  modelCapabilities,
   codexFastModeEnabled,
   fastLabel,
-  mediaModelPanel,
   open,
   onOpenChange,
   modal,
   onValueChange,
 }: {
   state: ModelFirstModelPickerState;
-  content?: ReactNode;
+  content: ReactNode;
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
-  modelCapabilities: ModelPlanCapabilities;
   codexFastModeEnabled: boolean;
   fastLabel: string;
-  mediaModelPanel: MediaModelPanelState | undefined;
   open: boolean | undefined;
   onOpenChange:
     | ((
@@ -1391,133 +1271,8 @@ function ModelFirstSelectPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      {open !== false &&
-        (content ?? (
-          <ModelFirstModelPickerContentLayout
-            selectValue={state.selectValue}
-            placeholder={placeholder}
-            policies={state.policies}
-            selection={state.selection}
-            modelCapabilities={modelCapabilities}
-            codexFastModeEnabled={codexFastModeEnabled}
-            fastLabel={fastLabel}
-            mediaModelPanel={mediaModelPanel}
-          />
-        ))}
+      {content}
     </Select>
-  );
-}
-
-function SubscribedModelFirstModelPicker({
-  value,
-  onChange,
-  placeholder,
-  triggerClassName,
-  compactTrigger,
-  mobileIconTrigger,
-  open,
-  onOpenChange,
-  modal,
-  disabled,
-  userPreference,
-  resolveDefaultSelection,
-  codexFastModeEnabled = false,
-  fastLabel,
-  mediaModelPanel,
-  excludedModel,
-}: ModelProviderPickerProps & {
-  placeholder: string;
-  compactTrigger: boolean;
-  mobileIconTrigger: boolean;
-  userPreference: { selectedModel: string | null } | null | undefined;
-  resolveDefaultSelection: boolean;
-  fastLabel: string;
-}) {
-  const policiesLoadable = useLastLoadable(orgModelPolicies$);
-  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
-  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
-  const openBillingPlans = useSet(openSettingsBillingPlans$);
-  const openSettings = useSet(setSettingsDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
-  const policyResponse =
-    policiesLoadable.state === "hasData" ? policiesLoadable.data : undefined;
-  const modelCapabilities =
-    modelCapabilitiesLoadable.state === "hasData"
-      ? modelCapabilitiesLoadable.data
-      : (lastModelCapabilities ?? DEFAULT_MODEL_PLAN_CAPABILITIES);
-  const state = resolveModelFirstModelPickerState({
-    value,
-    userPreference,
-    policyResponse,
-    modelCapabilities,
-    resolveDefaultSelection,
-    placeholder,
-    codexFastModeEnabled,
-    fastLabel,
-    excludedModel,
-  });
-
-  if (disabled) {
-    return (
-      <ModelFirstDisabledPickerLabel
-        value={state.selectableValue}
-        placeholder={placeholder}
-        compactTrigger={compactTrigger}
-        mobileIconTrigger={mobileIconTrigger}
-        triggerClassName={triggerClassName}
-        userPreference={resolveDefaultSelection ? userPreference : null}
-        policies={resolveDefaultSelection ? state.selectablePolicies : []}
-        codexFastModeEnabled={codexFastModeEnabled}
-        fastLabel={fastLabel}
-      />
-    );
-  }
-
-  const openComparePlans = () => {
-    openBillingPlans();
-    detach(openSettings(true, pageSignal), Reason.DomCallback);
-  };
-
-  const handleRawValueChange = (raw: string) => {
-    const selection = modelFirstSelectionFromInteraction(
-      raw,
-      state.selection,
-      codexFastModeEnabled,
-    );
-    if (selection === undefined) {
-      return;
-    }
-    if (selection) {
-      const policy = state.policies.find((candidate) => {
-        return candidate.model === selection.selectedModel;
-      });
-      if (
-        !modelAllowedForPlan(selection.selectedModel, modelCapabilities) ||
-        (policy !== undefined &&
-          !modelPolicyAllowedForPlan(policy, modelCapabilities))
-      ) {
-        openComparePlans();
-        return;
-      }
-    }
-    onChange(selection);
-  };
-
-  return (
-    <ModelFirstSelectPicker
-      state={state}
-      placeholder={placeholder}
-      triggerClassName={triggerClassName}
-      mobileIconTrigger={mobileIconTrigger}
-      modelCapabilities={modelCapabilities}
-      codexFastModeEnabled={codexFastModeEnabled}
-      fastLabel={fastLabel}
-      mediaModelPanel={mediaModelPanel}
-      open={open}
-      onOpenChange={onOpenChange}
-      modal={modal}
-      onValueChange={handleRawValueChange}
-    />
   );
 }
 
@@ -1534,8 +1289,6 @@ function resolveExplicitModelFirstModelPickerState({
 }): ModelFirstModelPickerState {
   return {
     policies: [],
-    selectablePolicies: [],
-    selectableValue: value,
     selection: value,
     selectValue: modelFirstSelectValue(value),
     triggerAriaLabel: selectionLabel({
@@ -1547,23 +1300,23 @@ function resolveExplicitModelFirstModelPickerState({
   };
 }
 
-function LoadingModelFirstModelPickerContent({
+function ModelFirstModelPickerMessageContent({
   value,
   placeholder,
   codexFastModeEnabled,
   fastLabel,
+  message,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   fastLabel: string;
+  message: string;
 }) {
-  const { t } = useTranslation();
-  const selectValue = modelFirstSelectValue(value);
   return (
     <SelectContent className="min-w-[260px]">
       <SelectItem
-        value={selectValue}
+        value={modelFirstSelectValue(value)}
         className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
         disabled
         aria-hidden="true"
@@ -1575,48 +1328,7 @@ function LoadingModelFirstModelPickerContent({
           fastLabel,
         })}
       </SelectItem>
-      <div className="px-2 py-2 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.settings.models.picker.loading;
-        })}
-      </div>
-    </SelectContent>
-  );
-}
-
-function ErrorModelFirstModelPickerContent({
-  value,
-  placeholder,
-  codexFastModeEnabled,
-  fastLabel,
-}: {
-  value: ModelProviderSelection | null;
-  placeholder: string;
-  codexFastModeEnabled: boolean;
-  fastLabel: string;
-}) {
-  const { t } = useTranslation();
-  const selectValue = modelFirstSelectValue(value);
-  return (
-    <SelectContent className="min-w-[260px]">
-      <SelectItem
-        value={selectValue}
-        className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
-        disabled
-        aria-hidden="true"
-      >
-        {selectionLabel({
-          selection: value,
-          placeholder,
-          codexFastModeEnabled,
-          fastLabel,
-        })}
-      </SelectItem>
-      <div className="px-2 py-2 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.settings.models.picker.loadError;
-        })}
-      </div>
+      <div className="px-2 py-2 text-sm text-muted-foreground">{message}</div>
     </SelectContent>
   );
 }
@@ -1628,6 +1340,9 @@ function SubscribedExplicitModelFirstModelPickerContent({
   fastLabel,
   mediaModelPanel,
   excludedModel,
+  showInheritOption,
+  menuSignals,
+  onMenuChange,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
@@ -1635,41 +1350,84 @@ function SubscribedExplicitModelFirstModelPickerContent({
   fastLabel: string;
   mediaModelPanel: MediaModelPanelState | undefined;
   excludedModel: SupportedRunModel | undefined;
+  showInheritOption: boolean;
+  menuSignals: ModelPickerMenuSignals | undefined;
+  onMenuChange: (selection: ModelProviderSelection) => void;
 }) {
+  const { t } = useTranslation();
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
     useLastResolved(modelPlanCapabilities$) ?? DEFAULT_MODEL_PLAN_CAPABILITIES;
-  if (policiesLoadable.state === "loading") {
+  if (policiesLoadable.state !== "hasData") {
+    if (menuSignals) {
+      return (
+        <div className="px-2 py-2 text-sm text-muted-foreground" role="status">
+          {policiesLoadable.state === "loading"
+            ? t(($) => {
+                return $.settings.models.picker.loading;
+              })
+            : t(($) => {
+                return $.settings.models.picker.loadError;
+              })}
+        </div>
+      );
+    }
     return (
-      <LoadingModelFirstModelPickerContent
+      <ModelFirstModelPickerMessageContent
         value={value}
         placeholder={placeholder}
         codexFastModeEnabled={codexFastModeEnabled}
         fastLabel={fastLabel}
-      />
-    );
-  }
-  if (policiesLoadable.state === "hasError") {
-    return (
-      <ErrorModelFirstModelPickerContent
-        value={value}
-        placeholder={placeholder}
-        codexFastModeEnabled={codexFastModeEnabled}
-        fastLabel={fastLabel}
+        message={
+          policiesLoadable.state === "loading"
+            ? t(($) => {
+                return $.settings.models.picker.loading;
+              })
+            : t(($) => {
+                return $.settings.models.picker.loadError;
+              })
+        }
       />
     );
   }
   const state = resolveModelFirstModelPickerState({
     value,
-    userPreference: null,
     policyResponse: policiesLoadable.data,
     modelCapabilities: DEFAULT_MODEL_PLAN_CAPABILITIES,
-    resolveDefaultSelection: false,
     placeholder,
     codexFastModeEnabled,
     fastLabel,
     excludedModel,
   });
+  if (menuSignals) {
+    return (
+      <ModelPickerMenuContent
+        signals={menuSignals}
+        value={state.selection}
+        placeholder={placeholder}
+        mediaModelPanel={mediaModelPanel}
+        onChange={onMenuChange}
+        options={state.policies.map((policy) => {
+          return {
+            model: policy.model,
+            label:
+              policy.modelLabel || getCanonicalModelDisplayName(policy.model),
+            content: (
+              <ModelFirstPolicyRowContent
+                policy={policy}
+                modelCapabilities={modelCapabilities}
+              />
+            ),
+            disabled: policy.routeStatus !== "valid",
+            fastAvailable:
+              codexFastModeEnabled &&
+              policy.routeStatus === "valid" &&
+              isCodexFastModeModel(policy.model),
+          };
+        })}
+      />
+    );
+  }
   return (
     <ModelFirstModelPickerContentLayout
       selectValue={state.selectValue}
@@ -1680,6 +1438,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
       codexFastModeEnabled={codexFastModeEnabled}
       fastLabel={fastLabel}
       mediaModelPanel={mediaModelPanel}
+      showInheritOption={showInheritOption}
     />
   );
 }
@@ -1687,7 +1446,6 @@ function SubscribedExplicitModelFirstModelPickerContent({
 function EnabledExplicitModelFirstModelPicker(
   props: ModelProviderPickerProps & {
     placeholder: string;
-    compactTrigger: boolean;
     mobileIconTrigger: boolean;
     fastLabel: string;
   },
@@ -1702,15 +1460,7 @@ function EnabledExplicitModelFirstModelPicker(
     codexFastModeEnabled: props.codexFastModeEnabled ?? false,
     fastLabel: props.fastLabel,
   });
-  const handleRawValueChange = (raw: string) => {
-    const selection = modelFirstSelectionFromInteraction(
-      raw,
-      state.selection,
-      props.codexFastModeEnabled ?? false,
-    );
-    if (selection === undefined) {
-      return;
-    }
+  const handleSelectionChange = (selection: ModelProviderSelection | null) => {
     detach(
       (async () => {
         const result = await resolveSelection(
@@ -1729,76 +1479,88 @@ function EnabledExplicitModelFirstModelPicker(
       Reason.DomCallback,
     );
   };
-  return (
-    <ModelFirstSelectPicker
-      state={state}
-      content={
-        props.open !== false ? (
-          <SubscribedExplicitModelFirstModelPickerContent
-            value={props.value}
-            placeholder={props.placeholder}
-            codexFastModeEnabled={props.codexFastModeEnabled ?? false}
-            fastLabel={props.fastLabel}
-            mediaModelPanel={props.mediaModelPanel}
-            excludedModel={props.excludedModel}
-          />
-        ) : undefined
-      }
+  const handleRawValueChange = (raw: string) => {
+    const selection = modelFirstSelectionFromInteraction(
+      raw,
+      state.selection,
+      props.codexFastModeEnabled ?? false,
+    );
+    if (selection !== undefined) {
+      handleSelectionChange(selection);
+    }
+  };
+  const content = (
+    <SubscribedExplicitModelFirstModelPickerContent
+      value={props.value}
       placeholder={props.placeholder}
-      triggerClassName={props.triggerClassName}
-      mobileIconTrigger={props.mobileIconTrigger}
-      modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       codexFastModeEnabled={props.codexFastModeEnabled ?? false}
       fastLabel={props.fastLabel}
       mediaModelPanel={props.mediaModelPanel}
+      excludedModel={props.excludedModel}
+      showInheritOption={props.showInheritOption ?? false}
+      menuSignals={props.menuSignals}
+      onMenuChange={handleSelectionChange}
+    />
+  );
+  if (props.menuSignals) {
+    return (
+      <Popover
+        open={props.open}
+        onOpenChange={props.onOpenChange}
+        modal={props.modal}
+      >
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            aria-label={state.triggerAriaLabel}
+            className={cn(
+              "h-9 w-full justify-start gap-2 rounded-lg text-sm font-normal",
+              props.triggerClassName,
+            )}
+          >
+            <span data-slot="select-value" className="min-w-0">
+              <ModelFirstTriggerLabel
+                selection={state.selection}
+                placeholder={props.placeholder}
+                mobileIcon={props.mobileIconTrigger}
+                codexFastModeEnabled={props.codexFastModeEnabled ?? false}
+                fastLabel={props.fastLabel}
+              />
+            </span>
+            <span data-slot="select-icon">
+              <ChevronDown
+                size={16}
+                className="shrink-0 opacity-50"
+                aria-hidden="true"
+              />
+            </span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          collisionPadding={8}
+          aria-label={props.placeholder}
+          className="w-[304px] max-w-[calc(100vw-16px)] max-h-[var(--available-height)] overflow-y-auto overscroll-contain p-1"
+        >
+          {content}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+  return (
+    <ModelFirstSelectPicker
+      state={state}
+      content={content}
+      placeholder={props.placeholder}
+      triggerClassName={props.triggerClassName}
+      mobileIconTrigger={props.mobileIconTrigger}
+      codexFastModeEnabled={props.codexFastModeEnabled ?? false}
+      fastLabel={props.fastLabel}
       open={props.open}
       onOpenChange={props.onOpenChange}
       modal={props.modal}
       onValueChange={handleRawValueChange}
-    />
-  );
-}
-
-function ModelFirstModelPicker(
-  props: ModelProviderPickerProps & {
-    placeholder: string;
-    compactTrigger: boolean;
-    mobileIconTrigger: boolean;
-    fastLabel: string;
-  },
-) {
-  if (props.disabled) {
-    return (
-      <ModelFirstDisabledPickerLabel
-        value={props.value}
-        placeholder={props.placeholder}
-        compactTrigger={props.compactTrigger}
-        mobileIconTrigger={props.mobileIconTrigger}
-        triggerClassName={props.triggerClassName}
-        userPreference={null}
-        policies={[]}
-        codexFastModeEnabled={props.codexFastModeEnabled ?? false}
-        fastLabel={props.fastLabel}
-      />
-    );
-  }
-  return <EnabledExplicitModelFirstModelPicker {...props} />;
-}
-
-function ModelFirstModelPickerWithDefaultSelection(
-  props: ModelProviderPickerProps & {
-    placeholder: string;
-    compactTrigger: boolean;
-    mobileIconTrigger: boolean;
-    fastLabel: string;
-  },
-) {
-  const userPreference = useLastResolved(userModelPreference$);
-  return (
-    <SubscribedModelFirstModelPicker
-      {...props}
-      userPreference={userPreference}
-      resolveDefaultSelection
     />
   );
 }
@@ -1808,15 +1570,15 @@ export function ModelProviderPicker({
   onChange,
   placeholder,
   triggerClassName,
-  compactTrigger = false,
   mobileIconTrigger = false,
   open,
   onOpenChange,
   modal,
   disabled = false,
-  resolveDefaultSelection = true,
   codexFastModeEnabled = false,
+  showInheritOption = false,
   mediaModelPanel,
+  menuSignals,
   excludedModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
@@ -1828,24 +1590,34 @@ export function ModelProviderPicker({
   const fastLabel = t(($) => {
     return $.settings.models.picker.fast;
   });
-  const props = {
-    value,
-    onChange,
-    placeholder: resolvedPlaceholder,
-    triggerClassName,
-    compactTrigger,
-    mobileIconTrigger,
-    open,
-    onOpenChange,
-    modal,
-    disabled,
-    codexFastModeEnabled,
-    fastLabel,
-    excludedModel,
-    ...(mediaModelPanel ? { mediaModelPanel } : {}),
-  };
-  if (resolveDefaultSelection) {
-    return <ModelFirstModelPickerWithDefaultSelection {...props} />;
+  if (disabled) {
+    return (
+      <ModelFirstDisabledPickerLabel
+        value={value}
+        placeholder={resolvedPlaceholder}
+        mobileIconTrigger={mobileIconTrigger}
+        triggerClassName={triggerClassName}
+        codexFastModeEnabled={codexFastModeEnabled}
+        fastLabel={fastLabel}
+      />
+    );
   }
-  return <ModelFirstModelPicker {...props} />;
+  return (
+    <EnabledExplicitModelFirstModelPicker
+      value={value}
+      onChange={onChange}
+      placeholder={resolvedPlaceholder}
+      triggerClassName={triggerClassName}
+      mobileIconTrigger={mobileIconTrigger}
+      open={open}
+      onOpenChange={onOpenChange}
+      modal={modal}
+      codexFastModeEnabled={codexFastModeEnabled}
+      showInheritOption={showInheritOption}
+      fastLabel={fastLabel}
+      excludedModel={excludedModel}
+      menuSignals={menuSignals}
+      {...(mediaModelPanel ? { mediaModelPanel } : {})}
+    />
+  );
 }

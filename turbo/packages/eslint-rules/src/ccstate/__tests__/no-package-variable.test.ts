@@ -134,7 +134,7 @@ ruleTester.run("no-package-variable", rule, {
       errors: [{ messageId: "noPackageFactoryCache" }],
     },
     {
-      code: 'Reflect.set(globalThis, "vm0PreviewCache", new Map());',
+      code: 'Reflect.set(globalThis, "okouPreviewCache", new Map());',
       errors: [{ messageId: "noGlobalCache" }],
     },
     {

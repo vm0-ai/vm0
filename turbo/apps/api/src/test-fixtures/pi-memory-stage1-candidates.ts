@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { conversations } from "@okouai/db/schema/conversation";
@@ -79,6 +79,7 @@ export async function seedPiMemoryPhase2ExportJobFixture(args: {
       claimedRevision: 1,
       claimedBaseVersionId: storage.headVersionId,
       leaseToken,
+      sandboxLeaseToken: leaseToken,
       leaseExpiresAt: new Date(args.currentTime.getTime() + 60 * 60 * 1000),
       retryCount: 1,
       lastSucceededAt: new Date(
@@ -126,6 +127,8 @@ export async function readPiMemoryStage1CandidateFixture(args: {
       memoryStorageId: piMemoryStage1Candidates.memoryStorageId,
       memoryStorageName: storages.name,
       memoryStorageS3Prefix: storages.s3Prefix,
+      orgId: piMemoryStage1Candidates.orgId,
+      userId: piMemoryStage1Candidates.userId,
       piSessionId: piMemoryStage1Candidates.piSessionId,
       sourceRunId: piMemoryStage1Candidates.sourceRunId,
       sourceHistoryHash: piMemoryStage1Candidates.sourceHistoryHash,
@@ -156,6 +159,22 @@ export async function readPiMemoryStage1CandidateFixture(args: {
     )
     .limit(1);
   return candidate ?? null;
+}
+
+export async function countPiMemoryStage1CandidatesFixture(args: {
+  readonly memoryStorageId: string;
+  readonly piSessionId: string;
+}): Promise<number> {
+  const [result] = await db()
+    .select({ value: count() })
+    .from(piMemoryStage1Candidates)
+    .where(
+      and(
+        eq(piMemoryStage1Candidates.memoryStorageId, args.memoryStorageId),
+        eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
+      ),
+    );
+  return result?.value ?? 0;
 }
 
 export async function readPiConversationIdentityFixture(runId: string) {

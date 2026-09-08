@@ -87,7 +87,7 @@ export function ColorThemeSettings() {
   ];
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl bg-card p-4 zero-border">
+    <div className="flex flex-col gap-4 rounded-xl bg-card p-4 okou-border">
       <div className="flex items-center gap-4">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center">
           <SwatchBook size={22} className="text-muted-foreground" />
@@ -125,14 +125,14 @@ export function ColorThemeSettings() {
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-lg border border-[0.7px] bg-background/80 p-2 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 selected
-                  ? "border-[hsl(var(--ring))] bg-[var(--zero-color-theme-selected)] shadow-[0_0_0_1px_hsl(var(--ring)/0.18)]"
+                  ? "border-[hsl(var(--ring))] bg-[var(--okou-color-theme-selected)] shadow-[0_0_0_1px_hsl(var(--ring)/0.18)]"
                   : "border-border hover:border-[hsl(var(--gray-500))] hover:bg-accent",
               )}
             >
               <span
                 aria-hidden="true"
                 data-color-theme={value}
-                className="zero-color-theme-swatch h-8 w-8 shrink-0 rounded-full border border-black/5"
+                className="okou-color-theme-swatch h-8 w-8 shrink-0 rounded-full border border-black/5"
               />
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
                 {label}

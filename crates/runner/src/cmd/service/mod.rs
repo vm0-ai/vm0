@@ -63,7 +63,7 @@ enum ServiceCommand {
     Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
     Uninstall(ServiceUninstallArgs),
-    /// Drain without waiting for active jobs (may wait for systemd operations and bounded signal convergence)
+    /// Drain without waiting for active jobs (waits for bounded same-process acknowledgement)
     Drain(drain_resume::DrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(drain_resume::ResumeArgs),
@@ -197,6 +197,45 @@ fn systemd_run_cpu_delegation_property_args() -> [String; 2] {
     ]
 }
 
+fn systemd_run_command(
+    unit: &RunnerServiceUnit,
+    exe_path: &Path,
+    config_path: &Path,
+    env_vars: &[String],
+    local: bool,
+) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new("systemd-run");
+    command
+        .arg(format!("--unit={}", unit.unit_name()))
+        .arg(format!("--description=VM0 Runner ({})", unit.unit_name()))
+        .arg("--expand-environment=no")
+        .args([
+            "--property=Type=exec",
+            "--property=Restart=on-failure",
+            "--property=RestartSec=5",
+            "--property=StandardOutput=journal",
+            "--property=StandardError=journal",
+            "--property=KillSignal=SIGTERM",
+            "--property=TimeoutStopSec=300",
+        ])
+        .arg(systemd_run_limit_nofile_property_arg());
+    for property in systemd_run_cpu_delegation_property_args() {
+        command.arg(property);
+    }
+    command.arg(format!("--property=SyslogIdentifier={}", unit.unit_name()));
+    for entry in env_vars {
+        command.arg(format!("--setenv={entry}"));
+    }
+    command
+        .arg(exe_path)
+        .args(["start", "--config"])
+        .arg(config_path);
+    if local {
+        command.arg("--local");
+    }
+    command
+}
+
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
 async fn restore_service_state_after_reload_failure(
@@ -320,41 +359,19 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     validate_systemd_path("config path", &config_path)?;
     reconcile_drain_restart_override_removal(&unit, DrainOverrideReloadPolicy::Unbounded).await?;
 
-    let unit_arg = format!("--unit={}", unit.unit_name());
-    let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
-    let syslog_arg = format!("--property=SyslogIdentifier={}", unit.unit_name());
-    let nofile_arg = systemd_run_limit_nofile_property_arg();
-    let [delegate_arg, delegate_subgroup_arg] = systemd_run_cpu_delegation_property_args();
+    let unit_for_start = unit.clone();
     with_service_activation_image_artifacts(
         &unit,
         &config_path,
         &home,
         |snapshot_path| async move {
-            let mut cmd = tokio::process::Command::new("systemd-run");
-            cmd.args([
-                &*unit_arg,
-                &*desc_arg,
-                "--property=Type=exec",
-                "--property=Restart=on-failure",
-                "--property=RestartSec=5",
-                "--property=StandardOutput=journal",
-                "--property=StandardError=journal",
-                "--property=KillSignal=SIGTERM",
-                "--property=TimeoutStopSec=300",
-                &*nofile_arg,
-                &*delegate_arg,
-                &*delegate_subgroup_arg,
-                &*syslog_arg,
-            ]);
-            for entry in &args.env {
-                cmd.arg(format!("--setenv={entry}"));
-            }
-            cmd.arg(&exe_path)
-                .args(["start", "--config"])
-                .arg(&snapshot_path);
-            if args.local {
-                cmd.arg("--local");
-            }
+            let mut cmd = systemd_run_command(
+                &unit_for_start,
+                &exe_path,
+                &snapshot_path,
+                &args.env,
+                args.local,
+            );
 
             let status = cmd
                 .status()
@@ -589,18 +606,18 @@ async fn uninstall_with_ops(
     ops.uninstall_unit(unit).await
 }
 
-fn selected_config_base_dir_from_live_instances(
+fn selected_config_live_instance_from_instances(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     instances: &[LiveRunnerInstance],
-) -> RunnerResult<Option<PathBuf>> {
+) -> RunnerResult<Option<LiveRunnerInstance>> {
     let matches = instances
         .iter()
         .filter(|instance| instance.config_path == config_path && instance.subcommand == "start")
         .collect::<Vec<_>>();
 
     match matches.as_slice() {
-        [instance] => Ok(Some(instance.base_dir.clone())),
+        [instance] => Ok(Some((*instance).clone())),
         [] => Ok(None),
         _ => Err(RunnerError::Internal(format!(
             "{} has multiple live runner instance records for selected config {}",
@@ -610,13 +627,23 @@ fn selected_config_base_dir_from_live_instances(
     }
 }
 
+async fn selected_config_live_instance(
+    unit: &RunnerServiceUnit,
+    config_path: &Path,
+    home: &HomePaths,
+) -> RunnerResult<Option<LiveRunnerInstance>> {
+    let instances = live_runner_instances::try_list(home).await?;
+    selected_config_live_instance_from_instances(unit, config_path, &instances)
+}
+
 async fn selected_config_base_dir(
     unit: &RunnerServiceUnit,
     config_path: &Path,
     home: &HomePaths,
 ) -> RunnerResult<Option<PathBuf>> {
-    let instances = live_runner_instances::try_list(home).await?;
-    selected_config_base_dir_from_live_instances(unit, config_path, &instances)
+    Ok(selected_config_live_instance(unit, config_path, home)
+        .await?
+        .map(|instance| instance.base_dir))
 }
 
 fn wait_running_timeout_error(
@@ -1213,7 +1240,7 @@ profiles:
         }
         tokio::fs::write(
             snapshot.complete_marker(),
-            sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+            sandbox_firecracker::SNAPSHOT_COMPLETE_MARKER_CONTENT,
         )
         .await
         .unwrap();
@@ -1422,18 +1449,18 @@ profiles:
     }
 
     #[test]
-    fn readiness_base_dir_waits_without_live_record() {
+    fn selected_config_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
 
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
-        let base_dir =
-            selected_config_base_dir_from_live_instances(&unit, &config_path, &[]).unwrap();
+        let instance =
+            selected_config_live_instance_from_instances(&unit, &config_path, &[]).unwrap();
 
-        assert_eq!(base_dir, None);
+        assert_eq!(instance, None);
     }
 
     #[test]
-    fn readiness_base_dir_uses_exact_config_path_during_release_overlap() {
+    fn selected_config_uses_exact_path_during_release_overlap() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
         let config_path = actual_base_dir.join("runner.yaml");
@@ -1445,14 +1472,16 @@ profiles:
             ),
         ];
 
-        let base_dir =
-            selected_config_base_dir_from_live_instances(&unit, &config_path, &instances).unwrap();
+        let instance =
+            selected_config_live_instance_from_instances(&unit, &config_path, &instances)
+                .unwrap()
+                .unwrap();
 
-        assert_eq!(base_dir, Some(actual_base_dir));
+        assert_eq!(instance.base_dir, actual_base_dir);
     }
 
     #[test]
-    fn readiness_base_dir_rejects_duplicate_live_records() {
+    fn selected_config_rejects_duplicate_live_records() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let config_path = PathBuf::from("/vm0-runner/runners/pr-123/runner.yaml");
         let instances = vec![
@@ -1466,7 +1495,7 @@ profiles:
             ),
         ];
 
-        let error = selected_config_base_dir_from_live_instances(&unit, &config_path, &instances)
+        let error = selected_config_live_instance_from_instances(&unit, &config_path, &instances)
             .unwrap_err();
 
         assert!(
@@ -1490,6 +1519,48 @@ profiles:
             [
                 "--property=Delegate=cpu".to_string(),
                 "--property=DelegateSubgroup=control".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn systemd_run_preserves_literal_dollar_paths_and_environment() {
+        let command = systemd_run_command(
+            &service_unit(),
+            Path::new("/opt/vm0-${BUILD}/vm0-runner"),
+            Path::new("/srv/vm0-${TENANT}/runner.yaml"),
+            &["LITERAL=${VALUE}".to_string()],
+            true,
+        );
+        let args = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            [
+                "--unit=vm0-runner-test",
+                "--description=VM0 Runner (vm0-runner-test)",
+                "--expand-environment=no",
+                "--property=Type=exec",
+                "--property=Restart=on-failure",
+                "--property=RestartSec=5",
+                "--property=StandardOutput=journal",
+                "--property=StandardError=journal",
+                "--property=KillSignal=SIGTERM",
+                "--property=TimeoutStopSec=300",
+                "--property=LimitNOFILE=524288:524288",
+                "--property=Delegate=cpu",
+                "--property=DelegateSubgroup=control",
+                "--property=SyslogIdentifier=vm0-runner-test",
+                "--setenv=LITERAL=${VALUE}",
+                "/opt/vm0-${BUILD}/vm0-runner",
+                "start",
+                "--config",
+                "/srv/vm0-${TENANT}/runner.yaml",
+                "--local",
             ]
         );
     }

@@ -1,7 +1,6 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
-import type { DesktopUpdateLine } from "@okouai/api-contracts/contracts/desktop-updates";
 import { readDesktopEnvironment } from "../scripts/desktop-environment.js";
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
@@ -12,11 +11,11 @@ export type DesktopEnvironment = "production" | "staging" | "development";
 type DesktopIdentityKind = "production" | "development";
 
 export interface DesktopIdentity {
-  readonly product: DesktopProduct;
-  readonly brandName: "Zero" | "Okou";
+  readonly product: "okou";
+  readonly brandName: "Okou";
   readonly displayName: string;
   readonly userDataDirectoryName: string;
-  readonly updateLine: DesktopUpdateLine;
+  readonly updateLine: "ai-okou-desktop";
   readonly bundleId: string;
   readonly authProtocolName: string;
   readonly authScheme: string;
@@ -24,41 +23,43 @@ export interface DesktopIdentity {
 
 interface DesktopRuntimeConfig {
   readonly platformUrl: string;
-  readonly product?: DesktopProduct;
+  readonly product?: DesktopIdentity["product"];
 }
 
 export interface DesktopConfig {
   readonly platformUrl: URL;
   readonly webUrl: URL;
+  readonly authUrl: URL;
   readonly environment: DesktopEnvironment;
   readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
+  readonly authPartition: string;
   readonly allowedAppOrigins: ReadonlySet<string>;
 }
 
-function desktopProduct(value: string): DesktopProduct {
-  if (value === "zero" || value === "okou") {
+function desktopProduct(value: string): DesktopIdentity["product"] {
+  if (value === "okou") {
     return value;
   }
   throw new Error(`Unsupported desktop product: ${value}`);
 }
 
-function desktopBrandName(value: string): "Zero" | "Okou" {
-  if (value === "Zero" || value === "Okou") {
+function desktopBrandName(value: string): "Okou" {
+  if (value === "Okou") {
     return value;
   }
   throw new Error(`Unsupported desktop brand: ${value}`);
 }
 
-function desktopUpdateLine(value: string): DesktopUpdateLine {
-  if (value === "zero" || value === "okou" || value === "ai-okou-desktop") {
+function desktopUpdateLine(value: string): DesktopIdentity["updateLine"] {
+  if (value === "ai-okou-desktop") {
     return value;
   }
   throw new Error(`Unsupported desktop update line: ${value}`);
 }
 
 function desktopIdentity(
-  product: DesktopProduct,
+  product: DesktopIdentity["product"],
   kind: DesktopIdentityKind,
 ): DesktopIdentity {
   const identity = desktopIdentities[product][kind];
@@ -95,9 +96,7 @@ function parseRuntimeConfig(value: unknown): DesktopRuntimeConfig {
     );
   }
   if (config.product !== undefined && typeof config.product !== "string") {
-    throw new Error(
-      `${DESKTOP_RUNTIME_CONFIG_FILE} product must be zero or okou`,
-    );
+    throw new Error(`${DESKTOP_RUNTIME_CONFIG_FILE} product must be okou`);
   }
 
   return {
@@ -121,7 +120,7 @@ function readDesktopRuntimeConfig(): DesktopRuntimeConfig | undefined {
 function configuredProduct(
   rawProduct: string | undefined,
   fileConfig: DesktopRuntimeConfig | undefined,
-): DesktopProduct {
+): DesktopIdentity["product"] {
   return desktopProduct(
     rawProduct?.trim() ||
       readDesktopEnvironment("OKOU_DESKTOP_PRODUCT") ||
@@ -145,7 +144,7 @@ function configuredPlatformUrl(
 
 function parsePlatformUrl(
   rawUrl: string | undefined,
-  product: DesktopProduct,
+  product: DesktopIdentity["product"],
 ): URL {
   const value = rawUrl?.trim() || desktopIdentities[product].defaultPlatformUrl;
   const url = new URL(value);
@@ -163,11 +162,7 @@ function environmentForPlatformUrl(
   platformUrl: URL,
   hasExplicitUrl: boolean,
 ): DesktopEnvironment {
-  if (
-    !hasExplicitUrl ||
-    platformUrl.hostname === "app.vm0.ai" ||
-    platformUrl.hostname === "app.okou.ai"
-  ) {
+  if (!hasExplicitUrl || platformUrl.hostname === "app.okou.ai") {
     return "production";
   }
   if (platformUrl.hostname === "staging-app.omby.ai") {
@@ -177,7 +172,7 @@ function environmentForPlatformUrl(
 }
 
 function identityForEnvironment(
-  product: DesktopProduct,
+  product: DesktopIdentity["product"],
   environment: DesktopEnvironment,
 ): DesktopIdentity {
   return desktopIdentity(
@@ -231,12 +226,22 @@ export function resolveDesktopConfig(
   const platformUrl = parsePlatformUrl(platformUrlSource, product);
   const environment = environmentForPlatformUrl(platformUrl, hasExplicitUrl);
 
+  const sessionPartition = `persist:vm0-desktop-${environment}`;
+  const authUrl = new URL(
+    environment === "production"
+      ? desktopIdentities.okou.defaultPlatformUrl
+      : platformUrl.origin,
+  );
   return {
     platformUrl,
     webUrl: deriveCompanionUrl(platformUrl, "www"),
+    authUrl,
     environment,
     identity: identityForEnvironment(product, environment),
-    sessionPartition: `persist:vm0-desktop-${environment}`,
+    sessionPartition,
+    // Keep Clerk and App credentials in their own store. Signing out can clear
+    // it completely without touching native preferences, recordings or plugins.
+    authPartition: `persist:okou-desktop-auth-${createHash("sha256").update(authUrl.origin).digest("hex")}`,
     allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl),
   };
 }

@@ -125,10 +125,11 @@ function privateR2ArchiveSource(
   };
 }
 
-// Archive digests for the image style packages manually published from
-// vm0-ai/vm0-skills@45e237a. Keep these aligned with the private R2 version ids
-// served by the API download route.
+// Pinned archive digests for image style packages. Keep these aligned with
+// the private R2 version ids served by the API download route.
 const IMAGE_STYLE_ARCHIVE_SHA256: Readonly<Record<string, string>> = {
+  "emboss-deboss":
+    "f1c1be0b1cf711a8c61945f928206d700b54d71969711f0551403d20c360d3f8",
   "cozy-parlor":
     "c68f23536a0bd16e2d25b41dc77eb8a7e0ef798bcd10de614697ce73ea20205d",
   "crowd-ink":
@@ -199,7 +200,7 @@ function imageStyleArchiveSha256(slug: string): string {
   return sha256;
 }
 
-function vm0ImageStyleSource(slug: string): ResourceSourceRef {
+function imageStyleSource(slug: string): ResourceSourceRef {
   return {
     repo: VM0_SKILLS_REPO,
     ref: VM0_SKILLS_REF,
@@ -3042,13 +3043,22 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     source: { path: "design-systems/zapier" },
   },
   {
+    id: "image-style:emboss-deboss",
+    kind: "image-style",
+    name: "Emboss & Deboss",
+    description:
+      "Poetic paper posters with pronounced raised lettering and forms, deep pressed contours, fine fibers, and intentional negative space.",
+    desc: "Poetic editorial posters and covers in sculpted matte paper, with pronounced raised lettering and forms, deeply pressed contours, fine fibers, and intentional negative space. Use for /emboss-deboss, embossed paper posters, debossed typography, letterpress covers, or paper-relief design.",
+    source: imageStyleSource("emboss-deboss"),
+  },
+  {
     id: "image-style:notion-illustration",
     kind: "image-style",
     name: "Notion Illustration",
     description:
       "Hand-drawn product spot illustration style with simple ink contours and soft backgrounds.",
     desc: 'Notion-editorial-style hand-drawn spot illustration. Black brush-pen ink on white, tapered confident strokes, solid-black curly hair, solid-black pants/shoes, 3/4 face turned toward viewer with closed-eye smile and soft nose hint, open breathing body outlines, and 1-3 supporting scene props + ambient marks that frame the moment. Trigger when user says /notion-illustration, asks for a "Notion-style illustration", "Notion spot illustration", or a new piece in this hand-drawn brush-pen Notion editorial style.',
-    source: vm0ImageStyleSource("notion-illustration"),
+    source: imageStyleSource("notion-illustration"),
   },
   {
     id: "image-style:vm0-illustration",
@@ -3057,7 +3067,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "vm0 in-app spot illustration style with bold hand-drawn ink line art, white-filled interiors, and a soft rounded color backdrop.",
     desc: "Generate vm0-style vm0 in-app spot illustrations: bold hand-drawn ink line art with white-filled interiors, a soft rounded color backdrop, transparent output, and simple iconic metaphors for product states.",
-    source: vm0ImageStyleSource("vm0-illustration"),
+    source: imageStyleSource("vm0-illustration"),
   },
   {
     id: "image-style:postcard-illustration",
@@ -3066,7 +3076,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial postcard / travel-journal illustration with fine black ink linework, flat saturated gouache fills, sharp edges, dense small repeated ink patterns, paper-grain texture, sparse white speckles, and a tall portrait composition.",
     desc: 'Hand-drawn editorial postcard illustration style. Fine black marker/pen ink linework over flat saturated gouache color fills with sharp edges, dense small repeated ink patterns on surfaces (rows of windows, shingle curves, hatching, stippling), subtle paper-grain background texture, tiny scattered white speckles (snow / petals / sparkle), and a tall portrait composition with a layered foreground-midground-background. Travel-journal / urban-sketcher aesthetic. Trigger when the user says /postcard-illustration, asks for a "postcard illustration", "travel illustration", "urban sketcher style", or briefs a palette + scene archetype + complexity.',
-    source: vm0ImageStyleSource("postcard-illustration"),
+    source: imageStyleSource("postcard-illustration"),
   },
   {
     id: "image-style:folk-storybook",
@@ -3075,7 +3085,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Folk-art children's picture-book illustration — hand-painted gouache and watercolor scenes with anthropomorphic animal characters, closed-crescent-eye smiles, dusty muted folk palette, and decorative pattern surfaces.",
     desc: "Folk-art children's picture-book illustration style — hand-painted gouache/watercolor scene on aged paper, anthropomorphic animal characters with closed-crescent-eye smiles, dusty muted folk palette, decorative pattern surfaces (wallpaper, rugs, textiles), and a hushed lullaby mood. Trigger when users ask for a folk-art illustration, storybook scene, cozy animal illustration, or any new piece in this Eastern European picture-book style.",
-    source: vm0ImageStyleSource("folk-storybook"),
+    source: imageStyleSource("folk-storybook"),
   },
   {
     id: "image-style:papernook",
@@ -3084,7 +3094,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial illustration set in a cozy cluttered personal-studio scene with warm cream paper, scratchy ink, painterly gouache fills, dot-eye character face, and dense edge-to-edge thematic props.",
     desc: 'Hand-drawn editorial illustration in the spirit of a cluttered personal-studio scene. Loose scratchy black ink outlines that wobble, textured gouache fills with visible brush marks, warm cream paper background, simplified dot-eye character face, and a DENSE edge-to-edge composition where a centered character is orbited by thematic props that visually act out the scene metaphor. Default palette: dusty cornflower blue, soft coral pink, fresh sage green, charcoal, warm cream — no mustard, no burnt-orange. Trigger when user says /papernook, asks for a "papernook illustration", a "cozy cluttered editorial scene", a "warm-cream desk scene", or a new piece in this hand-drawn studio-clutter editorial style.',
-    source: vm0ImageStyleSource("papernook"),
+    source: imageStyleSource("papernook"),
   },
   {
     id: "image-style:painterly-botanical",
@@ -3093,7 +3103,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Painterly watercolor + gouache portrait illustration with a single figure embraced by lush botanicals, closed-eye introspective expression, and a softly tinted paper-wash background.",
     desc: 'Painterly watercolor + gouache portrait illustration. Single figure (closed eyes, contemplative) embraced by botanicals — leaves, blossoms, grasses. Translucent washes with visible pigment bleeds, sparse crisp ink line accents on key edges, tiny handwritten cursive signature in an upper corner, and a tinted paper-wash background (never pure white). Eight user axes drive composition: subject, hair, pose, botanicals, palette, background wash, complexity (L1/L2/L3), and format. Trigger when a brief describes a contemplative figure with foliage, a "watercolor portrait", a "botanical embrace", or asks for a piece in this painterly editorial style.',
-    source: vm0ImageStyleSource("painterly-botanical"),
+    source: imageStyleSource("painterly-botanical"),
   },
   {
     id: "image-style:iso-scene",
@@ -3102,7 +3112,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Isometric editorial-magazine scene illustration with ultra-fine hairline outlines, flat fills, a saturated monochromatic background, and a scene-as-metaphor composition built from theme-native props.",
     desc: 'Isometric editorial-magazine scene illustration in a locked flat-vector style — ultra-fine hairline outlines, monochromatic saturated background filling the canvas, and a single composed scene whose props themselves embody the theme. Trigger when users say /iso-scene, ask for an "isometric editorial illustration", a "scene illustration in the editorial machine style", or brief with palette + scene archetype + complexity.',
-    source: vm0ImageStyleSource("iso-scene"),
+    source: imageStyleSource("iso-scene"),
   },
   {
     id: "image-style:inkdab",
@@ -3111,7 +3121,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Brush-pen editorial illustration where a free-floating color dab is painted first, then loose black ink linework is drawn freely on top — never as an outline around the color. Scribbled hatched hair, open-outline bodies, pure white background.",
     desc: 'Brush-pen editorial illustration style — a flat accent-color "dab" painted first, then loose black ink drawn freely on top. ONE flat accent-color shape per prop (painted-first, never outlined in black), black hand-wobbled ink on pure white background, scribbled hatched hair, open-outline bodies with zero fill, and one small solid-accent triangle floating freely as a recurring motif. Trigger when user says /inkdab, asks for an "inkdab illustration", a "brush-pen illustration with a single accent color", a "free-floating color block illustration", or briefs in the style of the included reference images.',
-    source: vm0ImageStyleSource("inkdab"),
+    source: imageStyleSource("inkdab"),
   },
   {
     id: "image-style:riso-relic",
@@ -3120,7 +3130,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       'Pop-art retro risograph poster of a single nostalgic everyday object on a saturated single-hue field — bold black ink outlines, halftone grain, hand-drawn doodle accents, tiny "SMALL OBJECTS IN TIME" banner up top, chunky retro headline with offset drop-shadow at the bottom.',
     desc: 'Pop-art retro risograph poster of a single nostalgic everyday object — saturated single-color background, bold black ink outlines, halftone/riso grain, hand-drawn doodle accents (sparkles, squiggles, dots, music notes, lightning), tiny white "SMALL OBJECTS IN TIME" banner at top, chunky retro display headline at bottom with offset black drop-shadow. Trigger when user says /riso-relic, asks for a "riso poster", a "small objects in time" illustration, or any new piece in this nostalgic pop-art relic-object style.',
-    source: vm0ImageStyleSource("riso-relic"),
+    source: imageStyleSource("riso-relic"),
   },
   {
     id: "image-style:inkstomp",
@@ -3129,7 +3139,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Loud indie-packaging poster style — full-bleed saturated flat color, a two-line hand-lettered headline, and one weird-cute black brush-ink character.",
     desc: 'Inkstomp — a loud, hand-screened indie-packaging poster style. Full-bleed saturated flat color filling the entire canvas, a two-line hand-lettered headline (thin arched caps over chunky drop-shadowed display), and one weird-cute character drawn in thick uniform black brush ink. Trigger when the user says /inkstomp, asks for an "inkstomp poster", a "Ray Fenwick / Hattie Stewart packaging poster", an "indie brush-ink flavor card", or briefs in a "palette + headline + character" shape.',
-    source: vm0ImageStyleSource("inkstomp"),
+    source: imageStyleSource("inkstomp"),
   },
   {
     id: "image-style:folk-muse",
@@ -3138,7 +3148,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat folk-art gouache portrait style — a single contemplative chest-up figure framed by an asymmetric botanical surround, with painted irises, smooth flat hair, a hand against the cheek, and a patterned robe.",
     desc: 'Flat folk-art gouache portrait illustration in the contemporary editorial style of Carson Ellis, Maja Tomljanovic, and Bodil Jane. A single chest-up figure with an elongated mannerist oval face, tiny almond half-lidded eyes, smooth flat hair, one hand pressed against the face, a patterned robe filling the lower frame, and an asymmetric botanical surround filling the background edge-to-edge. Hand-painted matte gouache texture, flat color blocks, no harsh outlines, no photorealism. Calm, slightly melancholic, contemplative mood. Trigger when the user says /folk-muse, asks for a "folk-art portrait", "gouache portrait", "Carson Ellis style portrait", or any new piece in this contemplative folk-portrait style.',
-    source: vm0ImageStyleSource("folk-muse"),
+    source: imageStyleSource("folk-muse"),
   },
   {
     id: "image-style:sunlit-gouache",
@@ -3147,7 +3157,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bright pastel travel-painting illustration in opaque gouache on textured paper with chunky flat brushstrokes, vertical one-point perspective, and figures walking into warm sunlight.",
     desc: 'Sunlit Gouache travel-painting illustration. Opaque gouache on textured paper, visible chunky flat brushstrokes with dry-brush highlights, locked six-color palette (cream, butter-yellow, sky-blue, sage-green, terracotta, one small red accent), vertical 2:3 one-point-perspective composition drawing the eye into a bright sunlit focal point, figures seen from behind walking into the scene, an overhead band of hanging elements (awning, prayer flags, catenary, bunting, lanterns) creating depth, dappled painterly reflections on the ground, airy optimistic warm mood. Trigger when user says /sunlit-gouache, asks for a "sunlit gouache illustration", "painterly travel scene", "gouache café/market/temple/station scene", or a new piece in this bright pastel painted-light style.',
-    source: vm0ImageStyleSource("sunlit-gouache"),
+    source: imageStyleSource("sunlit-gouache"),
   },
   {
     id: "image-style:mosaic-still-life",
@@ -3156,7 +3166,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial still-life illustration in a mosaic-tile + painterly hybrid style — tessellated ground/sky/wall surfaces with crisp painterly objects, an animal companion, and a patterned textile peeking through.",
     desc: 'Mosaic-tile + painterly hybrid editorial illustration. Tessellated/pointillist mosaic surfaces (grass, sky, sand, walls, floors) anchor the scene, with crisp painterly still-life objects rendered ON TOP. Always features a still-life centerpiece on a table, an animal companion at the heart of the scene, and at least one patterned textile peeking through. Cozy, nostalgic, bucolic mood. Trigger when user says /mosaic-still-life, asks for a "mosaic illustration", "mosaic-tile editorial illustration", "tessellated still life", or briefs with a palette + scene + animal in this style.',
-    source: vm0ImageStyleSource("mosaic-still-life"),
+    source: imageStyleSource("mosaic-still-life"),
   },
   {
     id: "image-style:ink-mascot",
@@ -3165,7 +3175,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vintage editorial marketing card. Bold serif headline and short serif descriptor over a hand-drawn black-ink anthropomorphic mascot (stick limbs, chunky white sneakers) on a single solid saturated flat color background.",
     desc: 'Generate a 3:5 portrait editorial marketing card in a locked vintage-textbook style. Bold serif headline plus an optional short serif descriptor sit on a single solid saturated flat color background (no gradient, no divider, no ground line). A hand-drawn black-ink anthropomorphic hero object — paint bucket, magnifying glass, envelope, notebook, funnel, megaphone, rocket, seedling, gift box, compass, etc. — stands with two thin stick arms, two stick legs, and chunky white sneakers with black laces (the signature detail). Crosshatch and stipple shading on rounded surfaces; floating ink doodles (sparkles, arrows, hearts, percent or dollar signs, motion lines) at the requested density. Dialable along six axes: concept, palette, hero object, action, doodle density (L1 minimal, L2 balanced, L3 packed), and type layout (A title-top, B headline-bottom, C headline-only, D big-word + tiny-descriptor). Trigger when user says /ink-mascot, asks for a "marketing card illustration", a "retro editorial mascot poster", or briefs with a marketing concept plus palette plus character.',
-    source: vm0ImageStyleSource("ink-mascot"),
+    source: imageStyleSource("ink-mascot"),
   },
   {
     id: "image-style:sticker-sheet",
@@ -3174,7 +3184,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-painted gouache sticker-sheet illustration with ~20 themed objects floating on white, punchy saturated palette, wobbly hand-drawn ink overlay, and tiny decorative marks on every item.",
     desc: 'Sticker Sheet — hand-painted gouache sticker-sheet illustration. ~20 small floating themed objects on pure white, punchy saturated palette (coral, mustard, sage, dusty pink, navy, cream, warm brown), flat brushy gouache fills with wobbly hand-drawn ink linework and tiny decorative marks (dots, hatches, squiggles) on every object. Each object slightly tilted, no drop shadows, cheerful cozy lifestyle journal mood. Trigger when user says /sticker-sheet, asks for a "sticker sheet illustration", "hand-painted gouache sticker pack", "themed object sheet", or briefs with a scene theme + object count in this house style.',
-    source: vm0ImageStyleSource("sticker-sheet"),
+    source: imageStyleSource("sticker-sheet"),
   },
   {
     id: "image-style:flat-poster",
@@ -3183,7 +3193,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Vertical flat-color editorial poster style — saturated solid background, one centered hand-drawn vector subject in bold deep-navy outlines with strict two-tone fill, headline pinned top-left, and an optional user-supplied wordmark pinned bottom-right.",
     desc: 'Flat Poster — a vertical flat-color editorial poster style for brand benefit cards, marketing posters, and in-app campaign visuals. Portrait 2:3 canvas filled edge-to-edge with one saturated hue; a single centered hand-drawn vector subject in deep-navy outlines with strict two-tone fill (pure white plus one darker bg-tint accent); a bold rounded sans-serif headline pinned top-left; an optional short wordmark supplied by the user pinned bottom-right and omitted when none is supplied; small floating accent marks around the subject; no body copy. Six creative dials: palette, subject archetype, composition preset, accent marks, headline voice, mood. Trigger when the user says /flat-poster, asks for a "flat-color editorial poster", a "brand benefit card", a "marketing card in the bold outline + flat color style", or briefs with a palette + subject + headline shape.',
-    source: vm0ImageStyleSource("flat-poster"),
+    source: imageStyleSource("flat-poster"),
   },
   {
     id: "image-style:mellow-pop",
@@ -3192,7 +3202,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Chill flat-vector editorial poster of a serene recurring character on a fully saturated solid color background, with a signature pop of bright leaf-green and a scene-as-metaphor composition.",
     desc: 'Mellow-pop flat-vector editorial illustration: a recurring chill character with closed-eye smile, tiny nose hint, and short dark bobbed hair, posed inside a scene-as-metaphor composition on a single fully saturated solid color background, with a signature pop of bright leaf-green woven into every piece (hero prop, plants, motifs, or sweater). Thin uniform black outlines, flat solid fills only, no gradients or texture. Five dials per brief: palette, scene metaphor, complexity (L1/L2/L3), pose, outfit accent. Trigger when user says /mellow-pop, asks for a "mellow-pop illustration", "chill flat-vector poster", or briefs with a scene metaphor + palette + complexity.',
-    source: vm0ImageStyleSource("mellow-pop"),
+    source: imageStyleSource("mellow-pop"),
   },
   {
     id: "image-style:grainy-duotone",
@@ -3201,7 +3211,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial spot illustration on a warm cream background — grainy charcoal-stippled hands, outline-free flat two-tone color blocks with internal patterns, and scattered ambient marks.",
     desc: 'Grainy-duotone editorial spot illustration: warm cream off-white background, grainy charcoal-stippled hands (and occasional faces) drawn in textured black ink, paired with free-floating flat two-tone color blocks that carry NO outlines and are filled with internal patterns (grid, dots, spiral, hatching, squiggles, wavy lines), surrounded by scattered ambient marks (zigzags, triangles, x marks, circles, dashes). Square 1:1 scene-as-metaphor compositions. Five creative dials per brief: palette (two flat hues, e.g. teal+yellow / coral+sage / lavender+mustard / navy+peach / burgundy+dusty pink), elements (hand(s) + 1-3 props like flag, sprout, magnifier, balloons, ladder), scene archetype (Launch / Grow / Connect / Discover / Communicate / Reflect / Navigate / Care / Transform / Build), complexity (L1 minimal / L2 balanced / L3 rich), and mood (celebratory / calm / curious / reflective / determined / warm / quiet). Trigger when user says /grainy-duotone, asks for a "grainy two-tone editorial illustration", "charcoal-stippled hand illustration", "duotone editorial spot", or briefs with a scene metaphor + two-color palette + complexity.',
-    source: vm0ImageStyleSource("grainy-duotone"),
+    source: imageStyleSource("grainy-duotone"),
   },
   {
     id: "image-style:op-ed-cover",
@@ -3210,7 +3220,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial magazine op-ed cover — flat-vector scene with paper grain, elongated ink-line characters, muted retro palette, and a serif headline block in the lower-right.",
     desc: 'Editorial magazine op-ed cover illustration. Flat-vector + paper-grain scene with expressive elongated ink-line characters, gentle painterly shading, 1950s-60s editorial mood, and a serif headline overlay block in the lower-right corner carrying a witty contrarian or declarative title with two short lines of italic body copy. 5-axis framework: palette (background + accent + ink), complexity (L1 single hero / L2 small ensemble / L3 busy crowd), scene metaphor (specific cultural microcosm), headline voice (declarative / pun / appreciative / contrarian), and headline block style (solid vs. translucent). Trigger when user says /op-ed-cover, asks for an "editorial magazine illustration", an "op-ed cover", a "magazine essay illustration", or a scene with a headline overlay in this style.',
-    source: vm0ImageStyleSource("op-ed-cover"),
+    source: imageStyleSource("op-ed-cover"),
   },
   {
     id: "image-style:grain-poster",
@@ -3219,7 +3229,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat-vector editorial poster of a serene full-body figure with one hero prop — riso grain on a single textile, closed-eye smile + red cheek blush, muted limited palette.",
     desc: 'Grain Poster — flat-vector editorial illustration of a serene full-body figure interacting with one hero prop (bicycle, bouquet, cat, book, skateboard, sun hat, guitar, dog leash). Closed-eye smile + single round red cheek blush + dark nose mark + solid black hair, silhouette-first (no inked outlines). Riso/halftone grain confined to exactly ONE textile element (skirt or trousers); every other surface is flat color. Muted single-hue background, generous negative space, no headlines or wordmarks. Six tunable dials: palette (cool-dawn · sunset-coral · twilight · forest-green · custom), mood, scene, cast, complexity (L1/L2/L3), framing. Strongest at L1 + side-profile + solo. Trigger when user says /grain-poster, asks for a "flat-vector editorial poster", "riso-grain figure poster", "grainy editorial illustration", or briefs with a scene + palette + cast in this house style.',
-    source: vm0ImageStyleSource("grain-poster"),
+    source: imageStyleSource("grain-poster"),
   },
   {
     id: "image-style:light-pop-portrait",
@@ -3228,7 +3238,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Light hand-drawn flat-vector single-character portrait on a fully saturated color block — chunky black hair, big shiny eyes, tiny red nose, pink five-point-star sparkle blush.",
     desc: 'Light Pop Portrait — a hand-drawn flat-vector single-character portrait style for playful avatars, mood pieces, and editorial character cards. Square 1:1 canvas filled with one fully saturated background hue; a single child–tween character with chunky glossy-black hair (with one or two flyaway strands), big round shiny eyes (single white glint each, thin lashes above), tiny round red nose, expressive small mouth, and pink FIVE-POINT STAR sparkle blush on the cheeks (never solid dots). Thin delicate slightly-wavy hand-drawn contour lines, flat solid fills only, no gradients or texture, ~5-color palette per piece. Eight creative dials: expression, hairstyle, gender register, pose, palette, headwear, prop, outfit. Trigger when user says /light-pop-portrait, asks for a "light pop portrait", "flat-vector character portrait", "saturated color-block character", or briefs with expression + hairstyle + palette + prop.',
-    source: vm0ImageStyleSource("light-pop-portrait"),
+    source: imageStyleSource("light-pop-portrait"),
   },
   {
     id: "image-style:endpaper",
@@ -3237,7 +3247,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Riso-grain flat-vector collection of chill characters or objects scattered across a saturated solid color field, with two-tone interior shading and closed-eye sleepy faces.",
     desc: 'Riso-grain flat-vector editorial collection illustration. Many small animals or objects scattered across a fully saturated solid color background — like the inside endpaper of a children\'s picture book. Subtle riso/screenprint grain inside every fill, two-tone interior shading on every character (darker top + lighter belly), closed crescent-eye sleepy smiles with tiny dot noses, NO outlines on character bodies, loose hand-drawn line details on props (yarn spirals, leaf veins, pot stripes), scattered curated composition where characters overlap and touch the canvas edges. Five dials: background hue, cast (cats/dogs/foxes/birds/sea-creatures/houseplants/kitchen-objects/etc.), character palette (3–5 curated fills), density (L1 sparse / L2 balanced / L3 packed), prop vocabulary matched to cast. Trigger when user says /endpaper, asks for an "endpaper illustration", a "scattered animal or object collection on saturated color", a "children\'s-book endpaper scene", or briefs with a cast + background hue + density + palette.',
-    source: vm0ImageStyleSource("endpaper"),
+    source: imageStyleSource("endpaper"),
   },
   {
     id: "image-style:editorial-flatfolk",
@@ -3246,7 +3256,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Editorial hand-drawn naive book-illustration style — flat saturated color blocks, loose ink line overlay, paper grain, and a strong sense of place.",
     desc: 'Editorial hand-drawn naive book-illustration style. Flat saturated color blocks with loose hand-drawn ink line work sitting ON TOP of the color, subtle paper grain across the canvas, simple ink hatching for sky / sun rays / rain / snow, and a strong sense of place built from tall narrow architecture and a one-point depth axis. Five dials per brief: palette (warm-primary, coastal-peach, jewel-night, winter-cool, autumn-rust, monsoon-twilight), scene metaphor (street, harbor, market, transit, park, square, interior, alpine-village), perspective (one-point street, frontal facade, low-angle hero, isometric, top-down), cast (solo wanderer, paired, small crowd, none), and light/weather (midday sun, golden hour, rain, snow, blue hour). Trigger when user says /editorial-flatfolk, asks for an "editorial flat-folk illustration", a "saturated naive book-illustration scene", a "tall narrow row-house illustration", or briefs a palette + scene metaphor + season.',
-    source: vm0ImageStyleSource("editorial-flatfolk"),
+    source: imageStyleSource("editorial-flatfolk"),
   },
   {
     id: "image-style:soft-vector",
@@ -3255,7 +3265,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Airy flat-vector spot illustration — square pale-blue canvas, thin ~1.5-2px dark-navy linework with intentionally open / unclosed outlines, flat fills, one muted accent hue, centered subject with breathing room.",
     desc: 'Soft Vector — an airy flat-vector spot illustration style for in-app onboarding art, empty states, billing cards, and friendly UI moments. Square 1:1 canvas on a single flat pale-blue field #EEF1F5; thin uniform dark-navy outlines (~1.5-2px, rounded caps, NOT chunky); the signature lift comes from several intentionally OPEN / unclosed outlines per piece (mug rim gap, handle that doesn\'t close, ground line ending in mid-air, cloud silhouette break, lamp arm fade, pot rim gap); strictly flat colour fills with no gradients or shading; one muted lead accent (mustard / lime-sage / warm-orange / violet) plus neutrals; subject centered at ~60-75% of canvas with generous breathing room; scattered thin-navy micro-marks (dots, plus signs, sparkles, or motion ticks). Six dials per brief: palette accent, scene metaphor, complexity (L1/L2/L3), cast, accent marks, action/mood. Trigger when user says /soft-vector, asks for a "soft-vector illustration", a "friendly UI onboarding illustration", a "thin-line flat spot illustration", or briefs a scene metaphor + palette + complexity in this house style.',
-    source: vm0ImageStyleSource("soft-vector"),
+    source: imageStyleSource("soft-vector"),
   },
   {
     id: "image-style:loose-contour",
@@ -3264,7 +3274,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Flat editorial spot illustration — open teal contour lines, offset color blobs (printing-misregistration look), one ribbon line on warm cream paper.",
     desc: 'Loose-contour flat editorial spot illustration: confident open-contour ink drawings in dark teal-green (#1e4d4a) over flat offset color blobs (printing-misregistration look) on warm cream paper (#f0ebdc), with exactly one continuous looping ribbon line of the same teal weaving through the scene. Tight 5-color palette: cream + teal + mustard + soft blue + coral. Lines are deliberately broken at joints and edges. Five dials per brief: scene metaphor, cast, complexity (L1/L2/L3), accent lead, ribbon path. Trigger when user says /loose-contour, asks for a "loose-contour illustration", "offset-blob editorial illustration", or "cream paper ribbon-line scene".',
-    source: vm0ImageStyleSource("loose-contour"),
+    source: imageStyleSource("loose-contour"),
   },
   {
     id: "image-style:jade-blockprint",
@@ -3273,7 +3283,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Two-tone hand-drawn block-print spot illustration — accent color painted as free-floating shapes on white, with chunky black ink layered on top. Eight palettes.",
     desc: 'Jade-blockprint two-pass hand-drawn block-print spot illustration: one accent color painted FIRST as free-floating shapes on pure white, then chunky black ink line art layered ON TOP. Color blobs have no perimeter outline — ink draws detail, hatching, and motion marks, never traces the colored shape. Wobbly variable-weight linework with occasional flooded black masses; tiny linocut speckle grain inside color fills. Eight named palettes (jade, coral, cobalt, plum, sage, rose, slate, terracotta) plus custom-hex override. Resolves vague briefs (growth, trust, freedom, fairness) into concrete scene metaphors via an internal synthesizer table before generating. Five dials per piece: palette, scene metaphor, complexity (L1 single object / L2 mini-scene / L3 vignette), motion marks, speckle density. Trigger when the user says /jade-blockprint, asks for a "block-print illustration", "linocut spot illustration", "two-tone screen-print", or briefs a metaphor for a blog cover or marketing card in this style.',
-    source: vm0ImageStyleSource("jade-blockprint"),
+    source: imageStyleSource("jade-blockprint"),
   },
   {
     id: "image-style:shadow-pop",
@@ -3282,7 +3292,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Bright flat-vector illustration with offset black shape shadows, white dashed stitching, palette confetti, and transparent PNG output.",
     desc: 'Bright flat-vector editorial illustration style — every colored shape sits in front of an offset black silhouette of itself (the signature depth trick, no outlines on the fills), with white hand-drawn dashed stitching, scattered palette-colored sparkle confetti, and a fully transparent PNG background so the piece drops cleanly onto any surface. Five dials per brief — palette (default / berry-pop / tropical / citrus-cobalt), scene metaphor, complexity (L1 / L2 / L3), confetti density, and subject domain. Trigger when user says /shadow-pop, asks for a "shadow-pop illustration", a "bright flat-vector illustration with offset shadow", an "in-app illustration with offset shadow trick", or briefs in the style of the included reference images.',
-    source: vm0ImageStyleSource("shadow-pop"),
+    source: imageStyleSource("shadow-pop"),
   },
   {
     id: "image-style:tiny-wanderer",
@@ -3291,7 +3301,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Contemplative bande-dessinée landscape illustration — tiny human dwarfed by vast nature, ink hatching + flat color, vertical portrait canvas.",
     desc: 'Contemplative bande-dessinée landscape illustration in a locked house style — a tiny human (or 2–3 figures) is dwarfed by a vast natural panorama, hand-drawn black ink contour + parallel/cross-hatching for clouds, rock walls, foliage, grass, and water texture, sitting on flat color blocks beneath the ink (no gradients, no airbrush). Restrained 3–5 color palette per piece including black ink, vertical portrait canvas (1024x1536, reads ~3:5). Always outdoor/wilderness. Moebius / Christophe Chabouté travel-sketchbook lineage, quiet wonder mood. Six dials per brief: palette family (sage-plains / sunset-warm / coastal-teal / cool-mist / autumn-rust / winter-pale / custom), landscape archetype (plains+clouds / mountain valley / river vista / rocky ridge / coastal cliffs / misty gorge / forest clearing / alpine pass / desert mesa / lakeshore), activity (walking / cycling / hiking / standing-and-gazing), solitude count (1 / 2 / 3), complexity (L1 single plane / L2 fore+mid / L3 full multi-plane vista), and weather/time (midday / golden hour / sunset / overcast / mist / blue hour). Trigger when user says /tiny-wanderer, asks for a "tiny wanderer illustration", "bande-dessinée landscape", "Moebius-style travel illustration", "ink-hatched vertical landscape", or briefs with a palette + landscape archetype + complexity in this house style.',
-    source: vm0ImageStyleSource("tiny-wanderer"),
+    source: imageStyleSource("tiny-wanderer"),
   },
   {
     id: "image-style:iberian-vignette",
@@ -3300,7 +3310,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial vignette style — loose wobble ink, flat muted cream + burgundy + one accent (sage / mustard / dusty blue / terracotta), minimal abstract faces, observed Mediterranean composition with a serif Spanish wordmark at the bottom.",
     desc: 'Iberian-vignette hand-drawn editorial illustration: loose hand-drawn ink linework with visible wobble and varied weight, flat muted color fills (no gradients, no shading, no texture) on a warm cream off-white background, burgundy/wine always present as the anchor color somewhere in the scene, exactly one secondary accent per piece (sage green / mustard yellow / dusty muted blue / terracotta-rust), minimal abstract faces (tiny dot or short-mark eyes, soft nose hint, almost no mouth), hair as flat color masses, warm sand skin tones, casually-observed body language (leaning, holding, mid-action, never stiffly posed), and a short Spanish serif lowercase wordmark anchored at the bottom center of the canvas. Always grounded by an architectural / scenic prop (stone arched doorway, tall arched window, balcony, sunlit courtyard, wooden counter, archway, stoop, open terrace). Six dials per brief: scene metaphor (trade shop, domestic moment, leisure ritual), cast (solo L1 / pair L2 / 3-4 figures L3), architectural prop, secondary accent (one only), wordmark (Spanish noun), complexity (L1/L2/L3). Trained on nano-banana-2 image-to-image with one of three locked anchor references (mañana / ritmo / familia). Trigger when user says /iberian-vignette, asks for an "Iberian vignette illustration", a "Spanish editorial illustration", a "Mediterranean observed-moment scene", or briefs a scene metaphor + cast + complexity in this hand-drawn editorial style.',
-    source: vm0ImageStyleSource("iberian-vignette"),
+    source: imageStyleSource("iberian-vignette"),
   },
   {
     id: "image-style:cozy-parlor",
@@ -3309,7 +3319,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-painted watercolor + ink-line scene — one anthropomorphic animal in a quiet domestic interior, clean cool-white paper, neutral palette with one hot accent pop.",
     desc: "Hand-painted watercolor + brushy black ink line on clean cool-white paper (no amber tint). ONE anthropomorphic animal mid-quiet-activity in a domestic interior. Closed-crescent-eye smile, minimal facial features, expression through posture. At least two patterned surfaces per piece. Cool/neutral palette lead (sage, slate-blue, cornflower, lavender, mint, dove-gray) with a single hot accent pop (cherry-red, mustard, magenta-pink) on one object. Six dials per brief — cast, activity, palette family, pattern motif stack, hot accent object, and complexity (L1/L2/L3). Trigger when user says /cozy-parlor, asks for a 'cozy parlor illustration', a 'watercolor animal scene', a 'picture-book interior', or a new piece in this neutral-palette watercolor style.",
-    source: vm0ImageStyleSource("cozy-parlor"),
+    source: imageStyleSource("cozy-parlor"),
   },
   {
     id: "image-style:crowd-ink",
@@ -3318,7 +3328,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Hand-drawn editorial crowd illustration — sketchy black ink contours over flat 3-color spot fills on pure white, scene-as-metaphor composition.",
     desc: 'Hand-drawn editorial crowd illustration style — confident sketchy black ink contour lines with slightly irregular weight, flat 3-color spot fills sitting under or beside the ink lines (edges allowed to misregister slightly), on a PURE WHITE background (never cream). Fine-line backdrop drawn lighter than the foreground figures, scattered atmospheric marks in negative space (birds / leaves / steam / confetti / dots), and a scene-as-metaphor composition with a cast that varies per piece. Six dials per brief — palette (tested families: urban editorial / cool transit / warm natural / cozy interior), scene metaphor, complexity (L2 small group of 3–5 / L3 full crowd of 8–10), cast, backdrop, atmospheric motif. Trigger when the user says /crowd-ink, asks for a "crowd-ink illustration", "editorial crowd scene", "hand-drawn ink-and-spot-color illustration", "New-Yorker-style crowd vignette", or briefs with palette + scene metaphor + complexity level.',
-    source: vm0ImageStyleSource("crowd-ink"),
+    source: imageStyleSource("crowd-ink"),
   },
   {
     id: "image-style:ink-storefront",
@@ -3327,7 +3337,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
     description:
       "Single-color hand-drawn ink fineliner illustration of a small storefront on warm cream paper — hand-lettered shop sign, foliage, and street props.",
     desc: 'Boutique-poster illustration style — a single-color hand-drawn ink line drawing of a small storefront (café, boulangerie, florist, bookshop, ramen, wine bar, barber, record store, etc.) seen from street level on warm cream paper #f4ecd8. Locked frame: portrait 1024x1536, monochromatic ink with occasional double-stroke shadow under awnings and signs, a hand-lettered shop sign baked into the building, foliage and at least one small street prop (bike, A-frame chalkboard, planters, lanterns, café tables, dog/cat at the door), and a faint horizontal sidewalk line across the bottom. No solid color fills, no shading, no gradients. Seven dials per brief — ink color, shop name + subtitle, archetype, perspective (flat facade vs 3/4 corner), foreground props, foliage density, and complexity (L1 single facade / L2 small scene / L3 full vignette). Trigger when user says /ink-storefront, asks for a "shopfront illustration", "storefront poster", "boutique fineliner illustration", "café line drawing", or briefs with a shop name + ink color + archetype in this house style.',
-    source: vm0ImageStyleSource("ink-storefront"),
+    source: imageStyleSource("ink-storefront"),
   },
 ];
 
@@ -3384,48 +3394,49 @@ export interface PresentationRunbookPackage {
   readonly source: ResourceSourceRef;
 }
 
-// Archive digests for uploaded private R2 presentation runbook packages. Keep
-// these in sync with the private R2 version ids served by the API download route.
+// Immutable archive digests used to locate each canonical storage and serve
+// older digest-pinned CLIs. Current CLIs download the storage HEAD, so these
+// intentionally do not track later presentation template publishes.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
-  bloom: "b9003d1545000987eac1868220b4ea1379ec1cdd79e884bc08d13539c1cc5f88",
+  bloom: "732a602bf37d8f10d8be14c63fd7ae12de0591dae41f9661fd29aa8591bc6465",
   "blueprint-academy":
-    "3ba06b6767eb7fb59c7e4e1599acb908f1684c18bfed2f8d29231e6f057e065e",
+    "3f3cc69eb216990518ee46164ea0a69a370ce5714d566c0e995a98f8acd2a9d8",
   "botane-organic":
-    "f422972f28f470b894e46739aa0cdec8604b7bda7b0738a9ebca3541e553f2ec",
+    "b4824cc2e220af95203b0041d959d3be53253878e760a2502b79e2d8503319cf",
   "business-data":
-    "cf039ee1f7a989af9935658f7920b7862ce029b57763f71c8562abdb6e9061d8",
-  crayon: "2f67f694ead043195e8ec3cbf3e0843e09df6d93dc49f57a261f0f7bd503ae2a",
+    "1f35bf0411a528948e94e8fdccb530aea3f2ee81681277bf720161937c2c47c2",
+  crayon: "24547aae70248b373e13b32bfcba39a53bb4d0ddc8b5ded502e9e0f4d967629a",
   "creative-agency":
-    "14ee0f1e2e3dcfd36fc571bb747681a063dfb43eb62a70f67d0fd06aa79ef977",
+    "98d4308b77075181a9bc25c97eb5aab63d406f08fbbdc11240b5242c18695ba0",
   "data-report":
-    "199bc3e337e66069ade2d15c3f71488e7d15b1cb2d25da8baffd943e13aceefa",
+    "64c088e596fd4a5d00ff2d001725eab1ff9ccdf12b66360eff968a42adbd1af8",
   "editorial-magazine":
-    "0068cfa0a3d91a9cbaeed98685f99afa6355dda8a4cab1d5e3cf7bb0e3d232f3",
+    "e135fe2d90af35ad9cc177718d1758c36e7089fe63ac4b075203c1c06f12ba35",
   "landing-consulting":
-    "622fa1cca454f057d4b5eaaa412033276ed6ad014ac7a79bc5b82cd1aaba0725",
-  lumina: "470aa7096ac3c676d644cdf74369ddcb8d120231e1981d7e7c27844d48142ab1",
-  meridian: "16ceb52885a5a93dd6ff909cbc95d2a8a27d6d8ac79ce4e6b906e57b17d69fde",
+    "94781705145e5dff3595dd9e5c08fc0e8985c29737ecf664554a91d6ccc95482",
+  lumina: "ee353d4ecefdbe8cda164bd6174baff75a549671c5d0f720b75eca31bf26c3bb",
+  meridian: "37072fe02a4e4df34d064f39237f98895b5d6d7514857171aa6cb99cdf57209b",
   "mosaic-geometric":
-    "722f6ea996166bdce3a6ab5f0292d1ead73488f03c6ad1138883e47506971cfe",
+    "8b6698813045d4cf52e26d5cd73ca6574529e58e1f2cc22a6db9de7b3b6a3a18",
   "neo-brutalism":
-    "488508a363064e08774ba3fc10eff15f72d0bc0df4ff19df841a8772869bd7a5",
-  nocturne: "22db828e89979fdbc6e388568f600098f781b03cff28a99419b4101057394227",
+    "ebb3a334c12473527009ea73d2c6b2097d38b3502bd6d12e610ceab9ae0ca252",
+  nocturne: "f78892def8d6a214ec3eadb384fce8da13dfec686319d9383798f536b8187fbb",
   "pixel-glitch":
-    "085c7f8276e7ff9f2c26d19da7bffcd436dcdbd895b741b24134e11c685e9d91",
+    "242b7f6df74dfc3799de68a11e721d6def4552b05009a9578e1cb88622c371e5",
   "playful-launch":
-    "b336b934a2f18904f2af959bf1da999f17bb71d5b727b30c94c89766dc8adcfb",
+    "e7ce6bda402a444b83ada485c71c3e0538b3692b4803cd7f96054ca07e81180a",
   "playful-pop":
-    "6f07a5183e71c5f1ab51fabb606433bf2bce40675c5612e47c0040aa21ca8358",
+    "d3de99c9b8e931de2343d511dda04f57d1deaa29c945ef4c91a5382e948c9263",
   prospectus:
-    "fe2905801b1f8beff802640b717e421c7882da2b015254bba160a92f036f190f",
+    "7ec19e6ce032544d1e4653bed9485fce0a5551bea6197c450e0b60bc28d7d16f",
   schoolhouse:
-    "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394",
+    "387b2fb59ecac95dbe3b4e6f27d7e6ebda3ce4be317227f6506f87d02e264fc0",
   "sticker-scrapbook":
-    "8bfb271c21004703cc7151358080b5c622c7ec18eb4a5492643f35c5825aadcf",
-  strata: "78aea76e0a6aceb8fbe77a771781cbd276255f2728fc31fb5617d19550432617",
+    "a00b744d85d2e668cb98945e9758bc6222ea4f3c3b62e72842f1568d35501f3f",
+  strata: "c1396282cf80446b4cb97f8fa6859b5bd95c50090f8dcf1278a817e6e0b64cfb",
   "taped-consulting":
-    "bbf846cbf4c6591375d9b668f6e0fdf380d387fddb5c2eb173d935b03486b83f",
-  vantage: "a6290319d2b8065ce105949a5f02ba37ed1738cf9c354cd74e4742826b7ee753",
+    "c4ccffadd45dac50b9b8dc3bf0fd6f2ffa91e1cc6691ba63b5a7a1784e16d7ca",
+  vantage: "888b1478b295e1e6b0e7ae5b579261206fce4edf48c6f42893194471cdeb2c78",
 };
 
 function presentationRunbookArchiveSha256(slug: string): string {

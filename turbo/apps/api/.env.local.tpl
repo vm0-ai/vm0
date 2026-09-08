@@ -96,6 +96,9 @@ FAL_KEY=op://Development/fal/FAL_KEY
 JOGGAI_API_KEY=op://Development/joggai/JOGGAI_API_KEY
 JOGGAI_WEBHOOK_SECRET=op://Development/joggai/JOGGAI_WEBHOOK_SECRET
 
+# Optional: HeyGen Intro Video avatar rendering
+HEYGEN_API_KEY=op://Development/heygen/HEYGEN_API_KEY
+
 # Optional: BytePlus ModelArk video generation
 BYTEPLUS_API_KEY=op://Development/byteplus/BYTEPLUS_API_KEY
 
@@ -301,10 +304,6 @@ DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
 DEV_MODEL_ZAI_KEY=op://Development/z.ai/DEV_MODEL_ZAI_KEY
 DEV_MODEL_MINIMAX_KEY=op://Development/minimax/DEV_MODEL_MINIMAX_KEY
 DEV_MODEL_DEEPSEEK_KEY=op://Development/deepseek/DEEPSEEK_LOCAL_DEV_KEY
-
-# Optional: Gemini Developer API key (for /api/generate-image in local dev).
-# Production uses Vertex AI via OIDC federation; see GCP_* vars injected by CI.
-GEMINI_API_KEY=op://Development/gemini/GEMINI_API_KEY
 
 # Optional: Web Push (VAPID)
 VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY

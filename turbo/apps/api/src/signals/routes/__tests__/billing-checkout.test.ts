@@ -2175,7 +2175,7 @@ describe("POST /api/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on a first-party www.vm0.ai origin", async () => {
+  it("accepts successUrl on a first-party www.okou.ai origin", async () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -2194,8 +2194,8 @@ describe("POST /api/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://www.vm0.ai/billing?billing=pro",
-          cancelUrl: "https://www.vm0.ai/billing?billing=canceled",
+          successUrl: "https://www.okou.ai/billing?billing=pro",
+          cancelUrl: "https://www.okou.ai/billing?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -5185,6 +5185,44 @@ describe("legacy subscription usage pack migration", () => {
     expect(persisted.subscriptionCount).toBe(0);
   });
 
+  it("preserves negative legacy credits when the first usage pack migration invoice is paid", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "pro",
+      orgId: `org_migration_debt_${randomUUID()}`,
+    });
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 4000,
+      amountPaidCents: 4000,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "pro",
+      credits: -5000,
+    });
+
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+
+    const state = await readUsagePackState(fixture.orgId, preview.migrationId);
+    expect(state.org).toMatchObject({ tier: "pro", credits: -5000 });
+    expect(state.migrations).toContainEqual(
+      expect.objectContaining({ id: preview.migrationId, status: "completed" }),
+    );
+    expect(state.grants).toHaveLength(2);
+  });
+
   it("schedules a legacy Pro-to-Team conversion at the billing boundary", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
     const stripe = mockMigrationStripe({
@@ -6677,7 +6715,10 @@ describe("usage pack allocation management", () => {
     readonly paymentIntentId: string;
   }
 
-  async function setupInvitationPreviewContext(emailPrefix: string): Promise<{
+  async function setupInvitationPreviewContext(
+    emailPrefix: string,
+    actor = createOrgFixture(TEST_STAFF_ORG_ID),
+  ): Promise<{
     readonly fixture: ManagedUsagePackFixture;
     readonly existingMemberUserId: string;
     readonly email: string;
@@ -6687,9 +6728,11 @@ describe("usage pack allocation management", () => {
       clearMockNow();
     });
     const existingMemberUserId = `user_${randomUUID()}`;
-    const fixture = await seedManagedUsagePack([
-      { userId: existingMemberUserId, usagePackUsd: 20 },
-    ]);
+    const fixture = await seedManagedUsagePack(
+      [{ userId: existingMemberUserId, usagePackUsd: 20 }],
+      "pro",
+      actor,
+    );
     const email = `${emailPrefix}-${randomUUID()}@example.test`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -6710,9 +6753,11 @@ describe("usage pack allocation management", () => {
     return { fixture, existingMemberUserId, email };
   }
 
-  async function beginInvitationPurchase(): Promise<InvitationPurchaseFixture> {
+  async function beginInvitationPurchase(
+    actor = createOrgFixture(TEST_STAFF_ORG_ID),
+  ): Promise<InvitationPurchaseFixture> {
     const { fixture, existingMemberUserId, email } =
-      await setupInvitationPreviewContext("invitee");
+      await setupInvitationPreviewContext("invitee", actor);
     const paymentIntentId = `pi_invite_${randomUUID()}`;
     mockUsagePackChangePreviews(1000, 2000);
     const preview = await accept(
@@ -6972,6 +7017,7 @@ describe("usage pack allocation management", () => {
     setUsagePackPrices();
     mockUsagePackCatalog();
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
     mockOptionalEnv("STRIPE_SECRET_KEY", "sk_usage_pack_change");
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   });
@@ -13269,7 +13315,7 @@ describe("usage pack allocation management", () => {
   });
 
   it("recovers a saved-card invitation from a transient post-payment Clerk rate limit", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockNow(new Date("2035-05-15T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
@@ -13326,13 +13372,6 @@ describe("usage pack allocation management", () => {
       role: "member" as const,
       usagePackUsd: 20 as const,
     };
-    const vm0Preview = await accept(
-      client.previewPurchase({
-        headers: { authorization: "Bearer clerk-session" },
-        body: previewBody,
-      }),
-      [200],
-    );
     const preview = await accept(
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -13341,7 +13380,6 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
-    expect(preview.body.purchaseId).not.toBe(vm0Preview.body.purchaseId);
     expect(preview.body).toStrictEqual({
       purchaseId: expect.any(String),
       usagePackUsd: 20,
@@ -14380,6 +14418,243 @@ describe("usage pack allocation management", () => {
     expect(context.mocks.stripe.refunds.retrieve).toHaveBeenCalledWith(
       stripeRefundId,
     );
+  });
+
+  async function prepareAlreadyRefundedMember(
+    sourceType: "invoice" | "payment_intent",
+  ) {
+    const actor = createOrgFixture();
+    let fixture: ManagedUsagePackFixture;
+    let userId: string;
+    let paymentIntentId: string;
+    if (sourceType === "payment_intent") {
+      const purchase = await beginInvitationPurchase(actor);
+      const invitationId = `inv_${randomUUID()}`;
+      userId = `user_${randomUUID()}`;
+      await payInvitationPurchase(purchase, invitationId);
+      context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+      await postClerkInvitationAccepted({ purchase, invitationId, userId });
+      fixture = purchase.fixture;
+      paymentIntentId = purchase.paymentIntentId;
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+        managedUsagePackSubscription(
+          fixture,
+          new Map([[TEST_PRICE_USAGE_PACK_20, 2]]),
+        ),
+      );
+    } else {
+      userId = actor.userId;
+      fixture = await seedManagedUsagePack(
+        [{ userId, usagePackUsd: 20 }],
+        "pro",
+        actor,
+      );
+      paymentIntentId = `pi_${randomUUID()}`;
+      context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+        id: `cn_preview_${randomUUID()}`,
+        status: "issued",
+        pre_payment_amount: 0,
+        post_payment_amount: 500,
+        refunds: [],
+      });
+      context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+        payments: {
+          data: [
+            {
+              status: "paid",
+              amount_paid: 2000,
+              payment: {
+                type: "payment_intent",
+                payment_intent: paymentIntentId,
+              },
+            },
+          ],
+        },
+      });
+    }
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId,
+      grantType: "purchased",
+      remainingAmount: 5000,
+      prepareRefund: true,
+      refundState: {
+        status: "processing",
+        refundedAmountCents: null,
+        stripeCreditNoteId: null,
+        stripeRefundId: null,
+        attempt: 1,
+        failureReason: null,
+      },
+    });
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    const localRefund = state.refunds.find((refund) => {
+      return refund.userId === userId;
+    });
+    if (!localRefund) {
+      throw new Error("Expected a prepared member refund");
+    }
+    const existingRefund = {
+      id: `re_${randomUUID()}`,
+      status: "succeeded",
+      amount: 500,
+      payment_intent: paymentIntentId,
+      metadata: {
+        purpose: "usage_pack_member_credit_refund",
+        orgId: fixture.orgId,
+        userId,
+        creditGrantId: localRefund.creditGrantId,
+      },
+    };
+    context.mocks.stripe.refunds.create.mockRejectedValue(
+      new StripeSDK.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        code: "charge_already_refunded",
+        message: "Charge has already been refunded.",
+      }),
+    );
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: `cn_${randomUUID()}`,
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 500,
+      refunds: [{ amount_refunded: 500, refund: existingRefund.id }],
+    });
+    return { fixture, userId, existingRefund };
+  }
+
+  it.each(["invoice", "payment_intent"] as const)(
+    "recovers an already-refunded %s charge and stops retrying",
+    async (sourceType) => {
+      const { fixture, userId, existingRefund } =
+        await prepareAlreadyRefundedMember(sourceType);
+      const unrelatedRefund = {
+        ...existingRefund,
+        id: `re_other_${randomUUID()}`,
+        amount: 100,
+      };
+      context.mocks.stripe.refunds.list
+        .mockResolvedValueOnce({ data: [unrelatedRefund], has_more: true })
+        .mockResolvedValueOnce({ data: [existingRefund], has_more: false });
+
+      await runBillingReconciliation(fixture.orgId);
+      await runBillingReconciliation(fixture.orgId);
+
+      const state = await readUsagePackState(
+        fixture.orgId,
+        fixture.usagePackSubscriptionId,
+      );
+      expect(state.refunds).toContainEqual(
+        expect.objectContaining({
+          userId,
+          status: "succeeded",
+          stripeRefundId: existingRefund.id,
+          refundedAmountCents: 500,
+          failureReason: null,
+        }),
+      );
+      expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(1);
+      expect(context.mocks.stripe.refunds.list).toHaveBeenLastCalledWith({
+        payment_intent: existingRefund.payment_intent,
+        limit: 100,
+        starting_after: unrelatedRefund.id,
+      });
+      if (sourceType === "invoice") {
+        expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            refunds: [{ refund: existingRefund.id, amount_refunded: 500 }],
+          }),
+          expect.any(Object),
+        );
+      } else {
+        expect(context.mocks.stripe.creditNotes.create).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each(["amount", "ownership", "status", "ambiguous"])(
+    "stops already-refunded charge retries for an unresolved %s mismatch",
+    async (mismatch) => {
+      const { fixture, userId, existingRefund } =
+        await prepareAlreadyRefundedMember("payment_intent");
+      const refund = {
+        ...existingRefund,
+        amount: mismatch === "amount" ? 1000 : existingRefund.amount,
+        status: mismatch === "status" ? "pending" : existingRefund.status,
+        metadata: {
+          ...existingRefund.metadata,
+          creditGrantId:
+            mismatch === "ownership"
+              ? randomUUID()
+              : existingRefund.metadata.creditGrantId,
+        },
+      };
+      context.mocks.stripe.refunds.list.mockResolvedValue({
+        data:
+          mismatch === "ambiguous"
+            ? [refund, { ...refund, id: `re_other_${randomUUID()}` }]
+            : [refund],
+        has_more: false,
+      });
+
+      await runBillingReconciliation(fixture.orgId);
+      await runBillingReconciliation(fixture.orgId);
+
+      const state = await readUsagePackState(
+        fixture.orgId,
+        fixture.usagePackSubscriptionId,
+      );
+      expect(state.refunds).toContainEqual(
+        expect.objectContaining({
+          userId,
+          status: "failed",
+          stripeRefundId: null,
+          refundedAmountCents: null,
+          failureReason:
+            mismatch === "ambiguous"
+              ? "stripe_charge_already_refunded_ambiguous"
+              : "stripe_charge_already_refunded_unmatched",
+        }),
+      );
+      expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(1);
+      expect(context.mocks.stripe.refunds.list).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("retries a failed Stripe refund lookup without claiming a terminal outcome", async () => {
+    const { fixture, userId, existingRefund } =
+      await prepareAlreadyRefundedMember("payment_intent");
+    context.mocks.stripe.refunds.list
+      .mockRejectedValueOnce(new Error("Stripe temporarily unavailable"))
+      .mockResolvedValueOnce({ data: [existingRefund], has_more: false });
+
+    await runBillingReconciliation(fixture.orgId);
+    const pending = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(pending.refunds).toContainEqual(
+      expect.objectContaining({ userId, status: "processing", attempt: 1 }),
+    );
+    await runBillingReconciliation(fixture.orgId);
+    const reconciled = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(reconciled.refunds).toContainEqual(
+      expect.objectContaining({
+        userId,
+        status: "succeeded",
+        stripeRefundId: existingRefund.id,
+      }),
+    );
+    const requests = context.mocks.stripe.refunds.create.mock.calls;
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toStrictEqual(requests[0]);
   });
 
   it("reconciles acceptance when the Stripe projection response is lost", async () => {

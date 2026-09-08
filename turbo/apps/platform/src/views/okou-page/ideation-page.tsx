@@ -10,7 +10,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
-import { brandName$ } from "../../signals/branding.ts";
 import {
   ideationActiveTab$,
   setIdeationActiveTab$,
@@ -24,7 +23,6 @@ import {
 
 export function IdeationPage() {
   const { t } = useTranslation("agents");
-  const brandName = useGet(brandName$);
   const features = useLastResolved(featureSwitch$);
   const connectorStatusLoadable = useLoadable(connectorCatalogStatusBySlug$);
   const lastConnectorStatusBySlug = useLastResolved(
@@ -49,7 +47,7 @@ export function IdeationPage() {
     { returnObjects: true },
   );
   const categories = localizeIdeationCategories(
-    getCategories({ brandName, features, visibleConnectorSlugs }).slice(0, 8),
+    getCategories({ features, visibleConnectorSlugs }).slice(0, 8),
     catalogCopy,
   );
   const activeTab = useGet(ideationActiveTab$);
@@ -138,7 +136,7 @@ export function IdeationPage() {
       </nav>
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="px-4 pb-8 sm:px-6">
+        <div className="px-4 pb-[max(2rem,var(--sab))] sm:px-6">
           <div className="mx-auto w-full max-w-[900px]">
             <header className="bg-transparent pt-3 md:pt-6 pb-3">
               <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
@@ -247,7 +245,7 @@ export function IdeationPage() {
                           return (
                             <Card
                               key={useCase.title}
-                              className="zero-card cursor-pointer hover:bg-state-hover transition-colors"
+                              className="okou-card cursor-pointer hover:bg-state-hover transition-colors"
                               onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}

@@ -7,8 +7,11 @@ import {
   type PiApiFirstTurnManifest,
   type PiApiFirstTurnOwnershipTransferMode,
   type PiResourceSnapshot,
+  type SecretConnectorMetadata,
   type StoredExecutionContext,
 } from "@okouai/api-contracts/contracts/runners";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import { modelProviderTypeSchema } from "@okouai/api-contracts/contracts/model-providers";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
@@ -20,6 +23,7 @@ import {
 import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
+  classifyPiApiProviderFailure,
   inspectPiSessionJsonl,
   PiApiFirstTurnCompactionRequiredError,
   runPiApiFirstTurn,
@@ -51,7 +55,10 @@ import {
   type DispatchCompleteSideEffectsInput,
 } from "./agent-webhook-complete.service";
 import { createPiApiFirstTurnCheckpoint$ } from "./agent-webhook-checkpoints.service";
-import { resolveModelProviderRuntimeSecretForApi } from "./agent-webhook-firewall-auth.service";
+import {
+  resolveCurrentModelProviderRuntimeSecretForApi,
+  resolveModelProviderRuntimeSecretForApi,
+} from "./agent-webhook-firewall-auth.service";
 import {
   dispatchOptionalAgentEventConsumers$,
   receiveAgentEvents$,
@@ -70,6 +77,7 @@ import {
   SESSION_HISTORY_ENCODING_ZSTD,
 } from "./session-history-blobs";
 import {
+  PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS,
   piApiFirstTurnObjectKey,
   type PiApiFirstTurnActivation,
 } from "./pi-api-first-turn-config";
@@ -98,8 +106,9 @@ type PiApiFirstTurnErrorCode =
   | "PI_API_FIRST_TURN_DEADLINE_EXCEEDED"
   | "PI_API_FIRST_TURN_NOT_COMMITTABLE"
   | "PI_API_MODEL_FAILED"
+  | "PI_API_MODEL_OUTPUT_INCOMPLETE"
   | "PI_API_MODEL_CREDENTIAL_INVALID"
-  | "PI_API_PROMPT_UNSUPPORTED"
+  | "PI_API_NATIVE_INPUT_REQUIRED"
   | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_INVALID"
   | "PI_API_RESOURCE_PREPARATION_FAILED"
@@ -120,15 +129,23 @@ type PiApiFirstTurnErrorCode =
 
 class PiApiFirstTurnError extends Error {
   readonly code: PiApiFirstTurnErrorCode;
+  readonly failureReason: RunFailureReasonToken | undefined;
 
   constructor(
     code: PiApiFirstTurnErrorCode,
     message: string,
-    options?: ErrorOptions,
+    options?: {
+      readonly cause?: unknown;
+      readonly failureReason?: RunFailureReasonToken;
+    },
   ) {
-    super(`[${code}] ${message}`, options);
+    super(
+      `[${code}] ${message}`,
+      options && "cause" in options ? { cause: options.cause } : undefined,
+    );
     this.name = "PiApiFirstTurnError";
     this.code = code;
+    this.failureReason = options?.failureReason;
   }
 }
 
@@ -150,11 +167,14 @@ function piApiFirstTurnError(
   code: PiApiFirstTurnErrorCode,
   message: string,
   cause?: unknown,
+  failureReason?: RunFailureReasonToken,
 ): PiApiFirstTurnError {
   return new PiApiFirstTurnError(
     code,
     message,
-    cause === undefined ? undefined : { cause },
+    cause === undefined && failureReason === undefined
+      ? undefined
+      : { cause, failureReason },
   );
 }
 
@@ -460,7 +480,10 @@ function assistantEvents(
   runId: string,
   assistant: PiApiFirstTurnResult["assistantMessage"],
 ): AgentEvent[] {
-  return projectedAssistantBlocks(assistant).map((block, sequenceNumber) => {
+  const blocks = projectedAssistantBlocks(assistant);
+  const eventBlocks =
+    blocks.length === 0 && assistant.memoryCitation ? [null] : blocks;
+  return eventBlocks.map((block, sequenceNumber) => {
     return {
       type: "assistant",
       sequenceNumber,
@@ -469,7 +492,11 @@ function assistantEvents(
           assistant.responseId ??
           `${runId}:${assistant.timestamp}:${assistant.model}`,
         role: "assistant",
-        content: [block],
+        content: block === null ? [] : [block],
+        ...(sequenceNumber === eventBlocks.length - 1 &&
+        assistant.memoryCitation
+          ? { memoryCitation: assistant.memoryCitation }
+          : {}),
         model: assistant.model,
         usage: {
           input_tokens: assistant.usage.input,
@@ -507,13 +534,17 @@ const publishEvents$ = command(async function publishEvents(
 ): Promise<void> {
   const result = await set(
     receiveAgentEvents$,
-    { auth: args.auth, body: { runId: args.auth.runId, events: args.events } },
+    {
+      auth: args.auth,
+      body: { runId: args.auth.runId, events: args.events },
+      source: "api-first",
+    },
     signal,
   );
   if (result.response.status !== 200) {
     throw new Error("Pi API first-turn event projection was rejected");
   }
-  if (result.acceptedEvents) {
+  if ("acceptedEvents" in result && result.acceptedEvents) {
     waitUntil(
       set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
     );
@@ -615,10 +646,48 @@ interface PreparedApiFirstTurn {
   readonly turn: PiApiFirstTurnResult;
 }
 
+interface ApiFirstTurnCommitProgress {
+  started: boolean;
+}
+
 type ApiFirstTurnExecutionContext =
   PiApiFirstTurnActivation["executionContext"];
 type ApiFirstTurnLaunchConfig =
   ApiFirstTurnExecutionContext["piLaunchConfig"]["apiFirstTurn"];
+
+function piApiFirstTurnOutcomeTelemetry(
+  executionContext: ApiFirstTurnExecutionContext,
+) {
+  const config = executionContext.piModelConfig;
+  const dialect =
+    "schemaVersion" in config
+      ? config.dialect
+      : (config.api ?? "openai-responses");
+  const providerTypes = new Set(
+    ("schemaVersion" in config ? config.credentialBindings : [])
+      .map((binding) => {
+        const providerType =
+          executionContext.secretConnectorMap?.[binding.secretName];
+        const metadata =
+          executionContext.secretConnectorMetadataMap?.[binding.secretName];
+        const parsed = modelProviderTypeSchema.safeParse(providerType);
+        return parsed.success &&
+          metadata?.sourceType === "model-provider" &&
+          metadata.metadataKey === parsed.data
+          ? parsed.data
+          : null;
+      })
+      .filter((providerType) => {
+        return providerType !== null;
+      }),
+  );
+  const [productProvider] = providerTypes;
+  return {
+    dialect,
+    executionOwner: "api-first" as const,
+    ...(providerTypes.size === 1 && productProvider ? { productProvider } : {}),
+  };
+}
 
 interface ApiFirstTurnCommitIdentity {
   readonly baseSessionId: string;
@@ -681,12 +750,6 @@ function validateApiFirstTurnLaunch(args: ApiFirstTurnContext): {
       "Pi launch base session id does not match the Pi session id",
     );
   }
-  if (args.activation.prompt.trimStart().startsWith("/")) {
-    throw piApiFirstTurnError(
-      "PI_API_PROMPT_UNSUPPORTED",
-      "Pi slash commands are not supported by the API first-turn slot",
-    );
-  }
   if (now() >= launchConfig.deadlineAt) {
     throw piApiFirstTurnError(
       "PI_API_FIRST_TURN_DEADLINE_EXCEEDED",
@@ -696,7 +759,15 @@ function validateApiFirstTurnLaunch(args: ApiFirstTurnContext): {
   return { executionContext, launchConfig, sessionId };
 }
 
-function validateApiFirstTurnLifecycleCommit(
+function apiFirstTurnApiDeadlineAt(
+  executionContext: ApiFirstTurnExecutionContext,
+): number {
+  return (
+    executionContext.apiStartTime + PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS
+  );
+}
+
+function validateApiFirstTurnLifecycle(
   args: ApiFirstTurnContext,
   state: ApiFirstTurnLifecycleState | null,
   expectedIdentity: ApiFirstTurnCommitIdentity,
@@ -721,13 +792,52 @@ function validateApiFirstTurnLifecycleCommit(
       "Pi API first-turn immutable launch identity changed before commit",
     );
   }
-  if (now() + MODEL_COMMIT_BUDGET_MS >= expectedIdentity.deadlineAt) {
+  return state;
+}
+
+function validateApiFirstTurnApiCommit(
+  args: ApiFirstTurnContext,
+  state: ApiFirstTurnLifecycleState | null,
+  expectedIdentity: ApiFirstTurnCommitIdentity,
+  message: string,
+): ApiFirstTurnLifecycleState {
+  const committable = validateApiFirstTurnLifecycle(
+    args,
+    state,
+    expectedIdentity,
+    message,
+  );
+  if (
+    now() + MODEL_COMMIT_BUDGET_MS >=
+    apiFirstTurnApiDeadlineAt(args.activation.executionContext)
+  ) {
     throw piApiFirstTurnError(
       "PI_API_FIRST_TURN_DEADLINE_EXCEEDED",
       "Pi API first turn has no remaining commit budget",
     );
   }
-  return state;
+  return committable;
+}
+
+function validateApiFirstTurnHandoffCommit(
+  args: ApiFirstTurnContext,
+  state: ApiFirstTurnLifecycleState | null,
+  expectedIdentity: ApiFirstTurnCommitIdentity,
+  message: string,
+): ApiFirstTurnLifecycleState {
+  const committable = validateApiFirstTurnLifecycle(
+    args,
+    state,
+    expectedIdentity,
+    message,
+  );
+  if (now() >= expectedIdentity.deadlineAt) {
+    throw piApiFirstTurnError(
+      "PI_API_FIRST_TURN_DEADLINE_EXCEEDED",
+      "Pi API first-turn coordination deadline elapsed during handoff",
+    );
+  }
+  return committable;
 }
 
 const loadApiFirstTurnResource$ = command(
@@ -786,17 +896,201 @@ const loadApiFirstTurnResource$ = command(
   },
 );
 
+interface CodexSubscriptionCredentialReference {
+  readonly binding: PiAgentCredentialReference;
+  readonly providerKey: "codex-oauth-token";
+  readonly metadata: SecretConnectorMetadata & {
+    readonly sourceType: "model-provider";
+    readonly sourceUserId: string;
+    readonly sourceId: string;
+    readonly metadataKey: "codex-oauth-token";
+  };
+}
+
+function sameCredentialSource(
+  left: SecretConnectorMetadata,
+  right: SecretConnectorMetadata,
+): boolean {
+  return (
+    left.sourceType === right.sourceType &&
+    left.sourceUserId === right.sourceUserId &&
+    left.sourceId === right.sourceId &&
+    left.metadataKey === right.metadataKey
+  );
+}
+
+function codexSubscriptionCredentialReferences(args: {
+  readonly activation: PiApiFirstTurnActivation;
+  readonly executionContext: ApiFirstTurnExecutionContext;
+}): {
+  readonly accessToken: CodexSubscriptionCredentialReference;
+  readonly accountId: CodexSubscriptionCredentialReference;
+} | null {
+  const config = args.executionContext.piModelConfig;
+  if (
+    !("schemaVersion" in config) ||
+    config.dialect !== "openai-codex-responses"
+  ) {
+    return null;
+  }
+  const reference = (
+    kind: PiAgentCredentialReference["kind"],
+  ): CodexSubscriptionCredentialReference => {
+    const binding = config.credentialBindings.find((candidate) => {
+      return candidate.kind === kind;
+    });
+    if (!binding) {
+      throw piApiFirstTurnError(
+        "PI_API_MODEL_CREDENTIAL_INVALID",
+        "Pi API first-turn subscription binding is missing",
+      );
+    }
+    const providerKey =
+      args.executionContext.secretConnectorMap?.[binding.secretName];
+    const metadata =
+      args.executionContext.secretConnectorMetadataMap?.[binding.secretName];
+    if (
+      providerKey !== "codex-oauth-token" ||
+      metadata?.sourceType !== "model-provider" ||
+      metadata.sourceUserId !== args.activation.userId ||
+      !metadata.sourceId ||
+      metadata.metadataKey !== "codex-oauth-token"
+    ) {
+      throw piApiFirstTurnError(
+        "PI_API_MODEL_CREDENTIAL_INVALID",
+        "Pi API first-turn subscription binding is not exact-account scoped",
+      );
+    }
+    return {
+      binding,
+      providerKey,
+      metadata: {
+        ...metadata,
+        sourceType: "model-provider",
+        sourceUserId: metadata.sourceUserId,
+        sourceId: metadata.sourceId,
+        metadataKey: "codex-oauth-token",
+      },
+    };
+  };
+  const accessToken = reference("access-token");
+  const accountId = reference("account-id");
+  if (!sameCredentialSource(accessToken.metadata, accountId.metadata)) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription bindings do not share one account",
+    );
+  }
+  return { accessToken, accountId };
+}
+
+function runtimeCredentialLookupArgs(
+  args: ApiFirstTurnContext,
+  reference: CodexSubscriptionCredentialReference,
+) {
+  return {
+    db: args.db,
+    orgId: args.activation.orgId,
+    userId: args.activation.userId,
+    key: reference.binding.secretName,
+    providerKey: reference.providerKey,
+    metadata: reference.metadata,
+    featureSwitchContext: {
+      userId: args.activation.userId,
+      orgId: args.activation.orgId,
+    },
+  };
+}
+
+async function resolveCodexSubscriptionCredentials(
+  args: ApiFirstTurnContext,
+  references: NonNullable<
+    ReturnType<typeof codexSubscriptionCredentialReferences>
+  >,
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
+  const accessTokenResolution = await settle(
+    resolveCurrentModelProviderRuntimeSecretForApi(
+      runtimeCredentialLookupArgs(args, references.accessToken),
+      signal,
+    ),
+  );
+  signal.throwIfAborted();
+  if (!accessTokenResolution.ok) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token refresh failed",
+      accessTokenResolution.error,
+    );
+  }
+  const accessToken = accessTokenResolution.value;
+  if (accessToken.status === "unavailable") {
+    const reconnectRequired =
+      accessToken.reconnectState === null ||
+      accessToken.reconnectState.needsReconnect;
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription access token is unavailable",
+      undefined,
+      reconnectRequired ? "reconnect_required" : undefined,
+    );
+  }
+
+  // Deliberately read only after access-token refresh, using the already
+  // validated immutable sourceId rather than resolving the active account.
+  const accountIdResolution = await settle(
+    resolveModelProviderRuntimeSecretForApi(
+      runtimeCredentialLookupArgs(args, references.accountId),
+    ),
+  );
+  signal.throwIfAborted();
+  if (!accountIdResolution.ok) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription account lookup failed",
+      accountIdResolution.error,
+    );
+  }
+  const accountId = accountIdResolution.value;
+  if (!accessToken.value.trim() || !accountId?.trim()) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_CREDENTIAL_INVALID",
+      "Pi API first-turn subscription credential is unavailable",
+      undefined,
+      "reconnect_required",
+    );
+  }
+  return new Map([
+    [references.accessToken.binding.secretName, accessToken.value],
+    [references.accountId.binding.secretName, accountId],
+  ]);
+}
+
 async function apiFirstTurnModelConfig(
   args: ApiFirstTurnContext,
   executionContext: ApiFirstTurnExecutionContext,
+  signal: AbortSignal,
 ): Promise<PiAgentModelConfig> {
   const modelConfig = executionContext.piModelConfig;
-  const decrypted = await settle(
-    decryptPersistentSecretsMap(executionContext.encryptedSecrets, {
-      userId: args.activation.userId,
-      orgId: args.activation.orgId,
-    }),
-  );
+  const subscriptionReferences = codexSubscriptionCredentialReferences({
+    activation: args.activation,
+    executionContext,
+  });
+  const subscriptionCredentials = subscriptionReferences
+    ? await resolveCodexSubscriptionCredentials(
+        args,
+        subscriptionReferences,
+        signal,
+      )
+    : null;
+  const decrypted = subscriptionReferences
+    ? { ok: true as const, value: null }
+    : await settle(
+        decryptPersistentSecretsMap(executionContext.encryptedSecrets, {
+          userId: args.activation.userId,
+          orgId: args.activation.orgId,
+        }),
+      );
   if (!decrypted.ok) {
     throw piApiFirstTurnError(
       "PI_API_MODEL_CREDENTIAL_INVALID",
@@ -809,7 +1103,14 @@ async function apiFirstTurnModelConfig(
     config: modelConfig,
     target: "direct",
     async resolveCredential(binding: PiAgentCredentialReference) {
-      let value = secrets?.[binding.secretName];
+      let value = subscriptionCredentials?.get(binding.secretName);
+      if (subscriptionCredentials && !value) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Pi API first-turn subscription credential binding is invalid",
+        );
+      }
+      value ??= secrets?.[binding.secretName];
       const providerKey =
         executionContext.secretConnectorMap?.[binding.secretName];
       const metadata =
@@ -870,37 +1171,77 @@ async function observeDiscardedProviderResult(
   operation: Promise<PiApiFirstTurnResult>,
   args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
+  reason: "api_attempt_timed_out" | "aborted_execution",
 ): Promise<void> {
   const late = await settleIncludingAbort(operation);
   if (late.ok) {
-    await recordApiFirstTurnUsage(args, late.value);
-    L.warn("Pi API first-turn outcome", {
+    L.debug("Pi API first-turn outcome", {
       runId: args.activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "discarded_late_provider_result",
-      reason: "aborted_execution",
+      reason,
       ownershipStage: ownership.stage,
     });
+    await recordApiFirstTurnUsage(args, late.value);
   }
 }
 
+async function discardCompletedProviderResult(
+  turn: PiApiFirstTurnResult,
+  args: ApiFirstTurnContext,
+  ownership: PiApiFirstTurnOwnership,
+): Promise<void> {
+  L.debug("Pi API first-turn outcome", {
+    runId: args.activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
+    outcome: "discarded_late_provider_result",
+    reason: "api_attempt_timed_out",
+    ownershipStage: ownership.stage,
+  });
+  await recordApiFirstTurnUsage(args, turn);
+}
+
+function validateApiModelTurnOutcome(turn: PiApiFirstTurnResult): void {
+  if (turn.assistantMessage.stopReason === "length" && !turn.handoffRequired) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_OUTPUT_INCOMPLETE",
+      "Pi API first-turn model output is incomplete",
+    );
+  }
+  if (
+    turn.assistantMessage.stopReason === "error" ||
+    turn.assistantMessage.stopReason === "aborted"
+  ) {
+    throw piApiFirstTurnError(
+      "PI_API_MODEL_FAILED",
+      `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
+      undefined,
+      turn.assistantMessage.failureReason,
+    );
+  }
+}
+
+interface ExecuteApiModelTurnArgs {
+  readonly activation: PiApiFirstTurnActivation;
+  readonly context: ApiFirstTurnContext;
+  readonly commitIdentity: ApiFirstTurnCommitIdentity;
+  readonly model: PiAgentModelConfig;
+  readonly resourceSnapshot: PiResourceSnapshot;
+  readonly sessionJsonl: string;
+  readonly sessionId: string;
+  readonly ownership: PiApiFirstTurnOwnership;
+}
+
 async function executeApiModelTurn(
-  args: {
-    readonly activation: PiApiFirstTurnActivation;
-    readonly context: ApiFirstTurnContext;
-    readonly commitIdentity: ApiFirstTurnCommitIdentity;
-    readonly launchConfig: ApiFirstTurnLaunchConfig;
-    readonly model: PiAgentModelConfig;
-    readonly resourceSnapshot: PiResourceSnapshot;
-    readonly sessionJsonl: string;
-    readonly sessionId: string;
-    readonly ownership: PiApiFirstTurnOwnership;
-  },
+  args: ExecuteApiModelTurnArgs,
   signal: AbortSignal,
 ): Promise<{
   readonly startedAt: number;
   readonly turn: PiApiFirstTurnResult;
 }> {
-  const modelDeadline = args.launchConfig.deadlineAt - MODEL_COMMIT_BUDGET_MS;
+  const modelDeadline =
+    apiFirstTurnApiDeadlineAt(args.activation.executionContext) -
+    MODEL_COMMIT_BUDGET_MS;
   if (now() >= modelDeadline) {
     throw piApiFirstTurnError(
       "PI_API_FIRST_TURN_DEADLINE_EXCEEDED",
@@ -908,10 +1249,10 @@ async function executeApiModelTurn(
     );
   }
   const startedAt = now();
-  const modelSignal = AbortSignal.any([
-    signal,
-    AbortSignal.timeout(Math.max(1, modelDeadline - now())),
-  ]);
+  const modelDeadlineSignal = AbortSignal.timeout(
+    Math.max(1, modelDeadline - now()),
+  );
+  const modelSignal = AbortSignal.any([signal, modelDeadlineSignal]);
   const operation = runPiApiFirstTurn(
     {
       cwd: CANONICAL_WORKING_DIR,
@@ -932,7 +1273,7 @@ async function executeApiModelTurn(
       providerRequestBoundary: async (markProviderRequestMayHaveStarted) => {
         await withApiFirstTurnLifecycle(args.context, async (tx) => {
           modelSignal.throwIfAborted();
-          const state = validateApiFirstTurnLifecycleCommit(
+          const state = validateApiFirstTurnApiCommit(
             args.context,
             await readApiFirstTurnLifecycleState(tx, args.activation.runId),
             args.commitIdentity,
@@ -954,7 +1295,14 @@ async function executeApiModelTurn(
   if (!executed.ok) {
     if (modelSignal.aborted) {
       waitUntil(
-        observeDiscardedProviderResult(operation, args.context, args.ownership),
+        observeDiscardedProviderResult(
+          operation,
+          args.context,
+          args.ownership,
+          modelDeadlineSignal.aborted
+            ? "api_attempt_timed_out"
+            : "aborted_execution",
+        ),
       );
     }
     if (
@@ -986,19 +1334,23 @@ async function executeApiModelTurn(
         ? "Pi API first-turn model deadline elapsed"
         : "Pi API first-turn model request failed",
       executed.error,
+      modelSignal.aborted || args.model.provider !== "openai-codex"
+        ? undefined
+        : classifyPiApiProviderFailure(executed.error),
     );
   }
   const turn = executed.value;
-  await recordApiFirstTurnUsage(args.context, turn);
-  if (
-    turn.assistantMessage.stopReason === "error" ||
-    turn.assistantMessage.stopReason === "aborted"
-  ) {
+  if (now() >= modelDeadline) {
+    waitUntil(
+      discardCompletedProviderResult(turn, args.context, args.ownership),
+    );
     throw piApiFirstTurnError(
-      "PI_API_MODEL_FAILED",
-      `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
+      "PI_API_FIRST_TURN_DEADLINE_EXCEEDED",
+      "Pi API first-turn provider result arrived after its commit deadline",
     );
   }
+  await recordApiFirstTurnUsage(args.context, turn);
+  validateApiModelTurnOutcome(turn);
   return { startedAt, turn };
 }
 
@@ -1067,10 +1419,14 @@ function ownershipTransferManifest(args: {
 
 type PiSandboxFallbackReason =
   | "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
+  | "PI_API_NATIVE_INPUT_REQUIRED"
   | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_PREPARATION_FAILED";
 
-type PiSandboxFirstReason = PiSandboxFallbackReason | "active_input";
+type PiSandboxFirstReason =
+  | PiSandboxFallbackReason
+  | "active_input"
+  | "api_attempt_timed_out";
 
 function eligibleSandboxFallbackReason(
   args: {
@@ -1083,6 +1439,7 @@ function eligibleSandboxFallbackReason(
     return null;
   }
   switch (args.failure.code) {
+    case "PI_API_NATIVE_INPUT_REQUIRED":
     case "PI_API_PREHEAT_FAILED":
     case "PI_API_COMPACTION_PREFLIGHT_REQUIRED":
     case "PI_API_RESOURCE_PREPARATION_FAILED": {
@@ -1157,28 +1514,9 @@ const publishSandboxFallback$ = command(async function publishSandboxFallback(
     validateApiFirstTurnLaunch(args);
   const commitIdentity = apiFirstTurnCommitIdentity(args);
   signal.throwIfAborted();
-  const loadedSession = await set(
-    loadResumeSessionJsonl$,
-    {
-      db: args.db,
-      resumeSession: executionContext.resumeSession,
-    },
-    signal,
-  );
-  validateResumeSession({
-    loaded: loadedSession,
-    expectedBaseSession: launchConfig.baseSession,
-    sessionId,
-  });
-  const sessionJsonl = materializeApiFirstTurnH0({
-    apiStartTime: executionContext.apiStartTime,
-    loadedSession,
-    sessionId,
-  });
-  const session = validateSandboxFallbackSession(sessionJsonl, sessionId);
   await withApiFirstTurnLifecycle(args, async (tx) => {
     signal.throwIfAborted();
-    const state = validateApiFirstTurnLifecycleCommit(
+    const state = validateApiFirstTurnHandoffCommit(
       args,
       await readApiFirstTurnLifecycleState(tx, args.activation.runId),
       commitIdentity,
@@ -1190,6 +1528,25 @@ const publishSandboxFallback$ = command(async function publishSandboxFallback(
         "Pi active-input sandbox-first transfer lost its durable delivery",
       );
     }
+    const loadedSession = await set(
+      loadResumeSessionJsonl$,
+      {
+        db: args.db,
+        resumeSession: executionContext.resumeSession,
+      },
+      signal,
+    );
+    validateResumeSession({
+      loaded: loadedSession,
+      expectedBaseSession: launchConfig.baseSession,
+      sessionId,
+    });
+    const sessionJsonl = materializeApiFirstTurnH0({
+      apiStartTime: executionContext.apiStartTime,
+      loadedSession,
+      sessionId,
+    });
+    const session = validateSandboxFallbackSession(sessionJsonl, sessionId);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const sessionKey = piApiFirstTurnObjectKey(
       args.activation.runId,
@@ -1223,6 +1580,12 @@ const publishSandboxFallback$ = command(async function publishSandboxFallback(
         "Pi sandbox fallback H0 failed read-after-write validation",
       );
     }
+    validateApiFirstTurnHandoffCommit(
+      args,
+      state,
+      commitIdentity,
+      "Pi sandbox-first transfer lost commit eligibility before publication",
+    );
     const manifest = ownershipTransferManifest({
       mode: "sandbox-first",
       baseSession: launchConfig.baseSession,
@@ -1251,6 +1614,14 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     validateApiFirstTurnLaunch(args);
   const commitIdentity = apiFirstTurnCommitIdentity(args);
   signal.throwIfAborted();
+  // The direct API model turn cannot run native input/skill expansion. Choose
+  // AgentSession before API-only preparation; handoff must keep the input intact.
+  if (args.activation.prompt.trimStart().startsWith("/")) {
+    throw piApiFirstTurnError(
+      "PI_API_NATIVE_INPUT_REQUIRED",
+      "Pi slash-prefixed input requires native AgentSession processing",
+    );
+  }
   const resourceSnapshot = await set(
     loadApiFirstTurnResource$,
     args,
@@ -1259,7 +1630,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     signal,
   );
   signal.throwIfAborted();
-  const model = await apiFirstTurnModelConfig(args, executionContext);
+  const model = await apiFirstTurnModelConfig(args, executionContext, signal);
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1284,7 +1655,6 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
       activation: args.activation,
       context: args,
       commitIdentity,
-      launchConfig,
       model,
       resourceSnapshot,
       sessionJsonl,
@@ -1360,6 +1730,7 @@ const finalizeCompleteTurn$ = command(async function finalizeCompleteTurn(
     completeAgentRun$,
     {
       auth: prepared.auth,
+      executionOwner: "api-first",
       body: {
         runId: args.activation.runId,
         exitCode: 0,
@@ -1400,16 +1771,20 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
   { get, set },
   args: ApiFirstTurnContext,
   prepared: PreparedApiFirstTurn,
+  commitProgress: ApiFirstTurnCommitProgress,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
   return await withApiFirstTurnLifecycle(args, async (tx) => {
     signal.throwIfAborted();
-    const state = validateApiFirstTurnLifecycleCommit(
+    const state = validateApiFirstTurnApiCommit(
       args,
       await readApiFirstTurnLifecycleState(tx, args.activation.runId),
       prepared.commitIdentity,
       "Pi API first turn lost commit eligibility after the provider request",
     );
+    // Once any H1 commit side effect can begin, a later timeout must fail
+    // terminally instead of replaying H0 over potentially published state.
+    commitProgress.started = true;
     const hasActiveInput = state.activeDeliveryId !== null;
     const transferMode: PiApiFirstTurnOwnershipTransferMode | null = prepared
       .turn.handoffRequired
@@ -1472,6 +1847,8 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
       );
       L.debug("Pi API first-turn outcome", {
         runId: args.activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
+        handoffOwner: "sandbox",
         outcome: "ownership_transfer",
         reason: hasActiveInput
           ? transferMode === "settled-session-continuation"
@@ -1494,6 +1871,7 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
     stopPreparedSandbox(args.activation, "completed");
     L.debug("Pi API first-turn outcome", {
       runId: args.activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "api_completion",
       reason: "settled_session",
       ownershipStage: "provider-may-have-started",
@@ -1506,11 +1884,12 @@ const executeApiFirstTurn$ = command(async function executeApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
+  commitProgress: ApiFirstTurnCommitProgress,
   signal: AbortSignal,
 ): Promise<CompleteSideEffectsInput | undefined> {
   const prepared = await set(prepareApiFirstTurn$, args, ownership, signal);
   const committed = await settle(
-    set(commitApiFirstTurn$, args, prepared, signal),
+    set(commitApiFirstTurn$, args, prepared, commitProgress, signal),
     signal,
   );
   if (!committed.ok) {
@@ -1567,16 +1946,30 @@ function normalizedSandboxFallbackFailure(
 
 async function settleApiFirstTurnExecution<T>(
   execution: Promise<T>,
-  signal: AbortSignal,
+  executionSignal: AbortSignal,
+  coordinationSignal: AbortSignal,
 ) {
   const executed = await settleIncludingAbort(execution);
-  if (executed.ok || !signal.aborted) {
+  if (executed.ok || !executionSignal.aborted) {
     return executed;
   }
   return {
     ok: false as const,
-    error: signal.reason ?? executed.error,
+    error:
+      executionSignal.reason ?? coordinationSignal.reason ?? executed.error,
   };
+}
+
+function piApiFirstTurnHandoffSignal(
+  activation: PiApiFirstTurnActivation,
+  coordinationSignal: AbortSignal,
+): AbortSignal {
+  const coordinationDeadlineAt =
+    activation.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
+  return AbortSignal.any([
+    coordinationSignal,
+    AbortSignal.timeout(Math.max(1, coordinationDeadlineAt - now())),
+  ]);
 }
 
 async function canonicalApiFirstTurnCancellationWon(
@@ -1592,11 +1985,12 @@ async function canonicalApiFirstTurnCancellationWon(
 }
 
 function logCanonicalApiFirstTurnCancellation(
-  runId: string,
+  args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
 ): void {
   L.debug("Pi API first-turn outcome", {
-    runId,
+    runId: args.activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
     outcome: "canonical_cancellation",
     reason:
       ownership.stage === "pre-provider"
@@ -1606,11 +2000,75 @@ function logCanonicalApiFirstTurnCancellation(
   });
 }
 
+function logApiFirstTurnAttemptTimedOut(
+  activation: PiApiFirstTurnActivation,
+  ownership: PiApiFirstTurnOwnership,
+  failure: PiApiFirstTurnError,
+): void {
+  L.debug("Pi API first-turn outcome", {
+    runId: activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
+    outcome: "api_attempt_timed_out",
+    reason: failure.code,
+    ownershipStage: ownership.stage,
+  });
+}
+
+function sandboxFirstPublicationOutcome(reason: PiSandboxFirstReason): {
+  readonly outcome:
+    | "ownership_transfer"
+    | "sandbox_fallback"
+    | "sandbox_retry_started";
+  readonly reason: string;
+} {
+  switch (reason) {
+    case "api_attempt_timed_out": {
+      return {
+        outcome: "sandbox_retry_started",
+        reason: "api_attempt_timed_out",
+      };
+    }
+    case "active_input": {
+      return {
+        outcome: "ownership_transfer",
+        reason: "active_input_sandbox_first",
+      };
+    }
+    case "PI_API_COMPACTION_PREFLIGHT_REQUIRED": {
+      return { outcome: "ownership_transfer", reason: "compaction_preflight" };
+    }
+    case "PI_API_NATIVE_INPUT_REQUIRED": {
+      return {
+        outcome: "ownership_transfer",
+        reason: "native_input_sandbox_first",
+      };
+    }
+    default: {
+      return { outcome: "sandbox_fallback", reason };
+    }
+  }
+}
+
+function logSandboxFirstPublication(
+  activation: PiApiFirstTurnActivation,
+  ownership: PiApiFirstTurnOwnership,
+  reason: PiSandboxFirstReason,
+): void {
+  L.debug("Pi API first-turn outcome", {
+    runId: activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
+    handoffOwner: "sandbox",
+    ...sandboxFirstPublicationOutcome(reason),
+    ownershipStage: ownership.stage,
+  });
+}
+
 const failApiFirstTurn$ = command(async function failApiFirstTurn(
   { set },
   args: ApiFirstTurnContext,
   failure: PiApiFirstTurnError,
   ownership: PiApiFirstTurnOwnership,
+  suppressCompletionFailureLog: boolean,
 ): Promise<DispatchCompleteSideEffectsInput | undefined> {
   const failureSignal = AbortSignal.timeout(FAILURE_COMMIT_TIMEOUT_MS);
   return await withApiFirstTurnLifecycle(args, async (tx) => {
@@ -1619,7 +2077,7 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
       args.activation.runId,
     );
     if (state?.status === "cancelled") {
-      logCanonicalApiFirstTurnCancellation(args.activation.runId, ownership);
+      logCanonicalApiFirstTurnCancellation(args, ownership);
       return undefined;
     }
     if (!state || (state.status !== "pending" && state.status !== "running")) {
@@ -1633,10 +2091,15 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
           orgId: args.activation.orgId,
           runId: args.activation.runId,
         },
+        executionOwner: "api-first",
+        suppressFailureLog: suppressCompletionFailureLog,
         body: {
           runId: args.activation.runId,
           exitCode: 1,
           error: failure.message,
+          ...(failure.failureReason
+            ? { failureReason: failure.failureReason }
+            : {}),
         },
       },
       failureSignal,
@@ -1663,8 +2126,25 @@ export const runPiApiFirstTurn$ = command(
   ): Promise<DispatchCompleteSideEffectsInput | undefined> => {
     const context: ApiFirstTurnContext = { db: set(writeDb$), activation };
     const ownership = createPiApiFirstTurnOwnership();
+    const commitProgress: ApiFirstTurnCommitProgress = { started: false };
+    const apiAttemptController = new AbortController();
+    const apiDeadlineAt = apiFirstTurnApiDeadlineAt(
+      activation.executionContext,
+    );
+    const apiAttemptSignal = AbortSignal.any([
+      signal,
+      apiAttemptController.signal,
+      AbortSignal.timeout(Math.max(1, apiDeadlineAt - now())),
+    ]);
     const executed = await settleApiFirstTurnExecution(
-      set(executeApiFirstTurn$, context, ownership, signal),
+      set(
+        executeApiFirstTurn$,
+        context,
+        ownership,
+        commitProgress,
+        apiAttemptSignal,
+      ),
+      apiAttemptSignal,
       signal,
     );
     if (executed.ok) {
@@ -1677,7 +2157,14 @@ export const runPiApiFirstTurn$ = command(
     }
     const activeInputBeforeProvider =
       executed.error instanceof PiApiFirstTurnActiveInputBeforeProviderError;
-    let failure = normalizedApiFirstTurnFailure(executed.error, signal);
+    let failure = normalizedApiFirstTurnFailure(
+      executed.error,
+      apiAttemptSignal,
+    );
+    // Classify the failure before closing any residual attempt work. Aborting
+    // the private controller first would misclassify every raw API failure as
+    // an ownership deadline and incorrectly replay it in Sandbox.
+    apiAttemptController.abort(executed.error);
     const resourceFallbackReason = activeInputBeforeProvider
       ? null
       : eligibleSandboxFallbackReason(
@@ -1687,58 +2174,76 @@ export const runPiApiFirstTurn$ = command(
           },
           signal,
         );
+    const coordinationDeadlineAt =
+      activation.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
+    const apiOwnershipExpired =
+      failure.code === "PI_API_FIRST_TURN_DEADLINE_EXCEEDED" &&
+      !commitProgress.started &&
+      !signal.aborted;
+    const apiAttemptTimedOut =
+      apiOwnershipExpired && now() < coordinationDeadlineAt;
     const sandboxFirstReason: PiSandboxFirstReason | null =
-      activeInputBeforeProvider ? "active_input" : resourceFallbackReason;
+      activeInputBeforeProvider
+        ? "active_input"
+        : apiAttemptTimedOut
+          ? "api_attempt_timed_out"
+          : resourceFallbackReason;
     if (sandboxFirstReason) {
+      if (apiAttemptTimedOut) {
+        logApiFirstTurnAttemptTimedOut(activation, ownership, failure);
+      }
+      const handoffSignal = piApiFirstTurnHandoffSignal(activation, signal);
       const fallback = await settleApiFirstTurnExecution(
-        set(publishSandboxFallback$, context, sandboxFirstReason, signal),
+        set(
+          publishSandboxFallback$,
+          context,
+          sandboxFirstReason,
+          handoffSignal,
+        ),
+        handoffSignal,
         signal,
       );
       if (fallback.ok) {
-        L.debug("Pi API first-turn outcome", {
-          runId: activation.runId,
-          outcome:
-            sandboxFirstReason === "active_input"
-              ? "ownership_transfer"
-              : sandboxFirstReason === "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
-                ? "ownership_transfer"
-                : "sandbox_fallback",
-          reason:
-            sandboxFirstReason === "active_input"
-              ? "active_input_sandbox_first"
-              : sandboxFirstReason === "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
-                ? "compaction_preflight"
-                : sandboxFirstReason,
-          ownershipStage: ownership.stage,
-        });
+        logSandboxFirstPublication(activation, ownership, sandboxFirstReason);
         return undefined;
       }
-      failure = normalizedSandboxFallbackFailure(fallback.error, signal);
+      failure = normalizedSandboxFallbackFailure(fallback.error, handoffSignal);
     }
     if (await canonicalApiFirstTurnCancellationWon(context)) {
       if (
         executed.error instanceof PiApiFirstTurnCanonicalCancellationError &&
         ownership.stage === "provider-may-have-started"
       ) {
-        L.warn("Pi API first-turn outcome", {
+        L.debug("Pi API first-turn outcome", {
           runId: activation.runId,
+          ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
           outcome: "discarded_late_provider_result",
           reason: "canonical_cancellation",
           ownershipStage: ownership.stage,
         });
       }
-      logCanonicalApiFirstTurnCancellation(activation.runId, ownership);
+      logCanonicalApiFirstTurnCancellation(context, ownership);
       return undefined;
     }
     L.warn("Pi API first-turn outcome", {
       runId: activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
       outcome: "terminal_failure",
       reason: failure.code,
       ownershipStage: ownership.stage,
       ...(resourceFallbackReason
         ? { fallbackReason: resourceFallbackReason }
         : {}),
+      ...(apiAttemptTimedOut
+        ? { recoveryReason: "api_attempt_timed_out" }
+        : {}),
     });
-    return set(failApiFirstTurn$, context, failure, ownership);
+    return set(
+      failApiFirstTurn$,
+      context,
+      failure,
+      ownership,
+      apiOwnershipExpired,
+    );
   },
 );

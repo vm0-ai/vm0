@@ -268,7 +268,7 @@ export function UsageRangeSelect({
         <Button
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
+          className="okou-btn-morandi h-9 shrink-0 rounded-lg border"
         >
           {rangeLabel(value)}
           <ChevronDown size={14} className="ml-1.5 text-muted-foreground" />

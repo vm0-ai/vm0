@@ -101,11 +101,6 @@ export const connectorAccountMutationIntentSchema = z.discriminatedUnion(
   [
     z
       .object({
-        intent: z.literal("single-account"),
-      })
-      .strict(),
-    z
-      .object({
         intent: z.literal("add"),
         displayName: connectorAccountDisplayNameSchema.optional(),
       })
@@ -320,21 +315,6 @@ export const connectorAccountsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Plan deletion of an exact connector account",
-  },
-  disconnectSingleAccount: {
-    method: "DELETE",
-    path: "/api/connector-accounts/single-account",
-    headers: authHeadersSchema,
-    body: connectorAccountExactTargetBodySchema,
-    responses: {
-      204: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Disconnect a safe single connector account",
   },
   delete: {
     method: "DELETE",

@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { escapeLiteral } from "pg";
-import { getVm0BuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
+import { getBuiltInModelRouteVendors } from "@okouai/api-contracts/contracts/model-providers";
 import { MANAGED_SOCIALKIT_BILLING_CATEGORY } from "@okouai/api-contracts/contracts/social";
 import { resolveSkillRef } from "@okouai/core/github-url";
 import {
@@ -114,6 +114,13 @@ function usageGroup(
     return { kind, provider, category, unitPrice, unitSize };
   });
 }
+
+const GPT_6_ASTRA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(10), 1_000_000],
+  ["tokens.cache_read", usd(1), 1_000_000],
+  ["tokens.cache_creation", usd(12.5), 1_000_000],
+  ["tokens.output", usd(50), 1_000_000],
+];
 
 const GPT_5_6_SOL_PRICING: readonly UsagePricingRow[] = [
   ["tokens.input", usd(5), 1_000_000],
@@ -416,6 +423,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.0028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
+  // GPT-6 Astra pricing retrieved 2026-09-04 from:
+  // https://platform.openai.com/docs/models/gpt-6-astra
+  ...usageGroup(
+    "model",
+    "gpt-6-astra",
+    withFastPricing(withLongContextPricing(GPT_6_ASTRA_PRICING, 2, 1.5)),
+  ),
   // OpenAI API pricing retrieved 2026-07-31 from:
   // https://developers.openai.com/api/docs/pricing
   ...usageGroup(
@@ -688,6 +702,19 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("video", "joggai-talking-avatar", [
     ["output_video_joggai_credits", videoUsd(399 / 800), 1],
   ]),
+  // HeyGen self-serve API cost for a 720p/1080p Studio Avatar rendered with
+  // the v3 Avatar III engine: $1 per output minute, billed by seconds.
+  // https://developers.heygen.com/docs/pricing
+  ...usageGroup("video", "heygen-avatar-iii", [
+    ["output_video_seconds", videoUsd(1), 60],
+  ]),
+
+  // HeyGen Starfish TTS costs $0.000667 per second, approximately $0.04 per
+  // generated minute. Intro Video uses only voices returned for this engine.
+  // https://developers.heygen.com/docs/pricing
+  ...usageGroup("audio", "heygen-starfish-tts", [
+    ["output_audio_seconds", usd(0.04), 60],
+  ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute raw provider cost = 15 credits/minute.
@@ -711,16 +738,16 @@ type OptionalEnvReader = (name: string) => string | undefined;
 type LineWriter = (message: string) => void;
 
 /**
- * Build vm0_api_keys entries from environment variables.
- * Vendors are derived from all VM0 built-in candidates so new providers are
+ * Build built_in_model_keys entries from environment variables.
+ * Vendors are derived from all built-in candidates so new providers are
  * automatically picked up.
  */
-export function buildVm0ApiKeys(
+export function buildBuiltInModelKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof builtInModelKeys.$inferInsert)[] {
   const keys: (typeof builtInModelKeys.$inferInsert)[] = [];
-  for (const vendor of getVm0BuiltInModelRouteVendors()) {
+  for (const vendor of getBuiltInModelRouteVendors()) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
@@ -760,9 +787,9 @@ async function devSeed() {
     });
   writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
-  // --- vm0_api_keys (transactional replace) ---
-  writeLine("Seeding vm0_api_keys");
-  const apiKeys = buildVm0ApiKeys();
+  // --- built_in_model_keys (transactional replace) ---
+  writeLine("Seeding built_in_model_keys");
+  const apiKeys = buildBuiltInModelKeys();
   await database.transaction(async (tx) => {
     await tx.delete(builtInModelKeys);
     if (apiKeys.length > 0) {
@@ -770,9 +797,9 @@ async function devSeed() {
     }
   });
   for (const k of apiKeys) {
-    writeLine(`Seeded vm0 API key entry: ${k.vendor}`);
+    writeLine(`Seeded built-in model key entry: ${k.vendor}`);
   }
-  writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
+  writeLine(`Seeded ${apiKeys.length} built-in model key entries`);
 
   // --- skills (published volumes + seed-skill metadata fallback) ---
   const seedSkillVolumes = getDevSeedSkillVolumes();

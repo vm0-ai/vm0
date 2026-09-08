@@ -278,6 +278,10 @@ def test_response_log_serializes_common_metadata_independent_of_firewall_context
             "https://target.example.com:9443/path?access_token=secret#fragment",
         ),
         (
+            "https: //user:pass@target.example.com:9443/path?access_token=secret#fragment",
+            "https://target.example.com:9443/path?access_token=secret#fragment",
+        ),
+        (
             "https://target.example.com:9443/users/alice@example.com?access_token=secret#fragment",
             "https://target.example.com:9443/users/alice@example.com?access_token=secret#fragment",
         ),

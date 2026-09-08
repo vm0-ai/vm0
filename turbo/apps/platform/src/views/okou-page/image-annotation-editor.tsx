@@ -1100,7 +1100,7 @@ function AnnotationSurface({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
+        className="okou-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
         data-testid="image-annotation-editor"
       >
         <KeyboardShortcuts signals={signals} />

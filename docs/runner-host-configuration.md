@@ -47,6 +47,32 @@ telemetry/Axiom dimensions, and distinct hostnames on two hosts running one
 version. Remove any historical query fallback only after its bounded
 observation window expires.
 
+## Idle Workspace Reclamation Concurrency
+
+Workspace promotion uses two independent runner-process-local admission gates,
+each sized as `(host_cpus / 2).clamp(1, 4)`. Cache clones share the gates.
+The existing sidecar export gate covers guest export execution only. Idle
+reclamation additionally acquires admission **before unpark** and holds it
+through terminal unpark, export, host copy, workspace freeze and immediate
+sandbox termination. Waiting reclamation jobs remain parked. Terminal unpark
+does not start the reactive balloon controller used by future active workloads,
+and the temporary guest sidecar is left for sandbox destruction instead of a
+separate guest cleanup command.
+
+After successful termination, cache publication and factory destruction run
+without holding idle admission. If termination fails or panics, publication is
+abandoned and admission remains held through the factory destruction attempt.
+Missing or explicitly abandoned promotion does not acquire this gate. Normal
+startup/reuse and active sandbox promotion do not acquire idle reclamation
+admission.
+
+This limits simultaneous resumed idle guests, not total sandboxes or team run
+concurrency. A bulk drain can take longer and retain parked budget leases while
+waiting; capacity-pressure reclamation can consequently take longer too.
+Overlapping runner versions have independent limits. Four is an initial policy,
+not a measured optimum or a guarantee that large-history export/copy latency
+disappears. No operator setting or persistent cache format changes are required.
+
 ## Runner Operator Server Configuration
 
 `runner config` requires the control-plane URL and Runner token through the
@@ -256,5 +282,5 @@ the per-drive split.
   host capacity and derives sandbox-level limits.
 - [`crates/runner/src/cmd/start/mod.rs`](../crates/runner/src/cmd/start/mod.rs)
   emits the startup state and effective-limit logs.
-- [`crates/sandbox-fc/src/config.rs`](../crates/sandbox-fc/src/config.rs) splits
+- [`crates/sandbox-firecracker/src/config.rs`](../crates/sandbox-firecracker/src/config.rs) splits
   the sandbox block budget across Firecracker drives.

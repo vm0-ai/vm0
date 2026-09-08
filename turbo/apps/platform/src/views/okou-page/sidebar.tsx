@@ -1,7 +1,6 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   LayoutGrid,
   Package,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  ShortcutTooltipGroup,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -48,6 +48,7 @@ import { Link } from "../router/link.tsx";
 import { slackOrgScopeMismatch$ } from "../../signals/okou-page/slack.ts";
 import { AccountDropdown } from "./sidebar-account.tsx";
 import { ChatThreadDialogs, ChatThreadsSection } from "./sidebar-threads.tsx";
+import { PinnedThreadDropZone } from "./sidebar-thread-reorder.tsx";
 import {
   responsiveSidebarChatThreadScrollSignals,
   threeColumnSidebarChatThreadScrollSignals,
@@ -61,7 +62,7 @@ import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -227,7 +228,7 @@ function ExpandedSidebar() {
         return $.appShell.sidebar.ariaLabel;
       })}
       className={cn(
-        "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
+        "okou-nav okou-mobile-sidebar okou-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
       )}
     >
@@ -247,9 +248,9 @@ function ExpandedHeader() {
     return $.appShell.sidebar.collapse;
   });
   return (
-    <div className="zero-sidebar-header shrink-0 px-2 pb-0">
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
-      <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
+    <div className="okou-sidebar-header shrink-0 px-2 pb-0">
+      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div className="okou-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
         <div className="min-w-0 flex-1">
           <OrgSwitcher />
         </div>
@@ -308,7 +309,7 @@ function ExpandedManageSection() {
           return setManageCollapsed(!manageCollapsed);
         }}
       >
-        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.appShell.sidebar.manage;
           })}
@@ -346,7 +347,7 @@ function ExpandedManageSection() {
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
-                  <span className="zero-nav-copy truncate">{label}</span>
+                  <span className="okou-nav-copy truncate">{label}</span>
                 </Link>
               );
             },
@@ -359,15 +360,19 @@ function ExpandedManageSection() {
 
 function ExpandedSidebarSections() {
   return (
-    <div className="flex-1 min-h-0 -mx-2 mt-2 pt-2 flex flex-col overflow-hidden">
+    <PinnedThreadDropZone
+      signals={responsiveSidebarChatThreadScrollSignals.pinReorder}
+      className="flex-1 min-h-0 -mx-2 mt-2 pt-2 flex flex-col overflow-hidden"
+    >
       <div className="px-2">
         <PinnedAgentListSection />
       </div>
       <ChatThreadsSection
         scrollSignals={responsiveSidebarChatThreadScrollSignals}
         contentClassName="px-2"
+        showMarkAllRead
       />
-    </div>
+    </PinnedThreadDropZone>
   );
 }
 
@@ -431,7 +436,7 @@ function ExpandedFooter() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="zero-nav-copy flex-1 truncate">{label}</span>
+                <span className="okou-nav-copy flex-1 truncate">{label}</span>
                 {id === "works" && slackScopeMismatch && (
                   <span
                     data-testid="slack-scope-mismatch-indicator"
@@ -451,6 +456,13 @@ function ExpandedFooter() {
 }
 
 // --- Three-column (Slack-style) layout ---
+
+/* Everything in the rail is a 36px square, so centring it in the 72px column
+   leaves 18px down either side. The vertical padding matches that, which is
+   what puts the workspace logo and the account mark the same distance from
+   the corner they sit in as from the edge beside them. */
+const RAIL_FRAME =
+  "okou-nav okou-nav-rail hidden md:flex h-full w-[72px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 py-[18px]";
 
 function LabeledRailLink({
   id,
@@ -510,10 +522,10 @@ function LabeledRailLink({
       aria-label={label}
       aria-current={isActive ? "page" : undefined}
       title={caption}
-      className="group flex w-full flex-col items-center gap-1 no-underline"
+      className="group flex w-full flex-col items-center gap-0.5 no-underline"
     >
       <span
-        className={`relative inline-flex h-8 w-9 items-center justify-center rounded-lg transition-colors duration-200 ${
+        className={`relative inline-flex size-9 items-center justify-center rounded-lg transition-colors duration-200 ${
           isActive
             ? "bg-state-selected text-sidebar-foreground"
             : "text-sidebar-foreground hover:bg-state-hover group-hover:bg-state-hover"
@@ -537,10 +549,10 @@ function LabeledRailLink({
         )}
       </span>
       <span
-        className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
+        className={`max-w-full truncate px-0.5 text-[10px] font-medium leading-[14px] ${
           isActive
-            ? "zero-nav-copy text-sidebar-foreground"
-            : "zero-nav-copy-muted text-sidebar-foreground/60"
+            ? "okou-nav-copy text-sidebar-foreground"
+            : "okou-nav-copy-muted text-sidebar-foreground/70"
         }`}
       >
         {caption}
@@ -551,46 +563,32 @@ function LabeledRailLink({
 
 function ThreeColumnChatListToggle({
   hidden,
-  tooltipSide,
-}: {
+  ...props
+}: ComponentProps<typeof Button> & {
   hidden: boolean;
-  tooltipSide: "bottom" | "right";
 }) {
   const onToggle = useSidebarCollapseToggle();
-  const { t } = useTranslation();
-  const label = hidden
-    ? t(($) => {
-        return $.appShell.sidebar.showChatList;
-      })
-    : t(($) => {
-        return $.appShell.sidebar.hideChatList;
-      });
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          onClick={onToggle}
-          aria-label={label}
-          aria-keyshortcuts="Meta+B Control+B"
-          variant="quiet"
-          size="icon-sm"
-          iconSize="md"
-        >
-          <PanelLeftClose
-            size={18}
-            className={cn(
-              "transition-transform duration-200",
-              hidden && "rotate-180",
-            )}
-          />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side={tooltipSide}>
-        <p className="text-xs">{label}</p>
-      </TooltipContent>
-    </Tooltip>
+    <Button
+      {...props}
+      type="button"
+      onClick={onToggle}
+      aria-keyshortcuts={
+        GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.ariaKeyShortcuts
+      }
+      variant="quiet"
+      size="icon-sm"
+      iconSize="md"
+    >
+      <PanelLeftClose
+        size={18}
+        className={cn(
+          "transition-transform duration-200",
+          hidden && "rotate-180",
+        )}
+      />
+    </Button>
   );
 }
 
@@ -640,19 +638,29 @@ function LabeledNavRail() {
     onNavSelect(id);
   };
   return (
-    <aside
-      data-testid="labeled-nav-rail"
-      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
-    >
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
+    <aside data-testid="labeled-nav-rail" className={RAIL_FRAME}>
+      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />
       </div>
       {chatListHidden && (
         <div className="mb-3 shrink-0">
-          <TooltipProvider delayDuration={200}>
-            <ThreeColumnChatListToggle hidden tooltipSide="right" />
-          </TooltipProvider>
+          <ShortcutTooltipGroup
+            side="right"
+            items={[
+              {
+                shortcut: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
+                trigger: (
+                  <ThreeColumnChatListToggle
+                    hidden
+                    aria-label={t(($) => {
+                      return $.appShell.sidebar.showChatList;
+                    })}
+                  />
+                ),
+              },
+            ]}
+          />
         </div>
       )}
       <nav
@@ -705,6 +713,11 @@ function ThreeColumnSearchDialogContainer() {
           pathParams: { threadId },
         });
       }}
+      onSelectAgent={(agentId) => {
+        navigate("/agents/:agentId/chat", {
+          pathParams: { agentId },
+        });
+      }}
       onSelectWorkflow={(workflowId) => {
         navigate("/workflows/:workflowId", {
           pathParams: { workflowId },
@@ -723,8 +736,9 @@ function ThreeColumnSearchDialogContainer() {
   );
 }
 
+const CHAT_LIST_INSET = "px-3";
+
 function ChatListColumn() {
-  const newUiEnabled = useGet(featureSwitch$)[FeatureSwitchKey.NewUi] ?? false;
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const navigate = useSet(detachedNavigateTo$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
@@ -746,76 +760,91 @@ function ChatListColumn() {
   return (
     <aside
       data-testid="chat-list-column"
-      className={cn(
-        "zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar",
-        // Under the new shell this column and the gutter around the workspace
-        // card are one surface, so a divider here would run parallel to the
-        // card's own border eight pixels away and read as a double rule.
-        !newUiEnabled && "border-r-[0.7px] border-sidebar-border",
-      )}
+      className="okou-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar"
     >
-      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
-        <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1 pb-2 pt-3",
+          CHAT_LIST_INSET,
+        )}
+      >
+        <span className="okou-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
           })}
         </span>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={() => {
-                  openThreeColumnSearch();
-                }}
-                aria-label={searchLabel}
-                aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Search size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{searchLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onNewChat}
-                disabled={!currentChatAgentId}
-                aria-label={newChatLabel}
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Edit size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{newChatLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-          <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />
-        </TooltipProvider>
+        <ShortcutTooltipGroup
+          items={[
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding,
+              trigger: (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    openThreeColumnSearch();
+                  }}
+                  aria-label={searchLabel}
+                  aria-keyshortcuts={
+                    GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.ariaKeyShortcuts
+                  }
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                >
+                  <Search size={18} />
+                </Button>
+              ),
+            },
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.newChat.binding,
+              trigger: (
+                <Button
+                  type="button"
+                  onClick={onNewChat}
+                  disabled={!currentChatAgentId}
+                  aria-label={newChatLabel}
+                  aria-keyshortcuts={
+                    GLOBAL_KEYBOARD_SHORTCUTS.newChat.ariaKeyShortcuts
+                  }
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                >
+                  <Edit size={18} />
+                </Button>
+              ),
+            },
+            {
+              shortcut: GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding,
+              trigger: (
+                <ThreeColumnChatListToggle
+                  hidden={false}
+                  aria-label={t(($) => {
+                    return $.appShell.sidebar.hideChatList;
+                  })}
+                />
+              ),
+            },
+          ]}
+        />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1">
-        <div className="px-3">
+      <PinnedThreadDropZone
+        signals={threeColumnSidebarChatThreadScrollSignals.pinReorder}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1"
+      >
+        <div className={CHAT_LIST_INSET}>
           <PinnedAgentListSection layout="horizontal" />
         </div>
         <ChatThreadsSection
           scrollSignals={threeColumnSidebarChatThreadScrollSignals}
-          contentClassName="px-3"
+          contentClassName={CHAT_LIST_INSET}
           showMarkAllRead
         />
-      </div>
+      </PinnedThreadDropZone>
       {/* Collapses to nothing when SidebarUpgradeCard renders null, so the
           thread list reaches the column bottom instead of clipping its last
           row above a reserved strip. */}
-      <div className="px-3 pb-3 empty:hidden">
+      <div className={cn("pb-3 empty:hidden", CHAT_LIST_INSET)}>
         <SidebarUpgradeCard />
       </div>
     </aside>

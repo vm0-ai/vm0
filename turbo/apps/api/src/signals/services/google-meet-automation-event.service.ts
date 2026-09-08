@@ -1869,7 +1869,7 @@ async function dispatchGoogleMeetTranscriptEventForState(
   | { readonly kind: "run_error"; readonly message: string }
 > {
   const automations = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_automations",
+    "api_dispatch_pre_create_agent_automation_event_load_automations",
     async () => {
       return await loadGoogleMeetEventAutomations(
         {
@@ -1886,7 +1886,7 @@ async function dispatchGoogleMeetTranscriptEventForState(
   for (const automation of automations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const processedId = await runTiming.measure(
-      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+      "api_dispatch_pre_create_agent_automation_event_record_processed_event",
       async () => {
         return await insertWorkspaceProcessedEvent(
           {
@@ -1961,7 +1961,7 @@ async function loadCurrentGoogleMeetSubscriptionState(
   signal: AbortSignal,
 ): Promise<GoogleWorkspaceSubscriptionStateRow | null> {
   const state = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_source_state",
+    "api_dispatch_pre_create_agent_automation_event_load_source_state",
     async () => {
       return await loadWorkspaceSubscriptionStateByName(
         { db: args.db, subscriptionName: args.subscriptionName },
@@ -2056,7 +2056,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
         sourceTiming,
         startRun: async ({ automation, event, timing }) => {
           const runInput = await timing.measure(
-            "api_dispatch_pre_create_zero_automation_event_build_run_input",
+            "api_dispatch_pre_create_agent_automation_event_build_run_input",
             () => {
               const context = googleMeetTriggerContext({
                 workflowName: automation.workflowName,

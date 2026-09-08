@@ -17,7 +17,7 @@ const directRunModelProviderTypeSchema = modelProviderWriteTypeSchema.refine(
   (type) => {
     return type !== "built-in";
   },
-  { message: "built-in model provider is only supported by zero runs" },
+  { message: "built-in model provider is only supported by agent runs" },
 );
 
 export const claudeToolEntrySchema = z
@@ -140,8 +140,8 @@ const unifiedRunRequestSchema = z
     permissionPolicies: firewallPoliciesSchema.optional(),
 
     // Internal: pin provider type for direct CLI runs used by E2E.
-    // The built-in provider is intentionally excluded here because only Zero
-    // runs enforce built-in-provider credits.
+    // The built-in provider is intentionally excluded here because direct CLI
+    // runs do not enforce built-in-provider credits.
     modelProviderType: directRunModelProviderTypeSchema.optional(),
   })
   .strict();
@@ -209,7 +209,7 @@ const runResultSchema = z.object({
 });
 
 /**
- * Run state schema (replaces vm0_start/vm0_result/vm0_error events)
+ * Run state schema for the current lifecycle event contract.
  */
 const runStateSchema = z.object({
   status: runStatusSchema,

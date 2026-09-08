@@ -1,1 +1,0 @@
-ALTER TABLE "agent_runs" ADD COLUMN "workspace_reuse_result" varchar(50);

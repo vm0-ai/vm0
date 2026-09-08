@@ -368,7 +368,7 @@ describe("okou workflow automation commands", () => {
   });
 
   function writeGmailConfig(config: object): string {
-    const dir = mkdtempSync(join(tmpdir(), "vm0-gmail-automation-"));
+    const dir = mkdtempSync(join(tmpdir(), "okou-gmail-automation-"));
     tempDirs.push(dir);
     const path = join(dir, "gmail-automation.json");
     writeFileSync(path, JSON.stringify(config), "utf-8");

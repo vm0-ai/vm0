@@ -15,7 +15,6 @@ import {
   type WorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getCustomSkillStorageName,
@@ -53,13 +52,6 @@ import {
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
-import {
-  seedBuiltinThreadConnectorSelection,
-  seedConnectorStorageRow,
-  setBuiltinOAuthScopeFacts,
-  setConnectorAccountState,
-  setConnectorDefaultState,
-} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -77,11 +69,6 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type StaffFixture =
   | {
-      readonly kind: "connector";
-      readonly actor: ApiTestUser;
-      readonly connectorSlug: ConnectorSlug;
-    }
-  | {
       readonly kind: "workflow";
       readonly actor: ApiTestUser;
       readonly workflowId: string;
@@ -94,13 +81,6 @@ type StaffFixture =
 
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
-    case "connector": {
-      await connectorApi.disconnectSingleBuiltinConnectorAccount(
-        fixture.actor,
-        fixture.connectorSlug,
-      );
-      return;
-    }
     case "workflow": {
       await miscApi.deleteWorkflow(fixture.actor, fixture.workflowId, [204]);
       return;
@@ -333,71 +313,6 @@ async function enableWorkflowRuns(actor: ApiTestUser): Promise<void> {
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   api.configureRunnerGroup();
-}
-
-async function connectManualGrant(
-  actor: ApiTestUser,
-  connectorSlug: ConnectorSlug,
-  authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
-  values: Parameters<typeof connectorApi.connectManualGrant>[3],
-) {
-  const connector = await connectorApi.connectManualGrant(
-    actor,
-    connectorSlug,
-    authMethod,
-    values,
-  );
-  if (actor.orgId === STAFF_ORG_ID) {
-    await registerStaffFixture({
-      kind: "connector",
-      actor,
-      connectorSlug,
-    });
-  }
-  return connector;
-}
-
-async function connectGmailAccount(
-  actor: ApiTestUser,
-  agentId: string,
-  args: {
-    readonly accessToken: string;
-    readonly email: string;
-    readonly subject: string;
-    readonly account?: { readonly intent: "add"; readonly displayName: string };
-  },
-) {
-  mockGmailConnectorOAuth({
-    accessToken: args.accessToken,
-    email: args.email,
-    subject: args.subject,
-  });
-  const start = await connectorApi.startOauth(
-    actor,
-    "gmail",
-    "oauth",
-    agentId,
-    args.account,
-  );
-  const state = new URL(start.authorizationUrl).searchParams.get("state");
-  if (!state) {
-    throw new Error("Expected Gmail OAuth state");
-  }
-  await connectorApi.completeOauthCallback("gmail", {
-    code: `gmail-readiness-${randomUUID()}`,
-    state,
-  });
-  const accounts = await connectorApi.listBuiltinConnectorAccounts(
-    actor,
-    "gmail",
-  );
-  const account = accounts.find((candidate) => {
-    return candidate.externalEmail === args.email;
-  });
-  if (!account) {
-    throw new Error(`Expected Gmail account ${args.email}`);
-  }
-  return account;
 }
 
 async function connectGoogleCalendarAccount(
@@ -649,17 +564,17 @@ describe("workflows", () => {
     });
     expect(actionTypes).toStrictEqual(
       expect.arrayContaining([
-        "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
-        "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
-        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+        "api_dispatch_pre_create_agent_workflow_slash_prepare_normal_send",
+        "api_dispatch_pre_create_agent_workflow_slash_load_thread_mapping",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
+        "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
       ]),
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "api_dispatch_pre_create_agent_workflow_slash_ensure_thread",
     );
     expect(actionTypes).not.toContain(
-      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "api_dispatch_pre_create_agent_entrypoint_gap",
     );
     const serializedTimingEvents = JSON.stringify(timingEvents);
     for (const sensitiveValue of [
@@ -1400,6 +1315,57 @@ describe("workflows", () => {
     ).toBeTruthy();
   });
 
+  it("copies schedule-only workflows without binding a chat thread", async () => {
+    const actor = user();
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Schedule Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Schedule Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `schedule-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# schedule copy source",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "schedule",
+          schedule: { type: "loop", intervalSeconds: 900 },
+        },
+      }),
+      [201],
+    );
+    expect(automation.body.chatThreadId).toBeNull();
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+
+    expect(copiedAutomations.body).toHaveLength(1);
+    expect(copiedAutomations.body[0]).toMatchObject({
+      kind: "schedule",
+      chatThreadId: null,
+    });
+  });
+
   it("rebinds copied Gmail automations to the target thread default account", async () => {
     const actor = user();
     if (!actor.orgId) {
@@ -1409,9 +1375,7 @@ describe("workflows", () => {
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-      },
+      {},
     );
     const sourceAgent = await createAgent(actor, {
       displayName: "Gmail Copy Source Agent",
@@ -1563,11 +1527,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ConnectorAccounts]: true },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Calendar Copy Source Agent",
       visibility: "private",
@@ -1687,14 +1646,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Notion Copy Source Agent",
       visibility: "private",
@@ -1912,7 +1863,6 @@ describe("workflows", () => {
       context,
       { ...actor, orgId: actor.orgId },
       {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
         [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
       },
     );
@@ -2049,14 +1999,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.ConnectorAccounts]: true,
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Google Forms Copy Source Agent",
       visibility: "private",
@@ -2075,7 +2017,7 @@ describe("workflows", () => {
     mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", topicName);
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
-      "https://api.vm0.ai/api/webhooks/google-forms",
+      "https://api.okou.ai/api/webhooks/google-forms",
     );
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",

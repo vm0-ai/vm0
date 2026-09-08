@@ -27,6 +27,8 @@ import {
   abortPiApiFirstTurnAfterCanonicalCancellation,
   lockPiApiFirstTurnLifecycle,
 } from "./pi-api-first-turn-lifecycle.service";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
+import { lockPiMemoryPhase2MaintenanceCleanupProtection } from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("RunCancel");
 
@@ -91,6 +93,8 @@ export const cancelRun$ = command(
       readonly orgId: string;
       readonly runnerCancellationMode: RunnerCancellationMode;
       readonly apiStartTime?: number;
+      /** Keep exact live Phase 2 maintenance leases out of generic cleanup. */
+      readonly protectActivePiMemoryPhase2Maintenance?: true;
     },
     signal: AbortSignal,
   ): Promise<
@@ -148,16 +152,30 @@ export const cancelRun$ = command(
         );
       }
 
-      const [updated] = await tx
-        .update(agentRuns)
-        .set({
+      if (args.protectActivePiMemoryPhase2Maintenance) {
+        const protectedByMaintenance =
+          await lockPiMemoryPhase2MaintenanceCleanupProtection(tx, {
+            runId: run.id,
+            orgId: run.orgId,
+            userId: run.userId,
+          });
+        if (protectedByMaintenance) {
+          return runNotCancellable(
+            "Run cannot be cancelled while Phase 2 maintenance is active",
+          );
+        }
+      }
+
+      const [updated] = await transitionAgentRunsToTerminal(tx, {
+        values: {
           status: "cancelled",
           completedAt: new Date(apiStartTime),
-        })
-        .where(
-          and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
-        )
-        .returning({ id: agentRuns.id });
+        },
+        conditions: [
+          eq(agentRuns.id, args.runId),
+          eq(agentRuns.status, run.status),
+        ],
+      });
       if (!updated) {
         throw new Error("Locked cancellable run was not updated");
       }

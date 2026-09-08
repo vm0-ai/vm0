@@ -188,6 +188,26 @@ class TestLogProxyEntry:
                 id="embedded-urlsplit-controls",
             ),
             pytest.param(
+                "https: //user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="space-before-separators",
+            ),
+            pytest.param(
+                "https:\v//user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="vertical-tab-before-separators",
+            ),
+            pytest.param(
+                "https:\f//user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="form-feed-before-separators",
+            ),
+            pytest.param(
+                "https:// /user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="space-inside-separator-prefix",
+            ),
+            pytest.param(
                 "https:////first@user:pass@example.com/path?token=secret#fragment",
                 "https://example.com/path",
                 id="multiple-at-signs",

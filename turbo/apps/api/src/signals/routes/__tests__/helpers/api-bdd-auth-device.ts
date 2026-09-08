@@ -292,11 +292,13 @@ interface CodexDeviceAuthProviderRecorder {
   readonly userCode: unknown[];
   readonly deviceToken: unknown[];
   readonly oauthToken: URLSearchParams[];
+  readonly oauthTokenResponses: ReturnType<typeof makeCodexTokenResponse>[];
 }
 
 export function mockCodexDeviceAuthProvider(
   options: {
     readonly accessTokenExpiresAt?: number;
+    readonly refreshedAccessTokenExpiresAt?: number;
     readonly tokenScope?: "org" | "personal";
     readonly accountId?: string;
     readonly refreshToken?: string;
@@ -307,6 +309,7 @@ export function mockCodexDeviceAuthProvider(
     userCode: [],
     deviceToken: [],
     oauthToken: [],
+    oauthTokenResponses: [],
   };
 
   server.use(
@@ -333,10 +336,27 @@ export function mockCodexDeviceAuthProvider(
       },
     ),
     http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
-      recorded.oauthToken.push(new URLSearchParams(await request.text()));
-      return HttpResponse.json(
-        makeCodexTokenResponse(options.tokenScope ?? "org", options),
+      const rawBody = await request.text();
+      const body = request.headers
+        .get("content-type")
+        ?.includes("application/json")
+        ? new URLSearchParams(JSON.parse(rawBody) as Record<string, string>)
+        : new URLSearchParams(rawBody);
+      recorded.oauthToken.push(body);
+      const tokenResponse = makeCodexTokenResponse(
+        options.tokenScope ?? "org",
+        {
+          ...options,
+          ...(body.get("grant_type") === "refresh_token" &&
+          options.refreshedAccessTokenExpiresAt !== undefined
+            ? {
+                accessTokenExpiresAt: options.refreshedAccessTokenExpiresAt,
+              }
+            : {}),
+        },
       );
+      recorded.oauthTokenResponses.push(tokenResponse);
+      return HttpResponse.json(tokenResponse);
     }),
   );
 

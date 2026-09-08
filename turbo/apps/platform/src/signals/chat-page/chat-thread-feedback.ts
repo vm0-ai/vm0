@@ -1,3 +1,4 @@
+import type { prepareChatForwardComposer$ } from "./chat-forward-composer.ts";
 import {
   command,
   computed,
@@ -6,12 +7,13 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { delay } from "signal-timers";
+import { animationFrame, delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { ChatTranslationLanguage } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
@@ -19,10 +21,11 @@ import type {
   FeedbackSource,
 } from "../okou-page/chat-feedback.ts";
 import { writeToClipboard } from "../okou-page/clipboard.ts";
-import { setChatListQuery$ } from "../okou-page/sidebar-state.ts";
+import { clearChatListQuery$ } from "../okou-page/sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
-  ChatForwardComposerState,
+  ChatForwardTarget,
+  ChatForwardContext,
   ChatForwardSelection,
 } from "./chat-forward.ts";
 import {
@@ -34,13 +37,17 @@ import {
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Quote interaction.
 const FEEDBACK_SOURCE_SELECTOR =
-  ".zero-chat-bubble-assistant, [data-feedback-source]";
+  ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const SELECTION_ACTIONS_DISABLED_SELECTOR =
+  "[data-chat-selection-actions-disabled]";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
 const SELECTION_INTERACTION_SELECTOR = "[data-chat-selection-interaction]";
+const SELECTION_SCROLL_DISMISS_DISTANCE_PX = 8;
 
 export interface ChatThreadFeedbackSelection {
   readonly rect: {
@@ -65,6 +72,7 @@ export interface ChatThreadTranslationResult {
 interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
+  readonly scrollReferenceRect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
   readonly runId: string | null;
   readonly eventId?: string;
@@ -120,12 +128,12 @@ export interface ChatThreadFeedbackSignals {
   readonly translate$: Command<Promise<void>, [AbortSignal]>;
   readonly copyTranslation$: Command<Promise<void>, [AbortSignal]>;
   readonly forwardSelection$: Computed<ChatForwardSelection | null>;
-  readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
+  readonly forwardTarget$: Computed<ChatForwardTarget | null>;
+  readonly prepareForwardComposer$: ReturnType<
+    typeof createForwardState
+  >["prepareForwardComposer$"];
+  readonly resetForwardTarget$: Command<void, []>;
   readonly startForward$: Command<boolean, []>;
-  readonly setForwardComposerState$: Command<
-    void,
-    [ChatForwardComposerState | null]
-  >;
   readonly closeForward$: Command<void, []>;
   readonly setListenersRef$: Command<
     (() => void) | undefined,
@@ -145,7 +153,37 @@ function closestFeedbackSource(node: Node | null): Element | null {
   return element?.closest(FEEDBACK_SOURCE_SELECTOR) ?? null;
 }
 
-function resolveSelectionSource(range: Range): Element | null {
+function closestExpandedFeedbackSource(node: Node | null): Element | null {
+  if (!node) {
+    return null;
+  }
+  const element = node instanceof Element ? node : node.parentElement;
+  if (element?.closest(SELECTION_ACTIONS_DISABLED_SELECTOR)) {
+    return null;
+  }
+  return (
+    element?.closest(ASSISTANT_GROUP_SELECTOR) ??
+    element?.closest("[data-feedback-source]") ??
+    null
+  );
+}
+
+function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
+  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+}
+
+function resolveSelectionSource(
+  range: Range,
+  expandToAssistantReply: boolean,
+): Element | null {
+  if (expandToAssistantReply) {
+    const startSource = closestExpandedFeedbackSource(range.startContainer);
+    const endSource = closestExpandedFeedbackSource(range.endContainer);
+    return startSource !== null && startSource === endSource
+      ? startSource
+      : null;
+  }
+
   const commonSource = closestFeedbackSource(range.commonAncestorContainer);
   if (commonSource) {
     return commonSource;
@@ -286,7 +324,9 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readFeedbackSelection(): CapturedFeedbackSelection | null {
+function readFeedbackSelection(
+  expandToAssistantReply: boolean,
+): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -296,15 +336,17 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const range = selection.getRangeAt(0);
-  const sourceElement = resolveSelectionSource(range);
+  const sourceElement = resolveSelectionSource(range, expandToAssistantReply);
   if (!sourceElement) {
     return null;
   }
   const source = resolveFeedbackSource(sourceElement);
   const location = resolveFeedbackLocation(range);
+  const rect = rectFromRange(range);
   return {
     text,
-    rect: rectFromRange(range),
+    rect,
+    scrollReferenceRect: rect,
     threadId: resolveSelectionThreadId(sourceElement),
     runId: resolveSelectionRunId(sourceElement),
     ...location,
@@ -360,8 +402,13 @@ function createSelectionState(threadId: string) {
     set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
   });
-  const capture$ = command(({ get, set }) => {
-    const selection = readFeedbackSelection();
+  const capture$ = command(({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -378,9 +425,45 @@ function createSelectionState(threadId: string) {
     set(internalTranslationResult$, null);
     set(internalSelection$, selection);
   });
-  const dismissOnScroll$ = command(({ get, set }) => {
-    if (get(internalSelection$) !== null) {
+  const reconcileAfterScroll$ = command(({ get, set }) => {
+    const currentSelection = get(internalSelection$);
+    if (!currentSelection) {
+      return;
+    }
+    const selection = readFeedbackSelection(
+      shouldExpandSelectionToAssistantReply(
+        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+      ),
+    );
+    if (
+      !selection ||
+      selection.threadId !== threadId ||
+      !isSameFeedbackSelection(currentSelection, selection)
+    ) {
       set(close$);
+      return;
+    }
+    const horizontalDisplacement =
+      selection.rect.left - currentSelection.scrollReferenceRect.left;
+    const verticalDisplacement =
+      selection.rect.top - currentSelection.scrollReferenceRect.top;
+    if (
+      Math.hypot(horizontalDisplacement, verticalDisplacement) >
+      SELECTION_SCROLL_DISMISS_DISTANCE_PX
+    ) {
+      set(close$);
+      return;
+    }
+    if (
+      selection.rect.top !== currentSelection.rect.top ||
+      selection.rect.left !== currentSelection.rect.left ||
+      selection.rect.width !== currentSelection.rect.width ||
+      selection.rect.height !== currentSelection.rect.height
+    ) {
+      set(internalSelection$, {
+        ...currentSelection,
+        rect: selection.rect,
+      });
     }
   });
   const copy$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -409,7 +492,7 @@ function createSelectionState(threadId: string) {
     selection$,
     close$,
     capture$,
-    dismissOnScroll$,
+    reconcileAfterScroll$,
     copy$,
   };
 }
@@ -535,38 +618,59 @@ function createStartFeedback(
 
 function createForwardState(closeSelection$: Command<void, []>) {
   const internalForwardSelection$ = state<ChatForwardSelection | null>(null);
-  const internalForwardComposerState$ = state<ChatForwardComposerState | null>(
-    null,
-  );
+  const target$ = state<ChatForwardTarget | null>(null);
+  const resetTarget$ = resetSignal();
   const forwardSelection$ = computed((get) => {
     return get(internalForwardSelection$);
   });
-  const forwardComposerState$ = computed((get) => {
-    return get(internalForwardComposerState$);
+  const forwardTarget$ = computed((get) => {
+    return get(target$);
   });
+  const resetForwardTarget$ = command(({ set }) => {
+    set(resetTarget$);
+    set(target$, null);
+  });
+  const prepareForwardComposer$ = command(
+    async (
+      { set },
+      prepare$: typeof prepareChatForwardComposer$,
+      request: {
+        readonly target: ChatForwardTarget;
+        readonly forward: ChatForwardContext;
+        readonly onOptimisticSend: () => void;
+      },
+      parentSignal: AbortSignal,
+    ) => {
+      const signal = set(resetTarget$, parentSignal);
+      set(target$, request.target);
+      return await set(
+        prepare$,
+        request.target,
+        request.forward,
+        request.onOptimisticSend,
+        signal,
+      );
+    },
+  );
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
-      set(setChatListQuery$, "");
+      set(clearChatListQuery$);
       set(internalForwardSelection$, selection);
-      set(internalForwardComposerState$, null);
+      set(resetForwardTarget$);
       set(closeSelection$);
     },
   );
-  const setForwardComposerState$ = command(
-    ({ set }, composerState: ChatForwardComposerState | null): void => {
-      set(internalForwardComposerState$, composerState);
-    },
-  );
   const closeForward$ = command(({ set }): void => {
-    set(setChatListQuery$, "");
+    set(clearChatListQuery$);
     set(internalForwardSelection$, null);
-    set(internalForwardComposerState$, null);
+    set(resetForwardTarget$);
   });
   return {
     forwardSelection$,
-    forwardComposerState$,
+    forwardTarget$,
+    prepareForwardComposer$,
+    resetForwardTarget$,
     openForward$,
-    setForwardComposerState$,
     closeForward$,
   };
 }
@@ -665,25 +769,22 @@ function createListenersRef({
   selection$,
   close$,
   capture$,
-  dismissOnScroll$,
+  reconcileAfterScroll$,
   isProgrammaticScrollEvent$,
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
-  capture$: Command<void, []>;
-  dismissOnScroll$: Command<void, []>;
+  capture$: Command<void, [AbortSignal]>;
+  reconcileAfterScroll$: Command<void, []>;
   isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
-  const deferredCaptureSignal$ = resetSignal();
+  const debouncedCapture$ = debounceCommand(capture$, 0);
   return onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
       let mouseSelectionInProgress = false;
       let selectionInteractionInProgress = false;
-      const captureDeferred = async () => {
-        await delay(0, { signal: set(deferredCaptureSignal$, signal) });
-        set(capture$);
-      };
+      let scrollReconciliationScheduled = false;
       doc.addEventListener(
         "pointerdown",
         (event) => {
@@ -723,7 +824,11 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            closestFeedbackSource(event.target) !== null;
+            (shouldExpandSelectionToAssistantReply(
+              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
+            )
+              ? closestExpandedFeedbackSource(event.target)
+              : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;
           if (
             mouseSelectionInProgress &&
@@ -737,21 +842,22 @@ function createListenersRef({
       );
       doc.addEventListener(
         "mouseup",
-        onDomEventFn(async () => {
+        onDomEventFn(() => {
           if (!mouseSelectionInProgress) {
             return;
           }
           mouseSelectionInProgress = false;
-          await captureDeferred();
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );
       doc.addEventListener(
         "selectionchange",
-        onDomEventFn(async () => {
-          if (!mouseSelectionInProgress && !selectionInteractionInProgress) {
-            await captureDeferred();
+        onDomEventFn(() => {
+          if (mouseSelectionInProgress || selectionInteractionInProgress) {
+            return;
           }
+          return set(debouncedCapture$, signal);
         }),
         { signal },
       );
@@ -759,12 +865,25 @@ function createListenersRef({
         "scroll",
         (event) => {
           if (
+            get(selection$) === null ||
             isSelectionInteractionTarget(event.target) ||
             set(isProgrammaticScrollEvent$, event.target)
           ) {
             return;
           }
-          set(dismissOnScroll$);
+          if (scrollReconciliationScheduled) {
+            return;
+          }
+          scrollReconciliationScheduled = true;
+          // Browser scroll events can precede the ResizeObserver pass that
+          // restores the selected text's viewport position.
+          animationFrame(
+            () => {
+              scrollReconciliationScheduled = false;
+              set(reconcileAfterScroll$);
+            },
+            { signal },
+          );
         },
         { capture: true, passive: true, signal },
       );
@@ -806,7 +925,7 @@ export function createChatThreadFeedbackSignals(
     selection$: selection.internalSelection$,
     close$: selection.close$,
     capture$: selection.capture$,
-    dismissOnScroll$: selection.dismissOnScroll$,
+    reconcileAfterScroll$: selection.reconcileAfterScroll$,
     isProgrammaticScrollEvent$,
   });
   return {
@@ -821,9 +940,10 @@ export function createChatThreadFeedbackSignals(
     translate$: translation.translate$,
     copyTranslation$: translation.copyTranslation$,
     forwardSelection$: forward.forwardSelection$,
-    forwardComposerState$: forward.forwardComposerState$,
+    forwardTarget$: forward.forwardTarget$,
+    prepareForwardComposer$: forward.prepareForwardComposer$,
+    resetForwardTarget$: forward.resetForwardTarget$,
     startForward$,
-    setForwardComposerState$: forward.setForwardComposerState$,
     closeForward$: forward.closeForward$,
     setListenersRef$,
     setToolbarRef$,

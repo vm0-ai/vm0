@@ -199,7 +199,11 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         last_error: OSError | None = None
         for address in self._validated_addresses:
             self._abort_handle.raise_if_aborted()
-            raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
+            try:
+                raw_sock = socket.socket(address.family, socket.SOCK_STREAM)
+            except OSError as exc:
+                last_error = exc
+                continue
             try:
                 self._abort_handle.register_socket(raw_sock)
                 raw_sock.settimeout(remaining_deadline_seconds(self._deadline))
@@ -364,10 +368,11 @@ def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
     """Validate and filter resolved auth headers before outbound injection.
 
     Each resolved header name and value is validated before any pair is
-    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Transport,
-    authority, and framing headers are then dropped. This helper does not merge
-    with or replace client headers; callers that combine resolved and client
-    headers own that policy.
+    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Accepted
+    names are ASCII and accepted values map one-to-one to wire bytes through
+    Latin-1. Transport, authority, and framing headers are then dropped. This
+    helper does not merge with or replace client headers; callers that combine
+    resolved and client headers own that policy.
     """
     pairs = header_pairs(headers)
     for name, value in pairs:

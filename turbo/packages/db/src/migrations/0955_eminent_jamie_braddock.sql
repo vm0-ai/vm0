@@ -1,1 +1,0 @@
-ALTER TABLE "chat_automation_context" ADD COLUMN "connector_source_id" uuid;

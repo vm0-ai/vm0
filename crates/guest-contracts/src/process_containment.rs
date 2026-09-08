@@ -52,7 +52,7 @@ pub const CANONICAL_WORKLOAD_CGROUP_PROCS_ENV: &str = "OKOU_WORKLOAD_CGROUP_PROC
 /// Runner-owned endpoint used by [`crate::guest_binary::TOOL_EXEC_PATH`] to request a unique tool
 /// cgroup before it executes user code.
 ///
-/// `vsock-guest` writes this key to Guest Agent, whose root bootstrap reader
+/// `guest-control-server` writes this key to Guest Agent, whose root bootstrap reader
 /// requires it. Guest Agent intentionally exposes the same key to managed CLI
 /// children, and `guest-tool-exec` and the managed mock launcher consult it.
 pub const CANONICAL_TOOL_CGROUP_PROCS_ENV: &str = "OKOU_TOOL_CGROUP_PROCS_ENDPOINT";

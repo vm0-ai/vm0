@@ -37,7 +37,7 @@ function BuildInfoTarget({
             {title}
           </div>
         </div>
-        <code className="zero-badge min-w-0 rounded-md px-2 py-0.5 text-right text-xs font-medium text-foreground break-all">
+        <code className="okou-badge min-w-0 rounded-md px-2 py-0.5 text-right text-xs font-medium text-foreground break-all">
           {version}
         </code>
       </div>
@@ -83,7 +83,7 @@ export function BuildInfoBlock() {
     : formatBuildInfoValue(backendBuildInfo?.backendVersion, unavailable);
 
   return (
-    <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
+    <div className="flex items-start gap-4 rounded-xl bg-card p-4 okou-border">
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
           <GitCommit size={22} className="text-muted-foreground" />

@@ -166,7 +166,7 @@ function requestTokenFromUrl(authorizationUrl: string): string {
 
 describe("FILE-03 desktop computer-use runtime", () => {
   it("creates a delegated authorization link and applies the selected host to the chat thread", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
     const run = await seedAgentRun({ actor, triggerSource: "web" });
@@ -189,7 +189,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       bearer: legacyToken,
     });
     expect(new URL(legacyCreated.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const token = computerUseToken({
       userId: actor.userId,
@@ -542,6 +542,50 @@ describe("FILE-03 desktop computer-use runtime", () => {
         return host.id === okouHost.hostId;
       }),
     ).toMatchObject({ product: "zero" });
+
+    await api.heartbeatComputerUseHost(legacyHost.hostToken, {
+      clientProduct: "okou",
+    });
+    const okouHeartbeatHosts = await api.listComputerUseHosts(actor);
+    expect(okouHeartbeatHosts.hosts).toContainEqual(
+      expect.objectContaining({ id: legacyHost.hostId, product: "okou" }),
+    );
+
+    const legacyHeartbeat = await api.heartbeatComputerUseHost(
+      legacyHost.hostToken,
+    );
+    expect(legacyHeartbeat).toStrictEqual({
+      ok: true,
+      hostId: legacyHost.hostId,
+    });
+    const legacyHeartbeatHosts = await api.listComputerUseHosts(actor);
+    expect(legacyHeartbeatHosts.hosts).toContainEqual(
+      expect.objectContaining({ id: legacyHost.hostId, product: "zero" }),
+    );
+  });
+
+  it("refreshes product identity when registering the same installation", async () => {
+    const actor = bdd.user();
+    const installationId = randomUUID();
+    const legacyHost = await api.startComputerUseHost(actor, {
+      installationId,
+    });
+    const okouHost = await api.startComputerUseHost(actor, {
+      installationId,
+      clientProduct: "okou",
+    });
+    expect(okouHost.hostId).toBe(legacyHost.hostId);
+    const okouHosts = await api.listComputerUseHosts(actor);
+    expect(okouHosts.hosts).toStrictEqual([
+      expect.objectContaining({ id: legacyHost.hostId, product: "okou" }),
+    ]);
+
+    const restarted = await api.startComputerUseHost(actor, { installationId });
+    expect(restarted.hostId).toBe(legacyHost.hostId);
+    const legacyHosts = await api.listComputerUseHosts(actor);
+    expect(legacyHosts.hosts).toStrictEqual([
+      expect.objectContaining({ id: legacyHost.hostId, product: "zero" }),
+    ]);
   });
 
   it("keeps multiple active hosts and lets stale heartbeats recover", async () => {
@@ -727,7 +771,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
   });
 
   it("rejects host-token routes with missing or invalid host tokens", async () => {
-    const garbageToken = "vm0-bdd-garbage-host-token";
+    const garbageToken = "okou-bdd-garbage-host-token";
     const commandId = randomUUID();
     const completeBody = {
       status: "succeeded" as const,
@@ -862,7 +906,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       "Multiple active computer-use hosts are online",
     );
 
-    // Zero-token auth resolves the org role through membershipsByUserId.
+    // Okou-token auth resolves the organization role through Clerk membership lookup.
     mockClerkMembership(context, actor, "org:admin");
 
     const missingCapability = await api.requestCreateComputerUseReadCommand(
@@ -1044,6 +1088,68 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(offlineGrant.body.error.message).toBe(
       "No online computer-use host found",
     );
+  });
+
+  it("withdraws native create and claim admission with non-empty plugin-only capabilities", async () => {
+    const actor = bdd.user();
+    await enableComputerUseDesktopPlugins(actor);
+    const pluginCapabilities = filesystemToolCapabilities("read_text_file");
+    const host = await api.startComputerUseHost(actor, {
+      supportedCapabilities: ["apps.list", ...pluginCapabilities],
+    });
+    await api.createComputerUseReadCommand(actor, { kind: "apps.list" });
+    const withdrawn = await api.claimNextComputerUseCommand(
+      host.hostToken,
+      pluginCapabilities,
+    );
+    expect(withdrawn.status).toBe("idle");
+    await api.heartbeatComputerUseHost(host.hostToken, {
+      supportedCapabilities: pluginCapabilities,
+      permissions: { accessibility: false, screenRecording: false },
+    });
+    const native = await api.requestCreateComputerUseReadCommand(
+      actor,
+      { kind: "apps.list" },
+      [409],
+    );
+    expectApiError(native.body);
+    const plugin = await api.createComputerUsePluginCommand(actor, {
+      plugin: "filesystem",
+      tool: "read_text_file",
+      arguments: { path: "/tmp/notes.txt" },
+    });
+    // Empty claim updates retain the last non-empty capability set. They must
+    // not restore native support after a plugin-only withdrawal.
+    const claimed = await api.claimNextComputerUseCommand(host.hostToken, []);
+    expect(claimed).toMatchObject({
+      status: "command",
+      command: {
+        id: plugin.commandId,
+        kind: "plugin.call",
+        timeoutMs: 60_000,
+      },
+    });
+  });
+
+  it("preserves native create and claim for legacy capability-empty hosts", async () => {
+    const actor = bdd.user();
+    const host = await api.startComputerUseHost(actor, {
+      supportedCapabilities: [],
+    });
+    const created = await api.createComputerUseReadCommand(actor, {
+      kind: "apps.list",
+    });
+    const claimed = await api.claimNextComputerUseCommand(host.hostToken, []);
+    expect(claimed).toMatchObject({
+      status: "command",
+      command: {
+        id: created.commandId,
+        kind: "apps.list",
+        timeoutMs: 60_000,
+        createdAt: expect.any(String),
+        claimedAt: expect.any(String),
+      },
+    });
   });
 
   it("gates plugin commands by feature switch and routes them by tool capability", async () => {

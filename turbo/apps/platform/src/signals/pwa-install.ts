@@ -26,8 +26,20 @@ function detectIOSSafari(): boolean {
 
 const iosModalOpen$ = state(false);
 
+/**
+ * Client-persisted identity, deliberately kept under the pre-rename name.
+ *
+ * This localStorage key records that a user dismissed the install banner.
+ * Renaming it makes the banner reappear once for everyone who already dismissed
+ * it. Reading the legacy key alongside a new one would fix that, but the flag
+ * never expires, so that branch would have no verifiable removal gate and
+ * `docs/fallback.md` §8 rejects a tolerated old shape with no removal
+ * condition. The key is invisible to users, so #31816 keeps it.
+ */
+const INSTALL_BANNER_DISMISSED_KEY = "zero-install-banner-dismissed";
+
 const { get$: dismissedRaw$, set$: setDismissed$ } = localStorageSignals(
-  "zero-install-banner-dismissed",
+  INSTALL_BANNER_DISMISSED_KEY,
 );
 
 export const installBannerVisible$ = computed((get) => {

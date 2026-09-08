@@ -86,11 +86,11 @@ export function parseDesktopAuthCallbackArgv(
 }
 
 export function buildDesktopAuthConsumeUrl(
-  webUrl: URL,
+  authUrl: URL,
   code: string,
   handoffId: string | null = null,
 ): string {
-  const consumeUrl = new URL(DESKTOP_AUTH_CONSUME_PATH, webUrl);
+  const consumeUrl = new URL(DESKTOP_AUTH_CONSUME_PATH, authUrl);
   consumeUrl.searchParams.set("code", code);
   if (handoffId) {
     consumeUrl.searchParams.set("handoffId", handoffId);
@@ -99,10 +99,10 @@ export function buildDesktopAuthConsumeUrl(
 }
 
 export function buildDesktopAuthSelectOrgUrl(
-  webUrl: URL,
+  authUrl: URL,
   forceSelection = false,
 ): string {
-  const selectOrgUrl = new URL(DESKTOP_AUTH_SELECT_ORG_PATH, webUrl);
+  const selectOrgUrl = new URL(DESKTOP_AUTH_SELECT_ORG_PATH, authUrl);
   if (forceSelection) {
     selectOrgUrl.searchParams.set(
       DESKTOP_AUTH_FORCE_ORG_SELECTION_PARAM,
@@ -113,16 +113,16 @@ export function buildDesktopAuthSelectOrgUrl(
 }
 
 export function buildDesktopAuthStartUrl(
-  webUrl: URL,
+  authUrl: URL,
   authScheme: string,
 ): string {
-  const startUrl = new URL(DESKTOP_AUTH_START_WEB_PATH, webUrl);
+  const startUrl = new URL(DESKTOP_AUTH_START_WEB_PATH, authUrl);
   startUrl.searchParams.set(DESKTOP_AUTH_CALLBACK_SCHEME_PARAM, authScheme);
   return startUrl.toString();
 }
 
-export function buildDesktopAuthTokenUrl(webUrl: URL): string {
-  return new URL(DESKTOP_AUTH_TOKEN_PATH, webUrl).toString();
+export function buildDesktopAuthTokenUrl(authUrl: URL): string {
+  return new URL(DESKTOP_AUTH_TOKEN_PATH, authUrl).toString();
 }
 
 export function isDesktopAuthStartNavigation(

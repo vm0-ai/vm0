@@ -1,8 +1,12 @@
 import { command, computed } from "ccstate";
 import type { BrowserClerk as Clerk } from "@clerk/shared/types";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import {
+  getAllFeatureStates,
+  getEmailEnabledFeatureStates,
+} from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { clerk$ } from "../auth";
 import { appVersion$ } from "../app-version.ts";
 import { accept } from "../../lib/accept.ts";
@@ -12,6 +16,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
+import { syncShellDocumentAttributes$ } from "../theme.ts";
 import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
@@ -89,13 +94,11 @@ const apiFeatureSwitchClient$ = computed((get) => {
 
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
-  overrides: Partial<Record<string, boolean>> | undefined,
-  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
+  switches: Partial<Record<string, boolean>> | undefined,
 ) {
-  const resolvedSwitches = effectiveSwitches ?? overrides;
-  if (resolvedSwitches) {
+  if (switches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = resolvedSwitches[key];
+      const value = switches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
@@ -107,34 +110,38 @@ export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
 });
 
-export const imageRecognitionAvailable$ = computed((): boolean => {
-  return true;
-});
-
 export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
+export const modelPickerMenuEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ModelPickerMenu] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+  return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
+});
+
+export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+});
+
+export const avatarNeckSweaterEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.AvatarNeckSweater] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
-export const voiceDraftEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.VoiceDraft] ?? false;
+export const voiceInputV2Enabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VoiceInputV2] ?? false;
 });
 
-export const composerVoiceInputShortcutEnabled$ = computed((get): boolean => {
+export const stableChatThreadNavigationEnabled$ = computed((get): boolean => {
   return (
-    get(featureSwitch$)[FeatureSwitchKey.ComposerVoiceInputShortcut] ?? false
+    get(featureSwitch$)[FeatureSwitchKey.StableChatThreadNavigation] ?? false
   );
-});
-
-export const baseUiSidebarScrollAreaEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.BaseUiSidebarScrollArea] ?? false;
 });
 
 const hydrateFeatureSwitch$ = command(
@@ -165,10 +172,12 @@ const hydrateFeatureSwitch$ = command(
     });
     applySwitches(
       combined,
-      result.body.switches,
-      result.body.effectiveSwitches,
+      result.body.effectiveSwitches ?? result.body.switches,
     );
+    applySwitches(combined, getEmailEnabledFeatureStates(identity.email));
+    applySwitches(combined, result.body.switches);
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: combined[FeatureSwitchKey.OkouDebug],

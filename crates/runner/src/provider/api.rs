@@ -11,8 +11,8 @@ use tracing::{error, info, warn};
 use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_LEGACY_GENERATION,
-        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
+        PI_MODEL_CONFIG_LEGACY_GENERATION, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
     types::runners::runs::active_inputs::{
@@ -71,7 +71,7 @@ struct ClaimRequestBody<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunnerClaimCapabilities {
-    pi_model_config_generations: [u32; 2],
+    pi_model_config_generations: [u32; 3],
 }
 
 #[derive(Serialize)]
@@ -213,17 +213,16 @@ const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
 const POLL_DEGRADED_AFTER: Duration = Duration::from_secs(60);
 /// Runner reuse requires a heartbeat observed within this freshness window.
 const HEARTBEAT_DEGRADED_AFTER: Duration = Duration::from_secs(30);
-const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
-struct PollFailureEpisode {
+struct DegradationEpisode {
     started_at: Instant,
     consecutive_failures: u64,
     degradation_emitted: bool,
 }
 
 #[derive(Clone, Copy)]
-struct PollFailureObservation {
+struct DegradationObservation {
     consecutive_failures: u64,
     failure_elapsed: Duration,
     degraded: bool,
@@ -231,31 +230,60 @@ struct PollFailureObservation {
 }
 
 #[derive(Clone, Copy)]
-struct PollRecovery {
+struct DegradationRecovery {
     recovered_after_failures: u64,
     failure_elapsed: Duration,
     was_degraded: bool,
 }
 
-struct HeartbeatFailureEpisode {
-    started_at: Instant,
-    consecutive_failures: u64,
-    degradation_emitted: bool,
+struct DegradationEpisodeTracker {
+    active_episode: Mutex<Option<DegradationEpisode>>,
 }
 
-#[derive(Clone, Copy)]
-struct HeartbeatFailureObservation {
-    consecutive_failures: u64,
-    failure_elapsed: Duration,
-    degraded: bool,
-    emit_degradation: bool,
-}
+impl DegradationEpisodeTracker {
+    fn new() -> Self {
+        Self {
+            active_episode: Mutex::new(None),
+        }
+    }
 
-#[derive(Clone, Copy)]
-struct HeartbeatRecovery {
-    recovered_after_failures: u64,
-    failure_elapsed: Duration,
-    was_degraded: bool,
+    async fn observe_failure(
+        &self,
+        now: Instant,
+        degraded_after: Duration,
+    ) -> DegradationObservation {
+        let mut active_episode = self.active_episode.lock().await;
+        let episode = active_episode.get_or_insert(DegradationEpisode {
+            started_at: now,
+            consecutive_failures: 0,
+            degradation_emitted: false,
+        });
+        episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
+        let failure_elapsed = now.saturating_duration_since(episode.started_at);
+        let emit_degradation = failure_elapsed >= degraded_after && !episode.degradation_emitted;
+        if emit_degradation {
+            episode.degradation_emitted = true;
+        }
+
+        DegradationObservation {
+            consecutive_failures: episode.consecutive_failures,
+            failure_elapsed,
+            degraded: episode.degradation_emitted,
+            emit_degradation,
+        }
+    }
+
+    async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
+        self.active_episode
+            .lock()
+            .await
+            .take()
+            .map(|episode| DegradationRecovery {
+                recovered_after_failures: episode.consecutive_failures,
+                failure_elapsed: now.saturating_duration_since(episode.started_at),
+                was_degraded: episode.degradation_emitted,
+            })
+    }
 }
 
 enum DiscoveryWakeup {
@@ -315,8 +343,8 @@ pub struct ApiProvider {
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
-    poll_failure_episode: Mutex<Option<PollFailureEpisode>>,
-    heartbeat_failure_episode: Mutex<Option<HeartbeatFailureEpisode>>,
+    poll_degradation_tracker: DegradationEpisodeTracker,
+    heartbeat_degradation_tracker: DegradationEpisodeTracker,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -377,8 +405,8 @@ impl ApiProvider {
             connector_runtime_sync,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
-            poll_failure_episode: Mutex::new(None),
-            heartbeat_failure_episode: Mutex::new(None),
+            poll_degradation_tracker: DegradationEpisodeTracker::new(),
+            heartbeat_degradation_tracker: DegradationEpisodeTracker::new(),
             cancel,
         })
     }
@@ -393,7 +421,7 @@ impl ApiProvider {
             if let Some(pruned) = outcome.pruned {
                 Self::log_direct_candidate_pruned("pop", pruned);
                 if outcome.candidate.is_none() {
-                    self.poll_wakeups.request_immediate_poll().await;
+                    self.poll_wakeups.request_immediate_poll();
                 }
             }
             let candidate = outcome.candidate?;
@@ -407,7 +435,7 @@ impl ApiProvider {
                 retry_after_ms = duration_ms(retry_after),
                 "ably: direct candidate skipped during claim cooldown"
             );
-            self.poll_wakeups.request_immediate_poll().await;
+            self.poll_wakeups.request_immediate_poll();
             if self.cancel.is_cancelled() {
                 return None;
             }
@@ -417,13 +445,11 @@ impl ApiProvider {
     async fn schedule_claim_retry_after_poll(&self, polled_with_exclusions: bool) {
         let snapshot = self.claim_cooldowns.snapshot().await;
         if let Some(retry_after) = snapshot.retry_after {
-            self.poll_wakeups
-                .request_deferred_poll_after(retry_after)
-                .await;
+            self.poll_wakeups.request_deferred_poll_after(retry_after);
         } else if polled_with_exclusions {
             // Every exclusion expired while the HTTP poll was in flight.
             // Re-poll once without the stale exclusions instead of waiting for the normal cadence.
-            self.poll_wakeups.request_immediate_poll().await;
+            self.poll_wakeups.request_immediate_poll();
         }
     }
 
@@ -450,7 +476,7 @@ impl ApiProvider {
                     cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
                     "claim failed, candidate cooling down"
                 );
-                self.poll_wakeups.request_immediate_poll().await;
+                self.poll_wakeups.request_immediate_poll();
             }
             ClaimCooldownRecord::Saturated { active_count } => {
                 self.claim_cooldowns.block_all(POLL_FAST).await;
@@ -467,9 +493,7 @@ impl ApiProvider {
                     cooldown_capacity = CLAIM_COOLDOWN_CAPACITY,
                     "claim failed, candidate cooldown capacity reached"
                 );
-                self.poll_wakeups
-                    .request_deferred_poll_after(POLL_FAST)
-                    .await;
+                self.poll_wakeups.request_deferred_poll_after(POLL_FAST);
             }
         }
     }
@@ -549,43 +573,16 @@ impl ApiProvider {
             return;
         };
 
-        let observation = {
-            let mut active_episode = self.poll_failure_episode.lock().await;
-            let episode = active_episode.get_or_insert(PollFailureEpisode {
-                started_at: now,
-                consecutive_failures: 0,
-                degradation_emitted: false,
-            });
-            episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
-            let failure_elapsed = now.saturating_duration_since(episode.started_at);
-            let emit_degradation =
-                failure_elapsed >= POLL_DEGRADED_AFTER && !episode.degradation_emitted;
-            if emit_degradation {
-                episode.degradation_emitted = true;
-            }
-
-            PollFailureObservation {
-                consecutive_failures: episode.consecutive_failures,
-                failure_elapsed,
-                degraded: episode.degradation_emitted,
-                emit_degradation,
-            }
-        };
+        let observation = self
+            .poll_degradation_tracker
+            .observe_failure(now, POLL_DEGRADED_AFTER)
+            .await;
 
         log_retryable_poll_failure(reason, api_error, observation);
     }
 
     async fn record_poll_success_at(&self, reason: PollReason, now: Instant) {
-        let recovery = self
-            .poll_failure_episode
-            .lock()
-            .await
-            .take()
-            .map(|episode| PollRecovery {
-                recovered_after_failures: episode.consecutive_failures,
-                failure_elapsed: now.saturating_duration_since(episode.started_at),
-                was_degraded: episode.degradation_emitted,
-            });
+        let recovery = self.poll_degradation_tracker.recover(now).await;
 
         if let Some(recovery) = recovery {
             log_poll_recovery(self, reason, recovery);
@@ -603,43 +600,16 @@ impl ApiProvider {
             return;
         };
 
-        let observation = {
-            let mut active_episode = self.heartbeat_failure_episode.lock().await;
-            let episode = active_episode.get_or_insert(HeartbeatFailureEpisode {
-                started_at: now,
-                consecutive_failures: 0,
-                degradation_emitted: false,
-            });
-            episode.consecutive_failures = episode.consecutive_failures.saturating_add(1);
-            let failure_elapsed = now.saturating_duration_since(episode.started_at);
-            let emit_degradation =
-                failure_elapsed >= HEARTBEAT_DEGRADED_AFTER && !episode.degradation_emitted;
-            if emit_degradation {
-                episode.degradation_emitted = true;
-            }
-
-            HeartbeatFailureObservation {
-                consecutive_failures: episode.consecutive_failures,
-                failure_elapsed,
-                degraded: episode.degradation_emitted,
-                emit_degradation,
-            }
-        };
+        let observation = self
+            .heartbeat_degradation_tracker
+            .observe_failure(now, HEARTBEAT_DEGRADED_AFTER)
+            .await;
 
         log_retryable_heartbeat_failure(state, error, api_error, observation);
     }
 
     async fn record_heartbeat_success_at(&self, state: &HeartbeatState, now: Instant) {
-        let recovery = self
-            .heartbeat_failure_episode
-            .lock()
-            .await
-            .take()
-            .map(|episode| HeartbeatRecovery {
-                recovered_after_failures: episode.consecutive_failures,
-                failure_elapsed: now.saturating_duration_since(episode.started_at),
-                was_degraded: episode.degradation_emitted,
-            });
+        let recovery = self.heartbeat_degradation_tracker.recover(now).await;
 
         if let Some(recovery) = recovery {
             log_heartbeat_recovery(state, recovery);
@@ -690,7 +660,7 @@ impl JobProvider for ApiProvider {
                 }
                 direct = self.wait_for_direct_candidate() => {
                     if let Some(direct) = direct {
-                        self.poll_wakeups.request_immediate_poll().await;
+                        self.poll_wakeups.request_immediate_poll();
                         let run_id = direct.run_id();
                         let profile = direct.profile_name().to_owned();
                         info!(
@@ -724,9 +694,11 @@ impl JobProvider for ApiProvider {
                     http_request_elapsed,
                 }) => {
                     if let Some(retry_after) = self.claim_cooldowns.remaining(job.run_id).await {
-                        self.poll_wakeups
-                            .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-                            .await;
+                        self.poll_wakeups.record_poll_result(
+                            due,
+                            PollOutcome::Empty,
+                            POLL_WAKEUP_RETRY,
+                        );
                         warn!(
                             run_id = %job.run_id,
                             retry_after_ms = duration_ms(retry_after),
@@ -736,10 +708,11 @@ impl JobProvider for ApiProvider {
                         self.schedule_claim_retry_after_poll(true).await;
                         continue;
                     }
-                    let record = self
-                        .poll_wakeups
-                        .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
-                        .await;
+                    let record = self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::JobFound,
+                        POLL_WAKEUP_RETRY,
+                    );
                     if record.defer_job_return() {
                         info!(
                             run_id = %job.run_id,
@@ -779,16 +752,20 @@ impl JobProvider for ApiProvider {
                     return Some(candidate);
                 }
                 Ok(PollApiResult { job: None, .. }) => {
-                    self.poll_wakeups
-                        .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-                        .await;
+                    self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::Empty,
+                        POLL_WAKEUP_RETRY,
+                    );
                     self.schedule_claim_retry_after_poll(!excluded_run_ids.is_empty())
                         .await;
                 }
                 Err(e) => {
-                    self.poll_wakeups
-                        .record_poll_result(due, PollOutcome::Failure, POLL_WAKEUP_RETRY)
-                        .await;
+                    self.poll_wakeups.record_poll_result(
+                        due,
+                        PollOutcome::Failure,
+                        POLL_WAKEUP_RETRY,
+                    );
                     self.record_poll_failure_at(reason, &e, Instant::now())
                         .await;
                 }
@@ -835,16 +812,15 @@ impl JobProvider for ApiProvider {
                     response_body_read_elapsed,
                     response_decode_elapsed,
                 );
-                let active_input_source = (ctx.cli_agent_type != "pi"
-                    && supports_thread_active_input(ctx.reuse_key.as_deref()))
-                .then(|| {
-                    ActiveInputSource::api(
-                        self.api.clone(),
-                        run_id,
-                        ctx.sandbox_token.clone(),
-                        self.active_input_notifications.subscribe(run_id),
-                    )
-                });
+                let active_input_source = supports_thread_active_input(ctx.reuse_key.as_deref())
+                    .then(|| {
+                        ActiveInputSource::api(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                            self.active_input_notifications.subscribe(run_id),
+                        )
+                    });
                 let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(
                         run_id,
@@ -883,7 +859,7 @@ impl JobProvider for ApiProvider {
             Ok(None) => {
                 self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "job unavailable, skipping");
-                self.poll_wakeups.request_immediate_poll().await;
+                self.poll_wakeups.request_immediate_poll();
                 None
             }
             Err(e) => {
@@ -908,9 +884,7 @@ impl JobProvider for ApiProvider {
     }
 
     async fn defer_poll_until(&self, deadline: Instant) {
-        self.poll_wakeups
-            .request_deferred_poll_until(deadline)
-            .await;
+        self.poll_wakeups.request_deferred_poll_until(deadline);
     }
 
     async fn shutdown(&self) {
@@ -1090,7 +1064,7 @@ fn eligible_poll_transport_error(error: &RunnerError) -> Option<&ApiTransportErr
 fn log_retryable_poll_failure(
     reason: PollReason,
     api_error: &ApiTransportError,
-    observation: PollFailureObservation,
+    observation: DegradationObservation,
 ) {
     let request = &api_error.request;
     let poll_reason = poll_reason_value(reason);
@@ -1106,6 +1080,7 @@ fn log_retryable_poll_failure(
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             poll_reason,
             consecutive_failures = observation.consecutive_failures,
@@ -1126,6 +1101,7 @@ fn log_retryable_poll_failure(
         client_session_id = %request.client_session_id,
         client_version = %request.client_version,
         failure_kind = api_error.failure_kind.as_str(),
+        failure_cause = api_error.failure_cause.as_str(),
         error_summary = %api_error.summary,
         poll_reason,
         consecutive_failures = observation.consecutive_failures,
@@ -1150,6 +1126,7 @@ fn log_poll_failure(reason: PollReason, error: &RunnerError) {
                 client_session_id = %request.client_session_id,
                 client_version = %request.client_version,
                 failure_kind = api_error.failure_kind.as_str(),
+                failure_cause = api_error.failure_cause.as_str(),
                 error_summary = %api_error.summary,
                 poll_reason,
                 "poll failed"
@@ -1182,7 +1159,7 @@ fn log_poll_failure(reason: PollReason, error: &RunnerError) {
     }
 }
 
-fn log_poll_recovery(provider: &ApiProvider, reason: PollReason, recovery: PollRecovery) {
+fn log_poll_recovery(provider: &ApiProvider, reason: PollReason, recovery: DegradationRecovery) {
     info!(
         runner_id = %provider.runner_identity.runner_id(),
         runner_group = %provider.group,
@@ -1209,6 +1186,7 @@ fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
             runner_group = %state.group,
@@ -1254,7 +1232,7 @@ fn log_retryable_heartbeat_failure(
     state: &HeartbeatState,
     error: &RunnerError,
     api_error: &ApiTransportError,
-    observation: HeartbeatFailureObservation,
+    observation: DegradationObservation,
 ) {
     let request = &api_error.request;
     let reusable_sandboxes = state.held_sandbox_states.len();
@@ -1272,6 +1250,7 @@ fn log_retryable_heartbeat_failure(
             client_session_id = %request.client_session_id,
             client_version = %request.client_version,
             failure_kind = api_error.failure_kind.as_str(),
+            failure_cause = api_error.failure_cause.as_str(),
             error_summary = %api_error.summary,
             runner_id = %state.runner_id,
             runner_group = %state.group,
@@ -1298,6 +1277,7 @@ fn log_retryable_heartbeat_failure(
         client_session_id = %request.client_session_id,
         client_version = %request.client_version,
         failure_kind = api_error.failure_kind.as_str(),
+        failure_cause = api_error.failure_cause.as_str(),
         error_summary = %api_error.summary,
         runner_id = %state.runner_id,
         runner_group = %state.group,
@@ -1313,7 +1293,7 @@ fn log_retryable_heartbeat_failure(
     );
 }
 
-fn log_heartbeat_recovery(state: &HeartbeatState, recovery: HeartbeatRecovery) {
+fn log_heartbeat_recovery(state: &HeartbeatState, recovery: DegradationRecovery) {
     info!(
         runner_id = %state.runner_id,
         runner_group = %state.group,
@@ -1431,13 +1411,12 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
-    /// best-effort request and any lifecycle drain waiting for it.
+    /// Send a heartbeat with runner state. The default API timeout allows for
+    /// cold starts while bounding this request and lifecycle drain waits.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-                .timeout(Duration::from_secs(3))
                 .json(state),
             "heartbeat",
         )
@@ -1579,7 +1558,6 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            .timeout(CONNECTOR_RUNTIME_SYNC_TIMEOUT)
             .json(&serde_json::json!({ "targets": targets }))
     }
 
@@ -1696,6 +1674,7 @@ fn claim_request_body<'a>(
             pi_model_config_generations: [
                 PI_MODEL_CONFIG_LEGACY_GENERATION,
                 PI_MODEL_CONFIG_CURRENT_GENERATION,
+                PI_MODEL_CONFIG_DIALECT_TIER_GENERATION,
             ],
         },
         telemetry: ClaimRequestTelemetry {
@@ -2030,6 +2009,56 @@ mod tests {
         api_client_for_url(server.base_url())
     }
 
+    #[tokio::test]
+    async fn heartbeat_and_connector_sync_allow_api_cold_starts() {
+        let server = MockServer::start_async().await;
+        let heartbeat = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/runners/heartbeat")
+                    .header("authorization", "Bearer runner-token");
+                then.status(200).delay(Duration::from_secs(6));
+            })
+            .await;
+        let run_id = RunId::nil();
+        let sync = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                    .header("authorization", "Bearer runner-token");
+                then.status(200)
+                    .delay(Duration::from_secs(6))
+                    .json_body(serde_json::json!({
+                        "results": [{
+                            "target": {"kind": "builtin", "connectorSlug": "slack"},
+                            "state": "unresolved",
+                            "reason": "connector-unavailable",
+                        }],
+                    }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let state = heartbeat_state_for_test();
+        let targets = [ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+            base_url_vars: None,
+            source_id: None,
+        }];
+
+        let (heartbeat_result, sync_result) = tokio::join!(
+            api.heartbeat(&state),
+            api.sync_connector_runtime(run_id, &targets),
+        );
+
+        heartbeat_result.expect("heartbeat should survive an API cold start");
+        assert!(matches!(
+            sync_result.expect("connector sync should survive an API cold start"),
+            ConnectorRuntimeSyncOutcome::Synced(response) if response.results.len() == 1
+        ));
+        heartbeat.assert_calls_async(1).await;
+        sync.assert_calls_async(1).await;
+    }
+
     async fn claim_decode_error(
         server: &MockServer,
         run_id: RunId,
@@ -2349,8 +2378,8 @@ mod tests {
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             active_input_notifications: ActiveInputNotifications::new(),
-            poll_failure_episode: Mutex::new(None),
-            heartbeat_failure_episode: Mutex::new(None),
+            poll_degradation_tracker: DegradationEpisodeTracker::new(),
+            heartbeat_degradation_tracker: DegradationEpisodeTracker::new(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
@@ -2427,6 +2456,14 @@ mod tests {
         )
     }
 
+    fn synthetic_transport_cause(failure_kind: ApiFailureKind) -> crate::error::ApiTransportCause {
+        match failure_kind {
+            ApiFailureKind::Timeout => crate::error::ApiTransportCause::Timeout,
+            ApiFailureKind::Connect => crate::error::ApiTransportCause::ConnectionRefused,
+            _ => crate::error::ApiTransportCause::Unknown,
+        }
+    }
+
     fn poll_transport_error(failure_kind: ApiFailureKind) -> RunnerError {
         RunnerError::ApiTransport(Box::new(ApiTransportError {
             request: crate::error::ApiRequestContext {
@@ -2439,6 +2476,7 @@ mod tests {
                 client_version: env!("CARGO_PKG_VERSION").to_string(),
             },
             failure_kind,
+            failure_cause: synthetic_transport_cause(failure_kind),
             summary: format!("synthetic {} failure", failure_kind.as_str()),
         }))
     }
@@ -2455,8 +2493,89 @@ mod tests {
                 client_version: env!("CARGO_PKG_VERSION").to_string(),
             },
             failure_kind,
+            failure_cause: synthetic_transport_cause(failure_kind),
             summary: format!("synthetic {} failure", failure_kind.as_str()),
         }))
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum DegradationPath {
+        Poll,
+        Heartbeat,
+    }
+
+    impl DegradationPath {
+        fn degraded_after(self) -> Duration {
+            match self {
+                Self::Poll => POLL_DEGRADED_AFTER,
+                Self::Heartbeat => HEARTBEAT_DEGRADED_AFTER,
+            }
+        }
+
+        fn retry_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll failed, will retry",
+                Self::Heartbeat => "heartbeat failed, will retry",
+            }
+        }
+
+        fn degraded_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll fallback degraded",
+                Self::Heartbeat => "heartbeat delivery degraded",
+            }
+        }
+
+        fn recovery_message(self) -> &'static str {
+            match self {
+                Self::Poll => "poll fallback recovered",
+                Self::Heartbeat => "heartbeat delivery recovered",
+            }
+        }
+
+        fn transport_error(self) -> RunnerError {
+            match self {
+                Self::Poll => poll_transport_error(ApiFailureKind::Timeout),
+                Self::Heartbeat => heartbeat_transport_error(ApiFailureKind::Timeout),
+            }
+        }
+
+        async fn record_failure(
+            self,
+            provider: &ApiProvider,
+            state: &HeartbeatState,
+            error: &RunnerError,
+            now: Instant,
+        ) {
+            match self {
+                Self::Poll => {
+                    provider
+                        .record_poll_failure_at(PollReason::Fast, error, now)
+                        .await;
+                }
+                Self::Heartbeat => {
+                    provider
+                        .record_heartbeat_failure_at(state, error, now)
+                        .await;
+                }
+            }
+        }
+
+        async fn record_success(
+            self,
+            provider: &ApiProvider,
+            state: &HeartbeatState,
+            now: Instant,
+        ) {
+            match self {
+                Self::Poll => {
+                    provider
+                        .record_poll_success_at(PollReason::WakeupRetry, now)
+                        .await;
+                }
+                Self::Heartbeat => provider.record_heartbeat_success_at(state, now).await,
+            }
+        }
     }
 
     async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
@@ -2545,6 +2664,10 @@ mod tests {
                 env!("CARGO_PKG_VERSION")
             );
             assert_eq!(event_field(event, "failure_kind"), failure_kind.as_str());
+            assert_eq!(
+                event_field(event, "failure_cause"),
+                synthetic_transport_cause(failure_kind).as_str()
+            );
             assert_eq!(event_field(event, "consecutive_failures"), "1");
             assert_eq!(event_field(event, "failure_elapsed_ms"), "0");
             assert_eq!(event_field(event, "will_retry"), "true");
@@ -2563,78 +2686,130 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn heartbeat_retryable_failure_warns_once_at_degradation_boundary() {
-        let provider = idle_api_provider_for_test();
+    async fn api_paths_share_degradation_episode_transition_semantics() {
         let state = heartbeat_state_for_test();
-        let error = heartbeat_transport_error(ApiFailureKind::Timeout);
-        let started_at = Instant::now();
 
-        let (_, events) = capture_api_provider_events(async {
-            for failure_elapsed in [
-                Duration::ZERO,
-                HEARTBEAT_DEGRADED_AFTER - Duration::from_secs(1),
-                HEARTBEAT_DEGRADED_AFTER,
-                HEARTBEAT_DEGRADED_AFTER + Duration::from_secs(1),
-            ] {
-                provider
-                    .record_heartbeat_failure_at(&state, &error, started_at + failure_elapsed)
-                    .await;
-            }
-        })
-        .await;
-        let heartbeat_events = events
-            .iter()
-            .filter(|event| {
-                event.fields.get("message").is_some_and(|message| {
-                    message == "heartbeat failed, will retry"
-                        || message == "heartbeat delivery degraded"
-                })
+        for path in [DegradationPath::Poll, DegradationPath::Heartbeat] {
+            let provider = idle_api_provider_for_test();
+            let error = path.transport_error();
+            let degraded_after = path.degraded_after();
+            let started_at = Instant::now();
+
+            let (_, events) = capture_api_provider_events(async {
+                for failure_elapsed in [
+                    Duration::ZERO,
+                    degraded_after - Duration::from_secs(1),
+                    degraded_after,
+                    degraded_after + Duration::from_secs(1),
+                ] {
+                    path.record_failure(&provider, &state, &error, started_at + failure_elapsed)
+                        .await;
+                }
             })
-            .collect::<Vec<_>>();
-
-        assert_eq!(heartbeat_events.len(), 4, "events={events:#?}");
-        assert_eq!(heartbeat_events[0].level, Level::INFO);
-        assert_eq!(heartbeat_events[1].level, Level::INFO);
-        assert_eq!(heartbeat_events[2].level, Level::WARN);
-        assert_eq!(heartbeat_events[3].level, Level::INFO);
-        assert_eq!(
-            event_field(heartbeat_events[0], "consecutive_failures"),
-            "1"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[1], "consecutive_failures"),
-            "2"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[2], "consecutive_failures"),
-            "3"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[3], "consecutive_failures"),
-            "4"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[1], "failure_elapsed_ms"),
-            "29000"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[2], "failure_elapsed_ms"),
-            "30000"
-        );
-        assert_eq!(
-            event_field(heartbeat_events[3], "failure_elapsed_ms"),
-            "31000"
-        );
-        assert_eq!(event_field(heartbeat_events[1], "degraded"), "false");
-        assert_eq!(event_field(heartbeat_events[2], "degraded"), "true");
-        assert_eq!(event_field(heartbeat_events[3], "degraded"), "true");
-        assert_eq!(
-            heartbeat_events
+            .await;
+            let path_events = events
                 .iter()
-                .filter(|event| event.level == Level::WARN)
-                .count(),
-            1
-        );
+                .filter(|event| {
+                    event.fields.get("message").is_some_and(|message| {
+                        message == path.retry_message() || message == path.degraded_message()
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(path_events.len(), 4, "path={path:?}; events={events:#?}");
+            assert_eq!(path_events[0].level, Level::INFO, "path={path:?}");
+            assert_eq!(path_events[1].level, Level::INFO, "path={path:?}");
+            assert_eq!(path_events[2].level, Level::WARN, "path={path:?}");
+            assert_eq!(path_events[3].level, Level::INFO, "path={path:?}");
+            for (event, expected_count) in path_events.iter().zip(1_u64..=4) {
+                assert_eq!(
+                    event_field(event, "consecutive_failures"),
+                    expected_count.to_string(),
+                    "path={path:?}"
+                );
+            }
+            assert_eq!(
+                event_field(path_events[1], "failure_elapsed_ms"),
+                duration_ms(degraded_after - Duration::from_secs(1)).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(
+                event_field(path_events[2], "failure_elapsed_ms"),
+                duration_ms(degraded_after).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(
+                event_field(path_events[3], "failure_elapsed_ms"),
+                duration_ms(degraded_after + Duration::from_secs(1)).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(event_field(path_events[1], "degraded"), "false");
+            assert_eq!(event_field(path_events[2], "degraded"), "true");
+            assert_eq!(event_field(path_events[3], "degraded"), "true");
+            assert_eq!(
+                path_events
+                    .iter()
+                    .filter(|event| event.level == Level::WARN)
+                    .count(),
+                1,
+                "path={path:?}"
+            );
+
+            let recovery_elapsed = degraded_after + Duration::from_secs(2);
+            let (_, recovery_events) = capture_api_provider_events(path.record_success(
+                &provider,
+                &state,
+                started_at + recovery_elapsed,
+            ))
+            .await;
+            let recovery = captured_event(&recovery_events, path.recovery_message());
+            assert_eq!(recovery.level, Level::INFO, "path={path:?}");
+            assert_eq!(event_field(recovery, "recovered_after_failures"), "4");
+            assert_eq!(
+                event_field(recovery, "failure_elapsed_ms"),
+                duration_ms(recovery_elapsed).to_string(),
+                "path={path:?}"
+            );
+            assert_eq!(event_field(recovery, "was_degraded"), "true");
+            match path {
+                DegradationPath::Poll => {
+                    assert_eq!(event_field(recovery, "runner_id"), TEST_RUNNER_ID);
+                    assert_eq!(event_field(recovery, "runner_group"), "default");
+                    assert_eq!(event_field(recovery, "poll_reason"), "wakeup_retry");
+                }
+                DegradationPath::Heartbeat => {
+                    assert_eq!(event_field(recovery, "runner_id"), "runner-heartbeat-test");
+                    assert_eq!(event_field(recovery, "runner_group"), "vm0/test");
+                    assert_eq!(event_field(recovery, "mode"), "running");
+                    assert_eq!(event_field(recovery, "running"), "1");
+                    assert_eq!(event_field(recovery, "reusable_sandboxes"), "1");
+                    assert_eq!(event_field(recovery, "workspace_states"), "1");
+                }
+            }
+
+            let later_started_at = started_at + degraded_after + Duration::from_secs(3);
+            let (_, later_events) = capture_api_provider_events(async {
+                path.record_failure(&provider, &state, &error, later_started_at)
+                    .await;
+                path.record_failure(&provider, &state, &error, later_started_at + degraded_after)
+                    .await;
+            })
+            .await;
+            assert_eq!(
+                later_events
+                    .iter()
+                    .filter(|event| {
+                        event.level == Level::WARN
+                            && event
+                                .fields
+                                .get("message")
+                                .is_some_and(|message| message == path.degraded_message())
+                    })
+                    .count(),
+                1,
+                "path={path:?}; events={later_events:#?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2655,12 +2830,20 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "mode"), "stopping");
         assert_eq!(event_field(event, "failure_kind"), "timeout");
+        assert_eq!(event_field(event, "failure_cause"), "timeout");
         assert!(!event.fields.contains_key("will_retry"));
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
-    async fn heartbeat_success_recovers_and_allows_a_later_degradation_episode() {
+    async fn heartbeat_success_recovers_active_degradation_episode() {
         let server =
             RawHttpTestServer::spawn(vec![RawHttpAction::Respond(status_response(200))]).await;
         let provider = api_provider_for_test(
@@ -2692,35 +2875,13 @@ mod tests {
                 .unwrap()
                 >= duration_ms(HEARTBEAT_DEGRADED_AFTER)
         );
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
-
-        let later_started_at = Instant::now();
-        let (_, later_events) = capture_api_provider_events(async {
+        assert!(
             provider
-                .record_heartbeat_failure_at(&state, &error, later_started_at)
-                .await;
-            provider
-                .record_heartbeat_failure_at(
-                    &state,
-                    &error,
-                    later_started_at + HEARTBEAT_DEGRADED_AFTER,
-                )
-                .await;
-        })
-        .await;
-        assert_eq!(
-            later_events
-                .iter()
-                .filter(|event| {
-                    event.level == Level::WARN
-                        && event
-                            .fields
-                            .get("message")
-                            .is_some_and(|message| message == "heartbeat delivery degraded")
-                })
-                .count(),
-            1,
-            "events={later_events:#?}"
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
         );
     }
 
@@ -2783,7 +2944,11 @@ mod tests {
             "events={events:#?}"
         );
         {
-            let active_episode = provider.heartbeat_failure_episode.lock().await;
+            let active_episode = provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await;
             let episode = active_episode
                 .as_ref()
                 .expect("unsupported failures should not reset the active episode");
@@ -2823,7 +2988,14 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event_field(event, "reusable_sandboxes"), "1");
         assert_eq!(event_field(event, "workspace_states"), "1");
-        assert!(provider.heartbeat_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .heartbeat_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
         let event_debug = format!("{event:#?}");
         assert!(
             !event_debug.contains("thread:heartbeat-test"),
@@ -2867,6 +3039,10 @@ mod tests {
                     env!("CARGO_PKG_VERSION")
                 );
                 assert_eq!(event_field(event, "failure_kind"), failure_kind.as_str());
+                assert_eq!(
+                    event_field(event, "failure_cause"),
+                    synthetic_transport_cause(failure_kind).as_str()
+                );
                 assert_eq!(event_field(event, "poll_reason"), expected_reason);
                 assert_eq!(event_field(event, "consecutive_failures"), "1");
                 assert_eq!(event_field(event, "failure_elapsed_ms"), "0");
@@ -2884,119 +3060,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[tokio::test]
-    async fn poll_retryable_failure_warns_once_at_degradation_boundary() {
-        let provider = idle_api_provider_for_test();
-        let error = poll_transport_error(ApiFailureKind::Timeout);
-        let started_at = Instant::now();
-
-        let (_, events) = capture_api_provider_events(async {
-            for failure_elapsed in [
-                Duration::ZERO,
-                POLL_DEGRADED_AFTER - Duration::from_secs(1),
-                POLL_DEGRADED_AFTER,
-                POLL_DEGRADED_AFTER + Duration::from_secs(1),
-            ] {
-                provider
-                    .record_poll_failure_at(PollReason::Fast, &error, started_at + failure_elapsed)
-                    .await;
-            }
-        })
-        .await;
-        let poll_events = events
-            .iter()
-            .filter(|event| {
-                event.fields.get("message").is_some_and(|message| {
-                    message == "poll failed, will retry" || message == "poll fallback degraded"
-                })
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(poll_events.len(), 4, "events={events:#?}");
-        assert_eq!(poll_events[0].level, Level::INFO);
-        assert_eq!(poll_events[1].level, Level::INFO);
-        assert_eq!(poll_events[2].level, Level::WARN);
-        assert_eq!(poll_events[3].level, Level::INFO);
-        assert_eq!(event_field(poll_events[0], "consecutive_failures"), "1");
-        assert_eq!(event_field(poll_events[1], "consecutive_failures"), "2");
-        assert_eq!(event_field(poll_events[2], "consecutive_failures"), "3");
-        assert_eq!(event_field(poll_events[3], "consecutive_failures"), "4");
-        assert_eq!(event_field(poll_events[1], "failure_elapsed_ms"), "59000");
-        assert_eq!(event_field(poll_events[2], "failure_elapsed_ms"), "60000");
-        assert_eq!(event_field(poll_events[3], "failure_elapsed_ms"), "61000");
-        assert_eq!(event_field(poll_events[1], "degraded"), "false");
-        assert_eq!(event_field(poll_events[2], "degraded"), "true");
-        assert_eq!(event_field(poll_events[3], "degraded"), "true");
-        assert_eq!(
-            poll_events
-                .iter()
-                .filter(|event| event.level == Level::WARN)
-                .count(),
-            1
-        );
-    }
-
-    #[tokio::test]
-    async fn poll_success_recovers_and_allows_a_later_degradation_episode() {
-        let provider = idle_api_provider_for_test();
-        let error = poll_transport_error(ApiFailureKind::Connect);
-        let started_at = Instant::now();
-        provider
-            .record_poll_failure_at(PollReason::Immediate, &error, started_at)
-            .await;
-        provider
-            .record_poll_failure_at(
-                PollReason::WakeupRetry,
-                &error,
-                started_at + POLL_DEGRADED_AFTER,
-            )
-            .await;
-
-        let (_, recovery_events) = capture_api_provider_events(provider.record_poll_success_at(
-            PollReason::WakeupRetry,
-            started_at + POLL_DEGRADED_AFTER + Duration::from_secs(1),
-        ))
-        .await;
-        let recovery = captured_event(&recovery_events, "poll fallback recovered");
-        assert_eq!(recovery.level, Level::INFO);
-        assert_eq!(event_field(recovery, "runner_id"), TEST_RUNNER_ID);
-        assert_eq!(event_field(recovery, "runner_group"), "default");
-        assert_eq!(event_field(recovery, "poll_reason"), "wakeup_retry");
-        assert_eq!(event_field(recovery, "recovered_after_failures"), "2");
-        assert_eq!(event_field(recovery, "failure_elapsed_ms"), "61000");
-        assert_eq!(event_field(recovery, "was_degraded"), "true");
-        assert!(provider.poll_failure_episode.lock().await.is_none());
-
-        let later_started_at = started_at + POLL_DEGRADED_AFTER + Duration::from_secs(2);
-        let (_, later_events) = capture_api_provider_events(async {
-            provider
-                .record_poll_failure_at(PollReason::Slow, &error, later_started_at)
-                .await;
-            provider
-                .record_poll_failure_at(
-                    PollReason::Slow,
-                    &error,
-                    later_started_at + POLL_DEGRADED_AFTER,
-                )
-                .await;
-        })
-        .await;
-        assert_eq!(
-            later_events
-                .iter()
-                .filter(|event| {
-                    event.level == Level::WARN
-                        && event
-                            .fields
-                            .get("message")
-                            .is_some_and(|message| message == "poll fallback degraded")
-                })
-                .count(),
-            1,
-            "events={later_events:#?}"
-        );
     }
 
     #[tokio::test]
@@ -3066,7 +3129,11 @@ mod tests {
             "poll status response body must not be logged: {events:#?}"
         );
         {
-            let active_episode = provider.poll_failure_episode.lock().await;
+            let active_episode = provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await;
             let episode = active_episode
                 .as_ref()
                 .expect("unsupported failures should not reset the active episode");
@@ -3156,7 +3223,7 @@ mod tests {
         assert!(!body.to_string().contains("path"));
         assert_eq!(
             body["capabilities"]["piModelConfigGenerations"],
-            serde_json::json!([1, 2])
+            serde_json::json!([1, 2, 3])
         );
 
         let runner_identity = test_runner_identity();
@@ -3554,19 +3621,23 @@ mod tests {
                 },
                 async {
                     server.next_request("status poll request").await;
-                    wakeups.request_immediate_poll().await;
+                    wakeups.request_immediate_poll();
                     release_status_tx.send(()).unwrap();
 
                     server.next_request("empty poll request").await;
                     {
-                        let active_episode = provider.poll_failure_episode.lock().await;
+                        let active_episode = provider
+                            .poll_degradation_tracker
+                            .active_episode
+                            .lock()
+                            .await;
                         let episode = active_episode
                             .as_ref()
                             .expect("status failure must not reset the poll episode");
                         assert_eq!(episode.started_at, started_at);
                         assert_eq!(episode.consecutive_failures, 1);
                     }
-                    wakeups.request_immediate_poll().await;
+                    wakeups.request_immediate_poll();
                     release_empty_tx.send(()).unwrap();
 
                     server.next_request("job poll request after recovery").await;
@@ -3576,7 +3647,14 @@ mod tests {
         .await;
 
         assert_eq!(discovered.run_id(), run_id);
-        assert!(provider.poll_failure_episode.lock().await.is_none());
+        assert!(
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none()
+        );
         let status_event = captured_event(&events, "poll failed");
         assert_eq!(status_event.level, Level::ERROR);
         assert_eq!(event_field(status_event, "status"), "503");
@@ -3842,9 +3920,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -3922,9 +3998,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -4003,9 +4077,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider = api_provider_for_test(
             server.base_url(),
             CancellationToken::new(),
@@ -4052,9 +4124,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let provider =
             api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
         push_direct_candidate_for_test(
@@ -4133,9 +4203,7 @@ mod tests {
             .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
             .await
             .unwrap();
-        wakeups
-            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
-            .await;
+        wakeups.record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY);
         let cancel = CancellationToken::new();
         let provider = api_provider_for_test(api_url, cancel.clone(), Arc::clone(&wakeups));
         push_direct_candidate_for_test(
@@ -4276,7 +4344,6 @@ mod tests {
         assert_eq!(event_field(event, "active_cooldowns"), "1");
         let deferred_poll_at = wakeups
             .snapshot()
-            .await
             .deferred_poll_at
             .expect("saturation should defer HTTP polling");
         assert!(
@@ -4362,7 +4429,12 @@ mod tests {
             Some(JobDiscoverySource::Ably)
         );
         assert!(
-            provider.poll_failure_episode.lock().await.is_some(),
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_some(),
             "direct candidate interruption must not reset HTTP poll state"
         );
 
@@ -4377,7 +4449,12 @@ mod tests {
             Some(JobDiscoverySource::Poll)
         );
         assert!(
-            provider.poll_failure_episode.lock().await.is_none(),
+            provider
+                .poll_degradation_tracker
+                .active_episode
+                .lock()
+                .await
+                .is_none(),
             "successful HTTP poll with a job must reset poll state"
         );
         join_raw_http_task(server_task, "direct candidate sequence server").await;
@@ -4404,9 +4481,7 @@ mod tests {
         let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
 
         server.next_request("first deferred poll request").await;
-        wakeups
-            .request_deferred_poll_after_for_test(Duration::ZERO)
-            .await;
+        wakeups.request_deferred_poll_after_for_test(Duration::ZERO);
         release_first_tx.send(()).unwrap();
 
         let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
@@ -5332,6 +5407,46 @@ mod tests {
         assert_eq!(context.prompt, "minimal response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_attaches_active_input_source_for_thread_bound_pi() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "reuseKey": "thread:pi-active-input",
+                    "prompt": "steer the active Pi run",
+                    "sandboxToken": "pi-active-input-sandbox-token",
+                    "cliAgentType": "pi",
+                    "platformEnvironment": {},
+                    "connectorRuntimeTargets": []
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("thread-bound Pi claim should succeed");
+
+        assert!(matches!(
+            claimed.active_input_source(),
+            Some(ActiveInputSource::Api(_))
+        ));
         claim_mock.assert_calls_async(1).await;
     }
 

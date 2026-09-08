@@ -3,12 +3,23 @@ import { describe, expect, it } from "vitest";
 import {
   IMAGE_RECOGNITION_MAX_PROMPT_CHARS,
   IMAGE_RECOGNITION_MAX_TEXT_CHARS,
+  imageRecognitionContract,
   imageRecognitionMimeTypeSchema,
   imageRecognitionRequestSchema,
   imageRecognitionResponseSchema,
 } from "../image-recognition";
 
 describe("image recognition contract", () => {
+  it("declares the canonical API operation", () => {
+    expect({
+      method: imageRecognitionContract.imageRecognition.method,
+      path: imageRecognitionContract.imageRecognition.path,
+    }).toStrictEqual({
+      method: "POST",
+      path: "/api/image-recognition",
+    });
+  });
+
   it("accepts one owned file id and a trimmed prompt", () => {
     expect(
       imageRecognitionRequestSchema.parse({

@@ -2,9 +2,9 @@ import "./polyfill.ts";
 import { createStore } from "ccstate";
 import { createDebugLoggers } from "./lib/debug-loggers.ts";
 import { logger } from "./signals/log.ts";
-import { detach, Reason } from "./signals/utils.ts";
 import { SharedDatabaseMessagePortServer } from "./shared-database/message-port-server.ts";
 import { initSharedDatabaseWorkerSentry } from "./shared-database/worker-sentry.ts";
+import { requestTokenFromFirstConnection$ } from "./shared-database/worker-context.ts";
 import { bootstrapWorker$ } from "./shared-database/worker-signals.ts";
 import type { DebugLoggers } from "./types/global-method.ts";
 
@@ -14,12 +14,12 @@ interface SharedWorkerConnectEvent extends Event {
   readonly ports: readonly MessagePort[];
 }
 
-interface SharedWorkerVM0State {
+interface SharedWorkerOkouState {
   readonly loggers: DebugLoggers;
 }
 
 interface SharedWorkerGlobal {
-  _vm0: SharedWorkerVM0State | undefined;
+  _okou: SharedWorkerOkouState | undefined;
   addEventListener(
     type: "connect",
     listener: (event: SharedWorkerConnectEvent) => void,
@@ -30,7 +30,7 @@ const workerGlobal = globalThis as typeof globalThis & SharedWorkerGlobal;
 
 function main(): void {
   initSharedDatabaseWorkerSentry();
-  workerGlobal._vm0 = {
+  workerGlobal._okou = {
     get loggers() {
       return createDebugLoggers();
     },
@@ -40,10 +40,13 @@ function main(): void {
   // abort hook, so this signal stays live for the lifetime of the Worker.
   const workerSignal = AbortSignal.any([]);
   const store = createStore();
-  const bootstrap = store.set(bootstrapWorker$, workerSignal);
-  if (bootstrap) {
-    detach(bootstrap, Reason.Daemon, "shared database Worker bootstrap");
-  }
+  store.set(
+    bootstrapWorker$,
+    (signal) => {
+      return store.set(requestTokenFromFirstConnection$, signal);
+    },
+    workerSignal,
+  );
   L.debug("worker.bootstrap");
   workerGlobal.addEventListener("connect", (event): void => {
     L.debug("worker.connect", { portCount: event.ports.length });

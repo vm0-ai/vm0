@@ -7,8 +7,8 @@ const LAYOUT_VIEWPORT_CHANGE_TOLERANCE_PX = 8;
 const VIEWPORT_SETTLE_DELAY_MS = 50;
 const CONTENTEDITABLE_SELECTOR =
   "[contenteditable]:not([contenteditable='false'])";
-const CHAT_COMPOSER_SELECTOR = "[data-chat-composer] .zero-composer";
-const KEYBOARD_SCROLL_RESERVE_PROPERTY = "--zero-keyboard-scroll-reserve";
+const CHAT_COMPOSER_SELECTOR = "[data-chat-composer] .okou-composer";
+const KEYBOARD_SCROLL_RESERVE_PROPERTY = "--okou-keyboard-scroll-reserve";
 const COMPOSER_KEYBOARD_GAP_PX = 16;
 const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
@@ -177,7 +177,6 @@ function revealFocusedComposer(): void {
 type KeyboardViewportState = {
   baselineHeight: number;
   keyboardOpen: boolean;
-  keyboardOpening: boolean;
   resetBaselineOnSettle: boolean;
 };
 
@@ -192,7 +191,6 @@ function updateKeyboardViewportState(
     }
     state.baselineHeight = readLayoutViewportHeight(viewport);
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     state.resetBaselineOnSettle = false;
   }
 
@@ -203,7 +201,6 @@ function updateKeyboardViewportState(
       state.baselineHeight = readLayoutViewportHeight(viewport);
     }
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     setKeyboardClosed();
     return;
   }
@@ -214,18 +211,15 @@ function updateKeyboardViewportState(
   );
   if (!hasKeyboardOcclusion) {
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     setKeyboardClosed();
     return;
   }
 
   if (!state.keyboardOpen && !commitOpening) {
-    state.keyboardOpening = true;
     return;
   }
 
   state.keyboardOpen = true;
-  state.keyboardOpening = false;
   setKeyboardOpen(readKeyboardOcclusion(state.baselineHeight, viewport));
 }
 
@@ -245,7 +239,6 @@ export function setupVisualViewportKeyboardState(
   const state: KeyboardViewportState = {
     baselineHeight: readLayoutViewportHeight(viewport),
     keyboardOpen: false,
-    keyboardOpening: false,
     resetBaselineOnSettle: false,
   };
   let scheduledFrameId: number | null = null;
@@ -317,7 +310,6 @@ export function setupVisualViewportKeyboardState(
   const scheduleBaselineReset = () => {
     state.resetBaselineOnSettle = true;
     state.keyboardOpen = false;
-    state.keyboardOpening = false;
     cancelSettledUpdate();
     setKeyboardClosed();
 

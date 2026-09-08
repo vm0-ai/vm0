@@ -564,7 +564,7 @@ export function createBillingMediaApi(context: TestContext) {
           body: {
             attribution: {
               source_type: "paid",
-              landing_host: "www.vm0.ai",
+              landing_host: "www.okou.ai",
               landing_path: "/",
               utm_source: "bdd",
             },

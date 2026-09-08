@@ -16,7 +16,9 @@ import { connectorCatalogContract } from "../connector-catalog";
 import { connectorAccountsContract } from "../connector-accounts";
 import {
   connectorCheckDiagnosticResultSchema,
+  connectorCheckRequestBodySchema,
   connectorCheckRequestSchema,
+  connectorCheckResponseBodySchema,
 } from "../connector-check";
 import { connectorsSearchContract } from "../connectors";
 import {
@@ -261,12 +263,12 @@ describe("custom connector response contracts", () => {
 
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
 
-    expect(
+    expect(() => {
       customConnectorResponseSchema.parse({
         ...payload,
         oauthSetup: "custom",
-      }),
-    ).toStrictEqual(payload);
+      });
+    }).toThrow();
   });
 
   it("parses top-level Automatic MCP authentication", () => {
@@ -442,13 +444,6 @@ describe("connector client request contracts", () => {
         prefixTemplates: ["https://api.example.test"],
       });
     }).toThrow();
-    expect(
-      createCustomConnectorBodySchema.parse({
-        ...manualDefinition,
-        authMode: "manual",
-        oauthSetup: "custom",
-      }),
-    ).toStrictEqual({ ...manualDefinition, authMode: "manual" });
   });
 
   it("accepts canonical connector check requests", () => {
@@ -465,6 +460,85 @@ describe("connector client request contracts", () => {
       }),
     ).toStrictEqual({ ...base, connectorSlug: "github" });
     expect(connectorCheckRequestSchema.parse(base)).toStrictEqual(base);
+  });
+
+  it("separates legacy and target-aware connector check requests", () => {
+    const base = {
+      mode: "url" as const,
+      method: "GET",
+      url: "https://api.example.test/v1/items",
+    };
+    const automatic = { ...base, includeCustomConnectors: true as const };
+    const selected = {
+      ...base,
+      target: {
+        kind: "custom" as const,
+        customConnectorId: "00000000-0000-4000-a000-000000000005",
+      },
+    };
+
+    expect(connectorCheckRequestBodySchema.parse(automatic)).toStrictEqual(
+      automatic,
+    );
+    expect(connectorCheckRequestBodySchema.parse(selected)).toStrictEqual(
+      selected,
+    );
+    expect(() => {
+      connectorCheckRequestSchema.parse(automatic);
+    }).toThrow();
+    expect(() => {
+      connectorCheckRequestBodySchema.parse({
+        ...selected,
+        connectorSlug: "github",
+      });
+    }).toThrow();
+  });
+
+  it("accepts target-aware connector check responses separately", () => {
+    const target = {
+      kind: "custom" as const,
+      customConnectorId: "00000000-0000-4000-a000-000000000005",
+    };
+    const resolved = {
+      outcome: "resolved" as const,
+      mode: "url" as const,
+      connector: {
+        target,
+        label: "Example",
+        visibility: "available" as const,
+        credentialResolution: "network-boundary" as const,
+      },
+      environmentNames: null,
+      run: {
+        status: "configured" as const,
+        bases: ["https://api.example.test/v1"],
+      },
+      method: "GET",
+      base: "https://api.example.test/v1",
+      relativePath: "/items",
+      permission: {
+        kind: "unknown-endpoint" as const,
+        policy: { outcome: "allow" as const, basis: "unknown-policy" as const },
+      },
+    };
+
+    expect(connectorCheckResponseBodySchema.parse(resolved)).toStrictEqual(
+      resolved,
+    );
+    expect(() => {
+      connectorCheckDiagnosticResultSchema.parse(resolved);
+    }).toThrow();
+    expect(
+      connectorCheckResponseBodySchema.parse({
+        outcome: "target-unavailable",
+        target,
+        reason: "not-admitted",
+      }),
+    ).toStrictEqual({
+      outcome: "target-unavailable",
+      target,
+      reason: "not-admitted",
+    });
   });
 
   it("accepts canonical user connector updates", () => {
@@ -496,7 +570,7 @@ describe("connector client request contracts", () => {
 });
 
 describe("connector path parameter contracts", () => {
-  it("keeps concrete connector URLs unchanged", async () => {
+  it("builds concrete connector URLs", async () => {
     const paths: string[] = [];
     const config = {
       baseUrl: "https://api.example.test",
@@ -510,12 +584,11 @@ describe("connector path parameter contracts", () => {
       },
     };
 
-    await initClient(connectorAccountsContract, config).disconnectSingleAccount(
-      {
-        headers: {},
-        body: { target: { kind: "builtin", connectorSlug: "github" } },
-      },
-    );
+    await initClient(connectorAccountsContract, config).delete({
+      params: { connectionId: connector.id },
+      headers: {},
+      body: { target: { kind: "builtin", connectorSlug: "github" } },
+    });
     await initClient(connectorAccountsContract, config).scopeDiff({
       params: { connectionId: connector.id },
       query: { connectorSlug: "github" },
@@ -532,7 +605,7 @@ describe("connector path parameter contracts", () => {
     });
 
     expect(paths).toStrictEqual([
-      "https://api.example.test/api/connector-accounts/single-account",
+      `https://api.example.test/api/connector-accounts/${connector.id}`,
       `https://api.example.test/api/connector-accounts/${connector.id}/scope-diff?connectorSlug=github`,
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",

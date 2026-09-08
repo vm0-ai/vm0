@@ -147,13 +147,15 @@ function AgentDeleteReconcileView({
             onDelete={onDelete}
             className="w-full"
           />
-          <DialogClose asChild>
-            <Button variant="outline" size="sm" className="w-full">
-              {t(($) => {
-                return $.actions.cancel;
-              })}
-            </Button>
-          </DialogClose>
+          {deleting || copying ? null : (
+            <DialogClose asChild>
+              <Button variant="outline" size="sm" className="w-full">
+                {t(($) => {
+                  return $.actions.cancel;
+                })}
+              </Button>
+            </DialogClose>
+          )}
         </div>
       </div>
       <div className="flex flex-col px-6 py-6">
@@ -245,13 +247,15 @@ function AgentDeleteSimpleView({
     <div className="flex flex-col px-6 py-6">
       <DeleteDangerHeader agentName={agentName} />
       <DialogFooter className="mt-6">
-        <DialogClose asChild>
-          <Button variant="outline" size="sm">
-            {t(($) => {
-              return $.actions.cancel;
-            })}
-          </Button>
-        </DialogClose>
+        {deleting || copying ? null : (
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              {t(($) => {
+                return $.actions.cancel;
+              })}
+            </Button>
+          </DialogClose>
+        )}
         <DeleteConfirmButton
           deleting={deleting}
           copying={copying}
@@ -333,7 +337,7 @@ export function AgentDeleteDialog({
   };
 
   return (
-    <Card className="zero-card overflow-hidden border-destructive/20 mt-4">
+    <Card className="okou-card overflow-hidden border-destructive/20 mt-4">
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0 sm:max-w-[46%]">

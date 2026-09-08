@@ -1,7 +1,7 @@
 {
-  "name": "VM0",
-  "short_name": "VM0",
-  "description": "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
+  "name": "Okou",
+  "short_name": "Okou",
+  "description": "An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

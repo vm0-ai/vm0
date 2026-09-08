@@ -1,9 +1,7 @@
 import type {
   PrepareFirstFactorParams,
-  PrepareSecondFactorParams,
   SignInFirstFactor,
   SignInResource,
-  SignInSecondFactor,
 } from "@clerk/react/types";
 import {
   command,
@@ -16,7 +14,13 @@ import {
 
 import { now } from "../../lib/time.ts";
 import { clerk$ } from "../auth.ts";
-import { onRef, setLoop, settle, withCleanup } from "../utils.ts";
+import {
+  isRecord,
+  onRef,
+  settle,
+  stringProperty,
+  withCleanup,
+} from "../utils.ts";
 import {
   discoverAuthV2ExistingAccounts,
   discoverAuthV2ExternalCapabilities,
@@ -37,14 +41,25 @@ import {
 import {
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
+  createResendCooldownLifecycleRef,
+  createStartCooldownCommand,
+  type AuthV2ResendCooldown,
 } from "./resend-cooldown.ts";
 
-export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
-const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
-  AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
+import {
+  authV2SecondFactorPreparation,
+  discoverAuthV2SecondFactors,
+  isAuthV2SecondFactorStatus,
+  type AuthV2SignInSecondFactor,
+} from "./second-factors.ts";
+
 const signInResendCooldownStorage = createAuthV2ResendCooldownStorage(
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
 );
+const signInResendCooldown: Readonly<AuthV2ResendCooldown> = {
+  storage: signInResendCooldownStorage,
+  seconds: 30,
+};
 
 export type AuthV2SignInFactor =
   | {
@@ -63,12 +78,7 @@ export type AuthV2SignInFactor =
       readonly kind: "password-reset";
       readonly safeIdentifier: string;
     }
-  | {
-      readonly emailAddressId: string;
-      readonly id: string;
-      readonly kind: "client-trust-email-code";
-      readonly safeIdentifier: string;
-    }
+  | AuthV2SignInSecondFactor
   | {
       readonly id: `oauth:${AuthV2OAuthStrategy}`;
       readonly kind: "oauth";
@@ -88,7 +98,7 @@ export type AuthV2SignInStep =
   | "password-recovery"
   | "help"
   | "email-code"
-  | "client-trust-code"
+  | "second-factor"
   | "password-reset-code"
   | "new-password";
 
@@ -101,6 +111,7 @@ export type AuthV2SignInState =
   | { readonly status: "loading" }
   | {
       readonly accounts: readonly AuthV2ExistingAccount[];
+      readonly clientTrust: boolean;
       readonly factors: readonly AuthV2SignInFactor[];
       readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
       readonly selectedFactor: AuthV2SignInFactor | null;
@@ -128,6 +139,7 @@ export interface AuthV2SignInError {
     | "access-not-allowed"
     | "clerk"
     | "code-expired"
+    | "invalid-code"
     | "passkey-cancelled"
     | "passkey-unavailable"
     | "password-mismatch"
@@ -151,15 +163,16 @@ interface SignInResourceSnapshot {
   readonly secondFactorVerificationStrategy: string | null;
   readonly identifierMode: AuthV2ExternalCapabilities["identifierMode"];
   readonly transferable: boolean;
-  readonly unknownFactorStrategies: readonly string[];
 }
 
-export interface AuthV2SignInFlowDependencies {
+interface AuthV2SignInFlowDependencies {
   readonly continuation: AuthV2ContinuationFlowHandoff;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
   readonly navigation: AuthV2Navigation;
 }
+
+type GoogleOneTapStage = "prompt" | "exchange" | "sign-up" | "continuation";
 
 export interface AuthV2SignInSignals {
   readonly backFromHelp$: Command<void, []>;
@@ -171,6 +184,7 @@ export interface AuthV2SignInSignals {
   readonly code$: Computed<string>;
   readonly confirmPassword$: Computed<string>;
   readonly error$: Computed<AuthV2SignInError | null>;
+  readonly googleOneTapStage$: Computed<GoogleOneTapStage | null>;
   readonly identifier$: Computed<string>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
   readonly initializeExternalStrategies$: Command<Promise<void>, [AbortSignal]>;
@@ -279,7 +293,6 @@ function emptyExternalCapabilities(): AuthV2ExternalCapabilities {
 
 interface FactorDiscovery {
   readonly factors: readonly AuthV2SignInFactor[];
-  readonly unknownStrategies: readonly string[];
 }
 
 function oauthFactor(
@@ -300,11 +313,10 @@ function discoverFactors(
   passkeyCapability: AuthV2PasskeyCapability,
 ): FactorDiscovery {
   if (!factors) {
-    return { factors: [], unknownStrategies: [] };
+    return { factors: [] };
   }
 
   const discovered: AuthV2SignInFactor[] = [];
-  const unknownStrategies: string[] = [];
   for (const factor of factors) {
     if (factor.strategy === "password") {
       discovered.push({ id: "password", kind: "password" });
@@ -328,35 +340,9 @@ function discoverFactors(
       if (passkeyCapability !== "unavailable") {
         discovered.push({ id: "passkey", kind: "passkey" });
       }
-    } else {
-      unknownStrategies.push(factor.strategy);
     }
   }
-  return { factors: discovered, unknownStrategies };
-}
-
-function discoverClientTrustFactors(
-  factors: readonly SignInSecondFactor[] | null,
-): FactorDiscovery {
-  if (!factors) {
-    return { factors: [], unknownStrategies: [] };
-  }
-
-  const discovered: AuthV2SignInFactor[] = [];
-  const unknownStrategies: string[] = [];
-  for (const factor of factors) {
-    if (factor.strategy === "email_code") {
-      discovered.push({
-        emailAddressId: factor.emailAddressId,
-        id: `client-trust-email-code:${factor.emailAddressId}`,
-        kind: "client-trust-email-code",
-        safeIdentifier: factor.safeIdentifier,
-      });
-    } else {
-      unknownStrategies.push(factor.strategy);
-    }
-  }
-  return { factors: discovered, unknownStrategies };
+  return { factors: discovered };
 }
 
 function entryFactors(
@@ -381,29 +367,27 @@ function snapshotSignInResource(
   // The legacy resource is the stable low-level API used by this app. Clerk
   // exposes transferability on its future view, so keep that SDK detail
   // isolated in this adapter rather than leaking it into the flow or view.
-  const discovered =
-    resource.status === "needs_client_trust"
-      ? discoverClientTrustFactors(resource.supportedSecondFactors)
-      : discoverFactors(
-          resource.supportedFirstFactors,
-          capabilities.lastUsedOAuthStrategy,
-          passkeyCapability,
-        );
-  const factorsWithExternalOAuth =
-    resource.status === "needs_client_trust"
-      ? discovered.factors
-      : [
-          ...discovered.factors,
-          ...capabilities.oauthStrategies
-            .map((strategy) => {
-              return oauthFactor(strategy, capabilities.lastUsedOAuthStrategy);
-            })
-            .filter((factor) => {
-              return !discovered.factors.some((candidate) => {
-                return candidate.id === factor.id;
-              });
-            }),
-        ];
+  const discovered = isAuthV2SecondFactorStatus(resource.status)
+    ? { factors: discoverAuthV2SecondFactors(resource) }
+    : discoverFactors(
+        resource.supportedFirstFactors,
+        capabilities.lastUsedOAuthStrategy,
+        passkeyCapability,
+      );
+  const factorsWithExternalOAuth = isAuthV2SecondFactorStatus(resource.status)
+    ? discovered.factors
+    : [
+        ...discovered.factors,
+        ...capabilities.oauthStrategies
+          .map((strategy) => {
+            return oauthFactor(strategy, capabilities.lastUsedOAuthStrategy);
+          })
+          .filter((factor) => {
+            return !discovered.factors.some((candidate) => {
+              return candidate.id === factor.id;
+            });
+          }),
+      ];
   const factors =
     resource.status === "needs_identifier" || resource.status === null
       ? entryFactors(capabilities, passkeyCapability)
@@ -423,19 +407,24 @@ function snapshotSignInResource(
       resource.secondFactorVerification?.strategy ?? null,
     identifierMode: capabilities.identifierMode,
     transferable: resource.__internal_future.isTransferable,
-    unknownFactorStrategies: discovered.unknownStrategies,
   };
 }
 
 function preparedFactorForSnapshot(
   snapshot: SignInResourceSnapshot,
+  selectedFactor: AuthV2SignInFactor | null,
 ): AuthV2SignInFactor | null {
-  if (snapshot.secondFactorVerificationStrategy === "email_code") {
-    return (
-      snapshot.factors.find((factor) => {
-        return factor.kind === "client-trust-email-code";
-      }) ?? null
-    );
+  if (isAuthV2SecondFactorStatus(snapshot.clerkStatus)) {
+    const matchesVerification = (factor: AuthV2SignInFactor): boolean => {
+      return (
+        factor.kind === "second-factor" &&
+        factor.strategy === snapshot.secondFactorVerificationStrategy
+      );
+    };
+    const selected = selectedFactorForSnapshot(snapshot, selectedFactor);
+    return selected && matchesVerification(selected)
+      ? selected
+      : (snapshot.factors.find(matchesVerification) ?? null);
   }
   const strategy = snapshot.firstFactorVerificationStrategy;
   return (
@@ -447,20 +436,6 @@ function preparedFactorForSnapshot(
       );
     }) ?? null
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function stringProperty(
-  value: Record<string, unknown>,
-  property: string,
-): string | undefined {
-  const candidate = value[property];
-  return typeof candidate === "string" && candidate.length > 0
-    ? candidate
-    : undefined;
 }
 
 function clerkErrorField(
@@ -549,12 +524,14 @@ function normalizeClerkError(
     (clerkCode?.toLowerCase().includes("expired") === true ||
       clerkCode?.toLowerCase().includes("timeout") === true)
       ? "code-expired"
-      : (normalizedPasskeyCode ??
-        (clerkCode === "not_allowed_access"
-          ? "access-not-allowed"
-          : clerkCode === "user_banned"
-            ? "user-banned"
-            : "clerk"));
+      : fallbackField === "code" && clerkCode === "form_code_incorrect"
+        ? "invalid-code"
+        : (normalizedPasskeyCode ??
+          (clerkCode === "not_allowed_access"
+            ? "access-not-allowed"
+            : clerkCode === "user_banned"
+              ? "user-banned"
+              : "clerk"));
   return {
     ...(clerkCode ? { clerkCode } : {}),
     code,
@@ -576,7 +553,7 @@ function selectedFactorForSnapshot(
   );
 }
 
-export const clerkSignInResource$ = computed(async (get) => {
+const clerkSignInResource$ = computed(async (get) => {
   const clerk = await get(clerk$);
   if (!clerk.client) {
     throw new Error("Loaded Clerk instance did not provide a client resource");
@@ -592,6 +569,7 @@ function incompleteState(
 ): AuthV2SignInState {
   return {
     accounts,
+    clientTrust: snapshot.clerkStatus === "needs_client_trust",
     factors: snapshot.factors,
     identifierMode: snapshot.identifierMode,
     selectedFactor,
@@ -620,8 +598,8 @@ function stepForSelectedFactor(
   if (factor?.kind === "email-code") {
     return "email-code";
   }
-  if (factor?.kind === "client-trust-email-code") {
-    return "client-trust-code";
+  if (factor?.kind === "second-factor") {
+    return "second-factor";
   }
   if (factor?.kind === "password-reset") {
     return "password-reset-code";
@@ -629,30 +607,25 @@ function stepForSelectedFactor(
   return "choose-factor";
 }
 
-function deriveClientTrustState(
+function deriveSecondFactorState(
   snapshot: SignInResourceSnapshot,
   options: DeriveSignInFlowOptions,
 ): AuthV2SignInState {
-  if (
-    snapshot.factors.length === 0 ||
-    snapshot.unknownFactorStrategies.length > 0
-  ) {
-    return {
-      clerkStatus: snapshot.clerkStatus,
-      reason: "unsupported-factor",
-      status: "unknown",
-    };
+  if (snapshot.factors.length === 0) {
+    return unsupportedFactorState(snapshot);
   }
   const currentFactor =
     selectedFactorForSnapshot(snapshot, options.selectedFactor) ??
-    snapshot.factors.find((factor) => {
-      return factor.kind === "client-trust-email-code";
-    }) ??
+    snapshot.factors[0] ??
     null;
   return incompleteState(
     snapshot,
     options.accounts,
-    stepForSelectedFactor(currentFactor),
+    options.helpOrigin
+      ? "help"
+      : options.methodChooser
+        ? "choose-factor"
+        : "second-factor",
     currentFactor,
   );
 }
@@ -671,10 +644,7 @@ function deriveFirstFactorState(
   snapshot: SignInResourceSnapshot,
   options: DeriveSignInFlowOptions,
 ): AuthV2SignInState {
-  if (
-    snapshot.factors.length === 0 ||
-    snapshot.unknownFactorStrategies.length > 0
-  ) {
+  if (snapshot.factors.length === 0) {
     return unsupportedFactorState(snapshot);
   }
   const currentFactor = selectedFactorForSnapshot(
@@ -776,8 +746,8 @@ function deriveSignInFlowState(
   if (snapshot.clerkStatus === "needs_first_factor") {
     return deriveFirstFactorState(snapshot, options);
   }
-  if (snapshot.clerkStatus === "needs_client_trust") {
-    return deriveClientTrustState(snapshot, options);
+  if (isAuthV2SecondFactorStatus(snapshot.clerkStatus)) {
+    return deriveSecondFactorState(snapshot, options);
   }
   if (snapshot.clerkStatus === "needs_new_password") {
     return deriveNewPasswordState(snapshot, options);
@@ -869,57 +839,6 @@ function createSignInFlowRuntime(): SignInFlowRuntime {
   };
 }
 
-function createStartCooldownCommand(
-  atoms: SignInFlowAtoms,
-  runtime: SignInFlowRuntime,
-): Command<void, [string, AbortSignal]> {
-  return command(({ set }, identity: string, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const deadlineMs = now() + AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS;
-    set(signInResendCooldownStorage.save$, identity, deadlineMs);
-    set(runtime.cooldownDeadlineMs$, deadlineMs);
-    set(atoms.resendRemainingSeconds$, AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS);
-  });
-}
-
-function createResendCooldownLifecycleRef(
-  atoms: SignInFlowAtoms,
-  runtime: SignInFlowRuntime,
-) {
-  return onRef(
-    command(
-      async (
-        { get, set },
-        _element: HTMLSpanElement,
-        signal: AbortSignal,
-      ): Promise<void> => {
-        await setLoop(
-          () => {
-            const deadlineMs = get(runtime.cooldownDeadlineMs$);
-            if (deadlineMs === null) {
-              return true;
-            }
-            const remainingSeconds = Math.max(
-              0,
-              Math.ceil((deadlineMs - now()) / 1000),
-            );
-            set(atoms.resendRemainingSeconds$, remainingSeconds);
-            if (remainingSeconds > 0) {
-              return false;
-            }
-            set(signInResendCooldownStorage.clear$);
-            set(runtime.cooldownDeadlineMs$, null);
-            return true;
-          },
-          1000,
-          signal,
-          { retryTransientErrors: false },
-        );
-      },
-    ),
-  );
-}
-
 function createCommitResourceCommand(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
@@ -947,12 +866,15 @@ function createCommitResourceCommand(
         // are masked display labels and must never become an editable draft.
         set(atoms.identifier$, snapshot.identifier);
       }
-      const preparedFactor = preparedFactorForSnapshot(snapshot);
+      const preparedFactor = preparedFactorForSnapshot(
+        snapshot,
+        get(atoms.selectedFactor$),
+      );
       if (preparedFactor) {
         set(runtime.preparedFactorId$, preparedFactor.id);
         set(atoms.selectedFactor$, preparedFactor);
         const verificationStatus =
-          preparedFactor.kind === "client-trust-email-code"
+          preparedFactor.kind === "second-factor"
             ? snapshot.secondFactorVerificationStatus
             : snapshot.firstFactorVerificationStatus;
         if (verificationStatus === "expired") {
@@ -976,10 +898,6 @@ function createCommitResourceCommand(
         set(signInResendCooldownStorage.clear$);
         set(runtime.cooldownDeadlineMs$, null);
         set(atoms.resendRemainingSeconds$, 0);
-      }
-      if (snapshot.clerkStatus === "needs_second_factor") {
-        set(dependencies.continuation.failClosed$, "second-factor");
-        return;
       }
       if (
         snapshot.transferable ||
@@ -1006,6 +924,7 @@ function createResourceCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   startCooldown$: Command<void, [string, AbortSignal]>,
+  restart$: Command<void, []>,
   dependencies: AuthV2SignInFlowDependencies,
 ): {
   readonly applyResource$: ApplySignInResourceCommand;
@@ -1028,36 +947,45 @@ function createResourceCommands(
         get(atoms.capabilities$),
         get(atoms.passkeyCapability$),
       );
-      const clientTrustFactor = snapshot.factors.find((factor) => {
-        return factor.kind === "client-trust-email-code";
-      });
-      if (
-        snapshot.clerkStatus !== "needs_client_trust" ||
-        !clientTrustFactor ||
-        snapshot.unknownFactorStrategies.length > 0 ||
-        snapshot.secondFactorVerificationStrategy === "email_code"
-      ) {
+      if (!isAuthV2SecondFactorStatus(snapshot.clerkStatus)) {
         await set(commitResource$, resource, signal);
-        signal.throwIfAborted();
         return;
       }
-
-      set(atoms.selectedFactor$, clientTrustFactor);
-      set(atoms.code$, "");
+      if (
+        !isAuthV2SecondFactorStatus(get(atoms.snapshot$)?.clerkStatus ?? null)
+      ) {
+        set(atoms.methodChooser$, false);
+        set(atoms.code$, "");
+      }
+      const factor =
+        selectedFactorForSnapshot(snapshot, get(atoms.selectedFactor$)) ??
+        preparedFactorForSnapshot(snapshot, null) ??
+        snapshot.factors[0];
+      if (!factor || factor.kind !== "second-factor") {
+        await set(commitResource$, resource, signal);
+        return;
+      }
+      set(atoms.selectedFactor$, factor);
+      const preparation = authV2SecondFactorPreparation(factor);
+      if (
+        !preparation ||
+        snapshot.secondFactorVerificationStrategy === factor.strategy
+      ) {
+        await set(commitResource$, resource, signal);
+        return;
+      }
       const prepared = await settle(
-        resource.prepareSecondFactor(clientTrustPreparation(clientTrustFactor)),
+        resource.prepareSecondFactor(preparation),
         signal,
       );
       if (!prepared.ok) {
         await set(commitResource$, resource, signal);
-        signal.throwIfAborted();
         set(atoms.error$, normalizeClerkError(prepared.error, "code"));
         return;
       }
-      set(runtime.preparedFactorId$, clientTrustFactor.id);
+      set(runtime.preparedFactorId$, factor.id);
       await set(commitResource$, prepared.value, signal);
-      signal.throwIfAborted();
-      set(startCooldown$, clientTrustFactor.id, signal);
+      set(startCooldown$, factor.id, signal);
     },
   );
 
@@ -1109,6 +1037,11 @@ function createResourceCommands(
 
       signal.throwIfAborted();
       set(atoms.accounts$, discoverAuthV2ExistingAccounts(clerk));
+      if (get(atoms.useAnotherAccount$)) {
+        // Add-account opens a fresh flow even if Clerk retains an earlier attempt.
+        set(restart$);
+        return;
+      }
       await set(applyResource$, clerk.client.signIn, signal);
       signal.throwIfAborted();
     },
@@ -1188,8 +1121,8 @@ function prepareSignInSubmission(
         }),
       };
     }
-    case "client-trust-code": {
-      if (!values.code) {
+    case "second-factor": {
+      if (!values.code || flowState.selectedFactor?.kind !== "second-factor") {
         return null;
       }
       return {
@@ -1197,7 +1130,7 @@ function prepareSignInSubmission(
         fallbackField: "code",
         request: resource.attemptSecondFactor({
           code: values.code,
-          strategy: "email_code",
+          strategy: flowState.selectedFactor.strategy,
         }),
       };
     }
@@ -1319,13 +1252,18 @@ function factorPreparation(
   };
 }
 
-function clientTrustPreparation(
-  factor: Extract<AuthV2SignInFactor, { kind: "client-trust-email-code" }>,
-): PrepareSecondFactorParams {
-  return {
-    emailAddressId: factor.emailAddressId,
-    strategy: "email_code",
-  };
+function prepareCodeFactor(
+  resource: SignInResource,
+  factor: Extract<
+    AuthV2SignInFactor,
+    { kind: "email-code" | "password-reset" | "second-factor" }
+  >,
+): Promise<SignInResource> | null {
+  if (factor.kind === "second-factor") {
+    const preparation = authV2SecondFactorPreparation(factor);
+    return preparation ? resource.prepareSecondFactor(preparation) : null;
+  }
+  return resource.prepareFirstFactor(factorPreparation(factor));
 }
 
 function createFactorSelectionCommand(
@@ -1399,22 +1337,23 @@ function createFactorSelectionCommand(
         set(atoms.passwordRecovery$, false);
         return;
       }
-      if (get(runtime.preparedFactorId$) === factor.id) {
+      const preparation =
+        get(runtime.preparedFactorId$) === factor.id
+          ? null
+          : prepareCodeFactor(resource, factor);
+      if (!preparation) {
         set(atoms.methodChooser$, false);
         set(atoms.passwordRecovery$, false);
         set(atoms.selectedFactor$, factor);
         return;
       }
-      const preparation =
-        factor.kind === "client-trust-email-code"
-          ? resource.prepareSecondFactor(clientTrustPreparation(factor))
-          : resource.prepareFirstFactor(factorPreparation(factor));
       const prepared = await settle(preparation, signal);
       if (!prepared.ok) {
         set(atoms.error$, normalizeClerkError(prepared.error, "general"));
         return;
       }
       set(runtime.preparedFactorId$, factor.id);
+      set(atoms.selectedFactor$, factor);
       await set(applyResource$, prepared.value, signal);
       signal.throwIfAborted();
       set(atoms.methodChooser$, false);
@@ -1524,12 +1463,58 @@ function createSessionSelectionCommand(
   );
 }
 
-function createGoogleOneTapCommand(
+function createGoogleOneTapSignUpCommand(
+  atoms: SignInFlowAtoms,
+  stage$: State<GoogleOneTapStage | null>,
+  navigation: AuthV2Navigation,
+): Command<Promise<void>, [string, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      credential: string,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      if (!clerk.client) {
+        throw new Error(
+          "Loaded Clerk instance did not provide a client resource",
+        );
+      }
+      set(stage$, "sign-up");
+      const signUp = await settle(
+        clerk.client.signUp.create({
+          strategy: "google_one_tap",
+          token: credential,
+        }),
+        signal,
+      );
+      if (!signUp.ok) {
+        set(atoms.error$, normalizeClerkError(signUp.error, "general"));
+        return;
+      }
+      // The sign-up route resumes this Clerk resource, including missing legal
+      // consent or verification, and owns activation and the sign-up redirect.
+      window.location.assign(navigation.href("sign-up"));
+    },
+  );
+}
+
+function createGoogleOneTapCommands(
   atoms: SignInFlowAtoms,
   runtime: SignInFlowRuntime,
   applyResource$: ApplySignInResourceCommand,
   dependencies: AuthV2SignInFlowDependencies,
-): Command<Promise<void>, [AbortSignal]> {
+): {
+  readonly run$: Command<Promise<void>, [AbortSignal]>;
+  readonly stage$: Computed<GoogleOneTapStage | null>;
+} {
+  const stage$ = state<GoogleOneTapStage | null>(null);
+  const signUp$ = createGoogleOneTapSignUpCommand(
+    atoms,
+    stage$,
+    dependencies.navigation,
+  );
   const exchangeCredentialOperation$ = command(
     async (
       { get, set },
@@ -1539,6 +1524,7 @@ function createGoogleOneTapCommand(
       const resource = await get(clerkSignInResource$);
       signal.throwIfAborted();
       set(atoms.error$, null);
+      set(stage$, "exchange");
       const exchange = await settle(
         resource.create({
           signUpIfMissing: false,
@@ -1548,9 +1534,15 @@ function createGoogleOneTapCommand(
         signal,
       );
       if (!exchange.ok) {
-        set(atoms.error$, normalizeClerkError(exchange.error, "general"));
+        const error = normalizeClerkError(exchange.error, "general");
+        if (error.clerkCode === "external_account_not_found") {
+          await set(signUp$, credential, signal);
+          return;
+        }
+        set(atoms.error$, error);
         return;
       }
+      set(stage$, "continuation");
       await set(applyResource$, exchange.value, signal);
       signal.throwIfAborted();
     },
@@ -1586,6 +1578,7 @@ function createGoogleOneTapCommand(
   );
   const promptOperation$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      set(stage$, null);
       if (!dependencies.isBaseRoute) {
         return;
       }
@@ -1596,6 +1589,7 @@ function createGoogleOneTapCommand(
       if (!clientId) {
         return;
       }
+      set(stage$, "prompt");
       const credential = await settle(
         requestGoogleOneTapCredential(clientId, signal),
         signal,
@@ -1614,7 +1608,12 @@ function createGoogleOneTapCommand(
       signal.throwIfAborted();
     },
   );
-  return createCoalescedOperation$(runtime, "one-tap", promptOperation$);
+  return {
+    run$: createCoalescedOperation$(runtime, "one-tap", promptOperation$),
+    stage$: computed((get) => {
+      return get(stage$);
+    }),
+  };
 }
 
 function createResendCodeOperation$(
@@ -1629,7 +1628,9 @@ function createResendCodeOperation$(
       !factor ||
       (factor.kind !== "email-code" &&
         factor.kind !== "password-reset" &&
-        factor.kind !== "client-trust-email-code")
+        factor.kind !== "second-factor") ||
+      (factor.kind === "second-factor" &&
+        !authV2SecondFactorPreparation(factor))
     ) {
       return;
     }
@@ -1643,10 +1644,10 @@ function createResendCodeOperation$(
     const resource = await get(clerkSignInResource$);
     signal.throwIfAborted();
     set(atoms.error$, null);
-    const preparation =
-      factor.kind === "client-trust-email-code"
-        ? resource.prepareSecondFactor(clientTrustPreparation(factor))
-        : resource.prepareFirstFactor(factorPreparation(factor));
+    const preparation = prepareCodeFactor(resource, factor);
+    if (!preparation) {
+      return;
+    }
     const prepared = await settle(preparation, signal);
     if (!prepared.ok) {
       set(atoms.error$, normalizeClerkError(prepared.error, "code"));
@@ -1715,7 +1716,6 @@ function createEntryNavigationCommands(
       secondFactorVerificationStrategy: null,
       identifierMode: get(atoms.capabilities$).identifierMode,
       transferable: false,
-      unknownFactorStrategies: [],
     });
     set(atoms.selectedFactor$, null);
     set(atoms.passwordRecovery$, false);
@@ -1881,11 +1881,17 @@ export function createAuthV2SignInSignals(
 ): AuthV2SignInSignals {
   const atoms = createSignInFlowAtoms();
   const runtime = createSignInFlowRuntime();
-  const startCooldown$ = createStartCooldownCommand(atoms, runtime);
+  const formCommands = createFormCommands(atoms, runtime);
+  const startCooldown$ = createStartCooldownCommand(
+    signInResendCooldown,
+    atoms,
+    runtime,
+  );
   const { applyResource$, initialize$ } = createResourceCommands(
     atoms,
     runtime,
     startCooldown$,
+    formCommands.restart$,
     dependencies,
   );
   const submitOperation$ = createSubmitOperation$(
@@ -1894,6 +1900,7 @@ export function createAuthV2SignInSignals(
     applyResource$,
   );
   const resendCooldownLifecycleRef$ = createResendCooldownLifecycleRef(
+    signInResendCooldown,
     atoms,
     runtime,
   );
@@ -1903,8 +1910,7 @@ export function createAuthV2SignInSignals(
     applyResource$,
     startCooldown$,
   );
-  const formCommands = createFormCommands(atoms, runtime);
-  const runGoogleOneTap$ = createGoogleOneTapCommand(
+  const googleOneTap = createGoogleOneTapCommands(
     atoms,
     runtime,
     applyResource$,
@@ -1921,11 +1927,12 @@ export function createAuthV2SignInSignals(
     error$: computed((get) => {
       return get(atoms.error$);
     }),
+    googleOneTapStage$: googleOneTap.stage$,
     identifier$: computed((get) => {
       return get(atoms.identifier$);
     }),
     initialize$,
-    initializeExternalStrategies$: runGoogleOneTap$,
+    initializeExternalStrategies$: googleOneTap.run$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
     }),

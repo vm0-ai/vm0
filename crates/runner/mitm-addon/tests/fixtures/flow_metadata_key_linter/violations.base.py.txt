@@ -307,7 +307,7 @@ values = [
 ]
 match payload:
     case {"payload": payload}:
-        outer_meta["_model_json_usage_finalized"] = True
+        outer_meta["model_provider_usage_tiers"] = {}
 match_alias_after_case = {}
 match match_payload:
     case {"metadata": raw_match_metadata}:

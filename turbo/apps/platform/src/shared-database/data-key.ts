@@ -71,14 +71,6 @@ export interface SharedDatabaseQuery<TKey extends SharedDatabaseDataKey> {
   readonly consistency: SharedDatabaseConsistency;
 }
 
-export interface ScopedSharedDatabaseQuery<
-  TKey extends ScopedSharedDatabaseDataKey,
-> {
-  readonly dataKey: TKey;
-  readonly afterSeqId: number | null;
-  readonly consistency: SharedDatabaseConsistency;
-}
-
 const chatThreadSnapshotSchema = chatThreadsContract.snapshot.responses[200];
 export const chatThreadIndicatorsSchema =
   chatThreadsContract.indicators.responses[200];
@@ -122,15 +114,6 @@ export function parseSharedDatabaseQueryResult<
   ) as SharedDatabaseQueryResult<TKey>;
 }
 
-export function sharedDatabaseDataKeyId(
-  dataKey: SharedDatabaseDataKey | ScopedSharedDatabaseDataKey,
-): string {
-  if (dataKey.kind === "chat-event") {
-    return JSON.stringify([dataKey.kind, dataKey.threadId]);
-  }
-  return JSON.stringify([dataKey.kind]);
-}
-
 export function scopeSharedDatabaseDataKey(
   dataKey: ChatEventDataKey,
   identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
@@ -148,22 +131,4 @@ export function scopeSharedDatabaseDataKey(
   identity: Pick<SharedDatabaseIdentity, "userId" | "orgId">,
 ): ScopedSharedDatabaseDataKey {
   return { ...dataKey, userId: identity.userId, orgId: identity.orgId };
-}
-
-export function unScopeSharedDatabaseDataKey(
-  dataKey: ScopedChatEventDataKey,
-): ChatEventDataKey;
-export function unScopeSharedDatabaseDataKey(
-  dataKey: ScopedChatThreadEventDataKey,
-): ChatThreadEventDataKey;
-export function unScopeSharedDatabaseDataKey(
-  dataKey: ScopedSharedDatabaseDataKey,
-): SharedDatabaseDataKey;
-export function unScopeSharedDatabaseDataKey(
-  dataKey: ScopedSharedDatabaseDataKey,
-): SharedDatabaseDataKey {
-  if (dataKey.kind === "chat-event") {
-    return { kind: dataKey.kind, threadId: dataKey.threadId };
-  }
-  return { kind: dataKey.kind };
 }

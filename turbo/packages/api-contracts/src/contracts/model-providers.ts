@@ -4,7 +4,7 @@ import DEEPSEEK_V4_FLASH_MODEL_CATALOG from "./deepseek-model-catalog.json" with
 import {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   type SupportedRunModel,
   type ModelPriceTier,
 } from "./model-price-tiers";
@@ -54,7 +54,7 @@ const DEEPSEEK_MODEL_CATALOG = {
 export {
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_PRICE_TIER,
+  BUILT_IN_MODEL_PRICE_TIER,
   type SupportedRunModel,
   type ModelPriceTier,
 };
@@ -131,6 +131,7 @@ const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5-1",
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.6-luna",
   "deepseek-v4-flash",
@@ -167,6 +168,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "gpt-6-astra": "GPT 6 Astra",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
@@ -177,6 +179,32 @@ const SUPPORTED_RUN_MODEL_SET: ReadonlySet<string> = new Set(
   SUPPORTED_RUN_MODELS,
 );
 
+type ActiveRunModel = Exclude<SupportedRunModel, "claude-fable-5">;
+
+// Historical IDs remain in the wire schemas and billing catalog. Availability
+// is a separate product decision, including for provider-prefixed aliases.
+export const RETIRED_RUN_MODEL_MESSAGE =
+  "Claude Fable 5 has been retired. Select Claude Fable 5.1.";
+
+export function getRunModelAccess(
+  model: string | null | undefined,
+  restrictedBuiltInModels = false,
+): "allowed" | "pro_required" | "retired" {
+  const canonical = normalizeBuiltInModelId(model?.trim().toLowerCase() ?? "");
+  if (canonical === "claude-fable-5") {
+    return "retired";
+  }
+  return restrictedBuiltInModels && isLimitedFree1RestrictedRunModel(model)
+    ? "pro_required"
+    : "allowed";
+}
+
+export function isActiveRunModel(
+  model: string | null | undefined,
+): model is ActiveRunModel {
+  return isSupportedRunModel(model) && getRunModelAccess(model) === "allowed";
+}
+
 export function isSupportedRunModel(
   model: string | null | undefined,
 ): model is SupportedRunModel {
@@ -185,6 +213,7 @@ export function isSupportedRunModel(
 
 /** Models supported by the Codex Fast service tier. */
 export const CODEX_FAST_MODE_MODELS = [
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -205,10 +234,12 @@ export function isCodexFastModeModel(
   );
 }
 
-export function getVm0ModelPriceTier(
+export function getBuiltInModelPriceTier(
   model: string,
 ): ModelPriceTier | undefined {
-  return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
+  return isSupportedRunModel(model)
+    ? BUILT_IN_MODEL_PRICE_TIER[model]
+    : undefined;
 }
 
 export function getCanonicalModelDisplayName(model: string): string {
@@ -230,13 +261,10 @@ export function getDefaultOrgModelPolicySeed(
 }
 
 /**
- * Mapping from VM0 built-in model names to their concrete provider type and vendor.
+ * Mapping from built-in model names to their concrete provider type and vendor.
  * Used at build-context time to resolve the meta-provider to a real provider.
- *
- * NOTE: Defined before MODEL_PROVIDER_TYPES so the built-in entry can derive
- * its models list from this mapping via Object.keys().
  */
-export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
+export const BUILT_IN_MODEL_ROUTE_PROVIDERS = {
   "anthropic-api-key": { vendor: "anthropic" },
   "openrouter-api-key": { vendor: "openrouter" },
   deepseek: { vendor: "deepseek" },
@@ -245,7 +273,7 @@ export const VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS = {
 } as const satisfies Partial<Record<ModelProviderType, { vendor: string }>>;
 
 export type BuiltInModelRouteProviderType =
-  keyof typeof VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS;
+  keyof typeof BUILT_IN_MODEL_ROUTE_PROVIDERS;
 
 export interface BuiltInModelRouteCandidate {
   readonly concreteType: BuiltInModelRouteProviderType;
@@ -262,25 +290,15 @@ interface ModelConfig {
   ];
 }
 
-// Key order is load-bearing: `Object.keys()` preserves insertion order and
-// `MODEL_PROVIDER_TYPES["built-in"].models` is derived from it, which in turn drives
-// the order models appear in the Built-in model dropdown.
-export const VM0_MODEL_TO_PROVIDER = {
+// Execution routes contain only active models. Historical recognition and
+// retirement validation must not depend on a model retaining an executable route.
+export const BUILT_IN_MODEL_TO_PROVIDER = {
   "claude-fable-5-1": {
     candidates: [
       { concreteType: "anthropic-api-key" },
       {
         concreteType: "openrouter-api-key",
         apiModel: "anthropic/claude-fable-5.1",
-      },
-    ],
-  },
-  "claude-fable-5": {
-    candidates: [
-      { concreteType: "anthropic-api-key" },
-      {
-        concreteType: "openrouter-api-key",
-        apiModel: "anthropic/claude-fable-5",
       },
     ],
   },
@@ -338,6 +356,18 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
+  // Permanent Built-in availability routing: prefer OpenAI, then use
+  // OpenRouter when the primary candidate has no key or is in cooldown.
+  // This is operational routing, not a cross-version compatibility bridge.
+  "gpt-6-astra": {
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-6-astra",
+      },
+    ],
+  },
   "gpt-5.6-sol": {
     candidates: [
       { concreteType: "openai-api-key" },
@@ -374,7 +404,7 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
-} as const satisfies Record<SupportedRunModel, ModelConfig>;
+} as const satisfies Record<ActiveRunModel, ModelConfig>;
 
 export interface BuiltInModelRouteTarget {
   readonly selectedModel: SupportedRunModel;
@@ -383,65 +413,64 @@ export interface BuiltInModelRouteTarget {
   readonly vendor: string;
 }
 
-function vm0PrimaryCandidate(model: string): BuiltInModelRouteCandidate {
-  if (!isSupportedRunModel(model)) {
+function builtInPrimaryCandidate(model: string): BuiltInModelRouteCandidate {
+  if (!isActiveRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown built-in model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
-  return VM0_MODEL_TO_PROVIDER[model].candidates[0];
+  return BUILT_IN_MODEL_TO_PROVIDER[model].candidates[0];
 }
 
-export function getVm0BuiltInModelRouteCandidates(
+export function getBuiltInModelRouteCandidates(
   model: string,
 ): readonly BuiltInModelRouteTarget[] {
-  if (!isSupportedRunModel(model)) {
+  if (!isActiveRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown built-in model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
-  return VM0_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {
+  return BUILT_IN_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {
     return {
       selectedModel: model,
       providerType: candidate.concreteType,
       upstreamModel: "apiModel" in candidate ? candidate.apiModel : model,
-      vendor: VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
+      vendor: BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor,
     };
   });
 }
 
-export function getVm0BuiltInModelRouteVendors(): readonly string[] {
+export function getBuiltInModelRouteVendors(): readonly string[] {
   return [
     ...new Set(
-      Object.values(VM0_MODEL_TO_PROVIDER).flatMap((config) => {
+      Object.values(BUILT_IN_MODEL_TO_PROVIDER).flatMap((config) => {
         return config.candidates.map((candidate) => {
-          return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType]
-            .vendor;
+          return BUILT_IN_MODEL_ROUTE_PROVIDERS[candidate.concreteType].vendor;
         });
       }),
     ),
   ];
 }
 
-export const VM0_MODEL_ALIAS_TO_MODEL = {
+export const BUILT_IN_MODEL_ALIAS_TO_MODEL = {
   "anthropic/claude-fable-5.1": "claude-fable-5-1",
   "anthropic/claude-fable-5": "claude-fable-5",
   "anthropic/claude-opus-5": "claude-opus-5",
   "anthropic/claude-opus-4.8": "claude-opus-4-8",
   "anthropic/claude-sonnet-5": "claude-sonnet-5",
   "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
-} as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
+} as const satisfies Record<string, SupportedRunModel>;
 
-const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
-  VM0_MODEL_ALIAS_TO_MODEL;
+const BUILT_IN_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
+  BUILT_IN_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
   "gpt-5.6-luna",
   "deepseek-v4-flash",
 ]);
 
-export function normalizeVm0ModelId(model: string): string {
-  return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
+export function normalizeBuiltInModelId(model: string): string {
+  return BUILT_IN_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
 
 export function isLimitedFree1RestrictedRunModel(
@@ -454,7 +483,7 @@ export function isLimitedFree1RestrictedRunModel(
   if (!normalized) {
     return false;
   }
-  const canonicalModel = normalizeVm0ModelId(normalized);
+  const canonicalModel = normalizeBuiltInModelId(normalized);
   const unprefixedModel = canonicalModel.replace(
     /^(anthropic|deepseek|openai)\//,
     "",
@@ -462,17 +491,20 @@ export function isLimitedFree1RestrictedRunModel(
   return !LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel);
 }
 
+export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
+  SUPPORTED_RUN_MODELS.filter(isActiveRunModel);
+
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
+  "gpt-6-astra",
+  "openai/gpt-6-astra",
   "claude-fable-5-1",
-  "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "anthropic/claude-fable-5.1",
-  "anthropic/claude-fable-5",
   "anthropic/claude-opus-5",
   "anthropic/claude-opus-4.8",
   "anthropic/claude-sonnet-5",
@@ -493,7 +525,7 @@ export function getModelImageInputSupport(
   if (!model) {
     return "unknown";
   }
-  const normalized = normalizeVm0ModelId(model);
+  const normalized = normalizeBuiltInModelId(model);
   if (
     IMAGE_INPUT_SUPPORTED_MODELS.has(normalized) ||
     IMAGE_INPUT_SUPPORTED_MODELS.has(model)
@@ -516,10 +548,10 @@ export function modelSupportsImageInput(
 }
 
 /**
- * Return the VM0 built-in models visible to callers.
+ * Return the built-in models visible to callers.
  */
-export function getVm0VisibleModels(): string[] {
-  return [...SUPPORTED_RUN_MODELS];
+export function getBuiltInVisibleModels(): string[] {
+  return [...ACTIVE_RUN_MODELS];
 }
 
 /**
@@ -539,7 +571,7 @@ export function getVm0VisibleModels(): string[] {
 const BUILT_IN_MODEL_PROVIDER_CONFIG = {
   framework: "claude-code" as const,
   label: "Built-in model",
-  models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
+  models: [...ACTIVE_RUN_MODELS],
   defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
 };
 
@@ -557,7 +589,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5-1",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
@@ -578,7 +609,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "claude-fable-5-1",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
@@ -604,7 +634,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5.1",
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5",
@@ -646,7 +675,6 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: [
       "anthropic/claude-fable-5.1",
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-5",
@@ -675,6 +703,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "openai/gpt-6-astra",
       "openai/gpt-5.6-sol",
       "openai/gpt-5.6-terra",
       "openai/gpt-5.6-luna",
@@ -719,6 +748,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -793,6 +823,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -931,13 +962,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "claude-fable-5": [
-    "built-in",
-    "claude-code-oauth-token",
-    "anthropic-api-key",
-    "openrouter-api-key",
-    "vercel-ai-gateway",
-  ],
   "claude-opus-5": [
     "built-in",
     "claude-code-oauth-token",
@@ -965,6 +989,12 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+  ],
+  "gpt-6-astra": [
+    "built-in",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
   ],
   "gpt-5.6-sol": [
     "built-in",
@@ -996,14 +1026,13 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   ],
   "deepseek-v4-flash": ["built-in", "deepseek"],
   "deepseek-v4-pro": ["built-in", "deepseek"],
-} as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;
+} as const satisfies Record<ActiveRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
-  Record<ModelProviderType, Partial<Record<SupportedRunModel, string>>>
+  Record<ModelProviderType, Partial<Record<ActiveRunModel, string>>>
 > = {
   "openrouter-api-key": {
     "claude-fable-5-1": "anthropic/claude-fable-5.1",
-    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
@@ -1011,13 +1040,13 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
   },
   "vercel-ai-gateway": {
     "claude-fable-5-1": "anthropic/claude-fable-5.1",
-    "claude-fable-5": "anthropic/claude-fable-5",
     "claude-opus-5": "anthropic/claude-opus-5",
     "claude-opus-4-8": "anthropic/claude-opus-4.8",
     "claude-sonnet-5": "anthropic/claude-sonnet-5",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "openrouter-codex": {
+    "gpt-6-astra": "openai/gpt-6-astra",
     "gpt-5.6-sol": "openai/gpt-5.6-sol",
     "gpt-5.6-terra": "openai/gpt-5.6-terra",
     "gpt-5.6-luna": "openai/gpt-5.6-luna",
@@ -1047,7 +1076,7 @@ export function normalizeRunModelId(model: string): string {
 
 export function getProvidersForModel(model: string): ModelProviderType[] {
   const canonical = normalizeRunModelId(model);
-  if (!isSupportedRunModel(canonical)) {
+  if (!isActiveRunModel(canonical)) {
     return [];
   }
   return [...MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical]];
@@ -1067,11 +1096,11 @@ export function getProviderRuntimeModel(
   model: string,
 ): string {
   const canonical = normalizeRunModelId(model);
-  if (!isSupportedRunModel(canonical)) {
+  if (!isActiveRunModel(canonical)) {
     return model;
   }
   if (isBuiltInModelProviderType(type)) {
-    return vm0PrimaryCandidate(canonical).apiModel ?? canonical;
+    return builtInPrimaryCandidate(canonical).apiModel ?? canonical;
   }
   return PROVIDER_RUNTIME_MODEL_ALIASES[type]?.[canonical] ?? canonical;
 }
@@ -1113,30 +1142,30 @@ export const modelProviderWriteTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
- * Get the concrete provider type for a VM0 built-in model.
- * Throws if the model is not in the VM0 model mapping.
+ * Get the concrete provider type for a built-in model.
+ * Throws if the model is not in the built-in model mapping.
  */
-export function getVm0ConcreteProviderType(
+export function getBuiltInConcreteProviderType(
   model: string,
 ): BuiltInModelRouteProviderType {
-  return vm0PrimaryCandidate(model).concreteType;
+  return builtInPrimaryCandidate(model).concreteType;
 }
 
 /**
- * Get the vendor name for a VM0 built-in model.
+ * Get the vendor name for a built-in model.
  * Used for key pool lookup.
  */
-export function getVm0Vendor(model: string): string {
-  const providerType = vm0PrimaryCandidate(model).concreteType;
-  return VM0_BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
+export function getBuiltInVendor(model: string): string {
+  const providerType = builtInPrimaryCandidate(model).concreteType;
+  return BUILT_IN_MODEL_ROUTE_PROVIDERS[providerType].vendor;
 }
 
 /**
- * Get the upstream API model identifier for a VM0 built-in model.
+ * Get the upstream API model identifier for a built-in model.
  * Falls back to the display name when no override is configured.
  */
-export function getVm0ApiModel(model: string): string {
-  return vm0PrimaryCandidate(model).apiModel ?? model;
+export function getBuiltInApiModel(model: string): string {
+  return builtInPrimaryCandidate(model).apiModel ?? model;
 }
 
 /**
@@ -1235,7 +1264,7 @@ export function getModelProviderEnvBindings(
 }
 
 /**
- * Get VM0-owned Codex provider metadata for a static model provider.
+ * Get built-in Codex provider metadata for a static model provider.
  */
 export function getModelProviderCodexRuntimeConfig(
   type: ModelProviderType,
@@ -1290,32 +1319,6 @@ export function getModelProviderCodexCatalogForModel(
   return undefined;
 }
 
-/**
- * Get the upstream base URL for a model provider type.
- *
- * Returns the framework-appropriate upstream base URL from envBindings —
- * ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL for codex.
- * Returns null when the provider relies on the SDK's default
- * (Anthropic-native providers, OpenAI direct).
- *
- * Used by areProvidersCompatible to detect session-continuation safety
- * across provider swaps. Providers hitting the same upstream URL are
- * compatible; different URLs imply different upstreams and so a
- * potentially different request/response contract.
- */
-export function getProviderBaseUrl(type: ModelProviderType): string | null {
-  const envBindings = getModelProviderEnvBindings(type);
-  if (!envBindings) {
-    return null;
-  }
-  const anthropicUrl = envBindings["ANTHROPIC_BASE_URL"];
-  if (anthropicUrl) {
-    return anthropicUrl;
-  }
-  const openaiUrl = envBindings["OPENAI_BASE_URL"];
-  return openaiUrl ?? null;
-}
-
 const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
   "custom-anthropic-messages",
   "custom-openai-responses",
@@ -1323,31 +1326,10 @@ const CUSTOM_GATEWAY_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
 
 /**
  * Check whether a provider type routes through an org-configured gateway
- * surface. These types carry no envBindings, so `getProviderBaseUrl` cannot
- * report their upstream: it is stored per surface in `model_provider_surfaces`.
+ * surface. Its upstream is stored per surface in `model_provider_surfaces`.
  */
 export function isCustomGatewayProviderType(type: ModelProviderType): boolean {
   return CUSTOM_GATEWAY_PROVIDER_TYPES.has(type);
-}
-
-/**
- * Check if two model providers are compatible for session continuation.
- * Providers are compatible if they resolve to the same upstream base URL.
- *
- * A custom gateway type resolves to no base URL here, which must not be read
- * as "the vendor default endpoint" — that would make a self-hosted gateway
- * look interchangeable with anthropic-api-key, openai-api-key, or built-in.
- * It is compatible only with itself; whether two runs used the same surface
- * is a separate question, answered by the surface id the caller also holds.
- */
-export function areProvidersCompatible(
-  a: ModelProviderType,
-  b: ModelProviderType,
-): boolean {
-  if (isCustomGatewayProviderType(a) || isCustomGatewayProviderType(b)) {
-    return a === b;
-  }
-  return getProviderBaseUrl(a) === getProviderBaseUrl(b);
 }
 
 /**
@@ -1485,7 +1467,15 @@ export const upsertModelProviderRequestSchema = z.object({
   secret: z.string().min(1).optional(), // Legacy single secret
   authMethod: z.string().optional(), // For multi-auth providers
   secrets: z.record(z.string(), z.string()).optional(), // For multi-auth providers
-  selectedModel: z.string().optional(),
+  selectedModel: z
+    .string()
+    .refine(
+      (model) => {
+        return getRunModelAccess(model) !== "retired";
+      },
+      { message: RETIRED_RUN_MODEL_MESSAGE },
+    )
+    .optional(),
 });
 
 export type UpsertModelProviderRequest = z.infer<

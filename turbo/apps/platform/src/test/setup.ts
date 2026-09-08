@@ -12,11 +12,9 @@ import {
   IDBRequest,
   IDBTransaction,
   IDBVersionChangeEvent,
-  indexedDB,
 } from "fake-indexeddb";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
-import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
 for (const [name, content] of [
@@ -29,31 +27,6 @@ for (const [name, content] of [
   document.head.append(meta);
 }
 
-vi.mock("@clerk/shared/loadClerkJsScript", () => {
-  return {
-    loadClerkJSScript: (options: {
-      readonly domain?: string;
-      readonly publishableKey: string;
-    }) => {
-      if (options.domain) {
-        mockedClerk.initialize(options.publishableKey, {
-          domain: options.domain,
-        });
-      } else {
-        mockedClerk.initialize(options.publishableKey);
-      }
-      Reflect.set(globalThis, "Clerk", mockedClerk);
-      return Promise.resolve(null);
-    },
-  };
-});
-
-vi.hoisted(() => {
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", "test_preview_key");
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
-});
-
-globalThis.indexedDB = indexedDB;
 globalThis.IDBCursor = IDBCursor;
 globalThis.IDBCursorWithValue = IDBCursorWithValue;
 globalThis.IDBDatabase = IDBDatabase;
@@ -66,6 +39,21 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+// Base UI Scroll Area requires Web Animations, which happy-dom does not
+// implement. Scope the shim to sidebar viewports so dialogs and menus retain
+// their synchronous no-animation behavior unless a test supplies animations.
+Object.defineProperty(HTMLElement.prototype, "getAnimations", {
+  configurable: true,
+  get(this: HTMLElement): (() => Animation[]) | undefined {
+    if (this.dataset.testid !== "sidebar-scroll-area") {
+      return undefined;
+    }
+    return () => {
+      return [];
+    };
+  },
+});
+
 type HappyDomAttributeCallback = (
   this: HTMLIFrameElement,
   attribute: Attr,
@@ -76,7 +64,7 @@ type HappyDomLifecycleCallback = (this: HTMLIFrameElement) => void;
 
 type PatchedHTMLIFrameElementPrototype = HTMLIFrameElement &
   Record<symbol, unknown> & {
-    vm0HappyDomIframeLoadPatched?: true;
+    happyDomIframeLoadPatched?: true;
   };
 
 type StderrWriteArgs = [
@@ -89,8 +77,8 @@ type StderrWrite = (...args: StderrWriteArgs) => boolean;
 
 type PatchedStderr = {
   write: StderrWrite;
-  vm0OriginalWrite?: StderrWrite;
-  vm0HappyDomIframeNoisePatched?: true;
+  originalWrite?: StderrWrite;
+  happyDomIframeNoisePatched?: true;
 };
 
 const nodeProcess = (
@@ -111,7 +99,7 @@ function findPrototypeSymbol(
 function installHappyDomIframeLoadPatch(): void {
   const iframePrototype =
     HTMLIFrameElement.prototype as PatchedHTMLIFrameElementPrototype;
-  if (iframePrototype.vm0HappyDomIframeLoadPatched) {
+  if (iframePrototype.happyDomIframeLoadPatched) {
     return;
   }
 
@@ -137,7 +125,7 @@ function installHappyDomIframeLoadPatch(): void {
     !onRemoveAttributeSymbol ||
     !connectedToDocumentSymbol
   ) {
-    iframePrototype.vm0HappyDomIframeLoadPatched = true;
+    iframePrototype.happyDomIframeLoadPatched = true;
     return;
   }
 
@@ -199,13 +187,13 @@ function installHappyDomIframeLoadPatch(): void {
       originalConnectedToDocument.call(this);
     };
 
-  iframePrototype.vm0HappyDomIframeLoadPatched = true;
+  iframePrototype.happyDomIframeLoadPatched = true;
 }
 
 installHappyDomIframeLoadPatch();
 
 const originalStderrWrite =
-  nodeProcess.stderr.vm0OriginalWrite ??
+  nodeProcess.stderr.originalWrite ??
   nodeProcess.stderr.write.bind(nodeProcess.stderr);
 
 function isDisabledIframePageLoadingLog(chunk: string | Uint8Array): boolean {
@@ -227,10 +215,10 @@ function writeStderrWithoutHappyDomIframeNoise(
   return originalStderrWrite(...args);
 }
 
-if (!nodeProcess.stderr.vm0HappyDomIframeNoisePatched) {
-  nodeProcess.stderr.vm0OriginalWrite = originalStderrWrite;
+if (!nodeProcess.stderr.happyDomIframeNoisePatched) {
+  nodeProcess.stderr.originalWrite = originalStderrWrite;
   nodeProcess.stderr.write = writeStderrWithoutHappyDomIframeNoise;
-  nodeProcess.stderr.vm0HappyDomIframeNoisePatched = true;
+  nodeProcess.stderr.happyDomIframeNoisePatched = true;
 }
 
 function ensureTestLocalStorage(): void {
@@ -297,8 +285,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  globalThis.indexedDB = new IDBFactory();
   ensureTestLocalStorage();
-  document.documentElement.dataset.appBrandName = "VM0";
 
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.

@@ -21,6 +21,7 @@ import {
   piModelConfigLegacySchema,
   piModelConfigSchema,
   piModelConfigV2Schema,
+  piModelConfigV3Schema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -420,109 +421,156 @@ describe("Pi sandbox execution contract", () => {
     }
   });
 
-  it("accepts only exact dialect-aware credential binding sets", () => {
-    const publicResponses = {
-      schemaVersion: 2,
-      dialect: "openai-responses",
-      transport: "sse",
-      provider: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-5.6-terra",
-      thinkingLevel: "low",
-      credentialBindings: [
-        {
-          kind: "api-key",
-          environment: "OPENAI_API_KEY",
-          secretName: "OPENAI_API_KEY",
-        },
-      ],
-    } as const;
-    const codexResponses = {
-      schemaVersion: 2,
-      dialect: "openai-codex-responses",
-      transport: "sse",
-      provider: "openai-codex",
-      baseUrl: "https://chatgpt.com/backend-api",
-      model: "gpt-5.6-terra",
-      thinkingLevel: "low",
-      credentialBindings: [
-        {
-          kind: "account-id",
-          environment: "CHATGPT_ACCOUNT_ID",
-          secretName: "CHATGPT_ACCOUNT_ID",
-        },
-        {
-          kind: "access-token",
-          environment: "CHATGPT_ACCESS_TOKEN",
-          secretName: "CHATGPT_ACCESS_TOKEN",
-        },
-      ],
-    } as const;
-
-    expect(piModelConfigV2Schema.parse(publicResponses)).toEqual(
-      publicResponses,
-    );
-    expect(piModelConfigV2Schema.parse(codexResponses)).toEqual(codexResponses);
-    expect(piModelConfigSchema.parse(publicResponses)).toEqual(publicResponses);
-    expect(piModelConfigSchema.parse(codexResponses)).toEqual(codexResponses);
-    expect(piModelConfigLegacySchema.safeParse(codexResponses).success).toBe(
-      false,
-    );
-
-    for (const invalid of [
-      { ...publicResponses, transport: "auto" },
-      { ...publicResponses, provider: "openai-codex" },
-      { ...publicResponses, credentialBindings: [] },
-      {
-        ...publicResponses,
-        credentialBindings: [
-          publicResponses.credentialBindings[0],
-          publicResponses.credentialBindings[0],
-        ],
-      },
-      {
-        ...publicResponses,
-        credentialBindings: [
-          {
-            kind: "api-key",
-            environment: "CHATGPT_ACCESS_TOKEN",
-            secretName: "OPENAI_API_KEY",
-          },
-        ],
-      },
-      {
-        ...publicResponses,
+  it.each([2, 3] as const)(
+    "accepts only exact generation %s dialect-aware credential binding sets",
+    (schemaVersion) => {
+      const schema =
+        schemaVersion === 2 ? piModelConfigV2Schema : piModelConfigV3Schema;
+      const publicResponses = {
+        schemaVersion,
+        dialect: "openai-responses",
+        transport: "sse",
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        thinkingLevel: "low",
         credentialBindings: [
           {
             kind: "api-key",
             environment: "OPENAI_API_KEY",
-            secretName: "CHATGPT_REFRESH_TOKEN",
+            secretName: "OPENAI_API_KEY",
           },
         ],
-      },
-      {
-        ...codexResponses,
-        credentialBindings: [codexResponses.credentialBindings[1]],
-      },
-      {
-        ...codexResponses,
-        serviceTier: "priority",
-      },
-      {
-        ...codexResponses,
+      } as const;
+      const codexResponses = {
+        schemaVersion,
+        dialect: "openai-codex-responses",
+        transport: "sse",
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        model: "gpt-5.6-terra",
+        thinkingLevel: "low",
         credentialBindings: [
-          ...codexResponses.credentialBindings,
           {
-            kind: "id-token",
-            environment: "CHATGPT_ID_TOKEN",
-            secretName: "CHATGPT_ID_TOKEN",
+            kind: "account-id",
+            environment: "CHATGPT_ACCOUNT_ID",
+            secretName: "CHATGPT_ACCOUNT_ID",
+          },
+          {
+            kind: "access-token",
+            environment: "CHATGPT_ACCESS_TOKEN",
+            secretName: "CHATGPT_ACCESS_TOKEN",
           },
         ],
-      },
-    ]) {
-      expect(piModelConfigV2Schema.safeParse(invalid).success).toBe(false);
-    }
-  });
+      } as const;
+
+      expect(schema.parse(publicResponses)).toEqual(publicResponses);
+      expect(schema.parse(codexResponses)).toEqual(codexResponses);
+      expect(piModelConfigSchema.parse(publicResponses)).toEqual(
+        publicResponses,
+      );
+      expect(piModelConfigSchema.parse(codexResponses)).toEqual(codexResponses);
+      expect(piModelConfigLegacySchema.safeParse(codexResponses).success).toBe(
+        false,
+      );
+
+      for (const serviceTier of [
+        undefined,
+        "priority",
+        "fast",
+        "default",
+        "unknown",
+        null,
+      ]) {
+        for (const config of [publicResponses, codexResponses]) {
+          const candidate = {
+            ...config,
+            ...(serviceTier === undefined ? {} : { serviceTier }),
+          };
+          const expected =
+            serviceTier === undefined ||
+            (config.dialect === "openai-responses"
+              ? serviceTier === "priority"
+              : schemaVersion === 3 && serviceTier === "fast");
+          expect(piModelConfigSchema.safeParse(candidate).success).toBe(
+            expected,
+          );
+          expect(schema.safeParse(candidate).success).toBe(expected);
+          if (schemaVersion === 3) {
+            expect(piModelConfigV2Schema.safeParse(candidate).success).toBe(
+              false,
+            );
+          }
+        }
+      }
+
+      for (const invalid of [
+        { ...publicResponses, transport: "auto" },
+        { ...publicResponses, extra: true },
+        { ...publicResponses, thinkingLevel: "future" },
+        { ...publicResponses, catalogModel: "x".repeat(513) },
+        { ...codexResponses, catalogModel: "gpt-5.6-terra" },
+        { ...codexResponses, provider: "openai" },
+        {
+          ...codexResponses,
+          credentialBindings: [
+            codexResponses.credentialBindings[0],
+            codexResponses.credentialBindings[0],
+          ],
+        },
+        { ...publicResponses, provider: "openai-codex" },
+        { ...publicResponses, credentialBindings: [] },
+        {
+          ...publicResponses,
+          credentialBindings: [
+            publicResponses.credentialBindings[0],
+            publicResponses.credentialBindings[0],
+          ],
+        },
+        {
+          ...publicResponses,
+          credentialBindings: [
+            {
+              kind: "api-key",
+              environment: "CHATGPT_ACCESS_TOKEN",
+              secretName: "OPENAI_API_KEY",
+            },
+          ],
+        },
+        {
+          ...publicResponses,
+          credentialBindings: [
+            {
+              kind: "api-key",
+              environment: "OPENAI_API_KEY",
+              secretName: "CHATGPT_REFRESH_TOKEN",
+            },
+          ],
+        },
+        {
+          ...codexResponses,
+          credentialBindings: [codexResponses.credentialBindings[1]],
+        },
+        {
+          ...codexResponses,
+          serviceTier: "priority",
+        },
+        {
+          ...codexResponses,
+          credentialBindings: [
+            ...codexResponses.credentialBindings,
+            {
+              kind: "id-token",
+              environment: "CHATGPT_ID_TOKEN",
+              secretName: "CHATGPT_ID_TOKEN",
+            },
+          ],
+        },
+      ]) {
+        expect(schema.safeParse(invalid).success).toBe(false);
+      }
+    },
+  );
 
   it.each([
     {

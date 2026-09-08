@@ -456,11 +456,13 @@ Notes:
   - Charges org credits after successful video generation
   - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
   - Omitting --model generates with ${DEFAULT_VIDEO_MODEL_ALIAS}
+  - BytePlus/Seedance: first/last frame inputs cannot be combined with
+    reference image/video/audio inputs. Choose one input mode before generating.
 
 Models:
   - Dreamina Seedance 2.5: dreamina-seedance-2.5. Supports 4s-30s,
     480p/720p/1080p, optional audio, up to 30 image references, and up to
-    10 video and 10 audio references, plus first/last frames.
+    10 video and 10 audio references, or first/last frames.
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
     dreamina-seedance-2.0-fast, dreamina-seedance-2.0-mini.
     Supports 4s-15s,

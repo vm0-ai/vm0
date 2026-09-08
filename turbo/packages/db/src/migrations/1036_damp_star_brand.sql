@@ -1,3 +1,0 @@
-ALTER TABLE "chat_event_search_message_watermarks" DROP CONSTRAINT "chat_event_search_message_watermarks_chat_thread_id_chat_threads_id_fk";
---> statement-breakpoint
-ALTER TABLE "chat_event_search_messages" DROP CONSTRAINT "chat_event_search_messages_chat_thread_id_chat_threads_id_fk";

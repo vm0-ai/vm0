@@ -5087,10 +5087,14 @@ func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throw
     }
 }
 
-func writeJSONObject(_ object: [String: Any]) throws {
-    let data = try JSONSerialization.data(withJSONObject: object, options: [])
-    FileHandle.standardOutput.write(data)
-    FileHandle.standardOutput.write(Data("\n".utf8))
+func jsonLineData(_ object: [String: Any]) throws -> Data {
+    var data = try JSONSerialization.data(withJSONObject: object, options: [])
+    data.append(10)
+    return data
+}
+
+func writeJSONLine(_ data: Data) throws {
+    try FileHandle.standardOutput.write(contentsOf: data)
 }
 
 func failureResponse(code: String, message: String) -> [String: Any] {
@@ -5162,21 +5166,26 @@ func parseRequestData(_ data: Data) throws -> [String: Any] {
 }
 
 func runOneShot() {
+    let output: Data?
     do {
         let input = FileHandle.standardInput.readDataToEndOfFile()
         let request = try parseRequestData(input)
-        try writeJSONObject(responseObject(for: request, session: nil))
+        output = try jsonLineData(responseObject(for: request, session: nil))
     } catch let failure as HelperFailure {
-        try? writeJSONObject(failureResponse(failure))
+        output = try? jsonLineData(failureResponse(failure))
     } catch {
         captureUnexpectedHelperError(error, stage: "oneshot")
-        try? writeJSONObject(
+        output = try? jsonLineData(
             failureResponse(
                 code: "accessibility_unavailable",
                 message: String(describing: error)
             )
         )
     }
+    guard let output else {
+        return
+    }
+    try? writeJSONLine(output)
 }
 
 func runStdioSession() {
@@ -5189,6 +5198,7 @@ func runStdioSession() {
             if trimmed.isEmpty {
                 continue
             }
+            let output: Data?
             do {
                 let request = try parseRequestData(Data(trimmed.utf8))
                 let kind = (request["kind"] as? String)
@@ -5202,17 +5212,25 @@ func runStdioSession() {
                 if response["id"] == nil, let id = request["id"] {
                     response["id"] = id
                 }
-                try writeJSONObject(response)
+                output = try jsonLineData(response)
             } catch let failure as HelperFailure {
-                try? writeJSONObject(failureResponse(failure))
+                output = try? jsonLineData(failureResponse(failure))
             } catch {
                 captureUnexpectedHelperError(error, stage: "stdio")
-                try? writeJSONObject(
+                output = try? jsonLineData(
                     failureResponse(
                         code: "accessibility_unavailable",
                         message: String(describing: error)
                     )
                 )
+            }
+            guard let output else {
+                continue
+            }
+            do {
+                try writeJSONLine(output)
+            } catch {
+                break
             }
         }
         ComputerUseVisualPointer.shared.hide()
@@ -5222,6 +5240,7 @@ func runStdioSession() {
 }
 
 func run() {
+    _ = signal(SIGPIPE, SIG_IGN)
     startSentry()
 
     let arguments = Array(CommandLine.arguments.dropFirst())

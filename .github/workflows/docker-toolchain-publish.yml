@@ -17,6 +17,7 @@ permissions:
   packages: write
 
 env:
+  npm_config_audit: "false"
   REGISTRY: ghcr.io
 
 jobs:

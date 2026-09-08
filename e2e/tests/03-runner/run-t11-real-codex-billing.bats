@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Real Codex smoke and vm0 built-in usage attribution through public APIs.
+# Real Codex smoke and built-in usage attribution through public APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
@@ -19,7 +19,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "real codex reports vm0 built-in model usage" {
+@test "real codex reports built-in model usage" {
     run create_runner_agent "e2e-real-codex-${TEST_ID}"
     echo "$output"
     assert_success

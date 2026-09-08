@@ -401,7 +401,7 @@ export const cameraCommand = new Command()
     "Apply automatic click-driven camera moves to a screen recording",
   )
   .requiredOption("--file <path>", "Local source video")
-  .option("--events <path>", "VM0 recording event sidecar to generate a plan")
+  .option("--events <path>", "Recording event sidecar to generate a plan")
   .option("--plan <path>", "Existing camera plan to render")
   .requiredOption("--output <path>", "Rendered MP4 path")
   .option(

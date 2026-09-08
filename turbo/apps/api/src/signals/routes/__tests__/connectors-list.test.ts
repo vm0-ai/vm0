@@ -9,7 +9,7 @@ import {
 import { afterEach } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   invalidateApiTestConnectorCatalogCompatibility,
@@ -54,6 +54,7 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
       params: { connectorSlug: "gitlab" },
       body: {
         authMethod: "api-token",
+        account: { intent: "add" },
         values: {
           accessToken: "gl-test-token",
           host: "gitlab.example.com",
@@ -70,15 +71,29 @@ async function deleteConnector(
   connectorSlug: "gitlab" | "openai",
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  await accept(
-    setupApp({ context, routes: connectorAccountRoutes })(
-      connectorAccountsContract,
-    ).disconnectSingleAccount({
-      headers: authHeaders(),
-      body: { target: { kind: "builtin", connectorSlug } },
-    }),
-    [204, 404],
+  const client = setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
   );
+  const accounts = await accept(
+    client.connections({
+      headers: authHeaders(),
+      query: { kind: "builtin", connectorSlug },
+    }),
+    [200, 404],
+  );
+  if (accounts.status === 404) {
+    return;
+  }
+  for (const account of accounts.body.connections) {
+    await accept(
+      client.delete({
+        headers: authHeaders(),
+        params: { connectionId: account.id },
+        body: { target: { kind: "builtin", connectorSlug } },
+      }),
+      [200],
+    );
+  }
 }
 
 describe("GET /api/connectors", () => {

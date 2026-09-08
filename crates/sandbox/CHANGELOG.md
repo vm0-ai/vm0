@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.1...sandbox-v0.21.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire codex prefetch sandboxes after partial writes ([#32358](https://github.com/vm0-ai/vm0/issues/32358)) ([dd0454e](https://github.com/vm0-ai/vm0/commit/dd0454e8707ecb068cf839c76d04c315427d6783))
+
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.0...sandbox-v0.21.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **runner:** retire sandbox after prefetch start timeout ([#32308](https://github.com/vm0-ai/vm0/issues/32308)) ([984a47b](https://github.com/vm0-ai/vm0/commit/984a47b8744fea46ceb63c03d43fcd19970ef31d))
+
+
+### Performance Improvements
+
+* **runner:** streamline terminal idle finalization ([#32321](https://github.com/vm0-ai/vm0/issues/32321)) ([a49be00](https://github.com/vm0-ai/vm0/commit/a49be00e2242007a1510b464f994cf0b2157074f))
+
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.20.0...sandbox-v0.21.0) (2026-09-07)
+
+
+### Features
+
+* **rpc:** add generic guest-to-runner transport and sandbox fencing ([#32161](https://github.com/vm0-ai/vm0/issues/32161)) ([847d733](https://github.com/vm0-ai/vm0/commit/847d733315462a73b0aae20f992737b9df289bf9))
+
 ## [0.20.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.63...sandbox-v0.20.0) (2026-09-02)
 
 

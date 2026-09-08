@@ -408,6 +408,7 @@
         "sendMessage": "Enviar mensaje",
         "setIcon": "Asignar icono (Ctrl+Mayús+1-9)",
         "showShortcuts": "Mostrar atajos de teclado",
+        "togglePin": "Fijar / desfijar chat",
         "toggleSidebar": "Mostrar u ocultar la barra lateral"
       },
       "title": "Atajos de teclado"
@@ -648,7 +649,6 @@
       "renameImportedTemplate": "Cambiar nombre de la plantilla",
       "searchConnector": "Buscar plantillas",
       "searchConnectors": "Buscar plantillas",
-      "selected": "Plantilla: {{title}}",
       "selectStyle": "Selecciona el estilo {{style}}",
       "selectTemplate": "Seleccionar plantilla {{title}}",
       "selectVideo": "Seleccionar plantilla de vídeo {{title}}",
@@ -1026,6 +1026,20 @@
       "accessNotAllowed": "Acceso no permitido.",
       "userBanned": "El acceso a la cuenta se suspendió porque su actividad infringió los Términos de uso de {{brandName}}. Si tienes alguna pregunta, escribe a {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Has iniciado sesión en Desktop. Puedes cerrar esta ventana.",
+        "connecting": "Conectando tu sesión de escritorio.",
+        "consumed": "Finalizando el inicio de sesión en Desktop. Mantén esta ventana abierta.",
+        "failed": "No se pudo completar el inicio de sesión. Empieza de nuevo desde Desktop o reinténtalo en este navegador.",
+        "no-workspaces": "Crea un espacio de trabajo o únete a uno en la aplicación web y vuelve a iniciar sesión desde Desktop.",
+        "pending": "Abre Desktop para continuar iniciando sesión.",
+        "selecting": "Elige un espacio de trabajo para este ordenador."
+      },
+      "reopen": "Abrir Desktop",
+      "retry": "Reintentar",
+      "title": "Iniciar sesión en Desktop"
+    },
     "documentTitles": {
       "signIn": "Iniciar sesión",
       "signUp": "Crear una cuenta"
@@ -1041,19 +1055,35 @@
       "continuation": {
         "activationErrorDescription": "No pudimos completar el inicio de sesión. Vuelve a empezar e inténtalo de nuevo.",
         "activationErrorTitle": "No se pudo completar el inicio de sesión",
+        "backupDescription": "Guarda estos códigos en un lugar seguro. Puedes usar cada código una vez si pierdes el acceso a tu teléfono.",
+        "backupTitle": "Guarda tus códigos de respaldo",
         "chooseOrganizationDescription": "Elige una organización para continuar a {{brandName}}.",
         "chooseOrganizationTitle": "Elige una organización",
         "completeDescription": "Te estamos llevando a {{brandName}}.",
         "completeTitle": "Inicio de sesión completado",
+        "createOrganization": "Crear organización",
+        "invitationError": "No se pudo aceptar esta invitación. Inténtalo de nuevo o pide una nueva invitación si el enlace ha caducado.",
+        "joinOrganization": "Unirse a {{organizationName}}",
         "loadingDescription": "Estamos comprobando qué necesita tu cuenta a continuación.",
         "loadingTitle": "Finalizando el inicio de sesión",
         "noOrganizationsDescription": "Esta cuenta no tiene ninguna organización disponible. Pide acceso a un administrador de la organización y vuelve a empezar.",
         "noOrganizationsTitle": "No hay ninguna organización disponible",
+        "organizationName": "Nombre de la organización",
+        "passwordTaskError": "No se pudo actualizar tu contraseña. Elige una contraseña más segura e inténtalo de nuevo.",
+        "phoneNumberLabel": "Número de teléfono",
         "recoveryAction": "Volver a empezar",
+        "savedCodes": "He guardado mis códigos",
         "secondFactorDescription": "Este inicio de sesión requiere un paso de verificación adicional que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "secondFactorTitle": "Se requiere verificación adicional",
+        "securityDescription": "Añade otra forma de verificar tu identidad.",
+        "securityTitle": "Configura la verificación en dos pasos",
         "selectOrganization": "Continuar con {{organizationName}}",
+        "sendCode": "Enviar código",
+        "setupKey": "Clave de configuración",
+        "setupKeyDescription": "Añade esta clave de configuración a tu aplicación de autenticación e introduce el código que genere.",
         "signedInAs": "Sesión iniciada como {{identifier}}",
+        "taskComplete": "Se ha guardado tu configuración de seguridad. Continúa para terminar de iniciar sesión.",
+        "taskError": "No se pudo completar este paso. Revisa tus datos e inténtalo de nuevo.",
         "unsupportedDescription": "Tu cuenta devolvió un paso de autenticación que esta página no admite. Vuelve a empezar para probar otro método de inicio de sesión.",
         "unsupportedTitle": "Paso de inicio de sesión no disponible"
       },
@@ -1064,7 +1094,12 @@
       "signIn": {
         "addAccount": "Añadir cuenta",
         "appleMethod": "Continuar con Apple",
+        "authenticatorMethod": "Usar una aplicación de autenticación",
+        "authenticatorSubtitle": "Introduce el código de tu aplicación de autenticación.",
         "back": "Atrás",
+        "backupCodeLabel": "Código de respaldo",
+        "backupCodeMethod": "Usar un código de respaldo",
+        "backupCodeSubtitle": "Introduce un código de respaldo sin usar que guardaste al configurar la verificación en dos pasos.",
         "chooseAccountSubtitle": "Seleccione la cuenta con la que desea continuar.",
         "chooseAccountTitle": "Elija una cuenta",
         "chooseMethodSubtitle": "¿Tienes problemas? Puedes usar cualquiera de estos métodos para iniciar sesión.",
@@ -1091,6 +1126,7 @@
         "hidePassword": "Ocultar contraseña",
         "identifierLabel": "Correo electrónico o nombre de usuario",
         "identifierPlaceholder": "Introduce tu correo electrónico o nombre de usuario",
+        "invalidCode": "El código es incorrecto. Inténtalo de nuevo.",
         "lastUsed": "Último uso",
         "methodsHelpPrompt": "¿No tienes ninguna de estas opciones?",
         "newPasswordLabel": "Nueva contraseña",
@@ -1109,6 +1145,9 @@
         "passwordResetMethod": "Restablecer tu contraseña",
         "passwordSubtitle": "para continuar a {{brandName}}",
         "passwordTitle": "Introduzca su contraseña",
+        "phoneCodeMethod": "Enviar un SMS a {{identifier}}",
+        "phoneCodeSubtitle": "Introduce el código de verificación enviado a tu teléfono.",
+        "phoneCodeTitle": "Revisa tu teléfono",
         "recoveryMethodsDivider": "O inicia sesión con otro método",
         "recoveryTitle": "¿Olvidaste tu contraseña?",
         "resendCode": "Reenviar código",
@@ -1116,6 +1155,8 @@
         "resetPassword": "Restablecer Contraseña",
         "resetPasswordCodeSubtitle": "Primero, introduce el código enviado a tu correo electrónico",
         "resetPasswordCodeTitle": "Restablecer contraseña",
+        "secondFactorSubtitle": "Elige cómo verificar tu inicio de sesión.",
+        "secondFactorTitle": "Verifica tu inicio de sesión",
         "separator": "o",
         "showPassword": "Mostrar contraseña",
         "signOutOfOtherSessions": "Cerrar sesión en todos los demás dispositivos",
@@ -1126,6 +1167,7 @@
         "useAnotherMethod": "Usar otro método",
         "usernameLabel": "Nombre de usuario",
         "usernamePlaceholder": "Introduce tu nombre de usuario",
+        "verificationCodeExpired": "Este código ya no es válido. Introduce uno nuevo.",
         "verify": "Verificar"
       },
       "signUp": {
@@ -1383,38 +1425,22 @@
     },
     "plans": {
       "cancellationNotice": "Tu plan {{plan}} ha sido cancelado y terminará el {{date}}.",
-      "changeAnytime": "Actualiza o baja cuando quieras.",
       "compare": "Comparar planes",
       "compareAll": "Compara todos los planes",
-      "currentPlan": "Plan actual",
       "custom": {
         "name": "Personalizado"
       },
       "customAccess": "Acceso personalizado con ejecuciones concurrentes {{value}}",
       "customCancellationNotice": "Tu plan personalizado terminará en {{date}}.",
-      "customCheckoutUnavailable": "Los espacios de trabajo con un plan personalizado no pueden cambiar a Pro ni Team.",
       "downgrade": "Cambiar a un plan inferior",
       "downgradeNotice": "Tu plan cambiará de {{currentPlan}} a {{targetPlan}} el {{date}}.",
       "downgradesOn": "Cambio a {{plan}} el {{date}}",
       "downgradeTo": "Cambiar a {{plan}}",
       "endsOn": "Termina en {{date}}",
       "features": {
-        "byok": "Lleva tus propias llaves de LLM",
-        "communitySupport": "Soporte de la comunidad",
-        "emailSupport": "Soporte por correo electrónico",
-        "existingCredits": "Solo créditos gratuitos existentes",
-        "oneConcurrentRun": "1 ejecución simultánea",
-        "prioritySupport": "Soporte prioritario",
-        "sharedAndPrivateAgents": "7 agentes compartidos, agentes privados ilimitados",
-        "tenConcurrentRuns": "10 ejecuciones simultáneas",
-        "twoConcurrentRuns": "2 ejecuciones simultáneas",
-        "unlimitedAgents": "Agentes totales ilimitados",
-        "voiceInputFree": "Entrada de voz (10 solicitudes en total · 10 min/día por miembro)",
-        "voiceInputPro": "Entrada de voz (300 solicitudes/día · 200 min/día por miembro)",
-        "voiceInputTeam": "Entrada de voz (500 solicitudes/día · 500 min/día por miembro)"
+        "byok": "Lleva tus propias llaves de LLM"
       },
       "free": {
-        "description": "Acceso gratuito heredado para los espacios de trabajo existentes.",
         "name": "Gratis"
       },
       "highlights": {
@@ -1441,7 +1467,6 @@
         "name": "Gratis limitado"
       },
       "loadError": "No se pudo cargar el estado de facturación.",
-      "manageSubscription": "Gestionar la suscripción",
       "namedPlan": "Plan {{plan}}",
       "noActivePlan": "No hay plan activo",
       "noActiveSubscription": "Sin suscripción activa",
@@ -1449,11 +1474,9 @@
         "name": "Sin plan"
       },
       "perMonth": "/mes",
-      "popular": "Popular",
       "pricePerMonth": "{{price}}/mes",
       "pro": {
         "description": "Trabajo diario con agentes, con precio por miembro.",
-        "legacyDescription": "Más créditos y concurrencia para equipos que usan agentes de IA todos los días.",
         "name": "Pro"
       },
       "renews": "Renueva {{date}}",
@@ -1462,7 +1485,6 @@
       "selectedPlan": "El plan seleccionado",
       "team": {
         "description": "Para un equipo que mantiene agentes en marcha todo el día.",
-        "legacyDescription": "Espacio para un equipo de empleados de IA: gran volumen de créditos y 10 agentes ejecutándose a la vez.",
         "name": "Equipo"
       },
       "upgrade": "Actualización",
@@ -1565,13 +1587,11 @@
       "subscriptionChangeConfirmed": "Se confirmó el cambio de suscripción."
     },
     "usage": {
-      "added": "Añadido {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} restantes",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
         "resets": "Se restablece el {{date}}",
         "resetsRaw": "Se restablece {{value}}",
@@ -1592,16 +1612,12 @@
         "teamPlan": "Plan del equipo"
       },
       "creditAdditions": "Créditos añadidos",
-      "creditsRemaining_one": "{{value}} crédito restante",
-      "creditsRemaining_many": "{{value}} créditos restantes",
-      "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Caduca {{date}}",
       "grantsTable": {
         "credits": "Créditos",
         "date": "Fecha",
         "left": "Restante"
       },
-      "left": "{{value}} restante",
       "member": "Miembro",
       "neverExpires": "Nunca caduca",
       "orgCredits": "Créditos de la organización",
@@ -1884,6 +1900,19 @@
     "composer": {
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
+      "create": {
+        "addStyle": "Añadir estilo",
+        "addTemplate": "Añadir plantilla",
+        "exit": "Salir del modo de creación",
+        "image": "Crear imagen",
+        "imagePlaceholder": "Describe la imagen que quieres crear…",
+        "presentation": "Crear presentación",
+        "presentationPlaceholder": "¿De qué trata tu presentación?",
+        "settingsAdjusted": "Se han ajustado algunas opciones de vídeo para este modelo",
+        "title": "Crear",
+        "video": "Crear vídeo",
+        "videoPlaceholder": "Describe el vídeo que quieres crear…"
+      },
       "createWorkflow": "Crear flujo de trabajo",
       "imageModelForThisChat": "Modelo de imagen para este chat",
       "message": "Mensaje",
@@ -1896,7 +1925,6 @@
       "threadSuggestions": "Conversaciones",
       "useForFutureChats": "Usar este modelo en futuros chats",
       "videoModelForThisChat": "Modelo de vídeo para este chat",
-      "visualAttachmentsUnsupported": "{{modelName}} no reconoce imágenes ni vídeos. Cambia a un modelo con capacidad visual para adjuntarlos.",
       "workflows": {
         "empty": "No hay flujos de trabajo coincidentes",
         "loading": "Cargando flujos de trabajo...",
@@ -1942,7 +1970,6 @@
       "accountForThread": "Cuenta para este hilo",
       "add": "Añadir {{connectorName}}",
       "addConnectors": "Añadir conectores",
-      "authorizationFailed": "{{connectorName}} está conectado, pero no se pudo autorizar para {{agentName}}",
       "authorized": "{{connectorName}} está conectado y autorizado para {{agentName}}",
       "available_one": "Conectores disponibles para conectar ({{count}})",
       "available_many": "Conectores disponibles para conectar ({{count}})",
@@ -2019,84 +2046,78 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Automático · Okou decide",
+        "autoDescription": "Elige un presentador público de HeyGen que se adapte a tu solicitud",
         "heading": "Elige un avatar",
-        "help": "Elige un presentador o continúa sin avatar",
+        "label": "Avatar",
         "none": "Sin avatar",
-        "placementHeading": "¿Dónde debe situarse el presentador?",
-        "placementLeft": "A la izquierda — la diapositiva queda a la derecha",
-        "placementOverlay": "Sobre la diapositiva — la diapositiva ocupa el encuadre",
-        "placementRight": "A la derecha — la diapositiva queda a la izquierda"
+        "noneDescription": "Crea el vídeo sin presentador",
+        "previewLook": "Vista previa del aspecto {{name}}"
       },
-      "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
-      "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
-      "desktop": {
-        "checkingCompatibility": "Comprobación de compatibilidad",
-        "description": "La grabación de pantalla vive en la aplicación de escritorio {{desktopProductName}}, que captura cualquier ventana y registra dónde haces clic.",
-        "download": "Descargar para macOS",
-        "handoffDetail": "Tu grabación se abre aquí, lista para un presentador y una voz.",
-        "handoffTitle": "Vuelve a este asistente automáticamente",
-        "heading": "Graba con {{desktopProductName}} Desktop",
-        "illustration": "La grabación ocurre en {{desktopProductName}} Desktop",
-        "installDetail": "Requiere un Mac Apple Silicon con macOS 14 o más reciente. No se soportan Macs Intel.",
-        "installTitle": "Descarga e instala {{desktopProductName}} Desktop",
-        "recordDetail": "Detenla desde el mismo menú cuando termines.",
-        "recordTitle": "Inicia una grabación desde la barra de menús",
-        "unsupportedIntelMac": "Requiere un Mac Apple Silicon"
+      "cardDescription": "Convierte una idea o tus materiales en un vídeo terminado",
+      "catalog": {
+        "empty": "No hay opciones públicas de HeyGen disponibles.",
+        "error": "No se pudo cargar el catálogo de HeyGen.",
+        "loading": "Cargando más opciones",
+        "reload": "Recargar catálogo",
+        "retry": "Volver a intentar"
       },
+      "description": "Añade materiales, describe lo que quieres y elige opcionalmente un estilo, un avatar y una voz de HeyGen.",
       "errors": {
-        "sendFailed": "No se pudo crear el hilo de chat. La fuente sigue guardada localmente y se ha descargado como copia de seguridad.",
-        "uploadFailed": "No se pudo subir la fuente. Sigue guardada localmente y se ha descargado como copia de seguridad."
+        "sendFailed": "No se pudo crear el hilo de chat. Tu solicitud sigue aquí para que puedas volver a intentarlo.",
+        "uploadFailed": "No se pudieron subir uno o varios archivos. Elimínalos o vuelve a intentarlo."
       },
       "footer": {
-        "back": "Atrás",
-        "createInChat": "Crear en el chat",
-        "download": "Descargar fuente",
-        "next": "Siguiente"
+        "cancel": "Cancelar",
+        "create": "Crear vídeo",
+        "hint": "Añade instrucciones, archivos o ambos"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Revisa tu vídeo de introducción",
-        "help": "Confirma las opciones que recibirá {{assistantName}} en el nuevo hilo de chat",
-        "instructions": "Instrucciones de edición",
-        "source": "Fuente",
-        "voice": "Voz"
+      "format": {
+        "auto": "Automático",
+        "output": "Formato de salida"
+      },
+      "heading": "Crea tu vídeo de introducción",
+      "help": "Añade materiales, describe lo que quieres o haz ambas cosas. Okou se encarga del resto.",
+      "prompt": {
+        "label": "¿Qué debe transmitir el vídeo?",
+        "placeholder": "Describe el objetivo, el público, el idioma, el tono o cualquier detalle importante"
       },
       "source": {
-        "documentDescription": "Convierte tus diapositivas en un vídeo de introducción narrado",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Subir diapositivas",
-        "heading": "¿Cómo quieres empezar?",
-        "help": "Sube las diapositivas que ya tienes o graba tu pantalla con {{desktopProductName}} Desktop",
-        "recordDescription": "Captura una demo con la aplicación de escritorio",
-        "recordDetail": "Necesita {{desktopProductName}} Desktop en macOS",
-        "recordTitle": "Grabar la pantalla",
-        "uploadDescription": "Elige un archivo de tu ordenador",
-        "uploadTitle": "Subir fuente"
+        "drop": "Arrastra archivos aquí o haz clic para subirlos",
+        "remove": "Eliminar {{filename}}"
       },
-      "sourceReview": {
-        "format": "Formato",
-        "heading": "Tu fuente está lista",
-        "help": "Comprueba el archivo antes de continuar",
-        "inAccount": "En tu cuenta",
-        "replace": "Sustituir fuente",
-        "saved": "Guardada",
-        "source": "Fuente"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Pasos del vídeo de introducción",
-        "review": "Revisar",
-        "source": "Fuente",
-        "voice": "Voz"
+      "style": {
+        "auto": "Dejar que Okou elija",
+        "browseGroups": "Explorar por estilo",
+        "description": "El estilo define las escenas, las transiciones, los textos superpuestos y el ritmo.",
+        "groups": {
+          "cinematic": "Cine y fotografía",
+          "handmade": "Artesanía y materiales",
+          "iconic-artist": "Arte y diseño",
+          "other": "Otros estilos",
+          "pop-culture": "Cultura pop",
+          "print": "Impresión y publicaciones",
+          "retro-tech": "Tecnología retro e interfaces"
+        },
+        "heading": "Elige una referencia de estilo",
+        "label": "Referencia de estilo",
+        "preview": "Vista previa de {{title}}",
+        "previewUnavailable": "Este estilo no tiene una vista previa de vídeo disponible."
       },
       "title": "Crear un vídeo de introducción",
       "voice": {
+        "auto": "Dejar que Okou elija",
+        "autoDescription": "Okou elige una voz pública de HeyGen adecuada",
+        "default": "Predeterminada · Sigue al avatar",
+        "defaultDescription": "Usar la voz predeterminada del avatar elegido",
+        "defaultForAvatar": "Predeterminada · {{avatar}}",
+        "defaultForAvatarDescription": "Usar la voz predeterminada de HeyGen de {{avatar}}",
         "heading": "Elige una voz",
-        "help": "Escucha una muestra antes de continuar",
+        "label": "Voz",
         "none": "Sin narración",
-        "noneDescription": "Crea un vídeo guiado por subtítulos sin narración",
+        "noneDescription": "No añadir narración; conservar el audio original salvo que pidas silenciarlo.",
         "original": "Audio original",
-        "originalDescription": "Conserva el audio del vídeo o la grabación que has subido"
+        "originalDescription": "Conservar el audio original seleccionado sin añadir voz generada"
       }
     },
     "mail": {
@@ -2213,6 +2234,7 @@
     "run": {
       "automatedRun": "Ejecución automatizada",
       "collapseGroupedHistory": "Contraer el historial de ejecuciones agrupadas",
+      "collapseHistoryMessage": "Contraer mensaje del historial: {{message}}",
       "collapseWorkHistory": "Contraer el historial de trabajo",
       "creditUsage": "Consumo de créditos",
       "done": {
@@ -2260,6 +2282,10 @@
       "keepGoingAt": "Sigue adelante · {{timestamp}}",
       "modelChangedTo": "Modelo cambiado a {{model}}",
       "queueEllipsis": "cola...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefacto",
+      "relatedArtifactCount_many": "{{formattedCount}} artefactos",
+      "relatedArtifactCount_other": "{{formattedCount}} artefactos",
+      "relatedArtifacts": "Artefactos relacionados",
       "selectedModelAppliesAfterCurrentRun": "Tu modelo seleccionado {{model}} entrará en vigor después de esta ejecución",
       "thinking": {
         "assembling": "Ensamblando las piezas...",
@@ -2310,14 +2336,20 @@
       "draft": "Borrador",
       "empty": "Empieza una conversación y aparecerá aquí",
       "markUnread": "Marcar como no leído",
+      "movePinDown": "Mover hacia abajo",
+      "movePinUp": "Mover hacia arriba",
       "newChatWith": "Nuevo chat con {{agentName}}",
       "noUnread": "No hay conversaciones sin leer",
       "openChatMenu": "Abrir menú de chat",
       "openListMenu": "Abrir menú de conversaciones",
       "pin": "Fijar chat",
+      "pinDropAfter": "Soltar después de {{title}}",
+      "pinDropBefore": "Soltar antes de {{title}}",
       "pinned": "Fijado",
       "rename": "Renombrar chat",
       "renameDescription": "Introduce un nuevo nombre para este hilo de chat.",
+      "reorderInstructions": "Arrastra para reordenar. Pulsa Espacio para seleccionar, las flechas para mover, Espacio para soltar o Esc para cancelar.",
+      "reorderThread": "Reordenar {{title}}",
       "titlePlaceholder": "Título del chat",
       "unpin": "Desfijar chat",
       "unread": "No leído",
@@ -2440,11 +2472,9 @@
     },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
+      "cleanupFailed": "Se añadió el texto, pero no se pudo eliminar la grabación guardada.",
       "confirmRecording": "OK",
-      "draft": "Borrador de voz",
-      "draftTooLong": "Este borrador de voz es demasiado largo. Inicia una nueva grabación.",
-      "finishDraft": "Finalizar",
-      "finishingDraft": "Finalizando...",
+      "discarding": "Eliminando borrador de voz...",
       "input": "Entrada de voz",
       "inputLimitReached": "Límite de entrada de voz alcanzado. Actualiza a Pro o Team para límites más altos.",
       "inputLimitReachedMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice el plan para obtener límites más altos.",
@@ -2454,8 +2484,12 @@
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
       "removeDraft": "Eliminar borrador de voz",
+      "restoreFailed": "No se pudo cargar tu borrador de voz. Inténtalo de nuevo.",
+      "retry": "Reintentar",
+      "retryReady": "Tu grabación se conserva. Reintenta la transcripción.",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Detener la grabación",
+      "storageFailed": "No se pudo guardar el audio. Reintentar solo recupera el audio ya guardado en este dispositivo.",
       "transcribing": "Transcribiendo",
       "transcribingProgress": "Transcribiendo...",
       "transcriptionFailed": "Falló la transcripción de voz. Inténtalo de nuevo."
@@ -2732,6 +2766,18 @@
         "continueToProvider": "Continúa con el proveedor para autorizar el acceso.",
         "continueWithAutomatic": "Continúa mientras Okou comprueba cómo se autentica este servidor MCP.",
         "description": "Tu secreto se cifra en reposo y se inyecta en las solicitudes salientes por el cortafuegos. Nunca se expone al agente como una variable de entorno.",
+        "errors": {
+          "authenticationResponseInvalid": "El servidor MCP devolvió una respuesta de autenticación no compatible. Comprueba el endpoint MCP y su configuración de autenticación, o ponte en contacto con el administrador del servidor.",
+          "authorizationUnsupported": "El proveedor de OAuth no admite los requisitos de autorización usados por la autenticación automática. Usa OAuth personalizado solo si ya tienes credenciales de cliente compatibles, o ponte en contacto con el soporte de Okou.",
+          "bindingChanged": "La autoridad OAuth de MCP o el registro del cliente ha cambiado. Vuelve a conectar la cuenta del conector e inténtalo de nuevo.",
+          "clientRegistrationConflict": "El cliente OAuth automático existente no puede solicitar los permisos necesarios mientras haya cuentas conectadas que lo usen. Desconecta esas cuentas y vuelve a conectarlas, o usa OAuth personalizado con credenciales de cliente registradas.",
+          "clientRegistrationInvalid": "El proveedor de OAuth devolvió datos de registro de cliente no válidos. Ponte en contacto con el administrador del servidor o usa OAuth personalizado si ya tienes credenciales de cliente registradas válidas.",
+          "clientRegistrationRejected": "El proveedor de OAuth rechazó el registro automático del cliente y puede restringir los clientes MCP o los metadatos de registro admitidos. Usa un cliente MCP admitido por el proveedor, OAuth personalizado solo si ya tienes credenciales de cliente registradas, o ponte en contacto con el soporte de Okou.",
+          "clientRegistrationUnavailable": "El proveedor de OAuth no ofrece un método de registro automático de clientes compatible. Usa OAuth personalizado si ya tienes credenciales de cliente registradas, o ponte en contacto con el soporte de Okou.",
+          "discoveryInvalid": "Los metadatos de descubrimiento OAuth del servidor MCP están incompletos o son incoherentes. Corrige los metadatos publicados si administras el servidor, o ponte en contacto con el administrador del servidor.",
+          "providerUnavailable": "El proveedor OAuth de MCP no está disponible temporalmente o está limitando las solicitudes. Inténtalo más tarde y comprueba la disponibilidad del proveedor.",
+          "unsafeUrl": "El servidor MCP publicó una URL de OAuth que no es un endpoint HTTPS público. Corrige las URL de OAuth publicadas por el servidor antes de volver a intentarlo."
+        },
         "save": "Guardar",
         "saving": "Guardando…",
         "title": "Conectar {{connector}}"
@@ -2804,12 +2850,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Más opciones",
-      "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "Se ha creado \"{{connector}}\"",
         "deleted": "Conector personalizado eliminado",
-        "disconnected": "Desconectado",
         "updated": "Se ha actualizado \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2852,7 +2896,6 @@
       "always": "Siempre",
       "clearSearch": "Borrar búsqueda de permisos",
       "descriptionAgent": "Configura qué acciones puede realizar este agente a través de este conector.",
-      "descriptionWorkflow": "Configura qué acciones puede realizar este flujo de trabajo a través de este conector.",
       "find": "Buscar permisos",
       "findPlaceholder": "Busca permisos...",
       "forTarget": "por {{target}}",
@@ -3317,15 +3360,13 @@
       "redirectTitle": "Redirigiendo a {{connector}}..."
     },
     "toasts": {
-      "connected": "{{connector}} conectado",
-      "disconnected": "{{connector}} desconectado"
+      "connected": "{{connector}} conectado"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Solicitud fallida",
-      "sharedDatabaseUnavailable": "Se produjo un problema en la aplicación. Espera un momento y, a continuación, actualiza la página para volver a intentarlo."
+      "requestFailed": "Solicitud fallida"
     },
     "realtime": {
       "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página.",
@@ -3562,6 +3603,7 @@
         "cozy-parlor": "Acogedor Salón",
         "crowd-ink": "Tinta del público",
         "editorial-flatfolk": "Editorial Flatfolk",
+        "emboss-deboss": "Relieve y bajorrelieve",
         "endpaper": "Guardada",
         "flat-poster": "Cartel plano",
         "folk-muse": "Musa Popular",
@@ -5014,6 +5056,12 @@
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
+        "menu": {
+          "adjustSettings": "Ajustar la configuración de {{model}}",
+          "backToModels": "Volver a los modelos",
+          "changeModel": "Cambiar modelo de {{category}}, {{model}}",
+          "chatSettings": "Configuración del chat"
+        },
         "models": "Modelos",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
@@ -5076,6 +5124,7 @@
         "remaining_many": "Quedan {{value}} restablecimientos",
         "remaining_other": "Quedan {{value}} restablecimientos",
         "remainingUnavailable": "Reinicios no disponibles",
+        "remainingUnknown": "Restablecimientos —",
         "remainingWithExpiry_one": "Queda {{value}} restablecimiento · vence {{expiry}}",
         "remainingWithExpiry_many": "Quedan {{value}} restablecimientos · vencen {{expiry}}",
         "remainingWithExpiry_other": "Quedan {{value}} restablecimientos · vencen {{expiry}}",
@@ -5146,8 +5195,12 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Permite que los agentes usen un navegador en la nube en chats nuevos",
+          "description": "Activa el navegador en la nube de forma predeterminada en los chats nuevos. Puedes cambiarlo en cualquier chat.",
           "title": "Navegador en la nube"
+        },
+        "defaultModel": {
+          "description": "Se usa a menos que un chat o una ejecución elija otro modelo.",
+          "title": "Modelo predeterminado"
         },
         "description": "Elige los valores predeterminados para los chats nuevos y cómo se envían los mensajes.",
         "sectionTitle": "Chat"
@@ -5202,6 +5255,32 @@
           "workerLoading": "Cargando",
           "workerTitle": "Diagnóstico de conexión del shared worker",
           "workerUnavailable": "No disponible"
+        },
+        "indexedDb": {
+          "countExplanation": "El recuento usa transacciones de solo lectura y no lee el contenido de los registros.",
+          "description": "Consulta la cantidad de registros de la caché local de chats administrada por el worker compartido.",
+          "loading": "Cargando almacenamiento de IndexedDB...",
+          "measurementUnavailable": "No se pudo medir el snapshot. Inténtalo de nuevo.",
+          "measureSnapshot": "Medir snapshot",
+          "measuring": "Midiendo...",
+          "records": "registros",
+          "refresh": "Actualizar",
+          "schema": "esquema",
+          "snapshotDescription": "Un registro puede contener muchas conversaciones. El tamaño estima JSON UTF-8 sin la sobrecarga de la base de datos; el tiempo de lectura excluye la estimación.",
+          "snapshotEmpty": "No hay un snapshot de conversaciones en caché.",
+          "snapshotPayload": "Tamaño estimado",
+          "snapshotReadDuration": "Tiempo de lectura de IndexedDB",
+          "snapshotThreads": "Conversaciones en el snapshot",
+          "snapshotTitle": "Snapshot de conversaciones",
+          "stores": "almacenes de objetos",
+          "title": "Almacenamiento de IndexedDB",
+          "unavailable": "El almacenamiento de IndexedDB no está disponible."
+        },
+        "voiceInput": {
+          "default": "Predeterminado ({{model}})",
+          "description": "Elige el modelo para la entrada de voz v2. Los modelos de transcripción usan {{model}} para pulir el texto.",
+          "title": "Modelo de entrada de voz",
+          "unavailable": "Modelo no disponible ({{model}})"
         }
       },
       "language": {
@@ -5455,7 +5534,7 @@
     "displayNames": {
       "avatar": "Avatar",
       "finance": "Finanzas",
-      "imageRecognize": "Reconocimiento de imágenes",
+      "imageRecognition": "Reconocimiento de imágenes",
       "maps": "Mapas",
       "peopleSearch": "Búsqueda de personas",
       "seo": "SEO",
@@ -5519,6 +5598,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Acción necesaria — entrega pausada",
         "addAction": "Añadir automatización de calendario",
         "addAria": "Añadir automatización de Google Calendar",
         "addDescriptionCancelled": "Ejecuta este flujo de trabajo cuando se cancele un evento de Google Calendar.",
@@ -5527,16 +5607,29 @@
         "addTitle": "Añadir automatización de Google Calendar",
         "calendarId": "ID de calendario",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "Este calendario ya no está disponible. Elige otro calendario para reanudar esta automatización.",
         "cancelledDescription": "Ejecutar cuando se cancele un evento del calendario.",
         "cancelledRule": "Cuando se cancela el evento {{calendar}} del calendario",
         "cancelledTitle": "Evento de Google Calendar cancelado",
+        "cancelRecovery": "Cancelar",
+        "changeAria": "Cambiar automatización de Google Calendar",
+        "changeCalendar": "Cambiar calendario",
+        "checkingRecovery": "Comprobando si esta automatización puede reanudarse…",
+        "checkRecoveryStatus": "Comprobar estado",
         "createdDescription": "Ejecuta cuando se crea un evento en el calendario.",
         "createdRule": "Cuando el calendario {{calendar}} recibe un nuevo evento",
         "createdTitle": "Evento de Google Calendar creado",
+        "enabledIntent": "Activada",
+        "reconnectDescription": "Es necesario volver a conectar Google Calendar para que esta automatización pueda reanudarse.",
+        "reconnectGoogleCalendar": "Volver a conectar Google Calendar",
+        "recoveryStatus": "Recuperación de Google Calendar",
+        "recoveryUnconfirmed": "La recuperación no está confirmada. Revisa la advertencia de esta automatización y vuelve a comprobar su estado.",
+        "saveCalendar": "Guardar calendario",
         "summary": "Calendario {{calendar}}",
         "updatedDescription": "Ejecuta cuando se actualice un evento del calendario.",
         "updatedRule": "Cuando se actualiza el evento {{calendar}} del calendario",
-        "updatedTitle": "Evento de Google Calendar actualizado"
+        "updatedTitle": "Evento de Google Calendar actualizado",
+        "updateError": "No se pudo cambiar este calendario. Inténtalo de nuevo."
       },
       "chat": {
         "addAction": "Añadir automatización de chat",
@@ -6116,6 +6209,7 @@
       }
     },
     "list": {
+      "actionRequired": "Acción necesaria",
       "agentEmpty": "Todavía no se ha ejecutado ningún flujo de trabajo con este agente.",
       "all": "Todos",
       "allAgents": "Todos los agentes",
@@ -6133,6 +6227,7 @@
       },
       "noWorkflows": "Sin flujos de trabajo",
       "open": "Abrir {{title}}",
+      "openRecovery": "Abrir la recuperación de {{title}}",
       "runsAs": "Se ejecuta como",
       "runsAsAria": "Se ejecuta como {{agent}}",
       "section": {

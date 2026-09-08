@@ -22,6 +22,7 @@ import {
   Cpu,
   CreditCard,
   History,
+  MessageCircle,
   ReceiptText,
   Users,
 } from "lucide-react";
@@ -29,13 +30,17 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { billingPlansStandalone$ } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
-  isAdminOnlySettingsSection,
+  closeSettingsModal$,
+  resolveAvailableSettingsSection,
   settingsActiveSection$,
+  settingsDialogOpen$,
   setSettingsActiveSection$,
   type SettingsSection,
 } from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import { PreferenceSection } from "./sections/preference-section.tsx";
+import { ChatSection } from "./sections/chat-section.tsx";
 import { ModelSection } from "./sections/model-section.tsx";
 import { DebugSection } from "./sections/debug-section.tsx";
 import { GeneralSection } from "./sections/general-section.tsx";
@@ -48,7 +53,6 @@ import { InvoicesSection } from "./sections/invoices-section.tsx";
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 interface SettingsDialogProps {
-  open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -64,33 +68,18 @@ interface SidebarGroup {
 }
 
 const SECTION_COMPONENTS = {
-  preference: () => {
-    return <PreferenceSection />;
-  },
-  model: () => {
-    return <ModelSection />;
-  },
-  debug: () => {
-    return <DebugSection />;
-  },
-  general: () => {
-    return <GeneralSection />;
-  },
-  people: () => {
-    return <PeopleSection />;
-  },
+  preference: PreferenceSection,
+  chat: ChatSection,
+  model: ModelSection,
+  debug: DebugSection,
+  general: GeneralSection,
+  people: PeopleSection,
   billing: () => {
     return <BillingSection />;
   },
-  usage: () => {
-    return <CreditBalanceSection />;
-  },
-  "usage-records": () => {
-    return <UsageRecordsSection />;
-  },
-  invoices: () => {
-    return <InvoicesSection />;
-  },
+  usage: CreditBalanceSection,
+  "usage-records": UsageRecordsSection,
+  invoices: InvoicesSection,
 } as const satisfies Record<SettingsSection, () => ReactNode>;
 
 function SectionContent({ section }: { section: SettingsSection }) {
@@ -98,7 +87,27 @@ function SectionContent({ section }: { section: SettingsSection }) {
   return <Component />;
 }
 
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialogMount() {
+  const open = useGet(settingsDialogOpen$);
+  const close = useSet(closeSettingsModal$);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <SettingsDialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          close();
+        }
+      }}
+    />
+  );
+}
+
+function SettingsDialog({ onOpenChange }: SettingsDialogProps) {
+  const standalonePlans = useGet(billingPlansStandalone$);
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
@@ -107,6 +116,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.OkouDebug] ?? false;
+  const showChat = features[FeatureSwitchKey.ChatPreference] ?? false;
+
+  if (standalonePlans) {
+    return <BillingSection standalonePlans />;
+  }
+
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -114,6 +129,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       }),
       description: t(($) => {
         return $.settings.dialog.sections.preference.description;
+      }),
+    },
+    chat: {
+      title: t(($) => {
+        return $.settings.preferences.chat.sectionTitle;
+      }),
+      description: t(($) => {
+        return $.settings.preferences.chat.description;
       }),
     },
     model: {
@@ -187,6 +210,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       label: sectionMeta.preference.title,
       icon: SlidersHorizontal,
     },
+    ...(showChat
+      ? [
+          {
+            id: "chat" as const,
+            label: sectionMeta.chat.title,
+            icon: MessageCircle,
+          },
+        ]
+      : []),
     { id: "debug", label: sectionMeta.debug.title, icon: Bug },
   ];
   const personalGroup: SidebarGroup = {
@@ -255,11 +287,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
+  const availableSection = resolveAvailableSettingsSection(activeSection, {
+    isAdmin,
+    chatPreferenceEnabled: showChat,
+  });
   const resolvedSection: SettingsSection =
-    (!showDebug && activeSection === "debug") ||
-    (!isAdmin && isAdminOnlySettingsSection(activeSection))
+    !showDebug && availableSection === "debug"
       ? "preference"
-      : activeSection;
+      : availableSection;
   const meta = sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {
@@ -267,12 +302,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
-        className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card"
+        className="okou-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden okou-border rounded-xl bg-card"
       >
         <DialogTitle className="sr-only">
           {t(($) => {
@@ -312,7 +347,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
 
           {/* Desktop: sidebar nav */}
-          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
+          <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto okou-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => {
               return (
                 <div key={group.label} className="shrink-0">

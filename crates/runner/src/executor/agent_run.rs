@@ -23,7 +23,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::codex_model_catalog_prefetch::{
-    StartedCodexModelCatalogPrefetch, is_eligible as is_codex_model_catalog_prefetch_eligible,
+    CodexModelCatalogPrefetchStart, StartedCodexModelCatalogPrefetch,
+    is_eligible as is_codex_model_catalog_prefetch_eligible,
 };
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
@@ -39,8 +40,7 @@ use super::diagnostics::{
 };
 use super::effective_cli_framework;
 use super::env::{
-    PreparedRunPayload, build_env_json_for_run, build_user_env_json,
-    write_connector_account_context_file, write_required_agent_files,
+    PreparedRunPayload, build_env_json_for_run, build_user_env_json, write_required_agent_files,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
@@ -1130,11 +1130,28 @@ impl PreparedRunInputs {
 
 pub(super) enum PreparedGuestRuntime {
     Ready(StartedCodexModelCatalogPrefetch),
+    SandboxUnusable(RunnerError),
     Failed(RunnerError),
     Cancelled,
 }
 
 impl PreparedGuestRuntime {
+    async fn start_codex_model_catalog_prefetch(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        reuse_result: SandboxReuseResult,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel).await
+        {
+            CodexModelCatalogPrefetchStart::Usable(prefetch) => Self::Ready(prefetch),
+            CodexModelCatalogPrefetchStart::SandboxUnusable(unusable) => {
+                Self::SandboxUnusable(unusable.record_and_into_error(telemetry).into())
+            }
+        }
+    }
+
     pub(super) async fn prepare_for_codex_model_catalog_prefetch(
         sandbox: &dyn Sandbox,
         context: &ExecutionContext,
@@ -1160,6 +1177,30 @@ impl PreparedGuestRuntime {
         )
     }
 
+    pub(super) async fn prepare_without_codex_model_catalog_prefetch(
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        restore_guest_state: bool,
+        cancel: &CancellationToken,
+        telemetry: &mut JobTelemetry,
+    ) -> Self {
+        match prepare_guest_runtime_state_phase(
+            sandbox,
+            context,
+            restore_guest_state,
+            cancel,
+            telemetry,
+        )
+        .await
+        {
+            GuestRuntimeStatePreparation::Ready => {
+                Self::Ready(StartedCodexModelCatalogPrefetch::disabled())
+            }
+            GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
+            GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
+        }
+    }
+
     async fn prepare(
         sandbox: &dyn Sandbox,
         context: &ExecutionContext,
@@ -1177,10 +1218,16 @@ impl PreparedGuestRuntime {
         )
         .await
         {
-            GuestRuntimeStatePreparation::Ready => Self::Ready(
-                StartedCodexModelCatalogPrefetch::start(sandbox, context, reuse_result, cancel)
-                    .await,
-            ),
+            GuestRuntimeStatePreparation::Ready => {
+                Self::start_codex_model_catalog_prefetch(
+                    sandbox,
+                    context,
+                    reuse_result,
+                    cancel,
+                    telemetry,
+                )
+                .await
+            }
             GuestRuntimeStatePreparation::Failed(error) => Self::Failed(error),
             GuestRuntimeStatePreparation::Cancelled => Self::Cancelled,
         }
@@ -1431,7 +1478,7 @@ async fn prepare_guest_storage(
                 let download_started = Instant::now();
                 let download_result = download_storages(sandbox, context, &guest_manifest).await;
                 telemetry.record(
-                    "runner_storage_manifest_guest_download",
+                    "runner_storage_manifest_guest_storage_apply",
                     download_started.elapsed(),
                     download_result.is_ok(),
                     download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
@@ -1464,7 +1511,7 @@ async fn prepare_guest_storage(
                 let download_started = Instant::now();
                 let download_result = download_storages(sandbox, context, &guest_manifest).await;
                 telemetry.record(
-                    "runner_storage_manifest_guest_download",
+                    "runner_storage_manifest_guest_storage_apply",
                     download_started.elapsed(),
                     download_result.is_ok(),
                     download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
@@ -1558,10 +1605,16 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
-        None if guest_state_prepared => PreparedGuestRuntime::Ready(
-            StartedCodexModelCatalogPrefetch::start(sandbox, context, start.reuse_result, &cancel)
-                .await,
-        ),
+        None if guest_state_prepared => {
+            PreparedGuestRuntime::start_codex_model_catalog_prefetch(
+                sandbox,
+                context,
+                start.reuse_result,
+                &cancel,
+                telemetry,
+            )
+            .await
+        }
         None => {
             PreparedGuestRuntime::prepare(
                 sandbox,
@@ -1576,6 +1629,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
     let mut model_catalog_prefetch = match prepared_guest_runtime {
         PreparedGuestRuntime::Ready(prefetch) => prefetch.supervise(sandbox),
+        PreparedGuestRuntime::SandboxUnusable(error) => {
+            if let Some(prepared) = prepared_storage.as_mut() {
+                prepared.delivery.cancel_and_drain(telemetry).await;
+            }
+            return Err(error);
+        }
         PreparedGuestRuntime::Failed(error) => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
@@ -1970,36 +2029,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // to bootstrap guest-agent. User-provided env is passed through a private
     // guest file and injected into the CLI child after guest-agent has started.
     let mut user_env_map = build_user_env_json(context);
-    let connector_account_context_started = Instant::now();
-    match write_connector_account_context_file(sandbox, context).await {
-        Ok(path) => {
-            telemetry.record(
-                "runner_connector_account_context_write",
-                connector_account_context_started.elapsed(),
-                true,
-                None,
-            );
-            user_env_map.insert(
-                guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
-                path,
-            );
-        }
-        Err(error) => {
-            let outcome = private_write_timeout_stage(&error);
-            telemetry.record_with_outcome(
-                "runner_connector_account_context_write",
-                connector_account_context_started.elapsed(),
-                false,
-                Some("connector account context unavailable"),
-                outcome,
-            );
-            warn!(
-                run_id = %context.run_id,
-                outcome = outcome.unwrap_or("write_failed"),
-                "connector account context unavailable"
-            );
-        }
-    }
     let env_build_started = Instant::now();
     let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
@@ -2052,7 +2081,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let required_private_files_started = Instant::now();
     let required_files =
-        match write_required_agent_files(sandbox, context.run_id, &user_env_map, &run_payload).await {
+        match write_required_agent_files(sandbox, context, &mut user_env_map, &run_payload).await {
             Ok(required_files) => {
                 telemetry.record(
                     "runner_required_private_files_write",
@@ -2075,12 +2104,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
-    if let Some(path) = user_env_file {
-        env_map.insert(
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
-            path,
-        );
-    }
+    env_map.insert(
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
+        user_env_file,
+    );
     env_map.insert(
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV.into(),
         run_payload_file,
@@ -2774,7 +2801,7 @@ mod tests {
         let mut index = 0;
 
         while remaining > 0 {
-            let key = format!("VM0_FILL_{index}");
+            let key = format!("TEST_FILL_{index}");
             let overhead = key.len() + 2;
             if remaining <= overhead {
                 pairs
@@ -2797,14 +2824,14 @@ mod tests {
     #[test]
     fn bootstrap_exec_boundary_rejects_oversized_env_value_without_value_leak() {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
+        let env_pairs = vec![("TEST_OVERSIZED".to_string(), secret.clone())];
 
         let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
             .unwrap_err()
             .to_string();
 
         assert!(error.contains("guest-agent bootstrap argv/env too large"));
-        assert!(error.contains("VM0_OVERSIZED"));
+        assert!(error.contains("TEST_OVERSIZED"));
         assert!(!error.contains(&secret));
     }
 
@@ -2812,7 +2839,7 @@ mod tests {
     fn bootstrap_exec_boundary_rejects_aggregate_overflow() {
         let value = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES - 16);
         let env_pairs: Vec<(String, String)> = (0..20)
-            .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
+            .map(|index| (format!("TEST_CHUNK_{index}"), value.clone()))
             .collect();
 
         let error = validate_agent_bootstrap_exec_boundary(&env_pairs)

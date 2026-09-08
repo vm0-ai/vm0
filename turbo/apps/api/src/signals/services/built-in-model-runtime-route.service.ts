@@ -1,8 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
-  getVm0BuiltInModelRouteCandidates,
-  isBuiltInModelProviderType,
+  getBuiltInModelRouteCandidates,
   type BuiltInModelRouteProviderType,
   type BuiltInModelRouteTarget,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -21,14 +20,19 @@ export interface BuiltInModelRuntimeRoute {
   readonly modelKeyId: string;
 }
 
-export interface ModelRuntimeSessionRoute {
-  readonly modelProvider: string | null;
-  readonly modelRuntimeProvider: string | null;
-  readonly modelRuntimeModel: string | null;
+interface BuiltInModelRuntimeRouteIdentity {
+  readonly selectedModel: string;
+  readonly providerType: string;
+  readonly upstreamModel: string;
 }
 
-const unavailableRuntimeRouteModelsForTest = singleton(() => {
-  return new AsyncLocalStorage<ReadonlySet<string>>();
+interface UnavailableRuntimeRoutesForTest {
+  readonly selectedModels: ReadonlySet<string>;
+  readonly candidates: readonly BuiltInModelRuntimeRouteIdentity[];
+}
+
+const unavailableRuntimeRoutesForTest = singleton(() => {
+  return new AsyncLocalStorage<UnavailableRuntimeRoutesForTest>();
 });
 
 /**
@@ -41,19 +45,48 @@ export async function withBuiltInModelRuntimeRouteUnavailableForTest<T>(
   selectedModel: string,
   work: () => Promise<T>,
 ): Promise<T> {
-  const inherited = unavailableRuntimeRouteModelsForTest.peek()?.getStore();
-  return await unavailableRuntimeRouteModelsForTest().run(
-    new Set([...(inherited ?? []), selectedModel]),
+  const inherited = unavailableRuntimeRoutesForTest.peek()?.getStore();
+  return await unavailableRuntimeRoutesForTest().run(
+    {
+      selectedModels: new Set([
+        ...(inherited?.selectedModels ?? []),
+        selectedModel,
+      ]),
+      candidates: inherited?.candidates ?? [],
+    },
     work,
   );
 }
 
-function runtimeRouteUnavailableForTest(selectedModel: string): boolean {
+export async function withBuiltInModelRuntimeRouteCandidateUnavailableForTest<
+  T,
+>(
+  candidate: BuiltInModelRuntimeRouteIdentity,
+  work: () => Promise<T>,
+): Promise<T> {
+  const inherited = unavailableRuntimeRoutesForTest.peek()?.getStore();
+  return await unavailableRuntimeRoutesForTest().run(
+    {
+      selectedModels: inherited?.selectedModels ?? new Set(),
+      candidates: [...(inherited?.candidates ?? []), candidate],
+    },
+    work,
+  );
+}
+
+function runtimeRouteUnavailableForTest(
+  target: BuiltInModelRouteTarget,
+): boolean {
+  const unavailable = unavailableRuntimeRoutesForTest.peek()?.getStore();
   return (
-    unavailableRuntimeRouteModelsForTest
-      .peek()
-      ?.getStore()
-      ?.has(selectedModel) === true
+    unavailable?.selectedModels.has(target.selectedModel) === true ||
+    unavailable?.candidates.some((candidate) => {
+      return (
+        candidate.selectedModel === target.selectedModel &&
+        candidate.providerType === target.providerType &&
+        candidate.upstreamModel === target.upstreamModel
+      );
+    }) === true
   );
 }
 
@@ -72,7 +105,7 @@ function routeFromTarget(
 export function builtInModelRuntimeTarget(
   selectedModel: string,
 ): BuiltInModelRouteTarget {
-  const [target] = getVm0BuiltInModelRouteCandidates(selectedModel);
+  const [target] = getBuiltInModelRouteCandidates(selectedModel);
   if (!target) {
     throw new Error(`Built-in model has no candidates: ${selectedModel}`);
   }
@@ -83,12 +116,11 @@ export async function resolveBuiltInModelRuntimeRoute(
   db: Db,
   selectedModel: string,
 ): Promise<BuiltInModelRuntimeRoute | null> {
-  if (runtimeRouteUnavailableForTest(selectedModel)) {
-    return null;
-  }
-
   const timestamp = nowDate();
-  for (const target of getVm0BuiltInModelRouteCandidates(selectedModel)) {
+  for (const target of getBuiltInModelRouteCandidates(selectedModel)) {
+    if (runtimeRouteUnavailableForTest(target)) {
+      continue;
+    }
     const [key] = await db
       .select({ id: builtInModelKeys.id })
       .from(builtInModelKeys)
@@ -119,22 +151,4 @@ export async function resolveBuiltInModelRuntimeRoute(
     return routeFromTarget(target, key);
   }
   return null;
-}
-
-export function hasIncompatibleBuiltInModelRuntimeRoute(args: {
-  readonly previous: ModelRuntimeSessionRoute;
-  readonly next: ModelRuntimeSessionRoute;
-}): boolean {
-  if (
-    !isBuiltInModelProviderType(args.previous.modelProvider) &&
-    !isBuiltInModelProviderType(args.next.modelProvider)
-  ) {
-    return false;
-  }
-  return (
-    isBuiltInModelProviderType(args.previous.modelProvider) !==
-      isBuiltInModelProviderType(args.next.modelProvider) ||
-    args.previous.modelRuntimeProvider !== args.next.modelRuntimeProvider ||
-    args.previous.modelRuntimeModel !== args.next.modelRuntimeModel
-  );
 }

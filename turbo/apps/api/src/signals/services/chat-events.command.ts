@@ -16,7 +16,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
@@ -30,7 +29,6 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
-import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -146,7 +144,9 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
+import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
 import {
   additionalVolumesForRun,
   authorizedUserPresentationTemplateIds,
@@ -160,6 +160,7 @@ import {
   type TemplateUsageLogContext,
 } from "../../lib/template-usage-log";
 import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -825,7 +826,7 @@ const resolveIncomingAttachFileMetadata$ = command(
     const files = userMessagePhysicalFiles(args.userMessage);
     return await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata",
+      "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_attachment_metadata",
       "nested",
       async () => {
         if (files.length === 0) {
@@ -1006,7 +1007,7 @@ async function resolveExplicitRunConfiguration(params: {
   }
   const modelPin = await measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+    "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
     "nested",
     () => {
       return resolveModelSelectionPin({
@@ -1022,7 +1023,7 @@ async function resolveExplicitRunConfiguration(params: {
   }
   const providerAdmission = await measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+    "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
     "nested",
     () => {
       return resolveModelFirstProviderAdmission({
@@ -1040,7 +1041,7 @@ async function resolveExplicitRunConfiguration(params: {
   }
   const codexServiceTierError = await measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_codex_service_tier",
     "nested",
     () => {
       return validateCodexServiceTier({
@@ -1071,10 +1072,7 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
-    codexFastModeEnabled: isFeatureEnabled(
-      FeatureSwitchKey.CodexFastMode,
-      context,
-    ),
+    codexFastModeEnabled: isCodexFastModeEnabled(context),
     presentationTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplates,
       context,
@@ -1547,7 +1545,7 @@ function loadTimedExistingThreadSnapshot(params: {
 }) {
   return measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
     "nested",
     () => {
       return params.db
@@ -1634,7 +1632,7 @@ async function resolveThread(params: {
   if (!runConfiguration) {
     const persisted = await measureApiDispatchTiming(
       params.timing,
-      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model",
+      "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model",
       "nested",
       () => {
         return resolvePersistedChatThreadModel({
@@ -1760,7 +1758,7 @@ async function appendUnassociatedUserMessageTransaction(
 ): Promise<ClientEventIdResolution> {
   await measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_clear_draft",
+    "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_clear_draft",
     "nested",
     () => {
       return tx
@@ -1827,7 +1825,7 @@ async function appendUnassociatedUserMessageTransaction(
   };
   const inserted = await measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_persist_event",
+    "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_persist_event",
     "nested",
     () => {
       return params.revokesEventId
@@ -1838,7 +1836,7 @@ async function appendUnassociatedUserMessageTransaction(
   if (inserted) {
     await measureApiDispatchTiming(
       params.timing,
-      "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_register_input_assets",
+      "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_register_input_assets",
       "nested",
       () => {
         return registerCanonicalWebInputAssets(tx, {
@@ -1852,7 +1850,7 @@ async function appendUnassociatedUserMessageTransaction(
     if (params.touchThreadSort) {
       await measureApiDispatchTiming(
         params.timing,
-        "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_touch_thread_sort",
+        "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_touch_thread_sort",
         "nested",
         () => {
           return touchChatThreadLastMessageAt(
@@ -1882,7 +1880,7 @@ function appendUnassociatedUserMessage(
 ): Promise<ClientEventIdResolution> {
   return measureApiDispatchTiming(
     params.timing,
-    "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue_transaction",
+    "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_transaction",
     "nested",
     () => {
       return params.db.transaction((tx) => {
@@ -2383,7 +2381,7 @@ function loadTimedAuthorizedAgent(
 ): Promise<AgentForChatSend | NormalSendFailure> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
     "nested",
     async () => {
       const agent =
@@ -2412,7 +2410,7 @@ function resolveTimedExplicitRunConfiguration(
 ): ReturnType<typeof resolveExplicitRunConfiguration> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_model_selection",
     "nested",
     () => {
       return resolveExplicitRunConfiguration({
@@ -2433,7 +2431,7 @@ function resolveTimedNormalSendFeatureSwitches(
 ): ReturnType<typeof resolveNormalSendFeatureSwitches> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
     "nested",
     () => {
       return resolveNormalSendFeatureSwitches(db, args.orgId, args.userId);
@@ -2447,7 +2445,7 @@ function resolveTimedInitialThreadModelPin(
 ): Promise<ReturnType<typeof resolveInitialThreadModelPin>> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
     "nested",
     () => {
       return resolveInitialThreadModelPin({
@@ -2468,7 +2466,7 @@ function resolveTimedThread(
   let modelResolutionPath: PersistedChatThreadModelResolutionPath | undefined;
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
     "nested",
     async () => {
       const resolved = await resolveThread({
@@ -2508,7 +2506,7 @@ function maybePersistTimedExplicitModelFirstSelection(
 ): ReturnType<typeof maybePersistExplicitModelFirstSelection> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_model_selection",
     "nested",
     () => {
       return maybePersistExplicitModelFirstSelection({
@@ -2529,7 +2527,7 @@ function maybePersistTimedExplicitCodexServiceTier(
 ): ReturnType<typeof maybePersistExplicitCodexServiceTier> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
     "nested",
     () => {
       return maybePersistExplicitCodexServiceTier({
@@ -2550,7 +2548,7 @@ function resolveTimedComputerAccess(
 ): ReturnType<typeof resolveComputerAccess> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
     "nested",
     () => {
       return resolveComputerAccess({
@@ -2576,7 +2574,7 @@ async function resolveTimedPreflightClientEvent(
   const response = threadId
     ? await measureApiDispatchTiming(
         args.timing,
-        "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+        "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
         "nested",
         () => {
           return resolveClientEventSend({
@@ -2598,7 +2596,7 @@ function resolveTimedNormalSendAgentRunSource(
 ): ReturnType<typeof resolveNormalSendAgentRunSource> {
   return measureApiDispatchTiming(
     args.timing,
-    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_agent_run_source",
+    "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_agent_run_source",
     "nested",
     () => {
       return resolveNormalSendAgentRunSource({
@@ -2671,7 +2669,6 @@ function usesPi(
     selectedModel: runConfiguration.modelPin.selectedModel ?? undefined,
     codexServiceTier: runConfiguration.codexServiceTier,
     builtInModelRuntimeRoute: runConfiguration.builtInModelRuntimeRoute,
-    triggerSource: normalSendTriggerSource(args.auth),
     featureSwitchContext: featureSwitches.featureSwitchContext,
   });
 }
@@ -3070,7 +3067,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), params.publicBrand);
+  const appUrl = env("APP_URL");
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing&billingView=plans`;
   if (capabilities?.canBuyCredits !== true) {
@@ -3348,9 +3345,14 @@ function buildCreateAgentRunArgs(params: {
     builtInModelRuntimeRoute,
     codexServiceTier,
   } = prepared.runConfiguration;
+  const videoRunOptionsPrompt = buildVideoRunOptionsPrompt(
+    prepared.videoRunOptions,
+  );
+  const agentPrompt = videoRunOptionsPrompt
+    ? `${videoRunOptionsPrompt}\n\n${prepared.body.agentPrompt}`
+    : prepared.body.agentPrompt;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
-    videoRunOptions: prepared.videoRunOptions,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
     triggerSource: prepared.triggerSource,
@@ -3376,10 +3378,6 @@ function buildCreateAgentRunArgs(params: {
     piExecution: prepared.piExecution,
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
-      modelProvider: providerAdmission.effectiveModelProvider ?? null,
-      modelProviderId: modelPin.modelProviderId,
-      modelRuntimeProvider: builtInModelRuntimeRoute?.providerType ?? null,
-      modelRuntimeModel: builtInModelRuntimeRoute?.upstreamModel ?? null,
       cliAgentType: cliAgentTypeForRun(prepared),
     },
     codexServiceTier,
@@ -3395,7 +3393,7 @@ function buildCreateAgentRunArgs(params: {
       },
     ],
     body: {
-      prompt: prepared.body.agentPrompt,
+      prompt: agentPrompt,
       agentId: args.body.agentId,
       ...(providerAdmission.effectiveModelProvider
         ? {
@@ -3435,7 +3433,7 @@ async function buildTimedCreateAgentRunArgs(params: {
 }): Promise<ReturnType<typeof buildCreateAgentRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
-    "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+    "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
     "nested",
     () => {
       return buildCreateAgentRunArgs(params);
@@ -3593,7 +3591,7 @@ const createNormalChatRun$ = command(
 
     if (args.timing) {
       args.timing.recordElapsed(
-        "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+        "api_dispatch_pre_create_agent_web_chat_create_normal_run",
         "nested",
         createNormalRunStartedAt,
       );
@@ -3673,7 +3671,7 @@ export const sendNormalEvent$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+      "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
       "nested",
       async () => {
         return await set(prepareNormalSend$, args, signal);
@@ -3691,7 +3689,7 @@ export const sendNormalEvent$ = command(
       prepared.thread.isClientThreadRetry
         ? await measureApiDispatchTiming(
             args.timing,
-            "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+            "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
             "nested",
             async () => {
               return await resolveClientEventSend({
@@ -3711,7 +3709,7 @@ export const sendNormalEvent$ = command(
 
     const revocationError = await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+      "api_dispatch_pre_create_agent_web_chat_validate_revocation",
       "nested",
       async () => {
         return await validateNormalRevocationTarget({
@@ -3763,7 +3761,7 @@ const sendQueueFirstNormalEvent$ = command(
     const threadId = prepared.thread.threadId;
     const { response, queuedEventId } = await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+      "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue",
       "nested",
       async () => {
         return await queueUnassociatedNormalEvent({
@@ -3794,7 +3792,7 @@ const sendQueueFirstNormalEvent$ = command(
 
     const dispatch = await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
+      "api_dispatch_pre_create_agent_web_chat_queue_first_check_dispatchable",
       "nested",
       async (): Promise<"self" | "wait" | "drain"> => {
         if (await chatThreadAdmissionBlocked(prepared.db, { threadId })) {
@@ -3899,7 +3897,7 @@ export const handleSendChatEvent$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         apiStartTime,
-        publicBrand: get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
         timing,
       },
       signal,

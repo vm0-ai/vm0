@@ -1,5 +1,8 @@
 name: Docker Toolchain Build
 
+env:
+  npm_config_audit: "false"
+
 on:
   pull_request:
     paths:

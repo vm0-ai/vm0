@@ -4,10 +4,7 @@
     "apps/cli": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts",
-        "src/commands/zero/logs/index.ts",
-        "src/commands/zero/logs/list.ts",
-        "src/commands/zero/logs/search.ts"
+        "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar", "yaml"],
@@ -40,13 +37,6 @@
         "**/*.{test,spec}.ts?(x)"
       ],
       "project": ["**/*.{ts,tsx}"],
-      "ignore": [
-        "src/views/zero-page/zero-sidebar-account.tsx",
-        "src/views/zero-page/zero-sidebar-chat-list.tsx",
-        "src/views/zero-page/zero-sidebar-pinned.tsx",
-        "src/views/zero-page/zero-sidebar-scroll.tsx",
-        "src/views/zero-page/zero-sidebar-upgrade.tsx"
-      ],
       "ignoreDependencies": [
         "@sentry/cli",
         "idb",
@@ -84,7 +74,7 @@
         "oxlint",
         "tsup"
       ],
-      "ignoreBinaries": ["electron-forge", "oxlint", "tsup"]
+      "ignoreBinaries": ["electron-forge", "oxlint", "tsup", "python3"]
     },
     "packages/core": {
       "entry": [
@@ -158,11 +148,7 @@
     "dist/**",
     "build/**",
     "coverage/**",
-    "apps/platform/src/mocks/mock-log-detail-data.ts",
-    "apps/platform/src/test/mocks/clerk-react.ts",
-    "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/platform/src/mocks/ably.ts",
-    "apps/platform/src/mocks/idb.ts",
     "apps/platform/src/mocks/mermaid.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",

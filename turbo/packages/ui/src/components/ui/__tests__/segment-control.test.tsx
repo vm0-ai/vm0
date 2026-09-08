@@ -20,6 +20,14 @@ function renderAspectRatioControl(
 }
 
 describe("SegmentControl", () => {
+  it("uses the dedicated track token for the default variant", () => {
+    renderAspectRatioControl();
+
+    expect(
+      screen.getByRole("radiogroup", { name: "Aspect ratio" }),
+    ).toHaveClass("bg-segment-track");
+  });
+
   it("selects a segment on click", async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();

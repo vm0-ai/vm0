@@ -1,0 +1,6662 @@
+# Changelog - 2026-07
+
+[Current changelog](../../CHANGELOG.md)
+
+## [1.363.1](https://github.com/vm0-ai/vm0/compare/api-v1.363.0...api-v1.363.1) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** use slug in diagnostic connector summaries ([#24393](https://github.com/vm0-ai/vm0/issues/24393)) ([67bdf3b](https://github.com/vm0-ai/vm0/commit/67bdf3b66cc9a6a374e7d348e24fef41e2237fb7))
+* **connectors:** use slug in workflow readiness model protocol ([#24383](https://github.com/vm0-ai/vm0/issues/24383)) ([779105e](https://github.com/vm0-ai/vm0/commit/779105ec155256031bc419d21357f13ee2b7f2cd))
+* drop queued attachment metadata column ([#24380](https://github.com/vm0-ai/vm0/issues/24380)) ([0f590fb](https://github.com/vm0-ai/vm0/commit/0f590fb7d83663174f8d1242cd4aa56a0ab41ab3))
+
+
+### Performance Improvements
+
+* **api:** avoid locking unchanged chat threads ([#24379](https://github.com/vm0-ai/vm0/issues/24379)) ([2a69819](https://github.com/vm0-ai/vm0/commit/2a69819d45120af7dca7728e7f1fab0577c0b899))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.2
+    * @vm0/connectors bumped to 1.202.3
+    * @vm0/core bumped to 8.501.0
+    * @vm0/db bumped to 1.160.2
+
+## [1.363.0](https://github.com/vm0-ai/vm0/compare/api-v1.362.0...api-v1.363.0) (2026-07-31)
+
+
+### Features
+
+* **app:** render mermaid code blocks as diagrams ([#24290](https://github.com/vm0-ai/vm0/issues/24290)) ([e83ae59](https://github.com/vm0-ai/vm0/commit/e83ae59001537cdc86c8a7aac343474209c56a19))
+
+
+### Bug Fixes
+
+* **api:** restore managed browser size after resume ([#24368](https://github.com/vm0-ai/vm0/issues/24368)) ([5317adb](https://github.com/vm0-ai/vm0/commit/5317adb355e8759892ac604ce5308104b56cf8a7))
+* **runner:** preserve workspace cache across session rotation ([#24364](https://github.com/vm0-ai/vm0/issues/24364)) ([98eaba8](https://github.com/vm0-ai/vm0/commit/98eaba8df7c4dc5a26cd32ef8c5dbafd23fe94f9))
+
+
+### Refactoring
+
+* **api:** stop run lifecycle event dual-write ([#24374](https://github.com/vm0-ai/vm0/issues/24374)) ([877225a](https://github.com/vm0-ai/vm0/commit/877225afb19be62910e2911777baf4930444ed77))
+* derive queued launch metadata at claim ([#24365](https://github.com/vm0-ai/vm0/issues/24365)) ([e347176](https://github.com/vm0-ai/vm0/commit/e34717635bd3e8e5a26319a96ed53c6fa70d87c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.1
+    * @vm0/core bumped to 8.500.0
+    * @vm0/db bumped to 1.160.1
+
+## [1.362.0](https://github.com/vm0-ai/vm0/compare/api-v1.361.1...api-v1.362.0) (2026-07-31)
+
+
+### Features
+
+* add deepseek v4 flash responses support ([#24283](https://github.com/vm0-ai/vm0/issues/24283)) ([c6ac8c8](https://github.com/vm0-ai/vm0/commit/c6ac8c8a49e3cbb9586ac5bf1c64732dd4712a28))
+* move chat display metadata into user messages ([#24339](https://github.com/vm0-ai/vm0/issues/24339)) ([6bdb58a](https://github.com/vm0-ai/vm0/commit/6bdb58a6cf3859e8ec4dbc4e7b6df7b3b27c9e35))
+
+
+### Bug Fixes
+
+* **platform:** unify chat event loading and scroll effects ([#24335](https://github.com/vm0-ai/vm0/issues/24335)) ([96010a8](https://github.com/vm0-ai/vm0/commit/96010a882f8cc27087ac8a43f34a7fe6c5cb04fc))
+
+
+### Refactoring
+
+* **connectors:** finish slug terminology cleanup ([#24361](https://github.com/vm0-ai/vm0/issues/24361)) ([084ee2d](https://github.com/vm0-ai/vm0/commit/084ee2d7d0c17dc1b5c126ea65e768cb595a8154))
+* remove i18n rollout switches ([#24291](https://github.com/vm0-ai/vm0/issues/24291)) ([696032b](https://github.com/vm0-ai/vm0/commit/696032bd429b20aec580400e3526ffa92620663f))
+
+
+### Performance Improvements
+
+* **api:** reduce queue-first claim database round trips ([#24356](https://github.com/vm0-ai/vm0/issues/24356)) ([916fe6a](https://github.com/vm0-ai/vm0/commit/916fe6a4b27c36e73702ac73153ddfa0ed0da33b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.0
+    * @vm0/core bumped to 8.499.0
+    * @vm0/db bumped to 1.160.0
+
+## [1.361.1](https://github.com/vm0-ai/vm0/compare/api-v1.361.0...api-v1.361.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* apply context-tiered pricing to managed models ([#24266](https://github.com/vm0-ai/vm0/issues/24266)) ([0f487e5](https://github.com/vm0-ai/vm0/commit/0f487e5b7631b4dbfde8c7bc3f706b829d74e364))
+
+
+### Refactoring
+
+* **connectors:** remove legacy catalog compatibility refs ([#24324](https://github.com/vm0-ai/vm0/issues/24324)) ([ca59b0b](https://github.com/vm0-ai/vm0/commit/ca59b0b941f31da480d2e3ffa3cbe583cb52fe59))
+* **runner:** remove retired claim capability surface ([#24325](https://github.com/vm0-ai/vm0/issues/24325)) ([a7685e3](https://github.com/vm0-ai/vm0/commit/a7685e306da319ac85d2c4d23fc366719768b025))
+
+
+### Performance Improvements
+
+* **api:** stop blocked stale-session preparation retries ([#24317](https://github.com/vm0-ai/vm0/issues/24317)) ([48fc1ed](https://github.com/vm0-ai/vm0/commit/48fc1edec5b804c410e7eaa7b2bed5582726ad4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.2
+    * @vm0/core bumped to 8.498.1
+    * @vm0/db bumped to 1.159.2
+
+## [1.361.0](https://github.com/vm0-ai/vm0/compare/api-v1.360.0...api-v1.361.0) (2026-07-31)
+
+
+### Features
+
+* **mail:** enable reply follow-up and improve gmail handoff ([#24155](https://github.com/vm0-ai/vm0/issues/24155)) ([10e9949](https://github.com/vm0-ai/vm0/commit/10e9949ff98f5c50f50d5f2ec0307b80d87b4587))
+
+
+### Bug Fixes
+
+* preserve app URL through runner environment ([#24213](https://github.com/vm0-ai/vm0/issues/24213)) ([4171443](https://github.com/vm0-ai/vm0/commit/41714431c6f035a8fb551e57804d92cbb1f71954))
+
+
+### Refactoring
+
+* **api:** switch terminal event indexes ([#24305](https://github.com/vm0-ai/vm0/issues/24305)) ([31e6f39](https://github.com/vm0-ai/vm0/commit/31e6f39fa511f721f8cc3f7cf3a9ba614346f21b))
+* **browser:** remove usage compatibility paths ([#24284](https://github.com/vm0-ai/vm0/issues/24284)) ([a32baa4](https://github.com/vm0-ai/vm0/commit/a32baa495af5176df3279a32bc3d4dfa7915da61))
+* **runner:** remove cancellation recovery capability ([#24318](https://github.com/vm0-ai/vm0/issues/24318)) ([065a83d](https://github.com/vm0-ai/vm0/commit/065a83d12e68176a84fef19bfd415b32c686897d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.1
+    * @vm0/core bumped to 8.498.0
+    * @vm0/db bumped to 1.159.1
+
+## [1.360.0](https://github.com/vm0-ai/vm0/compare/api-v1.359.3...api-v1.360.0) (2026-07-31)
+
+
+### Features
+
+* reuse runner sandboxes by chat thread ([#24285](https://github.com/vm0-ai/vm0/issues/24285)) ([181eb2f](https://github.com/vm0-ai/vm0/commit/181eb2f6741ed448fcebf7d8108bbc1438e366ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.0
+    * @vm0/core bumped to 8.497.4
+    * @vm0/db bumped to 1.159.0
+
+## [1.359.3](https://github.com/vm0-ai/vm0/compare/api-v1.359.2...api-v1.359.3) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** use slug catalog compatibility evaluations ([#24267](https://github.com/vm0-ai/vm0/issues/24267)) ([277f082](https://github.com/vm0-ai/vm0/commit/277f082819f55313babb9271ddb14911e33ef1af))
+
+
+### Performance Improvements
+
+* **api:** shorten organization admission lock ([#24265](https://github.com/vm0-ai/vm0/issues/24265)) ([248d19e](https://github.com/vm0-ai/vm0/commit/248d19ede1b320c5415eb9effad1e4453ce6841a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.4
+    * @vm0/core bumped to 8.497.3
+    * @vm0/db bumped to 1.158.6
+
+## [1.359.2](https://github.com/vm0-ai/vm0/compare/api-v1.359.1...api-v1.359.2) (2026-07-31)
+
+
+### Refactoring
+
+* **chat:** retire automation pause events ([#24256](https://github.com/vm0-ai/vm0/issues/24256)) ([51b8186](https://github.com/vm0-ai/vm0/commit/51b81868c8779f14c8a59deac2452aee1eca2790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.3
+    * @vm0/core bumped to 8.497.2
+    * @vm0/db bumped to 1.158.5
+
+## [1.359.1](https://github.com/vm0-ai/vm0/compare/api-v1.359.0...api-v1.359.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** distinguish cancellation intent ([#24217](https://github.com/vm0-ai/vm0/issues/24217)) ([ce76a6d](https://github.com/vm0-ai/vm0/commit/ce76a6d1fc3c332da622f390be9119f58275cc30))
+
+
+### Refactoring
+
+* **chat:** project source annotations from context ([#24230](https://github.com/vm0-ai/vm0/issues/24230)) ([f686803](https://github.com/vm0-ai/vm0/commit/f6868038b1953cfe1c588d74890ab8053044eadf))
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Performance Improvements
+
+* **api:** reduce workflow slash pre-admission latency ([#24216](https://github.com/vm0-ai/vm0/issues/24216)) ([cd91f46](https://github.com/vm0-ai/vm0/commit/cd91f460b78c261f40e429b2c0626e693dd84a64))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+    * @vm0/db bumped to 1.158.4
+
+## [1.359.0](https://github.com/vm0-ai/vm0/compare/api-v1.358.1...api-v1.359.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Refactoring
+
+* **api:** remove legacy github callback field ([#24199](https://github.com/vm0-ai/vm0/issues/24199)) ([f7133ea](https://github.com/vm0-ai/vm0/commit/f7133ea133817d6ccb9b91dbee31c3c5366a29fa))
+
+
+### Performance Improvements
+
+* **api:** clean up applied model usage observations ([#24196](https://github.com/vm0-ai/vm0/issues/24196)) ([0586cb2](https://github.com/vm0-ai/vm0/commit/0586cb2f3f2cb44f9d3048d2b664074550909cc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+    * @vm0/core bumped to 8.497.0
+    * @vm0/db bumped to 1.158.3
+
+## [1.358.1](https://github.com/vm0-ai/vm0/compare/api-v1.358.0...api-v1.358.1) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** replace scalar existence probes with builders ([#24136](https://github.com/vm0-ai/vm0/issues/24136)) ([7ff711e](https://github.com/vm0-ai/vm0/commit/7ff711e4758f40c03b64be8f1da6597a76926db1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.496.4
+    * @vm0/db bumped to 1.158.2
+
+## [1.358.0](https://github.com/vm0-ai/vm0/compare/api-v1.357.0...api-v1.358.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** explain cancellation recovery before queued continuation ([#24138](https://github.com/vm0-ai/vm0/issues/24138)) ([e69feb8](https://github.com/vm0-ai/vm0/commit/e69feb8210a878f3a5f130766e67274d7115b57b))
+
+
+### Refactoring
+
+* **api:** rename GitHub chat event identifiers ([#24163](https://github.com/vm0-ai/vm0/issues/24163)) ([240143f](https://github.com/vm0-ai/vm0/commit/240143f24fe334ff039b5b5d08d469e149a874cf))
+* **api:** retire the agent session read endpoint ([#24164](https://github.com/vm0-ai/vm0/issues/24164)) ([f76fc80](https://github.com/vm0-ai/vm0/commit/f76fc805f64da464ce910d0975f2d87c9516062c))
+* **db:** add chat goal context ([#24160](https://github.com/vm0-ai/vm0/issues/24160)) ([67ce15b](https://github.com/vm0-ai/vm0/commit/67ce15bd3e74748abe572aed6779b8aa9505f486))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+    * @vm0/db bumped to 1.158.1
+
+## [1.357.0](https://github.com/vm0-ai/vm0/compare/api-v1.356.2...api-v1.357.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Refactoring
+
+* **api:** remove legacy axiom output bridge ([#24147](https://github.com/vm0-ai/vm0/issues/24147)) ([b22b99d](https://github.com/vm0-ai/vm0/commit/b22b99de3829464873a309e3f17132a43a30aca5))
+* **connectors:** remove legacy authorization state reader ([#24135](https://github.com/vm0-ai/vm0/issues/24135)) ([2924137](https://github.com/vm0-ai/vm0/commit/2924137d49442af25a73d19f8526d4ca968f0bfc))
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+
+### Performance Improvements
+
+* **api:** incrementally project model statistics ([#24139](https://github.com/vm0-ai/vm0/issues/24139)) ([50ee908](https://github.com/vm0-ai/vm0/commit/50ee90878c70cb7fd1b99cb909a291ab9fd9c7e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+    * @vm0/db bumped to 1.158.0
+
+## [1.356.2](https://github.com/vm0-ai/vm0/compare/api-v1.356.1...api-v1.356.2) (2026-07-31)
+
+
+### Refactoring
+
+* remove cli trigger source ([#24148](https://github.com/vm0-ai/vm0/issues/24148)) ([e0563be](https://github.com/vm0-ai/vm0/commit/e0563be2c7e2c103abbc9a7083d51dc18d6e81b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.1
+    * @vm0/core bumped to 8.496.1
+    * @vm0/db bumped to 1.157.6
+
+## [1.356.1](https://github.com/vm0-ai/vm0/compare/api-v1.356.0...api-v1.356.1) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.157.5
+
+## [1.356.0](https://github.com/vm0-ai/vm0/compare/api-v1.355.1...api-v1.356.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support hindi locale ([#24081](https://github.com/vm0-ai/vm0/issues/24081)) ([fad755d](https://github.com/vm0-ai/vm0/commit/fad755d3d47c8af94f19355c9673149fcf8e1c37)), closes [#24000](https://github.com/vm0-ai/vm0/issues/24000)
+
+
+### Bug Fixes
+
+* **platform:** enable japanese locale rollout controls ([#24072](https://github.com/vm0-ai/vm0/issues/24072)) ([9242716](https://github.com/vm0-ai/vm0/commit/9242716f2afd37a318d3b89493b8af370c7dfe8e))
+
+
+### Refactoring
+
+* **api:** make run output database-backed ([#24099](https://github.com/vm0-ai/vm0/issues/24099)) ([8030d56](https://github.com/vm0-ai/vm0/commit/8030d565109ec3bb36741f3f8871302d313853d5))
+* **db:** drop legacy chat event automation context ([#24126](https://github.com/vm0-ai/vm0/issues/24126)) ([be06c50](https://github.com/vm0-ai/vm0/commit/be06c5088f1fa5f4a5a32130bbf4417235417e42))
+* reduce fallback slop in slack commands ([#24140](https://github.com/vm0-ai/vm0/issues/24140)) ([cb72494](https://github.com/vm0-ai/vm0/commit/cb72494cd8408d534c270455d30b22b8fbf564f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.0
+    * @vm0/core bumped to 8.496.0
+    * @vm0/db bumped to 1.157.4
+
+## [1.355.1](https://github.com/vm0-ai/vm0/compare/api-v1.355.0...api-v1.355.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **api:** hold thread continuation until cancellation recovery ([#23976](https://github.com/vm0-ai/vm0/issues/23976)) ([8da33a4](https://github.com/vm0-ai/vm0/commit/8da33a426b1359f8aa55f81f4f7ff834a6b6f4e9))
+* **api:** prepare model usage observations for projection ([#24130](https://github.com/vm0-ai/vm0/issues/24130)) ([62f3445](https://github.com/vm0-ai/vm0/commit/62f3445b0ab993ffb420c12fdf3d1a6d20ea91ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.1
+    * @vm0/core bumped to 8.495.1
+    * @vm0/db bumped to 1.157.3
+
+## [1.355.0](https://github.com/vm0-ai/vm0/compare/api-v1.354.0...api-v1.355.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support italian locale ([#24056](https://github.com/vm0-ai/vm0/issues/24056)) ([21d5c14](https://github.com/vm0-ai/vm0/commit/21d5c1459b5a044d3973fa9431ea3ce80c4deacd))
+* **platform:** support spanish locale ([#24052](https://github.com/vm0-ai/vm0/issues/24052)) ([e6bb124](https://github.com/vm0-ai/vm0/commit/e6bb12414447aad1817787f4b3c1b01010a3102f))
+
+
+### Bug Fixes
+
+* **api:** enforce column encoding for typed comparison values ([#24104](https://github.com/vm0-ai/vm0/issues/24104)) ([6b4299c](https://github.com/vm0-ai/vm0/commit/6b4299ce543e93e1dace83f137d17c0c8e19d5d8))
+
+
+### Refactoring
+
+* **api:** remove legacy connector client schema aliases ([#24108](https://github.com/vm0-ai/vm0/issues/24108)) ([cfde606](https://github.com/vm0-ai/vm0/commit/cfde606e0e7dc755e8ff3e407b0b0cf79f19a3cc))
+* **api:** retire legacy integration callbacks ([#24123](https://github.com/vm0-ai/vm0/issues/24123)) ([ef51913](https://github.com/vm0-ai/vm0/commit/ef519139c96fb14e7bf1d568210459eb8aeedb2e))
+* **api:** write test trigger source explicitly ([#24114](https://github.com/vm0-ai/vm0/issues/24114)) ([a4d2cde](https://github.com/vm0-ai/vm0/commit/a4d2cde9fa674807337db05b756bbc9f466f97d4))
+* **connectors:** write canonical authorization state ([#24125](https://github.com/vm0-ai/vm0/issues/24125)) ([83786a4](https://github.com/vm0-ai/vm0/commit/83786a4080292da076976d3a1d35515f539c22a3))
+* **db:** add chat automation context ([#24119](https://github.com/vm0-ai/vm0/issues/24119)) ([97e1ae6](https://github.com/vm0-ai/vm0/commit/97e1ae620722818b78494a88484bdc5cbecb1b94))
+* **insights:** remove legacy connector type ([#24101](https://github.com/vm0-ai/vm0/issues/24101)) ([e6de42c](https://github.com/vm0-ai/vm0/commit/e6de42c3e36d3bbe904b976dff3efd46b1152d9f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.0
+    * @vm0/core bumped to 8.495.0
+    * @vm0/db bumped to 1.157.2
+
+## [1.354.0](https://github.com/vm0-ai/vm0/compare/api-v1.353.0...api-v1.354.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support german locale ([#24048](https://github.com/vm0-ai/vm0/issues/24048)) ([260d04f](https://github.com/vm0-ai/vm0/commit/260d04fbdaf377e81b5e5cbe64d5d7809abd42f7))
+
+
+### CI
+
+* prewarm API deployment before migrations ([#24113](https://github.com/vm0-ai/vm0/issues/24113)) ([2b14300](https://github.com/vm0-ai/vm0/commit/2b14300cd60fa04b7a15056f4347cc979e21a278))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.254.0
+    * @vm0/core bumped to 8.494.0
+    * @vm0/db bumped to 1.157.1
+
+## [1.353.0](https://github.com/vm0-ai/vm0/compare/api-v1.352.0...api-v1.353.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+* **platform:** support indonesian locale ([#24046](https://github.com/vm0-ai/vm0/issues/24046)) ([3b13623](https://github.com/vm0-ai/vm0/commit/3b13623006743c44d874e51ed0b482084ccbe704))
+* **platform:** support korean locale ([#24054](https://github.com/vm0-ai/vm0/issues/24054)) ([244943c](https://github.com/vm0-ai/vm0/commit/244943cd45119c7a4975234e657ff9a7fbe5d963))
+
+
+### Refactoring
+
+* **api:** retire agent compose endpoints ([#24102](https://github.com/vm0-ai/vm0/issues/24102)) ([1d5211f](https://github.com/vm0-ai/vm0/commit/1d5211f68e541f99c1d7af3206ccc3f6909492df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.253.0
+    * @vm0/core bumped to 8.493.0
+    * @vm0/db bumped to 1.157.0
+
+## [1.352.0](https://github.com/vm0-ai/vm0/compare/api-v1.351.1...api-v1.352.0) (2026-07-30)
+
+
+### Features
+
+* add short artifact keys ([#24005](https://github.com/vm0-ai/vm0/issues/24005)) ([663a97c](https://github.com/vm0-ai/vm0/commit/663a97c855dbfacff7169a71e1fd67dba6ba9a02))
+* **api:** force app.vm0.ai clients to upgrade to v0.662.2 ([#24095](https://github.com/vm0-ai/vm0/issues/24095)) ([a103766](https://github.com/vm0-ai/vm0/commit/a1037666b25837be5e0a817fb39e2c30dd3d7d6c))
+* enable composer skill search and slack dm routing globally ([#24064](https://github.com/vm0-ai/vm0/issues/24064)) ([04cc800](https://github.com/vm0-ai/vm0/commit/04cc800e6d28b91e0f8999298ee7c2ac3128d5fe))
+* **feishu:** add custom connector oauth ([#24027](https://github.com/vm0-ai/vm0/issues/24027)) ([f494eca](https://github.com/vm0-ai/vm0/commit/f494ecacc72d12d551e1eee27662a88e6cc2d0cd))
+* **platform:** add chat limit recovery actions ([#24050](https://github.com/vm0-ai/vm0/issues/24050)) ([966e2a8](https://github.com/vm0-ai/vm0/commit/966e2a8e18f7d07616b76a288892cd04059c53f7))
+
+
+### Bug Fixes
+
+* remove unavailable chibi-hero image style ([#24034](https://github.com/vm0-ai/vm0/issues/24034)) ([c2cc338](https://github.com/vm0-ai/vm0/commit/c2cc338b17d8a9458c940bb3a95d37e7bbcb7f8c))
+
+
+### Refactoring
+
+* **connectors:** prepare authorization state readers ([#24088](https://github.com/vm0-ai/vm0/issues/24088)) ([5d069c2](https://github.com/vm0-ai/vm0/commit/5d069c2a192ef6b6103b42ad14f7c744e40a70dc))
+* **db:** add chat display context tables ([#24089](https://github.com/vm0-ai/vm0/issues/24089)) ([d624fd2](https://github.com/vm0-ai/vm0/commit/d624fd2f68a7f9c2c3edefea4d8749d6f3af021f))
+* **db:** remove legacy connector identity columns ([#23978](https://github.com/vm0-ai/vm0/issues/23978)) ([2b77cbf](https://github.com/vm0-ai/vm0/commit/2b77cbfc195fd8e67466503be503b23137f56fd2))
+* remove artifacts feature switch ([#24093](https://github.com/vm0-ai/vm0/issues/24093)) ([c097899](https://github.com/vm0-ai/vm0/commit/c09789958545e0161a49e5b67ad760bba88ccdde))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.252.0
+    * @vm0/core bumped to 8.492.0
+    * @vm0/db bumped to 1.156.5
+
+## [1.351.1](https://github.com/vm0-ai/vm0/compare/api-v1.351.0...api-v1.351.1) (2026-07-30)
+
+
+### CI
+
+* promote API immediately after database migration ([#24059](https://github.com/vm0-ai/vm0/issues/24059)) ([57aa089](https://github.com/vm0-ai/vm0/commit/57aa089eec747234b987412d81ca8d947e4efc24))
+
+
+### Refactoring
+
+* **api:** contract chat queue admission lock ([#24060](https://github.com/vm0-ai/vm0/issues/24060)) ([8fac17f](https://github.com/vm0-ai/vm0/commit/8fac17f6da7d19cdfe9d19b9c247b1a57adb471e))
+* **insights:** stop writing legacy connector type ([#24068](https://github.com/vm0-ai/vm0/issues/24068)) ([4892216](https://github.com/vm0-ai/vm0/commit/48922167a34ea2025c73effdb0479a454440eb74))
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+    * @vm0/db bumped to 1.156.4
+
+## [1.351.0](https://github.com/vm0-ai/vm0/compare/api-v1.350.0...api-v1.351.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Bug Fixes
+
+* **api:** reject redirected axiom ingestion ([#24022](https://github.com/vm0-ai/vm0/issues/24022)) ([ac5e94f](https://github.com/vm0-ai/vm0/commit/ac5e94f18ea92e51732567faacb77dc018931d4f))
+
+
+### Refactoring
+
+* **test-api:** use slug fields in connector auth fixtures ([#24024](https://github.com/vm0-ai/vm0/issues/24024)) ([c655087](https://github.com/vm0-ai/vm0/commit/c65508731a6db6648f28253d1657aff63822e3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.0
+    * @vm0/core bumped to 8.490.0
+    * @vm0/db bumped to 1.156.3
+
+## [1.350.0](https://github.com/vm0-ai/vm0/compare/api-v1.349.1...api-v1.350.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Refactoring
+
+* **api:** move runner run creation to test route ([#24013](https://github.com/vm0-ai/vm0/issues/24013)) ([6114c5e](https://github.com/vm0-ai/vm0/commit/6114c5e93b9b28e11bd8c1d3a78bebea32739732))
+* **insights:** migrate connector identity to slug ([#23952](https://github.com/vm0-ai/vm0/issues/23952)) ([596d96d](https://github.com/vm0-ai/vm0/commit/596d96d3d5972f9753c20ba3cdaff4e4506a0969))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+    * @vm0/core bumped to 8.489.0
+    * @vm0/db bumped to 1.156.2
+
+## [1.349.1](https://github.com/vm0-ai/vm0/compare/api-v1.349.0...api-v1.349.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** reconcile terminal network policy refreshes ([#23975](https://github.com/vm0-ai/vm0/issues/23975)) ([5c57871](https://github.com/vm0-ai/vm0/commit/5c5787153a35882762ef786b734555a85243739d))
+
+
+### Refactoring
+
+* **github:** retire github_issue_sessions runtime access ([#24008](https://github.com/vm0-ai/vm0/issues/24008)) ([8197440](https://github.com/vm0-ai/vm0/commit/8197440a926037bc9fba832b1ce14e64647952db))
+* retire draft content storage ([#23940](https://github.com/vm0-ai/vm0/issues/23940)) ([baa4589](https://github.com/vm0-ai/vm0/commit/baa45899ef04ae8607ea6d5552632c95940ea259))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.1
+    * @vm0/core bumped to 8.488.3
+    * @vm0/db bumped to 1.156.1
+
+## [1.349.0](https://github.com/vm0-ai/vm0/compare/api-v1.348.1...api-v1.349.0) (2026-07-30)
+
+
+### Features
+
+* **chat:** render composer agent mentions as structured agent parts ([#23943](https://github.com/vm0-ai/vm0/issues/23943)) ([ae861b8](https://github.com/vm0-ai/vm0/commit/ae861b86e7873f6d8811f00c877af6e0483f888c))
+* **github:** route issue and pr chats through canonical threads ([#23953](https://github.com/vm0-ai/vm0/issues/23953)) ([1aac828](https://github.com/vm0-ai/vm0/commit/1aac828435bd7da57eabd2b25db098e78b3b5411))
+
+
+### Refactoring
+
+* **agentphone:** remove legacy thread session access ([#23970](https://github.com/vm0-ai/vm0/issues/23970)) ([331ab52](https://github.com/vm0-ai/vm0/commit/331ab5292d6e95f13831750f75ae1ad10ed808d5))
+* **chat:** stop backward history paging at seq id one ([#23966](https://github.com/vm0-ai/vm0/issues/23966)) ([5d48c32](https://github.com/vm0-ai/vm0/commit/5d48c32163d609e48b8ec156547cf219bf283bdf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.0
+    * @vm0/core bumped to 8.488.2
+    * @vm0/db bumped to 1.156.0
+
+## [1.348.1](https://github.com/vm0-ai/vm0/compare/api-v1.348.0...api-v1.348.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* title ingress chat threads when their run is created ([#23947](https://github.com/vm0-ai/vm0/issues/23947)) ([93860c8](https://github.com/vm0-ai/vm0/commit/93860c8f4439f374b048128236ba1a6da343dd57))
+
+
+### Refactoring
+
+* drop legacy chat event transport columns ([#23931](https://github.com/vm0-ai/vm0/issues/23931)) ([09cf8b2](https://github.com/vm0-ai/vm0/commit/09cf8b215260e801d331356fefc66cfea81bbb3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.2
+    * @vm0/core bumped to 8.488.1
+    * @vm0/db bumped to 1.155.1
+
+## [1.348.0](https://github.com/vm0-ai/vm0/compare/api-v1.347.0...api-v1.348.0) (2026-07-30)
+
+
+### Features
+
+* **agentphone:** route conversations through canonical chat threads ([#23912](https://github.com/vm0-ai/vm0/issues/23912)) ([30acfce](https://github.com/vm0-ai/vm0/commit/30acfce2c5aaadb99a1526c27112e892bbd5590d))
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+* put each workflow automation firing's trigger identity in its user turn ([#23898](https://github.com/vm0-ai/vm0/issues/23898)) ([f397b2b](https://github.com/vm0-ai/vm0/commit/f397b2b71c2520ffc1012324521d388f0490a9a1))
+
+
+### Refactoring
+
+* **api:** rename chat SQL aliases to event vocabulary ([#23938](https://github.com/vm0-ai/vm0/issues/23938)) ([213638e](https://github.com/vm0-ai/vm0/commit/213638e6104a4962d482bdfadd2fbb0a1789f5c9))
+* move chat input transport params into queue table ([#23909](https://github.com/vm0-ai/vm0/issues/23909)) ([182afc4](https://github.com/vm0-ai/vm0/commit/182afc46600bf4c4ed2fd19df3d000d17301a906))
+* **observability:** migrate connector diagnostics to slug ([#23907](https://github.com/vm0-ai/vm0/issues/23907)) ([ce77eaa](https://github.com/vm0-ai/vm0/commit/ce77eaa374b8c2f6975c3550e8c76c15ccb224ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.1
+    * @vm0/core bumped to 8.488.0
+    * @vm0/db bumped to 1.155.0
+
+## [1.347.0](https://github.com/vm0-ai/vm0/compare/api-v1.346.1...api-v1.347.0) (2026-07-30)
+
+
+### Features
+
+* add chat-run-finished workflow automation event trigger ([#23861](https://github.com/vm0-ai/vm0/issues/23861)) ([402ce7e](https://github.com/vm0-ai/vm0/commit/402ce7e1484a34a172624ea0047ccd1ffcc1441b))
+
+
+### Bug Fixes
+
+* remove legacy network policy connector fields ([#23866](https://github.com/vm0-ai/vm0/issues/23866)) ([8c5bd04](https://github.com/vm0-ai/vm0/commit/8c5bd0436863535ad36baa9c22b1f849657fb8ac))
+
+
+### Refactoring
+
+* **api:** unify server chat naming with chat events ([#23896](https://github.com/vm0-ai/vm0/issues/23896)) ([90ea01f](https://github.com/vm0-ai/vm0/commit/90ea01f6748bc3ccfcc289437aa48a621ab254ff))
+* remove the fully rolled out zero-finance feature switch ([#23889](https://github.com/vm0-ai/vm0/issues/23889)) ([aa55c8f](https://github.com/vm0-ai/vm0/commit/aa55c8f6a90c5a1b3c6fa043b8852c71f1dbc009))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.0
+    * @vm0/core bumped to 8.487.0
+    * @vm0/db bumped to 1.154.0
+
+## [1.346.1](https://github.com/vm0-ai/vm0/compare/api-v1.346.0...api-v1.346.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **api:** enforce thread queue-claim admission ([#23820](https://github.com/vm0-ai/vm0/issues/23820)) ([e2478c4](https://github.com/vm0-ai/vm0/commit/e2478c4410dddd6b2bf76e9ad66172f8d0014cf1))
+
+
+### Refactoring
+
+* **api:** use stable grouping expressions ([#23843](https://github.com/vm0-ai/vm0/issues/23843)) ([af5ee1f](https://github.com/vm0-ai/vm0/commit/af5ee1fa2bb3bce43a579dd16965c2cacef0328c))
+* **telegram:** retire legacy thread session runtime ([#23864](https://github.com/vm0-ai/vm0/issues/23864)) ([83a947e](https://github.com/vm0-ai/vm0/commit/83a947e8c874d41245065fc9b9bfcbf49aecae20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.1
+    * @vm0/core bumped to 8.486.3
+    * @vm0/db bumped to 1.153.3
+
+## [1.346.0](https://github.com/vm0-ai/vm0/compare/api-v1.345.1...api-v1.346.0) (2026-07-30)
+
+
+### Features
+
+* **api:** add slug-named connector client contracts ([#23842](https://github.com/vm0-ai/vm0/issues/23842)) ([f81813a](https://github.com/vm0-ai/vm0/commit/f81813a6d3833f65dce8df63cd0e26f1249e8815))
+
+
+### Bug Fixes
+
+* **api:** stop seeding input content in the chat thread bench ([#23855](https://github.com/vm0-ai/vm0/issues/23855)) ([ef03088](https://github.com/vm0-ai/vm0/commit/ef030881c595e3acd7ccbd8fc85089a9c58d771b))
+* **chat:** return the complete per-thread event stream to the frontend ([#23851](https://github.com/vm0-ai/vm0/issues/23851)) ([93422b3](https://github.com/vm0-ai/vm0/commit/93422b35196da90f57648366144742f97800a308))
+
+
+### Refactoring
+
+* **observability:** add canonical connector slug dimensions ([#23846](https://github.com/vm0-ai/vm0/issues/23846)) ([4a6483a](https://github.com/vm0-ai/vm0/commit/4a6483aa21fb45b84ce7d05d72511ebd5d683558))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.0
+    * @vm0/core bumped to 8.486.2
+    * @vm0/db bumped to 1.153.2
+
+## [1.345.1](https://github.com/vm0-ai/vm0/compare/api-v1.345.0...api-v1.345.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.153.1
+
+## [1.345.0](https://github.com/vm0-ai/vm0/compare/api-v1.344.0...api-v1.345.0) (2026-07-29)
+
+
+### Features
+
+* add manual fit-window control to browser sidebar ([#23778](https://github.com/vm0-ai/vm0/issues/23778)) ([5e83d19](https://github.com/vm0-ai/vm0/commit/5e83d193d95d34895ec1855467dbeba602314e0a))
+* **browser:** enforce org concurrency without credit billing ([#23796](https://github.com/vm0-ai/vm0/issues/23796)) ([e42df26](https://github.com/vm0-ai/vm0/commit/e42df26c5958f17ab3d76c0c1a82e5e333893cfe))
+
+
+### Bug Fixes
+
+* bridge network policy connector slug fields ([#23828](https://github.com/vm0-ai/vm0/issues/23828)) ([ce1a3bb](https://github.com/vm0-ai/vm0/commit/ce1a3bb8d32e5049e3916af9f7233447ed3f5790))
+* **chat:** return the complete redacted event stream ([#23815](https://github.com/vm0-ai/vm0/issues/23815)) ([816b9f2](https://github.com/vm0-ai/vm0/commit/816b9f205ab913fca3249b0828d8c362dd2eb207))
+* derive automation queue rows from chat events ([#23810](https://github.com/vm0-ai/vm0/issues/23810)) ([9611ed8](https://github.com/vm0-ai/vm0/commit/9611ed8e92f1c3dc57a9c598f0d426b49b08221f))
+* **slack:** preserve terminal callbacks on realtime failure ([#23836](https://github.com/vm0-ai/vm0/issues/23836)) ([72cf017](https://github.com/vm0-ai/vm0/commit/72cf017631d599f09d2acc91baf61f19aa92fc3f))
+* **telegram:** harden canonical cutover invariants ([#23825](https://github.com/vm0-ai/vm0/issues/23825)) ([74b7e64](https://github.com/vm0-ai/vm0/commit/74b7e6491ed69180cb5071843b5a71282c65cc7a))
+
+
+### Refactoring
+
+* **api:** replace raw scalar subquery ([#23808](https://github.com/vm0-ai/vm0/issues/23808)) ([82809f2](https://github.com/vm0-ai/vm0/commit/82809f2a8ed9038457fe53596bead978c19630b0))
+* **db:** expand connector slug columns ([#23813](https://github.com/vm0-ai/vm0/issues/23813)) ([c85213a](https://github.com/vm0-ai/vm0/commit/c85213aa8c495687d85842c2ae8f6a17eb71fcd5))
+* retire signed model pricing protocol ([#23811](https://github.com/vm0-ai/vm0/issues/23811)) ([918a5ef](https://github.com/vm0-ai/vm0/commit/918a5ef92aeccf84ebfbf78a745d1f6062a4d55e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.247.0
+    * @vm0/connectors bumped to 1.202.1
+    * @vm0/core bumped to 8.486.1
+    * @vm0/db bumped to 1.153.0
+
+## [1.344.0](https://github.com/vm0-ai/vm0/compare/api-v1.343.0...api-v1.344.0) (2026-07-29)
+
+
+### Features
+
+* **cli:** add chat send, queue, and cancel commands ([#23798](https://github.com/vm0-ai/vm0/issues/23798)) ([acae822](https://github.com/vm0-ai/vm0/commit/acae82290bcd72aaf2af292f405db86a05821226))
+
+
+### Refactoring
+
+* **chat:** retire legacy input content storage ([#23658](https://github.com/vm0-ai/vm0/issues/23658)) ([dcbe985](https://github.com/vm0-ai/vm0/commit/dcbe985bf518c6bf745f8714417df2e9a92576de))
+* **connectors:** align custom oauth storage with organization model ([#23521](https://github.com/vm0-ai/vm0/issues/23521)) ([ab3e118](https://github.com/vm0-ai/vm0/commit/ab3e118690a3d7346dadb571ffb38bf9e5d40bbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.246.0
+    * @vm0/core bumped to 8.486.0
+    * @vm0/db bumped to 1.152.1
+
+## [1.343.0](https://github.com/vm0-ai/vm0/compare/api-v1.342.0...api-v1.343.0) (2026-07-29)
+
+
+### Features
+
+* **connectors:** route cloudflare oauth through the app callback ([#23739](https://github.com/vm0-ai/vm0/issues/23739)) ([8fc2316](https://github.com/vm0-ai/vm0/commit/8fc23165b7b813b7c1227f724d7975197baab1ae))
+* **telegram:** route reply chains through canonical chat threads ([#23785](https://github.com/vm0-ai/vm0/issues/23785)) ([f55813b](https://github.com/vm0-ai/vm0/commit/f55813b5a07b8b3388510cc84f85afe0036e35dc))
+
+
+### Bug Fixes
+
+* **api:** harden morning brief failure paths ([#23758](https://github.com/vm0-ai/vm0/issues/23758)) ([2769085](https://github.com/vm0-ai/vm0/commit/2769085d188d83c1468a4bda4e447bf107bff92f))
+* **api:** use custom plan periods for team usage ([#23787](https://github.com/vm0-ai/vm0/issues/23787)) ([e7ea364](https://github.com/vm0-ai/vm0/commit/e7ea364061e463087fa2a0cd6c17dc85e5df641a))
+* **connectors:** preserve committed mutations on realtime failure ([#23779](https://github.com/vm0-ai/vm0/issues/23779)) ([a4abdee](https://github.com/vm0-ai/vm0/commit/a4abdee3caa2f7e837a3919f6ecf66cc895e54e2))
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+* separate cloud browser viewer access from agent authorization ([#23752](https://github.com/vm0-ai/vm0/issues/23752)) ([3f431f7](https://github.com/vm0-ai/vm0/commit/3f431f721fcb7b7137465c2259dfa15792820a83))
+
+
+### Refactoring
+
+* **api:** use chat_events in raw sql ([#23760](https://github.com/vm0-ai/vm0/issues/23760)) ([f12b968](https://github.com/vm0-ai/vm0/commit/f12b968bdac602761be42ccfd497f2281be64645))
+* **connectors:** consume catalog v2 slug identity ([#23786](https://github.com/vm0-ai/vm0/issues/23786)) ([e9dc374](https://github.com/vm0-ai/vm0/commit/e9dc3740a661f3d549b7e8062e5cb15ea58e017d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.245.0
+    * @vm0/connectors bumped to 1.202.0
+    * @vm0/core bumped to 8.485.1
+    * @vm0/db bumped to 1.152.0
+
+## [1.342.0](https://github.com/vm0-ai/vm0/compare/api-v1.341.0...api-v1.342.0) (2026-07-29)
+
+
+### Features
+
+* **api:** admit morning briefs through the chat thread queue ([#23713](https://github.com/vm0-ai/vm0/issues/23713)) ([f7fe7aa](https://github.com/vm0-ai/vm0/commit/f7fe7aa84358e363b8042cd6ea85dafccd132046))
+* **chat:** admit goal continuation through the thread queue ([#23714](https://github.com/vm0-ai/vm0/issues/23714)) ([5913886](https://github.com/vm0-ai/vm0/commit/591388645ddd0614c9a80c1942c59f4e05255b8e))
+* **zero:** enable zero finance for all users ([#23701](https://github.com/vm0-ai/vm0/issues/23701)) ([e2aac84](https://github.com/vm0-ai/vm0/commit/e2aac848b5e88debc8f729e1899210e742183fb0))
+
+
+### Bug Fixes
+
+* **goals:** harden queued goal rejection ([#23740](https://github.com/vm0-ai/vm0/issues/23740)) ([4728a57](https://github.com/vm0-ai/vm0/commit/4728a579e20772b4fee8230fc038b0179b32231f))
+
+
+### Refactoring
+
+* **api:** replace redundant sql column wrappers ([#23719](https://github.com/vm0-ai/vm0/issues/23719)) ([cb8356b](https://github.com/vm0-ai/vm0/commit/cb8356be5cb15bc3d79a8715fb5327ddd0e2f133))
+* **connectors:** adopt slug terminology internally ([#23697](https://github.com/vm0-ai/vm0/issues/23697)) ([ffa2a39](https://github.com/vm0-ai/vm0/commit/ffa2a39c3624c85ceed4d3b6bed32bc652ed4feb))
+* **teams:** retire legacy thread session continuity ([#23720](https://github.com/vm0-ai/vm0/issues/23720)) ([c6341a4](https://github.com/vm0-ai/vm0/commit/c6341a4eaaadc3167314955471f524cfac300e73))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.244.0
+    * @vm0/connectors bumped to 1.201.1
+    * @vm0/core bumped to 8.485.0
+    * @vm0/db bumped to 1.151.0
+
+## [1.341.0](https://github.com/vm0-ai/vm0/compare/api-v1.340.4...api-v1.341.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** localize account and workspace settings ([#23524](https://github.com/vm0-ai/vm0/issues/23524)) ([f43885a](https://github.com/vm0-ai/vm0/commit/f43885ac2ea5e28fd22862fd729725eb5720dcdd))
+
+
+### Bug Fixes
+
+* **browser:** sync cards after session lifecycle changes ([#23682](https://github.com/vm0-ai/vm0/issues/23682)) ([babb3d6](https://github.com/vm0-ai/vm0/commit/babb3d6fa22bc34a007920b7603fbd06765eaa38))
+* expose inline template switch in lab ([#23670](https://github.com/vm0-ai/vm0/issues/23670)) ([cfd234c](https://github.com/vm0-ai/vm0/commit/cfd234c7a304f88877e2a1f226c9d017fb229a91))
+
+
+### Refactoring
+
+* remove org plan entitlement reads switch ([#23698](https://github.com/vm0-ai/vm0/issues/23698)) ([8fde46e](https://github.com/vm0-ai/vm0/commit/8fde46ecfbddaf2b003ff33dbcb01ee37f87f859))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.4
+    * @vm0/connectors bumped to 1.201.0
+    * @vm0/core bumped to 8.484.4
+    * @vm0/db bumped to 1.150.7
+
+## [1.340.4](https://github.com/vm0-ai/vm0/compare/api-v1.340.3...api-v1.340.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **usage:** distinguish people search from web search ([#23635](https://github.com/vm0-ai/vm0/issues/23635)) ([c3f3bd1](https://github.com/vm0-ai/vm0/commit/c3f3bd1be60c48bf2ceae5a0a46a1a901ab2a5ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.3
+    * @vm0/connectors bumped to 1.200.0
+    * @vm0/core bumped to 8.484.3
+    * @vm0/db bumped to 1.150.6
+
+## [1.340.3](https://github.com/vm0-ai/vm0/compare/api-v1.340.2...api-v1.340.3) (2026-07-29)
+
+
+### Refactoring
+
+* **api:** build usage record queries with drizzle ctes ([#23636](https://github.com/vm0-ai/vm0/issues/23636)) ([0bb6628](https://github.com/vm0-ai/vm0/commit/0bb6628aee3040f7c432760485429dd89c7d2386))
+
+
+### Performance Improvements
+
+* compact hourly usage while retaining source events ([#23632](https://github.com/vm0-ai/vm0/issues/23632)) ([e247f8c](https://github.com/vm0-ai/vm0/commit/e247f8cd27b24c6453d9f9f4a4e86a7ed9532a76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.2
+    * @vm0/core bumped to 8.484.2
+    * @vm0/db bumped to 1.150.5
+
+## [1.340.2](https://github.com/vm0-ai/vm0/compare/api-v1.340.1...api-v1.340.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **browser:** log bounded provider cost diagnostics ([#23613](https://github.com/vm0-ai/vm0/issues/23613)) ([a32f0bb](https://github.com/vm0-ai/vm0/commit/a32f0bbe87fc0a79f7fc36ec1d65d4b3057eadaf))
+
+## [1.340.1](https://github.com/vm0-ai/vm0/compare/api-v1.340.0...api-v1.340.1) (2026-07-29)
+
+
+### Refactoring
+
+* **api:** build model rankings with drizzle ctes ([#23607](https://github.com/vm0-ai/vm0/issues/23607)) ([162f64f](https://github.com/vm0-ai/vm0/commit/162f64f20dbd232009695331449c5d02adf252ee))
+* **api:** remove legacy queue storage manifest state ([#23606](https://github.com/vm0-ai/vm0/issues/23606)) ([8c45c71](https://github.com/vm0-ai/vm0/commit/8c45c7103894f66a0a5abafe09998fc5790bda8b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.1
+    * @vm0/core bumped to 8.484.1
+    * @vm0/db bumped to 1.150.4
+
+## [1.340.0](https://github.com/vm0-ai/vm0/compare/api-v1.339.0...api-v1.340.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** support brazilian portuguese locale ([#23515](https://github.com/vm0-ai/vm0/issues/23515)) ([a242a1d](https://github.com/vm0-ai/vm0/commit/a242a1dbb984ce339a39f9496ea389b54057a8ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.243.0
+    * @vm0/core bumped to 8.484.0
+    * @vm0/db bumped to 1.150.3
+
+## [1.339.0](https://github.com/vm0-ai/vm0/compare/api-v1.338.2...api-v1.339.0) (2026-07-29)
+
+
+### Features
+
+* **platform:** enable chat history backfill progress globally ([#23575](https://github.com/vm0-ai/vm0/issues/23575)) ([de38e8f](https://github.com/vm0-ai/vm0/commit/de38e8f94cf489f0e38fd23130357cbd7fc075bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.483.0
+    * @vm0/db bumped to 1.150.2
+
+## [1.338.2](https://github.com/vm0-ai/vm0/compare/api-v1.338.1...api-v1.338.2) (2026-07-28)
+
+
+### Refactoring
+
+* **chat:** migrate and require canonical user messages ([#23505](https://github.com/vm0-ai/vm0/issues/23505)) ([52955a3](https://github.com/vm0-ai/vm0/commit/52955a380745b5d717750eb9409bf064e33c514c))
+
+
+### Performance Improvements
+
+* **api:** avoid catalog loading during runner claim ([#23555](https://github.com/vm0-ai/vm0/issues/23555)) ([a2247ee](https://github.com/vm0-ai/vm0/commit/a2247ee072c508d39916621c3bc34980aabded40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.1
+    * @vm0/core bumped to 8.482.1
+    * @vm0/db bumped to 1.150.1
+
+## [1.338.1](https://github.com/vm0-ai/vm0/compare/api-v1.338.0...api-v1.338.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#23559](https://github.com/vm0-ai/vm0/issues/23559)) ([bc61816](https://github.com/vm0-ai/vm0/commit/bc61816360ad9ebe814198d3bd41cff38eeff116))
+
+## [1.338.0](https://github.com/vm0-ai/vm0/compare/api-v1.337.1...api-v1.338.0) (2026-07-28)
+
+
+### Features
+
+* add disabled no-auth mcp management domain ([#23513](https://github.com/vm0-ai/vm0/issues/23513)) ([6bcd50b](https://github.com/vm0-ai/vm0/commit/6bcd50b396ea6acc9afff609380da7abbc464f11))
+
+
+### Bug Fixes
+
+* **api:** log managed browser response validation issues ([#23506](https://github.com/vm0-ai/vm0/issues/23506)) ([a0a0980](https://github.com/vm0-ai/vm0/commit/a0a098079d0fef10af4a7d5191c567a742b0b42d))
+* upload large attachments through r2 multipart ([#23490](https://github.com/vm0-ai/vm0/issues/23490)) ([a10f111](https://github.com/vm0-ai/vm0/commit/a10f111c7fe5a4e6b777c5ab7d81582d6f9630a3))
+
+
+### Refactoring
+
+* **api:** prepare storage queue manifest contraction ([#23512](https://github.com/vm0-ai/vm0/issues/23512)) ([9f63154](https://github.com/vm0-ai/vm0/commit/9f6315470b16f681b7f3d9dd7a3b1be1112fed6b))
+* **chat:** drive queues from chat event stream ([#23451](https://github.com/vm0-ai/vm0/issues/23451)) ([1ccf9ef](https://github.com/vm0-ai/vm0/commit/1ccf9efc5653fd6b777e6f45a1873d1b9489f174))
+
+
+### Performance Improvements
+
+* prepare usage compaction serialization ([#23519](https://github.com/vm0-ai/vm0/issues/23519)) ([e10f70a](https://github.com/vm0-ai/vm0/commit/e10f70a6ac1b0f634e38234ae6edab11033b3d57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.242.0
+    * @vm0/core bumped to 8.482.0
+    * @vm0/db bumped to 1.150.0
+
+## [1.337.1](https://github.com/vm0-ai/vm0/compare/api-v1.337.0...api-v1.337.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **feishu:** limit workspaces to one admin-managed bot ([#23486](https://github.com/vm0-ai/vm0/issues/23486)) ([382cf02](https://github.com/vm0-ai/vm0/commit/382cf02e09dc7fd29f39849007bbed0509feb038))
+
+
+### Refactoring
+
+* **chat:** remove legacy message compatibility ([#23394](https://github.com/vm0-ai/vm0/issues/23394)) ([e6fca94](https://github.com/vm0-ai/vm0/commit/e6fca9481261ad52080bb0f202b15b6d75de767d))
+
+
+### Performance Improvements
+
+* **api:** attribute atomic launch transaction latency ([#23497](https://github.com/vm0-ai/vm0/issues/23497)) ([ce12b51](https://github.com/vm0-ai/vm0/commit/ce12b51f270e8cadcebfe25fd04527170a241edb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.1
+    * @vm0/core bumped to 8.481.1
+    * @vm0/db bumped to 1.149.1
+
+## [1.337.0](https://github.com/vm0-ai/vm0/compare/api-v1.336.0...api-v1.337.0) (2026-07-28)
+
+
+### Features
+
+* add strapi integration and entry-published automations ([#23397](https://github.com/vm0-ai/vm0/issues/23397)) ([2303632](https://github.com/vm0-ai/vm0/commit/23036322816e375918499c53da66148154c889cf))
+
+
+### Refactoring
+
+* **db:** remove structured prompt feedback compatibility columns ([#23418](https://github.com/vm0-ai/vm0/issues/23418)) ([c66a81f](https://github.com/vm0-ai/vm0/commit/c66a81fba41413a1ae518be377b77298bc571efe))
+* **zero:** graduate people search ([#23477](https://github.com/vm0-ai/vm0/issues/23477)) ([b72f4e1](https://github.com/vm0-ai/vm0/commit/b72f4e152e27a156d79968c742c6720a3132fb19))
+
+
+### Performance Improvements
+
+* **api:** lazily materialize connector server firewalls ([#23447](https://github.com/vm0-ai/vm0/issues/23447)) ([c3d1f22](https://github.com/vm0-ai/vm0/commit/c3d1f22eaf594215e759a7b137aadd55488bc8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.241.0
+    * @vm0/core bumped to 8.481.0
+    * @vm0/db bumped to 1.149.0
+
+## [1.336.0](https://github.com/vm0-ai/vm0/compare/api-v1.335.1...api-v1.336.0) (2026-07-28)
+
+
+### Features
+
+* **platform:** persist workspace language preference ([#23396](https://github.com/vm0-ai/vm0/issues/23396)) ([7a409c9](https://github.com/vm0-ai/vm0/commit/7a409c99494fe765a896e72aee1b5450df3b1427))
+
+
+### Bug Fixes
+
+* **ci:** use immutable pages urls for browser e2e ([#23382](https://github.com/vm0-ai/vm0/issues/23382)) ([0ca6562](https://github.com/vm0-ai/vm0/commit/0ca6562131023efb48ea8fd4ca1e331115011703))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.240.0
+    * @vm0/core bumped to 8.480.0
+    * @vm0/db bumped to 1.148.0
+
+## [1.335.1](https://github.com/vm0-ai/vm0/compare/api-v1.335.0...api-v1.335.1) (2026-07-28)
+
+
+### Performance Improvements
+
+* **api:** prepare hourly usage rollup readers ([#23407](https://github.com/vm0-ai/vm0/issues/23407)) ([b5b46d0](https://github.com/vm0-ai/vm0/commit/b5b46d0c0848499e2b027b56e9ab8d534db014fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.2
+    * @vm0/core bumped to 8.479.1
+    * @vm0/db bumped to 1.147.2
+
+## [1.335.0](https://github.com/vm0-ai/vm0/compare/api-v1.334.0...api-v1.335.0) (2026-07-28)
+
+
+### Features
+
+* **connectors:** default oauth callbacks to app ([#23392](https://github.com/vm0-ai/vm0/issues/23392)) ([b626e8b](https://github.com/vm0-ai/vm0/commit/b626e8b5d781ad635652943c493031c5fae369d4))
+
+
+### Bug Fixes
+
+* **api:** send low-credit alerts from contact address ([#23390](https://github.com/vm0-ai/vm0/issues/23390)) ([1b50558](https://github.com/vm0-ai/vm0/commit/1b505580bd0d50f07f6740c97cb125b5517864b1))
+* **api:** use support address for low-credit alerts ([#23406](https://github.com/vm0-ai/vm0/issues/23406)) ([880934d](https://github.com/vm0-ai/vm0/commit/880934d8d73890d8dfc5d197be5d6ea8d935daa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.1
+    * @vm0/connectors bumped to 1.199.0
+    * @vm0/core bumped to 8.479.0
+    * @vm0/db bumped to 1.147.1
+
+## [1.334.0](https://github.com/vm0-ai/vm0/compare/api-v1.333.0...api-v1.334.0) (2026-07-28)
+
+
+### Features
+
+* **mail:** add reply follow-up action ([#23291](https://github.com/vm0-ai/vm0/issues/23291)) ([83c7cba](https://github.com/vm0-ai/vm0/commit/83c7cbafc1d241aa0fd072625547cbbc6e81b042))
+
+
+### Bug Fixes
+
+* **chat:** preserve full recommended follow-up prompts ([#23377](https://github.com/vm0-ai/vm0/issues/23377)) ([58698c7](https://github.com/vm0-ai/vm0/commit/58698c7f7b25d82da7ec04fabdf72363b9a25e66))
+* improve feishu setup guidance and oauth callback ([#23384](https://github.com/vm0-ai/vm0/issues/23384)) ([7529209](https://github.com/vm0-ai/vm0/commit/7529209c3e4761cca04d5d05f99b8663b8ec4ffb))
+
+
+### Refactoring
+
+* **chat:** use full structured prompt as canonical message ([#23380](https://github.com/vm0-ai/vm0/issues/23380)) ([94e9abb](https://github.com/vm0-ai/vm0/commit/94e9abbb99239d85669a4728fbcb513546560b5d))
+* **runner:** canonicalize profile discovery contract ([#23387](https://github.com/vm0-ai/vm0/issues/23387)) ([b2fb830](https://github.com/vm0-ai/vm0/commit/b2fb830a6c4d656d35ca95f23ee877b652aa8599))
+
+
+### Performance Improvements
+
+* **api:** trust api-release-attested connector catalogs ([#23348](https://github.com/vm0-ai/vm0/issues/23348)) ([eda102e](https://github.com/vm0-ai/vm0/commit/eda102ea43c58828f5a6053b00aaaf41b3afdbf5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.239.0
+    * @vm0/core bumped to 8.478.0
+    * @vm0/db bumped to 1.147.0
+
+## [1.333.0](https://github.com/vm0-ai/vm0/compare/api-v1.332.2...api-v1.333.0) (2026-07-28)
+
+
+### Features
+
+* **billing:** add monthly invoice downloads ([#23285](https://github.com/vm0-ai/vm0/issues/23285)) ([1dcd80b](https://github.com/vm0-ai/vm0/commit/1dcd80b67a7dd0527dfe8f8557df2610c9672a1b))
+* **chat:** add sequence cursors to thread events ([#23347](https://github.com/vm0-ai/vm0/issues/23347)) ([27d941d](https://github.com/vm0-ai/vm0/commit/27d941df65372b980b7f1aa4d3d7d4f7fa871750))
+
+
+### Bug Fixes
+
+* fork slack and teams dm thread sessions ([#23280](https://github.com/vm0-ai/vm0/issues/23280)) ([de3244b](https://github.com/vm0-ai/vm0/commit/de3244b23d5c0306699fb3f15c0ed88cea7fb2d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.238.0
+    * @vm0/core bumped to 8.477.0
+    * @vm0/db bumped to 1.146.0
+
+## [1.332.2](https://github.com/vm0-ai/vm0/compare/api-v1.332.1...api-v1.332.2) (2026-07-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.2
+    * @vm0/connectors bumped to 1.198.0
+    * @vm0/core bumped to 8.476.2
+    * @vm0/db bumped to 1.145.2
+
+## [1.332.1](https://github.com/vm0-ai/vm0/compare/api-v1.332.0...api-v1.332.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **connectors:** limit realtime refreshes to active interactions ([#23343](https://github.com/vm0-ai/vm0/issues/23343)) ([21079b1](https://github.com/vm0-ai/vm0/commit/21079b1b273e7cd17bc3ed2a67ba307b2cffdd51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.1
+    * @vm0/core bumped to 8.476.1
+    * @vm0/db bumped to 1.145.1
+
+## [1.332.0](https://github.com/vm0-ai/vm0/compare/api-v1.331.0...api-v1.332.0) (2026-07-27)
+
+
+### Features
+
+* **chat:** add automation queue event consumers ([#23356](https://github.com/vm0-ai/vm0/issues/23356)) ([ae28bdd](https://github.com/vm0-ai/vm0/commit/ae28bdda4f94c2ea12f0fec5f26017cc62fd4abb))
+* **chat:** support multiple inline templates ([#23326](https://github.com/vm0-ai/vm0/issues/23326)) ([1e0f8f4](https://github.com/vm0-ai/vm0/commit/1e0f8f4b2b742fbc0a417b8ec410d7b0b824f856))
+* enable website template v2 globally ([#23289](https://github.com/vm0-ai/vm0/issues/23289)) ([2bbb2cc](https://github.com/vm0-ai/vm0/commit/2bbb2cc8ff6911b83bde9dc0abd326d7be137b7f))
+* **teams:** start runs through chat threads ([#23296](https://github.com/vm0-ai/vm0/issues/23296)) ([841d0f0](https://github.com/vm0-ai/vm0/commit/841d0f0028157abd195ad1cc1408cd5f9068dec2))
+
+
+### Bug Fixes
+
+* **browser:** accept browser use v3 session responses ([#23334](https://github.com/vm0-ai/vm0/issues/23334)) ([a19ea6e](https://github.com/vm0-ai/vm0/commit/a19ea6e0cc7004883a445c8c00d2d89b0d1a2c60))
+* **chat:** classify read and usage state by event type ([#23303](https://github.com/vm0-ai/vm0/issues/23303)) ([7c6858c](https://github.com/vm0-ai/vm0/commit/7c6858c4ea18f2f12708a3b063798c497dae291a))
+* **chat:** suppress run push notifications while goals remain active ([#23320](https://github.com/vm0-ai/vm0/issues/23320)) ([c692dec](https://github.com/vm0-ai/vm0/commit/c692dec6130ca23dec36221509c9a6922d98fdde))
+
+
+### Refactoring
+
+* **api:** require public connector form field ids ([#23313](https://github.com/vm0-ai/vm0/issues/23313)) ([2b8310d](https://github.com/vm0-ai/vm0/commit/2b8310d6e49e896d48641dadba212a295e886e9f))
+* **chat:** require non-null chat event types ([#23331](https://github.com/vm0-ai/vm0/issues/23331)) ([3da9b1a](https://github.com/vm0-ai/vm0/commit/3da9b1af7130dbcd4a41d9d9c15ed81625bcc5b0))
+* move feature switch keys into core ([#23299](https://github.com/vm0-ai/vm0/issues/23299)) ([11071e0](https://github.com/vm0-ai/vm0/commit/11071e056383e7ead21cc578961ed8496865f718))
+* reduce fallback slop in organization member ids ([#23357](https://github.com/vm0-ai/vm0/issues/23357)) ([9431713](https://github.com/vm0-ai/vm0/commit/943171356d4af4bf641e5530d6ac3864dc2b0b39))
+* remove graduated user-facing feature switches ([#23308](https://github.com/vm0-ai/vm0/issues/23308)) ([88670a3](https://github.com/vm0-ai/vm0/commit/88670a3f7df97bdf4a6caec3b17ed1550126f51a))
+* retire mail and thread mention feature switches ([#23324](https://github.com/vm0-ai/vm0/issues/23324)) ([535b9bc](https://github.com/vm0-ai/vm0/commit/535b9bc54238cc1ee75367dd33c9e4f314981eb7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.237.0
+    * @vm0/connectors bumped to 1.197.1
+    * @vm0/core bumped to 8.476.0
+    * @vm0/db bumped to 1.145.0
+
+## [1.331.0](https://github.com/vm0-ai/vm0/compare/api-v1.330.0...api-v1.331.0) (2026-07-27)
+
+
+### Features
+
+* add thread-scoped cloud browser access ([#23253](https://github.com/vm0-ai/vm0/issues/23253)) ([0699a79](https://github.com/vm0-ai/vm0/commit/0699a7935ad6994b00ad97c00a7aeae307dbd4d2))
+* enable mail drafts and chat thread mentions for all users ([#23257](https://github.com/vm0-ai/vm0/issues/23257)) ([4a5de22](https://github.com/vm0-ai/vm0/commit/4a5de22f8c7636de66e2feeffba99767bec5e383))
+
+
+### Bug Fixes
+
+* **feishu:** expose group id in agent system prompt ([#23281](https://github.com/vm0-ai/vm0/issues/23281)) ([6a8b518](https://github.com/vm0-ai/vm0/commit/6a8b5180e36df2df74faa0bed27d704e41993648))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.236.0
+    * @vm0/connectors bumped to 1.197.0
+    * @vm0/core bumped to 8.475.0
+    * @vm0/db bumped to 1.144.0
+
+## [1.330.0](https://github.com/vm0-ai/vm0/compare/api-v1.329.1...api-v1.330.0) (2026-07-27)
+
+
+### Features
+
+* thread-owned chat sidebar shell behind newChatThreadSidebar switch ([#23269](https://github.com/vm0-ai/vm0/issues/23269)) ([c67c965](https://github.com/vm0-ai/vm0/commit/c67c96547fb4646b7d424a42de7f790b28e3f3a1))
+
+
+### Refactoring
+
+* **api:** move connector feature states into api ([#23273](https://github.com/vm0-ai/vm0/issues/23273)) ([0a77e82](https://github.com/vm0-ai/vm0/commit/0a77e82f3f6f6dfa364187736af33eef8486184b))
+* **artifacts:** remove favorite api routes ([#22700](https://github.com/vm0-ai/vm0/issues/22700)) ([376c328](https://github.com/vm0-ai/vm0/commit/376c3288889fc663038db90a7297f608babf34dd))
+* **chat:** type the immutable event stream ([#23148](https://github.com/vm0-ai/vm0/issues/23148)) ([6cdd9c5](https://github.com/vm0-ai/vm0/commit/6cdd9c5155895556f1e9f78ced2e190dad080568))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.235.0
+    * @vm0/connectors bumped to 1.196.0
+    * @vm0/core bumped to 8.474.0
+    * @vm0/db bumped to 1.143.6
+
+## [1.329.1](https://github.com/vm0-ai/vm0/compare/api-v1.329.0...api-v1.329.1) (2026-07-27)
+
+
+### Refactoring
+
+* **storage:** remove legacy type residue ([#23232](https://github.com/vm0-ai/vm0/issues/23232)) ([eeb8daa](https://github.com/vm0-ai/vm0/commit/eeb8daadad7c5c81c3cfd5cd7e08bb8b0e130f01))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.1
+    * @vm0/core bumped to 8.473.0
+    * @vm0/db bumped to 1.143.5
+
+## [1.329.0](https://github.com/vm0-ai/vm0/compare/api-v1.328.1...api-v1.329.0) (2026-07-27)
+
+
+### Features
+
+* enable image style r2 globally ([#23176](https://github.com/vm0-ai/vm0/issues/23176)) ([441d729](https://github.com/vm0-ai/vm0/commit/441d729f24d98b34f570cf732d99e2f49079e2ce))
+* **feishu:** improve setup and oauth callback flow ([#23202](https://github.com/vm0-ai/vm0/issues/23202)) ([d0a75ae](https://github.com/vm0-ai/vm0/commit/d0a75ae68f23fcf28898b20afefc183ca9167da8))
+
+
+### Bug Fixes
+
+* **api:** give the morning brief run its own delivery facts ([#23171](https://github.com/vm0-ai/vm0/issues/23171)) ([4a934f6](https://github.com/vm0-ai/vm0/commit/4a934f63474d40aab8d57893db4f39f4c8168bfb))
+* **api:** retire legacy feishu org run dispatch ([#23187](https://github.com/vm0-ai/vm0/issues/23187)) ([8d70530](https://github.com/vm0-ai/vm0/commit/8d70530e8989532e5aa6c5d58a19d787f4e550e9))
+* **api:** validate and recover canonical chat session bindings ([#23192](https://github.com/vm0-ai/vm0/issues/23192)) ([3145dae](https://github.com/vm0-ai/vm0/commit/3145daed930da540447229386defcfa33f30d32a))
+
+
+### Refactoring
+
+* **connectors:** remove static catalog authority ([#23201](https://github.com/vm0-ai/vm0/issues/23201)) ([590a2ff](https://github.com/vm0-ai/vm0/commit/590a2ff16caf5ca5534954be53a0e7bf4b61376e))
+* **storage:** detach legacy type columns from writes ([#23189](https://github.com/vm0-ai/vm0/issues/23189)) ([abc29ca](https://github.com/vm0-ai/vm0/commit/abc29caa49306c0ee3daaee1915495ec45c7c3d9))
+* **storage:** remove legacy type columns ([#23210](https://github.com/vm0-ai/vm0/issues/23210)) ([3c60bc7](https://github.com/vm0-ai/vm0/commit/3c60bc70a9fa63ece9bd8249881f6e01a5ed382e))
+
+
+### Performance Improvements
+
+* **api:** batch exact storage version resolution ([#23186](https://github.com/vm0-ai/vm0/issues/23186)) ([580ca10](https://github.com/vm0-ai/vm0/commit/580ca10df0898a4ef0123844319ffe6eeced1c7b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.234.0
+    * @vm0/connectors bumped to 1.195.2
+    * @vm0/core bumped to 8.472.0
+    * @vm0/db bumped to 1.143.4
+
+## [1.328.1](https://github.com/vm0-ai/vm0/compare/api-v1.328.0...api-v1.328.1) (2026-07-27)
+
+
+### Refactoring
+
+* **connectors:** make catalog consumption external-only ([#23138](https://github.com/vm0-ai/vm0/issues/23138)) ([5a79f3b](https://github.com/vm0-ai/vm0/commit/5a79f3b532a5a97cb3623bd865130c4259017707))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.3
+    * @vm0/connectors bumped to 1.195.1
+    * @vm0/core bumped to 8.471.1
+    * @vm0/db bumped to 1.143.3
+
+## [1.328.0](https://github.com/vm0-ai/vm0/compare/api-v1.327.1...api-v1.328.0) (2026-07-26)
+
+
+### Features
+
+* prune oversized codex session history ([#23136](https://github.com/vm0-ai/vm0/issues/23136)) ([010d286](https://github.com/vm0-ai/vm0/commit/010d286e46b4b7035ef41e6417bdfca707688aa0))
+
+
+### Refactoring
+
+* require slack file id and permalink for delivered assets ([#23147](https://github.com/vm0-ai/vm0/issues/23147)) ([1929e12](https://github.com/vm0-ai/vm0/commit/1929e12a6c015c2ba0eef9a3d4d985b1f51c6506))
+* **storage:** detach runtime from legacy storage type ([#23143](https://github.com/vm0-ai/vm0/issues/23143)) ([cc415c5](https://github.com/vm0-ai/vm0/commit/cc415c5c844343ab573c0d9de5a31d1fd378ad69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.2
+    * @vm0/connectors bumped to 1.195.0
+    * @vm0/core bumped to 8.471.0
+    * @vm0/db bumped to 1.143.2
+
+## [1.327.1](https://github.com/vm0-ai/vm0/compare/api-v1.327.0...api-v1.327.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **chat:** preserve feedback as structured message parts ([#22893](https://github.com/vm0-ai/vm0/issues/22893)) ([c23162f](https://github.com/vm0-ai/vm0/commit/c23162ff3e0e025378f1b3c47051c203cd84cbcc))
+
+
+### Refactoring
+
+* **api:** use settlement time for finalized usage reports ([#23137](https://github.com/vm0-ai/vm0/issues/23137)) ([f9360d0](https://github.com/vm0-ai/vm0/commit/f9360d0c979f063bc0b290c6874b37890edcf9f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.1
+    * @vm0/core bumped to 8.470.1
+    * @vm0/db bumped to 1.143.1
+
+## [1.327.0](https://github.com/vm0-ai/vm0/compare/api-v1.326.1...api-v1.327.0) (2026-07-26)
+
+
+### Features
+
+* add fixed r2 packages for image styles behind a rollout switch ([#23120](https://github.com/vm0-ai/vm0/issues/23120)) ([bbeeaee](https://github.com/vm0-ai/vm0/commit/bbeeaee0515508f9a58359bb78984d074ff2c7fb))
+* **api:** unify chat thread session resolution across run sources ([#23129](https://github.com/vm0-ai/vm0/issues/23129)) ([99efc92](https://github.com/vm0-ai/vm0/commit/99efc92f37078e17aac8687ebcc87bf054074e28))
+* prefer thumbnails for chat artifact covers ([#23131](https://github.com/vm0-ai/vm0/issues/23131)) ([e1b9cdf](https://github.com/vm0-ai/vm0/commit/e1b9cdf2f5c781883ae4c0540b69b50b88a4389a))
+
+
+### Refactoring
+
+* **connectors:** decouple execution from static registry ([#23128](https://github.com/vm0-ai/vm0/issues/23128)) ([7a8688d](https://github.com/vm0-ai/vm0/commit/7a8688d08fec2fd4d2e7046ef2bed883e3683a2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.233.0
+    * @vm0/connectors bumped to 1.194.0
+    * @vm0/core bumped to 8.470.0
+    * @vm0/db bumped to 1.143.0
+
+## [1.326.1](https://github.com/vm0-ai/vm0/compare/api-v1.326.0...api-v1.326.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* refresh website template v2 archives to upstream ccff774 ([#23126](https://github.com/vm0-ai/vm0/issues/23126)) ([b564fa1](https://github.com/vm0-ai/vm0/commit/b564fa11bcd86b0e7f26ed7c464299e673e61fbf))
+
+
+### Refactoring
+
+* detach slack routing from legacy route fields ([#23127](https://github.com/vm0-ai/vm0/issues/23127)) ([50c43ab](https://github.com/vm0-ai/vm0/commit/50c43abc1be127d4b40e5d429058dcd6954597b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.2
+    * @vm0/core bumped to 8.469.1
+    * @vm0/db bumped to 1.142.2
+
+## [1.326.0](https://github.com/vm0-ai/vm0/compare/api-v1.325.0...api-v1.326.0) (2026-07-26)
+
+
+### Features
+
+* prune compacted claude session history ([#23081](https://github.com/vm0-ai/vm0/issues/23081)) ([671dc1c](https://github.com/vm0-ai/vm0/commit/671dc1c3a1ffe14b3be6d7079afd6f2cc24f14b0))
+
+
+### Bug Fixes
+
+* **api:** persist thread session binding telemetry ([#23121](https://github.com/vm0-ai/vm0/issues/23121)) ([c0bfeef](https://github.com/vm0-ai/vm0/commit/c0bfeef2934bfc3cc59f9fd3c1da4e762f31702c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.1
+    * @vm0/connectors bumped to 1.193.0
+    * @vm0/core bumped to 8.469.0
+    * @vm0/db bumped to 1.142.1
+
+## [1.325.0](https://github.com/vm0-ai/vm0/compare/api-v1.324.2...api-v1.325.0) (2026-07-26)
+
+
+### Features
+
+* persist chat thread session bindings on admission ([#23105](https://github.com/vm0-ai/vm0/issues/23105)) ([3292c55](https://github.com/vm0-ai/vm0/commit/3292c55025c9ee308454a8de5185d3df9918cad8))
+
+
+### Refactoring
+
+* retire legacy slack runtime branches ([#23104](https://github.com/vm0-ai/vm0/issues/23104)) ([e1d8dde](https://github.com/vm0-ai/vm0/commit/e1d8ddeaaba338b59c56cc2515c7599abf13cbe3))
+* **storage:** authorize writeback by storage id ([#23112](https://github.com/vm0-ai/vm0/issues/23112)) ([321117e](https://github.com/vm0-ai/vm0/commit/321117edaf5f2304b87a435748557ad47cf73ea3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.232.0
+    * @vm0/connectors bumped to 1.192.2
+    * @vm0/core bumped to 8.468.2
+    * @vm0/db bumped to 1.142.0
+
+## [1.324.2](https://github.com/vm0-ai/vm0/compare/api-v1.324.1...api-v1.324.2) (2026-07-26)
+
+
+### CI
+
+* decouple app release from api promotion ([#23100](https://github.com/vm0-ai/vm0/issues/23100)) ([8f3ddcb](https://github.com/vm0-ai/vm0/commit/8f3ddcb3977c8ace140995e94219c7e051557a48))
+
+
+### Performance Improvements
+
+* retire html artifact editing and presentation export ([#23083](https://github.com/vm0-ai/vm0/issues/23083)) ([d0d3a24](https://github.com/vm0-ai/vm0/commit/d0d3a248437eb67270c8fc76ade7d95c013b0029))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.2
+    * @vm0/connectors bumped to 1.192.1
+    * @vm0/core bumped to 8.468.1
+    * @vm0/db bumped to 1.141.3
+
+## [1.324.1](https://github.com/vm0-ai/vm0/compare/api-v1.324.0...api-v1.324.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* trigger api platform and runner releases ([#23091](https://github.com/vm0-ai/vm0/issues/23091)) ([100f6fe](https://github.com/vm0-ai/vm0/commit/100f6fe7fbb9fd8d84044bf12f1c6633c1c0b025))
+
+## [1.324.0](https://github.com/vm0-ai/vm0/compare/api-v1.323.1...api-v1.324.0) (2026-07-26)
+
+
+### Features
+
+* **api:** enable external connector catalog ([#23064](https://github.com/vm0-ai/vm0/issues/23064)) ([8e802f2](https://github.com/vm0-ai/vm0/commit/8e802f29cdfe41dcb80cd57ad543b01a0298d6b6))
+
+
+### Bug Fixes
+
+* **api:** make artifact previews write-once and immutable ([#23079](https://github.com/vm0-ai/vm0/issues/23079)) ([41b3c2c](https://github.com/vm0-ai/vm0/commit/41b3c2c0533f49d9f68b4f13af23292d2a595d3b))
+* **api:** seed connector catalog for local development ([#23077](https://github.com/vm0-ai/vm0/issues/23077)) ([ef2c7f4](https://github.com/vm0-ai/vm0/commit/ef2c7f4ffbf881f6441557e17aa2b55977053de3))
+* trigger api and platform releases ([#23076](https://github.com/vm0-ai/vm0/issues/23076)) ([a005cfc](https://github.com/vm0-ai/vm0/commit/a005cfce2200944636124ab35be19702c879dba9))
+
+
+### Performance Improvements
+
+* resize artifact catalog thumbnails with cloudflare ([#23074](https://github.com/vm0-ai/vm0/issues/23074)) ([215532c](https://github.com/vm0-ai/vm0/commit/215532cead0823908f2e7a46148b6d4f9fa447f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.468.0
+    * @vm0/db bumped to 1.141.2
+
+## [1.323.1](https://github.com/vm0-ai/vm0/compare/api-v1.323.0...api-v1.323.1) (2026-07-25)
+
+
+### Refactoring
+
+* **storage:** require canonical runner claim manifests ([#23059](https://github.com/vm0-ai/vm0/issues/23059)) ([2c8b7d3](https://github.com/vm0-ai/vm0/commit/2c8b7d3cfe190c762cd7d6559d057fa6d189b092))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.1
+    * @vm0/core bumped to 8.467.2
+    * @vm0/db bumped to 1.141.1
+
+## [1.323.0](https://github.com/vm0-ai/vm0/compare/api-v1.322.2...api-v1.323.0) (2026-07-25)
+
+
+### Features
+
+* add the artifact catalog behind a per-org feature switch ([#23030](https://github.com/vm0-ai/vm0/issues/23030)) ([6faf025](https://github.com/vm0-ai/vm0/commit/6faf0253b7ed7e522660b028faa2a62372bd90b4))
+* **api:** graduate canonical slack ingress ([#23033](https://github.com/vm0-ai/vm0/issues/23033)) ([68ae6bd](https://github.com/vm0-ai/vm0/commit/68ae6bd2e310da3bfeb926f22a20b11c70909822))
+
+
+### Bug Fixes
+
+* stabilize workflow queue stale-sweep admission barrier ([#23065](https://github.com/vm0-ai/vm0/issues/23065)) ([5dd31a5](https://github.com/vm0-ai/vm0/commit/5dd31a58e19c4b691a6a19bc6b1223cb615d63fc))
+
+
+### Refactoring
+
+* reduce fallback slop in workflow schedules ([#23066](https://github.com/vm0-ai/vm0/issues/23066)) ([f498c76](https://github.com/vm0-ai/vm0/commit/f498c76b392dc5d08ef3770450ce75ace23aa3f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.231.0
+    * @vm0/core bumped to 8.467.1
+    * @vm0/db bumped to 1.141.0
+
+## [1.322.2](https://github.com/vm0-ai/vm0/compare/api-v1.322.1...api-v1.322.2) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.467.0
+    * @vm0/db bumped to 1.140.2
+
+## [1.322.1](https://github.com/vm0-ai/vm0/compare/api-v1.322.0...api-v1.322.1) (2026-07-25)
+
+
+### Refactoring
+
+* **api:** retire catalog rejection rollout guards ([#23042](https://github.com/vm0-ai/vm0/issues/23042)) ([fc90bd2](https://github.com/vm0-ai/vm0/commit/fc90bd248956a6bba0a3577a512c0aa2f0295694))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.1
+    * @vm0/core bumped to 8.466.3
+    * @vm0/db bumped to 1.140.1
+
+## [1.322.0](https://github.com/vm0-ai/vm0/compare/api-v1.321.1...api-v1.322.0) (2026-07-25)
+
+
+### Features
+
+* **browser:** keep managed browsers alive after a run with an idle lease ([#23037](https://github.com/vm0-ai/vm0/issues/23037)) ([405591d](https://github.com/vm0-ai/vm0/commit/405591d1e7416a18ab8e0e66e456d3669da74629))
+
+
+### Bug Fixes
+
+* **preview:** propagate bypass to sandbox CLI ([#23045](https://github.com/vm0-ai/vm0/issues/23045)) ([6e4dc99](https://github.com/vm0-ai/vm0/commit/6e4dc99ba1327bc789708255b7e2ba4f387c7df3))
+* **workflows:** claim queued events atomically with run creation ([#23028](https://github.com/vm0-ai/vm0/issues/23028)) ([f8c7f64](https://github.com/vm0-ai/vm0/commit/f8c7f64b54b7e430b58883cb2b9c57cce3f67cbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.230.0
+    * @vm0/core bumped to 8.466.2
+    * @vm0/db bumped to 1.140.0
+
+## [1.321.1](https://github.com/vm0-ai/vm0/compare/api-v1.321.0...api-v1.321.1) (2026-07-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.2
+    * @vm0/connectors bumped to 1.192.0
+    * @vm0/core bumped to 8.466.1
+    * @vm0/db bumped to 1.139.2
+
+## [1.321.0](https://github.com/vm0-ai/vm0/compare/api-v1.320.0...api-v1.321.0) (2026-07-25)
+
+
+### Features
+
+* **billing:** enable plan upgrade guidance globally ([#23019](https://github.com/vm0-ai/vm0/issues/23019)) ([4f6feb6](https://github.com/vm0-ai/vm0/commit/4f6feb654f4c3a0b908786e481f91cbbb235ebb9))
+
+
+### Bug Fixes
+
+* **api:** revalidate catalog rejections after backend releases ([#23001](https://github.com/vm0-ai/vm0/issues/23001)) ([ac8c4ab](https://github.com/vm0-ai/vm0/commit/ac8c4ab4d51a574cec6c0f8c274e7a880868e11f))
+
+
+### Refactoring
+
+* **api:** replace usage insight sql with typed drizzle builders ([#23003](https://github.com/vm0-ai/vm0/issues/23003)) ([9df6f88](https://github.com/vm0-ai/vm0/commit/9df6f88c128974f1f131c6ca2a9d255d98c2c362))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.1
+    * @vm0/core bumped to 8.466.0
+    * @vm0/db bumped to 1.139.1
+
+## [1.320.0](https://github.com/vm0-ai/vm0/compare/api-v1.319.0...api-v1.320.0) (2026-07-25)
+
+
+### Features
+
+* resume web chat after a linked gmail draft is sent ([#22963](https://github.com/vm0-ai/vm0/issues/22963)) ([7e00412](https://github.com/vm0-ai/vm0/commit/7e00412db66d95670476451828603f1efe742f97))
+* **zero:** add managed browsers with shared user profiles ([#22940](https://github.com/vm0-ai/vm0/issues/22940)) ([a56eeac](https://github.com/vm0-ai/vm0/commit/a56eeac6a74f30fae2fcfb2d69fa8b0840da6764))
+
+
+### Bug Fixes
+
+* **goals:** unify goal capabilities across run sources ([#22986](https://github.com/vm0-ai/vm0/issues/22986)) ([04e6169](https://github.com/vm0-ai/vm0/commit/04e616918121b883cda790f855327ec2dcf906f2))
+
+
+### Refactoring
+
+* **api:** remove eight unused api routes ([#22958](https://github.com/vm0-ai/vm0/issues/22958)) ([f05dc99](https://github.com/vm0-ai/vm0/commit/f05dc9910c0e0f21d64a463bab55a7c8b1862568))
+* **api:** replace builder-owned sql predicates ([#22965](https://github.com/vm0-ai/vm0/issues/22965)) ([0cba6a6](https://github.com/vm0-ai/vm0/commit/0cba6a6abde97022866a1a6d76368b6c01149bd3))
+* remove model observation compatibility layer ([#22975](https://github.com/vm0-ai/vm0/issues/22975)) ([d7b600f](https://github.com/vm0-ai/vm0/commit/d7b600f0ee35c6d32366bf7004e6c1e17b5bbe23))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.229.0
+    * @vm0/connectors bumped to 1.191.0
+    * @vm0/core bumped to 8.465.0
+    * @vm0/db bumped to 1.139.0
+
+## [1.319.0](https://github.com/vm0-ai/vm0/compare/api-v1.318.0...api-v1.319.0) (2026-07-25)
+
+
+### Features
+
+* show connector catalog diagnostics in debug settings ([#22962](https://github.com/vm0-ai/vm0/issues/22962)) ([fc40bb1](https://github.com/vm0-ai/vm0/commit/fc40bb12dcecc464dce2d4a1c9b56a5506ec733c))
+
+
+### Refactoring
+
+* **api:** replace credit availability sql with typed drizzle queries ([#22941](https://github.com/vm0-ai/vm0/issues/22941)) ([c29e911](https://github.com/vm0-ai/vm0/commit/c29e911ab1eb7ca490cc1b242b1d665a797b3328))
+
+
+### Performance Improvements
+
+* add first-output coverage and codex lifecycle timings ([#22946](https://github.com/vm0-ai/vm0/issues/22946)) ([12e1316](https://github.com/vm0-ai/vm0/commit/12e13160392117b0fbe950b51fb0edc986059b90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.228.0
+    * @vm0/core bumped to 8.464.1
+    * @vm0/db bumped to 1.138.0
+
+## [1.318.0](https://github.com/vm0-ai/vm0/compare/api-v1.317.0...api-v1.318.0) (2026-07-25)
+
+
+### Features
+
+* add claude opus 5 to new organization defaults ([#22955](https://github.com/vm0-ai/vm0/issues/22955)) ([70cb3ba](https://github.com/vm0-ai/vm0/commit/70cb3bac4954f0b89df4bd30725ec00adc0b2eb7))
+* **api:** force app.vm0.ai clients to upgrade to v0.631.1 ([#22950](https://github.com/vm0-ai/vm0/issues/22950)) ([866e468](https://github.com/vm0-ai/vm0/commit/866e468e0219a517c76041c700a3104a4973ca1f))
+* **api:** prepare external connector catalog cutover ([#22920](https://github.com/vm0-ai/vm0/issues/22920)) ([f92abc3](https://github.com/vm0-ai/vm0/commit/f92abc3a1103418f92f382e4c2ebba7edfa0a340))
+
+
+### Bug Fixes
+
+* **core:** limit default seed skills to execution essentials ([#22948](https://github.com/vm0-ai/vm0/issues/22948)) ([2c9aa24](https://github.com/vm0-ai/vm0/commit/2c9aa24d1f2effa0af92d08d992d3987df142aaf))
+
+
+### Refactoring
+
+* **chat:** trim thread detail and drop legacy mail draft marker ([#22949](https://github.com/vm0-ai/vm0/issues/22949)) ([bcda14a](https://github.com/vm0-ai/vm0/commit/bcda14abbf7b135ed7a2ef8485c07f3240ae0a17))
+* **db:** remove legacy model observation storage ([#22907](https://github.com/vm0-ai/vm0/issues/22907)) ([ee4895e](https://github.com/vm0-ai/vm0/commit/ee4895e77f921cccbfd44c422763652120e2de82))
+* reduce fallback slop in people search ([#22954](https://github.com/vm0-ai/vm0/issues/22954)) ([68e832c](https://github.com/vm0-ai/vm0/commit/68e832cbd913353fb0b235684f967bacf5006130))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.227.0
+    * @vm0/core bumped to 8.464.0
+    * @vm0/db bumped to 1.137.0
+
+## [1.317.0](https://github.com/vm0-ai/vm0/compare/api-v1.316.0...api-v1.317.0) (2026-07-24)
+
+
+### Features
+
+* **cli:** add cached chat thread listing and targeted rename ([#22927](https://github.com/vm0-ai/vm0/issues/22927)) ([1f11e99](https://github.com/vm0-ai/vm0/commit/1f11e99eda61c426b5e5782529a9aa5eb9366b50))
+
+
+### Bug Fixes
+
+* **feishu:** shorten file ids in run prompts ([#22929](https://github.com/vm0-ai/vm0/issues/22929)) ([e861d6e](https://github.com/vm0-ai/vm0/commit/e861d6e0caac4aaec7328dc1015242af6da272ad))
+* **workflows:** route manual runs through the chat queue ([#22933](https://github.com/vm0-ai/vm0/issues/22933)) ([b586e29](https://github.com/vm0-ai/vm0/commit/b586e29777c315815054da64a8657377d6708775))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.226.0
+    * @vm0/core bumped to 8.463.0
+    * @vm0/db bumped to 1.136.1
+
+## [1.316.0](https://github.com/vm0-ai/vm0/compare/api-v1.315.0...api-v1.316.0) (2026-07-24)
+
+
+### Features
+
+* add github job, review, deployment, and comment automations ([#22904](https://github.com/vm0-ai/vm0/issues/22904)) ([6e20502](https://github.com/vm0-ai/vm0/commit/6e20502a92bb6cc5eea35a98d6583fd8c949cd1d))
+
+
+### Performance Improvements
+
+* **chat:** reduce duplicate message sync requests ([#22886](https://github.com/vm0-ai/vm0/issues/22886)) ([ff34466](https://github.com/vm0-ai/vm0/commit/ff344661065158de4c29728c31ee92439a2cec58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.225.0
+    * @vm0/connectors bumped to 1.190.0
+    * @vm0/core bumped to 8.462.0
+    * @vm0/db bumped to 1.136.0
+
+## [1.315.0](https://github.com/vm0-ai/vm0/compare/api-v1.314.0...api-v1.315.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** source service tier and computer use host from thread events ([#22890](https://github.com/vm0-ai/vm0/issues/22890)) ([173e9c9](https://github.com/vm0-ai/vm0/commit/173e9c99c5e56f2a9cba55b0fd31a93d4e52c60e))
+
+
+### Refactoring
+
+* **api:** detach legacy storage persistence columns ([#22899](https://github.com/vm0-ai/vm0/issues/22899)) ([522c3de](https://github.com/vm0-ai/vm0/commit/522c3dee4efff435fa8235445208d81ccc92926e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.224.0
+    * @vm0/core bumped to 8.461.2
+    * @vm0/db bumped to 1.135.0
+
+## [1.314.0](https://github.com/vm0-ai/vm0/compare/api-v1.313.2...api-v1.314.0) (2026-07-24)
+
+
+### Features
+
+* add feishu file transfer commands ([#22895](https://github.com/vm0-ai/vm0/issues/22895)) ([6ebf407](https://github.com/vm0-ai/vm0/commit/6ebf407f7b2bfdc7ca1d8d2393b7fcde31494ac8))
+* **mail:** add rich draft rendering and selection feedback ([#22775](https://github.com/vm0-ai/vm0/issues/22775)) ([d91894a](https://github.com/vm0-ai/vm0/commit/d91894a9653b3d854f90ed1f5389afd8cca6e9b1))
+
+
+### Bug Fixes
+
+* **zero:** restore managed people search requests ([#22896](https://github.com/vm0-ai/vm0/issues/22896)) ([705e31d](https://github.com/vm0-ai/vm0/commit/705e31d44d528f1efe8681ecc200052b8bdafdac))
+
+
+### Refactoring
+
+* **api:** gate external connector catalog with feature switch ([#22884](https://github.com/vm0-ai/vm0/issues/22884)) ([2b37dd2](https://github.com/vm0-ai/vm0/commit/2b37dd2dde88860dfbd7e98c6fc2c8cd4a39cb45))
+* **api:** replace cache touch locking cte with drizzle builders ([#22873](https://github.com/vm0-ai/vm0/issues/22873)) ([3586ba7](https://github.com/vm0-ai/vm0/commit/3586ba7d55c801a0f0cc77afaf95246cb26f34c6))
+* **chat:** remove message-by-id api and sync path ([#22874](https://github.com/vm0-ai/vm0/issues/22874)) ([fa699ed](https://github.com/vm0-ai/vm0/commit/fa699ed9417569bd14a12535a8d371a4f81c0c63))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.223.0
+    * @vm0/connectors bumped to 1.189.1
+    * @vm0/core bumped to 8.461.1
+    * @vm0/db bumped to 1.134.0
+
+## [1.313.2](https://github.com/vm0-ai/vm0/compare/api-v1.313.1...api-v1.313.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.133.4
+
+## [1.313.1](https://github.com/vm0-ai/vm0/compare/api-v1.313.0...api-v1.313.1) (2026-07-24)
+
+
+### Refactoring
+
+* **api:** require canonical persisted storage state ([#22868](https://github.com/vm0-ai/vm0/issues/22868)) ([a9d7b47](https://github.com/vm0-ai/vm0/commit/a9d7b47c0b8191a16bd752cc1be827966115fa34))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.1
+    * @vm0/core bumped to 8.461.0
+    * @vm0/db bumped to 1.133.3
+
+## [1.313.0](https://github.com/vm0-ai/vm0/compare/api-v1.312.2...api-v1.313.0) (2026-07-24)
+
+
+### Features
+
+* **api:** prefer zero scrape for public pages ([#22861](https://github.com/vm0-ai/vm0/issues/22861)) ([96c52aa](https://github.com/vm0-ai/vm0/commit/96c52aace5242dc934232730bd5aee9e523badb3))
+
+## [1.312.2](https://github.com/vm0-ai/vm0/compare/api-v1.312.1...api-v1.312.2) (2026-07-24)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.222.0
+    * @vm0/connectors bumped to 1.189.0
+    * @vm0/core bumped to 8.460.0
+    * @vm0/db bumped to 1.133.2
+
+## [1.312.1](https://github.com/vm0-ai/vm0/compare/api-v1.312.0...api-v1.312.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **api:** preserve preview override for queued chat runs ([#22843](https://github.com/vm0-ai/vm0/issues/22843)) ([691aadd](https://github.com/vm0-ai/vm0/commit/691aaddee11573d6f5053c5b7afe4456ba6b66f2))
+
+
+### Refactoring
+
+* **api:** use builders for unnest-backed bulk updates ([#22840](https://github.com/vm0-ai/vm0/issues/22840)) ([d0b13bd](https://github.com/vm0-ai/vm0/commit/d0b13bd29b4a7f4be9fcd314ec2880cf3196553b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.133.1
+
+## [1.312.0](https://github.com/vm0-ai/vm0/compare/api-v1.311.0...api-v1.312.0) (2026-07-24)
+
+
+### Features
+
+* trigger automations from completed github workflow runs ([#22831](https://github.com/vm0-ai/vm0/issues/22831)) ([407a3e8](https://github.com/vm0-ai/vm0/commit/407a3e874fded0deef147d260cb5e06f0f0746b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.221.0
+    * @vm0/connectors bumped to 1.188.0
+    * @vm0/core bumped to 8.459.0
+    * @vm0/db bumped to 1.133.0
+
+## [1.311.0](https://github.com/vm0-ai/vm0/compare/api-v1.310.0...api-v1.311.0) (2026-07-24)
+
+
+### Features
+
+* **api:** force app.vm0.ai clients to upgrade to v0.626.0 ([#22824](https://github.com/vm0-ai/vm0/issues/22824)) ([f16abaf](https://github.com/vm0-ai/vm0/commit/f16abaf433802169e5c19812eadfb55a528725bd))
+
+
+### Bug Fixes
+
+* **billing:** guide video-restricted workspaces to plan upgrade ([#22794](https://github.com/vm0-ai/vm0/issues/22794)) ([ec7c924](https://github.com/vm0-ai/vm0/commit/ec7c924358ea0fa63ec71e9c6be85317a6ebaa1c))
+
+
+### Refactoring
+
+* **api:** remove checkpoint resume and read api ([#22815](https://github.com/vm0-ai/vm0/issues/22815)) ([ad0d0b3](https://github.com/vm0-ai/vm0/commit/ad0d0b39655d1dd4bafeabe0e8a8bbb32247db47))
+* **api:** use builders for artifact history and visibility ([#22781](https://github.com/vm0-ai/vm0/issues/22781)) ([02f11a5](https://github.com/vm0-ai/vm0/commit/02f11a5cd541d7dff9a461e49c6f8550796239ba))
+* **email:** remove retired agent email runtime ([#22818](https://github.com/vm0-ai/vm0/issues/22818)) ([4d20d9f](https://github.com/vm0-ai/vm0/commit/4d20d9f67edf960051d6ad4fab185aee5ea96c4d))
+
+
+### Performance Improvements
+
+* **api:** measure first assistant message latency ([#22750](https://github.com/vm0-ai/vm0/issues/22750)) ([be099fa](https://github.com/vm0-ai/vm0/commit/be099fa84679b4d142af24c110622e1e2bb5dd58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.1
+    * @vm0/connectors bumped to 1.187.1
+    * @vm0/core bumped to 8.458.2
+    * @vm0/db bumped to 1.132.1
+
+## [1.310.0](https://github.com/vm0-ai/vm0/compare/api-v1.309.0...api-v1.310.0) (2026-07-24)
+
+
+### Features
+
+* **chat:** add strict per-thread message sequence ids ([#22766](https://github.com/vm0-ai/vm0/issues/22766)) ([32fca1f](https://github.com/vm0-ai/vm0/commit/32fca1f3dd20f43d23dc217c290bae496cb6b78c))
+
+
+### Bug Fixes
+
+* **workflows:** create template drafts before setup ([#22786](https://github.com/vm0-ai/vm0/issues/22786)) ([cad5b07](https://github.com/vm0-ai/vm0/commit/cad5b07ab35c916a0ef8d6caebfab410208246bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.220.0
+    * @vm0/core bumped to 8.458.1
+    * @vm0/db bumped to 1.132.0
+
+## [1.309.0](https://github.com/vm0-ai/vm0/compare/api-v1.308.3...api-v1.309.0) (2026-07-23)
+
+
+### Features
+
+* canonicalize slack attachments and agent-published files ([#22801](https://github.com/vm0-ai/vm0/issues/22801)) ([22f947f](https://github.com/vm0-ai/vm0/commit/22f947f5c533b06efc321ffda43d100fe610edec))
+
+
+### Refactoring
+
+* **email:** stop inbound agent runs ([#22807](https://github.com/vm0-ai/vm0/issues/22807)) ([bb79fc4](https://github.com/vm0-ai/vm0/commit/bb79fc415971bfb8845b10ca5795d53f72107b79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.219.0
+    * @vm0/connectors bumped to 1.187.0
+    * @vm0/core bumped to 8.458.0
+    * @vm0/db bumped to 1.131.0
+
+## [1.308.3](https://github.com/vm0-ai/vm0/compare/api-v1.308.2...api-v1.308.3) (2026-07-23)
+
+
+### Refactoring
+
+* **api:** consume canonical connector catalog snapshot ([#22721](https://github.com/vm0-ai/vm0/issues/22721)) ([4c92cfa](https://github.com/vm0-ai/vm0/commit/4c92cfa5e96b61351cd42ba7ca55a252b88d37cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.1
+    * @vm0/connectors bumped to 1.186.1
+    * @vm0/core bumped to 8.457.3
+    * @vm0/db bumped to 1.130.3
+
+## [1.308.2](https://github.com/vm0-ai/vm0/compare/api-v1.308.1...api-v1.308.2) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.218.0
+    * @vm0/connectors bumped to 1.186.0
+    * @vm0/core bumped to 8.457.2
+    * @vm0/db bumped to 1.130.2
+
+## [1.308.1](https://github.com/vm0-ai/vm0/compare/api-v1.308.0...api-v1.308.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* use app url for connector action links ([#22748](https://github.com/vm0-ai/vm0/issues/22748)) ([0121552](https://github.com/vm0-ai/vm0/commit/01215521ae72717b37e746480c84e9bbc7fca3d9))
+
+
+### Refactoring
+
+* **api:** replace atomic org credit upserts with builders ([#22756](https://github.com/vm0-ai/vm0/issues/22756)) ([53146a3](https://github.com/vm0-ai/vm0/commit/53146a3223c115f9743aebeb890bcae51441ebc1))
+
+
+### Performance Improvements
+
+* **api:** reduce chat thread read query overhead ([#22747](https://github.com/vm0-ai/vm0/issues/22747)) ([aa4568c](https://github.com/vm0-ai/vm0/commit/aa4568c098898080cdd6a6e2f049f4c78548c4f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.457.1
+    * @vm0/db bumped to 1.130.1
+
+## [1.308.0](https://github.com/vm0-ai/vm0/compare/api-v1.307.0...api-v1.308.0) (2026-07-23)
+
+
+### Features
+
+* add managed weather and air quality commands ([#22670](https://github.com/vm0-ai/vm0/issues/22670)) ([f03e33f](https://github.com/vm0-ai/vm0/commit/f03e33f34134d9de0ea8dd0d5422dcd135f42bd3))
+* simplify morning brief emails ([#22720](https://github.com/vm0-ai/vm0/issues/22720)) ([35bd772](https://github.com/vm0-ai/vm0/commit/35bd772c3f8e69bab490b69aa9600d8cad9fc196))
+
+
+### Bug Fixes
+
+* **chat:** use structured prompts in derived message views ([#22702](https://github.com/vm0-ai/vm0/issues/22702)) ([98e48c2](https://github.com/vm0-ai/vm0/commit/98e48c25c95668f600ccdb5a00f97ae592cac52d))
+
+
+### Refactoring
+
+* **platform:** remove image editing ([#22712](https://github.com/vm0-ai/vm0/issues/22712)) ([96bcedb](https://github.com/vm0-ai/vm0/commit/96bcedb673c1e8f3049981a446aec89024060cfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.217.0
+    * @vm0/connectors bumped to 1.185.0
+    * @vm0/core bumped to 8.457.0
+    * @vm0/db bumped to 1.130.0
+
+## [1.307.0](https://github.com/vm0-ai/vm0/compare/api-v1.306.3...api-v1.307.0) (2026-07-23)
+
+
+### Features
+
+* gate presentation pptx export and google slides upload ([#22695](https://github.com/vm0-ai/vm0/issues/22695)) ([b535773](https://github.com/vm0-ai/vm0/commit/b535773de642e5bbf03449ea740d7d72f191d247))
+
+
+### Bug Fixes
+
+* **api:** preserve Slack thinking status across queue handoff ([#22728](https://github.com/vm0-ai/vm0/issues/22728)) ([22f6eff](https://github.com/vm0-ai/vm0/commit/22f6effdb7db79b056dba5e3e416b9fac0872f4e))
+* **desktop:** retire intel mac downloads and builds ([#22711](https://github.com/vm0-ai/vm0/issues/22711)) ([b24adec](https://github.com/vm0-ai/vm0/commit/b24adec5910023d8a0feec76fb1428d3aad6d87c))
+
+
+### Performance Improvements
+
+* **chat:** skip chat message refetch when the created event watermark is already cached locally ([#22718](https://github.com/vm0-ai/vm0/issues/22718)) ([1f4268e](https://github.com/vm0-ai/vm0/commit/1f4268e6eba136d2d6b176905a1e1fbc56bd7290))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.6
+    * @vm0/connectors bumped to 1.184.0
+    * @vm0/core bumped to 8.456.0
+    * @vm0/db bumped to 1.129.6
+
+## [1.306.3](https://github.com/vm0-ai/vm0/compare/api-v1.306.2...api-v1.306.3) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.5
+    * @vm0/connectors bumped to 1.183.0
+    * @vm0/core bumped to 8.455.0
+    * @vm0/db bumped to 1.129.5
+
+## [1.306.2](https://github.com/vm0-ai/vm0/compare/api-v1.306.1...api-v1.306.2) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.4
+    * @vm0/connectors bumped to 1.182.2
+    * @vm0/core bumped to 8.454.1
+    * @vm0/db bumped to 1.129.4
+
+## [1.306.1](https://github.com/vm0-ai/vm0/compare/api-v1.306.0...api-v1.306.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.3
+    * @vm0/connectors bumped to 1.182.1
+    * @vm0/core bumped to 8.454.0
+    * @vm0/db bumped to 1.129.3
+
+## [1.306.0](https://github.com/vm0-ai/vm0/compare/api-v1.305.1...api-v1.306.0) (2026-07-23)
+
+
+### Features
+
+* **billing:** use fixed unit price for credit purchases ([#22638](https://github.com/vm0-ai/vm0/issues/22638)) ([f3ebe4d](https://github.com/vm0-ai/vm0/commit/f3ebe4dca3319e0242b17edd673668f6dc6d33ca))
+
+
+### Bug Fixes
+
+* **chat:** use structured incomplete-round context ([#22654](https://github.com/vm0-ai/vm0/issues/22654)) ([881a680](https://github.com/vm0-ai/vm0/commit/881a680e3ede0fde2bcba0f20e5eff6044f0c813))
+* restore thinking status for canonical slack threads ([#22668](https://github.com/vm0-ai/vm0/issues/22668)) ([ce0a1b7](https://github.com/vm0-ai/vm0/commit/ce0a1b7124ac2de934e47e41e91ae2c44ca9f494))
+* stop usage settlement billing refreshes ([#22667](https://github.com/vm0-ai/vm0/issues/22667)) ([53ce6a5](https://github.com/vm0-ai/vm0/commit/53ce6a5ce479bd77d6d54e99272b7e53590ef3d2))
+
+
+### Refactoring
+
+* **api:** stop legacy storage state writes ([#22642](https://github.com/vm0-ai/vm0/issues/22642)) ([1a0b25b](https://github.com/vm0-ai/vm0/commit/1a0b25b9216785792135b2be17efe7e954bce182))
+* **memory:** retire viewer and activity runtime ([#22655](https://github.com/vm0-ai/vm0/issues/22655)) ([1f8a11f](https://github.com/vm0-ai/vm0/commit/1f8a11fadc8893e5e87a00c3d6cdf6e986afcf4f))
+
+
+### Performance Improvements
+
+* **api:** make queue-first chat launches atomic ([#22611](https://github.com/vm0-ai/vm0/issues/22611)) ([7b7d681](https://github.com/vm0-ai/vm0/commit/7b7d6819c0a0a4a974d5cc6111fc0342cfd83ef6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.2
+    * @vm0/connectors bumped to 1.182.0
+    * @vm0/core bumped to 8.453.3
+    * @vm0/db bumped to 1.129.2
+
+## [1.305.1](https://github.com/vm0-ai/vm0/compare/api-v1.305.0...api-v1.305.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.1
+    * @vm0/connectors bumped to 1.181.1
+    * @vm0/core bumped to 8.453.2
+    * @vm0/db bumped to 1.129.1
+
+## [1.305.0](https://github.com/vm0-ai/vm0/compare/api-v1.304.1...api-v1.305.0) (2026-07-23)
+
+
+### Features
+
+* link slack chat messages to their source ([#22633](https://github.com/vm0-ai/vm0/issues/22633)) ([83351c6](https://github.com/vm0-ai/vm0/commit/83351c64b87880a39ba90103754b350f491281d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.216.0
+    * @vm0/core bumped to 8.453.1
+    * @vm0/db bumped to 1.129.0
+
+## [1.304.1](https://github.com/vm0-ai/vm0/compare/api-v1.304.0...api-v1.304.1) (2026-07-23)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.1
+    * @vm0/connectors bumped to 1.181.0
+    * @vm0/core bumped to 8.453.0
+    * @vm0/db bumped to 1.128.1
+
+## [1.304.0](https://github.com/vm0-ai/vm0/compare/api-v1.303.0...api-v1.304.0) (2026-07-23)
+
+
+### Features
+
+* **storage:** persist canonical mounts for capable runners ([#22594](https://github.com/vm0-ai/vm0/issues/22594)) ([ea2d220](https://github.com/vm0-ai/vm0/commit/ea2d2207727441e9435fe3f53184f768c758a891))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.215.0
+    * @vm0/core bumped to 8.452.1
+    * @vm0/db bumped to 1.128.0
+
+## [1.303.0](https://github.com/vm0-ai/vm0/compare/api-v1.302.0...api-v1.303.0) (2026-07-22)
+
+
+### Features
+
+* enable zero scrape for all organizations ([#22599](https://github.com/vm0-ai/vm0/issues/22599)) ([3f0755a](https://github.com/vm0-ai/vm0/commit/3f0755a059742f6c1585b9452dac01c75733abe6))
+* make managed zero web search authoritative ([#22544](https://github.com/vm0-ai/vm0/issues/22544)) ([e8e66ce](https://github.com/vm0-ai/vm0/commit/e8e66ce625f8bde4673ed4846eecd8cda15c7fa9))
+
+
+### Refactoring
+
+* **api:** convert active run lookups to drizzle builders ([#22587](https://github.com/vm0-ai/vm0/issues/22587)) ([8e78e37](https://github.com/vm0-ai/vm0/commit/8e78e37a0becd45abee30e4fe38e8cc29fab4bd5))
+* **api:** register connector skills from catalog metadata ([#22606](https://github.com/vm0-ai/vm0/issues/22606)) ([5cc44cf](https://github.com/vm0-ai/vm0/commit/5cc44cfec3b502250b696187b28e388d663e7b2e))
+* reduce fallback slop in log search ([#22615](https://github.com/vm0-ai/vm0/issues/22615)) ([a9cf034](https://github.com/vm0-ai/vm0/commit/a9cf034cae6a36968257329677e8d768c35a33d9))
+* remove obsolete platform and api compatibility fallbacks ([#22573](https://github.com/vm0-ai/vm0/issues/22573)) ([427124a](https://github.com/vm0-ai/vm0/commit/427124a7d9afa3f174a86b33d213d8ba143e35e1))
+
+
+### Performance Improvements
+
+* **api:** consolidate chat message metadata lookups ([#22604](https://github.com/vm0-ai/vm0/issues/22604)) ([0c35542](https://github.com/vm0-ai/vm0/commit/0c355425bb2336c46637e607e27af58a5fdc687e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.1
+    * @vm0/connectors bumped to 1.180.0
+    * @vm0/core bumped to 8.452.0
+    * @vm0/db bumped to 1.127.1
+
+## [1.302.0](https://github.com/vm0-ai/vm0/compare/api-v1.301.0...api-v1.302.0) (2026-07-22)
+
+
+### Features
+
+* **api:** register connector skills during catalog sync ([#22586](https://github.com/vm0-ai/vm0/issues/22586)) ([d5635f7](https://github.com/vm0-ai/vm0/commit/d5635f76c5d6e08650e7f2f92bc233fa35f472f0))
+* **chat:** make structured prompts authoritative on send ([#22537](https://github.com/vm0-ai/vm0/issues/22537)) ([454772b](https://github.com/vm0-ai/vm0/commit/454772bcd57c585e7ac0fbe64615b04c6862fcb7))
+* version hosted site artifacts ([#22553](https://github.com/vm0-ai/vm0/issues/22553)) ([70fe55b](https://github.com/vm0-ai/vm0/commit/70fe55be77ae4736187afb5a0f68b30d609fb4a7))
+
+
+### CI
+
+* remove per-pr www preview infrastructure ([#22539](https://github.com/vm0-ai/vm0/issues/22539)) ([1aacb72](https://github.com/vm0-ai/vm0/commit/1aacb72ed6b6d22db3f161608e263087123ba9ec))
+
+
+### Performance Improvements
+
+* **api:** overlap storage and context preparation ([#22581](https://github.com/vm0-ai/vm0/issues/22581)) ([b77ffa3](https://github.com/vm0-ai/vm0/commit/b77ffa3897ec485d9cfcd75513684a5ee51cb0d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.214.0
+    * @vm0/connectors bumped to 1.179.0
+    * @vm0/core bumped to 8.451.0
+    * @vm0/db bumped to 1.127.0
+
+## [1.301.0](https://github.com/vm0-ai/vm0/compare/api-v1.300.2...api-v1.301.0) (2026-07-22)
+
+
+### Features
+
+* **billing:** use org plan entitlements for gated actions ([#22498](https://github.com/vm0-ai/vm0/issues/22498)) ([4d2c428](https://github.com/vm0-ai/vm0/commit/4d2c428c66178ec65cae0ff2fb9483a3f3643097))
+
+
+### Bug Fixes
+
+* **chat:** timestamp queued messages when claimed ([#22561](https://github.com/vm0-ai/vm0/issues/22561)) ([b727717](https://github.com/vm0-ai/vm0/commit/b727717fb6df997d6b68bbd52e4b9082246005ea))
+* stop app asset misses from using spa fallback ([#22463](https://github.com/vm0-ai/vm0/issues/22463)) ([4ac650f](https://github.com/vm0-ai/vm0/commit/4ac650fbd2c216b727934975a276e71fd31b08db))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.213.0
+    * @vm0/connectors bumped to 1.178.2
+    * @vm0/core bumped to 8.450.0
+    * @vm0/db bumped to 1.126.0
+
+## [1.300.2](https://github.com/vm0-ai/vm0/compare/api-v1.300.1...api-v1.300.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **connectors:** route browser oauth through api.vm0.ai ([#22407](https://github.com/vm0-ai/vm0/issues/22407)) ([141e70e](https://github.com/vm0-ai/vm0/commit/141e70e3c4b94f59ebdc5df480b33308781bb7e5))
+* enforce current policy for chat model routes ([#22549](https://github.com/vm0-ai/vm0/issues/22549)) ([aeed00d](https://github.com/vm0-ai/vm0/commit/aeed00db26f4beaf6c4a22e2caf17a2f5112afe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.1
+    * @vm0/core bumped to 8.449.0
+    * @vm0/db bumped to 1.125.7
+
+## [1.300.1](https://github.com/vm0-ai/vm0/compare/api-v1.300.0...api-v1.300.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* refresh website template archives ([#22497](https://github.com/vm0-ai/vm0/issues/22497)) ([408b2ce](https://github.com/vm0-ai/vm0/commit/408b2ce6a0e2da4be339e008752575c74bcac15f))
+
+
+### Performance Improvements
+
+* **api:** skip kms for internal run callbacks ([#22500](https://github.com/vm0-ai/vm0/issues/22500)) ([17e30fe](https://github.com/vm0-ai/vm0/commit/17e30fecd4462a3a05988924881d57b618e3b826))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.448.5
+    * @vm0/db bumped to 1.125.6
+
+## [1.300.0](https://github.com/vm0-ai/vm0/compare/api-v1.299.0...api-v1.300.0) (2026-07-22)
+
+
+### Features
+
+* show next scheduled morning brief send time in settings ([#22515](https://github.com/vm0-ai/vm0/issues/22515)) ([2c5052f](https://github.com/vm0-ai/vm0/commit/2c5052f41d9ff64bfb1b60f525930b3bdbf6706e))
+
+
+### Bug Fixes
+
+* **api:** extend sandbox token lifetime ([#22502](https://github.com/vm0-ai/vm0/issues/22502)) ([1782b92](https://github.com/vm0-ai/vm0/commit/1782b929542b4e829cc2203f3497ffd1d5aed8f3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.212.0
+    * @vm0/core bumped to 8.448.4
+    * @vm0/db bumped to 1.125.5
+
+## [1.299.0](https://github.com/vm0-ai/vm0/compare/api-v1.298.0...api-v1.299.0) (2026-07-22)
+
+
+### Features
+
+* deliver canonical slack chat replies exactly once ([#22496](https://github.com/vm0-ai/vm0/issues/22496)) ([fb8bb00](https://github.com/vm0-ai/vm0/commit/fb8bb0076dd372cb6a23c46e233716d374ee21f1))
+* report unread chat threads in the morning brief email ([#22507](https://github.com/vm0-ai/vm0/issues/22507)) ([c94c2d3](https://github.com/vm0-ai/vm0/commit/c94c2d3372d4c79ec011c143a82f04155104636d))
+* serve the morning brief unsubscribe page from the platform app ([#22495](https://github.com/vm0-ai/vm0/issues/22495)) ([44b0f9a](https://github.com/vm0-ai/vm0/commit/44b0f9a4de8e8fb4456f80492c694fc38987f44e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.211.0
+    * @vm0/core bumped to 8.448.3
+    * @vm0/db bumped to 1.125.4
+
+## [1.298.0](https://github.com/vm0-ai/vm0/compare/api-v1.297.1...api-v1.298.0) (2026-07-22)
+
+
+### Features
+
+* **computer-use:** share chat thread grants with automations ([#22485](https://github.com/vm0-ai/vm0/issues/22485)) ([482c97d](https://github.com/vm0-ai/vm0/commit/482c97d79d9be463b7794a293444dda612784c78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.210.0
+    * @vm0/core bumped to 8.448.2
+    * @vm0/db bumped to 1.125.3
+
+## [1.297.1](https://github.com/vm0-ai/vm0/compare/api-v1.297.0...api-v1.297.1) (2026-07-22)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.1
+    * @vm0/connectors bumped to 1.178.1
+    * @vm0/core bumped to 8.448.1
+    * @vm0/db bumped to 1.125.2
+
+## [1.297.0](https://github.com/vm0-ai/vm0/compare/api-v1.296.1...api-v1.297.0) (2026-07-22)
+
+
+### Features
+
+* **artifacts:** expose artifact update timestamps ([#22402](https://github.com/vm0-ai/vm0/issues/22402)) ([14cb524](https://github.com/vm0-ai/vm0/commit/14cb524e721340826b70c1c4c86633febab1e386))
+* **artifacts:** generate video posters on creation ([#22387](https://github.com/vm0-ai/vm0/issues/22387)) ([309920f](https://github.com/vm0-ai/vm0/commit/309920f74b9e17780f4d479b45ed70f1d3458986))
+
+
+### Refactoring
+
+* clarify connector identity names ([#22442](https://github.com/vm0-ai/vm0/issues/22442)) ([58bafe7](https://github.com/vm0-ai/vm0/commit/58bafe76bf61575a003784d98086dbe958f66051))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.209.0
+    * @vm0/connectors bumped to 1.178.0
+    * @vm0/core bumped to 8.448.0
+    * @vm0/db bumped to 1.125.1
+
+## [1.296.1](https://github.com/vm0-ai/vm0/compare/api-v1.296.0...api-v1.296.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* preserve github connection during morning brief ([#22457](https://github.com/vm0-ai/vm0/issues/22457)) ([735e24e](https://github.com/vm0-ai/vm0/commit/735e24e0f0a92f6ba95def54183d88255930d096))
+
+## [1.296.0](https://github.com/vm0-ai/vm0/compare/api-v1.295.0...api-v1.296.0) (2026-07-21)
+
+
+### Features
+
+* **api:** compose external connector runner firewalls ([#22415](https://github.com/vm0-ai/vm0/issues/22415)) ([4f6ee12](https://github.com/vm0-ai/vm0/commit/4f6ee12d71e0df1e49ea86c1fc9d6f285712955e))
+* route canonical slack turns through chat message queue ([#22429](https://github.com/vm0-ai/vm0/issues/22429)) ([eddb41b](https://github.com/vm0-ai/vm0/commit/eddb41b47ef26e02468f6fac1926346624e75492))
+
+
+### Refactoring
+
+* reduce fallback slop in api runtime state ([#22454](https://github.com/vm0-ai/vm0/issues/22454)) ([35cc4c3](https://github.com/vm0-ai/vm0/commit/35cc4c3bd167528427cebe638f30bbd9f0588f52))
+
+
+### Performance Improvements
+
+* **api:** collapse chat read cursor updates ([#22447](https://github.com/vm0-ai/vm0/issues/22447)) ([879b3b9](https://github.com/vm0-ai/vm0/commit/879b3b910c497be52b9d6349712d4e4b13600737))
+* **api:** collapse stored connector snapshot reads ([#22432](https://github.com/vm0-ai/vm0/issues/22432)) ([ce94864](https://github.com/vm0-ai/vm0/commit/ce948647d94086c453cc38d530fb1d5bfc405a57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.208.0
+    * @vm0/connectors bumped to 1.177.0
+    * @vm0/core bumped to 8.447.0
+    * @vm0/db bumped to 1.125.0
+
+## [1.295.0](https://github.com/vm0-ai/vm0/compare/api-v1.294.0...api-v1.295.0) (2026-07-21)
+
+
+### Features
+
+* daily morning brief email from github, gmail, and google calendar ([#22408](https://github.com/vm0-ai/vm0/issues/22408)) ([0eee1cd](https://github.com/vm0-ai/vm0/commit/0eee1cd687cafa53f9145aa5479ae57d9814af90))
+* migrate www previews to cloudflare ([#22425](https://github.com/vm0-ai/vm0/issues/22425)) ([2c7cfce](https://github.com/vm0-ai/vm0/commit/2c7cfce6172818bc43bcb5b13e8017919b05743c))
+
+
+### Refactoring
+
+* **artifacts:** remove favorites from artifact synchronization ([#22381](https://github.com/vm0-ai/vm0/issues/22381)) ([7d5f43a](https://github.com/vm0-ai/vm0/commit/7d5f43a87c7493ce1037765da86c12d925d24d7a))
+* retire bb0 and public v1 apis ([#22404](https://github.com/vm0-ai/vm0/issues/22404)) ([af4a5f3](https://github.com/vm0-ai/vm0/commit/af4a5f347628a4f533ca7f8a38132e42f350d9c7))
+* stop provisioning channel artifact storages ([#22393](https://github.com/vm0-ai/vm0/issues/22393)) ([fd2a259](https://github.com/vm0-ai/vm0/commit/fd2a259acbad18a82933876482f330171dac8d62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.207.0
+    * @vm0/connectors bumped to 1.176.0
+    * @vm0/core bumped to 8.446.0
+    * @vm0/db bumped to 1.124.0
+
+## [1.294.0](https://github.com/vm0-ai/vm0/compare/api-v1.293.0...api-v1.294.0) (2026-07-21)
+
+
+### Features
+
+* **artifacts:** load favorites independently ([#22371](https://github.com/vm0-ai/vm0/issues/22371)) ([c4d23d9](https://github.com/vm0-ai/vm0/commit/c4d23d9a5e4c92b323df57d50fb732ec5ccacde1))
+
+
+### Performance Improvements
+
+* **api:** avoid eager workflow queue encryption ([#22372](https://github.com/vm0-ai/vm0/issues/22372)) ([a7e1846](https://github.com/vm0-ai/vm0/commit/a7e18461a8a3b77181260e4e329eb3425c772521))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.206.0
+    * @vm0/connectors bumped to 1.175.0
+    * @vm0/core bumped to 8.445.1
+    * @vm0/db bumped to 1.123.2
+
+## [1.293.0](https://github.com/vm0-ai/vm0/compare/api-v1.292.0...api-v1.293.0) (2026-07-21)
+
+
+### Features
+
+* add provider-neutral image attribution url ([#22367](https://github.com/vm0-ai/vm0/issues/22367)) ([5da8a96](https://github.com/vm0-ai/vm0/commit/5da8a96caedd8f35dcd1d91764bf918493d15c17))
+* **chat:** persist structured prompts through api and indexeddb ([#22357](https://github.com/vm0-ai/vm0/issues/22357)) ([655136e](https://github.com/vm0-ai/vm0/commit/655136e2d01cbe57ac67af61711b21867eea2d2a))
+* **connectors:** use accepted server firewall metadata ([#22348](https://github.com/vm0-ai/vm0/issues/22348)) ([09ec460](https://github.com/vm0-ai/vm0/commit/09ec4607884b3d8b5d16847df1eed9e10cfae28b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.205.0
+    * @vm0/connectors bumped to 1.174.0
+    * @vm0/core bumped to 8.445.0
+    * @vm0/db bumped to 1.123.1
+
+## [1.292.0](https://github.com/vm0-ai/vm0/compare/api-v1.291.1...api-v1.292.0) (2026-07-21)
+
+
+### Features
+
+* **api:** alert on orphaned queued chat messages ([#22312](https://github.com/vm0-ai/vm0/issues/22312)) ([b7615ae](https://github.com/vm0-ai/vm0/commit/b7615ae6b31f938f8bab8696c9b05b70498f32be))
+
+
+### Refactoring
+
+* **chat:** make chat_message_queue authoritative for queued messages ([#22311](https://github.com/vm0-ai/vm0/issues/22311)) ([5128f65](https://github.com/vm0-ai/vm0/commit/5128f65071d738fd9d2f3790cb04c625e7835153))
+* **chat:** remove mobile unread thread shortcuts ([#22362](https://github.com/vm0-ai/vm0/issues/22362)) ([5233677](https://github.com/vm0-ai/vm0/commit/5233677f553a4437ff34827546189ee8228900c1))
+* remove vm0 logs command and its cli-only telemetry read routes ([#22307](https://github.com/vm0-ai/vm0/issues/22307)) ([b98ffd6](https://github.com/vm0-ai/vm0/commit/b98ffd600f6fd6379e19c91259fdf15ebbbc24ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.204.0
+    * @vm0/connectors bumped to 1.173.4
+    * @vm0/core bumped to 8.444.4
+    * @vm0/db bumped to 1.123.0
+
+## [1.291.1](https://github.com/vm0-ai/vm0/compare/api-v1.291.0...api-v1.291.1) (2026-07-21)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.4
+    * @vm0/connectors bumped to 1.173.3
+    * @vm0/core bumped to 8.444.3
+    * @vm0/db bumped to 1.122.4
+
+## [1.291.0](https://github.com/vm0-ai/vm0/compare/api-v1.290.1...api-v1.291.0) (2026-07-21)
+
+
+### Features
+
+* support custom credits in atom grant invoices ([#22030](https://github.com/vm0-ai/vm0/issues/22030)) ([d80a7b0](https://github.com/vm0-ai/vm0/commit/d80a7b02bb25db892f60c51a6971482894c91ba8))
+
+
+### Refactoring
+
+* **api:** enforce connector credential ownership invariants ([#22266](https://github.com/vm0-ai/vm0/issues/22266)) ([df7bece](https://github.com/vm0-ai/vm0/commit/df7bece5c31b95007976a1b00118e271a8067554))
+
+
+### Performance Improvements
+
+* **api:** batch chat search context queries ([#22308](https://github.com/vm0-ai/vm0/issues/22308)) ([bbc97f7](https://github.com/vm0-ai/vm0/commit/bbc97f7fcbb0fb84922b0edb52bcc8b7ac515391))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.3
+    * @vm0/connectors bumped to 1.173.2
+    * @vm0/core bumped to 8.444.2
+    * @vm0/db bumped to 1.122.3
+
+## [1.290.1](https://github.com/vm0-ai/vm0/compare/api-v1.290.0...api-v1.290.1) (2026-07-21)
+
+
+### Refactoring
+
+* **api:** eliminate unsafe sql.raw usage ([#22271](https://github.com/vm0-ai/vm0/issues/22271)) ([e29eb69](https://github.com/vm0-ai/vm0/commit/e29eb69bc2c360298dfb6178de356f06db60b5d1))
+* remove workflow queue trigger identifier ([#22268](https://github.com/vm0-ai/vm0/issues/22268)) ([b01589d](https://github.com/vm0-ai/vm0/commit/b01589dff4a18427b99a73ae2c77fe1a0f336c84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.2
+    * @vm0/core bumped to 8.444.1
+    * @vm0/db bumped to 1.122.2
+
+## [1.290.0](https://github.com/vm0-ai/vm0/compare/api-v1.289.0...api-v1.290.0) (2026-07-21)
+
+
+### Features
+
+* enable connector action callbacks for all users ([#22259](https://github.com/vm0-ai/vm0/issues/22259)) ([6814796](https://github.com/vm0-ai/vm0/commit/68147969deb3c57ae57a820360f4db5bee087021))
+
+
+### Bug Fixes
+
+* derive cloudflare app preview urls in cli and desktop ([#22253](https://github.com/vm0-ai/vm0/issues/22253)) ([b61b678](https://github.com/vm0-ai/vm0/commit/b61b678b2af53393738dbad794a2a41dd8731601))
+* **runner:** prevent claim rejection rediscovery loops ([#22250](https://github.com/vm0-ai/vm0/issues/22250)) ([068c509](https://github.com/vm0-ai/vm0/commit/068c509eb9b9e864fb4665c1bc8450a3d9bfbd37))
+
+
+### Refactoring
+
+* prepare workflow queue identifier contract ([#22260](https://github.com/vm0-ai/vm0/issues/22260)) ([50f4f7f](https://github.com/vm0-ai/vm0/commit/50f4f7f7b5b65601ee08586a7a8398498a4475b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.1
+    * @vm0/connectors bumped to 1.173.1
+    * @vm0/core bumped to 8.444.0
+    * @vm0/db bumped to 1.122.1
+
+## [1.289.0](https://github.com/vm0-ai/vm0/compare/api-v1.288.0...api-v1.289.0) (2026-07-20)
+
+
+### Features
+
+* **api:** activate connector credential ownership ([#22212](https://github.com/vm0-ai/vm0/issues/22212)) ([54af3e2](https://github.com/vm0-ai/vm0/commit/54af3e2fb9b890901c03efe8d6abb45e59e6b927))
+
+
+### Refactoring
+
+* **api:** enforce structured sql result mapping ([#22197](https://github.com/vm0-ai/vm0/issues/22197)) ([a2df783](https://github.com/vm0-ai/vm0/commit/a2df7831713e1ed80ede73e811412f0adf981752))
+* **api:** remove blanket raw sql lint ratchet ([#22242](https://github.com/vm0-ai/vm0/issues/22242)) ([3fdb739](https://github.com/vm0-ai/vm0/commit/3fdb739c635088c1185ab9a143f8e865f5271fdc))
+* **api:** replace raw sql predicates with drizzle operators in nine services ([#22237](https://github.com/vm0-ai/vm0/issues/22237)) ([c3b4612](https://github.com/vm0-ai/vm0/commit/c3b46127ab70b747935b69b4c26bef6220998b35)), closes [#22106](https://github.com/vm0-ai/vm0/issues/22106)
+* reduce fallback slop in slack oauth ([#22254](https://github.com/vm0-ai/vm0/issues/22254)) ([7c4ed68](https://github.com/vm0-ai/vm0/commit/7c4ed680d790bd9f7c07a2920931518f8505404c))
+
+
+### Performance Improvements
+
+* **api:** reduce zero bootstrap snapshot cost ([#22214](https://github.com/vm0-ai/vm0/issues/22214)) ([bfc03ff](https://github.com/vm0-ai/vm0/commit/bfc03ff0070ad96ab9a3c259f6c322e73e4c9748))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.203.0
+    * @vm0/core bumped to 8.443.1
+    * @vm0/db bumped to 1.122.0
+
+## [1.288.0](https://github.com/vm0-ai/vm0/compare/api-v1.287.0...api-v1.288.0) (2026-07-20)
+
+
+### Features
+
+* gate refreshed website template packages ([#22222](https://github.com/vm0-ai/vm0/issues/22222)) ([d1059c0](https://github.com/vm0-ai/vm0/commit/d1059c0b51a98376509587161183d207b8f8952e))
+
+
+### Refactoring
+
+* **runner:** remove claim resource telemetry ([#22230](https://github.com/vm0-ai/vm0/issues/22230)) ([cbb2bf1](https://github.com/vm0-ai/vm0/commit/cbb2bf1b10c9b2364d7f13b2b8d7409f35c2f360))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.5
+    * @vm0/connectors bumped to 1.173.0
+    * @vm0/core bumped to 8.443.0
+    * @vm0/db bumped to 1.121.5
+
+## [1.287.0](https://github.com/vm0-ai/vm0/compare/api-v1.286.4...api-v1.287.0) (2026-07-20)
+
+
+### Features
+
+* **lint:** ban hand-written drizzle raw sql behind a file allowlist ([#22158](https://github.com/vm0-ai/vm0/issues/22158)) ([53a6dbd](https://github.com/vm0-ai/vm0/commit/53a6dbd43d11e707e0e9cfbd6c91c97b930bedcf))
+
+
+### Refactoring
+
+* canonicalize workflow queue automation IDs ([#22151](https://github.com/vm0-ai/vm0/issues/22151)) ([af2f5fd](https://github.com/vm0-ai/vm0/commit/af2f5fd4e7381372388e5ba597b27b33de9899fb))
+* graduate website templates to always-on ([#22209](https://github.com/vm0-ai/vm0/issues/22209)) ([9c1a75a](https://github.com/vm0-ai/vm0/commit/9c1a75ab743c243447eb8f850c61a89cae177422))
+* **runner:** remove generation claim attribution ([#22201](https://github.com/vm0-ai/vm0/issues/22201)) ([5f0d316](https://github.com/vm0-ai/vm0/commit/5f0d316ccb916fd575b0fe93f23061cb88dc4df7))
+
+
+### Performance Improvements
+
+* **artifacts:** sync artifact updates incrementally ([#22190](https://github.com/vm0-ai/vm0/issues/22190)) ([d6875b3](https://github.com/vm0-ai/vm0/commit/d6875b307c961321442f4a15c37d96a188860845))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.4
+    * @vm0/connectors bumped to 1.172.2
+    * @vm0/core bumped to 8.442.3
+    * @vm0/db bumped to 1.121.4
+
+## [1.286.4](https://github.com/vm0-ai/vm0/compare/api-v1.286.3...api-v1.286.4) (2026-07-20)
+
+
+### Refactoring
+
+* **api:** validate structured sql result rows ([#22160](https://github.com/vm0-ai/vm0/issues/22160)) ([64b23fb](https://github.com/vm0-ai/vm0/commit/64b23fba25b78252a1378e3d42324fe561f040ab))
+
+## [1.286.3](https://github.com/vm0-ai/vm0/compare/api-v1.286.2...api-v1.286.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* stop user-deletion s3 cleanup from deleting other users' storage objects via shared prefixes ([#22152](https://github.com/vm0-ai/vm0/issues/22152)) ([9c839c8](https://github.com/vm0-ai/vm0/commit/9c839c85ac9e4cf6ddc95a7f9f10d29d9d200672))
+
+
+### Refactoring
+
+* **api:** validate raw execute result rows ([#22143](https://github.com/vm0-ai/vm0/issues/22143)) ([1a9a8dc](https://github.com/vm0-ai/vm0/commit/1a9a8dc2224d8a794d3471b1d7584894e404a170))
+* prepare connector credential storage persistence ([#22141](https://github.com/vm0-ai/vm0/issues/22141)) ([9f9587c](https://github.com/vm0-ai/vm0/commit/9f9587c3aa888d2365b1f47f7695bc8355d2d0c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.3
+    * @vm0/connectors bumped to 1.172.1
+    * @vm0/core bumped to 8.442.2
+    * @vm0/db bumped to 1.121.3
+
+## [1.286.2](https://github.com/vm0-ai/vm0/compare/api-v1.286.1...api-v1.286.2) (2026-07-19)
+
+
+### Performance Improvements
+
+* **storage:** propagate encoded archive sizes ([#22142](https://github.com/vm0-ai/vm0/issues/22142)) ([10fc760](https://github.com/vm0-ai/vm0/commit/10fc7608fdd82ab064da0dfc280667bba0cd64a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.2
+    * @vm0/core bumped to 8.442.1
+    * @vm0/db bumped to 1.121.2
+
+## [1.286.1](https://github.com/vm0-ai/vm0/compare/api-v1.286.0...api-v1.286.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **api:** decode workflow timestamps in bootstrap snapshot ([#22121](https://github.com/vm0-ai/vm0/issues/22121)) ([53de781](https://github.com/vm0-ai/vm0/commit/53de781043b38f450d09b22b8d8c85852fd2b234))
+
+## [1.286.0](https://github.com/vm0-ai/vm0/compare/api-v1.285.0...api-v1.286.0) (2026-07-19)
+
+
+### Features
+
+* remove workflow queue feature switch and legacy dispatch paths ([#22091](https://github.com/vm0-ai/vm0/issues/22091)) ([ecde8ca](https://github.com/vm0-ai/vm0/commit/ecde8caec9fcb742a79102a9ef3778f62f46eb38))
+
+
+### Refactoring
+
+* reduce fallback slop in teams activity handling ([#22086](https://github.com/vm0-ai/vm0/issues/22086)) ([b93235a](https://github.com/vm0-ai/vm0/commit/b93235a36164caf66671283feb605f3868c2961d))
+
+
+### Performance Improvements
+
+* **api:** collapse zero bootstrap reads ([#22084](https://github.com/vm0-ai/vm0/issues/22084)) ([1879581](https://github.com/vm0-ai/vm0/commit/18795818b13bba43b3985ed5ad434d7114ad08a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.1
+    * @vm0/connectors bumped to 1.172.0
+    * @vm0/core bumped to 8.442.0
+    * @vm0/db bumped to 1.121.1
+
+## [1.285.0](https://github.com/vm0-ai/vm0/compare/api-v1.284.0...api-v1.285.0) (2026-07-18)
+
+
+### Features
+
+* **api:** drive connector credentials from runtime catalog ([#21886](https://github.com/vm0-ai/vm0/issues/21886)) ([94adb1e](https://github.com/vm0-ai/vm0/commit/94adb1eee0622505eafdadb19a497f26278c6d36))
+* **mail:** link gmail drafts for read-only review ([#22074](https://github.com/vm0-ai/vm0/issues/22074)) ([a56d364](https://github.com/vm0-ai/vm0/commit/a56d364854f85d81e6315e1755e6b9974d1ba13a))
+* **platform:** recognize okou.ai as a production clerk satellite ([#22063](https://github.com/vm0-ai/vm0/issues/22063)) ([4c18b84](https://github.com/vm0-ai/vm0/commit/4c18b846ebe689323fcd214f956f8a326c580060))
+
+
+### Bug Fixes
+
+* require canonical automation id for workflow callbacks ([#22060](https://github.com/vm0-ai/vm0/issues/22060)) ([0f41a1d](https://github.com/vm0-ai/vm0/commit/0f41a1dbf224715d4b187a4383d3681fb0b9a0c2))
+* **runner:** reject stale heartbeat snapshots ([#22076](https://github.com/vm0-ai/vm0/issues/22076)) ([d91617a](https://github.com/vm0-ai/vm0/commit/d91617a24c17a394a9836033548808350dcc05db))
+
+
+### Refactoring
+
+* **mail:** publish draft cards through assistant links ([#22069](https://github.com/vm0-ai/vm0/issues/22069)) ([14a7584](https://github.com/vm0-ai/vm0/commit/14a758448046133eb93f797beab2c8b41b376ad5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.0
+    * @vm0/connectors bumped to 1.171.0
+    * @vm0/core bumped to 8.441.1
+    * @vm0/db bumped to 1.121.0
+
+## [1.284.0](https://github.com/vm0-ai/vm0/compare/api-v1.283.3...api-v1.284.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** back chat draft cards with gmail drafts ([#22044](https://github.com/vm0-ai/vm0/issues/22044)) ([60cbc99](https://github.com/vm0-ai/vm0/commit/60cbc992fe47ac48716790110b5ff58b37fcdd6c))
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+
+
+### Bug Fixes
+
+* **chat:** preserve sessions between gpt and auto ([#22046](https://github.com/vm0-ai/vm0/issues/22046)) ([ffd6e0b](https://github.com/vm0-ai/vm0/commit/ffd6e0b8dbd8381a329402c3107bfa18666bdcb1))
+
+
+### Refactoring
+
+* **chat:** centralize append-only message mutations ([#22033](https://github.com/vm0-ai/vm0/issues/22033)) ([74cccc1](https://github.com/vm0-ai/vm0/commit/74cccc1e1775c24c08cfebfcdbed446bc9a58649))
+* **runner:** remove affinity rollout compatibility ([#22021](https://github.com/vm0-ai/vm0/issues/22021)) ([8cc7c76](https://github.com/vm0-ai/vm0/commit/8cc7c76552a1f0bbf9361b0b26721fc36867dc12))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+    * @vm0/core bumped to 8.441.0
+    * @vm0/db bumped to 1.120.0
+
+## [1.283.3](https://github.com/vm0-ai/vm0/compare/api-v1.283.2...api-v1.283.3) (2026-07-17)
+
+
+### Bug Fixes
+
+* **agent:** prefer workspace directory in runtime prompt ([#22009](https://github.com/vm0-ai/vm0/issues/22009)) ([8407c01](https://github.com/vm0-ai/vm0/commit/8407c017b06b5e7203e4723f220cb740058d43e5))
+
+
+### Refactoring
+
+* reduce fallback slop in slack oauth ([#22025](https://github.com/vm0-ai/vm0/issues/22025)) ([e0d6f42](https://github.com/vm0-ai/vm0/commit/e0d6f4271e3826e63c950ef97c23db252671dce8))
+
+
+### Performance Improvements
+
+* **api:** load persisted run environment in one statement ([#22020](https://github.com/vm0-ai/vm0/issues/22020)) ([c6817df](https://github.com/vm0-ai/vm0/commit/c6817df2686b90e893c054192ed341f999c1c596))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.4
+    * @vm0/core bumped to 8.440.1
+    * @vm0/db bumped to 1.119.5
+
+## [1.283.2](https://github.com/vm0-ai/vm0/compare/api-v1.283.1...api-v1.283.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api:** spend usage allowance before credits for all billable usage ([#21987](https://github.com/vm0-ai/vm0/issues/21987)) ([e144db9](https://github.com/vm0-ai/vm0/commit/e144db92fdf67ea34b6e83ca85430097e428e90a))
+* update stripe customer default card after payment ([#21989](https://github.com/vm0-ai/vm0/issues/21989)) ([e3afc21](https://github.com/vm0-ai/vm0/commit/e3afc213f621566f131148959f44e1f0dd6b1132))
+
+## [1.283.1](https://github.com/vm0-ai/vm0/compare/api-v1.283.0...api-v1.283.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* fall back to attached card for auto-recharge ([#21986](https://github.com/vm0-ai/vm0/issues/21986)) ([ef3ee72](https://github.com/vm0-ai/vm0/commit/ef3ee723948a9e9a91add672b7a0468ce32dc116))
+
+## [1.283.0](https://github.com/vm0-ai/vm0/compare/api-v1.282.4...api-v1.283.0) (2026-07-17)
+
+
+### Features
+
+* enable website templates rollout ([#21203](https://github.com/vm0-ai/vm0/issues/21203)) ([5a16112](https://github.com/vm0-ai/vm0/commit/5a161121a2fdfaffcd38c87755fdeb05d849c665))
+
+
+### Performance Improvements
+
+* **runner:** attribute generation-specific workspace sidecars ([#21972](https://github.com/vm0-ai/vm0/issues/21972)) ([315f271](https://github.com/vm0-ai/vm0/commit/315f27174d6a759204e378a793acf03ed89bddd8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.3
+    * @vm0/core bumped to 8.440.0
+    * @vm0/db bumped to 1.119.4
+
+## [1.282.4](https://github.com/vm0-ai/vm0/compare/api-v1.282.3...api-v1.282.4) (2026-07-17)
+
+
+### Bug Fixes
+
+* rename vm0 model to auto ([#21969](https://github.com/vm0-ai/vm0/issues/21969)) ([aa7fd46](https://github.com/vm0-ai/vm0/commit/aa7fd46efde4f8400539a53adf71461105cb4aa5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.2
+    * @vm0/core bumped to 8.439.2
+    * @vm0/db bumped to 1.119.3
+
+## [1.282.3](https://github.com/vm0-ai/vm0/compare/api-v1.282.2...api-v1.282.3) (2026-07-17)
+
+
+### Refactoring
+
+* **platform:** cache chat blocks and share permission card signals ([#21919](https://github.com/vm0-ai/vm0/issues/21919)) ([f04823d](https://github.com/vm0-ai/vm0/commit/f04823da274101b5a921bce0c3eb6246e8f89f75))
+
+## [1.282.2](https://github.com/vm0-ai/vm0/compare/api-v1.282.1...api-v1.282.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api:** cache clerk identity reads in e2e setup ([#21909](https://github.com/vm0-ai/vm0/issues/21909)) ([5dbe55f](https://github.com/vm0-ai/vm0/commit/5dbe55fd1cc4f5f63eed4141c9c7ec2075d82955))
+
+
+### Documentation
+
+* **api:** clarify dev seed database contents ([#21891](https://github.com/vm0-ai/vm0/issues/21891)) ([bb18877](https://github.com/vm0-ai/vm0/commit/bb1887759521fb7a1c6cc320767a9bcc61ef35f0))
+
+
+### Refactoring
+
+* **api:** remove legacy web client compatibility endpoint ([#21915](https://github.com/vm0-ai/vm0/issues/21915)) ([f899f65](https://github.com/vm0-ai/vm0/commit/f899f65e7d2977cd0207432f10621d8ff0c81d58))
+* **runner:** add generic workspace affinity resource classes ([#21888](https://github.com/vm0-ai/vm0/issues/21888)) ([92bf6af](https://github.com/vm0-ai/vm0/commit/92bf6af909f9aa3666a256edbfdad016b94947a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.1
+    * @vm0/core bumped to 8.439.1
+    * @vm0/db bumped to 1.119.2
+
+## [1.282.1](https://github.com/vm0-ai/vm0/compare/api-v1.282.0...api-v1.282.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **db:** enforce append-only chat event tables ([#21903](https://github.com/vm0-ai/vm0/issues/21903)) ([880cffc](https://github.com/vm0-ai/vm0/commit/880cffc307658b6fd865b233c5a7675271a965fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.119.1
+
+## [1.282.0](https://github.com/vm0-ai/vm0/compare/api-v1.281.1...api-v1.282.0) (2026-07-16)
+
+
+### Features
+
+* add kimi k3 pricing and managed keys ([#21892](https://github.com/vm0-ai/vm0/issues/21892)) ([5b5901f](https://github.com/vm0-ai/vm0/commit/5b5901f21453723a299ab0c71d1a47ce3d14cf87))
+
+
+### Refactoring
+
+* reduce fallback slop in cli auth ([#21898](https://github.com/vm0-ai/vm0/issues/21898)) ([89601f9](https://github.com/vm0-ai/vm0/commit/89601f96e1216c34fcf8202860f50a2eaa74bcfb))
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Performance Improvements
+
+* **api:** bulk upsert development seed data ([#21894](https://github.com/vm0-ai/vm0/issues/21894)) ([a3eddfb](https://github.com/vm0-ai/vm0/commit/a3eddfb32d9b665f87d746b241d99d12b63702e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+    * @vm0/core bumped to 8.439.0
+    * @vm0/db bumped to 1.119.0
+
+## [1.281.1](https://github.com/vm0-ai/vm0/compare/api-v1.281.0...api-v1.281.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **chat:** append insufficient-credit replacements ([#21884](https://github.com/vm0-ai/vm0/issues/21884)) ([9bd1ec4](https://github.com/vm0-ai/vm0/commit/9bd1ec4f6c43a3e466ad305b336d518a4e345007))
+* **chat:** restore append-only queued message claims ([#21883](https://github.com/vm0-ai/vm0/issues/21883)) ([c4ba9fd](https://github.com/vm0-ai/vm0/commit/c4ba9fd85a3010950cd95cc2be0db75fc2997472))
+* emit one complete usage chat message per run ([#21885](https://github.com/vm0-ai/vm0/issues/21885)) ([6a0446d](https://github.com/vm0-ai/vm0/commit/6a0446db9ab725dc26017308bef383f11a8e8a60))
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+* **runner:** publish profile-qualified workspace cache state ([#21874](https://github.com/vm0-ai/vm0/issues/21874)) ([68b399b](https://github.com/vm0-ai/vm0/commit/68b399b571023b63db4a2f4f625eef1c9ded9b48))
+
+
+### Performance Improvements
+
+* **api:** collapse resumed-session resolution into one snapshot query ([#21872](https://github.com/vm0-ai/vm0/issues/21872)) ([856b69d](https://github.com/vm0-ai/vm0/commit/856b69d5cee4241d1f0b09cad1b58747a68d6c2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+    * @vm0/db bumped to 1.118.1
+
+## [1.281.0](https://github.com/vm0-ai/vm0/compare/api-v1.280.2...api-v1.281.0) (2026-07-16)
+
+
+### Features
+
+* bill model usage from signed proxy price schedules ([#21696](https://github.com/vm0-ai/vm0/issues/21696)) ([e4c9fc7](https://github.com/vm0-ai/vm0/commit/e4c9fc72ec4004b8ff6db197c6e4ee1a888e9d30))
+* enable workflow queue for all orgs ([#21853](https://github.com/vm0-ai/vm0/issues/21853)) ([5076e79](https://github.com/vm0-ai/vm0/commit/5076e79781786049aa346dcd908661388dbe7a3a))
+
+
+### Bug Fixes
+
+* **cli:** enforce source-first image template generation ([#21472](https://github.com/vm0-ai/vm0/issues/21472)) ([e686661](https://github.com/vm0-ai/vm0/commit/e686661b6fe100cbf821810daf9b1d00a587fc78))
+
+
+### Performance Improvements
+
+* **api:** lower postgres dns hedge delay and attribute budget misses ([#21846](https://github.com/vm0-ai/vm0/issues/21846)) ([a29eb59](https://github.com/vm0-ai/vm0/commit/a29eb5996c49bc329cf42b2f767debb9e1f8f5f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+    * @vm0/db bumped to 1.118.0
+
+## [1.280.2](https://github.com/vm0-ai/vm0/compare/api-v1.280.1...api-v1.280.2) (2026-07-16)
+
+
+### Refactoring
+
+* switch automation identifier writes ([#21839](https://github.com/vm0-ai/vm0/issues/21839)) ([630671e](https://github.com/vm0-ai/vm0/commit/630671e82fc91fdb51cf5bdb251950a98a39f2aa))
+
+## [1.280.1](https://github.com/vm0-ai/vm0/compare/api-v1.280.0...api-v1.280.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* use app tenant for teams bot replies ([#21782](https://github.com/vm0-ai/vm0/issues/21782)) ([5f35f05](https://github.com/vm0-ai/vm0/commit/5f35f058bc30e375bcb756ac70a105844b251b6a))
+
+## [1.280.0](https://github.com/vm0-ai/vm0/compare/api-v1.279.4...api-v1.280.0) (2026-07-16)
+
+
+### Features
+
+* prepare external public connector catalog backend ([#21773](https://github.com/vm0-ai/vm0/issues/21773)) ([f0c5204](https://github.com/vm0-ai/vm0/commit/f0c5204903dededbe7a6d88cc44558320bc1e542))
+
+
+### Bug Fixes
+
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+
+### Refactoring
+
+* dual-write automation identifiers across callbacks and chat snapshots ([#21795](https://github.com/vm0-ai/vm0/issues/21795)) ([b8fd86e](https://github.com/vm0-ai/vm0/commit/b8fd86ea8d3c7bf119f4a83e381698d6484120d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.198.0
+    * @vm0/connectors bumped to 1.168.0
+    * @vm0/core bumped to 8.437.3
+    * @vm0/db bumped to 1.117.3
+
+## [1.279.4](https://github.com/vm0-ai/vm0/compare/api-v1.279.3...api-v1.279.4) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** hedge slow postgres dns lookups ([#21774](https://github.com/vm0-ai/vm0/issues/21774)) ([cbac131](https://github.com/vm0-ai/vm0/commit/cbac1311fc79a065f644ecc01df4ce7e1fed606e))
+
+## [1.279.3](https://github.com/vm0-ai/vm0/compare/api-v1.279.2...api-v1.279.3) (2026-07-16)
+
+
+### Refactoring
+
+* read queued user messages from chat_message_queue ([#21779](https://github.com/vm0-ai/vm0/issues/21779)) ([dc6a275](https://github.com/vm0-ai/vm0/commit/dc6a27573bf527a04723bfae2d6cf69980ca3191))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.2
+    * @vm0/connectors bumped to 1.167.0
+    * @vm0/core bumped to 8.437.2
+    * @vm0/db bumped to 1.117.2
+
+## [1.279.2](https://github.com/vm0-ai/vm0/compare/api-v1.279.1...api-v1.279.2) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** move queue-first invalidation off dispatch path ([#21745](https://github.com/vm0-ai/vm0/issues/21745)) ([206a772](https://github.com/vm0-ai/vm0/commit/206a77208bfade42d519930495ad2e91ce574b71))
+
+## [1.279.1](https://github.com/vm0-ai/vm0/compare/api-v1.279.0...api-v1.279.1) (2026-07-16)
+
+
+### Refactoring
+
+* remove chat model family session continuity switch ([#21716](https://github.com/vm0-ai/vm0/issues/21716)) ([533031a](https://github.com/vm0-ai/vm0/commit/533031a8c81b20be9e5322e3be94e9d2f1eb2308))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.1
+    * @vm0/connectors bumped to 1.166.1
+    * @vm0/core bumped to 8.437.1
+    * @vm0/db bumped to 1.117.1
+
+## [1.279.0](https://github.com/vm0-ai/vm0/compare/api-v1.278.1...api-v1.279.0) (2026-07-16)
+
+
+### Features
+
+* **api:** reconcile connector catalog compatibility ([#21706](https://github.com/vm0-ai/vm0/issues/21706)) ([b1434dd](https://github.com/vm0-ai/vm0/commit/b1434dde242495914a4e4d6a44b36fc03bfbce85))
+* **api:** sync connector catalog snapshots from r2 ([#21568](https://github.com/vm0-ai/vm0/issues/21568)) ([9d38804](https://github.com/vm0-ai/vm0/commit/9d388040f4d502b5c8b63434cab03031f70f7c60))
+* enable chat model family session continuity for all users ([#21713](https://github.com/vm0-ai/vm0/issues/21713)) ([a427ac9](https://github.com/vm0-ai/vm0/commit/a427ac9652c276f8f219c0dba5ef458a7ca400d6))
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* **api:** serve color-system-fixed presentation runbooks ([#21688](https://github.com/vm0-ai/vm0/issues/21688)) ([e7a6bd8](https://github.com/vm0-ai/vm0/commit/e7a6bd884cfd52c7b1e924497c40729935dfb256))
+* authorize agents during connector connection ([#21709](https://github.com/vm0-ai/vm0/issues/21709)) ([5edaafc](https://github.com/vm0-ai/vm0/commit/5edaafcdf15ab37c2c96b3584c70f9b145ace20e))
+* claim queued chat messages in place ([#21627](https://github.com/vm0-ai/vm0/issues/21627)) ([c47ccc4](https://github.com/vm0-ai/vm0/commit/c47ccc4fa687b5ae369369432b4bad1de6bc9297))
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+
+### Refactoring
+
+* **api:** reject invalid x api response bodies ([#21504](https://github.com/vm0-ai/vm0/issues/21504)) ([031cd91](https://github.com/vm0-ai/vm0/commit/031cd91ee1de12038eca264007af1c4bd70348e1))
+* remove workflow trigger compatibility surfaces ([#21523](https://github.com/vm0-ai/vm0/issues/21523)) ([88edf69](https://github.com/vm0-ai/vm0/commit/88edf6915fdb75904e866ac8df8107737286c95b))
+
+
+### Performance Improvements
+
+* **api:** reuse memory candidate rows during final ranking ([#21692](https://github.com/vm0-ai/vm0/issues/21692)) ([b1f3e60](https://github.com/vm0-ai/vm0/commit/b1f3e60d1a8f0c729e03ad872f551ff34d6a786c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.0
+    * @vm0/connectors bumped to 1.166.0
+    * @vm0/core bumped to 8.437.0
+    * @vm0/db bumped to 1.117.0
+
+## [1.278.1](https://github.com/vm0-ai/vm0/compare/api-v1.278.0...api-v1.278.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.196.0
+    * @vm0/connectors bumped to 1.165.0
+    * @vm0/core bumped to 8.436.1
+    * @vm0/db bumped to 1.116.1
+
+## [1.278.0](https://github.com/vm0-ai/vm0/compare/api-v1.277.5...api-v1.278.0) (2026-07-15)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add artifacts page preview lightbox ([#20889](https://github.com/vm0-ai/vm0/issues/20889)) ([9952a50](https://github.com/vm0-ai/vm0/commit/9952a505c82e354ea432e03977e1b43549b7e8a4))
+* add chat_message_queue table and migrate workflow events into it ([#21339](https://github.com/vm0-ai/vm0/issues/21339)) ([83862e6](https://github.com/vm0-ai/vm0/commit/83862e68345be825f2427b8aca5ac9c74ace18ed))
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+* add gated github and notion memory backfills ([#20801](https://github.com/vm0-ai/vm0/issues/20801)) ([a8fb592](https://github.com/vm0-ai/vm0/commit/a8fb59226bcf1f39e47e62e6c76ccbea5226b950))
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+* add managed perplexity web search ([#21466](https://github.com/vm0-ai/vm0/issues/21466)) ([ca4786b](https://github.com/vm0-ai/vm0/commit/ca4786b58cb9af5778bf5f66d7843870a5d6a9d8))
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+* add nine feature-gated business connectors ([#21277](https://github.com/vm0-ai/vm0/issues/21277)) ([5f08ac9](https://github.com/vm0-ai/vm0/commit/5f08ac9bc73515b1b483114835b26e210b14265b))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+* add per-workflow trigger event queue with serial drain behind feature switch ([#20882](https://github.com/vm0-ai/vm0/issues/20882)) ([3aec4a8](https://github.com/vm0-ai/vm0/commit/3aec4a898c6ff7891d9dedb6713efbbfbe244412))
+* add persistent zero mail review cards ([#21458](https://github.com/vm0-ai/vm0/issues/21458)) ([4f4b056](https://github.com/vm0-ai/vm0/commit/4f4b0562dd32800e5fc6adbc75fd4a8f4cf2444a))
+* add workflow queue inspection and control api with per-thread realtime signal ([#20895](https://github.com/vm0-ai/vm0/issues/20895)) ([6c02526](https://github.com/vm0-ai/vm0/commit/6c025261b754d16d25c1a88f5e5e8f37bb9a6dc7)), closes [#20876](https://github.com/vm0-ai/vm0/issues/20876)
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+* **agent:** request planned connector permissions together ([#21424](https://github.com/vm0-ai/vm0/issues/21424)) ([a39ef20](https://github.com/vm0-ai/vm0/commit/a39ef207062eece0b44742736d55822e0683718a))
+* align teams integration with slack parity ([#20544](https://github.com/vm0-ai/vm0/issues/20544)) ([3212311](https://github.com/vm0-ai/vm0/commit/3212311ffeb24690074c3df51fa02e9cc4045275))
+* **api:** add connector permission-deny diagnostics ([#21272](https://github.com/vm0-ai/vm0/issues/21272)) ([da440e9](https://github.com/vm0-ai/vm0/commit/da440e9493305ebf0b541f9120fcecc94c3b1c8f))
+* **api:** add connector runtime diagnostics ([#21295](https://github.com/vm0-ai/vm0/issues/21295)) ([3ef7cf3](https://github.com/vm0-ai/vm0/commit/3ef7cf3390c2881236b335172c0db20cbd0bad7f))
+* **api:** add workflow automation routes with legacy parity ([#21426](https://github.com/vm0-ai/vm0/issues/21426)) ([bc92379](https://github.com/vm0-ai/vm0/commit/bc923796f156821a399402def0d656c9419e1d84))
+* **api:** add workflow automation webhook URL ([#21465](https://github.com/vm0-ai/vm0/issues/21465)) ([a971f50](https://github.com/vm0-ai/vm0/commit/a971f5096b1e41f20b1808f07ac63ce26d6f31fc))
+* **api:** register refreshed Playful Launch archive ([#21435](https://github.com/vm0-ai/vm0/issues/21435)) ([1154f45](https://github.com/vm0-ai/vm0/commit/1154f45f2d541e96e340c84675c3afca661e96c9))
+* **api:** serve refreshed presentation runbooks compatibly ([#21321](https://github.com/vm0-ai/vm0/issues/21321)) ([eadaba4](https://github.com/vm0-ai/vm0/commit/eadaba4dff87b85de340ef49db65158113553970))
+* bill openrouter edit helpers ([#20945](https://github.com/vm0-ai/vm0/issues/20945)) ([825c5fa](https://github.com/vm0-ai/vm0/commit/825c5fa33e400b11470ea51388546c672ca6f354))
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+* **codex:** enable fast mode for gpt-5.6 models ([#21344](https://github.com/vm0-ai/vm0/issues/21344)) ([fb11b7e](https://github.com/vm0-ai/vm0/commit/fb11b7e0a09bcff1e6ee0c2c55f88b3cc3056542))
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+* curate default models for new organizations ([#20880](https://github.com/vm0-ai/vm0/issues/20880)) ([c10661e](https://github.com/vm0-ai/vm0/commit/c10661e0a8541f9b1c2e7de8ef7fe46b2d59d4d6))
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+* enable chat message queue for all users ([#21494](https://github.com/vm0-ai/vm0/issues/21494)) ([1cfe5d4](https://github.com/vm0-ai/vm0/commit/1cfe5d4511f61b142c65243b9ab3468967845ce6))
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+* gate stale app clients by version header ([#21225](https://github.com/vm0-ai/vm0/issues/21225)) ([c31bf5d](https://github.com/vm0-ai/vm0/commit/c31bf5d4d43ebc2f303638da849371ae5a8f18af))
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+* **image-editor:** share edited images to x ([#20836](https://github.com/vm0-ai/vm0/issues/20836)) ([fca6111](https://github.com/vm0-ai/vm0/commit/fca611179fda0489a8f92b0edecd5532cbf6ca0d))
+* inject connector document rag into zero memory runtime ([#20854](https://github.com/vm0-ai/vm0/issues/20854)) ([d457c9b](https://github.com/vm0-ai/vm0/commit/d457c9b8daaf33dde0c32b46e81baeb66b56f673))
+* interpret marked image regions into targeted edits ([#20822](https://github.com/vm0-ai/vm0/issues/20822)) ([62444e3](https://github.com/vm0-ai/vm0/commit/62444e3cb87332aafa869bc413077bbf4626a287))
+* migrate member model preferences to workspace default when org removes a model ([#20884](https://github.com/vm0-ai/vm0/issues/20884)) ([fb3cf31](https://github.com/vm0-ai/vm0/commit/fb3cf31d900504b4f0b592175463d6a157d30ee8))
+* persist image edit canvas snapshots ([#21266](https://github.com/vm0-ai/vm0/issues/21266)) ([21d21f4](https://github.com/vm0-ai/vm0/commit/21d21f4c3660652f70e9bc8c16f5756a9b1b1f5a))
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+* restrict webhook triggers to team and custom workspaces ([#20966](https://github.com/vm0-ai/vm0/issues/20966)) ([18b727b](https://github.com/vm0-ai/vm0/commit/18b727b45cf337c76b73bf89f9d893eeb4cbd0b5))
+* **runner:** make session affinity admission-aware ([#21111](https://github.com/vm0-ai/vm0/issues/21111)) ([ecf0021](https://github.com/vm0-ai/vm0/commit/ecf00216864b70cc5cea5fb0c148aa4f14705b90))
+* sync org plan entitlement writes ([#20960](https://github.com/vm0-ai/vm0/issues/20960)) ([c956864](https://github.com/vm0-ai/vm0/commit/c956864a4e43ef30f4acec2f949bcec1141084e4))
+* **workflows:** enable webhook trigger creation globally ([#21294](https://github.com/vm0-ai/vm0/issues/21294)) ([515f996](https://github.com/vm0-ai/vm0/commit/515f9963e06ecc1a51c166ff0ead0d7135820512))
+
+
+### Bug Fixes
+
+* acknowledge incompatible Notion webhook events ([#21165](https://github.com/vm0-ai/vm0/issues/21165)) ([773c9af](https://github.com/vm0-ai/vm0/commit/773c9afa82643658aa06e44d6e504f44599e6992)), closes [#21157](https://github.com/vm0-ai/vm0/issues/21157)
+* align artifacts page with chat thread artifacts ([#21193](https://github.com/vm0-ai/vm0/issues/21193)) ([51cf2b5](https://github.com/vm0-ai/vm0/commit/51cf2b53ad62de17cbf68d96498f5c4fdda0c921))
+* align teams oauth connect flow ([#21200](https://github.com/vm0-ai/vm0/issues/21200)) ([af0060e](https://github.com/vm0-ai/vm0/commit/af0060e3407d850f46c9f89a8097b368ad80e7ec))
+* align typescript tests across local and ci ([#20963](https://github.com/vm0-ai/vm0/issues/20963)) ([1613d7f](https://github.com/vm0-ai/vm0/commit/1613d7fe2ccd6a887acec51f9457eb7c045ec6db))
+* allow limited-free billable firewall auth ([#20843](https://github.com/vm0-ai/vm0/issues/20843)) ([ef07fbb](https://github.com/vm0-ai/vm0/commit/ef07fbba1ec3cf8aa820e734c34414aa8f8f2033))
+* **api:** classify workflow automation sources across consumers ([#21280](https://github.com/vm0-ai/vm0/issues/21280)) ([59ac3a3](https://github.com/vm0-ai/vm0/commit/59ac3a3ef2ae420e8fee4045acc71c61a963fcce))
+* **api:** ignore unknown zero token capabilities ([#20881](https://github.com/vm0-ai/vm0/issues/20881)) ([ccf9783](https://github.com/vm0-ai/vm0/commit/ccf9783625c3a2fc7480b1daf42fbd0109313b52))
+* **api:** persist workflow schedule run briefs ([#20839](https://github.com/vm0-ai/vm0/issues/20839)) ([5db9855](https://github.com/vm0-ai/vm0/commit/5db98557afa4fbad5f2ebdcaacad658a1bd78b24))
+* **api:** preserve run agent identity across shared versions ([#21064](https://github.com/vm0-ai/vm0/issues/21064)) ([20bd45a](https://github.com/vm0-ai/vm0/commit/20bd45a83893258e745de6f572a6b6a3d974c641))
+* **api:** refresh api release marker comment ([#20858](https://github.com/vm0-ai/vm0/issues/20858)) ([4fbd6cd](https://github.com/vm0-ai/vm0/commit/4fbd6cd24590f716066fd5f3038693152e89edc0))
+* **api:** require app version 0.599.19 ([#21616](https://github.com/vm0-ai/vm0/issues/21616)) ([14643c9](https://github.com/vm0-ai/vm0/commit/14643c9799fdd5970ee4e818db3b78b8ce182e22))
+* authenticate and validate html artifact previews ([#21171](https://github.com/vm0-ai/vm0/issues/21171)) ([9f9ec3b](https://github.com/vm0-ai/vm0/commit/9f9ec3be9e20b0908f1e61a1504511e1b0b2bcff))
+* **chat:** refresh workflows created in threads ([#21346](https://github.com/vm0-ai/vm0/issues/21346)) ([f0fa94f](https://github.com/vm0-ai/vm0/commit/f0fa94f2ea913213e65c864944aae6dedd6576d6))
+* classify completion failures before retrying ([#21041](https://github.com/vm0-ai/vm0/issues/21041)) ([d28ccb6](https://github.com/vm0-ai/vm0/commit/d28ccb60eafbaa3aac279160c5f8fb2a76fa8e3e)), closes [#21006](https://github.com/vm0-ai/vm0/issues/21006)
+* **connectors:** ignore unsupported stored connectors ([#21163](https://github.com/vm0-ai/vm0/issues/21163)) ([3315d83](https://github.com/vm0-ai/vm0/commit/3315d8308784f2833de883ec3590f88900f03be4))
+* **connectors:** stabilize firewall hostname validation ([#21378](https://github.com/vm0-ai/vm0/issues/21378)) ([727aa35](https://github.com/vm0-ai/vm0/commit/727aa35803396a0a1a11ca209f5134f83263e935))
+* disable chat message queue by default ([#21600](https://github.com/vm0-ai/vm0/issues/21600)) ([837997d](https://github.com/vm0-ai/vm0/commit/837997d45b854d0e19827ad3e8fdef94fb11e344))
+* drain queued user messages whenever a thread goes idle ([#21397](https://github.com/vm0-ai/vm0/issues/21397)) ([5ad9069](https://github.com/vm0-ai/vm0/commit/5ad9069e1beb71822539ea9d17f0a7666b873722))
+* enable codex subscriptions for gpt 5.6 models ([#20851](https://github.com/vm0-ai/vm0/issues/20851)) ([1dcb103](https://github.com/vm0-ai/vm0/commit/1dcb103fddd113b29a124cbd1de0d24f1da3b8d1))
+* enforce org tier capability limits ([#21370](https://github.com/vm0-ai/vm0/issues/21370)) ([70c863e](https://github.com/vm0-ai/vm0/commit/70c863e1931a1412e588d88c8eb76ff33e981c92))
+* harden nintendo parental controls credentials ([#21078](https://github.com/vm0-ai/vm0/issues/21078)) ([1360d30](https://github.com/vm0-ai/vm0/commit/1360d30ddf543769b2bf255bc2f444b98f5c86d6))
+* improve teams bot validation responses ([#21560](https://github.com/vm0-ai/vm0/issues/21560)) ([7987e90](https://github.com/vm0-ai/vm0/commit/7987e90cd08526c3f95af6bec301ce10c3b9c4e9))
+* improve teams okou bot validation ([#21412](https://github.com/vm0-ai/vm0/issues/21412)) ([dff7782](https://github.com/vm0-ai/vm0/commit/dff77826a148be4c983c833efe90ca68da4f0621))
+* load webhook automations in chat threads ([#21161](https://github.com/vm0-ai/vm0/issues/21161)) ([2a055dd](https://github.com/vm0-ai/vm0/commit/2a055ddf4da9e119f4b22de228e3d5e7affc6e67))
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+* move claimed chat messages out of the composer queue ([#21428](https://github.com/vm0-ai/vm0/issues/21428)) ([f716c1b](https://github.com/vm0-ai/vm0/commit/f716c1bc5f5d11c823ddbc47b23c4856b7915817))
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+* refresh teams status on bot activity ([#21282](https://github.com/vm0-ai/vm0/issues/21282)) ([b6fa9a6](https://github.com/vm0-ai/vm0/commit/b6fa9a6297dcbadb6d6ef0114dcb07766a826f94))
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+* restore artifact preview screenshots ([#21223](https://github.com/vm0-ai/vm0/issues/21223)) ([7236561](https://github.com/vm0-ai/vm0/commit/72365612e37279b9c00f0ec9e50b39a2ba524e4f))
+* show billing recovery for post-dispatch credit failures ([#20844](https://github.com/vm0-ai/vm0/issues/20844)) ([9b375f1](https://github.com/vm0-ai/vm0/commit/9b375f15d8230bd7f27ef1c323ef2e406a5bde9d))
+* show friendly claude overload guidance ([#21249](https://github.com/vm0-ai/vm0/issues/21249)) ([09026b5](https://github.com/vm0-ai/vm0/commit/09026b58cc8c7ec01219681d8f54ef4f0e4e80b0))
+* trigger api and platform releases ([#21091](https://github.com/vm0-ai/vm0/issues/21091)) ([8fa46f3](https://github.com/vm0-ai/vm0/commit/8fa46f35ec7c7b96fa46954e020e1f6c0df74e51))
+* upload large presentations to google slides ([#20974](https://github.com/vm0-ai/vm0/issues/20974)) ([e4e15e8](https://github.com/vm0-ai/vm0/commit/e4e15e8d99a627fd4c5a0e837e16ba424d78c7d2))
+
+
+### Refactoring
+
+* **api:** accept workflow automation callback kinds before cutover ([#21425](https://github.com/vm0-ai/vm0/issues/21425)) ([fa70e1a](https://github.com/vm0-ai/vm0/commit/fa70e1a9d70d1cb99dd4a8202fba5a8d4d34b869))
+* **api:** canonicalize workflow automation identifiers ([#21493](https://github.com/vm0-ai/vm0/issues/21493)) ([c733907](https://github.com/vm0-ai/vm0/commit/c733907ba7302672e4c13e6ec750dd06419f360e))
+* **api:** cut over zero run automation provenance ([#21480](https://github.com/vm0-ai/vm0/issues/21480)) ([9d17461](https://github.com/vm0-ai/vm0/commit/9d17461b09aec8bc5decf0025ec0c3950314ce3f))
+* **api:** dual-write workflow detail automation fields ([#21552](https://github.com/vm0-ai/vm0/issues/21552)) ([41b5b38](https://github.com/vm0-ai/vm0/commit/41b5b389a3fe8c906e8dedac8268cc8c75afdf29))
+* **api:** emit workflow automation callback kinds ([#21471](https://github.com/vm0-ai/vm0/issues/21471)) ([9f463ab](https://github.com/vm0-ai/vm0/commit/9f463ab4c8d5527613d78a644e7628926222b226))
+* **api:** read notion pending events by automation id ([#21485](https://github.com/vm0-ai/vm0/issues/21485)) ([9ea81cb](https://github.com/vm0-ai/vm0/commit/9ea81cbe149a0ec8e29c9dd5744d7257678df230))
+* **api:** read webhook deliveries by automation id ([#21481](https://github.com/vm0-ai/vm0/issues/21481)) ([b572816](https://github.com/vm0-ai/vm0/commit/b572816b499b762902af0e82771fe5c606e44177))
+* **api:** remove legacy automation source compatibility ([#21374](https://github.com/vm0-ai/vm0/issues/21374)) ([c574b5c](https://github.com/vm0-ai/vm0/commit/c574b5cf3c69cef20386db3560202a785f5c87f3))
+* **api:** rename workflow automation timing telemetry ([#21482](https://github.com/vm0-ai/vm0/issues/21482)) ([1a965f8](https://github.com/vm0-ai/vm0/commit/1a965f8ce0af64b0e0cfb34b6f8c6cdfc9764892))
+* **api:** require runner redaction metadata ([#21003](https://github.com/vm0-ai/vm0/issues/21003)) ([7cb569c](https://github.com/vm0-ai/vm0/commit/7cb569c87cd97ba8f2414729dd77860ec988c4bb))
+* **api:** retire legacy workflow callback kinds ([#21501](https://github.com/vm0-ai/vm0/issues/21501)) ([84ec5cd](https://github.com/vm0-ai/vm0/commit/84ec5cd698f87512b297755f8ef46855cfb3689a))
+* **api:** stop writing the legacy automation identifier ([#21507](https://github.com/vm0-ai/vm0/issues/21507)) ([24ed4ac](https://github.com/vm0-ai/vm0/commit/24ed4ac5deb3bff63901a7ae896cbd094081a9cd))
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* consolidate routine settle error handling ([#21382](https://github.com/vm0-ai/vm0/issues/21382)) ([f104f67](https://github.com/vm0-ai/vm0/commit/f104f67a32d10121953a2e531b38db4d50ad6585))
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* **db:** canonicalize workflow automation schema identifiers ([#21497](https://github.com/vm0-ai/vm0/issues/21497)) ([0f2e228](https://github.com/vm0-ai/vm0/commit/0f2e22894bcb6fa784bb32baaeade418ab60d5da))
+* **db:** contract workflow automation identifiers ([#21509](https://github.com/vm0-ai/vm0/issues/21509)) ([1acfd38](https://github.com/vm0-ai/vm0/commit/1acfd3863a11dd2b88fb681254e73ab320b31678))
+* **db:** drop legacy chat automation columns ([#21320](https://github.com/vm0-ai/vm0/issues/21320)) ([47b832c](https://github.com/vm0-ai/vm0/commit/47b832cc762a95649c44b93f7cf8c9c5818d38ea))
+* **db:** drop legacy event trigger ids ([#21514](https://github.com/vm0-ai/vm0/issues/21514)) ([63e2659](https://github.com/vm0-ai/vm0/commit/63e2659f79454f01fdb339963a1b07cd9dade1b2))
+* **db:** expand automation ids for workflow event records ([#21478](https://github.com/vm0-ai/vm0/issues/21478)) ([597396b](https://github.com/vm0-ai/vm0/commit/597396b4215f4698ebcc262a79527f233bd043f0))
+* **db:** expand event source automation ids ([#21484](https://github.com/vm0-ai/vm0/issues/21484)) ([bc98170](https://github.com/vm0-ai/vm0/commit/bc981704cd0756343b8f0ec2fff491c9278e35f5))
+* **db:** expand workflow automation memory identifiers ([#21503](https://github.com/vm0-ai/vm0/issues/21503)) ([7aee897](https://github.com/vm0-ai/vm0/commit/7aee8976f913814ac94efb09358e25ea36df0fe9))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+* keep gmail workflow events metadata-only ([#21287](https://github.com/vm0-ai/vm0/issues/21287)) ([8cc41f8](https://github.com/vm0-ai/vm0/commit/8cc41f808e42d1e8abfe6245c45996a1e0593abd))
+* neutralize shared workflow run identifiers ([#21212](https://github.com/vm0-ai/vm0/issues/21212)) ([d40ff98](https://github.com/vm0-ai/vm0/commit/d40ff98a40ddc75acdbeeacf75b0276d2f690d99))
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+* read staff plan limits from org entitlements ([#21398](https://github.com/vm0-ai/vm0/issues/21398)) ([dbf5a61](https://github.com/vm0-ai/vm0/commit/dbf5a612bf2431b3b56c6a67ac2f6d45aba235df))
+* reduce fallback slop in webhook firewall auth ([#20852](https://github.com/vm0-ai/vm0/issues/20852)) ([ebf0b09](https://github.com/vm0-ai/vm0/commit/ebf0b09842436d3e33f701bb6d4bb1fa37e34c76))
+* remove dead fallbacks in memory document adapters and ingestion ([#20859](https://github.com/vm0-ai/vm0/issues/20859)) ([a67777c](https://github.com/vm0-ai/vm0/commit/a67777cc17df29fb9964f5d1435200136e143b9b))
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+* replace 18 settle branches with existing utils ([#21521](https://github.com/vm0-ai/vm0/issues/21521)) ([00e3b8b](https://github.com/vm0-ai/vm0/commit/00e3b8b27d00cab22b329951cfa980ca9a1f208f))
+* replace 56 optional settle branches with tap-error ([#21515](https://github.com/vm0-ai/vm0/issues/21515)) ([f56cfd4](https://github.com/vm0-ai/vm0/commit/f56cfd4e17f022b9f9a34517e6ea3addd81c82b0))
+* require github user id at the issues api boundary ([#20862](https://github.com/vm0-ai/vm0/issues/20862)) ([ced0b9a](https://github.com/vm0-ai/vm0/commit/ced0b9a8ee06554c2537c9f515e369fa6fdc22b2))
+* retain connector facts without raw memory documents ([#21019](https://github.com/vm0-ai/vm0/issues/21019)) ([880570d](https://github.com/vm0-ai/vm0/commit/880570db351b4e37367a0e4b4bcbbd96e95a1589))
+* retire artifact video preview feature switch ([#21276](https://github.com/vm0-ai/vm0/issues/21276)) ([700d3cc](https://github.com/vm0-ai/vm0/commit/700d3cc983b376f6ec75e6617aba1da95b60f56c))
+* retire the workflow-trigger cron endpoint ([#21505](https://github.com/vm0-ai/vm0/issues/21505)) ([56d6da0](https://github.com/vm0-ai/vm0/commit/56d6da0f7cbaeaa8c60c8177af080323c41664c6))
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+* serve connector secret display from api ([#21228](https://github.com/vm0-ai/vm0/issues/21228)) ([272a58b](https://github.com/vm0-ai/vm0/commit/272a58b79234ef63da93c84191f879b9ef16934a))
+* stop application writes to legacy event automation ids ([#21511](https://github.com/vm0-ai/vm0/issues/21511)) ([c6244e6](https://github.com/vm0-ai/vm0/commit/c6244e632b2549989ff14757eef5ca0565a5dfff))
+* unify chat thread queue drain entry ([#21463](https://github.com/vm0-ai/vm0/issues/21463)) ([627409f](https://github.com/vm0-ai/vm0/commit/627409faad31f88bcc67f9c24796c8ac4a210295))
+* **workflows:** rename notion automation switch with rollout compatibility ([#21446](https://github.com/vm0-ai/vm0/issues/21446)) ([3a1e851](https://github.com/vm0-ai/vm0/commit/3a1e8517a3b8c904067b48166067fe672cb051c6))
+* **workflows:** retire webhook trigger rollout switch ([#21332](https://github.com/vm0-ai/vm0/issues/21332)) ([517a7c3](https://github.com/vm0-ai/vm0/commit/517a7c34646baeb1c13cef8b49f0b84e00a8b505))
+
+
+### Performance Improvements
+
+* **api:** attribute claim response assembly stages ([#21124](https://github.com/vm0-ai/vm0/issues/21124)) ([3f84d56](https://github.com/vm0-ai/vm0/commit/3f84d56313e9156d4dee842ae324c951dabfad22))
+* **api:** attribute database pool acquisition in query spans ([#21012](https://github.com/vm0-ai/vm0/issues/21012)) ([2ac08f9](https://github.com/vm0-ai/vm0/commit/2ac08f912e22428be8af5d994d2f34c72a3d27ad))
+* **api:** attribute normal send preparation stages ([#21245](https://github.com/vm0-ai/vm0/issues/21245)) ([289a1a7](https://github.com/vm0-ai/vm0/commit/289a1a727f220dc98418e434c1287d19baa61ebe))
+* **api:** attribute runner notification latency ([#21164](https://github.com/vm0-ai/vm0/issues/21164)) ([3a198f8](https://github.com/vm0-ai/vm0/commit/3a198f8c1d0ca725ec7df7ebada02303ac6cb480))
+* **api:** batch usage allowance settlement ([#21495](https://github.com/vm0-ai/vm0/issues/21495)) ([4e470a8](https://github.com/vm0-ai/vm0/commit/4e470a86836f5808ded8a4c419c62a9df2c5dccd))
+* **api:** bound incomplete chat round loading ([#21301](https://github.com/vm0-ai/vm0/issues/21301)) ([8bdd66c](https://github.com/vm0-ai/vm0/commit/8bdd66c6cf55bae296d7e89c08b19b889babe59f))
+* **api:** bound storage manifest preload to requested keys ([#21454](https://github.com/vm0-ai/vm0/issues/21454)) ([317c7a8](https://github.com/vm0-ai/vm0/commit/317c7a82a3fddffcc7437d88111a4d786f07ec28))
+* **api:** cache recurring workflow memory embeddings ([#21345](https://github.com/vm0-ai/vm0/issues/21345)) ([45eafb3](https://github.com/vm0-ai/vm0/commit/45eafb3cc1a9a1333a61e5f99e6ed19d95c35121))
+* **api:** consolidate run admission reads ([#21633](https://github.com/vm0-ai/vm0/issues/21633)) ([1c7d4f4](https://github.com/vm0-ai/vm0/commit/1c7d4f4a84c26b7f9044b5d38ceeba54d0c67010))
+* **api:** correct runner queue timing boundary ([#21095](https://github.com/vm0-ai/vm0/issues/21095)) ([b0ec02b](https://github.com/vm0-ai/vm0/commit/b0ec02bc71e08dea835fb78ab645a99e5446329e))
+* **api:** load feature switch overrides in one query ([#21593](https://github.com/vm0-ai/vm0/issues/21593)) ([cc58560](https://github.com/vm0-ai/vm0/commit/cc58560dcbf0cd11810661982a7a641c6ae38c44))
+* **api:** overlap claim response assembly work ([#21199](https://github.com/vm0-ai/vm0/issues/21199)) ([b9c1254](https://github.com/vm0-ai/vm0/commit/b9c1254e202fb36fe1d479a12c707f46c124bb57))
+* **api:** overlap runtime memory with run context preparation ([#21230](https://github.com/vm0-ai/vm0/issues/21230)) ([1be0015](https://github.com/vm0-ai/vm0/commit/1be0015cdea57d93f7ee64fead5dbd48820a9124))
+* **api:** reuse zero feature switch context during run preparation ([#21557](https://github.com/vm0-ai/vm0/issues/21557)) ([a17ea7a](https://github.com/vm0-ai/vm0/commit/a17ea7a6bff4ba92f8fceab5f487a49e974036fd))
+* attribute runtime document memory retrieval ([#20952](https://github.com/vm0-ai/vm0/issues/20952)) ([f550e02](https://github.com/vm0-ai/vm0/commit/f550e024ef448c68c49492b10ccb23d616bc5af5))
+* cache goal continuation memory embeddings ([#21107](https://github.com/vm0-ai/vm0/issues/21107)) ([35d0d51](https://github.com/vm0-ai/vm0/commit/35d0d51ff844975fde0f87e591e16d280cda92c7))
+* drain workflow skill presigned url refresh backlog ([#21070](https://github.com/vm0-ai/vm0/issues/21070)) ([3fb94c3](https://github.com/vm0-ai/vm0/commit/3fb94c3ba7d251499bd8054f676944ea38717830))
+* eliminate redundant runner claim secret materialization ([#20968](https://github.com/vm0-ai/vm0/issues/20968)) ([536e238](https://github.com/vm0-ai/vm0/commit/536e238b92833b70e5380ade1edfc8b7ac3cac64))
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+* **platform:** reduce chat render commits ([#21023](https://github.com/vm0-ai/vm0/issues/21023)) ([6d37bf9](https://github.com/vm0-ai/vm0/commit/6d37bf9b62748da09db8405df2ee4d289ad6d01c))
+* redesign runtime profile retrieval ([#21048](https://github.com/vm0-ai/vm0/issues/21048)) ([cdf6142](https://github.com/vm0-ai/vm0/commit/cdf614220dd29c84ce349508bb7f757744c2c67b))
+* reduce goal continuation memory search cost ([#20823](https://github.com/vm0-ai/vm0/issues/20823)) ([3dff6c3](https://github.com/vm0-ai/vm0/commit/3dff6c363fd54055231ea02da03c3cc023c185c4))
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+* **runner:** prefer exact history generations during affinity claims ([#21618](https://github.com/vm0-ai/vm0/issues/21618)) ([e856646](https://github.com/vm0-ai/vm0/commit/e856646852bab3d2462404da6dcaf29aa9a5f094))
+* **runner:** reduce claim database round trips ([#21042](https://github.com/vm0-ai/vm0/issues/21042)) ([e4ee3a3](https://github.com/vm0-ai/vm0/commit/e4ee3a38d6d8d4366c785cb91b8a39337f56e884))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.195.0
+    * @vm0/connectors bumped to 1.164.0
+    * @vm0/core bumped to 8.436.0
+    * @vm0/db bumped to 1.116.0
+
+## [1.277.5](https://github.com/vm0-ai/vm0/compare/api-v1.277.4...api-v1.277.5) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.435.1
+    * @vm0/db bumped to 1.115.14
+
+## [1.277.4](https://github.com/vm0-ai/vm0/compare/api-v1.277.3...api-v1.277.4) (2026-07-15)
+
+
+### Bug Fixes
+
+* **api:** require app version 0.599.19 ([#21616](https://github.com/vm0-ai/vm0/issues/21616)) ([14643c9](https://github.com/vm0-ai/vm0/commit/14643c9799fdd5970ee4e818db3b78b8ce182e22))
+
+## [1.277.3](https://github.com/vm0-ai/vm0/compare/api-v1.277.2...api-v1.277.3) (2026-07-15)
+
+
+### Performance Improvements
+
+* **api:** load feature switch overrides in one query ([#21593](https://github.com/vm0-ai/vm0/issues/21593)) ([cc58560](https://github.com/vm0-ai/vm0/commit/cc58560dcbf0cd11810661982a7a641c6ae38c44))
+
+## [1.277.2](https://github.com/vm0-ai/vm0/compare/api-v1.277.1...api-v1.277.2) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.6
+    * @vm0/connectors bumped to 1.163.0
+    * @vm0/core bumped to 8.435.0
+    * @vm0/db bumped to 1.115.13
+
+## [1.277.1](https://github.com/vm0-ai/vm0/compare/api-v1.277.0...api-v1.277.1) (2026-07-15)
+
+
+### Performance Improvements
+
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+    * @vm0/core bumped to 8.434.1
+    * @vm0/db bumped to 1.115.12
+
+## [1.277.0](https://github.com/vm0-ai/vm0/compare/api-v1.276.0...api-v1.277.0) (2026-07-15)
+
+
+### Features
+
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+    * @vm0/connectors bumped to 1.162.0
+    * @vm0/core bumped to 8.434.0
+    * @vm0/db bumped to 1.115.11
+
+## [1.276.0](https://github.com/vm0-ai/vm0/compare/api-v1.275.9...api-v1.276.0) (2026-07-15)
+
+
+### Features
+
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+
+
+### Refactoring
+
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+    * @vm0/core bumped to 8.433.0
+    * @vm0/db bumped to 1.115.10
+
+## [1.275.9](https://github.com/vm0-ai/vm0/compare/api-v1.275.8...api-v1.275.9) (2026-07-15)
+
+
+### Refactoring
+
+* replace 18 settle branches with existing utils ([#21521](https://github.com/vm0-ai/vm0/issues/21521)) ([00e3b8b](https://github.com/vm0-ai/vm0/commit/00e3b8b27d00cab22b329951cfa980ca9a1f208f))
+
+
+### Performance Improvements
+
+* **api:** batch usage allowance settlement ([#21495](https://github.com/vm0-ai/vm0/issues/21495)) ([4e470a8](https://github.com/vm0-ai/vm0/commit/4e470a86836f5808ded8a4c419c62a9df2c5dccd))
+
+## [1.275.8](https://github.com/vm0-ai/vm0/compare/api-v1.275.7...api-v1.275.8) (2026-07-15)
+
+
+### Refactoring
+
+* **db:** drop legacy event trigger ids ([#21514](https://github.com/vm0-ai/vm0/issues/21514)) ([63e2659](https://github.com/vm0-ai/vm0/commit/63e2659f79454f01fdb339963a1b07cd9dade1b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.9
+
+## [1.275.7](https://github.com/vm0-ai/vm0/compare/api-v1.275.6...api-v1.275.7) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.432.0
+    * @vm0/db bumped to 1.115.8
+
+## [1.275.6](https://github.com/vm0-ai/vm0/compare/api-v1.275.5...api-v1.275.6) (2026-07-15)
+
+
+### Refactoring
+
+* stop application writes to legacy event automation ids ([#21511](https://github.com/vm0-ai/vm0/issues/21511)) ([c6244e6](https://github.com/vm0-ai/vm0/commit/c6244e632b2549989ff14757eef5ca0565a5dfff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.7
+
+## [1.275.5](https://github.com/vm0-ai/vm0/compare/api-v1.275.4...api-v1.275.5) (2026-07-14)
+
+
+### Refactoring
+
+* **db:** contract workflow automation identifiers ([#21509](https://github.com/vm0-ai/vm0/issues/21509)) ([1acfd38](https://github.com/vm0-ai/vm0/commit/1acfd3863a11dd2b88fb681254e73ab320b31678))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.6
+
+## [1.275.4](https://github.com/vm0-ai/vm0/compare/api-v1.275.3...api-v1.275.4) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** stop writing the legacy automation identifier ([#21507](https://github.com/vm0-ai/vm0/issues/21507)) ([24ed4ac](https://github.com/vm0-ai/vm0/commit/24ed4ac5deb3bff63901a7ae896cbd094081a9cd))
+
+## [1.275.3](https://github.com/vm0-ai/vm0/compare/api-v1.275.2...api-v1.275.3) (2026-07-14)
+
+
+### Refactoring
+
+* retire the workflow-trigger cron endpoint ([#21505](https://github.com/vm0-ai/vm0/issues/21505)) ([56d6da0](https://github.com/vm0-ai/vm0/commit/56d6da0f7cbaeaa8c60c8177af080323c41664c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+    * @vm0/core bumped to 8.431.4
+    * @vm0/db bumped to 1.115.5
+
+## [1.275.2](https://github.com/vm0-ai/vm0/compare/api-v1.275.1...api-v1.275.2) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** canonicalize workflow automation identifiers ([#21493](https://github.com/vm0-ai/vm0/issues/21493)) ([c733907](https://github.com/vm0-ai/vm0/commit/c733907ba7302672e4c13e6ec750dd06419f360e))
+* **api:** retire legacy workflow callback kinds ([#21501](https://github.com/vm0-ai/vm0/issues/21501)) ([84ec5cd](https://github.com/vm0-ai/vm0/commit/84ec5cd698f87512b297755f8ef46855cfb3689a))
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* **db:** canonicalize workflow automation schema identifiers ([#21497](https://github.com/vm0-ai/vm0/issues/21497)) ([0f2e228](https://github.com/vm0-ai/vm0/commit/0f2e22894bcb6fa784bb32baaeade418ab60d5da))
+* **db:** expand workflow automation memory identifiers ([#21503](https://github.com/vm0-ai/vm0/issues/21503)) ([7aee897](https://github.com/vm0-ai/vm0/commit/7aee8976f913814ac94efb09358e25ea36df0fe9))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.1
+    * @vm0/core bumped to 8.431.3
+    * @vm0/db bumped to 1.115.4
+
+## [1.275.1](https://github.com/vm0-ai/vm0/compare/api-v1.275.0...api-v1.275.1) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** cut over zero run automation provenance ([#21480](https://github.com/vm0-ai/vm0/issues/21480)) ([9d17461](https://github.com/vm0-ai/vm0/commit/9d17461b09aec8bc5decf0025ec0c3950314ce3f))
+* **api:** read webhook deliveries by automation id ([#21481](https://github.com/vm0-ai/vm0/issues/21481)) ([b572816](https://github.com/vm0-ai/vm0/commit/b572816b499b762902af0e82771fe5c606e44177))
+
+## [1.275.0](https://github.com/vm0-ai/vm0/compare/api-v1.274.1...api-v1.275.0) (2026-07-14)
+
+
+### Features
+
+* **api:** add workflow automation routes with legacy parity ([#21426](https://github.com/vm0-ai/vm0/issues/21426)) ([bc92379](https://github.com/vm0-ai/vm0/commit/bc923796f156821a399402def0d656c9419e1d84))
+* **api:** add workflow automation webhook URL ([#21465](https://github.com/vm0-ai/vm0/issues/21465)) ([a971f50](https://github.com/vm0-ai/vm0/commit/a971f5096b1e41f20b1808f07ac63ce26d6f31fc))
+
+
+### Refactoring
+
+* **api:** emit workflow automation callback kinds ([#21471](https://github.com/vm0-ai/vm0/issues/21471)) ([9f463ab](https://github.com/vm0-ai/vm0/commit/9f463ab4c8d5527613d78a644e7628926222b226))
+* **api:** rename workflow automation timing telemetry ([#21482](https://github.com/vm0-ai/vm0/issues/21482)) ([1a965f8](https://github.com/vm0-ai/vm0/commit/1a965f8ce0af64b0e0cfb34b6f8c6cdfc9764892))
+* **db:** expand automation ids for workflow event records ([#21478](https://github.com/vm0-ai/vm0/issues/21478)) ([597396b](https://github.com/vm0-ai/vm0/commit/597396b4215f4698ebcc262a79527f233bd043f0))
+* **workflows:** rename notion automation switch with rollout compatibility ([#21446](https://github.com/vm0-ai/vm0/issues/21446)) ([3a1e851](https://github.com/vm0-ai/vm0/commit/3a1e8517a3b8c904067b48166067fe672cb051c6))
+
+
+### Performance Improvements
+
+* **api:** bound storage manifest preload to requested keys ([#21454](https://github.com/vm0-ai/vm0/issues/21454)) ([317c7a8](https://github.com/vm0-ai/vm0/commit/317c7a82a3fddffcc7437d88111a4d786f07ec28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.0
+    * @vm0/connectors bumped to 1.160.2
+    * @vm0/core bumped to 8.431.2
+    * @vm0/db bumped to 1.115.3
+
+## [1.274.1](https://github.com/vm0-ai/vm0/compare/api-v1.274.0...api-v1.274.1) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.2
+    * @vm0/connectors bumped to 1.160.1
+    * @vm0/core bumped to 8.431.1
+    * @vm0/db bumped to 1.115.2
+
+## [1.274.0](https://github.com/vm0-ai/vm0/compare/api-v1.273.1...api-v1.274.0) (2026-07-14)
+
+
+### Features
+
+* **agent:** request planned connector permissions together ([#21424](https://github.com/vm0-ai/vm0/issues/21424)) ([a39ef20](https://github.com/vm0-ai/vm0/commit/a39ef207062eece0b44742736d55822e0683718a))
+
+
+### Bug Fixes
+
+* move claimed chat messages out of the composer queue ([#21428](https://github.com/vm0-ai/vm0/issues/21428)) ([f716c1b](https://github.com/vm0-ai/vm0/commit/f716c1bc5f5d11c823ddbc47b23c4856b7915817))
+
+
+### Refactoring
+
+* **api:** accept workflow automation callback kinds before cutover ([#21425](https://github.com/vm0-ai/vm0/issues/21425)) ([fa70e1a](https://github.com/vm0-ai/vm0/commit/fa70e1a9d70d1cb99dd4a8202fba5a8d4d34b869))
+
+## [1.273.1](https://github.com/vm0-ai/vm0/compare/api-v1.273.0...api-v1.273.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* improve teams okou bot validation ([#21412](https://github.com/vm0-ai/vm0/issues/21412)) ([dff7782](https://github.com/vm0-ai/vm0/commit/dff77826a148be4c983c833efe90ca68da4f0621))
+
+
+### Refactoring
+
+* read staff plan limits from org entitlements ([#21398](https://github.com/vm0-ai/vm0/issues/21398)) ([dbf5a61](https://github.com/vm0-ai/vm0/commit/dbf5a612bf2431b3b56c6a67ac2f6d45aba235df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.1
+    * @vm0/connectors bumped to 1.160.0
+    * @vm0/core bumped to 8.431.0
+    * @vm0/db bumped to 1.115.1
+
+## [1.273.0](https://github.com/vm0-ai/vm0/compare/api-v1.272.1...api-v1.273.0) (2026-07-14)
+
+
+### Features
+
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+
+
+### Bug Fixes
+
+* drain queued user messages whenever a thread goes idle ([#21397](https://github.com/vm0-ai/vm0/issues/21397)) ([5ad9069](https://github.com/vm0-ai/vm0/commit/5ad9069e1beb71822539ea9d17f0a7666b873722))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.0
+    * @vm0/connectors bumped to 1.159.0
+    * @vm0/core bumped to 8.430.0
+    * @vm0/db bumped to 1.115.0
+
+## [1.272.1](https://github.com/vm0-ai/vm0/compare/api-v1.272.0...api-v1.272.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* enforce org tier capability limits ([#21370](https://github.com/vm0-ai/vm0/issues/21370)) ([70c863e](https://github.com/vm0-ai/vm0/commit/70c863e1931a1412e588d88c8eb76ff33e981c92))
+
+
+### Refactoring
+
+* consolidate routine settle error handling ([#21382](https://github.com/vm0-ai/vm0/issues/21382)) ([f104f67](https://github.com/vm0-ai/vm0/commit/f104f67a32d10121953a2e531b38db4d50ad6585))
+
+
+### Performance Improvements
+
+* **api:** cache recurring workflow memory embeddings ([#21345](https://github.com/vm0-ai/vm0/issues/21345)) ([45eafb3](https://github.com/vm0-ai/vm0/commit/45eafb3cc1a9a1333a61e5f99e6ed19d95c35121))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.114.1
+
+## [1.272.0](https://github.com/vm0-ai/vm0/compare/api-v1.271.1...api-v1.272.0) (2026-07-14)
+
+
+### Features
+
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.1
+    * @vm0/connectors bumped to 1.158.0
+    * @vm0/core bumped to 8.429.0
+    * @vm0/db bumped to 1.114.0
+
+## [1.271.1](https://github.com/vm0-ai/vm0/compare/api-v1.271.0...api-v1.271.1) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.0
+    * @vm0/core bumped to 8.428.0
+    * @vm0/db bumped to 1.113.1
+
+## [1.271.0](https://github.com/vm0-ai/vm0/compare/api-v1.270.0...api-v1.271.0) (2026-07-14)
+
+
+### Features
+
+* add chat_message_queue table and migrate workflow events into it ([#21339](https://github.com/vm0-ai/vm0/issues/21339)) ([83862e6](https://github.com/vm0-ai/vm0/commit/83862e68345be825f2427b8aca5ac9c74ace18ed))
+
+
+### Bug Fixes
+
+* **chat:** refresh workflows created in threads ([#21346](https://github.com/vm0-ai/vm0/issues/21346)) ([f0fa94f](https://github.com/vm0-ai/vm0/commit/f0fa94f2ea913213e65c864944aae6dedd6576d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.113.0
+
+## [1.270.0](https://github.com/vm0-ai/vm0/compare/api-v1.269.0...api-v1.270.0) (2026-07-14)
+
+
+### Features
+
+* persist image edit canvas snapshots ([#21266](https://github.com/vm0-ai/vm0/issues/21266)) ([21d21f4](https://github.com/vm0-ai/vm0/commit/21d21f4c3660652f70e9bc8c16f5756a9b1b1f5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.191.0
+    * @vm0/core bumped to 8.427.3
+    * @vm0/db bumped to 1.112.0
+
+## [1.269.0](https://github.com/vm0-ai/vm0/compare/api-v1.268.0...api-v1.269.0) (2026-07-14)
+
+
+### Features
+
+* **api:** serve refreshed presentation runbooks compatibly ([#21321](https://github.com/vm0-ai/vm0/issues/21321)) ([eadaba4](https://github.com/vm0-ai/vm0/commit/eadaba4dff87b85de340ef49db65158113553970))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.190.0
+    * @vm0/core bumped to 8.427.2
+    * @vm0/db bumped to 1.111.6
+
+## [1.268.0](https://github.com/vm0-ai/vm0/compare/api-v1.267.0...api-v1.268.0) (2026-07-14)
+
+
+### Features
+
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+
+
+### Refactoring
+
+* **db:** drop legacy chat automation columns ([#21320](https://github.com/vm0-ai/vm0/issues/21320)) ([47b832c](https://github.com/vm0-ai/vm0/commit/47b832cc762a95649c44b93f7cf8c9c5818d38ea))
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+
+
+### Performance Improvements
+
+* **api:** bound incomplete chat round loading ([#21301](https://github.com/vm0-ai/vm0/issues/21301)) ([8bdd66c](https://github.com/vm0-ai/vm0/commit/8bdd66c6cf55bae296d7e89c08b19b889babe59f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.189.0
+    * @vm0/connectors bumped to 1.157.1
+    * @vm0/core bumped to 8.427.1
+    * @vm0/db bumped to 1.111.5
+
+## [1.267.0](https://github.com/vm0-ai/vm0/compare/api-v1.266.1...api-v1.267.0) (2026-07-13)
+
+
+### Features
+
+* add nine feature-gated business connectors ([#21277](https://github.com/vm0-ai/vm0/issues/21277)) ([5f08ac9](https://github.com/vm0-ai/vm0/commit/5f08ac9bc73515b1b483114835b26e210b14265b))
+* **api:** add connector permission-deny diagnostics ([#21272](https://github.com/vm0-ai/vm0/issues/21272)) ([da440e9](https://github.com/vm0-ai/vm0/commit/da440e9493305ebf0b541f9120fcecc94c3b1c8f))
+* **workflows:** enable webhook trigger creation globally ([#21294](https://github.com/vm0-ai/vm0/issues/21294)) ([515f996](https://github.com/vm0-ai/vm0/commit/515f9963e06ecc1a51c166ff0ead0d7135820512))
+
+
+### Bug Fixes
+
+* **api:** classify workflow automation sources across consumers ([#21280](https://github.com/vm0-ai/vm0/issues/21280)) ([59ac3a3](https://github.com/vm0-ai/vm0/commit/59ac3a3ef2ae420e8fee4045acc71c61a963fcce))
+* refresh teams status on bot activity ([#21282](https://github.com/vm0-ai/vm0/issues/21282)) ([b6fa9a6](https://github.com/vm0-ai/vm0/commit/b6fa9a6297dcbadb6d6ef0114dcb07766a826f94))
+* show friendly claude overload guidance ([#21249](https://github.com/vm0-ai/vm0/issues/21249)) ([09026b5](https://github.com/vm0-ai/vm0/commit/09026b58cc8c7ec01219681d8f54ef4f0e4e80b0))
+
+
+### Refactoring
+
+* keep gmail workflow events metadata-only ([#21287](https://github.com/vm0-ai/vm0/issues/21287)) ([8cc41f8](https://github.com/vm0-ai/vm0/commit/8cc41f808e42d1e8abfe6245c45996a1e0593abd))
+* retire artifact video preview feature switch ([#21276](https://github.com/vm0-ai/vm0/issues/21276)) ([700d3cc](https://github.com/vm0-ai/vm0/commit/700d3cc983b376f6ec75e6617aba1da95b60f56c))
+
+
+### Performance Improvements
+
+* **api:** attribute normal send preparation stages ([#21245](https://github.com/vm0-ai/vm0/issues/21245)) ([289a1a7](https://github.com/vm0-ai/vm0/commit/289a1a727f220dc98418e434c1287d19baa61ebe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.188.0
+    * @vm0/connectors bumped to 1.157.0
+    * @vm0/core bumped to 8.427.0
+    * @vm0/db bumped to 1.111.4
+
+## [1.266.1](https://github.com/vm0-ai/vm0/compare/api-v1.266.0...api-v1.266.1) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.1
+    * @vm0/connectors bumped to 1.156.1
+    * @vm0/core bumped to 8.426.1
+    * @vm0/db bumped to 1.111.3
+
+## [1.266.0](https://github.com/vm0-ai/vm0/compare/api-v1.265.5...api-v1.266.0) (2026-07-13)
+
+
+### Features
+
+* bill openrouter edit helpers ([#20945](https://github.com/vm0-ai/vm0/issues/20945)) ([825c5fa](https://github.com/vm0-ai/vm0/commit/825c5fa33e400b11470ea51388546c672ca6f354))
+
+
+### Bug Fixes
+
+* restore artifact preview screenshots ([#21223](https://github.com/vm0-ai/vm0/issues/21223)) ([7236561](https://github.com/vm0-ai/vm0/commit/72365612e37279b9c00f0ec9e50b39a2ba524e4f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.0
+    * @vm0/core bumped to 8.426.0
+    * @vm0/db bumped to 1.111.2
+
+## [1.265.5](https://github.com/vm0-ai/vm0/compare/api-v1.265.4...api-v1.265.5) (2026-07-13)
+
+
+### Bug Fixes
+
+* align artifacts page with chat thread artifacts ([#21193](https://github.com/vm0-ai/vm0/issues/21193)) ([51cf2b5](https://github.com/vm0-ai/vm0/commit/51cf2b53ad62de17cbf68d96498f5c4fdda0c921))
+* align teams oauth connect flow ([#21200](https://github.com/vm0-ai/vm0/issues/21200)) ([af0060e](https://github.com/vm0-ai/vm0/commit/af0060e3407d850f46c9f89a8097b368ad80e7ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.1
+    * @vm0/core bumped to 8.425.4
+    * @vm0/db bumped to 1.111.1
+
+## [1.265.4](https://github.com/vm0-ai/vm0/compare/api-v1.265.3...api-v1.265.4) (2026-07-13)
+
+
+### Performance Improvements
+
+* **api:** attribute runner notification latency ([#21164](https://github.com/vm0-ai/vm0/issues/21164)) ([3a198f8](https://github.com/vm0-ai/vm0/commit/3a198f8c1d0ca725ec7df7ebada02303ac6cb480))
+
+## [1.265.3](https://github.com/vm0-ai/vm0/compare/api-v1.265.2...api-v1.265.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* authenticate and validate html artifact previews ([#21171](https://github.com/vm0-ai/vm0/issues/21171)) ([9f9ec3b](https://github.com/vm0-ai/vm0/commit/9f9ec3be9e20b0908f1e61a1504511e1b0b2bcff))
+
+## [1.265.2](https://github.com/vm0-ai/vm0/compare/api-v1.265.1...api-v1.265.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* acknowledge incompatible Notion webhook events ([#21165](https://github.com/vm0-ai/vm0/issues/21165)) ([773c9af](https://github.com/vm0-ai/vm0/commit/773c9afa82643658aa06e44d6e504f44599e6992)), closes [#21157](https://github.com/vm0-ai/vm0/issues/21157)
+
+## [1.265.1](https://github.com/vm0-ai/vm0/compare/api-v1.265.0...api-v1.265.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **connectors:** ignore unsupported stored connectors ([#21163](https://github.com/vm0-ai/vm0/issues/21163)) ([3315d83](https://github.com/vm0-ai/vm0/commit/3315d8308784f2833de883ec3590f88900f03be4))
+
+## [1.265.0](https://github.com/vm0-ai/vm0/compare/api-v1.264.0...api-v1.265.0) (2026-07-13)
+
+
+### Features
+
+* restrict webhook triggers to team and custom workspaces ([#20966](https://github.com/vm0-ai/vm0/issues/20966)) ([18b727b](https://github.com/vm0-ai/vm0/commit/18b727b45cf337c76b73bf89f9d893eeb4cbd0b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.0
+    * @vm0/core bumped to 8.425.3
+    * @vm0/db bumped to 1.111.0
+
+## [1.264.0](https://github.com/vm0-ai/vm0/compare/api-v1.263.1...api-v1.264.0) (2026-07-12)
+
+
+### Features
+
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+* **runner:** make session affinity admission-aware ([#21111](https://github.com/vm0-ai/vm0/issues/21111)) ([ecf0021](https://github.com/vm0-ai/vm0/commit/ecf00216864b70cc5cea5fb0c148aa4f14705b90))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+
+
+### Performance Improvements
+
+* **api:** attribute claim response assembly stages ([#21124](https://github.com/vm0-ai/vm0/issues/21124)) ([3f84d56](https://github.com/vm0-ai/vm0/commit/3f84d56313e9156d4dee842ae324c951dabfad22))
+* **api:** correct runner queue timing boundary ([#21095](https://github.com/vm0-ai/vm0/issues/21095)) ([b0ec02b](https://github.com/vm0-ai/vm0/commit/b0ec02bc71e08dea835fb78ab645a99e5446329e))
+* cache goal continuation memory embeddings ([#21107](https://github.com/vm0-ai/vm0/issues/21107)) ([35d0d51](https://github.com/vm0-ai/vm0/commit/35d0d51ff844975fde0f87e591e16d280cda92c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+    * @vm0/db bumped to 1.110.0
+
+## [1.263.1](https://github.com/vm0-ai/vm0/compare/api-v1.263.0...api-v1.263.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* harden nintendo parental controls credentials ([#21078](https://github.com/vm0-ai/vm0/issues/21078)) ([1360d30](https://github.com/vm0-ai/vm0/commit/1360d30ddf543769b2bf255bc2f444b98f5c86d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+    * @vm0/connectors bumped to 1.155.1
+    * @vm0/core bumped to 8.425.1
+    * @vm0/db bumped to 1.109.8
+
+## [1.263.0](https://github.com/vm0-ai/vm0/compare/api-v1.262.4...api-v1.263.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Bug Fixes
+
+* **api:** preserve run agent identity across shared versions ([#21064](https://github.com/vm0-ai/vm0/issues/21064)) ([20bd45a](https://github.com/vm0-ai/vm0/commit/20bd45a83893258e745de6f572a6b6a3d974c641))
+
+
+### Performance Improvements
+
+* drain workflow skill presigned url refresh backlog ([#21070](https://github.com/vm0-ai/vm0/issues/21070)) ([3fb94c3](https://github.com/vm0-ai/vm0/commit/3fb94c3ba7d251499bd8054f676944ea38717830))
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+* redesign runtime profile retrieval ([#21048](https://github.com/vm0-ai/vm0/issues/21048)) ([cdf6142](https://github.com/vm0-ai/vm0/commit/cdf614220dd29c84ce349508bb7f757744c2c67b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+    * @vm0/core bumped to 8.425.0
+    * @vm0/db bumped to 1.109.7
+
+## [1.262.4](https://github.com/vm0-ai/vm0/compare/api-v1.262.3...api-v1.262.4) (2026-07-11)
+
+
+### Bug Fixes
+
+* classify completion failures before retrying ([#21041](https://github.com/vm0-ai/vm0/issues/21041)) ([d28ccb6](https://github.com/vm0-ai/vm0/commit/d28ccb60eafbaa3aac279160c5f8fb2a76fa8e3e)), closes [#21006](https://github.com/vm0-ai/vm0/issues/21006)
+
+
+### Performance Improvements
+
+* **runner:** reduce claim database round trips ([#21042](https://github.com/vm0-ai/vm0/issues/21042)) ([e4ee3a3](https://github.com/vm0-ai/vm0/commit/e4ee3a38d6d8d4366c785cb91b8a39337f56e884))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.109.6
+
+## [1.262.3](https://github.com/vm0-ai/vm0/compare/api-v1.262.2...api-v1.262.3) (2026-07-11)
+
+
+### Performance Improvements
+
+* **platform:** reduce chat render commits ([#21023](https://github.com/vm0-ai/vm0/issues/21023)) ([6d37bf9](https://github.com/vm0-ai/vm0/commit/6d37bf9b62748da09db8405df2ee4d289ad6d01c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.2
+    * @vm0/core bumped to 8.424.5
+    * @vm0/db bumped to 1.109.5
+
+## [1.262.2](https://github.com/vm0-ai/vm0/compare/api-v1.262.1...api-v1.262.2) (2026-07-11)
+
+
+### Refactoring
+
+* retain connector facts without raw memory documents ([#21019](https://github.com/vm0-ai/vm0/issues/21019)) ([880570d](https://github.com/vm0-ai/vm0/commit/880570db351b4e37367a0e4b4bcbbd96e95a1589))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.109.4
+
+## [1.262.1](https://github.com/vm0-ai/vm0/compare/api-v1.262.0...api-v1.262.1) (2026-07-10)
+
+
+### Refactoring
+
+* **api:** require runner redaction metadata ([#21003](https://github.com/vm0-ai/vm0/issues/21003)) ([7cb569c](https://github.com/vm0-ai/vm0/commit/7cb569c87cd97ba8f2414729dd77860ec988c4bb))
+
+
+### Performance Improvements
+
+* **api:** attribute database pool acquisition in query spans ([#21012](https://github.com/vm0-ai/vm0/issues/21012)) ([2ac08f9](https://github.com/vm0-ai/vm0/commit/2ac08f912e22428be8af5d994d2f34c72a3d27ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+    * @vm0/core bumped to 8.424.4
+    * @vm0/db bumped to 1.109.3
+
+## [1.262.0](https://github.com/vm0-ai/vm0/compare/api-v1.261.1...api-v1.262.0) (2026-07-10)
+
+
+### Features
+
+* **image-editor:** share edited images to x ([#20836](https://github.com/vm0-ai/vm0/issues/20836)) ([fca6111](https://github.com/vm0-ai/vm0/commit/fca611179fda0489a8f92b0edecd5532cbf6ca0d))
+
+
+### Bug Fixes
+
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+* upload large presentations to google slides ([#20974](https://github.com/vm0-ai/vm0/issues/20974)) ([e4e15e8](https://github.com/vm0-ai/vm0/commit/e4e15e8d99a627fd4c5a0e837e16ba424d78c7d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+    * @vm0/core bumped to 8.424.3
+    * @vm0/db bumped to 1.109.2
+
+## [1.261.1](https://github.com/vm0-ai/vm0/compare/api-v1.261.0...api-v1.261.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* align typescript tests across local and ci ([#20963](https://github.com/vm0-ai/vm0/issues/20963)) ([1613d7f](https://github.com/vm0-ai/vm0/commit/1613d7fe2ccd6a887acec51f9457eb7c045ec6db))
+
+
+### Performance Improvements
+
+* attribute runtime document memory retrieval ([#20952](https://github.com/vm0-ai/vm0/issues/20952)) ([f550e02](https://github.com/vm0-ai/vm0/commit/f550e024ef448c68c49492b10ccb23d616bc5af5))
+* eliminate redundant runner claim secret materialization ([#20968](https://github.com/vm0-ai/vm0/issues/20968)) ([536e238](https://github.com/vm0-ai/vm0/commit/536e238b92833b70e5380ade1edfc8b7ac3cac64))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.1
+    * @vm0/connectors bumped to 1.154.1
+    * @vm0/core bumped to 8.424.2
+    * @vm0/db bumped to 1.109.1
+
+## [1.261.0](https://github.com/vm0-ai/vm0/compare/api-v1.260.0...api-v1.261.0) (2026-07-10)
+
+
+### Features
+
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+    * @vm0/core bumped to 8.424.1
+    * @vm0/db bumped to 1.109.0
+
+## [1.260.0](https://github.com/vm0-ai/vm0/compare/api-v1.259.0...api-v1.260.0) (2026-07-10)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.1
+    * @vm0/core bumped to 8.424.0
+    * @vm0/db bumped to 1.108.4
+
+## [1.259.0](https://github.com/vm0-ai/vm0/compare/api-v1.258.0...api-v1.259.0) (2026-07-10)
+
+
+### Features
+
+* add artifacts page preview lightbox ([#20889](https://github.com/vm0-ai/vm0/issues/20889)) ([9952a50](https://github.com/vm0-ai/vm0/commit/9952a505c82e354ea432e03977e1b43549b7e8a4))
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+    * @vm0/core bumped to 8.423.0
+    * @vm0/db bumped to 1.108.3
+
+## [1.258.0](https://github.com/vm0-ai/vm0/compare/api-v1.257.0...api-v1.258.0) (2026-07-10)
+
+
+### Features
+
+* add workflow queue inspection and control api with per-thread realtime signal ([#20895](https://github.com/vm0-ai/vm0/issues/20895)) ([6c02526](https://github.com/vm0-ai/vm0/commit/6c025261b754d16d25c1a88f5e5e8f37bb9a6dc7)), closes [#20876](https://github.com/vm0-ai/vm0/issues/20876)
+* curate default models for new organizations ([#20880](https://github.com/vm0-ai/vm0/issues/20880)) ([c10661e](https://github.com/vm0-ai/vm0/commit/c10661e0a8541f9b1c2e7de8ef7fe46b2d59d4d6))
+* migrate member model preferences to workspace default when org removes a model ([#20884](https://github.com/vm0-ai/vm0/issues/20884)) ([fb3cf31](https://github.com/vm0-ai/vm0/commit/fb3cf31d900504b4f0b592175463d6a157d30ee8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.181.0
+    * @vm0/core bumped to 8.422.1
+    * @vm0/db bumped to 1.108.2
+
+## [1.257.0](https://github.com/vm0-ai/vm0/compare/api-v1.256.2...api-v1.257.0) (2026-07-10)
+
+
+### Features
+
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+
+
+### Performance Improvements
+
+* reduce goal continuation memory search cost ([#20823](https://github.com/vm0-ai/vm0/issues/20823)) ([3dff6c3](https://github.com/vm0-ai/vm0/commit/3dff6c363fd54055231ea02da03c3cc023c185c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.180.0
+    * @vm0/connectors bumped to 1.153.0
+    * @vm0/core bumped to 8.422.0
+    * @vm0/db bumped to 1.108.1
+
+## [1.256.2](https://github.com/vm0-ai/vm0/compare/api-v1.256.1...api-v1.256.2) (2026-07-10)
+
+
+### Refactoring
+
+* require github user id at the issues api boundary ([#20862](https://github.com/vm0-ai/vm0/issues/20862)) ([ced0b9a](https://github.com/vm0-ai/vm0/commit/ced0b9a8ee06554c2537c9f515e369fa6fdc22b2))
+
+## [1.256.1](https://github.com/vm0-ai/vm0/compare/api-v1.256.0...api-v1.256.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **api:** refresh api release marker comment ([#20858](https://github.com/vm0-ai/vm0/issues/20858)) ([4fbd6cd](https://github.com/vm0-ai/vm0/commit/4fbd6cd24590f716066fd5f3038693152e89edc0))
+
+## [1.256.0](https://github.com/vm0-ai/vm0/compare/api-v1.255.0...api-v1.256.0) (2026-07-09)
+
+
+### Features
+
+* inject connector document rag into zero memory runtime ([#20854](https://github.com/vm0-ai/vm0/issues/20854)) ([d457c9b](https://github.com/vm0-ai/vm0/commit/d457c9b8daaf33dde0c32b46e81baeb66b56f673))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.179.0
+    * @vm0/core bumped to 8.421.2
+    * @vm0/db bumped to 1.108.0
+
+## [1.255.0](https://github.com/vm0-ai/vm0/compare/api-v1.254.0...api-v1.255.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Bug Fixes
+
+* enable codex subscriptions for gpt 5.6 models ([#20851](https://github.com/vm0-ai/vm0/issues/20851)) ([1dcb103](https://github.com/vm0-ai/vm0/commit/1dcb103fddd113b29a124cbd1de0d24f1da3b8d1))
+
+
+### Refactoring
+
+* reduce fallback slop in webhook firewall auth ([#20852](https://github.com/vm0-ai/vm0/issues/20852)) ([ebf0b09](https://github.com/vm0-ai/vm0/commit/ebf0b09842436d3e33f701bb6d4bb1fa37e34c76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+    * @vm0/db bumped to 1.107.0
+
+## [1.254.0](https://github.com/vm0-ai/vm0/compare/api-v1.253.0...api-v1.254.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+    * @vm0/db bumped to 1.106.0
+
+## [1.253.0](https://github.com/vm0-ai/vm0/compare/api-v1.252.0...api-v1.253.0) (2026-07-09)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+
+### Bug Fixes
+
+* allow limited-free billable firewall auth ([#20843](https://github.com/vm0-ai/vm0/issues/20843)) ([ef07fbb](https://github.com/vm0-ai/vm0/commit/ef07fbba1ec3cf8aa820e734c34414aa8f8f2033))
+* **api:** persist workflow schedule run briefs ([#20839](https://github.com/vm0-ai/vm0/issues/20839)) ([5db9855](https://github.com/vm0-ai/vm0/commit/5db98557afa4fbad5f2ebdcaacad658a1bd78b24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+    * @vm0/core bumped to 8.420.0
+    * @vm0/db bumped to 1.105.0
+
+## [1.252.0](https://github.com/vm0-ai/vm0/compare/api-v1.251.1...api-v1.252.0) (2026-07-09)
+
+
+### Features
+
+* add gated github and notion memory backfills ([#20801](https://github.com/vm0-ai/vm0/issues/20801)) ([a8fb592](https://github.com/vm0-ai/vm0/commit/a8fb59226bcf1f39e47e62e6c76ccbea5226b950))
+* align teams integration with slack parity ([#20544](https://github.com/vm0-ai/vm0/issues/20544)) ([3212311](https://github.com/vm0-ai/vm0/commit/3212311ffeb24690074c3df51fa02e9cc4045275))
+* interpret marked image regions into targeted edits ([#20822](https://github.com/vm0-ai/vm0/issues/20822)) ([62444e3](https://github.com/vm0-ai/vm0/commit/62444e3cb87332aafa869bc413077bbf4626a287))
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+    * @vm0/core bumped to 8.419.0
+    * @vm0/db bumped to 1.104.0
+
+## [1.251.1](https://github.com/vm0-ai/vm0/compare/api-v1.251.0...api-v1.251.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* allow mcp server discovery from computer-use run tokens ([#20803](https://github.com/vm0-ai/vm0/issues/20803)) ([3a283a7](https://github.com/vm0-ai/vm0/commit/3a283a7e6b7aee2f546c5f698fbf11bc2d7b53af))
+* suppress notion content updates during create windows ([#20812](https://github.com/vm0-ai/vm0/issues/20812)) ([576b7d6](https://github.com/vm0-ai/vm0/commit/576b7d61565aed87f4088a5529586aa318b95ce7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.103.0
+
+## [1.251.0](https://github.com/vm0-ai/vm0/compare/api-v1.250.3...api-v1.251.0) (2026-07-09)
+
+
+### Features
+
+* add custom billing tier ([#20690](https://github.com/vm0-ai/vm0/issues/20690)) ([2f3fdc2](https://github.com/vm0-ai/vm0/commit/2f3fdc2e7834ff86215fd7ea87227f702b47598c))
+* **api:** keyset-paginate the artifacts list endpoint ([#20800](https://github.com/vm0-ai/vm0/issues/20800)) ([2bb327c](https://github.com/vm0-ai/vm0/commit/2bb327c5dccd13fc14877684079df5fcd1b211ff))
+
+
+### Bug Fixes
+
+* reconcile usage allowance subscriptions ([#20684](https://github.com/vm0-ai/vm0/issues/20684)) ([3849bcd](https://github.com/vm0-ai/vm0/commit/3849bcd1baf67bcb455bc5eea27dd57f4df0183d))
+* route builtin glm models via zai ([#20795](https://github.com/vm0-ai/vm0/issues/20795)) ([34e9dd6](https://github.com/vm0-ai/vm0/commit/34e9dd608b70ffa82a302539c4bea6e440ff2991))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.174.0
+    * @vm0/core bumped to 8.418.2
+    * @vm0/db bumped to 1.102.0
+
+## [1.250.3](https://github.com/vm0-ai/vm0/compare/api-v1.250.2...api-v1.250.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* inject only prompt-relevant memory context ([#20786](https://github.com/vm0-ai/vm0/issues/20786)) ([fd74f33](https://github.com/vm0-ai/vm0/commit/fd74f333f810dc7802cdfef0b337eb559c6c480c))
+
+
+### Performance Improvements
+
+* add zero memory runtime timing attribution ([#20787](https://github.com/vm0-ai/vm0/issues/20787)) ([ca0d5ea](https://github.com/vm0-ai/vm0/commit/ca0d5ea17ec463fba491144ea1972c4ddd937c11))
+
+## [1.250.2](https://github.com/vm0-ai/vm0/compare/api-v1.250.1...api-v1.250.2) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.1
+    * @vm0/connectors bumped to 1.150.2
+    * @vm0/core bumped to 8.418.1
+    * @vm0/db bumped to 1.101.2
+
+## [1.250.1](https://github.com/vm0-ai/vm0/compare/api-v1.250.0...api-v1.250.1) (2026-07-09)
+
+
+### Refactoring
+
+* tighten slack user info resolver coverage ([#20764](https://github.com/vm0-ai/vm0/issues/20764)) ([7b3ae3b](https://github.com/vm0-ai/vm0/commit/7b3ae3b543e7ee0b8ace4a88ab2bfa4c81b21165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.418.0
+    * @vm0/db bumped to 1.101.1
+
+## [1.250.0](https://github.com/vm0-ai/vm0/compare/api-v1.249.0...api-v1.250.0) (2026-07-09)
+
+
+### Features
+
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+* add semantic structured memory recall ([#20742](https://github.com/vm0-ai/vm0/issues/20742)) ([70de301](https://github.com/vm0-ai/vm0/commit/70de3018bf33e44db076172316597513e9b0be1a))
+* route mcp plugin commands and add plugin mcp cli ([#20756](https://github.com/vm0-ai/vm0/issues/20756)) ([89d4e76](https://github.com/vm0-ai/vm0/commit/89d4e76f2eda168c2d9012e93b4f00bb260f2bd4))
+
+
+### Bug Fixes
+
+* accept notion data source parent webhooks ([#20709](https://github.com/vm0-ai/vm0/issues/20709)) ([b5b478c](https://github.com/vm0-ai/vm0/commit/b5b478c358765746efc8b13021dcc2a539572195))
+* exempt external webhooks from preview automation bypass guard ([#20754](https://github.com/vm0-ai/vm0/issues/20754)) ([8df2f80](https://github.com/vm0-ai/vm0/commit/8df2f80e34c174da079adf08e7b598c2c0e235f0))
+
+
+### Performance Improvements
+
+* coalesce slack user info lookups ([#20724](https://github.com/vm0-ai/vm0/issues/20724)) ([7bd020c](https://github.com/vm0-ai/vm0/commit/7bd020c2b0f989bfcd3070f0b1b3a75e1495b9a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.0
+    * @vm0/connectors bumped to 1.150.1
+    * @vm0/core bumped to 8.417.0
+    * @vm0/db bumped to 1.101.0
+
+## [1.249.0](https://github.com/vm0-ai/vm0/compare/api-v1.248.0...api-v1.249.0) (2026-07-08)
+
+
+### Features
+
+* add nintendo eshop catalog connector ([#20660](https://github.com/vm0-ai/vm0/issues/20660)) ([2ea4549](https://github.com/vm0-ai/vm0/commit/2ea45494646c4ecfcdfe1dcce65c8517d902cabd))
+
+
+### Bug Fixes
+
+* persist Vercel preview bypass cookie ([#20715](https://github.com/vm0-ai/vm0/issues/20715)) ([972b41f](https://github.com/vm0-ai/vm0/commit/972b41f88246bf49059300c11eeb7823895f9764))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+    * @vm0/core bumped to 8.416.0
+    * @vm0/db bumped to 1.100.7
+
+## [1.248.0](https://github.com/vm0-ai/vm0/compare/api-v1.247.0...api-v1.248.0) (2026-07-08)
+
+
+### Features
+
+* enable playstation connector for all users ([#20693](https://github.com/vm0-ai/vm0/issues/20693)) ([78572ef](https://github.com/vm0-ai/vm0/commit/78572efdae6b293e07558df9cd1dd1ee72e29231))
+* load artifacts page from a bulk fetch cached in indexeddb ([#20601](https://github.com/vm0-ai/vm0/issues/20601)) ([854bb86](https://github.com/vm0-ai/vm0/commit/854bb867c952ecc0bbc6d9ae3c65c53c0da42d94))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.171.0
+    * @vm0/connectors bumped to 1.149.0
+    * @vm0/core bumped to 8.415.0
+    * @vm0/db bumped to 1.100.6
+
+## [1.247.0](https://github.com/vm0-ai/vm0/compare/api-v1.246.1...api-v1.247.0) (2026-07-08)
+
+
+### Features
+
+* accept runner starting heartbeat mode ([#20672](https://github.com/vm0-ai/vm0/issues/20672)) ([7c49c7b](https://github.com/vm0-ai/vm0/commit/7c49c7b703a6163b1ebf4b5084c284ee60d9ff13))
+
+
+### Refactoring
+
+* remove unused zero compose and custom connector routes ([#20644](https://github.com/vm0-ai/vm0/issues/20644)) ([f40d11e](https://github.com/vm0-ai/vm0/commit/f40d11eb3e65bd5c7c685171f785f367270c3857))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.170.0
+    * @vm0/core bumped to 8.414.8
+    * @vm0/db bumped to 1.100.5
+
+## [1.246.1](https://github.com/vm0-ai/vm0/compare/api-v1.246.0...api-v1.246.1) (2026-07-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.3
+    * @vm0/core bumped to 8.414.7
+    * @vm0/db bumped to 1.100.4
+
+## [1.246.0](https://github.com/vm0-ai/vm0/compare/api-v1.245.1...api-v1.246.0) (2026-07-08)
+
+
+### Features
+
+* expose zero memory tools in run prompts ([#20657](https://github.com/vm0-ai/vm0/issues/20657)) ([37664a5](https://github.com/vm0-ai/vm0/commit/37664a5bb31673b649ab0af28f5778800c7b3da1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.2
+    * @vm0/connectors bumped to 1.148.2
+    * @vm0/core bumped to 8.414.6
+    * @vm0/db bumped to 1.100.3
+
+## [1.245.1](https://github.com/vm0-ai/vm0/compare/api-v1.245.0...api-v1.245.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* clear slack pre-run status on dispatch failure ([#20628](https://github.com/vm0-ai/vm0/issues/20628)) ([1b5d359](https://github.com/vm0-ai/vm0/commit/1b5d3595b78dde333cf9c2a7aaecf5e56e0d0423))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.1
+    * @vm0/core bumped to 8.414.5
+    * @vm0/db bumped to 1.100.2
+
+## [1.245.0](https://github.com/vm0-ai/vm0/compare/api-v1.244.0...api-v1.245.0) (2026-07-08)
+
+
+### Features
+
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.169.0
+    * @vm0/core bumped to 8.414.4
+    * @vm0/db bumped to 1.100.1
+
+## [1.244.0](https://github.com/vm0-ai/vm0/compare/api-v1.243.1...api-v1.244.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+* add usage allowance billing ([#20524](https://github.com/vm0-ai/vm0/issues/20524)) ([118cdc1](https://github.com/vm0-ai/vm0/commit/118cdc130c407c030d6c766387afa6105a0db229))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.168.0
+    * @vm0/connectors bumped to 1.148.1
+    * @vm0/core bumped to 8.414.3
+    * @vm0/db bumped to 1.100.0
+
+## [1.243.1](https://github.com/vm0-ai/vm0/compare/api-v1.243.0...api-v1.243.1) (2026-07-08)
+
+
+### Performance Improvements
+
+* reduce slack pre-create latency ([#20604](https://github.com/vm0-ai/vm0/issues/20604)) ([fa1deeb](https://github.com/vm0-ai/vm0/commit/fa1deeb93eee34a981d4506d880e548b9bfeb8f3))
+
+## [1.243.0](https://github.com/vm0-ai/vm0/compare/api-v1.242.0...api-v1.243.0) (2026-07-08)
+
+
+### Features
+
+* add web integration messaging prompt ([#20550](https://github.com/vm0-ai/vm0/issues/20550)) ([3b2a106](https://github.com/vm0-ai/vm0/commit/3b2a106102a0883fa995171166f42e77201b6ab8))
+
+
+### Performance Improvements
+
+* add session history fetch response telemetry ([#20605](https://github.com/vm0-ai/vm0/issues/20605)) ([146fc5b](https://github.com/vm0-ai/vm0/commit/146fc5b39f9697ebb318bf01ca086506e7c0bc66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.1
+    * @vm0/core bumped to 8.414.2
+    * @vm0/db bumped to 1.99.4
+
+## [1.242.0](https://github.com/vm0-ai/vm0/compare/api-v1.241.0...api-v1.242.0) (2026-07-08)
+
+
+### Features
+
+* add memory source detail view ([#20607](https://github.com/vm0-ai/vm0/issues/20607)) ([e32c1d0](https://github.com/vm0-ai/vm0/commit/e32c1d0eb01994ffc384b1274810ed396e40f034))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.167.0
+    * @vm0/core bumped to 8.414.1
+    * @vm0/db bumped to 1.99.3
+
+## [1.241.0](https://github.com/vm0-ai/vm0/compare/api-v1.240.0...api-v1.241.0) (2026-07-08)
+
+
+### Features
+
+* add org-level artifacts api ([#20563](https://github.com/vm0-ai/vm0/issues/20563)) ([1828d6c](https://github.com/vm0-ai/vm0/commit/1828d6c3d4d6259c7c4f35ef95093b0c06ecefe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.166.0
+    * @vm0/connectors bumped to 1.148.0
+    * @vm0/core bumped to 8.414.0
+    * @vm0/db bumped to 1.99.2
+
+## [1.240.0](https://github.com/vm0-ai/vm0/compare/api-v1.239.0...api-v1.240.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** split image prompt generation modes ([#20580](https://github.com/vm0-ai/vm0/issues/20580)) ([1cb5e06](https://github.com/vm0-ai/vm0/commit/1cb5e06c00ea331d15df5412c994ec8ee934aa91))
+
+
+### Refactoring
+
+* clean up empty artifact compatibility ([#20574](https://github.com/vm0-ai/vm0/issues/20574)) ([dc86eae](https://github.com/vm0-ai/vm0/commit/dc86eae0bf05e3c6a5787c330b9490548c3512a4))
+* reduce fallback slop in runtime boundaries ([#20589](https://github.com/vm0-ai/vm0/issues/20589)) ([36dcf45](https://github.com/vm0-ai/vm0/commit/36dcf451acde410fca40dfd910ebe3ab2e12fa4b))
+
+
+### Performance Improvements
+
+* add direct ably claim timing telemetry ([#20579](https://github.com/vm0-ai/vm0/issues/20579)) ([3167db5](https://github.com/vm0-ai/vm0/commit/3167db5f5a44b4c72fd07ebf6b162d2e41b1cad9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.165.0
+    * @vm0/connectors bumped to 1.147.1
+    * @vm0/core bumped to 8.413.0
+    * @vm0/db bumped to 1.99.1
+
+## [1.239.0](https://github.com/vm0-ai/vm0/compare/api-v1.238.0...api-v1.239.0) (2026-07-07)
+
+
+### Features
+
+* add notion page content updated workflow trigger ([#20562](https://github.com/vm0-ai/vm0/issues/20562)) ([833395e](https://github.com/vm0-ai/vm0/commit/833395ed1bd75e7e94b5baa1ede1506d3584ecea))
+* add zero chat model switching ([#20566](https://github.com/vm0-ai/vm0/issues/20566)) ([5a996cb](https://github.com/vm0-ai/vm0/commit/5a996cb2d1b8201887831aaf2122f09a636c2dda))
+
+
+### CI
+
+* **release:** revert app/api release guard ([#20567](https://github.com/vm0-ai/vm0/issues/20567)) ([595cbfd](https://github.com/vm0-ai/vm0/commit/595cbfdfb2f40777604134f175e2606542597662))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.164.0
+    * @vm0/core bumped to 8.412.3
+    * @vm0/db bumped to 1.99.0
+
+## [1.238.0](https://github.com/vm0-ai/vm0/compare/api-v1.237.1...api-v1.238.0) (2026-07-07)
+
+
+### Features
+
+* default limited-free workspaces to sonnet 4.6 ([#20564](https://github.com/vm0-ai/vm0/issues/20564)) ([7a876cb](https://github.com/vm0-ai/vm0/commit/7a876cb1f0a8e6a6255b4f5b527fcc3033b3b9ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.163.0
+    * @vm0/core bumped to 8.412.2
+    * @vm0/db bumped to 1.98.2
+
+## [1.237.1](https://github.com/vm0-ai/vm0/compare/api-v1.237.0...api-v1.237.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* keep mobile unread shortcuts personal ([#20558](https://github.com/vm0-ai/vm0/issues/20558)) ([de0abb4](https://github.com/vm0-ai/vm0/commit/de0abb489415605332ce985b2ee1b80185ab72a1))
+
+
+### CI
+
+* **release:** guard app releases from unreleased api diffs ([#20549](https://github.com/vm0-ai/vm0/issues/20549)) ([e1d6e28](https://github.com/vm0-ai/vm0/commit/e1d6e282f1b30e3a2fc67b57ca5173587cb43e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.412.1
+    * @vm0/db bumped to 1.98.1
+
+## [1.237.0](https://github.com/vm0-ai/vm0/compare/api-v1.236.0...api-v1.237.0) (2026-07-07)
+
+
+### Features
+
+* add notion database item workflow trigger ([#20533](https://github.com/vm0-ai/vm0/issues/20533)) ([e4c078c](https://github.com/vm0-ai/vm0/commit/e4c078c3a5da6a9e1684941421ef73223c146393))
+* add platform client request headers ([#20518](https://github.com/vm0-ai/vm0/issues/20518)) ([d5ceb5c](https://github.com/vm0-ai/vm0/commit/d5ceb5c312874b48604de701e1ce12887e0d4f91))
+* add playstation connector ([#20459](https://github.com/vm0-ai/vm0/issues/20459)) ([588ee8b](https://github.com/vm0-ai/vm0/commit/588ee8b242242277e752c91f64a1b9698b6d3afd))
+* **api:** log platform client headers on request logs ([#20539](https://github.com/vm0-ai/vm0/issues/20539)) ([a433531](https://github.com/vm0-ai/vm0/commit/a433531030d2deb5f7ab590fd5463f7ad74f17a2))
+* extract slack memory from source ledger ([#20519](https://github.com/vm0-ai/vm0/issues/20519)) ([d60a77c](https://github.com/vm0-ai/vm0/commit/d60a77ce42aa1f0db17f2b4d8dfdf98c59e10d28))
+
+
+### Refactoring
+
+* accept empty artifact manifests without archive urls ([#20525](https://github.com/vm0-ai/vm0/issues/20525)) ([1ce8bfd](https://github.com/vm0-ai/vm0/commit/1ce8bfd954a2c9c0d963dd0a46e34b31fdceb73f))
+
+
+### Performance Improvements
+
+* add session history attribution telemetry ([#20497](https://github.com/vm0-ai/vm0/issues/20497)) ([2daa651](https://github.com/vm0-ai/vm0/commit/2daa6519837d9f2ca3bbc640e2f1d8e8cc135630))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.162.0
+    * @vm0/connectors bumped to 1.147.0
+    * @vm0/core bumped to 8.412.0
+    * @vm0/db bumped to 1.98.0
+
+## [1.236.0](https://github.com/vm0-ai/vm0/compare/api-v1.235.1...api-v1.236.0) (2026-07-07)
+
+
+### Features
+
+* add build versions to debug build info ([#20056](https://github.com/vm0-ai/vm0/issues/20056)) ([41d2921](https://github.com/vm0-ai/vm0/commit/41d2921df0beb8f56f12abf3c6c98bd14cdd4cea))
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* add codex reset controls ([#20119](https://github.com/vm0-ai/vm0/issues/20119)) ([c1f9d22](https://github.com/vm0-ai/vm0/commit/c1f9d22b253bdeb60e4436e13a90793553865230))
+* add compatible custom connector auth refs ([#20217](https://github.com/vm0-ai/vm0/issues/20217)) ([d73dee7](https://github.com/vm0-ai/vm0/commit/d73dee77faec8221d93d9b4bb48a8bb1546fd384))
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+* add gmail backfill stop controls ([#20213](https://github.com/vm0-ai/vm0/issues/20213)) ([97ab218](https://github.com/vm0-ai/vm0/commit/97ab2184f5dd9daa1d00856add3531f2f6999bbb))
+* add Gmail relationship backfill options ([#20135](https://github.com/vm0-ai/vm0/issues/20135)) ([f2170eb](https://github.com/vm0-ai/vm0/commit/f2170eb06db7a20da76fe571635ce80eb5907dd8))
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+* add image style transfer toolbar ([#19891](https://github.com/vm0-ai/vm0/issues/19891)) ([f7be929](https://github.com/vm0-ai/vm0/commit/f7be9296810eb9be21725a1a5f5ea589687d5083))
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* add provider-neutral memory substrate ([#20273](https://github.com/vm0-ai/vm0/issues/20273)) ([67f5573](https://github.com/vm0-ai/vm0/commit/67f5573e2f4c290a94eb016fc45c5ce46df289a4))
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+* add runner builtin firewall resolver ([#20368](https://github.com/vm0-ai/vm0/issues/20368)) ([03df5fc](https://github.com/vm0-ai/vm0/commit/03df5fc4eb60b11a262775bbc684fceae4b65b7d))
+* add selected model updates to chat thread events ([#20194](https://github.com/vm0-ai/vm0/issues/20194)) ([c558fa4](https://github.com/vm0-ai/vm0/commit/c558fa40e15b0219da973aada401701fa1754749))
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* bootstrap clerk orgs into limited-free workspaces ([#20029](https://github.com/vm0-ai/vm0/issues/20029)) ([d5ba8c4](https://github.com/vm0-ai/vm0/commit/d5ba8c4359c45fb82032eba9a927d4ffbac72a88))
+* **computer-use:** add per-command state-size and structure telemetry ([#19868](https://github.com/vm0-ai/vm0/issues/19868)) ([b829cea](https://github.com/vm0-ai/vm0/commit/b829ceaa83f9279225c21b85a83ca65bd36819a4))
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+* enable gmail relationship backfill from memory ([#20114](https://github.com/vm0-ai/vm0/issues/20114)) ([fd84afd](https://github.com/vm0-ai/vm0/commit/fd84afd077a35a750f4fa01abb6bba87b207f02b))
+* enable unsplash-preferred presentation images ([#20473](https://github.com/vm0-ai/vm0/issues/20473)) ([62e713e](https://github.com/vm0-ai/vm0/commit/62e713eeb661823c13c4293f997a6134d10b7c5c))
+* expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
+* extend limited-free onboarding credits ([#20048](https://github.com/vm0-ai/vm0/issues/20048)) ([edddbc0](https://github.com/vm0-ai/vm0/commit/edddbc08cf69ee88c5b9dcada32c7b5ffc25e19a))
+* gate composer upload popover ([#20398](https://github.com/vm0-ai/vm0/issues/20398)) ([3718c0e](https://github.com/vm0-ai/vm0/commit/3718c0e91051a8ae57f34775fbb0eb39f59d07cc))
+* make steam connector generally available ([#20491](https://github.com/vm0-ai/vm0/issues/20491)) ([2ba3860](https://github.com/vm0-ai/vm0/commit/2ba386084b4134e5b0044dfb8969990b189478ab))
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+* paginate relationship memory search ([#20262](https://github.com/vm0-ai/vm0/issues/20262)) ([f1d4130](https://github.com/vm0-ai/vm0/commit/f1d4130ff818bda248280d0bfc37a08060c1c64a))
+* prompt for force upgrade ([#20351](https://github.com/vm0-ai/vm0/issues/20351)) ([2579a2e](https://github.com/vm0-ai/vm0/commit/2579a2e0621b3bf62388b54d9421019bc9bdac3a))
+* record chat thread events ([#19807](https://github.com/vm0-ai/vm0/issues/19807)) ([8663a39](https://github.com/vm0-ai/vm0/commit/8663a392c6b94d38a92dd8a3560599fac680678c))
+* redesign workflows list with connector pills and next-run view ([#19790](https://github.com/vm0-ai/vm0/issues/19790)) ([1114b1e](https://github.com/vm0-ai/vm0/commit/1114b1e0bdd7b7e0007e91e6048318a568c2fabc))
+* refresh active connector permission policies ([#20035](https://github.com/vm0-ai/vm0/issues/20035)) ([8d7cec2](https://github.com/vm0-ai/vm0/commit/8d7cec2537cd512d12bd3e550abc43c07cb2026a))
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+* resolve presentation runbook templates in `zero generate presentation --template` ([#20061](https://github.com/vm0-ai/vm0/issues/20061)) ([e4565ed](https://github.com/vm0-ai/vm0/commit/e4565ed884e32e7ecfc99c95bed415b37845ce90))
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+* scope chat thread event sourcing overrides to orgs ([#20069](https://github.com/vm0-ai/vm0/issues/20069)) ([ace2951](https://github.com/vm0-ai/vm0/commit/ace29512a64ac76fbb82f2ca4fecc766c9e41c22))
+* serve web client compatibility from api ([#20514](https://github.com/vm0-ai/vm0/issues/20514)) ([9cc8491](https://github.com/vm0-ai/vm0/commit/9cc84912973de3a913413220f68de56d093c71d7))
+* show workflow owner Clerk avatar and widen hover card row spacing ([#19960](https://github.com/vm0-ai/vm0/issues/19960)) ([9ee4853](https://github.com/vm0-ai/vm0/commit/9ee48530988d3e8fa4c2a4637b930ca191f48031))
+* support full runner builtin firewall catalog resolve ([#20458](https://github.com/vm0-ai/vm0/issues/20458)) ([6bde030](https://github.com/vm0-ai/vm0/commit/6bde030ff15cfdb932c6935c5aefb0c7c269abfc))
+* support safe script patches for html edits ([#19810](https://github.com/vm0-ai/vm0/issues/19810)) ([72a6222](https://github.com/vm0-ai/vm0/commit/72a622216dca7282a8e84f0f91804b90c628eacd))
+* support zstd session history blobs ([#20341](https://github.com/vm0-ai/vm0/issues/20341)) ([c4188fa](https://github.com/vm0-ai/vm0/commit/c4188fa5b28587f197998421ac5032c228913c25))
+* upload presentation artifacts to google slides ([#20039](https://github.com/vm0-ai/vm0/issues/20039)) ([af5a149](https://github.com/vm0-ai/vm0/commit/af5a149c6d9c67634a753ffb806da3dc69012d50))
+* use zero avatar for default agents ([#20053](https://github.com/vm0-ai/vm0/issues/20053)) ([08deee2](https://github.com/vm0-ai/vm0/commit/08deee28bd3d5c255d1d1dce94c540caa632ea97))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Bug Fixes
+
+* align teams system prompt organization ([#19736](https://github.com/vm0-ai/vm0/issues/19736)) ([f196882](https://github.com/vm0-ai/vm0/commit/f196882fbe1eac2e89c9115c3fbb2f81e5949783))
+* allow private workflows on visible agents ([#20502](https://github.com/vm0-ai/vm0/issues/20502)) ([ff4f6de](https://github.com/vm0-ai/vm0/commit/ff4f6de496a05710e2c3ea4d99692e0c22d11804))
+* allow team access to paid video templates ([#19922](https://github.com/vm0-ai/vm0/issues/19922)) ([1c4476e](https://github.com/vm0-ai/vm0/commit/1c4476e702b597b093d3d07396843d21fc5cea04))
+* allow vm7 preview cors origins ([#20378](https://github.com/vm0-ai/vm0/issues/20378)) ([1e16d99](https://github.com/vm0-ai/vm0/commit/1e16d99eac5af148f5d878dce3fbf6579835cae4))
+* **api:** enforce signal-aware deferred promises ([#20187](https://github.com/vm0-ai/vm0/issues/20187)) ([a37afd6](https://github.com/vm0-ai/vm0/commit/a37afd65548e181f76a34a851285bbd34b0a6f6e))
+* **api:** make generation template context one-shot ([#19962](https://github.com/vm0-ai/vm0/issues/19962)) ([fa29e6e](https://github.com/vm0-ai/vm0/commit/fa29e6eb688eee3fad803691411697cff656011f))
+* **api:** refresh API release marker comment ([#19882](https://github.com/vm0-ai/vm0/issues/19882)) ([9335907](https://github.com/vm0-ai/vm0/commit/93359071908b7209a3d3503d2a81a9bf3fef2904))
+* avoid storing raw gmail relationship excerpts ([#20130](https://github.com/vm0-ai/vm0/issues/20130)) ([cc3643d](https://github.com/vm0-ai/vm0/commit/cc3643d435314f8ee5da7c7859367ccd4664e7ab))
+* block byok model routes for limited-free workspaces ([#20066](https://github.com/vm0-ai/vm0/issues/20066)) ([4f05e30](https://github.com/vm0-ai/vm0/commit/4f05e3002cdfe75b7a7162e8bc363adf74500248))
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+* drop the fallback DB note for generation template selections ([#19831](https://github.com/vm0-ai/vm0/issues/19831)) ([83cb5f3](https://github.com/vm0-ai/vm0/commit/83cb5f35ca84d4dc3d6f83ef639ed95b581e9129))
+* exclude active runs and goals from unread thread ids ([#20243](https://github.com/vm0-ai/vm0/issues/20243)) ([5cf4b03](https://github.com/vm0-ai/vm0/commit/5cf4b03408e6049e83f7f313dcba790f51f8c85f))
+* fetch all draft chat thread ids ([#20149](https://github.com/vm0-ai/vm0/issues/20149)) ([7b02fa2](https://github.com/vm0-ai/vm0/commit/7b02fa272811f75f9b897f92ab82da618d818110))
+* hydrate event-sourced chat thread running state ([#20031](https://github.com/vm0-ai/vm0/issues/20031)) ([40a3f06](https://github.com/vm0-ai/vm0/commit/40a3f06a578903e50ae51990905f23c843bea39e))
+* keep follow-up prompts plain text ([#20308](https://github.com/vm0-ai/vm0/issues/20308)) ([0883d8b](https://github.com/vm0-ai/vm0/commit/0883d8b23c67affb0f48782cf11edf75514c4aca))
+* make chat messages immutable in thread views ([#20332](https://github.com/vm0-ai/vm0/issues/20332)) ([c231866](https://github.com/vm0-ai/vm0/commit/c231866b635ebbe621d73a83c6bff7bebd2a1532))
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+* persist chat thread model selection at creation ([#20229](https://github.com/vm0-ai/vm0/issues/20229)) ([ded7688](https://github.com/vm0-ai/vm0/commit/ded7688a0d9ef4b703d1037d15af43389ff3f65a))
+* prefill workflow refine prompts ([#20131](https://github.com/vm0-ai/vm0/issues/20131)) ([7c6847f](https://github.com/vm0-ai/vm0/commit/7c6847f0e76035a4821d32ac27a483869057ba3a))
+* prevent chat thread snapshot compactor starvation ([#20313](https://github.com/vm0-ai/vm0/issues/20313)) ([aff8142](https://github.com/vm0-ai/vm0/commit/aff81423409d472a5cc162617cdbf816e30d1498))
+* prevent goal continuation from preempting queued chat ([#19950](https://github.com/vm0-ai/vm0/issues/19950)) ([2af12c7](https://github.com/vm0-ai/vm0/commit/2af12c7a28e815cd53f120384859b8a4e16cceb0))
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+* prune chat thread events after compaction ([#20072](https://github.com/vm0-ai/vm0/issues/20072)) ([5b382db](https://github.com/vm0-ai/vm0/commit/5b382db8883a14abff23cda3ac79772ed6423c31))
+* remove google oauth preconnect notice ([#20298](https://github.com/vm0-ai/vm0/issues/20298)) ([fc6ac03](https://github.com/vm0-ai/vm0/commit/fc6ac0399054084d2b3f19b12fd0496e90d493d6))
+* remove invalid goal deny rules ([#19996](https://github.com/vm0-ai/vm0/issues/19996)) ([f990cc2](https://github.com/vm0-ai/vm0/commit/f990cc2bc5c16e924fa9f08dfe7ad46cf550db2f))
+* remove limited free onboarding endpoint ([#20047](https://github.com/vm0-ai/vm0/issues/20047)) ([c216eb3](https://github.com/vm0-ai/vm0/commit/c216eb313d3a73a685b9b2c1d5d39c5b531b85f9))
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+* route byteplus stt through proxy ([#20015](https://github.com/vm0-ai/vm0/issues/20015)) ([9090018](https://github.com/vm0-ai/vm0/commit/9090018f39b18678c1cfe1fa79fa8e84fc39c815))
+* run goal continuations from the full objective prompt ([#19991](https://github.com/vm0-ai/vm0/issues/19991)) ([05a2ef8](https://github.com/vm0-ai/vm0/commit/05a2ef8136d310b8068f53d70e485992ee891639))
+* **runner:** remove session history claim capabilities ([#19832](https://github.com/vm0-ai/vm0/issues/19832)) ([f80876f](https://github.com/vm0-ai/vm0/commit/f80876f4dbfd3674f7b60b34941a1783dbe26f04))
+* show gpt 5.5 as the friendly model label ([#20364](https://github.com/vm0-ai/vm0/issues/20364)) ([984a98b](https://github.com/vm0-ai/vm0/commit/984a98bbee7a72674a9b79b60c0b046a1ce865eb))
+* show owner name and avatar in workflow detail created-by tooltip ([#20279](https://github.com/vm0-ai/vm0/issues/20279)) ([e4e54ba](https://github.com/vm0-ai/vm0/commit/e4e54ba9b22e4f5d0a27df0ea66f0da8df9b1d0f))
+* update chat thread recency for direct sends and run finishes ([#20256](https://github.com/vm0-ai/vm0/issues/20256)) ([e70397f](https://github.com/vm0-ai/vm0/commit/e70397f7d8c3aa8f86828bf60ac46abc57dbfb38))
+* use Gmail message time for relationship memory ([#20197](https://github.com/vm0-ai/vm0/issues/20197)) ([616c316](https://github.com/vm0-ai/vm0/commit/616c316061891266deb4773ae32dff44e33ebc57))
+* use run-finish timestamps for chat thread unread state ([#20236](https://github.com/vm0-ai/vm0/issues/20236)) ([9e4cb65](https://github.com/vm0-ai/vm0/commit/9e4cb659f32a0449d3f506232f4b4ca8dabc6a29))
+* warm background chat cache after follow-ups finish ([#20487](https://github.com/vm0-ai/vm0/issues/20487)) ([0173a36](https://github.com/vm0-ai/vm0/commit/0173a36238c741ca6b3748808d64df9eeb8d3a56))
+
+
+### Documentation
+
+* add deployment compatibility guidance ([#20037](https://github.com/vm0-ai/vm0/issues/20037)) ([0d0d145](https://github.com/vm0-ai/vm0/commit/0d0d145b8a7ad4bb792b8a5d9dd0ece70741f2ff))
+
+
+### Refactoring
+
+* **api:** remove zero chat thread list route ([#20113](https://github.com/vm0-ai/vm0/issues/20113)) ([71550af](https://github.com/vm0-ai/vm0/commit/71550af196199bffdc23d231a2bc1ad6c54155fb))
+* bridge runner_state admittable profiles ([#20272](https://github.com/vm0-ai/vm0/issues/20272)) ([743a786](https://github.com/vm0-ai/vm0/commit/743a78618b048c7db0b84513f18d3459be1b4057))
+* clarify runner profile availability contract ([#20171](https://github.com/vm0-ai/vm0/issues/20171)) ([ef94c04](https://github.com/vm0-ai/vm0/commit/ef94c04b34a0eacb9a3ddc7ffd1cabc419c19113))
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+* drop legacy runner state profile columns ([#20327](https://github.com/vm0-ai/vm0/issues/20327)) ([6ef8133](https://github.com/vm0-ai/vm0/commit/6ef8133e7d5095c1697541946a3e47c9c1caed8d))
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+* narrow chat thread detail payload ([#20267](https://github.com/vm0-ai/vm0/issues/20267)) ([9717d60](https://github.com/vm0-ai/vm0/commit/9717d60b535745157f9bc2a743f42c20be58ec0b))
+* **platform:** remove pinned agent sorting ([#20051](https://github.com/vm0-ai/vm0/issues/20051)) ([e3e7436](https://github.com/vm0-ai/vm0/commit/e3e7436aeee8170a54e846a86bf7dd4a36449f0a))
+* read chat thread selected model from event projection ([#20204](https://github.com/vm0-ai/vm0/issues/20204)) ([2a76f6d](https://github.com/vm0-ai/vm0/commit/2a76f6dfbe6ad7bbc32e2d5803d8c3207e976284))
+* reduce fallback slop in API model state ([#19920](https://github.com/vm0-ai/vm0/issues/19920)) ([9e80759](https://github.com/vm0-ai/vm0/commit/9e807591f3a5c03aa115a7224dc032d2a990d6e3))
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+* reduce fallback slop in test support contracts ([#19915](https://github.com/vm0-ai/vm0/issues/19915)) ([d2ca8c0](https://github.com/vm0-ai/vm0/commit/d2ca8c013c73602f2ed48b34693914b78a31cf3d))
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+* remove ga chat and export feature switches ([#20108](https://github.com/vm0-ai/vm0/issues/20108)) ([722d7c7](https://github.com/vm0-ai/vm0/commit/722d7c7833a003ea58b12fc8a34132c1aa4eb152))
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* remove presentation design-system selection ([#20371](https://github.com/vm0-ai/vm0/issues/20371)) ([bb56ceb](https://github.com/vm0-ai/vm0/commit/bb56ceb0c43fe57028535ab03cd4911f051aeff0))
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+* retire PresentationTemplateRunbook feature switch, make runbook flow the default ([#19965](https://github.com/vm0-ai/vm0/issues/19965)) ([47bc92d](https://github.com/vm0-ai/vm0/commit/47bc92da3ffbcabd103ef91dd87739be813c4989))
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+* serve platform permission metadata from catalog api ([#20028](https://github.com/vm0-ai/vm0/issues/20028)) ([2c8f731](https://github.com/vm0-ai/vm0/commit/2c8f73192fcdd01f53571d2ed5d6c60c83429807))
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+* tighten google meet event schema ([#20105](https://github.com/vm0-ai/vm0/issues/20105)) ([c0f810c](https://github.com/vm0-ai/vm0/commit/c0f810c40ef6d139f1739f5b19b14ec07363793a))
+
+
+### Performance Improvements
+
+* accept platform secret firewall auth metadata ([#20415](https://github.com/vm0-ai/vm0/issues/20415)) ([93be26d](https://github.com/vm0-ai/vm0/commit/93be26d46ee80cd43d61e2641fd7a8af15899ff3))
+* add artifact ensure storage manifest timing ([#19901](https://github.com/vm0-ai/vm0/issues/19901)) ([749e1bb](https://github.com/vm0-ai/vm0/commit/749e1bb01dcd16c04347ec1c7f174af7e167c9ad))
+* add custom connector runtime timing ([#19949](https://github.com/vm0-ai/vm0/issues/19949)) ([e2d7a85](https://github.com/vm0-ai/vm0/commit/e2d7a857caf510b76004a708f68fdbb6094718d1))
+* add session history attribution telemetry ([#20497](https://github.com/vm0-ai/vm0/issues/20497)) ([2daa651](https://github.com/vm0-ai/vm0/commit/2daa6519837d9f2ca3bbc640e2f1d8e8cc135630))
+* add session history telemetry buckets ([#19953](https://github.com/vm0-ai/vm0/issues/19953)) ([27309a2](https://github.com/vm0-ai/vm0/commit/27309a250f9374e3e8a1d46fa4476d57b248522d))
+* **api:** lazily emit connector platform secret metadata ([#20451](https://github.com/vm0-ai/vm0/issues/20451)) ([232b7f9](https://github.com/vm0-ai/vm0/commit/232b7f9c5c5ff4ec92cf4ebf5cbb6eb2ea4d8662))
+* attribute storage manifest presign sources ([#20080](https://github.com/vm0-ai/vm0/issues/20080)) ([5d3e2ae](https://github.com/vm0-ai/vm0/commit/5d3e2aea66a9bc1ccf29f1e4ac0be6da1e90e861))
+* attribute workflow event source timing ([#19998](https://github.com/vm0-ai/vm0/issues/19998)) ([2856fff](https://github.com/vm0-ai/vm0/commit/2856fff042e21529141082a27c7ecb528266fc5d))
+* cache workflow skill storage presigned urls ([#20323](https://github.com/vm0-ai/vm0/issues/20323)) ([cb6fab3](https://github.com/vm0-ai/vm0/commit/cb6fab39784b16d810d1ef239370607f4dc4753a))
+* lazily materialize custom connector auth ([#20258](https://github.com/vm0-ai/vm0/issues/20258)) ([57d47d7](https://github.com/vm0-ai/vm0/commit/57d47d729ad48e626b63d71fcd69f93deec7c692))
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+* skip session affinity delay without viable holder ([#20030](https://github.com/vm0-ai/vm0/issues/20030)) ([c96b651](https://github.com/vm0-ai/vm0/commit/c96b6516047d448edb72a82d20a546871ed0dcfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.161.0
+    * @vm0/core bumped to 8.411.1
+    * @vm0/db bumped to 1.97.2
+
+## [1.235.1](https://github.com/vm0-ai/vm0/compare/api-v1.235.0...api-v1.235.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* require agent google drive authorization for artifact sync ([#20382](https://github.com/vm0-ai/vm0/issues/20382)) ([84c9732](https://github.com/vm0-ai/vm0/commit/84c97329b9edc8aea951959446533c64893594f4))
+
+## [1.235.0](https://github.com/vm0-ai/vm0/compare/api-v1.234.0...api-v1.235.0) (2026-07-07)
+
+
+### Features
+
+* make steam connector generally available ([#20491](https://github.com/vm0-ai/vm0/issues/20491)) ([2ba3860](https://github.com/vm0-ai/vm0/commit/2ba386084b4134e5b0044dfb8969990b189478ab))
+
+
+### Bug Fixes
+
+* align teams system prompt organization ([#19736](https://github.com/vm0-ai/vm0/issues/19736)) ([f196882](https://github.com/vm0-ai/vm0/commit/f196882fbe1eac2e89c9115c3fbb2f81e5949783))
+* allow private workflows on visible agents ([#20502](https://github.com/vm0-ai/vm0/issues/20502)) ([ff4f6de](https://github.com/vm0-ai/vm0/commit/ff4f6de496a05710e2c3ea4d99692e0c22d11804))
+* warm background chat cache after follow-ups finish ([#20487](https://github.com/vm0-ai/vm0/issues/20487)) ([0173a36](https://github.com/vm0-ai/vm0/commit/0173a36238c741ca6b3748808d64df9eeb8d3a56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.1
+    * @vm0/connectors bumped to 1.146.0
+    * @vm0/core bumped to 8.411.0
+    * @vm0/db bumped to 1.97.1
+
+## [1.234.0](https://github.com/vm0-ai/vm0/compare/api-v1.233.1...api-v1.234.0) (2026-07-07)
+
+
+### Features
+
+* add website generation template api prompt support ([#20456](https://github.com/vm0-ai/vm0/issues/20456)) ([dfccd74](https://github.com/vm0-ai/vm0/commit/dfccd7471f2e01176e6064705cba583cd6b07f30))
+* support full runner builtin firewall catalog resolve ([#20458](https://github.com/vm0-ai/vm0/issues/20458)) ([6bde030](https://github.com/vm0-ai/vm0/commit/6bde030ff15cfdb932c6935c5aefb0c7c269abfc))
+
+
+### Performance Improvements
+
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.160.0
+    * @vm0/connectors bumped to 1.145.0
+    * @vm0/core bumped to 8.410.0
+    * @vm0/db bumped to 1.97.0
+
+## [1.233.1](https://github.com/vm0-ai/vm0/compare/api-v1.233.0...api-v1.233.1) (2026-07-07)
+
+
+### Performance Improvements
+
+* **api:** lazily emit connector platform secret metadata ([#20451](https://github.com/vm0-ai/vm0/issues/20451)) ([232b7f9](https://github.com/vm0-ai/vm0/commit/232b7f9c5c5ff4ec92cf4ebf5cbb6eb2ea4d8662))
+
+## [1.233.0](https://github.com/vm0-ai/vm0/compare/api-v1.232.2...api-v1.233.0) (2026-07-07)
+
+
+### Features
+
+* prompt for force upgrade ([#20351](https://github.com/vm0-ai/vm0/issues/20351)) ([2579a2e](https://github.com/vm0-ai/vm0/commit/2579a2e0621b3bf62388b54d9421019bc9bdac3a))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.3
+    * @vm0/connectors bumped to 1.144.0
+    * @vm0/core bumped to 8.409.0
+    * @vm0/db bumped to 1.96.7
+
+## [1.232.2](https://github.com/vm0-ai/vm0/compare/api-v1.232.1...api-v1.232.2) (2026-07-06)
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.2
+    * @vm0/core bumped to 8.408.2
+    * @vm0/db bumped to 1.96.6
+
+## [1.232.1](https://github.com/vm0-ai/vm0/compare/api-v1.232.0...api-v1.232.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.1
+    * @vm0/core bumped to 8.408.1
+    * @vm0/db bumped to 1.96.5
+
+## [1.232.0](https://github.com/vm0-ai/vm0/compare/api-v1.231.3...api-v1.232.0) (2026-07-06)
+
+
+### Features
+
+* add steam player connector ([#20359](https://github.com/vm0-ai/vm0/issues/20359)) ([830096d](https://github.com/vm0-ai/vm0/commit/830096d68b93cd490769ed98c0c91090bcde6f31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.159.0
+    * @vm0/connectors bumped to 1.143.0
+    * @vm0/core bumped to 8.408.0
+    * @vm0/db bumped to 1.96.4
+
+## [1.231.3](https://github.com/vm0-ai/vm0/compare/api-v1.231.2...api-v1.231.3) (2026-07-06)
+
+
+### Performance Improvements
+
+* accept platform secret firewall auth metadata ([#20415](https://github.com/vm0-ai/vm0/issues/20415)) ([93be26d](https://github.com/vm0-ai/vm0/commit/93be26d46ee80cd43d61e2641fd7a8af15899ff3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.2
+    * @vm0/connectors bumped to 1.142.1
+    * @vm0/core bumped to 8.407.2
+    * @vm0/db bumped to 1.96.3
+
+## [1.231.2](https://github.com/vm0-ai/vm0/compare/api-v1.231.1...api-v1.231.2) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.407.1
+    * @vm0/db bumped to 1.96.2
+
+## [1.231.1](https://github.com/vm0-ai/vm0/compare/api-v1.231.0...api-v1.231.1) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.1
+    * @vm0/connectors bumped to 1.142.0
+    * @vm0/core bumped to 8.407.0
+    * @vm0/db bumped to 1.96.1
+
+## [1.231.0](https://github.com/vm0-ai/vm0/compare/api-v1.230.1...api-v1.231.0) (2026-07-06)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.158.0
+    * @vm0/connectors bumped to 1.141.0
+    * @vm0/core bumped to 8.406.0
+    * @vm0/db bumped to 1.96.0
+
+## [1.230.1](https://github.com/vm0-ai/vm0/compare/api-v1.230.0...api-v1.230.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* allow vm7 preview cors origins ([#20378](https://github.com/vm0-ai/vm0/issues/20378)) ([1e16d99](https://github.com/vm0-ai/vm0/commit/1e16d99eac5af148f5d878dce3fbf6579835cae4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.95.0
+
+## [1.230.0](https://github.com/vm0-ai/vm0/compare/api-v1.229.0...api-v1.230.0) (2026-07-06)
+
+
+### Features
+
+* support zstd session history blobs ([#20341](https://github.com/vm0-ai/vm0/issues/20341)) ([c4188fa](https://github.com/vm0-ai/vm0/commit/c4188fa5b28587f197998421ac5032c228913c25))
+
+
+### Bug Fixes
+
+* make chat messages immutable in thread views ([#20332](https://github.com/vm0-ai/vm0/issues/20332)) ([c231866](https://github.com/vm0-ai/vm0/commit/c231866b635ebbe621d73a83c6bff7bebd2a1532))
+
+
+### Refactoring
+
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.157.0
+    * @vm0/connectors bumped to 1.140.0
+    * @vm0/core bumped to 8.405.0
+    * @vm0/db bumped to 1.94.2
+
+## [1.229.0](https://github.com/vm0-ai/vm0/compare/api-v1.228.0...api-v1.229.0) (2026-07-06)
+
+
+### Features
+
+* upload presentation artifacts to google slides ([#20039](https://github.com/vm0-ai/vm0/issues/20039)) ([af5a149](https://github.com/vm0-ai/vm0/commit/af5a149c6d9c67634a753ffb806da3dc69012d50))
+
+
+### Refactoring
+
+* drop legacy runner state profile columns ([#20327](https://github.com/vm0-ai/vm0/issues/20327)) ([6ef8133](https://github.com/vm0-ai/vm0/commit/6ef8133e7d5095c1697541946a3e47c9c1caed8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.156.0
+    * @vm0/connectors bumped to 1.139.0
+    * @vm0/core bumped to 8.404.0
+    * @vm0/db bumped to 1.94.1
+
+## [1.228.0](https://github.com/vm0-ai/vm0/compare/api-v1.227.4...api-v1.228.0) (2026-07-06)
+
+
+### Features
+
+* add birefnet and clarity-upscaler transform image models ([#19704](https://github.com/vm0-ai/vm0/issues/19704)) ([e62b2e0](https://github.com/vm0-ai/vm0/commit/e62b2e0a242af4e522cda1f440ee6a5e4ebdbbc5))
+* add build versions to debug build info ([#20056](https://github.com/vm0-ai/vm0/issues/20056)) ([41d2921](https://github.com/vm0-ai/vm0/commit/41d2921df0beb8f56f12abf3c6c98bd14cdd4cea))
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* add codex reset controls ([#20119](https://github.com/vm0-ai/vm0/issues/20119)) ([c1f9d22](https://github.com/vm0-ai/vm0/commit/c1f9d22b253bdeb60e4436e13a90793553865230))
+* add compatible custom connector auth refs ([#20217](https://github.com/vm0-ai/vm0/issues/20217)) ([d73dee7](https://github.com/vm0-ai/vm0/commit/d73dee77faec8221d93d9b4bb48a8bb1546fd384))
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+* add gmail backfill stop controls ([#20213](https://github.com/vm0-ai/vm0/issues/20213)) ([97ab218](https://github.com/vm0-ai/vm0/commit/97ab2184f5dd9daa1d00856add3531f2f6999bbb))
+* add Gmail relationship backfill options ([#20135](https://github.com/vm0-ai/vm0/issues/20135)) ([f2170eb](https://github.com/vm0-ai/vm0/commit/f2170eb06db7a20da76fe571635ce80eb5907dd8))
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+* add provider-neutral memory substrate ([#20273](https://github.com/vm0-ai/vm0/issues/20273)) ([67f5573](https://github.com/vm0-ai/vm0/commit/67f5573e2f4c290a94eb016fc45c5ce46df289a4))
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+* add selected model updates to chat thread events ([#20194](https://github.com/vm0-ai/vm0/issues/20194)) ([c558fa4](https://github.com/vm0-ai/vm0/commit/c558fa40e15b0219da973aada401701fa1754749))
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* bootstrap clerk orgs into limited-free workspaces ([#20029](https://github.com/vm0-ai/vm0/issues/20029)) ([d5ba8c4](https://github.com/vm0-ai/vm0/commit/d5ba8c4359c45fb82032eba9a927d4ffbac72a88))
+* **chat:** add initial thinking indicator ([#19690](https://github.com/vm0-ai/vm0/issues/19690)) ([8536d01](https://github.com/vm0-ai/vm0/commit/8536d012ca9cc7581c7f912d9dce1b06efe21d9b))
+* **chat:** relax initial thinking prompt ([#19706](https://github.com/vm0-ai/vm0/issues/19706)) ([be396cd](https://github.com/vm0-ai/vm0/commit/be396cd3c291d3390faccd313a26fd7d1620e019))
+* **computer-use:** add per-command state-size and structure telemetry ([#19868](https://github.com/vm0-ai/vm0/issues/19868)) ([b829cea](https://github.com/vm0-ai/vm0/commit/b829ceaa83f9279225c21b85a83ca65bd36819a4))
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+* enable gmail relationship backfill from memory ([#20114](https://github.com/vm0-ai/vm0/issues/20114)) ([fd84afd](https://github.com/vm0-ai/vm0/commit/fd84afd077a35a750f4fa01abb6bba87b207f02b))
+* export user-owned data files ([#19664](https://github.com/vm0-ai/vm0/issues/19664)) ([af2f0f3](https://github.com/vm0-ai/vm0/commit/af2f0f3c41cb147690d179937197762604479e11))
+* expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* extend limited-free onboarding credits ([#20048](https://github.com/vm0-ai/vm0/issues/20048)) ([edddbc0](https://github.com/vm0-ai/vm0/commit/edddbc08cf69ee88c5b9dcada32c7b5ffc25e19a))
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+* paginate relationship memory search ([#20262](https://github.com/vm0-ai/vm0/issues/20262)) ([f1d4130](https://github.com/vm0-ai/vm0/commit/f1d4130ff818bda248280d0bfc37a08060c1c64a))
+* record chat thread events ([#19807](https://github.com/vm0-ai/vm0/issues/19807)) ([8663a39](https://github.com/vm0-ai/vm0/commit/8663a392c6b94d38a92dd8a3560599fac680678c))
+* redesign workflows list with connector pills and next-run view ([#19790](https://github.com/vm0-ai/vm0/issues/19790)) ([1114b1e](https://github.com/vm0-ai/vm0/commit/1114b1e0bdd7b7e0007e91e6048318a568c2fabc))
+* refresh active connector permission policies ([#20035](https://github.com/vm0-ai/vm0/issues/20035)) ([8d7cec2](https://github.com/vm0-ai/vm0/commit/8d7cec2537cd512d12bd3e550abc43c07cb2026a))
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+* resolve presentation runbook templates in `zero generate presentation --template` ([#20061](https://github.com/vm0-ai/vm0/issues/20061)) ([e4565ed](https://github.com/vm0-ai/vm0/commit/e4565ed884e32e7ecfc99c95bed415b37845ce90))
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+* scope chat thread event sourcing overrides to orgs ([#20069](https://github.com/vm0-ai/vm0/issues/20069)) ([ace2951](https://github.com/vm0-ai/vm0/commit/ace29512a64ac76fbb82f2ca4fecc766c9e41c22))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+* show workflow owner Clerk avatar and widen hover card row spacing ([#19960](https://github.com/vm0-ai/vm0/issues/19960)) ([9ee4853](https://github.com/vm0-ai/vm0/commit/9ee48530988d3e8fa4c2a4637b930ca191f48031))
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+* support safe script patches for html edits ([#19810](https://github.com/vm0-ai/vm0/issues/19810)) ([72a6222](https://github.com/vm0-ai/vm0/commit/72a622216dca7282a8e84f0f91804b90c628eacd))
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+* update new org default models ([#19606](https://github.com/vm0-ai/vm0/issues/19606)) ([9fdc5db](https://github.com/vm0-ai/vm0/commit/9fdc5db1ab9dc77b6e20d731f84ddd5f226d48ac))
+* use zero avatar for default agents ([#20053](https://github.com/vm0-ai/vm0/issues/20053)) ([08deee2](https://github.com/vm0-ai/vm0/commit/08deee28bd3d5c255d1d1dce94c540caa632ea97))
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Bug Fixes
+
+* allow team access to paid video templates ([#19922](https://github.com/vm0-ai/vm0/issues/19922)) ([1c4476e](https://github.com/vm0-ai/vm0/commit/1c4476e702b597b093d3d07396843d21fc5cea04))
+* **api:** enforce signal-aware deferred promises ([#20187](https://github.com/vm0-ai/vm0/issues/20187)) ([a37afd6](https://github.com/vm0-ai/vm0/commit/a37afd65548e181f76a34a851285bbd34b0a6f6e))
+* **api:** make generation template context one-shot ([#19962](https://github.com/vm0-ai/vm0/issues/19962)) ([fa29e6e](https://github.com/vm0-ai/vm0/commit/fa29e6eb688eee3fad803691411697cff656011f))
+* **api:** refresh API release marker comment ([#19882](https://github.com/vm0-ai/vm0/issues/19882)) ([9335907](https://github.com/vm0-ai/vm0/commit/93359071908b7209a3d3503d2a81a9bf3fef2904))
+* **api:** suppress malformed follow-up suggestions ([#19762](https://github.com/vm0-ai/vm0/issues/19762)) ([70208d8](https://github.com/vm0-ai/vm0/commit/70208d8fe9d594ecfb07dc841041d5738b9fd2c3))
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+* avoid storing raw gmail relationship excerpts ([#20130](https://github.com/vm0-ai/vm0/issues/20130)) ([cc3643d](https://github.com/vm0-ai/vm0/commit/cc3643d435314f8ee5da7c7859367ccd4664e7ab))
+* block byok model routes for limited-free workspaces ([#20066](https://github.com/vm0-ai/vm0/issues/20066)) ([4f05e30](https://github.com/vm0-ai/vm0/commit/4f05e3002cdfe75b7a7162e8bc363adf74500248))
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+* commit create-run launch rows atomically ([#19641](https://github.com/vm0-ai/vm0/issues/19641)) ([24c9414](https://github.com/vm0-ai/vm0/commit/24c941437c27b918c7cad1e36bc5a14ce8021869))
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+* drop the fallback DB note for generation template selections ([#19831](https://github.com/vm0-ai/vm0/issues/19831)) ([83cb5f3](https://github.com/vm0-ai/vm0/commit/83cb5f35ca84d4dc3d6f83ef639ed95b581e9129))
+* exclude active runs and goals from unread thread ids ([#20243](https://github.com/vm0-ai/vm0/issues/20243)) ([5cf4b03](https://github.com/vm0-ai/vm0/commit/5cf4b03408e6049e83f7f313dcba790f51f8c85f))
+* fetch all draft chat thread ids ([#20149](https://github.com/vm0-ai/vm0/issues/20149)) ([7b02fa2](https://github.com/vm0-ai/vm0/commit/7b02fa272811f75f9b897f92ab82da618d818110))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* gate initial thinking to direct chat sends ([#19792](https://github.com/vm0-ai/vm0/issues/19792)) ([e961f1f](https://github.com/vm0-ai/vm0/commit/e961f1fbc6b894e44c365f7cd50199f7997244dc))
+* gate workflow trigger firing by fireability ([#19768](https://github.com/vm0-ai/vm0/issues/19768)) ([cfb7c81](https://github.com/vm0-ai/vm0/commit/cfb7c81110271d2f79db668a933c5546318e34c9))
+* hydrate event-sourced chat thread running state ([#20031](https://github.com/vm0-ai/vm0/issues/20031)) ([40a3f06](https://github.com/vm0-ai/vm0/commit/40a3f06a578903e50ae51990905f23c843bea39e))
+* keep follow-up markers after assistant content ([#19737](https://github.com/vm0-ai/vm0/issues/19737)) ([d135270](https://github.com/vm0-ai/vm0/commit/d135270c327e2aece0a9a014128928e1e230107b))
+* keep follow-up prompts plain text ([#20308](https://github.com/vm0-ai/vm0/issues/20308)) ([0883d8b](https://github.com/vm0-ai/vm0/commit/0883d8b23c67affb0f48782cf11edf75514c4aca))
+* make generation templates one-shot instead of thread-sticky ([#19765](https://github.com/vm0-ai/vm0/issues/19765)) ([29c9633](https://github.com/vm0-ai/vm0/commit/29c9633272045d932aef71f80cae2d91008bf415))
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+* persist chat thread model selection at creation ([#20229](https://github.com/vm0-ai/vm0/issues/20229)) ([ded7688](https://github.com/vm0-ai/vm0/commit/ded7688a0d9ef4b703d1037d15af43389ff3f65a))
+* prefill workflow refine prompts ([#20131](https://github.com/vm0-ai/vm0/issues/20131)) ([7c6847f](https://github.com/vm0-ai/vm0/commit/7c6847f0e76035a4821d32ac27a483869057ba3a))
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+* prevent chat thread snapshot compactor starvation ([#20313](https://github.com/vm0-ai/vm0/issues/20313)) ([aff8142](https://github.com/vm0-ai/vm0/commit/aff81423409d472a5cc162617cdbf816e30d1498))
+* prevent goal continuation from preempting queued chat ([#19950](https://github.com/vm0-ai/vm0/issues/19950)) ([2af12c7](https://github.com/vm0-ai/vm0/commit/2af12c7a28e815cd53f120384859b8a4e16cceb0))
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+* prune chat thread events after compaction ([#20072](https://github.com/vm0-ai/vm0/issues/20072)) ([5b382db](https://github.com/vm0-ai/vm0/commit/5b382db8883a14abff23cda3ac79772ed6423c31))
+* publish workflow trigger automation refreshes ([#19629](https://github.com/vm0-ai/vm0/issues/19629)) ([c719a69](https://github.com/vm0-ai/vm0/commit/c719a6909e762072901600b00b487c8c47618fa9))
+* remove invalid goal deny rules ([#19996](https://github.com/vm0-ai/vm0/issues/19996)) ([f990cc2](https://github.com/vm0-ai/vm0/commit/f990cc2bc5c16e924fa9f08dfe7ad46cf550db2f))
+* remove limited free onboarding endpoint ([#20047](https://github.com/vm0-ai/vm0/issues/20047)) ([c216eb3](https://github.com/vm0-ai/vm0/commit/c216eb313d3a73a685b9b2c1d5d39c5b531b85f9))
+* remove workflow follow-up suggestions ([#19646](https://github.com/vm0-ai/vm0/issues/19646)) ([c21341b](https://github.com/vm0-ai/vm0/commit/c21341bb4e5d09d0879727a8efe5424081dfdb3f))
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+* run goal continuations from the full objective prompt ([#19991](https://github.com/vm0-ai/vm0/issues/19991)) ([05a2ef8](https://github.com/vm0-ai/vm0/commit/05a2ef8136d310b8068f53d70e485992ee891639))
+* **runner:** remove session history claim capabilities ([#19832](https://github.com/vm0-ai/vm0/issues/19832)) ([f80876f](https://github.com/vm0-ai/vm0/commit/f80876f4dbfd3674f7b60b34941a1783dbe26f04))
+* scope data export feature switch to org ([#19700](https://github.com/vm0-ai/vm0/issues/19700)) ([ae28726](https://github.com/vm0-ai/vm0/commit/ae2872625db443cbba1398a8215fa4e5e8c3d153))
+* show owner name and avatar in workflow detail created-by tooltip ([#20279](https://github.com/vm0-ai/vm0/issues/20279)) ([e4e54ba](https://github.com/vm0-ai/vm0/commit/e4e54ba9b22e4f5d0a27df0ea66f0da8df9b1d0f))
+* sync chat message updates by id ([#19701](https://github.com/vm0-ai/vm0/issues/19701)) ([dc56030](https://github.com/vm0-ai/vm0/commit/dc56030baa32d7452c906edb3ec36d14543c9ac5))
+* update chat thread recency for direct sends and run finishes ([#20256](https://github.com/vm0-ai/vm0/issues/20256)) ([e70397f](https://github.com/vm0-ai/vm0/commit/e70397f7d8c3aa8f86828bf60ac46abc57dbfb38))
+* use Gmail message time for relationship memory ([#20197](https://github.com/vm0-ai/vm0/issues/20197)) ([616c316](https://github.com/vm0-ai/vm0/commit/616c316061891266deb4773ae32dff44e33ebc57))
+* use run-finish timestamps for chat thread unread state ([#20236](https://github.com/vm0-ai/vm0/issues/20236)) ([9e4cb65](https://github.com/vm0-ai/vm0/commit/9e4cb659f32a0449d3f506232f4b4ca8dabc6a29))
+
+
+### Documentation
+
+* add deployment compatibility guidance ([#20037](https://github.com/vm0-ai/vm0/issues/20037)) ([0d0d145](https://github.com/vm0-ai/vm0/commit/0d0d145b8a7ad4bb792b8a5d9dd0ece70741f2ff))
+
+
+### Refactoring
+
+* **api:** remove zero chat thread list route ([#20113](https://github.com/vm0-ai/vm0/issues/20113)) ([71550af](https://github.com/vm0-ai/vm0/commit/71550af196199bffdc23d231a2bc1ad6c54155fb))
+* bridge runner_state admittable profiles ([#20272](https://github.com/vm0-ai/vm0/issues/20272)) ([743a786](https://github.com/vm0-ai/vm0/commit/743a78618b048c7db0b84513f18d3459be1b4057))
+* clarify runner profile availability contract ([#20171](https://github.com/vm0-ai/vm0/issues/20171)) ([ef94c04](https://github.com/vm0-ai/vm0/commit/ef94c04b34a0eacb9a3ddc7ffd1cabc419c19113))
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+* narrow chat thread detail payload ([#20267](https://github.com/vm0-ai/vm0/issues/20267)) ([9717d60](https://github.com/vm0-ai/vm0/commit/9717d60b535745157f9bc2a743f42c20be58ec0b))
+* **platform:** remove pinned agent sorting ([#20051](https://github.com/vm0-ai/vm0/issues/20051)) ([e3e7436](https://github.com/vm0-ai/vm0/commit/e3e7436aeee8170a54e846a86bf7dd4a36449f0a))
+* read chat thread selected model from event projection ([#20204](https://github.com/vm0-ai/vm0/issues/20204)) ([2a76f6d](https://github.com/vm0-ai/vm0/commit/2a76f6dfbe6ad7bbc32e2d5803d8c3207e976284))
+* reduce fallback slop in API model state ([#19920](https://github.com/vm0-ai/vm0/issues/19920)) ([9e80759](https://github.com/vm0-ai/vm0/commit/9e807591f3a5c03aa115a7224dc032d2a990d6e3))
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+* reduce fallback slop in test support contracts ([#19915](https://github.com/vm0-ai/vm0/issues/19915)) ([d2ca8c0](https://github.com/vm0-ai/vm0/commit/d2ca8c013c73602f2ed48b34693914b78a31cf3d))
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+* remove ga chat and export feature switches ([#20108](https://github.com/vm0-ai/vm0/issues/20108)) ([722d7c7](https://github.com/vm0-ai/vm0/commit/722d7c7833a003ea58b12fc8a34132c1aa4eb152))
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+* retire PresentationTemplateRunbook feature switch, make runbook flow the default ([#19965](https://github.com/vm0-ai/vm0/issues/19965)) ([47bc92d](https://github.com/vm0-ai/vm0/commit/47bc92da3ffbcabd103ef91dd87739be813c4989))
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+* serve platform permission metadata from catalog api ([#20028](https://github.com/vm0-ai/vm0/issues/20028)) ([2c8f731](https://github.com/vm0-ai/vm0/commit/2c8f73192fcdd01f53571d2ed5d6c60c83429807))
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+* tighten google meet event schema ([#20105](https://github.com/vm0-ai/vm0/issues/20105)) ([c0f810c](https://github.com/vm0-ai/vm0/commit/c0f810c40ef6d139f1739f5b19b14ec07363793a))
+* update feature switch rollout scopes ([#19728](https://github.com/vm0-ai/vm0/issues/19728)) ([868fa93](https://github.com/vm0-ai/vm0/commit/868fa931c4cacdb8e9f586f3621aa47c13e72aef))
+* use public connector catalog in platform ui ([#19663](https://github.com/vm0-ai/vm0/issues/19663)) ([85ca45f](https://github.com/vm0-ai/vm0/commit/85ca45f3a136a40245e9dd16a8e6eeffc06d9477))
+
+
+### Performance Improvements
+
+* add artifact ensure storage manifest timing ([#19901](https://github.com/vm0-ai/vm0/issues/19901)) ([749e1bb](https://github.com/vm0-ai/vm0/commit/749e1bb01dcd16c04347ec1c7f174af7e167c9ad))
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+* add custom connector runtime timing ([#19949](https://github.com/vm0-ai/vm0/issues/19949)) ([e2d7a85](https://github.com/vm0-ai/vm0/commit/e2d7a857caf510b76004a708f68fdbb6094718d1))
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+* add session history telemetry buckets ([#19953](https://github.com/vm0-ai/vm0/issues/19953)) ([27309a2](https://github.com/vm0-ai/vm0/commit/27309a250f9374e3e8a1d46fa4476d57b248522d))
+* attribute storage manifest presign sources ([#20080](https://github.com/vm0-ai/vm0/issues/20080)) ([5d3e2ae](https://github.com/vm0-ai/vm0/commit/5d3e2aea66a9bc1ccf29f1e4ac0be6da1e90e861))
+* attribute storage manifest presign work ([#19693](https://github.com/vm0-ai/vm0/issues/19693)) ([0f78c6b](https://github.com/vm0-ai/vm0/commit/0f78c6b66c06c3004a52cd97940ab3a2d5e4eb22))
+* attribute workflow event source timing ([#19998](https://github.com/vm0-ai/vm0/issues/19998)) ([2856fff](https://github.com/vm0-ai/vm0/commit/2856fff042e21529141082a27c7ecb528266fc5d))
+* attribute zero source entrypoint timing ([#19713](https://github.com/vm0-ai/vm0/issues/19713)) ([5e897dc](https://github.com/vm0-ai/vm0/commit/5e897dc6e6ccee463e081c464d9d614f8d1b1ed3))
+* cache system storage presigned urls ([#19777](https://github.com/vm0-ai/vm0/issues/19777)) ([62f66b9](https://github.com/vm0-ai/vm0/commit/62f66b9474c1bfbf19155790f1d2a839d332b331))
+* lazily materialize custom connector auth ([#20258](https://github.com/vm0-ai/vm0/issues/20258)) ([57d47d7](https://github.com/vm0-ai/vm0/commit/57d47d729ad48e626b63d71fcd69f93deec7c692))
+* reduce artifact storage manifest presigning ([#19650](https://github.com/vm0-ai/vm0/issues/19650)) ([0672271](https://github.com/vm0-ai/vm0/commit/0672271c090e1a5431ac762c566328125958a218))
+* skip session affinity delay without viable holder ([#20030](https://github.com/vm0-ai/vm0/issues/20030)) ([c96b651](https://github.com/vm0-ai/vm0/commit/c96b6516047d448edb72a82d20a546871ed0dcfa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.403.0
+    * @vm0/db bumped to 1.94.0
+
+## [1.227.4](https://github.com/vm0-ai/vm0/compare/api-v1.227.3...api-v1.227.4) (2026-07-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.402.0
+    * @vm0/db bumped to 1.93.2
+
+## [1.227.3](https://github.com/vm0-ai/vm0/compare/api-v1.227.2...api-v1.227.3) (2026-07-06)
+
+
+### Refactoring
+
+* bridge runner_state admittable profiles ([#20272](https://github.com/vm0-ai/vm0/issues/20272)) ([743a786](https://github.com/vm0-ai/vm0/commit/743a78618b048c7db0b84513f18d3459be1b4057))
+* extract custom eslint rules package ([#20188](https://github.com/vm0-ai/vm0/issues/20188)) ([e2ca0d3](https://github.com/vm0-ai/vm0/commit/e2ca0d3dd59a3f80e77a79a626615c532841201b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.4
+    * @vm0/core bumped to 8.401.5
+    * @vm0/db bumped to 1.93.1
+
+## [1.227.2](https://github.com/vm0-ai/vm0/compare/api-v1.227.1...api-v1.227.2) (2026-07-06)
+
+
+### Bug Fixes
+
+* show owner name and avatar in workflow detail created-by tooltip ([#20279](https://github.com/vm0-ai/vm0/issues/20279)) ([e4e54ba](https://github.com/vm0-ai/vm0/commit/e4e54ba9b22e4f5d0a27df0ea66f0da8df9b1d0f))
+
+## [1.227.1](https://github.com/vm0-ai/vm0/compare/api-v1.227.0...api-v1.227.1) (2026-07-06)
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#20275](https://github.com/vm0-ai/vm0/issues/20275)) ([73e668c](https://github.com/vm0-ai/vm0/commit/73e668ce7135504b171be98ca2832d09b433f34b))
+
+## [1.227.0](https://github.com/vm0-ai/vm0/compare/api-v1.226.2...api-v1.227.0) (2026-07-05)
+
+
+### Features
+
+* add provider-neutral memory substrate ([#20273](https://github.com/vm0-ai/vm0/issues/20273)) ([67f5573](https://github.com/vm0-ai/vm0/commit/67f5573e2f4c290a94eb016fc45c5ce46df289a4))
+
+
+### Refactoring
+
+* narrow chat thread detail payload ([#20267](https://github.com/vm0-ai/vm0/issues/20267)) ([9717d60](https://github.com/vm0-ai/vm0/commit/9717d60b535745157f9bc2a743f42c20be58ec0b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.3
+    * @vm0/core bumped to 8.401.4
+    * @vm0/db bumped to 1.93.0
+
+## [1.226.2](https://github.com/vm0-ai/vm0/compare/api-v1.226.1...api-v1.226.2) (2026-07-05)
+
+
+### Refactoring
+
+* remove runner profile compatibility fields ([#20255](https://github.com/vm0-ai/vm0/issues/20255)) ([7972fa3](https://github.com/vm0-ai/vm0/commit/7972fa3a2aa317e99ba40503b5d6dae35e0d6df8))
+
+
+### Performance Improvements
+
+* lazily materialize custom connector auth ([#20258](https://github.com/vm0-ai/vm0/issues/20258)) ([57d47d7](https://github.com/vm0-ai/vm0/commit/57d47d729ad48e626b63d71fcd69f93deec7c692))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.2
+    * @vm0/core bumped to 8.401.3
+    * @vm0/db bumped to 1.92.6
+
+## [1.226.1](https://github.com/vm0-ai/vm0/compare/api-v1.226.0...api-v1.226.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* persist chat thread model selection at creation ([#20229](https://github.com/vm0-ai/vm0/issues/20229)) ([ded7688](https://github.com/vm0-ai/vm0/commit/ded7688a0d9ef4b703d1037d15af43389ff3f65a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.1
+    * @vm0/core bumped to 8.401.2
+    * @vm0/db bumped to 1.92.5
+
+## [1.226.0](https://github.com/vm0-ai/vm0/compare/api-v1.225.0...api-v1.226.0) (2026-07-05)
+
+
+### Features
+
+* paginate relationship memory search ([#20262](https://github.com/vm0-ai/vm0/issues/20262)) ([f1d4130](https://github.com/vm0-ai/vm0/commit/f1d4130ff818bda248280d0bfc37a08060c1c64a))
+
+
+### Bug Fixes
+
+* update chat thread recency for direct sends and run finishes ([#20256](https://github.com/vm0-ai/vm0/issues/20256)) ([e70397f](https://github.com/vm0-ai/vm0/commit/e70397f7d8c3aa8f86828bf60ac46abc57dbfb38))
+* use run-finish timestamps for chat thread unread state ([#20236](https://github.com/vm0-ai/vm0/issues/20236)) ([9e4cb65](https://github.com/vm0-ai/vm0/commit/9e4cb659f32a0449d3f506232f4b4ca8dabc6a29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.155.0
+    * @vm0/core bumped to 8.401.1
+    * @vm0/db bumped to 1.92.4
+
+## [1.225.0](https://github.com/vm0-ai/vm0/compare/api-v1.224.2...api-v1.225.0) (2026-07-05)
+
+
+### Features
+
+* support safe script patches for html edits ([#19810](https://github.com/vm0-ai/vm0/issues/19810)) ([72a6222](https://github.com/vm0-ai/vm0/commit/72a622216dca7282a8e84f0f91804b90c628eacd))
+
+
+### Bug Fixes
+
+* exclude active runs and goals from unread thread ids ([#20243](https://github.com/vm0-ai/vm0/issues/20243)) ([5cf4b03](https://github.com/vm0-ai/vm0/commit/5cf4b03408e6049e83f7f313dcba790f51f8c85f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.3
+    * @vm0/connectors bumped to 1.138.0
+    * @vm0/core bumped to 8.401.0
+    * @vm0/db bumped to 1.92.3
+
+## [1.224.2](https://github.com/vm0-ai/vm0/compare/api-v1.224.1...api-v1.224.2) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.2
+    * @vm0/connectors bumped to 1.137.0
+    * @vm0/core bumped to 8.400.0
+    * @vm0/db bumped to 1.92.2
+
+## [1.224.1](https://github.com/vm0-ai/vm0/compare/api-v1.224.0...api-v1.224.1) (2026-07-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.1
+    * @vm0/connectors bumped to 1.136.0
+    * @vm0/core bumped to 8.399.7
+    * @vm0/db bumped to 1.92.1
+
+## [1.224.0](https://github.com/vm0-ai/vm0/compare/api-v1.223.6...api-v1.224.0) (2026-07-05)
+
+
+### Features
+
+* add gmail backfill stop controls ([#20213](https://github.com/vm0-ai/vm0/issues/20213)) ([97ab218](https://github.com/vm0-ai/vm0/commit/97ab2184f5dd9daa1d00856add3531f2f6999bbb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.154.0
+    * @vm0/core bumped to 8.399.6
+    * @vm0/db bumped to 1.92.0
+
+## [1.223.6](https://github.com/vm0-ai/vm0/compare/api-v1.223.5...api-v1.223.6) (2026-07-05)
+
+
+### Refactoring
+
+* read chat thread selected model from event projection ([#20204](https://github.com/vm0-ai/vm0/issues/20204)) ([2a76f6d](https://github.com/vm0-ai/vm0/commit/2a76f6dfbe6ad7bbc32e2d5803d8c3207e976284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.6
+    * @vm0/core bumped to 8.399.5
+    * @vm0/db bumped to 1.91.9
+
+## [1.223.5](https://github.com/vm0-ai/vm0/compare/api-v1.223.4...api-v1.223.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* use Gmail message time for relationship memory ([#20197](https://github.com/vm0-ai/vm0/issues/20197)) ([616c316](https://github.com/vm0-ai/vm0/commit/616c316061891266deb4773ae32dff44e33ebc57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.91.8
+
+## [1.223.4](https://github.com/vm0-ai/vm0/compare/api-v1.223.3...api-v1.223.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* narrow org-scoped feature switch rollouts ([#20196](https://github.com/vm0-ai/vm0/issues/20196)) ([639c9f1](https://github.com/vm0-ai/vm0/commit/639c9f1e34a8d31802c8936ccfa006b9dde0b65f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.4
+    * @vm0/db bumped to 1.91.7
+
+## [1.223.3](https://github.com/vm0-ai/vm0/compare/api-v1.223.2...api-v1.223.3) (2026-07-05)
+
+
+### Bug Fixes
+
+* **api:** enforce signal-aware deferred promises ([#20187](https://github.com/vm0-ai/vm0/issues/20187)) ([a37afd6](https://github.com/vm0-ai/vm0/commit/a37afd65548e181f76a34a851285bbd34b0a6f6e))
+
+
+### Refactoring
+
+* split chat thread draft read API ([#20192](https://github.com/vm0-ai/vm0/issues/20192)) ([61c4e87](https://github.com/vm0-ai/vm0/commit/61c4e87c3015982d8a419f5f176cc6280549eef4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.5
+    * @vm0/core bumped to 8.399.3
+    * @vm0/db bumped to 1.91.6
+
+## [1.223.2](https://github.com/vm0-ai/vm0/compare/api-v1.223.1...api-v1.223.2) (2026-07-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.4
+    * @vm0/core bumped to 8.399.2
+    * @vm0/db bumped to 1.91.5
+
+## [1.223.1](https://github.com/vm0-ai/vm0/compare/api-v1.223.0...api-v1.223.1) (2026-07-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.3
+    * @vm0/connectors bumped to 1.135.1
+    * @vm0/core bumped to 8.399.1
+    * @vm0/db bumped to 1.91.4
+
+## [1.223.0](https://github.com/vm0-ai/vm0/compare/api-v1.222.2...api-v1.223.0) (2026-07-04)
+
+
+### Features
+
+* roll out chat and memory switches to all orgs ([#20145](https://github.com/vm0-ai/vm0/issues/20145)) ([8cd0184](https://github.com/vm0-ai/vm0/commit/8cd0184b1227f36b76a3919f5a3574e96304d511))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.399.0
+    * @vm0/db bumped to 1.91.3
+
+## [1.222.2](https://github.com/vm0-ai/vm0/compare/api-v1.222.1...api-v1.222.2) (2026-07-04)
+
+
+### Bug Fixes
+
+* fetch all draft chat thread ids ([#20149](https://github.com/vm0-ai/vm0/issues/20149)) ([7b02fa2](https://github.com/vm0-ai/vm0/commit/7b02fa272811f75f9b897f92ab82da618d818110))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.2
+    * @vm0/core bumped to 8.398.1
+    * @vm0/db bumped to 1.91.2
+
+## [1.222.1](https://github.com/vm0-ai/vm0/compare/api-v1.222.0...api-v1.222.1) (2026-07-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.1
+    * @vm0/connectors bumped to 1.135.0
+    * @vm0/core bumped to 8.398.0
+    * @vm0/db bumped to 1.91.1
+
+## [1.222.0](https://github.com/vm0-ai/vm0/compare/api-v1.221.2...api-v1.222.0) (2026-07-04)
+
+
+### Features
+
+* add Gmail relationship backfill options ([#20135](https://github.com/vm0-ai/vm0/issues/20135)) ([f2170eb](https://github.com/vm0-ai/vm0/commit/f2170eb06db7a20da76fe571635ce80eb5907dd8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.153.0
+    * @vm0/core bumped to 8.397.1
+    * @vm0/db bumped to 1.91.0
+
+## [1.221.2](https://github.com/vm0-ai/vm0/compare/api-v1.221.1...api-v1.221.2) (2026-07-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.1
+    * @vm0/connectors bumped to 1.134.0
+    * @vm0/core bumped to 8.397.0
+    * @vm0/db bumped to 1.90.2
+
+## [1.221.1](https://github.com/vm0-ai/vm0/compare/api-v1.221.0...api-v1.221.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* avoid storing raw gmail relationship excerpts ([#20130](https://github.com/vm0-ai/vm0/issues/20130)) ([cc3643d](https://github.com/vm0-ai/vm0/commit/cc3643d435314f8ee5da7c7859367ccd4664e7ab))
+* prefill workflow refine prompts ([#20131](https://github.com/vm0-ai/vm0/issues/20131)) ([7c6847f](https://github.com/vm0-ai/vm0/commit/7c6847f0e76035a4821d32ac27a483869057ba3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.90.1
+
+## [1.221.0](https://github.com/vm0-ai/vm0/compare/api-v1.220.1...api-v1.221.0) (2026-07-04)
+
+
+### Features
+
+* add codex reset controls ([#20119](https://github.com/vm0-ai/vm0/issues/20119)) ([c1f9d22](https://github.com/vm0-ai/vm0/commit/c1f9d22b253bdeb60e4436e13a90793553865230))
+* enable gmail relationship backfill from memory ([#20114](https://github.com/vm0-ai/vm0/issues/20114)) ([fd84afd](https://github.com/vm0-ai/vm0/commit/fd84afd077a35a750f4fa01abb6bba87b207f02b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.152.0
+    * @vm0/core bumped to 8.396.2
+    * @vm0/db bumped to 1.90.0
+
+## [1.220.1](https://github.com/vm0-ai/vm0/compare/api-v1.220.0...api-v1.220.1) (2026-07-04)
+
+
+### Refactoring
+
+* **api:** remove zero chat thread list route ([#20113](https://github.com/vm0-ai/vm0/issues/20113)) ([71550af](https://github.com/vm0-ai/vm0/commit/71550af196199bffdc23d231a2bc1ad6c54155fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.1
+    * @vm0/core bumped to 8.396.1
+    * @vm0/db bumped to 1.89.1
+
+## [1.220.0](https://github.com/vm0-ai/vm0/compare/api-v1.219.1...api-v1.220.0) (2026-07-04)
+
+
+### Features
+
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.151.0
+    * @vm0/connectors bumped to 1.133.0
+    * @vm0/core bumped to 8.396.0
+    * @vm0/db bumped to 1.89.0
+
+## [1.219.1](https://github.com/vm0-ai/vm0/compare/api-v1.219.0...api-v1.219.1) (2026-07-04)
+
+
+### Refactoring
+
+* tighten google meet event schema ([#20105](https://github.com/vm0-ai/vm0/issues/20105)) ([c0f810c](https://github.com/vm0-ai/vm0/commit/c0f810c40ef6d139f1739f5b19b14ec07363793a))
+
+## [1.219.0](https://github.com/vm0-ai/vm0/compare/api-v1.218.3...api-v1.219.0) (2026-07-03)
+
+
+### Features
+
+* enable chat thread event sourcing globally ([#20082](https://github.com/vm0-ai/vm0/issues/20082)) ([548a68e](https://github.com/vm0-ai/vm0/commit/548a68eca8f4b700d639d83470b16e026444b851))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.395.0
+    * @vm0/db bumped to 1.88.7
+
+## [1.218.3](https://github.com/vm0-ai/vm0/compare/api-v1.218.2...api-v1.218.3) (2026-07-03)
+
+
+### Refactoring
+
+* remove legacy automation poller, mutating routes, and the cli command ([#20103](https://github.com/vm0-ai/vm0/issues/20103)) ([2245f83](https://github.com/vm0-ai/vm0/commit/2245f83430aefa545077e5da1e8929d9c4968628))
+* serve connector category metadata from catalog api ([#20089](https://github.com/vm0-ai/vm0/issues/20089)) ([99bafd7](https://github.com/vm0-ai/vm0/commit/99bafd7d276f1ae151c4cd7b409e8268a8487848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.3
+    * @vm0/connectors bumped to 1.132.3
+    * @vm0/core bumped to 8.394.6
+    * @vm0/db bumped to 1.88.6
+
+## [1.218.2](https://github.com/vm0-ai/vm0/compare/api-v1.218.1...api-v1.218.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* cache workflow avatars and reveal webhook secrets on demand ([#20073](https://github.com/vm0-ai/vm0/issues/20073)) ([d39c8eb](https://github.com/vm0-ai/vm0/commit/d39c8eb9b3fe014795aaef38f2baab2dbd67704b))
+
+
+### Performance Improvements
+
+* attribute storage manifest presign sources ([#20080](https://github.com/vm0-ai/vm0/issues/20080)) ([5d3e2ae](https://github.com/vm0-ai/vm0/commit/5d3e2aea66a9bc1ccf29f1e4ac0be6da1e90e861))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.2
+    * @vm0/connectors bumped to 1.132.2
+    * @vm0/core bumped to 8.394.5
+    * @vm0/db bumped to 1.88.5
+
+## [1.218.1](https://github.com/vm0-ai/vm0/compare/api-v1.218.0...api-v1.218.1) (2026-07-03)
+
+
+### Refactoring
+
+* retire presentation-deck-tools server-side (phase 2) ([#20012](https://github.com/vm0-ai/vm0/issues/20012)) ([9626a84](https://github.com/vm0-ai/vm0/commit/9626a842ba1ad35502dc97d507acbd58f969e7aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.1
+    * @vm0/connectors bumped to 1.132.1
+    * @vm0/core bumped to 8.394.4
+    * @vm0/db bumped to 1.88.4
+
+## [1.218.0](https://github.com/vm0-ai/vm0/compare/api-v1.217.1...api-v1.218.0) (2026-07-03)
+
+
+### Features
+
+* add build versions to debug build info ([#20056](https://github.com/vm0-ai/vm0/issues/20056)) ([41d2921](https://github.com/vm0-ai/vm0/commit/41d2921df0beb8f56f12abf3c6c98bd14cdd4cea))
+
+
+### Documentation
+
+* add deployment compatibility guidance ([#20037](https://github.com/vm0-ai/vm0/issues/20037)) ([0d0d145](https://github.com/vm0-ai/vm0/commit/0d0d145b8a7ad4bb792b8a5d9dd0ece70741f2ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.150.0
+    * @vm0/core bumped to 8.394.3
+    * @vm0/db bumped to 1.88.3
+
+## [1.217.1](https://github.com/vm0-ai/vm0/compare/api-v1.217.0...api-v1.217.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* block byok model routes for limited-free workspaces ([#20066](https://github.com/vm0-ai/vm0/issues/20066)) ([4f05e30](https://github.com/vm0-ai/vm0/commit/4f05e3002cdfe75b7a7162e8bc363adf74500248))
+* prune chat thread events after compaction ([#20072](https://github.com/vm0-ai/vm0/issues/20072)) ([5b382db](https://github.com/vm0-ai/vm0/commit/5b382db8883a14abff23cda3ac79772ed6423c31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.1
+    * @vm0/core bumped to 8.394.2
+    * @vm0/db bumped to 1.88.2
+
+## [1.217.0](https://github.com/vm0-ai/vm0/compare/api-v1.216.0...api-v1.217.0) (2026-07-03)
+
+
+### Features
+
+* scope chat thread event sourcing overrides to orgs ([#20069](https://github.com/vm0-ai/vm0/issues/20069)) ([ace2951](https://github.com/vm0-ai/vm0/commit/ace29512a64ac76fbb82f2ca4fecc766c9e41c22))
+
+
+### Refactoring
+
+* retire legacy html-ppt presentation registry entries (presentations runbook-only) ([#20064](https://github.com/vm0-ai/vm0/issues/20064)) ([b92a71c](https://github.com/vm0-ai/vm0/commit/b92a71c98a4c48b1fec6a610dd179a09f4d86c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.394.1
+    * @vm0/db bumped to 1.88.1
+
+## [1.216.0](https://github.com/vm0-ai/vm0/compare/api-v1.215.0...api-v1.216.0) (2026-07-03)
+
+
+### Features
+
+* add onboarding completion marker ([#20055](https://github.com/vm0-ai/vm0/issues/20055)) ([6d5bf36](https://github.com/vm0-ai/vm0/commit/6d5bf3630093c7a9120ce91b2b746eedf299171d))
+* extend limited-free onboarding credits ([#20048](https://github.com/vm0-ai/vm0/issues/20048)) ([edddbc0](https://github.com/vm0-ai/vm0/commit/edddbc08cf69ee88c5b9dcada32c7b5ffc25e19a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.149.0
+    * @vm0/core bumped to 8.394.0
+    * @vm0/db bumped to 1.88.0
+
+## [1.215.0](https://github.com/vm0-ai/vm0/compare/api-v1.214.0...api-v1.215.0) (2026-07-03)
+
+
+### Features
+
+* **workflows:** gate webhook trigger creation with a separate switch ([#20041](https://github.com/vm0-ai/vm0/issues/20041)) ([9c0f0c2](https://github.com/vm0-ai/vm0/commit/9c0f0c21a0cf62d97d682d6f4de2831c17e1a832))
+
+
+### Refactoring
+
+* **platform:** remove pinned agent sorting ([#20051](https://github.com/vm0-ai/vm0/issues/20051)) ([e3e7436](https://github.com/vm0-ai/vm0/commit/e3e7436aeee8170a54e846a86bf7dd4a36449f0a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.148.0
+    * @vm0/connectors bumped to 1.132.0
+    * @vm0/core bumped to 8.393.0
+    * @vm0/db bumped to 1.87.1
+
+## [1.214.0](https://github.com/vm0-ai/vm0/compare/api-v1.213.0...api-v1.214.0) (2026-07-03)
+
+
+### Features
+
+* migrate legacy automations to workflow schedule triggers globally ([#20033](https://github.com/vm0-ai/vm0/issues/20033)) ([eeb91c2](https://github.com/vm0-ai/vm0/commit/eeb91c258a50f67b05a341ebbbbb7e1b872d0030))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.392.0
+    * @vm0/db bumped to 1.87.0
+
+## [1.213.0](https://github.com/vm0-ai/vm0/compare/api-v1.212.2...api-v1.213.0) (2026-07-03)
+
+
+### Features
+
+* bootstrap clerk orgs into limited-free workspaces ([#20029](https://github.com/vm0-ai/vm0/issues/20029)) ([d5ba8c4](https://github.com/vm0-ai/vm0/commit/d5ba8c4359c45fb82032eba9a927d4ffbac72a88))
+
+## [1.212.2](https://github.com/vm0-ai/vm0/compare/api-v1.212.1...api-v1.212.2) (2026-07-03)
+
+
+### Performance Improvements
+
+* attribute workflow event source timing ([#19998](https://github.com/vm0-ai/vm0/issues/19998)) ([2856fff](https://github.com/vm0-ai/vm0/commit/2856fff042e21529141082a27c7ecb528266fc5d))
+
+## [1.212.1](https://github.com/vm0-ai/vm0/compare/api-v1.212.0...api-v1.212.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* coalesce runner direct candidate bursts ([#19969](https://github.com/vm0-ai/vm0/issues/19969)) ([1135a51](https://github.com/vm0-ai/vm0/commit/1135a514c5e5ca21bb0b929885e98e9061fe581b))
+* remove invalid goal deny rules ([#19996](https://github.com/vm0-ai/vm0/issues/19996)) ([f990cc2](https://github.com/vm0-ai/vm0/commit/f990cc2bc5c16e924fa9f08dfe7ad46cf550db2f))
+* run goal continuations from the full objective prompt ([#19991](https://github.com/vm0-ai/vm0/issues/19991)) ([05a2ef8](https://github.com/vm0-ai/vm0/commit/05a2ef8136d310b8068f53d70e485992ee891639))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.1
+    * @vm0/core bumped to 8.391.4
+    * @vm0/db bumped to 1.86.2
+
+## [1.212.0](https://github.com/vm0-ai/vm0/compare/api-v1.211.0...api-v1.212.0) (2026-07-03)
+
+
+### Features
+
+* expose build commit sha ([#19954](https://github.com/vm0-ai/vm0/issues/19954)) ([50733bd](https://github.com/vm0-ai/vm0/commit/50733bd6e0ed5e57dd476f5139072b18d56018fb))
+* show workflow owner Clerk avatar and widen hover card row spacing ([#19960](https://github.com/vm0-ai/vm0/issues/19960)) ([9ee4853](https://github.com/vm0-ai/vm0/commit/9ee48530988d3e8fa4c2a4637b930ca191f48031))
+
+
+### Bug Fixes
+
+* prevent goal continuation from preempting queued chat ([#19950](https://github.com/vm0-ai/vm0/issues/19950)) ([2af12c7](https://github.com/vm0-ai/vm0/commit/2af12c7a28e815cd53f120384859b8a4e16cceb0))
+
+
+### Refactoring
+
+* remove computer use delegated authorization switch ([#19971](https://github.com/vm0-ai/vm0/issues/19971)) ([682219b](https://github.com/vm0-ai/vm0/commit/682219bb52c9519cf96d6cfe39e50385718dad71))
+* retire PresentationTemplateRunbook feature switch, make runbook flow the default ([#19965](https://github.com/vm0-ai/vm0/issues/19965)) ([47bc92d](https://github.com/vm0-ai/vm0/commit/47bc92da3ffbcabd103ef91dd87739be813c4989))
+
+
+### Performance Improvements
+
+* add session history telemetry buckets ([#19953](https://github.com/vm0-ai/vm0/issues/19953)) ([27309a2](https://github.com/vm0-ai/vm0/commit/27309a250f9374e3e8a1d46fa4476d57b248522d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.147.0
+    * @vm0/connectors bumped to 1.131.1
+    * @vm0/core bumped to 8.391.3
+    * @vm0/db bumped to 1.86.1
+
+## [1.211.0](https://github.com/vm0-ai/vm0/compare/api-v1.210.1...api-v1.211.0) (2026-07-03)
+
+
+### Features
+
+* add Google Meet transcript-generated workflow trigger ([#19789](https://github.com/vm0-ai/vm0/issues/19789)) ([91aef71](https://github.com/vm0-ai/vm0/commit/91aef711953cb2107c62ae7d2d3a7f9da38a071f))
+
+
+### Performance Improvements
+
+* add custom connector runtime timing ([#19949](https://github.com/vm0-ai/vm0/issues/19949)) ([e2d7a85](https://github.com/vm0-ai/vm0/commit/e2d7a857caf510b76004a708f68fdbb6094718d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.146.0
+    * @vm0/connectors bumped to 1.131.0
+    * @vm0/core bumped to 8.391.2
+    * @vm0/db bumped to 1.86.0
+
+## [1.210.1](https://github.com/vm0-ai/vm0/compare/api-v1.210.0...api-v1.210.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* allow team access to paid video templates ([#19922](https://github.com/vm0-ai/vm0/issues/19922)) ([1c4476e](https://github.com/vm0-ai/vm0/commit/1c4476e702b597b093d3d07396843d21fc5cea04))
+* **core:** update schoolhouse and sticker scrapbook runbook archives ([#19947](https://github.com/vm0-ai/vm0/issues/19947)) ([017be61](https://github.com/vm0-ai/vm0/commit/017be619eea4a82478ddab3f77eb6bad339a81bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.391.1
+    * @vm0/db bumped to 1.85.6
+
+## [1.210.0](https://github.com/vm0-ai/vm0/compare/api-v1.209.3...api-v1.210.0) (2026-07-03)
+
+
+### Features
+
+* render chat threads from event sourcing ([#19929](https://github.com/vm0-ai/vm0/issues/19929)) ([577d15e](https://github.com/vm0-ai/vm0/commit/577d15e5316e45102698c2e33eb0d71a02420228))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.145.0
+    * @vm0/connectors bumped to 1.130.0
+    * @vm0/core bumped to 8.391.0
+    * @vm0/db bumped to 1.85.5
+
+## [1.209.3](https://github.com/vm0-ai/vm0/compare/api-v1.209.2...api-v1.209.3) (2026-07-03)
+
+
+### Refactoring
+
+* reduce fallback slop in API model state ([#19920](https://github.com/vm0-ai/vm0/issues/19920)) ([9e80759](https://github.com/vm0-ai/vm0/commit/9e807591f3a5c03aa115a7224dc032d2a990d6e3))
+
+## [1.209.2](https://github.com/vm0-ai/vm0/compare/api-v1.209.1...api-v1.209.2) (2026-07-03)
+
+
+### Refactoring
+
+* reduce fallback slop in test support contracts ([#19915](https://github.com/vm0-ai/vm0/issues/19915)) ([d2ca8c0](https://github.com/vm0-ai/vm0/commit/d2ca8c013c73602f2ed48b34693914b78a31cf3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.1
+    * @vm0/core bumped to 8.390.1
+    * @vm0/db bumped to 1.85.4
+
+## [1.209.1](https://github.com/vm0-ai/vm0/compare/api-v1.209.0...api-v1.209.1) (2026-07-02)
+
+
+### Performance Improvements
+
+* add artifact ensure storage manifest timing ([#19901](https://github.com/vm0-ai/vm0/issues/19901)) ([749e1bb](https://github.com/vm0-ai/vm0/commit/749e1bb01dcd16c04347ec1c7f174af7e167c9ad))
+
+## [1.209.0](https://github.com/vm0-ai/vm0/compare/api-v1.208.3...api-v1.209.0) (2026-07-02)
+
+
+### Features
+
+* add Codex fast mode for ChatGPT subscription runs ([#19811](https://github.com/vm0-ai/vm0/issues/19811)) ([42e8e48](https://github.com/vm0-ai/vm0/commit/42e8e4883e548d497eb0b86a936b6be308ad1bed))
+* redesign workflows list with connector pills and next-run view ([#19790](https://github.com/vm0-ai/vm0/issues/19790)) ([1114b1e](https://github.com/vm0-ai/vm0/commit/1114b1e0bdd7b7e0007e91e6048318a568c2fabc))
+
+
+### Bug Fixes
+
+* **runner:** remove session history claim capabilities ([#19832](https://github.com/vm0-ai/vm0/issues/19832)) ([f80876f](https://github.com/vm0-ai/vm0/commit/f80876f4dbfd3674f7b60b34941a1783dbe26f04))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.144.0
+    * @vm0/connectors bumped to 1.129.0
+    * @vm0/core bumped to 8.390.0
+    * @vm0/db bumped to 1.85.3
+
+## [1.208.3](https://github.com/vm0-ai/vm0/compare/api-v1.208.2...api-v1.208.3) (2026-07-02)
+
+
+### Bug Fixes
+
+* protect same-session runner affinity claims ([#19764](https://github.com/vm0-ai/vm0/issues/19764)) ([5bbd286](https://github.com/vm0-ai/vm0/commit/5bbd2862e2eceb51a71ba681a24d64b87894d712))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.3
+    * @vm0/core bumped to 8.389.1
+    * @vm0/db bumped to 1.85.2
+
+## [1.208.2](https://github.com/vm0-ai/vm0/compare/api-v1.208.1...api-v1.208.2) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.2
+    * @vm0/connectors bumped to 1.128.0
+    * @vm0/core bumped to 8.389.0
+    * @vm0/db bumped to 1.85.1
+
+## [1.208.1](https://github.com/vm0-ai/vm0/compare/api-v1.208.0...api-v1.208.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* drop the fallback DB note for generation template selections ([#19831](https://github.com/vm0-ai/vm0/issues/19831)) ([83cb5f3](https://github.com/vm0-ai/vm0/commit/83cb5f35ca84d4dc3d6f83ef639ed95b581e9129))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.1
+    * @vm0/core bumped to 8.388.0
+    * @vm0/db bumped to 1.85.0
+
+## [1.208.0](https://github.com/vm0-ai/vm0/compare/api-v1.207.1...api-v1.208.0) (2026-07-02)
+
+
+### Features
+
+* add Desktop Computer Use filesystem plugins ([#19814](https://github.com/vm0-ai/vm0/issues/19814)) ([062a44c](https://github.com/vm0-ai/vm0/commit/062a44c181536df868bc6b081bae0dd7a2d9d9d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.143.0
+    * @vm0/connectors bumped to 1.127.0
+    * @vm0/core bumped to 8.387.0
+    * @vm0/db bumped to 1.84.6
+
+## [1.207.1](https://github.com/vm0-ai/vm0/compare/api-v1.207.0...api-v1.207.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* preserve agent connector add semantics ([#19815](https://github.com/vm0-ai/vm0/issues/19815)) ([1dbc317](https://github.com/vm0-ai/vm0/commit/1dbc317f5b5aebe9dff79353accac2e3f8878d18))
+
+
+### Performance Improvements
+
+* add session history encoding telemetry ([#19812](https://github.com/vm0-ai/vm0/issues/19812)) ([7c0814a](https://github.com/vm0-ai/vm0/commit/7c0814af703af9ad89cd34dc0fd131db0916fec7))
+* cache system storage presigned urls ([#19777](https://github.com/vm0-ai/vm0/issues/19777)) ([62f66b9](https://github.com/vm0-ai/vm0/commit/62f66b9474c1bfbf19155790f1d2a839d332b331))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.2
+    * @vm0/core bumped to 8.386.2
+    * @vm0/db bumped to 1.84.5
+
+## [1.207.0](https://github.com/vm0-ai/vm0/compare/api-v1.206.0...api-v1.207.0) (2026-07-02)
+
+
+### Features
+
+* add birefnet and clarity-upscaler transform image models ([#19704](https://github.com/vm0-ai/vm0/issues/19704)) ([e62b2e0](https://github.com/vm0-ai/vm0/commit/e62b2e0a242af4e522cda1f440ee6a5e4ebdbbc5))
+
+
+### Bug Fixes
+
+* make generation templates one-shot instead of thread-sticky ([#19765](https://github.com/vm0-ai/vm0/issues/19765)) ([29c9633](https://github.com/vm0-ai/vm0/commit/29c9633272045d932aef71f80cae2d91008bf415))
+
+
+### Refactoring
+
+* use public connector catalog in platform ui ([#19663](https://github.com/vm0-ai/vm0/issues/19663)) ([85ca45f](https://github.com/vm0-ai/vm0/commit/85ca45f3a136a40245e9dd16a8e6eeffc06d9477))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.1
+    * @vm0/core bumped to 8.386.1
+    * @vm0/db bumped to 1.84.4
+
+## [1.206.0](https://github.com/vm0-ai/vm0/compare/api-v1.205.0...api-v1.206.0) (2026-07-02)
+
+
+### Features
+
+* add byteplus voice input stt ([#19510](https://github.com/vm0-ai/vm0/issues/19510)) ([42665c5](https://github.com/vm0-ai/vm0/commit/42665c5054ab243593122ab999f98829f301f6b7))
+* add Pexels as presentation image provider with Unsplash-preferred switch ([#19756](https://github.com/vm0-ai/vm0/issues/19756)) ([9222ea2](https://github.com/vm0-ai/vm0/commit/9222ea207ba7a4224eb6809d46ccac2b02ece38b))
+
+
+### Bug Fixes
+
+* **api:** suppress malformed follow-up suggestions ([#19762](https://github.com/vm0-ai/vm0/issues/19762)) ([70208d8](https://github.com/vm0-ai/vm0/commit/70208d8fe9d594ecfb07dc841041d5738b9fd2c3))
+* fire Google Ads signup conversion ([#19775](https://github.com/vm0-ai/vm0/issues/19775)) ([c1092a7](https://github.com/vm0-ai/vm0/commit/c1092a70ba713db885cb89475bb57b3d1883db95))
+* gate workflow trigger firing by fireability ([#19768](https://github.com/vm0-ai/vm0/issues/19768)) ([cfb7c81](https://github.com/vm0-ai/vm0/commit/cfb7c81110271d2f79db668a933c5546318e34c9))
+* restart full thinking typewriter lines ([#19771](https://github.com/vm0-ai/vm0/issues/19771)) ([063aac1](https://github.com/vm0-ai/vm0/commit/063aac15a9cf3c7ac5d48963583db987e980899d))
+
+
+### Performance Improvements
+
+* add compressed resume session history transport ([#19667](https://github.com/vm0-ai/vm0/issues/19667)) ([ee23c32](https://github.com/vm0-ai/vm0/commit/ee23c326ccf794228d2c4f9dd6d8844cd032fc49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.142.0
+    * @vm0/connectors bumped to 1.126.0
+    * @vm0/core bumped to 8.386.0
+    * @vm0/db bumped to 1.84.3
+
+## [1.205.0](https://github.com/vm0-ai/vm0/compare/api-v1.204.2...api-v1.205.0) (2026-07-02)
+
+
+### Features
+
+* support darwin x64 desktop builds ([#19766](https://github.com/vm0-ai/vm0/issues/19766)) ([d58dd67](https://github.com/vm0-ai/vm0/commit/d58dd6729078d9bf6556ed5a75c4a66e08b87373))
+
+
+### Bug Fixes
+
+* remove workflow publish approval flow ([#19767](https://github.com/vm0-ai/vm0/issues/19767)) ([19d0fa7](https://github.com/vm0-ai/vm0/commit/19d0fa765fe2fb9a15d64e2a04616b41b8546a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.141.0
+    * @vm0/connectors bumped to 1.125.0
+    * @vm0/core bumped to 8.385.0
+    * @vm0/db bumped to 1.84.2
+
+## [1.204.2](https://github.com/vm0-ai/vm0/compare/api-v1.204.1...api-v1.204.2) (2026-07-02)
+
+
+### Bug Fixes
+
+* keep follow-up markers after assistant content ([#19737](https://github.com/vm0-ai/vm0/issues/19737)) ([d135270](https://github.com/vm0-ai/vm0/commit/d135270c327e2aece0a9a014128928e1e230107b))
+
+## [1.204.1](https://github.com/vm0-ai/vm0/compare/api-v1.204.0...api-v1.204.1) (2026-07-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.1
+    * @vm0/connectors bumped to 1.124.1
+    * @vm0/core bumped to 8.384.4
+    * @vm0/db bumped to 1.84.1
+
+## [1.204.0](https://github.com/vm0-ai/vm0/compare/api-v1.203.4...api-v1.204.0) (2026-07-02)
+
+
+### Features
+
+* restore Claude Fable 5 support ([#19721](https://github.com/vm0-ai/vm0/issues/19721)) ([97a7753](https://github.com/vm0-ai/vm0/commit/97a775354429e1f3de625627e3fbeeaf01c2552d))
+
+
+### Bug Fixes
+
+* sync chat message updates by id ([#19701](https://github.com/vm0-ai/vm0/issues/19701)) ([dc56030](https://github.com/vm0-ai/vm0/commit/dc56030baa32d7452c906edb3ec36d14543c9ac5))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime guards ([#19720](https://github.com/vm0-ai/vm0/issues/19720)) ([5d61de7](https://github.com/vm0-ai/vm0/commit/5d61de75720518d76e917f06a7be0bf95f155973))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.140.0
+    * @vm0/core bumped to 8.384.3
+    * @vm0/db bumped to 1.84.0
+
+## [1.203.4](https://github.com/vm0-ai/vm0/compare/api-v1.203.3...api-v1.203.4) (2026-07-01)
+
+
+### Performance Improvements
+
+* attribute zero source entrypoint timing ([#19713](https://github.com/vm0-ai/vm0/issues/19713)) ([5e897dc](https://github.com/vm0-ai/vm0/commit/5e897dc6e6ccee463e081c464d9d614f8d1b1ed3))
+
+## [1.203.3](https://github.com/vm0-ai/vm0/compare/api-v1.203.2...api-v1.203.3) (2026-07-01)
+
+
+### Performance Improvements
+
+* attribute storage manifest presign work ([#19693](https://github.com/vm0-ai/vm0/issues/19693)) ([0f78c6b](https://github.com/vm0-ai/vm0/commit/0f78c6b66c06c3004a52cd97940ab3a2d5e4eb22))
+
+## [1.203.2](https://github.com/vm0-ai/vm0/compare/api-v1.203.1...api-v1.203.2) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.2
+    * @vm0/connectors bumped to 1.124.0
+    * @vm0/core bumped to 8.384.2
+    * @vm0/db bumped to 1.83.3
+
+## [1.203.1](https://github.com/vm0-ai/vm0/compare/api-v1.203.0...api-v1.203.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* scope data export feature switch to org ([#19700](https://github.com/vm0-ai/vm0/issues/19700)) ([ae28726](https://github.com/vm0-ai/vm0/commit/ae2872625db443cbba1398a8215fa4e5e8c3d153))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.1
+    * @vm0/core bumped to 8.384.1
+    * @vm0/db bumped to 1.83.2
+
+## [1.203.0](https://github.com/vm0-ai/vm0/compare/api-v1.202.0...api-v1.203.0) (2026-07-01)
+
+
+### Features
+
+* add teams settings ui ([#19570](https://github.com/vm0-ai/vm0/issues/19570)) ([242e261](https://github.com/vm0-ai/vm0/commit/242e26146208b187de904e92116590bb767bc5e9))
+* export user-owned data files ([#19664](https://github.com/vm0-ai/vm0/issues/19664)) ([af2f0f3](https://github.com/vm0-ai/vm0/commit/af2f0f3c41cb147690d179937197762604479e11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.139.0
+    * @vm0/connectors bumped to 1.123.0
+    * @vm0/core bumped to 8.384.0
+    * @vm0/db bumped to 1.83.1
+
+## [1.202.0](https://github.com/vm0-ai/vm0/compare/api-v1.201.0...api-v1.202.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+
+
+### Bug Fixes
+
+* commit create-run launch rows atomically ([#19641](https://github.com/vm0-ai/vm0/issues/19641)) ([24c9414](https://github.com/vm0-ai/vm0/commit/24c941437c27b918c7cad1e36bc5a14ce8021869))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+    * @vm0/core bumped to 8.383.0
+    * @vm0/db bumped to 1.83.0
+
+## [1.201.0](https://github.com/vm0-ai/vm0/compare/api-v1.200.0...api-v1.201.0) (2026-07-01)
+
+
+### Features
+
+* support scoped workflow name refs ([#19655](https://github.com/vm0-ai/vm0/issues/19655)) ([7018ee0](https://github.com/vm0-ai/vm0/commit/7018ee0446da472fb5b10370951513f189f52535))
+* update new org default models ([#19606](https://github.com/vm0-ai/vm0/issues/19606)) ([9fdc5db](https://github.com/vm0-ai/vm0/commit/9fdc5db1ab9dc77b6e20d731f84ddd5f226d48ac))
+
+
+### Bug Fixes
+
+* apply sandbox io limiters from host capacity ([#19668](https://github.com/vm0-ai/vm0/issues/19668)) ([8baa893](https://github.com/vm0-ai/vm0/commit/8baa893dbbae076adbde5e31f467103a0c06179e))
+
+
+### Performance Improvements
+
+* reduce artifact storage manifest presigning ([#19650](https://github.com/vm0-ai/vm0/issues/19650)) ([0672271](https://github.com/vm0-ai/vm0/commit/0672271c090e1a5431ac762c566328125958a218))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.137.0
+    * @vm0/connectors bumped to 1.121.0
+    * @vm0/core bumped to 8.382.0
+    * @vm0/db bumped to 1.82.0
+
+## [1.200.0](https://github.com/vm0-ai/vm0/compare/api-v1.199.2...api-v1.200.0) (2026-07-01)
+
+
+### Features
+
+* expose connector catalog status view models ([#19580](https://github.com/vm0-ai/vm0/issues/19580)) ([697e259](https://github.com/vm0-ai/vm0/commit/697e25903a89443aa024dc38dfaca850133d99db))
+* show subscription account details ([#19500](https://github.com/vm0-ai/vm0/issues/19500)) ([b33f4ca](https://github.com/vm0-ai/vm0/commit/b33f4ca766b19a91ed782766ca29f8f9b50640aa))
+
+
+### Bug Fixes
+
+* publish workflow trigger automation refreshes ([#19629](https://github.com/vm0-ai/vm0/issues/19629)) ([c719a69](https://github.com/vm0-ai/vm0/commit/c719a6909e762072901600b00b487c8c47618fa9))
+* remove workflow follow-up suggestions ([#19646](https://github.com/vm0-ai/vm0/issues/19646)) ([c21341b](https://github.com/vm0-ai/vm0/commit/c21341bb4e5d09d0879727a8efe5424081dfdb3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+    * @vm0/core bumped to 8.381.3
+    * @vm0/db bumped to 1.81.0
+
+## [1.199.2](https://github.com/vm0-ai/vm0/compare/api-v1.199.1...api-v1.199.2) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.135.0
+    * @vm0/core bumped to 8.381.2
+    * @vm0/db bumped to 1.80.2
+
+## [1.199.1](https://github.com/vm0-ai/vm0/compare/api-v1.199.0...api-v1.199.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* defer run launch side effects until persistence ([#19579](https://github.com/vm0-ai/vm0/issues/19579)) ([b7f6de5](https://github.com/vm0-ai/vm0/commit/b7f6de51d4305d881d486de694889a9550c1f92a))
+
+
+### Performance Improvements
+
+* skip Axiom chat output wait when DB complete ([#19563](https://github.com/vm0-ai/vm0/issues/19563)) ([f1283e3](https://github.com/vm0-ai/vm0/commit/f1283e36c2b2779dffbf8fbc33a18cb6a76a45d1))
+* speed up workflow list api ([#19604](https://github.com/vm0-ai/vm0/issues/19604)) ([bc371dd](https://github.com/vm0-ai/vm0/commit/bc371dd085ce6d882a7a73b9a2a87b396dea9bc3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.80.1
+
+## [1.199.0](https://github.com/vm0-ai/vm0/compare/api-v1.198.0...api-v1.199.0) (2026-07-01)
+
+
+### Features
+
+* add Google Calendar event-updated workflow trigger ([#19562](https://github.com/vm0-ai/vm0/issues/19562)) ([814bd2f](https://github.com/vm0-ai/vm0/commit/814bd2ffb0d5e024463d1c90203f40512f792bae))
+
+
+### Bug Fixes
+
+* disable Claude Code attachments for incompatible providers ([#19558](https://github.com/vm0-ai/vm0/issues/19558)) ([d5cd233](https://github.com/vm0-ai/vm0/commit/d5cd233e81363cedaab73bafffa8eae1325d2180))
+
+
+### Refactoring
+
+* remove legacy generate image route ([#19568](https://github.com/vm0-ai/vm0/issues/19568)) ([7d62a26](https://github.com/vm0-ai/vm0/commit/7d62a268d0737a7effbfbbd174a4ef1b0a5bb4fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.134.0
+    * @vm0/core bumped to 8.381.1
+    * @vm0/db bumped to 1.80.0
+
+## [1.198.0](https://github.com/vm0-ai/vm0/compare/api-v1.197.0...api-v1.198.0) (2026-07-01)
+
+
+### Features
+
+* make connector catalog api generally available ([#19560](https://github.com/vm0-ai/vm0/issues/19560)) ([797a756](https://github.com/vm0-ai/vm0/commit/797a756f36d59db010b3bc7171a8bee590bc115a))
+* post teams run callbacks ([#19553](https://github.com/vm0-ai/vm0/issues/19553)) ([c29c946](https://github.com/vm0-ai/vm0/commit/c29c946eeae86befb451538c750b1e8074e1b5ea))
+
+
+### Bug Fixes
+
+* add telegram callback rate-limit retry ([#19559](https://github.com/vm0-ai/vm0/issues/19559)) ([d3b3ccc](https://github.com/vm0-ai/vm0/commit/d3b3ccc708107d1bf74d1838e5c20736a4440bc8))
+* clean up run launch orphans ([#19534](https://github.com/vm0-ai/vm0/issues/19534)) ([e405c2b](https://github.com/vm0-ai/vm0/commit/e405c2b20132bcebea9f4e2a2eb636639895783e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.2
+    * @vm0/connectors bumped to 1.120.0
+    * @vm0/core bumped to 8.381.0
+    * @vm0/db bumped to 1.79.8
+
+## [1.197.0](https://github.com/vm0-ai/vm0/compare/api-v1.196.1...api-v1.197.0) (2026-07-01)
+
+
+### Features
+
+* support public connector form field ids ([#19506](https://github.com/vm0-ai/vm0/issues/19506)) ([c18d792](https://github.com/vm0-ai/vm0/commit/c18d7928e35477389809273f8f8c594b9f96d09d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.1
+    * @vm0/connectors bumped to 1.119.0
+    * @vm0/core bumped to 8.380.2
+    * @vm0/db bumped to 1.79.7
+
+## [1.196.1](https://github.com/vm0-ai/vm0/compare/api-v1.196.0...api-v1.196.1) (2026-07-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.380.1
+    * @vm0/db bumped to 1.79.6
+
+## [1.196.0](https://github.com/vm0-ai/vm0/compare/api-v1.195.3...api-v1.196.0) (2026-07-01)
+
+
+### Features
+
+* add Claude Sonnet 5 model support ([#19539](https://github.com/vm0-ai/vm0/issues/19539)) ([399f1ad](https://github.com/vm0-ai/vm0/commit/399f1ad74ef3ec9e91b7331cb5ed80c550ed5599))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.0
+    * @vm0/connectors bumped to 1.118.0
+    * @vm0/core bumped to 8.380.0
+    * @vm0/db bumped to 1.79.5

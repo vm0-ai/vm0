@@ -107,7 +107,7 @@ const adminRequired = Object.freeze({
 const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
 const USAGE_PACK_PLAN_ENDING_MESSAGE =
   "Your Plan is scheduled to end before this usage pack change can take effect. Restore your Plan first, then try again.";
-const log = logger("api:zero:billing-checkout");
+const log = logger("api:billing-checkout");
 
 type UsagePackSubscriptionChangePreviewResult = Awaited<
   ReturnType<typeof previewUsagePackSubscriptionChange>

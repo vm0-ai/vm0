@@ -394,6 +394,7 @@
         "sendMessage": "Send message",
         "setIcon": "Set icon (Ctrl+Shift+1-9)",
         "showShortcuts": "Show shortcuts",
+        "togglePin": "Pin / unpin chat",
         "toggleSidebar": "Toggle sidebar"
       },
       "title": "Keyboard Shortcuts"
@@ -629,7 +630,6 @@
       "renameImportedTemplate": "Rename template",
       "searchConnector": "Search templates",
       "searchConnectors": "Search templates",
-      "selected": "Template: {{title}}",
       "selectStyle": "Select style {{style}}",
       "selectTemplate": "Select template {{title}}",
       "selectVideo": "Select video template {{title}}",
@@ -1007,6 +1007,20 @@
       "accessNotAllowed": "Access is not allowed.",
       "userBanned": "Account access suspended because activity on this account violated the {{brandName}} Terms of Use. If you have questions, contact {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Desktop is signed in. You can close this window.",
+        "connecting": "Connecting your desktop session.",
+        "consumed": "Finishing sign-in in Desktop. Keep this window open.",
+        "failed": "Sign-in could not finish. Start again from Desktop, or retry in this browser.",
+        "no-workspaces": "Create or join a workspace in the web app, then sign in again from Desktop.",
+        "pending": "Open Desktop to continue signing in.",
+        "selecting": "Choose a workspace for this computer."
+      },
+      "reopen": "Open Desktop",
+      "retry": "Try again",
+      "title": "Sign in to Desktop"
+    },
     "documentTitles": {
       "signIn": "Sign in",
       "signUp": "Sign up"
@@ -1022,19 +1036,35 @@
       "continuation": {
         "activationErrorDescription": "We couldn't finish signing you in. Start over and try again.",
         "activationErrorTitle": "Sign-in couldn't be completed",
+        "backupDescription": "Keep these codes somewhere safe. You can use each code once if you lose access to your phone.",
+        "backupTitle": "Save your backup codes",
         "chooseOrganizationDescription": "Choose an organization to continue to {{brandName}}.",
         "chooseOrganizationTitle": "Choose an organization",
         "completeDescription": "Taking you to {{brandName}}.",
         "completeTitle": "Sign-in complete",
+        "createOrganization": "Create organization",
+        "invitationError": "This invitation could not be accepted. Try again, or ask for a new invitation if this link has expired.",
+        "joinOrganization": "Join {{organizationName}}",
         "loadingDescription": "Checking what your account needs next.",
         "loadingTitle": "Finishing sign-in",
         "noOrganizationsDescription": "This account doesn't have an organization available. Ask an organization administrator for access, then start over.",
         "noOrganizationsTitle": "No organization available",
+        "organizationName": "Organization name",
+        "passwordTaskError": "Your password could not be updated. Choose a stronger password and try again.",
+        "phoneNumberLabel": "Phone number",
         "recoveryAction": "Start over",
+        "savedCodes": "I saved my codes",
         "secondFactorDescription": "This sign-in requires an additional verification step that this page doesn't support. Start over to try another sign-in method.",
         "secondFactorTitle": "Additional verification required",
+        "securityDescription": "Add a second way to verify your identity.",
+        "securityTitle": "Set up two-step verification",
         "selectOrganization": "Continue with {{organizationName}}",
+        "sendCode": "Send code",
+        "setupKey": "Setup key",
+        "setupKeyDescription": "Add this setup key to your authenticator app, then enter the code it generates.",
         "signedInAs": "Signed in as {{identifier}}",
+        "taskComplete": "Your security settings are saved. Continue to finish signing in.",
+        "taskError": "This step could not be completed. Check your details and try again.",
         "unsupportedDescription": "Your account returned an authentication step that this page doesn't support. Start over to try another sign-in method.",
         "unsupportedTitle": "Sign-in step unavailable"
       },
@@ -1045,7 +1075,12 @@
       "signIn": {
         "addAccount": "Add account",
         "appleMethod": "Continue with Apple",
+        "authenticatorMethod": "Use an authenticator app",
+        "authenticatorSubtitle": "Enter the code from your authenticator app.",
         "back": "Back",
+        "backupCodeLabel": "Backup code",
+        "backupCodeMethod": "Use a backup code",
+        "backupCodeSubtitle": "Enter an unused backup code saved when you set up two-step verification.",
         "chooseAccountSubtitle": "Select the account with which you wish to continue.",
         "chooseAccountTitle": "Choose an account",
         "chooseMethodSubtitle": "Facing issues? You can use any of these methods to sign in.",
@@ -1072,6 +1107,7 @@
         "hidePassword": "Hide password",
         "identifierLabel": "Email address or username",
         "identifierPlaceholder": "Enter your email address or username",
+        "invalidCode": "That code is incorrect. Try again.",
         "lastUsed": "Last used",
         "methodsHelpPrompt": "Don’t have any of these?",
         "newPasswordLabel": "New password",
@@ -1090,13 +1126,18 @@
         "passwordResetMethod": "Reset your password",
         "passwordSubtitle": "Enter the password associated with your account",
         "passwordTitle": "Enter your password",
+        "phoneCodeMethod": "Send a text message to {{identifier}}",
+        "phoneCodeSubtitle": "Enter the verification code sent to your phone.",
+        "phoneCodeTitle": "Check your phone",
         "recoveryMethodsDivider": "Or, sign in with another method",
         "recoveryTitle": "Forgot Password?",
         "resendCode": "Didn't receive a code? Resend",
         "resendCodeCooldown": "{{resendCode}} ({{seconds}})",
-        "resetPassword": "Reset Password",
+        "resetPassword": "Reset password",
         "resetPasswordCodeSubtitle": "First, enter the code sent to your email address",
         "resetPasswordCodeTitle": "Reset password",
+        "secondFactorSubtitle": "Choose how to verify your sign-in.",
+        "secondFactorTitle": "Verify your sign-in",
         "separator": "or",
         "showPassword": "Show password",
         "signOutOfOtherSessions": "Sign out of all other devices",
@@ -1107,6 +1148,7 @@
         "useAnotherMethod": "Use another method",
         "usernameLabel": "Username",
         "usernamePlaceholder": "Enter your username",
+        "verificationCodeExpired": "This code is no longer valid. Enter a new code.",
         "verify": "Verify"
       },
       "signUp": {
@@ -1360,38 +1402,22 @@
     },
     "plans": {
       "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",
-      "changeAnytime": "Upgrade or downgrade anytime.",
       "compare": "Compare plans",
       "compareAll": "Compare all plans",
-      "currentPlan": "Current plan",
       "custom": {
         "name": "Custom"
       },
       "customAccess": "Custom access with {{value}} concurrent runs",
       "customCancellationNotice": "Your custom plan will end on {{date}}.",
-      "customCheckoutUnavailable": "Custom workspaces cannot switch to Pro or Team checkout.",
       "downgrade": "Downgrade",
       "downgradeNotice": "Your {{currentPlan}} plan will downgrade to {{targetPlan}} on {{date}}.",
       "downgradesOn": "Downgrades to {{plan}} on {{date}}",
       "downgradeTo": "Downgrade to {{plan}}",
       "endsOn": "Ends on {{date}}",
       "features": {
-        "byok": "Bring your own LLM keys",
-        "communitySupport": "Community support",
-        "emailSupport": "Email support",
-        "existingCredits": "Existing free credits only",
-        "oneConcurrentRun": "1 concurrent run",
-        "prioritySupport": "Priority support",
-        "sharedAndPrivateAgents": "7 shared agents, unlimited private",
-        "tenConcurrentRuns": "10 concurrent runs",
-        "twoConcurrentRuns": "2 concurrent runs",
-        "unlimitedAgents": "Unlimited total agents",
-        "voiceInputFree": "Voice input (10 lifetime requests · 10 min/day per member)",
-        "voiceInputPro": "Voice input (300 requests/day · 200 min/day per member)",
-        "voiceInputTeam": "Voice input (500 requests/day · 500 min/day per member)"
+        "byok": "Bring your own LLM keys"
       },
       "free": {
-        "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
       "highlights": {
@@ -1418,7 +1444,6 @@
         "name": "Limited free"
       },
       "loadError": "Could not load billing status.",
-      "manageSubscription": "Manage subscription",
       "namedPlan": "{{plan}} plan",
       "noActivePlan": "No active plan",
       "noActiveSubscription": "No active subscription",
@@ -1426,11 +1451,9 @@
         "name": "No plan"
       },
       "perMonth": "/month",
-      "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
         "description": "Everyday agent work, priced per member.",
-        "legacyDescription": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -1439,7 +1462,6 @@
       "selectedPlan": "the selected plan",
       "team": {
         "description": "For a team that keeps agents running all day.",
-        "legacyDescription": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
@@ -1542,13 +1564,11 @@
       "subscriptionChangeConfirmed": "Subscription change confirmed."
     },
     "usage": {
-      "added": "Added {{date}}",
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
         "left": "{{value}} left",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
         "resets": "Resets {{date}}",
         "resetsRaw": "Resets {{value}}",
@@ -1569,15 +1589,12 @@
         "teamPlan": "Team plan"
       },
       "creditAdditions": "Credit additions",
-      "creditsRemaining_one": "{{value}} credit remaining",
-      "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
       "grantsTable": {
         "credits": "Credits",
         "date": "Date",
         "left": "Left"
       },
-      "left": "{{value}} left",
       "member": "Member",
       "neverExpires": "Never expires",
       "orgCredits": "Org credits",
@@ -1854,6 +1871,19 @@
     "composer": {
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
+      "create": {
+        "addStyle": "Add style",
+        "addTemplate": "Add template",
+        "exit": "Exit create mode",
+        "image": "Create image",
+        "imagePlaceholder": "Describe the image you want to create…",
+        "presentation": "Create presentation",
+        "presentationPlaceholder": "What is your presentation about?",
+        "settingsAdjusted": "Some video settings were adjusted for this model",
+        "title": "Create",
+        "video": "Create video",
+        "videoPlaceholder": "Describe the video you want to create…"
+      },
       "createWorkflow": "Create workflow",
       "imageModelForThisChat": "Image model for this chat",
       "message": "Message",
@@ -1866,7 +1896,6 @@
       "threadSuggestions": "Chat threads",
       "useForFutureChats": "Use this for future chats",
       "videoModelForThisChat": "Video model for this chat",
-      "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
         "empty": "No matching workflows",
         "loading": "Loading workflows...",
@@ -1912,7 +1941,6 @@
       "accountForThread": "Account for this chat",
       "add": "Add {{connectorName}}",
       "addConnectors": "Add connectors",
-      "authorizationFailed": "{{connectorName}} connected but could not be authorized for {{agentName}}",
       "authorized": "{{connectorName}} connected and authorized for {{agentName}}",
       "available_one": "Available connectors to connect ({{count}})",
       "available_other": "Available connectors to connect ({{count}})",
@@ -1986,84 +2014,78 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Auto · Okou decides",
+        "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Choose an avatar",
-        "help": "Choose a presenter or continue without one",
+        "label": "Avatar",
         "none": "No avatar",
-        "placementHeading": "Where should the presenter stand?",
-        "placementLeft": "Left — the slide sits to the right",
-        "placementOverlay": "Over the slide — the slide fills the frame",
-        "placementRight": "Right — the slide sits to the left"
+        "noneDescription": "Create the video without a presenter",
+        "previewLook": "Preview look {{name}}"
       },
-      "cardDescription": "Turn a file or screen recording into a finished video",
-      "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
-      "desktop": {
-        "checkingCompatibility": "Checking compatibility",
-        "description": "Screen recording lives in the {{desktopProductName}} desktop app, which captures any window and records where you click.",
-        "download": "Download for macOS",
-        "handoffDetail": "Your take opens here, ready for a presenter and a voice.",
-        "handoffTitle": "Come back to this wizard automatically",
-        "heading": "Record with {{desktopProductName}} Desktop",
-        "illustration": "Recording happens in {{desktopProductName}} Desktop",
-        "installDetail": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-        "installTitle": "Download and install {{desktopProductName}} Desktop",
-        "recordDetail": "Stop it from the same menu when you are done.",
-        "recordTitle": "Start a recording from the menu bar",
-        "unsupportedIntelMac": "Requires an Apple silicon Mac"
+      "cardDescription": "Turn an idea or material into a finished video",
+      "catalog": {
+        "empty": "No public HeyGen options are available.",
+        "error": "The HeyGen catalog could not be loaded.",
+        "loading": "Loading more options",
+        "reload": "Reload catalog",
+        "retry": "Try again"
       },
+      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
       "errors": {
-        "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
-        "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
+        "sendFailed": "The chat thread could not be created. Your request is still here so you can try again.",
+        "uploadFailed": "One or more files could not be uploaded. Remove them or try again."
       },
       "footer": {
-        "back": "Back",
-        "createInChat": "Create in chat",
-        "download": "Download source",
-        "next": "Next"
+        "cancel": "Cancel",
+        "create": "Create video",
+        "hint": "Add a prompt, files, or both"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Review your intro video",
-        "help": "Confirm the choices {{assistantName}} will receive in the new chat thread",
-        "instructions": "Editing instructions",
-        "source": "Source",
-        "voice": "Voice"
+      "format": {
+        "auto": "Auto",
+        "output": "Output format"
+      },
+      "heading": "Create your intro video",
+      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
+      "prompt": {
+        "label": "What should the video do?",
+        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
       },
       "source": {
-        "documentDescription": "Turn your slides into a narrated intro video",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Upload slides",
-        "heading": "How do you want to start?",
-        "help": "Upload the slides you already have, or record your screen with {{desktopProductName}} Desktop",
-        "recordDescription": "Capture a demo with the desktop app",
-        "recordDetail": "Needs {{desktopProductName}} Desktop on macOS",
-        "recordTitle": "Record your screen",
-        "uploadDescription": "Choose a file from your computer",
-        "uploadTitle": "Upload source"
+        "drop": "Drop files here or click to upload",
+        "remove": "Remove {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Your source is ready",
-        "help": "Check the file before you continue",
-        "inAccount": "In your account",
-        "replace": "Replace source",
-        "saved": "Saved",
-        "source": "Source"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Intro video steps",
-        "review": "Review",
-        "source": "Source",
-        "voice": "Voice"
+      "style": {
+        "auto": "Let Okou choose",
+        "browseGroups": "Browse by style",
+        "description": "The style sets scenes, transitions, text overlays, and pacing.",
+        "groups": {
+          "cinematic": "Film and photography",
+          "handmade": "Handmade and materials",
+          "iconic-artist": "Art and design",
+          "other": "Other styles",
+          "pop-culture": "Pop culture",
+          "print": "Print and publishing",
+          "retro-tech": "Retro tech and interfaces"
+        },
+        "heading": "Choose a style reference",
+        "label": "Style reference",
+        "preview": "Preview {{title}}",
+        "previewUnavailable": "A video preview is not available for this style."
       },
       "title": "Create an intro video",
       "voice": {
+        "auto": "Let Okou choose",
+        "autoDescription": "Okou picks a suitable public HeyGen voice",
+        "default": "Default · Follows avatar",
+        "defaultDescription": "Use the chosen avatar's default voice",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Choose a voice",
-        "help": "Preview a sample before you continue",
+        "label": "Voice",
         "none": "No voiceover",
-        "noneDescription": "Create a caption-led video without narration",
+        "noneDescription": "Do not add narration; keep source audio unless you ask to mute it.",
         "original": "Original audio",
-        "originalDescription": "Keep the audio from the uploaded video or recording"
+        "originalDescription": "Keep the selected source audio without adding generated speech"
       }
     },
     "mail": {
@@ -2176,6 +2198,7 @@
     "run": {
       "automatedRun": "Automated run",
       "collapseGroupedHistory": "Collapse grouped run history",
+      "collapseHistoryMessage": "Collapse history message: {{message}}",
       "collapseWorkHistory": "Collapse work history",
       "creditUsage": "Credit usage",
       "done": {
@@ -2217,6 +2240,9 @@
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
+      "relatedArtifactCount_one": "{{formattedCount}} artifact",
+      "relatedArtifactCount_other": "{{formattedCount}} artifacts",
+      "relatedArtifacts": "Related artifacts",
       "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",
@@ -2266,14 +2292,20 @@
       "draft": "Draft",
       "empty": "Start a conversation and it'll show up here",
       "markUnread": "Mark unread",
+      "movePinDown": "Move down",
+      "movePinUp": "Move up",
       "newChatWith": "New chat with {{agentName}}",
       "noUnread": "No unread chats",
       "openChatMenu": "Open chat menu",
       "openListMenu": "Open chat list menu",
       "pin": "Pin chat",
+      "pinDropAfter": "Drop after {{title}}",
+      "pinDropBefore": "Drop before {{title}}",
       "pinned": "Pinned",
       "rename": "Rename chat",
       "renameDescription": "Enter a new name for this chat thread.",
+      "reorderInstructions": "Drag to reorder. Press Space to pick up, arrow keys to move, Space to drop, or Escape to cancel.",
+      "reorderThread": "Reorder {{title}}",
       "titlePlaceholder": "Chat title",
       "unpin": "Unpin chat",
       "unread": "Unread",
@@ -2396,11 +2428,9 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "cleanupFailed": "Text was added, but the saved recording could not be removed.",
       "confirmRecording": "OK",
-      "draft": "Voice draft",
-      "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
-      "finishDraft": "Finish",
-      "finishingDraft": "Finishing...",
+      "discarding": "Removing voice draft...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2410,8 +2440,12 @@
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
       "removeDraft": "Remove voice draft",
+      "restoreFailed": "Couldn’t load your voice draft. Try again.",
+      "retry": "Retry",
+      "retryReady": "Your recording is kept. Retry transcription.",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
+      "storageFailed": "Audio could not be saved. Retry can recover only audio already saved on this device.",
       "transcribing": "Transcribing",
       "transcribingProgress": "Transcribing...",
       "transcriptionFailed": "Voice transcription failed. Try again."
@@ -2676,6 +2710,18 @@
         "continueToProvider": "Continue to the provider to authorize access.",
         "continueWithAutomatic": "Continue while Okou checks how this MCP server authenticates.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
+        "errors": {
+          "authenticationResponseInvalid": "The MCP server returned an unsupported authentication response. Verify the MCP endpoint and its authentication setup, or contact the server administrator.",
+          "authorizationUnsupported": "The OAuth provider does not support the authorization requirements used by Automatic authentication. Use Custom OAuth only if you already have compatible client credentials, or contact Okou support.",
+          "bindingChanged": "The MCP OAuth authority or client registration changed. Reconnect the connector account and try again.",
+          "clientRegistrationConflict": "The existing automatic OAuth client cannot request the required permissions while connected accounts still use it. Disconnect those accounts and connect again, or use Custom OAuth with registered client credentials.",
+          "clientRegistrationInvalid": "The OAuth provider returned invalid client registration details. Contact the server administrator, or use Custom OAuth if you already have valid registered client credentials.",
+          "clientRegistrationRejected": "The OAuth provider rejected automatic client registration and may restrict supported MCP clients or registration metadata. Use a provider-supported MCP client, use Custom OAuth only if you already have registered client credentials, or contact Okou support.",
+          "clientRegistrationUnavailable": "The OAuth provider does not offer a supported automatic client registration method. Use Custom OAuth if you already have registered client credentials, or contact Okou support.",
+          "discoveryInvalid": "The MCP server's OAuth discovery metadata is incomplete or inconsistent. Fix the advertised metadata if you manage the server, or contact the server administrator.",
+          "providerUnavailable": "The MCP OAuth provider is temporarily unavailable or rate-limited. Try again later and check the provider's availability.",
+          "unsafeUrl": "The MCP server advertised an OAuth URL that is not a public HTTPS endpoint. Fix the server's advertised OAuth URLs before trying again."
+        },
         "save": "Save",
         "saving": "Saving…",
         "title": "Connect {{connector}}"
@@ -2748,12 +2794,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "More options",
-      "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
-        "disconnected": "Disconnected",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2794,7 +2838,6 @@
       "always": "Always",
       "clearSearch": "Clear permission search",
       "descriptionAgent": "Configure which actions this agent is allowed to perform via this connector.",
-      "descriptionWorkflow": "Configure which actions this workflow is allowed to perform via this connector.",
       "find": "Find permissions",
       "findPlaceholder": "Find permissions...",
       "forTarget": "for {{target}}",
@@ -3258,15 +3301,13 @@
       "redirectTitle": "Redirecting to {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} connected",
-      "disconnected": "{{connector}} disconnected"
+      "connected": "{{connector}} connected"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Request failed",
-      "sharedDatabaseUnavailable": "The app ran into a problem. Please wait a moment, then refresh the page to try again."
+      "requestFailed": "Request failed"
     },
     "realtime": {
       "degraded": "Live updates ran into a problem. Please refresh the page.",
@@ -3503,6 +3544,7 @@
         "cozy-parlor": "Cozy Parlor",
         "crowd-ink": "Crowd Ink",
         "editorial-flatfolk": "Editorial Flatfolk",
+        "emboss-deboss": "Emboss & Deboss",
         "endpaper": "Endpaper",
         "flat-poster": "Flat Poster",
         "folk-muse": "Folk Muse",
@@ -4951,6 +4993,12 @@
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
+        "menu": {
+          "adjustSettings": "Adjust {{model}} settings",
+          "backToModels": "Back to models",
+          "changeModel": "Change {{category}} model, {{model}}",
+          "chatSettings": "Chat settings"
+        },
         "models": "Models",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
@@ -5012,6 +5060,7 @@
         "remaining_one": "{{value}} reset left",
         "remaining_other": "{{value}} resets left",
         "remainingUnavailable": "Resets left unavailable",
+        "remainingUnknown": "Resets —",
         "remainingWithExpiry_one": "{{value}} reset left · expires {{expiry}}",
         "remainingWithExpiry_other": "{{value}} resets left · expires {{expiry}}",
         "title": "Reset Codex usage?"
@@ -5081,8 +5130,12 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Let agents use a cloud browser in new chats",
+          "description": "Enable Cloud browser by default in new chats. You can still change it in any chat.",
           "title": "Cloud browser"
+        },
+        "defaultModel": {
+          "description": "Used unless a chat or run chooses another model.",
+          "title": "Default model"
         },
         "description": "Choose defaults for new chats and how messages are sent.",
         "sectionTitle": "Chat"
@@ -5136,6 +5189,32 @@
           "workerLoading": "Loading",
           "workerTitle": "Shared worker connection diagnostics",
           "workerUnavailable": "Unavailable"
+        },
+        "indexedDb": {
+          "countExplanation": "Counts use read-only transactions and do not read record bodies.",
+          "description": "Inspect record counts in the local chat cache owned by the shared worker.",
+          "loading": "Loading IndexedDB storage...",
+          "measurementUnavailable": "Snapshot measurement failed. Try again.",
+          "measureSnapshot": "Measure snapshot",
+          "measuring": "Measuring...",
+          "records": "records",
+          "refresh": "Refresh",
+          "schema": "schema",
+          "snapshotDescription": "One record can contain many threads. Size estimates UTF-8 JSON, excluding database overhead; read time excludes size estimation.",
+          "snapshotEmpty": "No cached thread snapshot.",
+          "snapshotPayload": "Estimated payload",
+          "snapshotReadDuration": "IndexedDB read time",
+          "snapshotThreads": "Threads in snapshot",
+          "snapshotTitle": "Thread snapshot",
+          "stores": "object stores",
+          "title": "IndexedDB storage",
+          "unavailable": "IndexedDB storage is unavailable."
+        },
+        "voiceInput": {
+          "default": "Default ({{model}})",
+          "description": "Choose the model for voice input v2. Speech-to-text models and GPT Audio recordings over 90 seconds use {{model}} for cleanup.",
+          "title": "Voice input model",
+          "unavailable": "Unavailable model ({{model}})"
         }
       },
       "language": {
@@ -5389,7 +5468,7 @@
     "displayNames": {
       "avatar": "Avatar",
       "finance": "Finance",
-      "imageRecognize": "Image Recognize",
+      "imageRecognition": "Image Recognition",
       "maps": "Maps",
       "peopleSearch": "People Search",
       "seo": "SEO",
@@ -5451,6 +5530,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Action required — delivery paused",
         "addAction": "Add Calendar automation",
         "addAria": "Add Google Calendar automation",
         "addDescriptionCancelled": "Run this workflow when a Google Calendar event is cancelled.",
@@ -5459,16 +5539,29 @@
         "addTitle": "Add Google Calendar automation",
         "calendarId": "Calendar ID",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "This calendar is no longer available. Choose another calendar to resume this automation.",
         "cancelledDescription": "Run when a calendar event is cancelled.",
         "cancelledRule": "When calendar {{calendar}} event is cancelled",
         "cancelledTitle": "Google Calendar event cancelled",
+        "cancelRecovery": "Cancel",
+        "changeAria": "Change Google Calendar automation",
+        "changeCalendar": "Change calendar",
+        "checkingRecovery": "Checking whether this automation can resume…",
+        "checkRecoveryStatus": "Check status",
         "createdDescription": "Run when a calendar event is created.",
         "createdRule": "When calendar {{calendar}} gets a new event",
         "createdTitle": "Google Calendar event created",
+        "enabledIntent": "Enabled",
+        "reconnectDescription": "Google Calendar needs to be reconnected before this automation can resume.",
+        "reconnectGoogleCalendar": "Reconnect Google Calendar",
+        "recoveryStatus": "Google Calendar recovery",
+        "recoveryUnconfirmed": "Delivery recovery is not confirmed. Review this automation’s warning, then check its status again.",
+        "saveCalendar": "Save calendar",
         "summary": "Calendar {{calendar}}",
         "updatedDescription": "Run when a calendar event is updated.",
         "updatedRule": "When calendar {{calendar}} event is updated",
-        "updatedTitle": "Google Calendar event updated"
+        "updatedTitle": "Google Calendar event updated",
+        "updateError": "We couldn't change this calendar. Try again."
       },
       "chat": {
         "addAction": "Add chat automation",
@@ -6044,6 +6137,7 @@
       }
     },
     "list": {
+      "actionRequired": "Action required",
       "agentEmpty": "No workflows run as this agent yet.",
       "all": "All",
       "allAgents": "All agents",
@@ -6061,6 +6155,7 @@
       },
       "noWorkflows": "No workflows",
       "open": "Open {{title}}",
+      "openRecovery": "Open {{title}} recovery",
       "runsAs": "Runs as",
       "runsAsAria": "Runs as {{agent}}",
       "section": {

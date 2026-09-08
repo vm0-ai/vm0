@@ -44,6 +44,8 @@ function parseGoogleCalendarAutomationConfig(
 export async function migrateGoogleCalendarAutomationTargets(
   db: Db,
   args: {
+    readonly orgId: string;
+    readonly userId: string;
     readonly connectorId: string;
     readonly fromCalendarId: string;
     readonly toCalendarId: string;
@@ -59,6 +61,8 @@ export async function migrateGoogleCalendarAutomationTargets(
     .from(workflowAutomations)
     .where(
       and(
+        eq(workflowAutomations.orgId, args.orgId),
+        eq(workflowAutomations.ownerUserId, args.userId),
         eq(workflowAutomations.eventConnectorId, args.connectorId),
         eq(workflowAutomations.kind, "event"),
         inArray(workflowAutomations.eventType, [
@@ -87,6 +91,8 @@ export async function migrateGoogleCalendarAutomationTargets(
       .where(
         and(
           eq(workflowAutomations.id, automation.id),
+          eq(workflowAutomations.orgId, args.orgId),
+          eq(workflowAutomations.ownerUserId, args.userId),
           eq(workflowAutomations.eventConnectorId, args.connectorId),
         ),
       );

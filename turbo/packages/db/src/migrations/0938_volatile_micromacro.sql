@@ -1,3 +1,0 @@
-ALTER TABLE "feishu_org_installations" ADD COLUMN "custom_connector_id" uuid;--> statement-breakpoint
-ALTER TABLE "feishu_org_installations" ADD CONSTRAINT "fk_feishu_org_installations_custom_connector" FOREIGN KEY ("custom_connector_id","org_id") REFERENCES "public"."org_custom_connectors"("id","org_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_feishu_org_installations_custom_connector" ON "feishu_org_installations" USING btree ("custom_connector_id");

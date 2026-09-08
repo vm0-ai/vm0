@@ -36,22 +36,19 @@
     },
     "create": "Benutzerdefinierten Avatar erstellen",
     "description": "Wählen Sie einen Stil oder klicken Sie auf „Mischen“, um eine Überraschung zu erleben.",
-    "intensity": {
-      "chill": "Entspannt",
-      "hyped": "Begeistert",
-      "normal": "Normal"
-    },
+    "editDescription": "Passen Sie einzelne Details an oder mischen Sie für einen neuen Look.",
+    "editTitle": "Avatar bearbeiten",
     "nextStep": "Nächster Schritt",
     "previousStep": "Vorheriger Schritt",
     "randomize": "Avatar zufällig auswählen",
     "shuffleHint": "Mischen Sie – probieren Sie einen zufälligen Look!",
     "steps": {
-      "angle": "Winkel",
       "color": "Farbe",
       "face": "Gesicht",
       "hair": "Haar",
       "mood": "Stimmung",
-      "skin": "Haut"
+      "skin": "Haut",
+      "sweater": "Pullover"
     },
     "title": "Geben Sie Ihrem Agenten ein Gesicht",
     "use": "Diesen Avatar verwenden"
@@ -74,7 +71,6 @@
   "detail": {
     "chatWith": "Chatten Sie mit {{agentName}}",
     "defaultDescription": "Ihr KI-Teamkollege, auf Sie zugeschnitten",
-    "noSelection": "Kein Agent ausgewählt",
     "notFound": {
       "back": "Zurück zum Team",
       "description": "Der Agent „{{agentId}}“ existiert nicht oder Sie haben keinen Zugriff darauf.",
@@ -616,8 +612,9 @@
     "resultCount_other": "{{count}} Ergebnisse",
     "searchAgents": "Suchagenten...",
     "searching": "Suche...",
-    "searchWorkspace": "Chats, Nachrichten, Workflows und Artefakte durchsuchen...",
+    "searchWorkspace": "Arbeitsbereich durchsuchen...",
     "sections": {
+      "agents": "Agenten",
       "artifacts": "Artefakte",
       "chats": "Chats",
       "messages": "Nachrichten",

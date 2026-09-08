@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
+import { ProviderHttpError } from "../../provider-error";
+import { parseProviderTokenResponse } from "../../token-response";
 
 const ACCOUNT_SUBDOMAIN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i;
 
@@ -35,19 +36,18 @@ export async function refreshNetSuiteAccessToken(
       response.status,
     );
   }
-  const parsed = z
-    .object({
+  const data = await parseProviderTokenResponse(
+    response,
+    z.object({
       access_token: z.string().min(1),
       refresh_token: z.string().min(1).optional(),
       expires_in: z.number().positive().optional(),
-    })
-    .safeParse(await response.json());
-  if (!parsed.success) {
-    throw new ProviderResponseError("Invalid NetSuite token response");
-  }
+    }),
+    "Invalid NetSuite token response",
+  );
   return {
-    accessToken: parsed.data.access_token,
-    refreshToken: parsed.data.refresh_token,
-    expiresIn: parsed.data.expires_in,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresIn: data.expires_in,
   };
 }

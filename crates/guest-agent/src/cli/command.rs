@@ -1,9 +1,9 @@
 //! Claude Code command construction.
 //!
 //! This module owns argv shape and mock binary selection. Runtime process
-//! spawning stays in `execute_cli`.
+//! spawning stays in the shared CLI execution path.
 
-use guest_common::log_info;
+use guest_telemetry::log_info;
 
 #[cfg(test)]
 use crate::env;
@@ -104,7 +104,7 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
 fn default_claude_effort_for_model(model: &str) -> Option<&'static str> {
     let bare = model.strip_prefix("anthropic/").unwrap_or(model);
     match bare {
-        "claude-fable-5-1" | "claude-fable-5.1" | "claude-fable-5" | "fable" => Some("max"),
+        "claude-fable-5-1" | "claude-fable-5.1" | "fable" => Some("max"),
         _ => None,
     }
 }
@@ -136,7 +136,7 @@ mod tests {
     const TEST_APPEND_SYSTEM_PROMPT_FILE: &str = "/tmp/claude-append-system-prompt";
 
     fn disable_system_log() {
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
     }
 
     fn build_claude_args_for_test(
@@ -269,7 +269,7 @@ mod tests {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
-        guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
+        guest_telemetry::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
         let args = build_claude_args(ClaudeArgsConfig {
             model: "",
@@ -280,7 +280,7 @@ mod tests {
             settings: "",
             replay_user_messages: true,
         });
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();
 
         assert!(args.contains(&"--resume".to_string()));
@@ -362,9 +362,9 @@ mod tests {
     fn build_claude_args_fable_defaults_effort_max() {
         for model in [
             "claude-fable-5-1",
+            "claude-fable-5.1",
+            "anthropic/claude-fable-5-1",
             "anthropic/claude-fable-5.1",
-            "claude-fable-5",
-            "anthropic/claude-fable-5",
             "fable",
         ] {
             let args = build_claude_args_for_model_test(model);

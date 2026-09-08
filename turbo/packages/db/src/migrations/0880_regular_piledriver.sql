@@ -1,1 +1,0 @@
-ALTER TABLE "zero_runs" ADD COLUMN "codex_service_tier" varchar(20);

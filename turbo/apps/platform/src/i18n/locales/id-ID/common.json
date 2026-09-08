@@ -394,6 +394,7 @@
         "sendMessage": "Kirim pesan",
         "setIcon": "Atur ikon (Ctrl+Shift+1-9)",
         "showShortcuts": "Tampilkan pintasan",
+        "togglePin": "Sematkan / lepas sematan chat",
         "toggleSidebar": "Alihkan sidebar"
       },
       "title": "Pintasan Keyboard"
@@ -628,7 +629,6 @@
       "renameImportedTemplate": "Ganti nama templat",
       "searchConnector": "Cari templat",
       "searchConnectors": "Cari templat",
-      "selected": "Templat: {{title}}",
       "selectStyle": "Pilih gaya {{style}}",
       "selectTemplate": "Pilih template {{title}}",
       "selectVideo": "Pilih template video {{title}}",
@@ -1006,6 +1006,20 @@
       "accessNotAllowed": "Akses tidak diizinkan.",
       "userBanned": "Akses akun ditangguhkan karena aktivitas pada akun ini melanggar Ketentuan Penggunaan {{brandName}}. Jika ada pertanyaan, hubungi {{supportEmail}}."
     },
+    "desktop": {
+      "phases": {
+        "completed": "Anda sudah masuk ke Desktop. Anda dapat menutup jendela ini.",
+        "connecting": "Menghubungkan sesi desktop Anda.",
+        "consumed": "Menyelesaikan proses masuk di Desktop. Biarkan jendela ini terbuka.",
+        "failed": "Proses masuk tidak dapat diselesaikan. Mulai lagi dari Desktop atau coba lagi di browser ini.",
+        "no-workspaces": "Buat atau bergabung dengan ruang kerja di aplikasi web, lalu masuk lagi dari Desktop.",
+        "pending": "Buka Desktop untuk melanjutkan masuk.",
+        "selecting": "Pilih ruang kerja untuk komputer ini."
+      },
+      "reopen": "Buka Desktop",
+      "retry": "Coba lagi",
+      "title": "Masuk ke Desktop"
+    },
     "documentTitles": {
       "signIn": "Masuk",
       "signUp": "Daftar"
@@ -1021,19 +1035,35 @@
       "continuation": {
         "activationErrorDescription": "Kami tidak dapat menyelesaikan proses masuk. Mulai lagi dan coba kembali.",
         "activationErrorTitle": "Proses masuk tidak dapat diselesaikan",
+        "backupDescription": "Simpan kode ini di tempat yang aman. Setiap kode dapat digunakan sekali jika Anda kehilangan akses ke ponsel.",
+        "backupTitle": "Simpan kode cadangan Anda",
         "chooseOrganizationDescription": "Pilih organisasi untuk melanjutkan ke {{brandName}}.",
         "chooseOrganizationTitle": "Pilih organisasi",
         "completeDescription": "Mengarahkan Anda ke {{brandName}}.",
         "completeTitle": "Proses masuk selesai",
+        "createOrganization": "Buat organisasi",
+        "invitationError": "Undangan ini tidak dapat diterima. Coba lagi, atau minta undangan baru jika tautan ini telah kedaluwarsa.",
+        "joinOrganization": "Bergabung dengan {{organizationName}}",
         "loadingDescription": "Memeriksa langkah berikutnya yang diperlukan akun Anda.",
         "loadingTitle": "Menyelesaikan proses masuk",
         "noOrganizationsDescription": "Akun ini tidak memiliki organisasi yang tersedia. Minta akses kepada administrator organisasi, lalu mulai lagi.",
         "noOrganizationsTitle": "Tidak ada organisasi yang tersedia",
+        "organizationName": "Nama organisasi",
+        "passwordTaskError": "Kata sandi Anda tidak dapat diperbarui. Pilih kata sandi yang lebih kuat dan coba lagi.",
+        "phoneNumberLabel": "Nomor telepon",
         "recoveryAction": "Mulai lagi",
+        "savedCodes": "Saya sudah menyimpan kode",
         "secondFactorDescription": "Proses masuk ini memerlukan langkah verifikasi tambahan yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "secondFactorTitle": "Verifikasi tambahan diperlukan",
+        "securityDescription": "Tambahkan cara kedua untuk memverifikasi identitas Anda.",
+        "securityTitle": "Siapkan verifikasi dua langkah",
         "selectOrganization": "Lanjutkan dengan {{organizationName}}",
+        "sendCode": "Kirim kode",
+        "setupKey": "Kunci penyiapan",
+        "setupKeyDescription": "Tambahkan kunci penyiapan ini ke aplikasi autentikator, lalu masukkan kode yang dihasilkan.",
         "signedInAs": "Masuk sebagai {{identifier}}",
+        "taskComplete": "Pengaturan keamanan Anda tersimpan. Lanjutkan untuk menyelesaikan proses masuk.",
+        "taskError": "Langkah ini tidak dapat diselesaikan. Periksa detail Anda dan coba lagi.",
         "unsupportedDescription": "Akun Anda mengembalikan langkah autentikasi yang tidak didukung halaman ini. Mulai lagi untuk mencoba metode masuk lain.",
         "unsupportedTitle": "Langkah masuk tidak tersedia"
       },
@@ -1044,7 +1074,12 @@
       "signIn": {
         "addAccount": "Tambah akun",
         "appleMethod": "Lanjutkan dengan Apple",
+        "authenticatorMethod": "Gunakan aplikasi autentikator",
+        "authenticatorSubtitle": "Masukkan kode dari aplikasi autentikator Anda.",
         "back": "Kembali",
+        "backupCodeLabel": "Kode cadangan",
+        "backupCodeMethod": "Gunakan kode cadangan",
+        "backupCodeSubtitle": "Masukkan kode cadangan yang belum digunakan dan disimpan saat menyiapkan verifikasi dua langkah.",
         "chooseAccountSubtitle": "Pilih akun yang ingin Anda gunakan untuk melanjutkan.",
         "chooseAccountTitle": "Pilih akun",
         "chooseMethodSubtitle": "Mengalami masalah? Anda dapat menggunakan salah satu metode ini untuk masuk.",
@@ -1071,6 +1106,7 @@
         "hidePassword": "Sembunyikan kata sandi",
         "identifierLabel": "Alamat email atau nama pengguna",
         "identifierPlaceholder": "Masukkan alamat email atau nama pengguna Anda",
+        "invalidCode": "Kode tersebut salah. Coba lagi.",
         "lastUsed": "Terakhir digunakan",
         "methodsHelpPrompt": "Tidak memiliki salah satu opsi ini?",
         "newPasswordLabel": "Kata sandi baru",
@@ -1089,6 +1125,9 @@
         "passwordResetMethod": "Reset kata sandi Anda",
         "passwordSubtitle": "Masukkan kata sandi yang terkait dengan akun Anda",
         "passwordTitle": "Masukkan kata sandi Anda",
+        "phoneCodeMethod": "Kirim SMS ke {{identifier}}",
+        "phoneCodeSubtitle": "Masukkan kode verifikasi yang dikirim ke ponsel Anda.",
+        "phoneCodeTitle": "Periksa ponsel Anda",
         "recoveryMethodsDivider": "Atau, masuk dengan metode lain",
         "recoveryTitle": "Lupa kata sandi?",
         "resendCode": "Tidak menerima kode? Kirim ulang",
@@ -1096,6 +1135,8 @@
         "resetPassword": "Reset Kata Sandi",
         "resetPasswordCodeSubtitle": "Pertama, masukkan kode yang dikirim ke alamat email Anda",
         "resetPasswordCodeTitle": "Reset kata sandi",
+        "secondFactorSubtitle": "Pilih cara memverifikasi proses masuk Anda.",
+        "secondFactorTitle": "Verifikasi proses masuk",
         "separator": "atau",
         "showPassword": "Tampilkan kata sandi",
         "signOutOfOtherSessions": "Keluar dari semua perangkat lain",
@@ -1106,6 +1147,7 @@
         "useAnotherMethod": "Gunakan metode lain",
         "usernameLabel": "Nama pengguna",
         "usernamePlaceholder": "Masukkan nama pengguna Anda",
+        "verificationCodeExpired": "Kode ini sudah tidak berlaku. Masukkan kode baru.",
         "verify": "Verifikasi"
       },
       "signUp": {
@@ -1359,38 +1401,22 @@
     },
     "plans": {
       "cancellationNotice": "Paket {{plan}} Anda telah dibatalkan dan akan berakhir pada {{date}}.",
-      "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
       "compare": "Bandingkan paket",
       "compareAll": "Bandingkan semua paket",
-      "currentPlan": "Paket saat ini",
       "custom": {
         "name": "Kustom"
       },
       "customAccess": "Akses kustom dengan {{value}} eksekusi concurrent",
       "customCancellationNotice": "Paket kustom Anda akan berakhir pada {{date}}.",
-      "customCheckoutUnavailable": "Ruang kerja kustom tidak dapat beralih ke checkout Pro atau Team.",
       "downgrade": "Turunkan",
       "downgradeNotice": "Paket {{currentPlan}} Anda akan diturunkan ke {{targetPlan}} pada {{date}}.",
       "downgradesOn": "Turun ke {{plan}} pada {{date}}",
       "downgradeTo": "Turun ke {{plan}}",
       "endsOn": "Berakhir pada {{date}}",
       "features": {
-        "byok": "Gunakan kunci LLM Anda sendiri",
-        "communitySupport": "Dukungan komunitas",
-        "emailSupport": "Dukungan email",
-        "existingCredits": "Hanya kredit gratis yang sudah ada",
-        "oneConcurrentRun": "1 eksekusi concurrent",
-        "prioritySupport": "Dukungan prioritas",
-        "sharedAndPrivateAgents": "7 agen bersama, agen privat tanpa batas",
-        "tenConcurrentRuns": "10 eksekusi concurrent",
-        "twoConcurrentRuns": "2 eksekusi concurrent",
-        "unlimitedAgents": "Agen total tidak terbatas",
-        "voiceInputFree": "Input suara (10 permintaan total · 10 mnt/hari per anggota)",
-        "voiceInputPro": "Input suara (300 permintaan/hari · 200 mnt/hari per anggota)",
-        "voiceInputTeam": "Input suara (500 permintaan/hari · 500 mnt/hari per anggota)"
+        "byok": "Gunakan kunci LLM Anda sendiri"
       },
       "free": {
-        "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
       "highlights": {
@@ -1417,7 +1443,6 @@
         "name": "Gratis terbatas"
       },
       "loadError": "Tidak dapat memuat status penagihan.",
-      "manageSubscription": "Kelola langganan",
       "namedPlan": "Paket {{plan}}",
       "noActivePlan": "Tidak ada paket aktif",
       "noActiveSubscription": "Tidak ada langganan aktif",
@@ -1425,11 +1450,9 @@
         "name": "Tidak ada paket"
       },
       "perMonth": "/bulan",
-      "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
         "description": "Kerja agen harian, dihitung per anggota.",
-        "legacyDescription": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -1438,7 +1461,6 @@
       "selectedPlan": "paket yang dipilih",
       "team": {
         "description": "Untuk tim yang menjalankan agen sepanjang hari.",
-        "legacyDescription": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
@@ -1541,13 +1563,11 @@
       "subscriptionChangeConfirmed": "Perubahan langganan dikonfirmasi."
     },
     "usage": {
-      "added": "Ditambahkan {{date}}",
       "allowance": {
         "day": "{{value}} hari",
         "hour": "{{value}} jam",
         "left": "sisa {{value}}",
         "minute": "{{value}} m",
-        "remaining": "{{remaining}} / {{total}} kredit",
         "remainingAria": "Sisa jatah penggunaan {{label}}",
         "resets": "Diatur ulang {{date}}",
         "resetsRaw": "Diatur ulang {{value}}",
@@ -1568,15 +1588,12 @@
         "teamPlan": "Paket tim"
       },
       "creditAdditions": "Penambahan kredit",
-      "creditsRemaining_one": "{{value}} kredit tersisa",
-      "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
       "grantsTable": {
         "credits": "Kredit",
         "date": "Tanggal",
         "left": "Sisa"
       },
-      "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
       "orgCredits": "Kredit organisasi",
@@ -1851,6 +1868,19 @@
     "composer": {
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
+      "create": {
+        "addStyle": "Tambahkan gaya",
+        "addTemplate": "Tambahkan templat",
+        "exit": "Keluar dari mode pembuatan",
+        "image": "Buat gambar",
+        "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
+        "presentation": "Buat presentasi",
+        "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
+        "title": "Buat",
+        "video": "Buat video",
+        "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
+      },
       "createWorkflow": "Buat alur kerja",
       "imageModelForThisChat": "Model gambar untuk chat ini",
       "message": "Pesan",
@@ -1863,7 +1893,6 @@
       "threadSuggestions": "Thread chat",
       "useForFutureChats": "Gunakan ini untuk chat berikutnya",
       "videoModelForThisChat": "Model video untuk chat ini",
-      "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
         "empty": "Tidak ada alur kerja yang cocok",
         "loading": "Memuat alur kerja...",
@@ -1909,7 +1938,6 @@
       "accountForThread": "Akun untuk utas ini",
       "add": "Tambahkan {{connectorName}}",
       "addConnectors": "Tambahkan konektor",
-      "authorizationFailed": "{{connectorName}} terhubung tetapi tidak dapat diotorisasi untuk {{agentName}}",
       "authorized": "{{connectorName}} terhubung dan diotorisasi untuk {{agentName}}",
       "available_one": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
@@ -1983,84 +2011,78 @@
     },
     "introVideo": {
       "avatar": {
+        "auto": "Otomatis · Okou memilih",
+        "autoDescription": "Pilih presenter publik HeyGen yang sesuai dengan permintaan",
         "heading": "Pilih avatar",
-        "help": "Pilih presenter atau lanjutkan tanpa avatar",
+        "label": "Avatar",
         "none": "Tanpa avatar",
-        "placementHeading": "Di mana presenter sebaiknya berdiri?",
-        "placementLeft": "Kiri — slide berada di kanan",
-        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
-        "placementRight": "Kanan — slide berada di kiri"
+        "noneDescription": "Buat video tanpa presenter",
+        "previewLook": "Pratinjau tampilan {{name}}"
       },
-      "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
-      "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
-      "desktop": {
-        "checkingCompatibility": "Memeriksa kompatibilitas",
-        "description": "Perekaman layar ada di aplikasi desktop {{desktopProductName}}, yang menangkap jendela apa pun dan merekam tempat Anda mengeklik.",
-        "download": "Unduh untuk macOS",
-        "handoffDetail": "Hasil rekaman terbuka di sini, siap diberi presenter dan suara.",
-        "handoffTitle": "Kembali ke wizard ini secara otomatis",
-        "heading": "Rekam dengan {{desktopProductName}} Desktop",
-        "illustration": "Perekaman berlangsung di {{desktopProductName}} Desktop",
-        "installDetail": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-        "installTitle": "Unduh dan pasang {{desktopProductName}} Desktop",
-        "recordDetail": "Hentikan dari menu yang sama setelah selesai.",
-        "recordTitle": "Mulai perekaman dari bilah menu",
-        "unsupportedIntelMac": "Memerlukan Mac Apple silicon"
+      "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
+      "catalog": {
+        "empty": "Tidak ada pilihan publik HeyGen yang tersedia.",
+        "error": "Katalog HeyGen tidak dapat dimuat.",
+        "loading": "Memuat pilihan lainnya",
+        "reload": "Muat ulang katalog",
+        "retry": "Coba lagi"
       },
+      "description": "Tambahkan materi, jelaskan keinginan Anda, lalu pilih gaya, avatar, dan suara HeyGen jika diperlukan.",
       "errors": {
-        "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
-        "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
+        "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
+        "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
       },
       "footer": {
-        "back": "Kembali",
-        "createInChat": "Buat di chat",
-        "download": "Unduh sumber",
-        "next": "Berikutnya"
+        "cancel": "Batal",
+        "create": "Buat video",
+        "hint": "Tambahkan instruksi, file, atau keduanya"
       },
-      "review": {
-        "avatar": "Avatar",
-        "heading": "Tinjau video intro Anda",
-        "help": "Konfirmasikan pilihan yang akan diterima {{assistantName}} di utas chat baru",
-        "instructions": "Petunjuk pengeditan",
-        "source": "Sumber",
-        "voice": "Suara"
+      "format": {
+        "auto": "Otomatis",
+        "output": "Format keluaran"
+      },
+      "heading": "Buat video intro Anda",
+      "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
+      "prompt": {
+        "label": "Apa yang harus disampaikan video ini?",
+        "placeholder": "Jelaskan tujuan, audiens, bahasa, nada, atau detail penting lainnya"
       },
       "source": {
-        "documentDescription": "Ubah slide Anda menjadi video intro bernarasi",
-        "documentFormats": "PPTX, PPT, PDF, HTML",
-        "documentTitle": "Unggah slide",
-        "heading": "Bagaimana Anda ingin memulai?",
-        "help": "Unggah slide yang sudah Anda miliki, atau rekam layar dengan {{desktopProductName}} Desktop",
-        "recordDescription": "Rekam demo dengan aplikasi desktop",
-        "recordDetail": "Perlu {{desktopProductName}} Desktop di macOS",
-        "recordTitle": "Rekam layar Anda",
-        "uploadDescription": "Pilih berkas dari komputer Anda",
-        "uploadTitle": "Unggah sumber"
+        "drop": "Letakkan file di sini atau klik untuk mengunggah",
+        "remove": "Hapus {{filename}}"
       },
-      "sourceReview": {
-        "format": "Format",
-        "heading": "Sumber Anda sudah siap",
-        "help": "Periksa file sebelum melanjutkan",
-        "inAccount": "Di akun Anda",
-        "replace": "Ganti sumber",
-        "saved": "Tersimpan",
-        "source": "Sumber"
-      },
-      "steps": {
-        "avatar": "Avatar",
-        "label": "Langkah video intro",
-        "review": "Tinjau",
-        "source": "Sumber",
-        "voice": "Suara"
+      "style": {
+        "auto": "Biarkan Okou memilih",
+        "browseGroups": "Jelajahi menurut gaya",
+        "description": "Gaya menentukan adegan, transisi, teks overlay, dan tempo.",
+        "groups": {
+          "cinematic": "Film dan fotografi",
+          "handmade": "Kerajinan dan material",
+          "iconic-artist": "Seni dan desain",
+          "other": "Gaya lainnya",
+          "pop-culture": "Budaya pop",
+          "print": "Percetakan dan penerbitan",
+          "retro-tech": "Teknologi retro dan antarmuka"
+        },
+        "heading": "Pilih referensi gaya",
+        "label": "Referensi gaya",
+        "preview": "Pratinjau {{title}}",
+        "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
       },
       "title": "Buat video intro",
       "voice": {
+        "auto": "Biarkan Okou memilih",
+        "autoDescription": "Okou memilih suara publik HeyGen yang sesuai",
+        "default": "Default · Mengikuti avatar",
+        "defaultDescription": "Gunakan suara default avatar yang dipilih",
+        "defaultForAvatar": "Default · {{avatar}}",
+        "defaultForAvatarDescription": "Gunakan suara HeyGen default milik {{avatar}}",
         "heading": "Pilih suara",
-        "help": "Dengarkan sampel sebelum melanjutkan",
+        "label": "Suara",
         "none": "Tanpa narasi",
-        "noneDescription": "Buat video berbasis teks tanpa narasi",
+        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
         "original": "Audio asli",
-        "originalDescription": "Pertahankan audio dari video atau rekaman yang diunggah"
+        "originalDescription": "Pertahankan audio sumber yang dipilih tanpa menambahkan ucapan buatan"
       }
     },
     "mail": {
@@ -2173,6 +2195,7 @@
     "run": {
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
+      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {
@@ -2214,6 +2237,9 @@
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefak",
+      "relatedArtifactCount_other": "{{formattedCount}} artefak",
+      "relatedArtifacts": "Artefak terkait",
       "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
@@ -2262,14 +2288,20 @@
       "draft": "Draf",
       "empty": "Mulai percakapan dan percakapan itu akan muncul di sini",
       "markUnread": "Tandai belum dibaca",
+      "movePinDown": "Pindahkan ke bawah",
+      "movePinUp": "Pindahkan ke atas",
       "newChatWith": "Chat baru dengan {{agentName}}",
       "noUnread": "Tidak ada chat belum dibaca",
       "openChatMenu": "Buka menu chat",
       "openListMenu": "Buka menu daftar chat",
       "pin": "Sematkan chat",
+      "pinDropAfter": "Letakkan setelah {{title}}",
+      "pinDropBefore": "Letakkan sebelum {{title}}",
       "pinned": "Disematkan",
       "rename": "Ganti nama chat",
       "renameDescription": "Masukkan nama baru untuk thread chat ini.",
+      "reorderInstructions": "Seret untuk mengurutkan ulang. Tekan Spasi untuk memilih, tombol panah untuk memindahkan, Spasi untuk melepas, atau Esc untuk membatalkan.",
+      "reorderThread": "Urutkan ulang {{title}}",
       "titlePlaceholder": "Judul chat",
       "unpin": "Lepas sematan chat",
       "unread": "Belum dibaca",
@@ -2392,11 +2424,9 @@
     },
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
+      "cleanupFailed": "Teks ditambahkan, tetapi rekaman yang tersimpan tidak dapat dihapus.",
       "confirmRecording": "OK",
-      "draft": "Draf suara",
-      "draftTooLong": "Draf suara ini terlalu panjang. Mulai rekaman baru.",
-      "finishDraft": "Selesaikan",
-      "finishingDraft": "Menyelesaikan...",
+      "discarding": "Menghapus draf suara...",
       "input": "Input suara",
       "inputLimitReached": "Batas input suara tercapai. Upgrade ke Pro atau Team untuk batas yang lebih tinggi.",
       "inputLimitReachedMember": "Batas input suara tercapai. Minta admin ruang kerja untuk upgrade agar mendapatkan batas yang lebih tinggi.",
@@ -2406,8 +2436,12 @@
       "microphoneAccessDenied": "Akses mikrofon ditolak. Izinkan akses mikrofon dan coba lagi.",
       "openingMicrophone": "Membuka mikrofon...",
       "removeDraft": "Hapus draf suara",
+      "restoreFailed": "Draf suara Anda tidak dapat dimuat. Coba lagi.",
+      "retry": "Coba lagi",
+      "retryReady": "Rekaman Anda tetap tersimpan. Coba transkripsi lagi.",
       "starting": "Memulai input suara",
       "stopRecording": "Berhenti merekam",
+      "storageFailed": "Audio tidak dapat disimpan. Coba lagi hanya memulihkan audio yang sudah tersimpan di perangkat ini.",
       "transcribing": "Mentranskripsi",
       "transcribingProgress": "Mentranskripsi...",
       "transcriptionFailed": "Transkripsi suara gagal. Coba lagi."
@@ -2676,6 +2710,18 @@
         "continueToProvider": "Lanjutkan ke penyedia untuk mengotorisasi akses.",
         "continueWithAutomatic": "Lanjutkan selagi Okou memeriksa cara server MCP ini melakukan autentikasi.",
         "description": "Rahasia Anda dienkripsi saat disimpan dan disisipkan ke permintaan keluar oleh firewall. Rahasia ini tidak pernah diekspos ke agen sebagai variabel lingkungan.",
+        "errors": {
+          "authenticationResponseInvalid": "Server MCP mengembalikan respons autentikasi yang tidak didukung. Periksa endpoint MCP dan konfigurasi autentikasinya, atau hubungi administrator server.",
+          "authorizationUnsupported": "Penyedia OAuth tidak mendukung persyaratan otorisasi yang digunakan oleh autentikasi Otomatis. Gunakan OAuth Kustom hanya jika Anda sudah memiliki kredensial klien yang kompatibel, atau hubungi dukungan Okou.",
+          "bindingChanged": "Otoritas OAuth MCP atau pendaftaran klien telah berubah. Hubungkan kembali akun konektor lalu coba lagi.",
+          "clientRegistrationConflict": "Klien OAuth otomatis yang ada tidak dapat meminta izin yang diperlukan selama masih digunakan oleh akun yang terhubung. Putuskan akun tersebut lalu hubungkan kembali, atau gunakan OAuth Kustom dengan kredensial klien terdaftar.",
+          "clientRegistrationInvalid": "Penyedia OAuth mengembalikan detail pendaftaran klien yang tidak valid. Hubungi administrator server, atau gunakan OAuth Kustom jika Anda sudah memiliki kredensial klien terdaftar yang valid.",
+          "clientRegistrationRejected": "Penyedia OAuth menolak pendaftaran klien otomatis dan mungkin membatasi klien MCP atau metadata pendaftaran yang didukung. Gunakan klien MCP yang didukung penyedia, OAuth Kustom hanya jika Anda sudah memiliki kredensial klien terdaftar, atau hubungi dukungan Okou.",
+          "clientRegistrationUnavailable": "Penyedia OAuth tidak menawarkan metode pendaftaran klien otomatis yang didukung. Gunakan OAuth Kustom jika Anda sudah memiliki kredensial klien terdaftar, atau hubungi dukungan Okou.",
+          "discoveryInvalid": "Metadata discovery OAuth server MCP tidak lengkap atau tidak konsisten. Perbaiki metadata yang dipublikasikan jika Anda mengelola server, atau hubungi administrator server.",
+          "providerUnavailable": "Penyedia OAuth MCP untuk sementara tidak tersedia atau sedang membatasi permintaan. Coba lagi nanti dan periksa ketersediaan penyedia.",
+          "unsafeUrl": "Server MCP memublikasikan URL OAuth yang bukan endpoint HTTPS publik. Perbaiki URL OAuth yang dipublikasikan server sebelum mencoba lagi."
+        },
         "save": "Simpan",
         "saving": "Menyimpan…",
         "title": "Hubungkan {{connector}}"
@@ -2748,12 +2794,10 @@
       "mcpStreamableHttp": "MCP · Streamable HTTP",
       "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
-      "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
-        "disconnected": "Terputus",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -2794,7 +2838,6 @@
       "always": "Selalu",
       "clearSearch": "Hapus pencarian izin",
       "descriptionAgent": "Konfigurasikan tindakan yang diizinkan dilakukan agen ini melalui konektor ini.",
-      "descriptionWorkflow": "Konfigurasikan tindakan yang diizinkan dilakukan workflow ini melalui konektor ini.",
       "find": "Cari izin",
       "findPlaceholder": "Cari izin...",
       "forTarget": "untuk {{target}}",
@@ -3258,15 +3301,13 @@
       "redirectTitle": "Mengarahkan ke {{connector}}…"
     },
     "toasts": {
-      "connected": "{{connector}} terhubung",
-      "disconnected": "{{connector}} terputus"
+      "connected": "{{connector}} terhubung"
     }
   },
   "global": {
     "errors": {
       "httpStatus": "HTTP {{status}}",
-      "requestFailed": "Permintaan gagal",
-      "sharedDatabaseUnavailable": "Aplikasi mengalami masalah. Tunggu sebentar, lalu segarkan halaman untuk mencoba lagi."
+      "requestFailed": "Permintaan gagal"
     },
     "realtime": {
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
@@ -3503,6 +3544,7 @@
         "cozy-parlor": "Cozy Parlor",
         "crowd-ink": "Crowd Ink",
         "editorial-flatfolk": "Editorial Flatfolk",
+        "emboss-deboss": "Embos & Debos",
         "endpaper": "Endpaper",
         "flat-poster": "Flat Poster",
         "folk-muse": "Folk Muse",
@@ -4951,6 +4993,12 @@
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
+        "menu": {
+          "adjustSettings": "Sesuaikan pengaturan {{model}}",
+          "backToModels": "Kembali ke model",
+          "changeModel": "Ubah model {{category}}, {{model}}",
+          "chatSettings": "Pengaturan chat"
+        },
         "models": "Model",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
@@ -5012,6 +5060,7 @@
         "remaining_one": "{{value}} reset tersisa",
         "remaining_other": "{{value}} reset tersisa",
         "remainingUnavailable": "Sisa reset tidak tersedia",
+        "remainingUnknown": "Reset —",
         "remainingWithExpiry_other": "{{value}} reset tersisa · kedaluwarsa {{expiry}}",
         "title": "Reset penggunaan Codex?"
       },
@@ -5080,8 +5129,12 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Izinkan agen menggunakan browser cloud di chat baru",
+          "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
           "title": "Browser cloud"
+        },
+        "defaultModel": {
+          "description": "Digunakan kecuali chat atau proses memilih model lain.",
+          "title": "Model default"
         },
         "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
         "sectionTitle": "Chat"
@@ -5135,6 +5188,32 @@
           "workerLoading": "Memuat",
           "workerTitle": "Diagnostik koneksi shared worker",
           "workerUnavailable": "Tidak tersedia"
+        },
+        "indexedDb": {
+          "countExplanation": "Penghitungan menggunakan transaksi hanya-baca dan tidak membaca isi rekaman.",
+          "description": "Periksa jumlah rekaman dalam cache chat lokal yang dikelola shared worker.",
+          "loading": "Memuat penyimpanan IndexedDB...",
+          "measurementUnavailable": "Pengukuran snapshot gagal. Coba lagi.",
+          "measureSnapshot": "Ukur snapshot",
+          "measuring": "Mengukur...",
+          "records": "rekaman",
+          "refresh": "Segarkan",
+          "schema": "skema",
+          "snapshotDescription": "Satu rekaman dapat berisi banyak thread. Ukuran memperkirakan JSON UTF-8 tanpa overhead database; waktu baca tidak termasuk perkiraan ukuran.",
+          "snapshotEmpty": "Tidak ada snapshot thread dalam cache.",
+          "snapshotPayload": "Perkiraan ukuran data",
+          "snapshotReadDuration": "Waktu baca IndexedDB",
+          "snapshotThreads": "Thread dalam snapshot",
+          "snapshotTitle": "Snapshot thread",
+          "stores": "penyimpanan objek",
+          "title": "Penyimpanan IndexedDB",
+          "unavailable": "Penyimpanan IndexedDB tidak tersedia."
+        },
+        "voiceInput": {
+          "default": "Default ({{model}})",
+          "description": "Pilih model untuk input suara v2. Model transkripsi menggunakan {{model}} untuk merapikan teks.",
+          "title": "Model input suara",
+          "unavailable": "Model tidak tersedia ({{model}})"
         }
       },
       "language": {
@@ -5388,7 +5467,7 @@
     "displayNames": {
       "avatar": "Avatar",
       "finance": "Keuangan",
-      "imageRecognize": "Pengenalan Gambar",
+      "imageRecognition": "Pengenalan Gambar",
       "maps": "Peta",
       "peopleSearch": "Pencarian Orang",
       "seo": "SEO",
@@ -5450,6 +5529,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Tindakan diperlukan — pengiriman dijeda",
         "addAction": "Tambahkan otomatisasi Kalender",
         "addAria": "Tambahkan otomatisasi Google Calendar",
         "addDescriptionCancelled": "Jalankan alur kerja ini saat acara Google Calendar dibatalkan.",
@@ -5458,16 +5538,29 @@
         "addTitle": "Tambahkan otomatisasi Google Calendar",
         "calendarId": "ID Kalender",
         "calendarIdPlaceholder": "utama",
+        "calendarNotFoundDescription": "Kalender ini tidak lagi tersedia. Pilih kalender lain untuk melanjutkan otomatisasi ini.",
         "cancelledDescription": "Jalankan saat acara kalender dibatalkan.",
         "cancelledRule": "Saat acara kalender {{calendar}} dibatalkan",
         "cancelledTitle": "Acara Google Calendar dibatalkan",
+        "cancelRecovery": "Batal",
+        "changeAria": "Ubah otomatisasi Google Calendar",
+        "changeCalendar": "Ubah kalender",
+        "checkingRecovery": "Memeriksa apakah otomatisasi ini dapat dilanjutkan…",
+        "checkRecoveryStatus": "Periksa status",
         "createdDescription": "Jalankan saat acara kalender dibuat.",
         "createdRule": "Saat kalender {{calendar}} mendapat acara baru",
         "createdTitle": "Acara Google Calendar dibuat",
+        "enabledIntent": "Diaktifkan",
+        "reconnectDescription": "Google Calendar perlu dihubungkan kembali sebelum otomatisasi ini dapat dilanjutkan.",
+        "reconnectGoogleCalendar": "Hubungkan kembali Google Calendar",
+        "recoveryStatus": "Pemulihan Google Kalender",
+        "recoveryUnconfirmed": "Pemulihan belum dikonfirmasi. Tinjau peringatan otomatisasi ini, lalu periksa kembali statusnya.",
+        "saveCalendar": "Simpan kalender",
         "summary": "Kalender {{calendar}}",
         "updatedDescription": "Jalankan saat acara kalender diperbarui.",
         "updatedRule": "Saat acara kalender {{calendar}} diperbarui",
-        "updatedTitle": "Acara Google Calendar diperbarui"
+        "updatedTitle": "Acara Google Calendar diperbarui",
+        "updateError": "Kami tidak dapat mengubah kalender ini. Coba lagi."
       },
       "chat": {
         "addAction": "Tambahkan otomatisasi chat",
@@ -6043,6 +6136,7 @@
       }
     },
     "list": {
+      "actionRequired": "Tindakan diperlukan",
       "agentEmpty": "Belum ada alur kerja yang dijalankan sebagai agen ini.",
       "all": "Semua",
       "allAgents": "Semua agen",
@@ -6060,6 +6154,7 @@
       },
       "noWorkflows": "Tidak ada alur kerja",
       "open": "Buka {{title}}",
+      "openRecovery": "Buka pemulihan {{title}}",
       "runsAs": "Dijalankan sebagai",
       "runsAsAria": "Dijalankan sebagai {{agent}}",
       "section": {

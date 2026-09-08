@@ -62,18 +62,18 @@ const CONTINUATION_INITIALIZE_ATTEMPT$ = computed((): DiagnosticAttempt => {
   return { method: "session", step: "recovery" };
 });
 
-export interface AuthV2SignInDiagnosticOptions {
+interface AuthV2SignInDiagnosticOptions {
   readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
 }
 
-export interface AuthV2SignUpDiagnosticOptions {
+interface AuthV2SignUpDiagnosticOptions {
   readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isOAuthCallbackRoute: boolean;
 }
 
-export interface AuthV2Diagnostics {
+interface AuthV2Diagnostics {
   readonly instrumentContinuation: (
     signals: AuthV2ContinuationSignals,
   ) => AuthV2ContinuationSignals;
@@ -103,7 +103,8 @@ function signInErrorCategory(
     case "user-banned": {
       return "invalid-credentials";
     }
-    case "code-expired": {
+    case "code-expired":
+    case "invalid-code": {
       return "invalid-code";
     }
     case "passkey-cancelled": {
@@ -119,6 +120,9 @@ function signInErrorCategory(
       return "unknown";
     }
     case "clerk": {
+      if (error.clerkCode === "external_account_not_found") {
+        return "account-not-found";
+      }
       if (error.field === "code") {
         return "invalid-code";
       }
@@ -237,8 +241,7 @@ function continuationStateErrorCategory(
   if (flowState.status === "unknown") {
     switch (flowState.reason) {
       case "second-factor":
-      case "unknown-task":
-      case "unsupported-task": {
+      case "unknown-task": {
         return "unsupported-state";
       }
     }
@@ -372,8 +375,15 @@ function signInFactorMethod(
     case "email-code": {
       return "email-code";
     }
-    case "client-trust-email-code": {
-      return "email-code";
+    case "second-factor": {
+      return (
+        {
+          email_code: "email-code",
+          phone_code: "phone-code",
+          totp: "totp",
+          backup_code: "backup-code",
+        } as const
+      )[factor.strategy];
     }
     case "oauth": {
       return factor.strategy === "oauth_apple" ? "apple-oauth" : "google-oauth";
@@ -425,22 +435,28 @@ function createSignInFinishCommands(
       }
       const flowState = get(signals.state$);
       const error = get(signals.error$);
+      const oneTapStage = options.isBaseRoute
+        ? get(signals.googleOneTapStage$)
+        : null;
       const result = signInResult(
         flowState,
         error,
         get(options.continuationState$),
       );
-      if (result.outcome === "failure") {
-        const method =
-          options.isBaseRoute && error ? "google-one-tap" : attempt.method;
-        return diagnosticProperties(flow, { ...attempt, method }, result);
-      }
-      if (options.isBaseRoute && flowState.status === "complete") {
+      if (
+        oneTapStage &&
+        (result.outcome === "failure" ||
+          oneTapStage === "sign-up" ||
+          flowState.status === "complete")
+      ) {
         return diagnosticProperties(
-          flow,
-          { method: "google-one-tap", step: "initialize" },
+          oneTapStage === "sign-up" ? "sign-up" : flow,
+          { method: "google-one-tap", step: `one-tap-${oneTapStage}` },
           result,
         );
+      }
+      if (result.outcome === "failure") {
+        return diagnosticProperties(flow, attempt, result);
       }
       return null;
     },
@@ -488,9 +504,12 @@ function createSignInAttemptSignals(
           ? { method: "email-code", step: "email-code" }
           : null;
       }
-      case "client-trust-code": {
-        return get(signals.code$).trim()
-          ? { method: "email-code", step: "email-code" }
+      case "second-factor": {
+        return get(signals.code$).trim() && flowState.selectedFactor
+          ? {
+              method: signInFactorMethod(flowState.selectedFactor),
+              step: "second-factor",
+            }
           : null;
       }
       case "password-reset-code": {
@@ -550,11 +569,14 @@ function createSignInAttemptSignals(
     if (flowState.status !== "incomplete") {
       return null;
     }
-    if (
-      flowState.step === "email-code" ||
-      flowState.step === "client-trust-code"
-    ) {
+    if (flowState.step === "email-code") {
       return { method: "email-code", step: "email-code" };
+    }
+    if (flowState.step === "second-factor" && flowState.selectedFactor) {
+      return {
+        method: signInFactorMethod(flowState.selectedFactor),
+        step: "second-factor",
+      };
     }
     return flowState.step === "password-reset-code"
       ? { method: "password-reset", step: "password-reset-code" }
@@ -789,6 +811,7 @@ function createContinuationInstrumentation(
       const flowState = get(signals.state$);
       if (
         flowState.status !== "incomplete" ||
+        flowState.task !== "choose-organization" ||
         !flowState.organizations.some((organization) => {
           return organization.id === organizationId;
         })

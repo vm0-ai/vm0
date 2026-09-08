@@ -287,7 +287,7 @@ fn deny_peer_process_inspection() -> io::Result<()> {
     // SAFETY: PR_SET_DUMPABLE changes only the current single-threaded Guest
     // Agent bootstrap process. Reapplying it here is required because the
     // preceding credential and exec transitions may reset the value set by
-    // `vsock-guest` before exec.
+    // `guest-control-server` before exec.
     if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
         return Err(io::Error::last_os_error());
     }

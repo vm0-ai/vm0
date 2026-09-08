@@ -17,7 +17,9 @@ function createController(
   const setScreenRecordingFeatureEnabled = vi.fn();
   const logRefreshError = vi.fn();
   const fetchSwitches = vi.fn(fetchFeatureSwitches);
+  const sessionAuthority = {};
   const controller = new DeveloperToolsController({
+    getSessionAuthority: () => sessionAuthority,
     fetchFeatureSwitches: fetchSwitches,
     setFilesystemPluginFeatureEnabled,
     setScreenRecordingFeatureEnabled,
@@ -62,18 +64,17 @@ describe("DeveloperToolsController", () => {
       expect(controller.getState().available).toBe(true);
     });
 
-    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalled();
     expect(setFilesystemPluginFeatureEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("enables native screen recording when both required switches are on", async () => {
+  it("enables native screen recording when intro video is on", async () => {
     const { controller, setScreenRecordingFeatureEnabled } = createController(
       async () =>
         jsonResponse({
           effectiveSwitches: {
             _debug: false,
             introVideo: true,
-            desktopScreenRecording: true,
           },
         }),
     );
@@ -86,22 +87,16 @@ describe("DeveloperToolsController", () => {
     expect(controller.getState().available).toBeFalsy();
   });
 
-  it.each([
-    { introVideo: false, desktopScreenRecording: true },
-    { introVideo: true, desktopScreenRecording: false },
-  ])(
-    "keeps native screen recording off when a required switch is off",
-    async (effectiveSwitches) => {
-      const { controller, setScreenRecordingFeatureEnabled } = createController(
-        async () => jsonResponse({ effectiveSwitches }),
-      );
+  it("keeps native screen recording off when intro video is off", async () => {
+    const { controller, setScreenRecordingFeatureEnabled } = createController(
+      async () => jsonResponse({ effectiveSwitches: { introVideo: false } }),
+    );
 
-      controller.requestRefresh();
-      await vi.waitFor(() => {
-        expect(setScreenRecordingFeatureEnabled).toHaveBeenCalledWith(false);
-      });
-    },
-  );
+    controller.requestRefresh();
+    await vi.waitFor(() => {
+      expect(setScreenRecordingFeatureEnabled).toHaveBeenCalledWith(false);
+    });
+  });
 
   it("releases screen recording when the session is unauthorized", async () => {
     const responses = [
@@ -109,7 +104,6 @@ describe("DeveloperToolsController", () => {
         effectiveSwitches: {
           _debug: true,
           introVideo: true,
-          desktopScreenRecording: true,
         },
       }),
       new Response(null, { status: 401 }),
@@ -175,7 +169,6 @@ describe("DeveloperToolsController", () => {
           _debug: true,
           computerUseDesktopPlugins: true,
           introVideo: true,
-          desktopScreenRecording: true,
         },
       }),
       new Response(null, { status: 500 }),

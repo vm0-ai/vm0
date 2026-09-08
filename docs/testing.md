@@ -122,10 +122,10 @@ We use a real database in tests, not a mock. This catches:
 
 The database runs locally in Docker, so tests are fast and reliable. Isolate most
 test data with unique user and organization IDs, not by mocking the database
-layer. `testContext()` resets runtime state and mocks; it does not roll back
-persisted rows. When a test must use a fixed shared identity or another
-quota-limited scope, register every resource it creates for teardown through the
-production API instead of deleting database rows directly.
+layer. The `testContext()` signal owns runtime state and mock cleanup; it does
+not roll back persisted rows. When a test must use a fixed shared identity or
+another quota-limited scope, register every resource it creates for teardown
+through the production API instead of deleting database rows directly.
 
 ### Why Real Filesystem?
 
@@ -191,7 +191,7 @@ vi.useFakeTimers();
 vi.advanceTimersByTime(1000);
 
 // ✅ Mock the application clock for the owning test lifecycle
-mockNow(context.signal, fixedTimestamp);
+mockNow(fixedTimestamp, context.signal);
 ```
 
 Fake timers can mask race conditions and timing bugs. Platform production code
@@ -226,17 +226,26 @@ Focus tests on business logic and integration points, not on proving that librar
 Test CLI commands via `command.parseAsync()`, mock the Web API with MSW:
 
 ```typescript
-it("should create a compose", async () => {
+it("should scrape a page", async () => {
   server.use(
-    http.post("http://localhost:3000/api/composes", () => {
-      return HttpResponse.json({ id: "cmp-123" });
+    http.post("http://localhost:3000/api/scrape", () => {
+      return HttpResponse.json({
+        requestedUrl: "https://example.com",
+        format: "markdown",
+        mode: "standard",
+        provider: "firecrawl",
+        creditsCharged: 4,
+        billingCategory: "standard.markdown",
+        billingQuantity: 1,
+        result: { markdown: "# Example" },
+      });
     }),
   );
 
-  await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
+  await scrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
 
   expect(console.log).toHaveBeenCalledWith(
-    expect.stringContaining("Compose created"),
+    expect.stringContaining("# Example"),
   );
 });
 ```
@@ -250,9 +259,7 @@ mocking only external services:
 
 ```typescript
 const context = testContext();
-const client = setupApp({ context, routes: agentsRoutes })(
-  agentsMainContract,
-);
+const client = setupApp({ context, routes: agentsRoutes })(agentsMainContract);
 
 it("should list an agent created through the API", async () => {
   context.mocks.clerk.session(userId, orgId);
@@ -285,19 +292,20 @@ internal services.
 Test through the same initialization flow as production:
 
 ```typescript
-detachedSetupPage({
+await setupPage({
   context,
   path: "/dashboard",
 });
 
-await user.click(await screen.findByRole("button", { name: "Create" }));
+expect(await screen.findByText("Dashboard")).toBeInTheDocument();
+click(getButtonByName("Create"));
 
 expect(await screen.findByText("Created successfully")).toBeInTheDocument();
 ```
 
-Don't render components directly. For view tests, use `detachedSetupPage()`,
-which mirrors `main.ts` startup and lets tests wait for the rendered state they
-care about.
+Don't render components directly. For view tests, await `setupPage()`, which
+initializes i18n, mirrors `main.ts` startup, renders the complete Router, and
+waits for its first observable page content.
 
 ## Reference
 

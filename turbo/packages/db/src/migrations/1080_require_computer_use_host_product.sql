@@ -1,0 +1,1 @@
+ALTER TABLE "computer_use_hosts" ALTER COLUMN "client_product" DROP DEFAULT;

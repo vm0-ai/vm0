@@ -1,12 +1,11 @@
 import {
   derivePlatformServiceOrigin,
-  resolvePlatformEnvironment,
-  rewritePlatformHostname,
   type PlatformService,
-} from "../lib/platform-host.ts";
+} from "@okouai/core/platform-service-origin";
+
+import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 
 type PlatformHostTarget = PlatformService;
-export { rewritePlatformHostname };
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;

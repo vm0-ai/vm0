@@ -17,7 +17,7 @@ import {
 } from "../chat-threads";
 
 describe("google drive artifact recovery contract", () => {
-  it("keeps account readiness additive across API and Platform versions", () => {
+  it("requires account readiness on every connected sync status", () => {
     const legacyNotSynced = { status: "not_synced" } as const;
     const accountReadyNotSynced = {
       status: "not_synced",
@@ -28,8 +28,10 @@ describe("google drive artifact recovery contract", () => {
     });
 
     expect(
-      chatThreadArtifactGoogleDriveSyncSchema.parse(legacyNotSynced),
-    ).toStrictEqual(legacyNotSynced);
+      chatThreadArtifactGoogleDriveSyncSchema.safeParse(legacyNotSynced)
+        .success,
+    ).toBe(false);
+    // An App bundle built before the marker keeps its own tolerant parser.
     expect(previousNotSyncedSchema.parse(accountReadyNotSynced)).toStrictEqual(
       legacyNotSynced,
     );
@@ -235,43 +237,46 @@ describe("chat thread event sequence contract", () => {
     });
   });
 
-  it("accepts image model events and pre-field browser snapshots", () => {
+  it("accepts video model fields and pre-image-model payloads", () => {
     const selectedImageModel = imageModelIdSchema.parse("fal-ai/qwen-image");
     const createdAt = "2026-08-17T00:00:00.000Z";
+    const imageModelEvent = {
+      id: "11111111-1111-4111-8111-111111111111",
+      seqId: 1,
+      kind: "image_model_updated" as const,
+      chatThreadId: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      title: null,
+      selectedVideoModel: null,
+      selectedImageModel,
+      createdAt,
+    };
 
-    expect(
-      chatThreadEventSchema.parse({
-        id: "11111111-1111-4111-8111-111111111111",
-        seqId: 1,
-        kind: "image_model_updated",
-        chatThreadId: "22222222-2222-4222-8222-222222222222",
-        agentId: "33333333-3333-4333-8333-333333333333",
-        title: null,
-        selectedImageModel,
-        createdAt,
-      }),
-    ).toMatchObject({
+    expect(chatThreadEventSchema.parse(imageModelEvent)).toMatchObject({
       kind: "image_model_updated",
       selectedImageModel,
     });
 
+    const snapshotThread = {
+      id: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      title: "Cached before image model persistence",
+      sortAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      pinnedAt: null,
+      renamedAt: null,
+      selectedVideoModel: null,
+    };
+    const snapshotResponse = {
+      chatThreads: [snapshotThread],
+      latestEventId: null,
+      latestSeqId: null,
+    };
+
     expect(
-      chatThreadsContract.snapshot.responses[200].safeParse({
-        chatThreads: [
-          {
-            id: "22222222-2222-4222-8222-222222222222",
-            agentId: "33333333-3333-4333-8333-333333333333",
-            title: "Cached before image model persistence",
-            sortAt: createdAt,
-            createdAt,
-            updatedAt: createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      }).success,
+      chatThreadsContract.snapshot.responses[200].safeParse(snapshotResponse)
+        .success,
     ).toBe(true);
   });
 

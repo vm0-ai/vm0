@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
+  getBuiltInConcreteProviderType,
   isBuiltInModelProviderType,
   isSupportedRunModel,
   modelProviderTypeSchema,
@@ -56,7 +56,7 @@ export const resolveIntegrationModelRouteForUser$ = command(
       serviceTier: pin.serviceTier,
       cliAgentType: getFrameworkForType(
         isBuiltInModelProviderType(providerType.data)
-          ? getVm0ConcreteProviderType(pin.selectedModel)
+          ? getBuiltInConcreteProviderType(pin.selectedModel)
           : providerType.data,
       ),
     };

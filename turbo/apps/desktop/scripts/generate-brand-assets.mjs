@@ -27,6 +27,7 @@ const trayIcons = [
   "tray-iconDisabled",
   "tray-iconRunning",
 ];
+const runningTrayFrameCount = 60;
 
 async function pngBuffer(svg, size) {
   return sharp(svg)
@@ -66,15 +67,44 @@ async function generateAppIcon() {
 async function generateTrayIcons() {
   for (const iconName of trayIcons) {
     const svg = await readFile(path.join(assetsDirectory, `${iconName}.svg`));
+    const render =
+      iconName === "tray-iconRunning" ? runningTrayPngBuffer : pngBuffer;
     const [regularPng, retinaPng] = await Promise.all([
-      pngBuffer(svg, 18),
-      pngBuffer(svg, 36),
+      render(svg, 18),
+      render(svg, 36),
     ]);
     await Promise.all([
       writeFile(path.join(assetsDirectory, `${iconName}.png`), regularPng),
       writeFile(path.join(assetsDirectory, `${iconName}@2x.png`), retinaPng),
     ]);
   }
+}
+
+async function runningTrayPngBuffer(svg, size) {
+  const frames = await Promise.all(
+    Array.from({ length: runningTrayFrameCount }, async (_, index) => {
+      const angle = (index * 360) / runningTrayFrameCount;
+      const rotatedSvg = svg
+        .toString()
+        .replace(/<g transform="/, `<g transform="rotate(${angle} 256 256) `);
+      return {
+        input: await pngBuffer(Buffer.from(rotatedSvg), size),
+        left: index * size,
+        top: 0,
+      };
+    }),
+  );
+  return sharp({
+    create: {
+      width: size * runningTrayFrameCount,
+      height: size,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite(frames)
+    .png({ adaptiveFiltering: false, compressionLevel: 9 })
+    .toBuffer();
 }
 
 await Promise.all([generateAppIcon(), generateTrayIcons()]);

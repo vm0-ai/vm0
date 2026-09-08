@@ -18,18 +18,28 @@ import koKR from "../../i18n/clerk-localizations/ko-KR.json";
 import koKRUrl from "../../i18n/clerk-localizations/ko-KR.json?url";
 import ptBR from "../../i18n/clerk-localizations/pt-BR.json";
 import ptBRUrl from "../../i18n/clerk-localizations/pt-BR.json?url";
+import type { SupportedLocale } from "../../i18n/resources.ts";
+
+export type ClerkLocalizationLocale = Exclude<SupportedLocale, "en-US">;
 
 const clerkLocalizationFixtures = [
-  { localization: deDE, url: deDEUrl },
-  { localization: esES, url: esESUrl },
-  { localization: frFR, url: frFRUrl },
-  { localization: hiIN, url: hiINUrl },
-  { localization: idID, url: idIDUrl },
-  { localization: itIT, url: itITUrl },
-  { localization: jaJP, url: jaJPUrl },
-  { localization: koKR, url: koKRUrl },
-  { localization: ptBR, url: ptBRUrl },
+  { locale: "de-DE", localization: deDE, url: deDEUrl },
+  { locale: "es-ES", localization: esES, url: esESUrl },
+  { locale: "fr-FR", localization: frFR, url: frFRUrl },
+  { locale: "hi-IN", localization: hiIN, url: hiINUrl },
+  { locale: "id-ID", localization: idID, url: idIDUrl },
+  { locale: "it-IT", localization: itIT, url: itITUrl },
+  { locale: "ja-JP", localization: jaJP, url: jaJPUrl },
+  { locale: "ko-KR", localization: koKR, url: koKRUrl },
+  { locale: "pt-BR", localization: ptBR, url: ptBRUrl },
 ] as const;
+
+export function clerkLocalizationFixtureForRequest(requestUrl: string) {
+  const requestPath = new URL(requestUrl, location.href).pathname;
+  return clerkLocalizationFixtures.find(({ url }) => {
+    return new URL(url, location.href).pathname === requestPath;
+  });
+}
 
 export const clerkLocalizationHandlers = clerkLocalizationFixtures.map(
   ({ localization, url }) => {

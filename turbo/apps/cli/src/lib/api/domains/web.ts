@@ -20,6 +20,28 @@ import {
   avatarVideoAvatarsResponseSchema,
   avatarVideoVoicesResponseSchema,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import type {
+  IntroVideoAvatarsQuery,
+  IntroVideoAvatarsResponse,
+  IntroVideoPresenterGenerateRequest,
+  IntroVideoPresenterGenerateResponse,
+  IntroVideoStylesQuery,
+  IntroVideoStylesResponse,
+  IntroVideoVoiceGenerateRequest,
+  IntroVideoVoiceGenerateResponse,
+  IntroVideoVoicesQuery,
+  IntroVideoVoicesResponse,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoAvatarsResponseSchema,
+  introVideoStylesResponseSchema,
+  introVideoVoicesResponseSchema,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
+import {
+  introVideoAgentResponseSchema,
+  type IntroVideoAgentGenerateRequest,
+  type IntroVideoAgentResponse,
+} from "@okouai/api-contracts/contracts/intro-video-agent";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
@@ -610,6 +632,20 @@ function statusForBuiltInGenerationError(code: string): number {
     return 504;
   }
   if (
+    code === "GENERATION_OUTPUT_SAFETY_BLOCKED" ||
+    code === "GENERATION_INPUT_SAFETY_REJECTED" ||
+    code === "GENERATION_INPUT_MEDIA_UNREACHABLE" ||
+    code === "GENERATION_INPUT_MEDIA_INVALID"
+  ) {
+    return 422;
+  }
+  if (code === "GENERATION_INVALID_PARAMETERS") {
+    return 400;
+  }
+  if (code === "GENERATION_PROVIDER_UNAVAILABLE") {
+    return 503;
+  }
+  if (
     code.startsWith("BYTEPLUS_INVALID_PARAMETER") ||
     code.startsWith("BYTEPLUS_INPUT_")
   ) {
@@ -989,6 +1025,199 @@ export async function generateWebAvatarVideo(
     token,
     fallback: "Failed to generate avatar video",
   });
+}
+
+/**
+ * Generate the private transparent presenter take used by Intro Video.
+ * This endpoint accepts run credentials only and is intentionally not exposed
+ * through the public `okou generate` surface.
+ */
+export async function generateWebIntroVideoPresenter(
+  options: IntroVideoPresenterGenerateRequest,
+): Promise<IntroVideoPresenterGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/presenter/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate Intro Video presenter",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<IntroVideoPresenterGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate Intro Video presenter",
+  });
+}
+
+/** Submit once and return the durable native Video Agent job without waiting. */
+export async function generateWebIntroVideoAgent(
+  options: IntroVideoAgentGenerateRequest,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/agent/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to submit Intro Video Agent job",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return introVideoAgentResponseSchema.parse(await response.json());
+}
+
+/** Reconcile one existing job; this endpoint never creates another video. */
+export async function getWebIntroVideoAgent(
+  generationId: string,
+): Promise<IntroVideoAgentResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoAgentResponseSchema.parse(
+    await getIntroVideoCatalog(
+      new URL(
+        `/api/intro-video/agent/${encodeURIComponent(generationId)}`,
+        baseUrl,
+      ),
+      "Failed to get Intro Video Agent job",
+    ),
+  );
+}
+
+/**
+ * Generate the private HeyGen narration track used by Intro Video.
+ * The returned permanent URL is reused for presenter lip sync and final mix.
+ */
+export async function generateWebIntroVideoVoice(
+  options: IntroVideoVoiceGenerateRequest,
+): Promise<IntroVideoVoiceGenerateResponse> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(
+    new URL("/api/intro-video/voice/generate", baseUrl),
+    {
+      method: "POST",
+      headers: headersWithCliClientHeaders({
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify(options),
+    },
+  );
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate Intro Video narration",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return readBuiltInGenerationResponse<IntroVideoVoiceGenerateResponse>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate Intro Video narration",
+  });
+}
+
+function introVideoCatalogUrl(
+  baseUrl: string,
+  collection: "avatars" | "styles" | "voices",
+  query: Record<string, string | number | undefined>,
+): URL {
+  const url = new URL(`/api/intro-video/${collection}`, baseUrl);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url;
+}
+
+async function getIntroVideoCatalog(
+  url: URL,
+  fallback: string,
+): Promise<unknown> {
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders({
+      Authorization: `Bearer ${token}`,
+    }),
+  });
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(response, fallback);
+    throw new ApiRequestError(message, code, response.status);
+  }
+  return await response.json();
+}
+
+export async function listWebIntroVideoAvatars(
+  query: IntroVideoAvatarsQuery,
+): Promise<IntroVideoAvatarsResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoAvatarsResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "avatars", query),
+      "Failed to list Intro Video avatars",
+    ),
+  );
+}
+
+export async function listWebIntroVideoStyles(
+  query: IntroVideoStylesQuery,
+): Promise<IntroVideoStylesResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoStylesResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "styles", query),
+      "Failed to list Intro Video styles",
+    ),
+  );
+}
+
+export async function listWebIntroVideoVoices(
+  query: IntroVideoVoicesQuery,
+): Promise<IntroVideoVoicesResponse> {
+  const baseUrl = await getBaseUrl();
+  return introVideoVoicesResponseSchema.parse(
+    await getIntroVideoCatalog(
+      introVideoCatalogUrl(baseUrl, "voices", query),
+      "Failed to list Intro Video voices",
+    ),
+  );
 }
 
 function avatarVideoCollectionUrl(

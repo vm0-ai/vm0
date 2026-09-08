@@ -4,7 +4,7 @@ import type { PluginOption } from "vite";
 
 import { isAllowedDevArtifactFetchUrl } from "./src/lib/dev-artifact-fetch-url.ts";
 
-const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
+const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__okou-dev-artifact-fetch";
 const DEV_ARTIFACT_FETCH_PROXY_HEADERS = [
   "cache-control",
   "content-disposition",
@@ -70,7 +70,7 @@ function handleDevArtifactFetchProxyRequest(
 
 export function devArtifactFetchProxy(): PluginOption {
   return {
-    name: "vm0-dev-artifact-fetch-proxy",
+    name: "okou-dev-artifact-fetch-proxy",
     configureServer(server) {
       server.middlewares.use(DEV_ARTIFACT_FETCH_PROXY_PATH, (req, res) => {
         handleDevArtifactFetchProxyRequest(req, res);

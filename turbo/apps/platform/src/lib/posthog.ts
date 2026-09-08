@@ -1,3 +1,4 @@
+import { isDesktopAuthFlow } from "./desktop-auth-flow.ts";
 import { command, state } from "ccstate";
 import { posthog, type CaptureResult } from "posthog-js/dist/module.slim";
 import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
@@ -7,58 +8,78 @@ const RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 const POSTHOG_HOST = RUNTIME_CONFIG.postHogHost;
 const POSTHOG_KEY = RUNTIME_CONFIG.postHogKey;
 
-export const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
+const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
 const AUTH_V2_DIAGNOSTIC_DISTINCT_ID = "auth-v2";
-export const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
+const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
 const APP_FIRST_SKELETON_PAINT_DISTINCT_ID = "app-bootstrap";
 
-export type AuthV2DiagnosticFlow = "sign-in" | "sign-up" | "unknown";
+const AUTH_V2_DIAGNOSTIC_FLOWS = ["sign-in", "sign-up", "unknown"] as const;
+export type AuthV2DiagnosticFlow = (typeof AUTH_V2_DIAGNOSTIC_FLOWS)[number];
 
+const AUTH_V2_DIAGNOSTIC_METHODS = [
+  "apple-oauth",
+  "backup-code",
+  "email-code",
+  "google-oauth",
+  "google-one-tap",
+  "identifier",
+  "organization",
+  "passkey",
+  "password",
+  "password-reset",
+  "phone-code",
+  "session",
+  "totp",
+  "unknown",
+] as const;
 export type AuthV2DiagnosticMethod =
-  | "apple-oauth"
-  | "email-code"
-  | "google-oauth"
-  | "google-one-tap"
-  | "identifier"
-  | "organization"
-  | "passkey"
-  | "password"
-  | "password-reset"
-  | "session"
-  | "unknown";
+  (typeof AUTH_V2_DIAGNOSTIC_METHODS)[number];
 
-export type AuthV2DiagnosticStep =
-  | "choose-factor"
-  | "choose-organization"
-  | "choose-session"
-  | "details"
-  | "email-code"
-  | "identifier"
-  | "initialize"
-  | "new-password"
-  | "oauth-callback"
-  | "password"
-  | "password-reset-code"
-  | "recovery"
-  | "restart"
-  | "unknown";
+const AUTH_V2_DIAGNOSTIC_STEPS = [
+  "choose-factor",
+  "choose-organization",
+  "choose-session",
+  "details",
+  "email-code",
+  "identifier",
+  "initialize",
+  "new-password",
+  "oauth-callback",
+  "one-tap-continuation",
+  "one-tap-exchange",
+  "one-tap-prompt",
+  "one-tap-sign-up",
+  "password",
+  "password-reset-code",
+  "recovery",
+  "restart",
+  "second-factor",
+  "unknown",
+] as const;
+export type AuthV2DiagnosticStep = (typeof AUTH_V2_DIAGNOSTIC_STEPS)[number];
 
-export type AuthV2DiagnosticOutcome = "failure" | "success" | "unknown";
+const AUTH_V2_DIAGNOSTIC_OUTCOMES = ["failure", "success", "unknown"] as const;
+export type AuthV2DiagnosticOutcome =
+  (typeof AUTH_V2_DIAGNOSTIC_OUTCOMES)[number];
 
+const AUTH_V2_DIAGNOSTIC_ERROR_CATEGORIES = [
+  "account-not-found",
+  "cancelled",
+  "captcha",
+  "configuration",
+  "invalid-code",
+  "invalid-credentials",
+  "invalid-input",
+  "method-unavailable",
+  "none",
+  "organization-unavailable",
+  "provider-error",
+  "session-unavailable",
+  "unknown",
+  "unsupported-state",
+] as const;
 export type AuthV2DiagnosticErrorCategory =
-  | "cancelled"
-  | "captcha"
-  | "configuration"
-  | "invalid-code"
-  | "invalid-credentials"
-  | "invalid-input"
-  | "method-unavailable"
-  | "none"
-  | "organization-unavailable"
-  | "provider-error"
-  | "session-unavailable"
-  | "unknown"
-  | "unsupported-state";
+  (typeof AUTH_V2_DIAGNOSTIC_ERROR_CATEGORIES)[number];
 
 export interface AuthV2DiagnosticProperties {
   readonly error_category: AuthV2DiagnosticErrorCategory;
@@ -68,100 +89,15 @@ export interface AuthV2DiagnosticProperties {
   readonly step: AuthV2DiagnosticStep;
 }
 
-function authV2DiagnosticFlow(value: unknown): AuthV2DiagnosticFlow {
-  switch (value) {
-    case "sign-in":
-    case "sign-up":
-    case "unknown": {
-      return value;
-    }
-    default: {
-      return "unknown";
-    }
-  }
-}
-
-function authV2DiagnosticMethod(value: unknown): AuthV2DiagnosticMethod {
-  switch (value) {
-    case "apple-oauth":
-    case "email-code":
-    case "google-oauth":
-    case "google-one-tap":
-    case "identifier":
-    case "organization":
-    case "passkey":
-    case "password":
-    case "password-reset":
-    case "session":
-    case "unknown": {
-      return value;
-    }
-    default: {
-      return "unknown";
-    }
-  }
-}
-
-function authV2DiagnosticStep(value: unknown): AuthV2DiagnosticStep {
-  switch (value) {
-    case "choose-factor":
-    case "choose-organization":
-    case "choose-session":
-    case "details":
-    case "email-code":
-    case "identifier":
-    case "initialize":
-    case "new-password":
-    case "oauth-callback":
-    case "password":
-    case "password-reset-code":
-    case "recovery":
-    case "restart":
-    case "unknown": {
-      return value;
-    }
-    default: {
-      return "unknown";
-    }
-  }
-}
-
-function authV2DiagnosticOutcome(value: unknown): AuthV2DiagnosticOutcome {
-  switch (value) {
-    case "failure":
-    case "success":
-    case "unknown": {
-      return value;
-    }
-    default: {
-      return "unknown";
-    }
-  }
-}
-
-function authV2DiagnosticErrorCategory(
+function oneOf<T extends string>(
   value: unknown,
-): AuthV2DiagnosticErrorCategory {
-  switch (value) {
-    case "cancelled":
-    case "captcha":
-    case "configuration":
-    case "invalid-code":
-    case "invalid-credentials":
-    case "invalid-input":
-    case "method-unavailable":
-    case "none":
-    case "organization-unavailable":
-    case "provider-error":
-    case "session-unavailable":
-    case "unknown":
-    case "unsupported-state": {
-      return value;
-    }
-    default: {
-      return "unknown";
-    }
-  }
+  allowed: readonly T[],
+): T | "unknown" {
+  return (
+    allowed.find((candidate) => {
+      return candidate === value;
+    }) ?? "unknown"
+  );
 }
 
 function finiteNonNegativeNumber(value: unknown): number | undefined {
@@ -173,7 +109,7 @@ function finiteNonNegativeNumber(value: unknown): number | undefined {
 function sanitizePostHogCaptureResult(
   captureResult: CaptureResult | null,
 ): CaptureResult | null {
-  if (captureResult === null) {
+  if (captureResult === null || isDesktopAuthFlow()) {
     return null;
   }
   if (captureResult.event === APP_FIRST_SKELETON_PAINT_EVENT) {
@@ -214,11 +150,14 @@ function sanitizePostHogCaptureResult(
     properties: {
       $process_person_profile: false,
       distinct_id: AUTH_V2_DIAGNOSTIC_DISTINCT_ID,
-      error_category: authV2DiagnosticErrorCategory(properties.error_category),
-      flow: authV2DiagnosticFlow(properties.flow),
-      method: authV2DiagnosticMethod(properties.method),
-      outcome: authV2DiagnosticOutcome(properties.outcome),
-      step: authV2DiagnosticStep(properties.step),
+      error_category: oneOf(
+        properties.error_category,
+        AUTH_V2_DIAGNOSTIC_ERROR_CATEGORIES,
+      ),
+      flow: oneOf(properties.flow, AUTH_V2_DIAGNOSTIC_FLOWS),
+      method: oneOf(properties.method, AUTH_V2_DIAGNOSTIC_METHODS),
+      outcome: oneOf(properties.outcome, AUTH_V2_DIAGNOSTIC_OUTCOMES),
+      step: oneOf(properties.step, AUTH_V2_DIAGNOSTIC_STEPS),
       token: POSTHOG_KEY,
     },
     ...(captureResult.timestamp ? { timestamp: captureResult.timestamp } : {}),
@@ -227,7 +166,7 @@ function sanitizePostHogCaptureResult(
 }
 
 function runPostHog(action: (key: string, host: string) => void): void {
-  if (!POSTHOG_KEY || !POSTHOG_HOST) {
+  if (!POSTHOG_KEY || !POSTHOG_HOST || isDesktopAuthFlow()) {
     return;
   }
   action(POSTHOG_KEY, POSTHOG_HOST);
@@ -470,9 +409,9 @@ export function capturePageView(): void {
   });
 }
 
-export const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
+const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
 
-export type BootstrapThreadMetadataSource =
+type BootstrapThreadMetadataSource =
   | "local"
   | "memory"
   | "not_found"
@@ -736,6 +675,16 @@ export function captureRecommendedFollowupSelected(args: {
       followup_count: args.followupCount,
       followup_kind: args.followup.kind,
       generation_type: args.followup.generationType,
+    });
+  });
+}
+
+export function captureChatWorkHistoryExpanded(args: {
+  readonly workStatus: "active" | "completed";
+}): void {
+  runPostHog(() => {
+    posthog.capture("chat_work_history_expanded", {
+      work_status: args.workStatus,
     });
   });
 }

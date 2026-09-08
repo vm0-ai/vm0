@@ -41,6 +41,16 @@ to choose a refresh before continuing; it does not force the reload without
 user action, and an idle page does not discover the requirement until it makes
 a handled API request.
 
+The shared database Worker reports the same response to its connected tabs as
+a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
+that event through the same update dialog instead of reloading automatically.
+Worker load and transport failures reject pending requests with their original
+error and mark the connection disconnected. Queries and computed reads have no
+time limit and remain cancellable through their owning lifecycle. An IndexedDB
+version change closes the affected connection and reports it as unavailable.
+These failures propagate through the normal error handling without reloading
+the page.
+
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
 old controlled clients during rollout. The current service worker calls
@@ -65,6 +75,47 @@ The backend must therefore tolerate requests from the previous frontend version
 after a backend deployment. When changing an API used by the frontend, keep the
 old request shape working until old browser clients can no longer reasonably be
 active, or introduce a versioned/new endpoint and migrate the frontend first.
+
+#### Connector App retirement
+
+The first singleton-free connector App release is `0.843.1`, built from
+`3795939e97660ef4228122a57e3f6425b1e413c2` and promoted on
+2026-09-05 at 04:24:28 UTC after #29773 / #31780. Issue #29775 raises the API
+App floor to that version in a later release. Verify the deployed artifact,
+not only the GitHub deployment's moving-main SHA: the preceding `0.843.0`
+release deployed `30aadb42008af91a999faac6170262dd1de881cb`, which predates
+the connector producer cleanup.
+
+Older identified App bundles receive `426` before route handling and use the
+existing update dialog to refresh into the supported App. This applies to
+all handled App API requests, not only connector actions; idle pages are not
+automatically refreshed. No passive browser-expiry window or rollback gate
+is required for #29775.
+
+The floor does not retire CLI, unidentified, or missing/unparseable-version
+requests. Keep singleton request and persisted authorization-state decoding
+until their independent gates pass. The later API artifact
+`9def066b4f04898a173da14407a10dc6a0cf66e1` (`api-v1.548.1`) enforced the App
+floor on 2026-09-05 at 05:52:29 UTC. The pre-cutoff production request evidence
+on #29775 is not proof that account mutations were exercised or stored callbacks
+have drained.
+
+For #29776, the explicit retirement decision on 2026-09-05 invalidates all
+remaining `single-account` authorization attempts, without waiting for natural
+completion or requiring a terminal status. Migration `1078` deletes only rows
+with that mutation intent from `connector_oauth_states`,
+`connector_oauth_device_authorization_sessions`, and
+`connector_external_code_sessions`. It preserves explicit `add` / `reconnect`
+attempts and does not delete connected accounts, credentials, or permissions.
+An old callback or poll that can no longer find its state uses the existing
+missing/invalid response; the user must start a new connection attempt.
+
+Deleting a row does not universally cancel requests that already loaded it or
+revoke an account they already created. Keep current request and stored-state
+decoders in the cleanup release. The normal migration transaction and timeouts
+apply; a failed cleanup blocks release and rolls back. #29777 removes the
+remaining singleton contract only after this migration release succeeds.
+Investigate unexpected new singleton writes rather than adding a cleanup loop.
 
 ### Backend
 
@@ -130,6 +181,12 @@ When removing a backend response or request variant consumed by the CLI:
    supported external caller, can still use the old variant.
 4. Remove compatibility in a later backend release.
 
+Presentation runbook content is independent of the CLI release after the
+current-template download route is deployed. Current CLIs send only the
+resource id and receive the canonical storage HEAD; older CLIs keep using the
+existing digest-pinned route and its immutable archive. Publish new template
+HEADs only after the current-template route and CLI are in production.
+
 This drain is separate from runner binary drain: a current runner can execute an
 older CLI package retained by an older execution context. If the same cleanup
 raises the frontend compatibility floor, rolling the frontend below that floor
@@ -140,11 +197,16 @@ dual-protocol preparation release remains safe for canonical clients.
 
 Runner deployment is draining, not instant. The production promote playbook
 starts the new runner service, verifies it, and then sends a soft-drain signal
-to old runner services. Before that signal arrives, there can be a short overlap
-where both old and new runners are running. After old runners enter draining,
-they stop claiming new runs but keep executing already claimed runs until those
-runs finish. During that drain window, old runners continue calling backend APIs
-with the old protocol.
+to old runner services. Promotion observes a bounded acknowledgement from the
+same live process and status generation: Draining/Stopping, or service/process
+exit. This acknowledgement does not wait for active runs to finish. Discovery,
+signal, status, identity, or acknowledgement failures for an old runner are
+reported as promotion warnings while a healthy new runner remains promoted;
+promotion does not force-kill the old runner. Before the signal arrives, there
+can be a short overlap where both old and new runners are running. After old
+runners enter draining, they stop claiming new runs but keep executing already
+claimed runs until those runs finish. During that drain window, old runners
+continue calling backend APIs with the old protocol.
 
 The backend must support old runner requests until old runners have fully
 drained. Runner changes that require backend support must be staged so a new
@@ -158,6 +220,27 @@ Keep the rollback floor bridge-capable. Delivery parent vm0-ai/vm0#30478 remains
 open until the canonical-only artifact is promoted, bridge processes drain, and
 the final fleet verification completes.
 
+Rootfs build scripts retain those same flock descriptions in an external
+`unshare --fork` waiter until their private PID namespace has terminated. The
+waiter starts in a separate session so owner death cannot orphan a stopped
+process group and send it a job-control `SIGHUP` before cleanup completes. The
+owning runner's death or cancellation closes a process-local control channel;
+namespace init then exits and the kernel terminates its descendants, including
+workers behind `sudo`. The waiter must not be killed as a cancellation shortcut:
+lock availability is the boundary that allows another builder or GC to touch
+staging. In-process shared ownership also keeps the flock and extracted scripts
+alive until the blocking spawn-and-wait task finishes. Existing builders and GC
+need no new lock file or persisted metadata to respect this exclusion.
+
+This containment applies to scripts launched by the new runner, not orphaned
+workers already launched by an older artifact. PID values are namespace-local;
+shared build caches must use independently unique temporary filenames instead
+of treating a script's PID as a host-wide unique attempt identity. Debootstrap
+cache staging uses `.tmp.mktemp.<random>.tar`; new GC recognizes both that format
+and the previous `.tmp.<pid>.tar`. Older GC still respects the shared cache lock,
+but counts leftover new-format staging files toward stable-cache retention until
+it is upgraded (potentially causing a cache miss, not exposing an active build).
+
 Runner and guest binaries are deployed as one runner artifact. Compatibility is
 not required between a runner binary and a guest binary from a different version.
 
@@ -165,8 +248,8 @@ Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
 network-policy, and operator concepts. Use **VM** only for concrete
 Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
 pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
-The VM0 brand, established environment-variable namespace, and fixed paths are
-not lifecycle terminology and remain unchanged.
+Product brand names, the established environment-variable namespace, and fixed
+paths are not lifecycle terminology and remain unchanged.
 
 Each runner version's `status.json` is a host-local persisted cross-version
 boundary. Current runner maintenance commands can inspect status files written
@@ -175,10 +258,72 @@ status writer, and the independently deployed host monitoring collector scans
 every versioned runner directory. Status schema changes must cover those
 old/new combinations rather than treating the file as process-private state.
 
-Current status writers publish `idle_sandboxes` and omit the field when the
-collection is empty. Current maintenance readers and the host monitoring
-collector read only `idle_sandboxes`; a status file without the canonical
-collection is treated as containing no idle sandboxes.
+Current status writers publish exact inventory in `idle_sandboxes` and ready
+blanks in `blank_sandboxes`, omitting each collection when empty. Exact entries
+contain `reuse_key` and `sandbox_id`; blank entries contain only `sandbox_id`,
+never a run ID or tenant reuse identity. Both collections are captured from one
+pool revision and applied together, including preparing/running ownership
+transitions. The migration tracked by
+[#32071](https://github.com/vm0-ai/vm0/issues/32071) separates these identities
+without changing shared pool lifecycle rules.
+
+Internally, the same `IdlePool` owns exact reuse-key and blank sandbox-ID
+indexes. They share capacity limits, budget ownership, parking gates and a
+mutation revision; they are not independent pools. Exact lookup, exact-first
+restoration, blank-first pressure eviction and conditional exact aging retain
+their existing policies. Heartbeat reuse inventories contain exact entries only.
+
+Doctor and the host collector read `blank_sandboxes: [{"sandbox_id": "..."}]`
+directly. Missing collections default to empty, including exact-only historical
+statuses without `blank_sandboxes`; malformed present collections are invalid.
+Blank identity is never inferred from an idle reuse key. Explicit blank IDs
+suppress same-file idle mirrors, and duplicate blank IDs count once. Doctor lists
+exact reuse keys under Idle and sandbox-ID-only entries under Blank, recognizes
+both as owned processes, and never treats an unclaimed blank as an active job.
+Active mappings take priority over duplicate blanks.
+
+The collector exports `vm0_runner_sandboxes{state="blank"}` (including zero).
+`state="idle"` now counts exact inventory only; total parked inventory is the
+sum of `idle` and `blank`. Active, preparing and unknown counts keep their meaning.
+Use `sum by (instance) (vm0_runner_sandboxes{state=~"idle|blank"})` for a per-host
+parked total; replace/group additional host identity labels as needed. Summing
+all states gives total recorded sandbox inventory. UUID deduplication across
+non-stopped version files uses `idle > active > preparing > unknown > blank`:
+an active/claimed record supersedes a duplicate old blank, preserving the existing
+priority between non-blank states. Stopped files are excluded. Sandbox IDs, run
+IDs and reuse keys are never metric labels. Existing Grafana panels selecting
+only `idle` will now show exact inventory; this change does not edit dashboards.
+
+The collector is installed by host provisioning, independently of Runner
+releases. Both its systemd timer and Alloy textfile scrape run every 15 seconds.
+
+The reader-first rollout delivered doctor and collector support in
+[#32092](https://github.com/vm0-ai/vm0/pull/32092), followed by the explicit writer in
+[#32269](https://github.com/vm0-ai/vm0/pull/32269). The first explicit-writer release
+is `runner-rs-v0.188.0`, commit `f4b9a172cf76e04b845f2337c14cf87831c82adb`.
+Legacy blank input recognition is retired by
+[#32084](https://github.com/vm0-ai/vm0/issues/32084), based on read-only production
+verification on 2026-09-07 at 14:20 UTC:
+
+- `prod-11.gcp.vm3.ai`, `prod-12.gcp.vm3.ai` and `prod-13.gcp.vm3.ai` each had
+  `v0.188.3` running and `v0.188.2` draining. Both releases contain explicit-writer
+  commit `bd9cddcf6719c90848ed4ec497baca8cfd3191ea`. The remaining draining release
+  therefore does not require legacy input recognition.
+- The legacy writers were stopped. All 18 retained versioned status files parsed
+  successfully and contained no synthetic blank entries.
+- Each installed collector matched repository SHA-256
+  `560cb9b86e29357249582273253716f48be63df93cd6f04f12dabb4ffa499f42`, and each
+  collector timer was active. This is the pre-cleanup, bridge-capable collector
+  checksum, not the checksum of the retired-reader implementation.
+
+The explicit retirement decision excludes rollback compatibility with legacy
+writers; this cleanup does not change rollback resolution or promise that those
+writers remain readable as blank inventory. Current explicit writers work with
+both bridge and post-cleanup readers during deployment. No production process or
+status file was modified to establish the evidence. Verify the final doctor and
+independently provisioned collector rollout before closing delivery parent
+[#32071](https://github.com/vm0-ai/vm0/issues/32071); a merged PR alone does not
+establish that deployment.
 
 The proxy registry and embedded mitm-addon are also a runner-private contract.
 The runner binary embeds the addon sources, recreates the addon directory and

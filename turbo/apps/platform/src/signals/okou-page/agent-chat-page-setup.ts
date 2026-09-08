@@ -18,11 +18,7 @@ import { setChatAgentId$ } from "../agent-chat.ts";
 import { setTalkDraft$, talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$, resetChatPageModelSelection$ } from "./chat-page.ts";
-import {
-  ensureAgentDraft$,
-  loadAgentDraft$,
-  type EnsuredAgentDraft,
-} from "./agent-draft.ts";
+import { ensureAgentDraft$, type EnsuredAgentDraft } from "./agent-draft.ts";
 import {
   agentChatComposerSignals$,
   setAgentComposerContext$,
@@ -100,7 +96,7 @@ export const setupAgentChatPage$ = command(
       desktopRecordingHandoffFeatureEnabled(featureSwitches) &&
       hasDesktopRecordingHandoff(params);
     if (agentDraft && !prompt && !desktopRecordingHandoff) {
-      await set(loadAgentDraft$, agentId, agentDraft, signal);
+      await set(agentDraft.load$, signal);
     }
     if (prompt) {
       const targetDraft = agentDraft?.draft ?? get(talkDraft$);

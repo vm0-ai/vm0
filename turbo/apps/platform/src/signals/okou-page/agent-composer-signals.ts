@@ -1,11 +1,10 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ConnectorAccountSelection } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
-import { currentAgentId$ } from "../agent.ts";
 import {
   sendNewThread$,
   sendNewThreadWithoutNavigation$,
@@ -21,6 +20,7 @@ import {
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
 import { selectedComputerUseHostId } from "./computer-use-hosts.ts";
+import type { DraftSignals } from "./chat-draft.ts";
 import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import {
   createComposerSignals,
@@ -71,7 +71,7 @@ const setModelSelection$ = command(
     set(setChatPageModelSelection$, selection);
     const selectedModel = selection?.selectedModel;
     const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
+      get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
     if (!explicitDefaultActionEnabled && isSupportedRunModel(selectedModel)) {
       await set(
         updateUserModelPreference$,
@@ -86,57 +86,54 @@ const setModelSelection$ = command(
   },
 );
 
-const setVideoModel$ = command(
-  async (
-    { get, set },
-    videoModel: VideoModel | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(setChatPageVideoModelSelection$, videoModel);
-    const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
-    if (explicitDefaultActionEnabled) {
-      // The composer card carries an explicit "Use this for future chats" action,
-      // so picking a video model only scopes the next new chat.
-      return;
-    }
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    await set(
-      updateUserModelPreference$,
-      {
-        selectedModel: userPreference.selectedModel,
-        serviceTier: userPreference.serviceTier,
-        selectedVideoModel: videoModel,
-      },
-      signal,
-    );
+function createMediaModelSetter<M extends ImageModel | VideoModel>(
+  setSelection$: Command<void, [M | null]>,
+  preference: (
+    model: M | null,
+  ) =>
+    | { selectedImageModel: ImageModel | null }
+    | { selectedVideoModel: VideoModel | null },
+) {
+  return command(
+    async (
+      { get, set },
+      model: M | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      set(setSelection$, model);
+      const explicitDefaultActionEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false;
+      if (explicitDefaultActionEnabled) {
+        // The composer card carries an explicit "Use this for future chats" action,
+        // so picking a media model only scopes the next new chat.
+        return;
+      }
+      const userPreference = await get(userModelPreference$);
+      signal.throwIfAborted();
+      await set(
+        updateUserModelPreference$,
+        {
+          selectedModel: userPreference.selectedModel,
+          serviceTier: userPreference.serviceTier,
+          ...preference(model),
+        },
+        signal,
+      );
+    },
+  );
+}
+
+const setVideoModel$ = createMediaModelSetter(
+  setChatPageVideoModelSelection$,
+  (selectedVideoModel) => {
+    return { selectedVideoModel };
   },
 );
 
-const setImageModel$ = command(
-  async (
-    { get, set },
-    imageModel: ImageModel | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(setChatPageImageModelSelection$, imageModel);
-    const explicitDefaultActionEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
-    if (explicitDefaultActionEnabled) {
-      return;
-    }
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    await set(
-      updateUserModelPreference$,
-      {
-        selectedModel: userPreference.selectedModel,
-        serviceTier: userPreference.serviceTier,
-        selectedImageModel: imageModel,
-      },
-      signal,
-    );
+const setImageModel$ = createMediaModelSetter(
+  setChatPageImageModelSelection$,
+  (selectedImageModel) => {
+    return { selectedImageModel };
   },
 );
 
@@ -174,11 +171,20 @@ const noOp$ = command((): void => {});
 interface AgentComposerOptions {
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;
+  readonly draftScope?: "agent" | "standalone";
+}
+
+/** Programmatic task input has no mounted editor or inline template. */
+interface TextSubmission {
+  readonly prompt: string;
+  readonly generationTemplate: undefined;
+  readonly editorDocument?: undefined;
+  readonly videoRunOptions?: undefined;
 }
 
 function createAgentSubmitMessage(
   agentId: string,
-  agentDraft: EnsuredAgentDraft,
+  draft: DraftSignals,
   connector: ReturnType<typeof createComposerConnectorSignals>,
   options: AgentComposerOptions,
 ) {
@@ -186,7 +192,7 @@ function createAgentSubmitMessage(
     async (
       { get, set },
       action: "send" | "queue",
-      submission: ComposerSubmission,
+      submission: ComposerSubmission | TextSubmission,
       signal: AbortSignal,
     ): Promise<boolean> => {
       if (action !== "send") {
@@ -243,7 +249,8 @@ function createAgentSubmitMessage(
         send,
         {
           agentId,
-          draft: agentDraft.draft,
+          draft,
+          draftScope: options.draftScope,
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
           editorDocument: submission.editorDocument,
@@ -289,7 +296,7 @@ function createAgentComposerSignalsWithDraft(
   const connector = createComposerConnectorSignals(agentId);
   const submitMessage$ = createAgentSubmitMessage(
     agentId,
-    agentDraft,
+    agentDraft.draft,
     connector,
     options,
   );
@@ -299,9 +306,11 @@ function createAgentComposerSignalsWithDraft(
     connector,
     draft: {
       signals: agentDraft.draft,
+      load$: options.forward ? noOpAction$ : agentDraft.load$,
       save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
     },
     chatEvents$,
+    voiceDraftTarget: `agent:${agentId}`,
     singleLineOnMobile: false,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
@@ -331,16 +340,15 @@ function createAgentComposerSignalsWithDraft(
   });
 }
 
-/**
- * Creates the public composer signals for an agent chat.
- *
- * @public
- */
-export function createAgentComposerSignals(agentId: string) {
-  return createAgentComposerSignalsWithDraft(
-    agentId,
-    createAgentDraftSignals(agentId),
-  );
+/** A task dialog owns its attachments and must not consume the chat draft. */
+export function createStandaloneAgentSubmission(
+  agentId: string,
+  draft: DraftSignals,
+  connector: ReturnType<typeof createComposerConnectorSignals>,
+) {
+  return createAgentSubmitMessage(agentId, draft, connector, {
+    draftScope: "standalone",
+  });
 }
 
 export function createForwardAgentComposerSignals(
@@ -369,12 +377,12 @@ export const setAgentComposerContext$ = command(
 );
 
 export const agentChatComposerSignals$ = computed((get) => {
-  const agentId = get(currentAgentId$);
-  if (!agentId) {
-    throw new Error("Chat composer requires an active agent");
-  }
   const context = get(internalAgentComposerContext$);
-  return context?.agentId === agentId
-    ? createAgentComposerSignalsWithDraft(agentId, context.agentDraft)
-    : createAgentComposerSignals(agentId);
+  if (!context) {
+    throw new Error("Chat composer requires an initialized agent context");
+  }
+  return createAgentComposerSignalsWithDraft(
+    context.agentId,
+    context.agentDraft,
+  );
 });

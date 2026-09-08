@@ -11,7 +11,6 @@ import {
   workflowAutomationsContract,
   workflowsDetailContract,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
 
@@ -27,7 +26,6 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   clearWorkflowAutomationEventConnectorAsPreviousApi,
   holdOrgAdmissionLock,
@@ -49,7 +47,8 @@ const mocks = createRouteMocks(context);
 const runs = createRunsApi(context);
 const workflows = createWorkflowsBddApi(context);
 
-const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/google-workspace-events";
+const PUSH_AUDIENCE =
+  "https://api.okou.ai/api/webhooks/google-workspace-events";
 const PUSH_SERVICE_ACCOUNT =
   "google-workspace-events-push@vm0-ai-488909.iam.gserviceaccount.com";
 const OIDC_CERT_KID = "google-workspace-events-test-key";
@@ -205,7 +204,7 @@ function configureGoogleMeetBoundaries(
     reactivateCalls: 0,
   };
 
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", recorder.runnerGroup);
@@ -465,11 +464,6 @@ async function setupFixture(
     agentId: agent.agentId,
     name: `google-meet-transcript-${randomUUID()}`,
   });
-  await updateFeatureSwitchesForUser(
-    context,
-    { orgId: orgActor.orgId, userId: orgActor.userId },
-    { [FeatureSwitchKey.ConnectorAccounts]: true },
-  );
   const connectorId = await connectGoogleMeet(orgActor, provider);
   context.mocks.s3.send.mockResolvedValue({});
   return {

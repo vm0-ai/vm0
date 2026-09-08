@@ -184,6 +184,14 @@ fn guest_dns_readiness_failure(
     }
 }
 
+fn process_start_timeout(stage: sandbox::SandboxOperationTimeoutStage) -> SandboxError {
+    SandboxError::OperationTimeout {
+        operation: sandbox::SandboxOperation::StartProcess,
+        stage,
+        timeout_ms: 1_000,
+    }
+}
+
 #[tokio::test]
 async fn execute_inner_happy_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -465,6 +473,209 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_replaces_post_write_prefetch_timeout_before_workload() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(process_start_timeout(
+        sandbox::SandboxOperationTimeoutStage::AwaitingTerminalResponse,
+    ));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let params = JobParams {
+        restore_guest_state: true,
+        ..default_params()
+    };
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.guest_state_restore_calls().len(), 2);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 1);
+    assert_eq!(overrides.start_agent_process_calls().len(), 1);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_codex_model_catalog_prefetch",
+        false,
+        Some("start_timed_out"),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_codex_prefetch",
+        true,
+        None,
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_suppresses_prefetch_replacement_after_uncertain_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_error(process_start_timeout(
+        sandbox::SandboxOperationTimeoutStage::FrameWrite,
+    ));
+    overrides.push_destroy_panic("destroy failed");
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+
+    let error = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await
+    .err()
+    .expect("uncertain cleanup must suppress replacement");
+
+    assert!(matches!(
+        error,
+        RunnerError::Sandbox(SandboxError::OperationTimeout {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage: sandbox::SandboxOperationTimeoutStage::FrameWrite,
+            ..
+        })
+    ));
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_codex_prefetch",
+        false,
+        Some("cleanup_uncertain"),
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_handles_ordinary_prefetch_write_failures() {
+    use sandbox::SandboxOperationWriteStage;
+    use std::io;
+
+    for (stage, kind, cleanup_uncertain) in [
+        (
+            SandboxOperationWriteStage::BeforeFrameWrite,
+            io::ErrorKind::PermissionDenied,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::BrokenPipe,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::TimedOut,
+            false,
+        ),
+        (
+            SandboxOperationWriteStage::FrameWrite,
+            io::ErrorKind::BrokenPipe,
+            true,
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_error(SandboxError::OperationWrite {
+            operation: sandbox::SandboxOperation::StartProcess,
+            stage,
+            source: io::Error::new(kind, "prefetch write failed"),
+        });
+        if cleanup_uncertain {
+            overrides.push_destroy_panic("destroy failed");
+        }
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let context = codex_oauth_context();
+        let mut telemetry = test_telemetry(&config, &context);
+        let result = execute_new_sandbox(
+            &factory,
+            &context,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(
+            overrides.start_process_calls().len(),
+            1,
+            "replacement must not prefetch again"
+        );
+        let unsafe_write = stage == SandboxOperationWriteStage::FrameWrite;
+        assert_eq!(overrides.destroy_call_count(), u32::from(unsafe_write));
+        assert_eq!(
+            overrides.create_configs().len(),
+            1 + usize::from(unsafe_write && !cleanup_uncertain)
+        );
+        if cleanup_uncertain {
+            assert!(matches!(
+                result,
+                Err(RunnerError::Sandbox(SandboxError::OperationWrite {
+                    stage: SandboxOperationWriteStage::FrameWrite,
+                    ..
+                }))
+            ));
+            assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+            assert!(overrides.storage_manifest_calls().is_empty());
+            assert!(overrides.start_agent_process_calls().is_empty());
+        } else {
+            assert_eq!(result.unwrap().exit_code(), 0);
+            assert_eq!(overrides.workspace_drive_mount_calls(), 1);
+            assert_eq!(overrides.start_agent_process_calls().len(), 1);
+        }
+        assert_telemetry_action(
+            &telemetry,
+            "runner_codex_model_catalog_prefetch",
+            false,
+            Some("start_failed"),
+        );
+        if unsafe_write {
+            assert_telemetry_action(
+                &telemetry,
+                "runner_fresh_sandbox_retry_without_codex_prefetch",
+                !cleanup_uncertain,
+                cleanup_uncertain.then_some("cleanup_uncertain"),
+            );
+        }
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+}
+
+#[tokio::test]
 async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -506,6 +717,56 @@ async fn execute_new_sandbox_destroys_before_workload_when_prepared_notification
     assert!(error.to_string().contains("status publication failed"));
     assert_eq!(overrides.destroy_call_count(), 1);
     assert!(overrides.start_agent_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn prefetch_partial_write_cannot_spend_a_second_preparation_retry() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure(
+        SandboxGuestDnsReadinessReason::DnsPath,
+        "first attachment failed",
+    )));
+    overrides.push_start_process_error(SandboxError::OperationWrite {
+        operation: sandbox::SandboxOperation::StartProcess,
+        stage: sandbox::SandboxOperationWriteStage::FrameWrite,
+        source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "partial write"),
+    });
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let context = codex_oauth_context();
+    let mut telemetry = test_telemetry(&config, &context);
+    let result = execute_new_sandbox(
+        &factory,
+        &context,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(RunnerError::Sandbox(SandboxError::OperationWrite { .. }))
+    ));
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 2);
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.workspace_drive_mount_calls(), 0);
+    assert!(overrides.storage_manifest_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_codex_model_catalog_prefetch",
+        false,
+        Some("start_failed"),
+    );
     assert_proxy_registry_empty(dir.path()).await;
 }
 
@@ -1087,29 +1348,29 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.prompt = "p".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES);
+    ctx.prompt = "p".repeat(guest_control_proto::MAX_EXEC_STDIN_BYTES);
     ctx.user_timezone = Some("Asia/Shanghai".into());
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
         (
             "LARGE_USER_ENV".into(),
-            "x".repeat(vsock_proto::MAX_EXEC_STDIN_BYTES),
+            "x".repeat(guest_control_proto::MAX_EXEC_STDIN_BYTES),
         ),
         (
             "OKOU_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "VM0_FUTURE_RUNNER_KEY".into(),
+            "CUSTOM_FUTURE_KEY".into(),
             "https://ordinary.runner-env.example.test".into(),
         ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
-        ("VM0_PROMPT".into(), "hostile-user-prompt".into()),
+        ("CUSTOM_PROMPT".into(), "hostile-user-prompt".into()),
         ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
@@ -1122,19 +1383,25 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
     ]);
     ctx.connector_runtime_targets = vec![
         ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "github".into(),
-            base_url_vars: None,
+            base_url_vars: Some(HashMap::from([(
+                "API_ORIGIN".into(),
+                "https://api.github.com".into(),
+            )])),
             source_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
         },
         ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".into(),
-            base_url_vars: HashMap::new(),
+            base_url_vars: HashMap::from([(
+                "CUSTOM_ORIGIN".into(),
+                "https://custom.example.test".into(),
+            )]),
             source_id: None,
         },
     ];
@@ -1190,8 +1457,8 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "CUSTOM_USER_ENV",
         "LARGE_USER_ENV",
         "OKOU_APP_URL",
-        "ZERO_APP_URL",
-        "VM0_FUTURE_RUNNER_KEY",
+        "CUSTOM_APP_URL",
+        "CUSTOM_FUTURE_KEY",
         "CUSTOM_API_TOKEN",
         "BASH_ENV",
         "NODE_OPTIONS",
@@ -1211,32 +1478,32 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .all(|call| !call.cmd.contains(&expected_user_env_file)),
         "user env file should not be written through shell exec"
     );
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    let connector_account_context_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_connector_account_context_file)
-        .unwrap();
+    assert!(overrides.private_write_file_calls().is_empty());
     let private_batches = overrides.private_write_files_calls();
     assert_eq!(private_batches.len(), 1);
-    assert_eq!(private_batches[0].files.len(), 2);
-    let user_env_write = &private_batches[0].files[0];
+    assert_eq!(private_batches[0].files.len(), 3);
+    let connector_account_context_write = &private_batches[0].files[0];
+    assert_eq!(
+        connector_account_context_write.path,
+        expected_connector_account_context_file
+    );
+    let user_env_write = &private_batches[0].files[1];
     assert_eq!(user_env_write.path, expected_user_env_file);
-    let run_payload_write = &private_batches[0].files[1];
+    let run_payload_write = &private_batches[0].files[2];
     assert_eq!(run_payload_write.path, expected_run_payload_file);
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
     assert_eq!(
         user_env.get("LARGE_USER_ENV").unwrap().len(),
-        vsock_proto::MAX_EXEC_STDIN_BYTES
+        guest_control_proto::MAX_EXEC_STDIN_BYTES
     );
     assert_eq!(
         user_env.get("OKOU_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(
-        user_env.get("ZERO_APP_URL").unwrap(),
+        user_env.get("CUSTOM_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
@@ -1246,11 +1513,11 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     assert_eq!(
-        user_env.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
+        user_env.get("CUSTOM_FUTURE_KEY").map(String::as_str),
         Some("https://ordinary.runner-env.example.test")
     );
     assert_eq!(
-        user_env.get("VM0_PROMPT").map(String::as_str),
+        user_env.get("CUSTOM_PROMPT").map(String::as_str),
         Some("hostile-user-prompt")
     );
     assert_eq!(
@@ -1288,11 +1555,11 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
-async fn execute_inner_continues_when_connector_account_context_write_fails() {
+async fn execute_inner_stops_when_required_private_batch_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+    overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "connector account context write failed",
     )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -1303,31 +1570,41 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
             .await
             .unwrap();
 
-    assert_eq!(exit_code, 0);
-    assert!(error_msg.is_none());
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 2);
-    assert!(overrides.private_write_files_calls().is_empty());
+    assert_eq!(exit_code, 1);
+    assert!(
+        error_msg
+            .expect("connector account context write failure should fail the run")
+            .contains("connector account context write failed")
+    );
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
     assert_eq!(
-        private_writes[0].path,
+        private_batches[0].files[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
     );
-    let expected_run_payload_file = guest_run_payload_file_path(context.run_id).unwrap();
-    assert_eq!(private_writes[1].path, expected_run_payload_file);
-    let start_calls = overrides.start_agent_process_calls();
-    assert_eq!(start_calls.len(), 1);
-    let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
-    let user_env_key = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
-    assert!(
-        !start_env.contains_key(user_env_key),
-        "absent user environment must not emit {user_env_key}"
-    );
-    assert_eq!(
-        start_env
-            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
-            .map(String::as_str),
-        Some(expected_run_payload_file.as_str())
-    );
+    assert!(overrides.start_agent_process_calls().is_empty());
+}
+
+#[tokio::test]
+async fn execute_inner_rejects_invalid_run_payload_before_private_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut context = minimal_context();
+    context.prompt = "invalid\0prompt".into();
+
+    let error = run_new_sandbox_outcome(&factory, &context, &config, &default_params())
+        .await
+        .err()
+        .expect("invalid payload must fail before execution");
+
+    assert!(error.to_string().contains("run payload contains NUL byte"));
+    assert!(overrides.private_write_file_calls().is_empty());
+    assert!(overrides.private_write_files_calls().is_empty());
+    assert!(overrides.start_agent_process_calls().is_empty());
 }
 
 #[tokio::test]
@@ -1335,7 +1612,6 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "No space left on device (os error 28)",
     )));
@@ -1366,24 +1642,23 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
             .failure_kind,
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
     assert!(
-        private_writes[0]
+        private_batches[0].files[0]
             .path
             .ends_with("/connector-account-context/context.json"),
         "got: {}",
-        private_writes[0].path
+        private_batches[0].files[0].path
     );
-    let private_batches = overrides.private_write_files_calls();
-    assert_eq!(private_batches.len(), 1);
-    assert_eq!(private_batches[0].files.len(), 2);
     assert!(
-        private_batches[0].files[1]
+        private_batches[0].files[2]
             .path
             .ends_with("/run-payload/payload.json"),
         "got: {}",
-        private_batches[0].files[1].path
+        private_batches[0].files[2].path
     );
     assert!(
         overrides.start_agent_process_calls().is_empty(),

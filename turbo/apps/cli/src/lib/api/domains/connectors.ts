@@ -26,8 +26,11 @@ import {
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
   connectorCheckContract,
+  connectorCheckDiagnosticResultSchema,
+  connectorCheckTargetAwareDiagnosticResultSchema,
   type ConnectorCheckDiagnosticResult,
-  type ConnectorCheckRequest,
+  type ConnectorCheckRequestBody,
+  type ConnectorCheckTargetAwareDiagnosticResult,
 } from "@okouai/api-contracts/contracts/connector-check";
 import {
   customConnectorByIdContract,
@@ -46,18 +49,18 @@ import {
   type McpConnector,
 } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type {
-  ConnectorListResponse,
+  ConnectorListResponse as ApiConnectorListResponse,
   ConnectorResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type Connector = ConnectorResponse;
-type ZeroConnectorListResponse = ConnectorListResponse;
+type ConnectorListResponse = ApiConnectorListResponse;
 export type ConnectorCatalogItem =
   PublicConnectorCatalogListResponse["connectors"][number];
 export type ConnectorCatalogStatus = PublicConnectorCatalogStatusItem;
-type ZeroConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
-type ZeroConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
+type ConnectorCatalogListResponse = PublicConnectorCatalogListResponse;
+type ConnectorCatalogStatusResponse = PublicConnectorCatalogStatusResponse;
 export type ConnectorCatalogPermissionDetail =
   PublicConnectorCatalogPermissionDetail;
 
@@ -138,10 +141,8 @@ export async function inspectConnectorAccounts(
   handleError(result, "Failed to inspect connector accounts for this run");
 }
 
-/**
- * List all connectors for the authenticated user (zero proxy)
- */
-export async function listConnectors(): Promise<ZeroConnectorListResponse> {
+/** List all connectors for the authenticated user. */
+export async function listConnectors(): Promise<ConnectorListResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorsMainContract, config);
 
@@ -154,7 +155,7 @@ export async function listConnectors(): Promise<ZeroConnectorListResponse> {
   handleError(result, "Failed to list connectors");
 }
 
-export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListResponse> {
+export async function listConnectorCatalog(): Promise<ConnectorCatalogListResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorCatalogContract, config);
 
@@ -167,7 +168,7 @@ export async function listConnectorCatalog(): Promise<ZeroConnectorCatalogListRe
   handleError(result, "Failed to list connector catalog");
 }
 
-export async function listConnectorCatalogStatus(): Promise<ZeroConnectorCatalogStatusResponse> {
+export async function listConnectorCatalogStatus(): Promise<ConnectorCatalogStatusResponse> {
   const config = await getClientConfig();
   const client = initClient(connectorCatalogContract, config);
 
@@ -210,9 +211,33 @@ export async function getConnectorCatalogPermissions(
   );
 }
 
+function normalizeBuiltinDiagnostic(
+  diagnostic: ConnectorCheckDiagnosticResult,
+): ConnectorCheckTargetAwareDiagnosticResult {
+  if ("connector" in diagnostic) {
+    const { connectorSlug, ...identity } = diagnostic.connector;
+    return {
+      ...diagnostic,
+      connector: {
+        ...identity,
+        target: { kind: "builtin", connectorSlug },
+      },
+    };
+  }
+  if (diagnostic.outcome === "ambiguous") {
+    return {
+      ...diagnostic,
+      candidates: diagnostic.candidates.map(({ connectorSlug, label }) => {
+        return { target: { kind: "builtin", connectorSlug }, label };
+      }),
+    };
+  }
+  return diagnostic;
+}
+
 export async function diagnoseConnectorCheck(
-  request: ConnectorCheckRequest,
-): Promise<ConnectorCheckDiagnosticResult> {
+  request: ConnectorCheckRequestBody,
+): Promise<ConnectorCheckTargetAwareDiagnosticResult> {
   const config = await getClientConfig();
   const client = initClient(connectorCheckContract, {
     ...config,
@@ -222,15 +247,20 @@ export async function diagnoseConnectorCheck(
   const result = await client.check({ body: request });
 
   if (result.status === 200) {
-    return result.body;
+    if ("target" in request || "includeCustomConnectors" in request) {
+      return connectorCheckTargetAwareDiagnosticResultSchema.parse(result.body);
+    }
+    return normalizeBuiltinDiagnostic(
+      connectorCheckDiagnosticResultSchema.parse(result.body),
+    );
   }
 
   handleError(result, "Failed to diagnose connector");
 }
 
 /**
- * Get a connector by slug (zero proxy)
- * Returns null if not connected (404 response)
+ * Get a connector by slug.
+ * Returns null if not connected (404 response).
  */
 export async function getConnector(
   connectorSlug: ConnectorSlug,

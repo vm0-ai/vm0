@@ -1,15 +1,49 @@
 import { command, computed, state } from "ccstate";
+import { debounceCommand } from "../command-scheduling.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { resetSignal } from "../utils.ts";
+import { hideKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
 // ---------------------------------------------------------------------------
 const internalChatListQuery$ = state("");
+const internalDebouncedChatListQuery$ = state(Promise.resolve(""));
+const resetChatListQueryDebounce$ = resetSignal();
+const CHAT_LIST_QUERY_DEBOUNCE_MS = 300;
+
 export const chatListQuery$ = computed((get) => {
   return get(internalChatListQuery$);
 });
-export const setChatListQuery$ = command(({ set }, query: string) => {
-  set(internalChatListQuery$, query);
+
+export const debouncedChatListQuery$ = computed((get) => {
+  return get(internalDebouncedChatListQuery$);
+});
+
+const readChatListQuery$ = command(({ get }, _signal: AbortSignal) => {
+  return get(chatListQuery$).trim().toLowerCase();
+});
+const debounceChatListQuery$ = debounceCommand(
+  readChatListQuery$,
+  CHAT_LIST_QUERY_DEBOUNCE_MS,
+);
+
+export const setChatListQuery$ = command(
+  ({ set }, query: string, signal: AbortSignal) => {
+    set(internalChatListQuery$, query);
+    const debounceSignal = set(resetChatListQueryDebounce$, signal);
+    const debouncedQuery = query.trim()
+      ? set(debounceChatListQuery$, debounceSignal)
+      : Promise.resolve("");
+    set(internalDebouncedChatListQuery$, debouncedQuery);
+    return debouncedQuery;
+  },
+);
+
+export const clearChatListQuery$ = command(({ set }) => {
+  set(resetChatListQueryDebounce$);
+  set(internalDebouncedChatListQuery$, Promise.resolve(""));
+  set(internalChatListQuery$, "");
 });
 
 // ---------------------------------------------------------------------------
@@ -152,6 +186,7 @@ export type ThreeColumnSearchFilter =
   | "all"
   | "chats"
   | "messages"
+  | "agents"
   | "workflows"
   | "artifacts";
 
@@ -160,6 +195,10 @@ export const threeColumnSearchOpen$ = computed((get) => {
   return get(internalThreeColumnSearchOpen$);
 });
 export const setThreeColumnSearchOpen$ = command(({ set }, open: boolean) => {
+  if (!open) {
+    set(clearChatListQuery$);
+    set(hideKeyboardShortcutHints$);
+  }
   set(internalThreeColumnSearchOpen$, open);
 });
 
@@ -174,7 +213,8 @@ export const setThreeColumnSearchFilter$ = command(
 );
 
 export const openThreeColumnSearchDialog$ = command(({ set }) => {
-  set(internalChatListQuery$, "");
+  set(hideKeyboardShortcutHints$);
+  set(clearChatListQuery$);
   set(internalThreeColumnSearchFilter$, "all");
   set(internalThreeColumnSearchOpen$, true);
 });
@@ -252,36 +292,9 @@ export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
-// Chat thread virtual list geometry (RecentChatSection)
+// Chat thread virtual list layout (RecentChatSection)
 // ---------------------------------------------------------------------------
 export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 export const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 export type ChatThreadVirtualListScrollAlign = "top" | "bottom";
-
-function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
-  return rect.top !== 0 || rect.left !== 0;
-}
-
-export function getChatThreadVirtualListScrollMargin(
-  scrollViewport: HTMLElement | null,
-  virtualListElement: HTMLElement | null,
-): number {
-  if (!scrollViewport || !virtualListElement) {
-    return 0;
-  }
-
-  const viewportRect = scrollViewport.getBoundingClientRect();
-  const virtualListRect = virtualListElement.getBoundingClientRect();
-  if (
-    hasUsableLayoutPosition(viewportRect) ||
-    hasUsableLayoutPosition(virtualListRect)
-  ) {
-    return Math.max(
-      0,
-      scrollViewport.scrollTop + virtualListRect.top - viewportRect.top,
-    );
-  }
-
-  return Math.max(0, virtualListElement.offsetTop - scrollViewport.offsetTop);
-}

@@ -55,22 +55,26 @@ import {
   type ThreeColumnSearchFilter,
 } from "../../signals/okou-page/sidebar-state.ts";
 import type { SubagentInfo } from "../../signals/agent.ts";
-import {
-  pinnedAgentIds$,
-  pinnedAgentRenderOrder$,
-} from "../../signals/okou-page/pinned-agents.ts";
+import { pinnedAgentIds$ } from "../../signals/okou-page/pinned-agents.ts";
 import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   workspaceSearchChatMessages$,
   workspaceSearchChatThreadMap$,
-  workspaceSearchChatThreads$,
+  threeColumnSearchChatThreads$,
   type WorkspaceSearchChatThread,
 } from "../../signals/okou-page/workspace-chat-search.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  threadNumberShortcutsEnabled$,
+  threadNumberShortcutIndex$,
+} from "../../signals/okou-page/thread-number-shortcuts.ts";
+import { ThreadNumberShortcutHint } from "./thread-number-shortcut-hint.tsx";
 import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import {
+  threeColumnAgentSearchResults$,
   threeColumnArtifactSearchResults$,
   threeColumnWorkflowSearchResults$,
   type ThreeColumnArtifactSearchItem,
@@ -123,25 +127,34 @@ export function AgentDialogSearch({
           })}
           className={`pl-9 ${query ? "pr-9" : ""}`}
         />
-        {query && (
-          <Button
-            showTooltip
-            type="button"
-            onClick={() => {
-              return setQuery("");
-            }}
-            variant="quiet"
-            size="icon-xs"
-            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
-            aria-label={t(($) => {
-              return $.sidebar.clearSearch;
-            })}
-          >
-            <X size={14} />
-          </Button>
-        )}
+        {query && <ClearSearchButton setQuery={setQuery} />}
       </div>
     </div>
+  );
+}
+
+function ClearSearchButton({
+  setQuery,
+}: {
+  readonly setQuery: (query: string) => void;
+}) {
+  const { t } = useTranslation("agents");
+  return (
+    <Button
+      showTooltip
+      type="button"
+      onClick={() => {
+        return setQuery("");
+      }}
+      variant="quiet"
+      size="icon-xs"
+      className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
+      aria-label={t(($) => {
+        return $.sidebar.clearSearch;
+      })}
+    >
+      <X size={14} />
+    </Button>
   );
 }
 
@@ -210,8 +223,6 @@ function AgentCommandSearch({
   readonly setQuery: (query: string) => void;
   readonly placeholder: string;
 }) {
-  const { t } = useTranslation("agents");
-
   return (
     <div className="px-5 pb-3">
       <div className="relative w-full">
@@ -219,23 +230,7 @@ function AgentCommandSearch({
           placeholder={placeholder}
           className={query ? "pr-7" : ""}
         />
-        {query && (
-          <Button
-            showTooltip
-            type="button"
-            onClick={() => {
-              return setQuery("");
-            }}
-            variant="quiet"
-            size="icon-xs"
-            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
-            aria-label={t(($) => {
-              return $.sidebar.clearSearch;
-            })}
-          >
-            <X size={14} />
-          </Button>
-        )}
+        {query && <ClearSearchButton setQuery={setQuery} />}
       </div>
     </div>
   );
@@ -504,9 +499,11 @@ function ChatMessageSnippet({
 function SpotlightRowMeta({
   indicator,
   timestamp,
+  shortcutNumber,
 }: {
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly timestamp: string;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2.5">
@@ -516,6 +513,7 @@ function SpotlightRowMeta({
         <ChatThreadCommandIndicator indicator={indicator} />
       </span>
       <span className="text-xs text-[hsl(var(--gray-700))]">{timestamp}</span>
+      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
     </span>
   );
 }
@@ -534,10 +532,12 @@ function SpotlightThreadCommandItem({
   thread,
   indicator,
   onSelect,
+  shortcutNumber,
 }: {
   readonly thread: WorkspaceSearchChatThread;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <CommandItem
@@ -554,6 +554,7 @@ function SpotlightThreadCommandItem({
         {thread.title}
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(thread.sortAt)}
       />
@@ -566,11 +567,13 @@ function SpotlightMessageCommandItem({
   thread,
   indicator,
   onSelect,
+  shortcutNumber,
 }: {
   readonly message: ChatSearchResult;
   readonly thread: WorkspaceSearchChatThread | undefined;
   readonly indicator: ChatThreadCommandIndicatorValue;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   const title = thread?.title ?? message.agentName;
 
@@ -594,6 +597,7 @@ function SpotlightMessageCommandItem({
         <ChatMessageSnippet message={message} />
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={indicator}
         timestamp={formatRelativeTimestamp(message.matchedMessage.createdAt)}
       />
@@ -605,12 +609,42 @@ const SPOTLIGHT_RESOURCE_ICON_CLASS =
   "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground";
 const SPOTLIGHT_ARTIFACT_THUMBNAIL_WIDTH_PX = 64;
 
+function SpotlightAgentCommandItem({
+  agent,
+  onSelect,
+  shortcutNumber,
+}: {
+  readonly agent: SubagentInfo;
+  readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
+}) {
+  return (
+    <CommandItem
+      value={`spotlight-agent-${agent.agentId}`}
+      onSelect={onSelect}
+      className={SPOTLIGHT_ROW_CLASS}
+    >
+      <AgentAvatarImg
+        name={agent.agentId}
+        alt=""
+        className={SPOTLIGHT_AVATAR_CLASS}
+      />
+      <span className="min-w-0 flex-1 truncate text-left text-sm text-foreground">
+        {agentDialogLabel(agent)}
+      </span>
+      <ThreadNumberShortcutHint shortcutNumber={shortcutNumber} />
+    </CommandItem>
+  );
+}
+
 function SpotlightWorkflowCommandItem({
   workflow,
   onSelect,
+  shortcutNumber,
 }: {
   readonly workflow: WorkflowSummary;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   const title = workflow.displayName ?? workflow.name;
   return (
@@ -629,6 +663,7 @@ function SpotlightWorkflowCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={null}
         timestamp={formatRelativeTimestamp(workflow.createdAt)}
       />
@@ -734,9 +769,11 @@ function SpotlightArtifactThumbnail({
 function SpotlightArtifactCommandItem({
   artifact,
   onSelect,
+  shortcutNumber,
 }: {
   readonly artifact: ThreeColumnArtifactSearchItem;
   readonly onSelect: () => void;
+  readonly shortcutNumber: number | undefined;
 }) {
   return (
     <CommandItem
@@ -754,6 +791,7 @@ function SpotlightArtifactCommandItem({
         </span>
       </span>
       <SpotlightRowMeta
+        shortcutNumber={shortcutNumber}
         indicator={null}
         timestamp={formatRelativeTimestamp(artifact.createdAt)}
       />
@@ -846,6 +884,12 @@ function SpotlightSearchFilterBar({
       }),
     },
     {
+      value: "agents",
+      label: t(($) => {
+        return $.sidebar.sections.agents;
+      }),
+    },
+    {
       value: "workflows",
       label: t(($) => {
         return $.sidebar.sections.workflows;
@@ -898,18 +942,16 @@ function SpotlightSearchFilterBar({
 interface SpotlightSearchResultsProps {
   readonly threads: readonly WorkspaceSearchChatThread[];
   readonly messages: readonly ChatSearchResult[];
+  readonly agents: readonly SubagentInfo[];
   readonly workflows: readonly WorkflowSummary[];
   readonly artifacts: readonly ThreeColumnArtifactSearchItem[];
   readonly threadMap: ReadonlyMap<string, WorkspaceSearchChatThread>;
   readonly activeThreadIds: ReadonlySet<string> | undefined;
   readonly unreadThreadIds: ReadonlySet<string> | undefined;
-  readonly showThreads: boolean;
-  readonly showMessages: boolean;
-  readonly showWorkflows: boolean;
-  readonly showArtifacts: boolean;
   readonly searching: boolean;
   readonly showNoResults: boolean;
   readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectAgent: (agentId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
   readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }
@@ -952,50 +994,33 @@ function spotlightFilterShows(
   return filter === "all" || filter === category;
 }
 
-function spotlightVisibleResultCount({
-  showThreads,
-  showMessages,
-  showWorkflows,
-  showArtifacts,
-  threadCount,
-  messageCount,
-  workflowCount,
-  artifactCount,
-}: {
-  readonly showThreads: boolean;
-  readonly showMessages: boolean;
-  readonly showWorkflows: boolean;
-  readonly showArtifacts: boolean;
-  readonly threadCount: number;
-  readonly messageCount: number;
-  readonly workflowCount: number;
-  readonly artifactCount: number;
-}): number {
-  return (
-    Number(showThreads) * threadCount +
-    Number(showMessages) * messageCount +
-    Number(showWorkflows) * workflowCount +
-    Number(showArtifacts) * artifactCount
-  );
-}
-
 function spotlightVisibleSearchIsPending({
+  showThreads,
+  threadSearching,
   showMessages,
+  showAgents,
   showWorkflows,
   showArtifacts,
   messageSearching,
+  agentSearching,
   workflowSearching,
   artifactSearching,
 }: {
+  readonly showThreads: boolean;
+  readonly threadSearching: boolean;
   readonly showMessages: boolean;
+  readonly showAgents: boolean;
   readonly showWorkflows: boolean;
   readonly showArtifacts: boolean;
   readonly messageSearching: boolean;
+  readonly agentSearching: boolean;
   readonly workflowSearching: boolean;
   readonly artifactSearching: boolean;
 }): boolean {
   return (
+    (showThreads && threadSearching) ||
     (showMessages && messageSearching) ||
+    (showAgents && agentSearching) ||
     (showWorkflows && workflowSearching) ||
     (showArtifacts && artifactSearching)
   );
@@ -1004,22 +1029,24 @@ function spotlightVisibleSearchIsPending({
 function SpotlightSearchResults({
   threads,
   messages,
+  agents,
   workflows,
   artifacts,
   threadMap,
   activeThreadIds,
   unreadThreadIds,
-  showThreads,
-  showMessages,
-  showWorkflows,
-  showArtifacts,
   searching,
   showNoResults,
   onSelectChatThread,
+  onSelectAgent,
   onSelectWorkflow,
   onSelectArtifact,
 }: SpotlightSearchResultsProps) {
   const { t } = useTranslation("agents");
+  const numberShortcutsEnabled = useGet(threadNumberShortcutsEnabled$);
+  const shortcutNumber = (index: number) => {
+    return numberShortcutsEnabled && index < 9 ? index + 1 : undefined;
+  };
 
   return (
     // `px-3` pairs with each row's `pl-1` / `pr-2` to put row content on the
@@ -1031,69 +1058,87 @@ function SpotlightSearchResults({
         "Best matches" was labelling the only group there is.
       */}
       <CommandGroup className="[&_[data-slot=command-group-items]]:flex [&_[data-slot=command-group-items]]:flex-col">
-        {showThreads
-          ? threads.map((thread) => {
-              return (
-                <SpotlightThreadCommandItem
-                  key={thread.id}
-                  thread={thread}
-                  indicator={chatThreadCommandIndicator(
-                    thread.id,
-                    activeThreadIds,
-                    unreadThreadIds,
-                  )}
-                  onSelect={() => {
-                    return onSelectChatThread(thread.id);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showMessages
-          ? messages.map((message) => {
-              return (
-                <SpotlightMessageCommandItem
-                  key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
-                  message={message}
-                  thread={threadMap.get(message.chatThreadId)}
-                  indicator={chatThreadCommandIndicator(
-                    message.chatThreadId,
-                    activeThreadIds,
-                    unreadThreadIds,
-                  )}
-                  onSelect={() => {
-                    return onSelectChatThread(message.chatThreadId);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showWorkflows
-          ? workflows.map((workflow) => {
-              return (
-                <SpotlightWorkflowCommandItem
-                  key={workflow.id}
-                  workflow={workflow}
-                  onSelect={() => {
-                    return onSelectWorkflow(workflow.id);
-                  }}
-                />
-              );
-            })
-          : null}
-        {showArtifacts
-          ? artifacts.map((artifact) => {
-              return (
-                <SpotlightArtifactCommandItem
-                  key={artifact.id}
-                  artifact={artifact}
-                  onSelect={() => {
-                    return onSelectArtifact(artifact);
-                  }}
-                />
-              );
-            })
-          : null}
+        {threads.map((thread, index) => {
+          return (
+            <SpotlightThreadCommandItem
+              shortcutNumber={shortcutNumber(index)}
+              key={thread.id}
+              thread={thread}
+              indicator={chatThreadCommandIndicator(
+                thread.id,
+                activeThreadIds,
+                unreadThreadIds,
+              )}
+              onSelect={() => {
+                return onSelectChatThread(thread.id);
+              }}
+            />
+          );
+        })}
+        {messages.map((message, index) => {
+          return (
+            <SpotlightMessageCommandItem
+              shortcutNumber={shortcutNumber(threads.length + index)}
+              key={`${message.matchedMessage.chatThreadId}:${message.matchedMessage.seqId}`}
+              message={message}
+              thread={threadMap.get(message.chatThreadId)}
+              indicator={chatThreadCommandIndicator(
+                message.chatThreadId,
+                activeThreadIds,
+                unreadThreadIds,
+              )}
+              onSelect={() => {
+                return onSelectChatThread(message.chatThreadId);
+              }}
+            />
+          );
+        })}
+        {agents.map((agent, index) => {
+          return (
+            <SpotlightAgentCommandItem
+              shortcutNumber={shortcutNumber(
+                threads.length + messages.length + index,
+              )}
+              key={agent.agentId}
+              agent={agent}
+              onSelect={() => {
+                return onSelectAgent(agent.agentId);
+              }}
+            />
+          );
+        })}
+        {workflows.map((workflow, index) => {
+          return (
+            <SpotlightWorkflowCommandItem
+              shortcutNumber={shortcutNumber(
+                threads.length + messages.length + agents.length + index,
+              )}
+              key={workflow.id}
+              workflow={workflow}
+              onSelect={() => {
+                return onSelectWorkflow(workflow.id);
+              }}
+            />
+          );
+        })}
+        {artifacts.map((artifact, index) => {
+          return (
+            <SpotlightArtifactCommandItem
+              shortcutNumber={shortcutNumber(
+                threads.length +
+                  messages.length +
+                  agents.length +
+                  workflows.length +
+                  index,
+              )}
+              key={artifact.id}
+              artifact={artifact}
+              onSelect={() => {
+                return onSelectArtifact(artifact);
+              }}
+            />
+          );
+        })}
         {searching ? (
           <div
             className="flex items-center gap-2 py-2 pl-1 text-xs text-muted-foreground"
@@ -1133,23 +1178,28 @@ export function ThreeColumnSearchDialog({
   open,
   onOpenChange,
   onSelectChatThread,
+  onSelectAgent,
   onSelectWorkflow,
   onSelectArtifact,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSelectChatThread: (threadId: string) => void;
+  readonly onSelectAgent: (agentId: string) => void;
   readonly onSelectWorkflow: (workflowId: string) => void;
   readonly onSelectArtifact: (artifact: ThreeColumnArtifactSearchItem) => void;
 }) {
   const { t } = useTranslation("agents");
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const signal = useGet(pageSignal$);
   const filter = useGet(threeColumnSearchFilter$);
   const setFilter = useSet(setThreeColumnSearchFilter$);
-  const threadResult = useGet(workspaceSearchChatThreads$);
+  const threadLoadable = useLoadable(threeColumnSearchChatThreads$);
+  const shortcutIndex = useSet(threadNumberShortcutIndex$);
   const threadMap = useGet(workspaceSearchChatThreadMap$);
   const messageLoadable = useLoadable(workspaceSearchChatMessages$);
+  const agentLoadable = useLoadable(threeColumnAgentSearchResults$);
   const workflowLoadable = useLoadable(threeColumnWorkflowSearchResults$);
   const artifactLoadable = useLoadable(threeColumnArtifactSearchResults$);
   const activeThreadIds = useLastResolved(sidebarActiveThreadIds$, {
@@ -1159,13 +1209,25 @@ export function ThreeColumnSearchDialog({
     equalityFn: equalSets,
   });
   const trimmedQuery = query.trim().toLowerCase();
-  const threadMatches =
-    threadResult.query === trimmedQuery ? threadResult.chatThreads : [];
+  const threadMatches = spotlightRowsFromLoadable(
+    threadLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.chatThreads;
+    },
+  );
   const messageMatches = spotlightRowsFromLoadable(
     messageLoadable,
     trimmedQuery,
     (result) => {
       return result.chatMessages;
+    },
+  );
+  const agentMatches = spotlightRowsFromLoadable(
+    agentLoadable,
+    trimmedQuery,
+    (result) => {
+      return result.agents;
     },
   );
   const workflowMatches = spotlightRowsFromLoadable(
@@ -1184,26 +1246,32 @@ export function ThreeColumnSearchDialog({
   );
   const showThreads = spotlightFilterShows(filter, "chats");
   const showMessages = spotlightFilterShows(filter, "messages");
+  const showAgents = spotlightFilterShows(filter, "agents");
   const showWorkflows = spotlightFilterShows(filter, "workflows");
   const showArtifacts = spotlightFilterShows(filter, "artifacts");
-  const resultCount = spotlightVisibleResultCount({
-    showThreads,
-    showMessages,
-    showWorkflows,
-    showArtifacts,
-    threadCount: threadMatches.length,
-    messageCount: messageMatches.length,
-    workflowCount: workflowMatches.length,
-    artifactCount: artifactMatches.length,
-  });
+  const visibleThreads = showThreads ? threadMatches : [];
+  const visibleMessages = showMessages ? messageMatches : [];
+  const visibleAgents = showAgents ? agentMatches : [];
+  const visibleWorkflows = showWorkflows ? workflowMatches : [];
+  const visibleArtifacts = showArtifacts ? artifactMatches : [];
+  const resultCount =
+    visibleThreads.length +
+    visibleMessages.length +
+    visibleAgents.length +
+    visibleWorkflows.length +
+    visibleArtifacts.length;
   const visibleSearching = spotlightVisibleSearchIsPending({
+    showThreads,
+    threadSearching: spotlightLoadableIsSearching(threadLoadable, trimmedQuery),
     showMessages,
+    showAgents,
     showWorkflows,
     showArtifacts,
     messageSearching: spotlightLoadableIsSearching(
       messageLoadable,
       trimmedQuery,
     ),
+    agentSearching: spotlightLoadableIsSearching(agentLoadable, trimmedQuery),
     workflowSearching: spotlightLoadableIsSearching(
       workflowLoadable,
       trimmedQuery,
@@ -1218,6 +1286,10 @@ export function ThreeColumnSearchDialog({
     onOpenChange(false);
     onSelectChatThread(threadId);
   };
+  const selectAgent = (agentId: string) => {
+    onOpenChange(false);
+    onSelectAgent(agentId);
+  };
   const selectWorkflow = (workflowId: string) => {
     onOpenChange(false);
     onSelectWorkflow(workflowId);
@@ -1227,6 +1299,34 @@ export function ThreeColumnSearchDialog({
     onSelectArtifact(artifact);
   };
 
+  const resultSelections = [
+    ...visibleThreads.map((thread) => {
+      return () => {
+        selectThread(thread.id);
+      };
+    }),
+    ...visibleMessages.map((message) => {
+      return () => {
+        selectThread(message.chatThreadId);
+      };
+    }),
+    ...visibleAgents.map((agent) => {
+      return () => {
+        selectAgent(agent.agentId);
+      };
+    }),
+    ...visibleWorkflows.map((workflow) => {
+      return () => {
+        selectWorkflow(workflow.id);
+      };
+    }),
+    ...visibleArtifacts.map((artifact) => {
+      return () => {
+        selectArtifact(artifact);
+      };
+    }),
+  ];
+
   return (
     <CommandDialog
       open={open}
@@ -1234,51 +1334,64 @@ export function ThreeColumnSearchDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="zero-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
+      className="okou-app w-[calc(100vw-2rem)] gap-0 sm:max-w-[820px] [&_[data-slot=dialog-close]]:hidden"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,
         loop: true,
         value: query,
-        onValueChange: setQuery,
+        onValueChange: (value) => {
+          detach(setQuery(value, signal), Reason.DomCallback);
+        },
       }}
     >
-      <DialogHeader className="sr-only">
-        <DialogTitle>
-          {t(($) => {
-            return $.sidebar.searchWorkspace;
-          })}
-        </DialogTitle>
-        <DialogDescription>
-          {t(($) => {
-            return $.sidebar.searchWorkspace;
-          })}
-        </DialogDescription>
-      </DialogHeader>
-      <SpotlightSearchInput />
-      <SpotlightSearchFilterBar
-        filter={filter}
-        resultCount={resultCount}
-        onSelect={setFilter}
-      />
-      <SpotlightSearchResults
-        threads={threadMatches}
-        messages={messageMatches}
-        workflows={workflowMatches}
-        artifacts={artifactMatches}
-        threadMap={threadMap}
-        activeThreadIds={activeThreadIds}
-        unreadThreadIds={unreadThreadIds}
-        showThreads={showThreads}
-        showMessages={showMessages}
-        showWorkflows={showWorkflows}
-        showArtifacts={showArtifacts}
-        searching={visibleSearching}
-        showNoResults={showNoResults}
-        onSelectChatThread={selectThread}
-        onSelectWorkflow={selectWorkflow}
-        onSelectArtifact={selectArtifact}
-      />
+      <div
+        className="contents"
+        onKeyDownCapture={(event) => {
+          const index = shortcutIndex(event.nativeEvent);
+          if (index === undefined) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          resultSelections[index]?.();
+        }}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>
+            {t(($) => {
+              return $.sidebar.searchWorkspace;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.sidebar.searchWorkspace;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <SpotlightSearchInput />
+        <SpotlightSearchFilterBar
+          filter={filter}
+          resultCount={resultCount}
+          onSelect={setFilter}
+        />
+        <SpotlightSearchResults
+          threads={visibleThreads}
+          messages={visibleMessages}
+          agents={visibleAgents}
+          workflows={visibleWorkflows}
+          artifacts={visibleArtifacts}
+          threadMap={threadMap}
+          activeThreadIds={activeThreadIds}
+          unreadThreadIds={unreadThreadIds}
+          searching={visibleSearching}
+          showNoResults={showNoResults}
+          onSelectChatThread={selectThread}
+          onSelectAgent={selectAgent}
+          onSelectWorkflow={selectWorkflow}
+          onSelectArtifact={selectArtifact}
+        />
+      </div>
     </CommandDialog>
   );
 }
@@ -1300,7 +1413,7 @@ export function PinAgentDialog({
   const query = useGet(pinAgentDialogQuery$);
   const setQuery = useSet(setPinAgentDialogQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinnedRenderOrder = useLastResolved(pinnedAgentRenderOrder$) ?? [];
+  const pinnedRenderOrder = pinnedIds;
 
   const pinnedIdSet = new Set(pinnedIds);
   const trimmedQuery = query.trim().toLowerCase();
@@ -1355,7 +1468,7 @@ export function PinAgentDialog({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
+      className="okou-app sm:max-w-xl w-[calc(100vw-2rem)] gap-0"
       commandClassName="gap-0"
       commandProps={{
         shouldFilter: false,

@@ -1,6 +1,5 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import type { BrandName } from "../../signals/branding.ts";
 
 interface UseCase {
   readonly id: string;
@@ -15,7 +14,6 @@ interface Category {
 }
 
 interface IdeationFilterOptions {
-  readonly brandName: BrandName;
   readonly features?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly visibleConnectorSlugs?: ReadonlySet<string>;
 }
@@ -105,7 +103,7 @@ const categories: readonly Category[] = [
       {
         id: "zapier-vm0-migration",
         prompt:
-          "Help me migrate my Zapier workflows to VM0. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
+          "Help me migrate my Zapier workflows to Okou. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
         connectorSlugs: ["zapier", "slack", "notion"],
         featureFlag: FeatureSwitchKey.ZapierConnector,
       },
@@ -561,16 +559,6 @@ function isEnabled(
   return !!features?.[useCase.featureFlag];
 }
 
-function brandUseCase(useCase: UseCase, brandName: BrandName): UseCase {
-  if (useCase.id !== "zapier-vm0-migration") {
-    return useCase;
-  }
-  return {
-    ...useCase,
-    prompt: `Help me migrate my Zapier workflows to ${brandName}. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack`,
-  };
-}
-
 function filterUseCase(
   useCase: UseCase,
   options: IdeationFilterOptions,
@@ -585,7 +573,7 @@ function filterUseCase(
     useCase.connectorSlugs.length === 0 ||
     !visibleConnectorSlugs
   ) {
-    return brandUseCase(useCase, options.brandName);
+    return useCase;
   }
 
   const allConnectorsVisible = useCase.connectorSlugs.every((connectorSlug) => {
@@ -594,7 +582,7 @@ function filterUseCase(
   if (!allConnectorsVisible) {
     return null;
   }
-  return brandUseCase(useCase, options.brandName);
+  return useCase;
 }
 
 export function getCategories(

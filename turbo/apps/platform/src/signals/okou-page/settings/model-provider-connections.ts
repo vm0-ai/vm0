@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
-  SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   getProviderRuntimeModel,
   isModelSupportedByProvider,
   type ModelProviderType,
@@ -49,7 +49,7 @@ type SurfaceField = Exclude<keyof SurfaceDraft, "enabled">;
 function mappingsFor(type: ModelProviderType): string {
   return JSON.stringify(
     Object.fromEntries(
-      SUPPORTED_RUN_MODELS.filter((model) => {
+      ACTIVE_RUN_MODELS.filter((model) => {
         return isModelSupportedByProvider(model, type);
       }).map((model) => {
         return [model, getProviderRuntimeModel(type, model)];

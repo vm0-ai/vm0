@@ -1,10 +1,14 @@
 import { openDB, type DBSchema } from "idb";
 
+import { observeClientOperation } from "../../lib/client-telemetry.ts";
+import { withCleanup } from "../utils.ts";
+import { runIndexedDbTransaction } from "./indexeddb-client.ts";
+
 /**
  * Which entry of the source step the user came in through, which is all the
  * wizard knows about a source until an agent opens it.
  */
-export type IntroVideoSourceKind = "file" | "presentation" | "video";
+type IntroVideoSourceKind = "file" | "presentation" | "video";
 
 /**
  * The kind a stored draft names.
@@ -28,7 +32,7 @@ function knownKind(kind: string): IntroVideoSourceKind {
   }
 }
 
-export interface IntroVideoDraftRecord {
+interface IntroVideoDraftRecord {
   readonly blob: Blob;
   readonly contentType: string;
   readonly createdAt: number;
@@ -44,25 +48,59 @@ interface IntroVideoDraftDatabase extends DBSchema {
   };
 }
 
+/**
+ * Client-persisted identity, deliberately kept under the pre-rename name.
+ *
+ * The browser keys an IndexedDB database by this string. Renaming it does not
+ * move the stored drafts: the old database keeps the user's saved blob and this
+ * build opens an empty new one, so every draft saved before the rename is
+ * silently lost. Copying them across would mean opening both databases, moving
+ * blobs, and deleting the old one on every client that ever returns — and a
+ * client that never returns keeps an orphaned database forever. The name is
+ * invisible to users, so #31816 keeps it. Rename it only as part of a slice
+ * that already has to restructure this store and can carry the copy.
+ */
 const DATABASE_NAME = "zero-intro-video-drafts";
 const DATABASE_VERSION = 1;
+const TRANSACTION_TEMPLATES = {
+  delete: "intro_video_drafts.delete",
+  read: "intro_video_drafts.get",
+  save: "intro_video_drafts.put",
+} as const;
 
 async function openIntroVideoDraftDatabase() {
-  return await openDB<IntroVideoDraftDatabase>(
-    DATABASE_NAME,
-    DATABASE_VERSION,
-    {
-      upgrade(database) {
-        database.createObjectStore("drafts");
-      },
+  return await observeClientOperation(
+    { event_name: "indexeddb.open", database: "intro_video_drafts" },
+    () => {
+      return openDB<IntroVideoDraftDatabase>(DATABASE_NAME, DATABASE_VERSION, {
+        upgrade(database) {
+          database.createObjectStore("drafts");
+        },
+      });
     },
   );
 }
 
 export async function readIntroVideoDraft(): Promise<IntroVideoDraftRecord | null> {
   const database = await openIntroVideoDraftDatabase();
-  const draft = await database.get("drafts", "latest");
-  database.close();
+  const draft = await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.read,
+        transaction_mode: "readonly",
+      },
+      () => {
+        return database.transaction("drafts", "readonly");
+      },
+      async (transaction, trackRequest) => {
+        return await trackRequest(transaction.store.get("latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
   if (!draft) {
     return null;
   }
@@ -73,12 +111,44 @@ export async function saveIntroVideoDraft(
   draft: IntroVideoDraftRecord,
 ): Promise<void> {
   const database = await openIntroVideoDraftDatabase();
-  await database.put("drafts", draft, "latest");
-  database.close();
+  await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.save,
+        transaction_mode: "readwrite",
+      },
+      () => {
+        return database.transaction("drafts", "readwrite");
+      },
+      async (transaction, trackRequest) => {
+        await trackRequest(transaction.store.put(draft, "latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
 }
 
 export async function deleteIntroVideoDraft(): Promise<void> {
   const database = await openIntroVideoDraftDatabase();
-  await database.delete("drafts", "latest");
-  database.close();
+  await withCleanup(
+    runIndexedDbTransaction(
+      {
+        database: "intro_video_drafts",
+        template: TRANSACTION_TEMPLATES.delete,
+        transaction_mode: "readwrite",
+      },
+      () => {
+        return database.transaction("drafts", "readwrite");
+      },
+      async (transaction, trackRequest) => {
+        await trackRequest(transaction.store.delete("latest"));
+      },
+    ),
+    () => {
+      database.close();
+    },
+  );
 }

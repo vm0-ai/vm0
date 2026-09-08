@@ -4,12 +4,15 @@ import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
+import { setupKeyboardShortcutHints$ } from "../keyboard-shortcut-hints.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openThreeColumnSearchDialog$ } from "./sidebar-state.ts";
 import { displayedPinnedAgents$ } from "./pinned-agents.ts";
 import { writeToClipboard } from "./clipboard.ts";
 import { isStandaloneMode } from "./settings/connectors.ts";
+import { setupThreadNumberShortcuts$ } from "./thread-number-shortcuts.ts";
 
 type PinnedAgentShortcutDirection = "prev" | "next";
 
@@ -103,9 +106,11 @@ function shouldHandleUniversalSearchShortcut(event: KeyboardEvent): boolean {
 
 export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
+    set(setupThreadNumberShortcuts$, signal);
+    set(setupKeyboardShortcutHints$, signal);
     setupGlobalShortcut(
       {
-        "mod+b": {
+        [GLOBAL_KEYBOARD_SHORTCUTS.toggleChatList.binding]: {
           allowInEditableTarget: true,
           run: () => {
             set(toggleSidebarOff$);
@@ -120,13 +125,13 @@ export const setupGlobalKeyboardShortcuts$ = command(
             await writeToClipboard(window.location.href);
           },
         },
-        "mod+shift+o": {
+        [GLOBAL_KEYBOARD_SHORTCUTS.newChat.binding]: {
           allowInEditableTarget: true,
           run: async () => {
             await set(navigateToNewChat$, signal);
           },
         },
-        "mod+shift+f": {
+        [GLOBAL_KEYBOARD_SHORTCUTS.searchWorkspace.binding]: {
           allowInEditableTarget: true,
           shouldHandle: shouldHandleUniversalSearchShortcut,
           run: (event) => {

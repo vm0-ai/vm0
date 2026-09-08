@@ -21,7 +21,6 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
@@ -92,6 +91,7 @@ import {
   readAcceptedOfficialWorkflowRevision,
 } from "../services/official-workflow-catalog-read.service";
 import { resolveOfficialWorkflowBlueprintForReconciliation } from "../services/official-workflow-installation.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   commitPreparedVolumeServerSide,
   ensureVolumeStorage$,
@@ -958,14 +958,20 @@ async function copyWorkflowUserAutomations(
     });
   }
 
-  await ensureWorkflowUserAutomationThread(tx, {
-    orgId: args.orgId,
-    userId: args.userId,
-    workflowId: args.targetWorkflowId,
-    agentId: args.targetAgentId,
-    workflowTitle: args.workflowTitle,
-    currentTime: args.currentTime,
-  });
+  if (
+    rows.some((automation) => {
+      return automation.kind === "event";
+    })
+  ) {
+    await ensureWorkflowUserAutomationThread(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      workflowId: args.targetWorkflowId,
+      agentId: args.targetAgentId,
+      workflowTitle: args.workflowTitle,
+      currentTime: args.currentTime,
+    });
+  }
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
@@ -1460,7 +1466,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const timing = new ApiDispatchTimingCollector();
   const mappedChatThreadId = await measureApiDispatchTiming(
     timing,
-    "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+    "api_dispatch_pre_create_agent_workflow_slash_load_thread_mapping",
     "nested",
     async () => {
       return await loadWorkflowUserAutomationThreadId(writeDb, {
@@ -1475,7 +1481,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     mappedChatThreadId ??
     (await measureApiDispatchTiming(
       timing,
-      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "api_dispatch_pre_create_agent_workflow_slash_ensure_thread",
       "nested",
       async () => {
         return await writeDb.transaction(async (tx) => {
@@ -1502,7 +1508,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     threadId: chatThreadId,
   };
   timing.recordElapsed(
-    "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+    "api_dispatch_pre_create_agent_workflow_slash_prepare_normal_send",
     "nested",
     apiStartTime,
   );
@@ -1514,7 +1520,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       orgId: auth.orgId,
       apiStartTime,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
       preloadedAgent: agent,
       timing,
       agentRunPreCreateSource: "workflow_slash_command",

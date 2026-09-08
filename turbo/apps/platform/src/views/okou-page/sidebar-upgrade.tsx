@@ -9,6 +9,7 @@ import {
   setSettingsDialogOpen$,
 } from "../../signals/okou-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { refreshSidebarChatThreadLayoutOnRef$ } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 
 function nextTierInfo(
   tier: string,
@@ -23,6 +24,7 @@ function nextTierInfo(
 }
 
 export function SidebarUpgradeCard() {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const billingLoadable = useLastLoadable(billingStatusAsync$);
@@ -61,13 +63,14 @@ export function SidebarUpgradeCard() {
 
   return (
     <button
+      ref={refreshLayoutRef}
       type="button"
       onClick={handleClick}
-      className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-state-hover zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
+      className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-state-hover okou-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
       style={{ borderRadius: "12px" }}
     >
       <div className="min-w-0 flex-1">
-        <p className="zero-nav-copy text-sm font-medium text-foreground">
+        <p className="okou-nav-copy text-sm font-medium text-foreground">
           {t(
             ($) => {
               return $.billing.sidebar.getPlan;
@@ -75,7 +78,7 @@ export function SidebarUpgradeCard() {
             { plan: nextLabel },
           )}
         </p>
-        <p className="zero-nav-copy-muted mt-0.5 text-[11px] text-muted-foreground">
+        <p className="okou-nav-copy-muted mt-0.5 text-[11px] text-muted-foreground">
           {t(($) => {
             return $.billing.sidebar.description;
           })}

@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 barrier_script="${repo_root}/.github/scripts/cancel-superseded-merge-group-runs.sh"
 lock_script="${repo_root}/.github/scripts/with-runner-lifecycle-lock.sh"
-namespace_cleanup_script="${repo_root}/.github/scripts/cleanup-turbo-runner-namespace.sh"
+namespace_cleanup_script="${repo_root}/.github/scripts/cleanup-pr-runner-namespace.sh"
 tmp_dir=$(mktemp -d)
 background_pids=()
 
@@ -40,7 +40,14 @@ done
 
 case "$endpoint" in
   repos/vm0-ai/vm0/pulls/42)
-    printf 'feature/late-approval\tvm0-ai/vm0\n'
+    if [[ " $* " == *" --jq .state "* ]]; then
+      case "${MOCK_PR_STATE:-closed}" in
+        error) exit 1 ;;
+        *) printf '%s\n' "${MOCK_PR_STATE:-closed}" ;;
+      esac
+    else
+      printf 'feature/late-approval\tvm0-ai/vm0\n'
+    fi
     ;;
   repos/vm0-ai/vm0/actions/runs)
     printf '[{"workflow_runs":[]}]\n'
@@ -78,6 +85,10 @@ SH
 cat >"${fake_bin}/ansible-playbook" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ -n "${MOCK_ANSIBLE_LOG:-}" ]; then
+  printf 'ansible\n' >>"$MOCK_ANSIBLE_LOG"
+  exit 0
+fi
 printf 'cleanup-entered\n' >"$MOCK_CLEANUP_READY_FIFO"
 IFS= read -r release <"$MOCK_CLEANUP_RELEASE_FIFO"
 [ "$release" = "release" ]
@@ -107,6 +118,27 @@ barrier_output=$(
 )
 grep -q "No active runner-owner CI runs found for PR #42" <<<"$barrier_output" ||
   fail "expected the stabilized discovery barrier to return an empty owner set"
+
+# The protected cleanup helper must fail before Ansible when current GitHub
+# state no longer authorizes deletion or cannot be resolved.
+authority_ansible_log="${tmp_dir}/authority-ansible.log"
+for rejected_state in open error; do
+  if PATH="${fake_bin}:$PATH" \
+    JOB_REF=pr-42 \
+    GH_TOKEN=test-token \
+    GITHUB_REPOSITORY=vm0-ai/vm0 \
+    GITHUB_RUN_ID=900 \
+    METAL_HOSTS=metal-a.example.test \
+    METAL_USER=runner \
+    PR_NUMBER=42 \
+    MOCK_ANSIBLE_LOG="$authority_ansible_log" \
+    MOCK_PR_STATE="$rejected_state" \
+    "$namespace_cleanup_script" >/dev/null 2>"${tmp_dir}/authority-${rejected_state}.err"; then
+    fail "cleanup accepted rejected PR state ${rejected_state}"
+  fi
+done
+[ ! -e "$authority_ansible_log" ] ||
+  fail "cleanup reached Ansible without closed-PR authority"
 
 cleanup_ready_fifo="${tmp_dir}/cleanup-ready"
 cleanup_release_fifo="${tmp_dir}/cleanup-release"

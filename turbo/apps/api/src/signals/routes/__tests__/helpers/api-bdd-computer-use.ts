@@ -50,12 +50,16 @@ interface RequiredAuthHeaders {
 
 /**
  * Computer-use routes accept either a Clerk session actor or a bearer token
- * (zero run tokens for command routes). `null` issues an unauthenticated
+ * (agent run tokens for command routes). `null` issues an unauthenticated
  * request.
  */
 type ComputerUseAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface ComputerUseHostStartOptions {
+  readonly permissions?: {
+    readonly accessibility: boolean;
+    readonly screenRecording: boolean;
+  };
   readonly clientProduct?: DesktopProduct;
   readonly installationId?: string;
   readonly hostName?: string;
@@ -250,7 +254,10 @@ function hostRuntimeBody(options: ComputerUseHostStartOptions = {}) {
       ...(options.supportedCapabilities ??
         DEFAULT_SUPPORTED_COMPUTER_USE_CAPABILITIES),
     ],
-    permissions: { accessibility: true, screenRecording: true },
+    permissions: options.permissions ?? {
+      accessibility: true,
+      screenRecording: true,
+    },
   };
 }
 
@@ -311,9 +318,9 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 }
 
 /**
- * Mint a zero run token directly, the same auth boundary production crosses
+ * Mint an agent run token directly, the same auth boundary production crosses
  * when agent-runs-create issues a token whose chat thread granted a
- * computer-use host (`generateOkouToken`). Precedent: `zeroCapabilityToken`
+ * computer-use host (`generateOkouToken`). Precedent: the run-token helpers
  * in api-bdd-github.ts. Returns the runId so audit events created by the
  * token's commands can be read back through the audit-events list API.
  */

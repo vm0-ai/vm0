@@ -21,7 +21,12 @@ async fn existing_rootfs_best_effort_allows_missing_r2_cache() {
     let guests = test_guest_binaries();
     let input = rootfs_input(&home, &rootfs, &guests, TemplateCache::Disabled);
 
-    ensure_rootfs_under_lock(input, TemplateLockRelease::none())
+    let guard = std::sync::Arc::new(
+        lock::acquire(home.rootfs_lock("best-effort-local-hash"))
+            .await
+            .unwrap(),
+    );
+    ensure_rootfs_under_lock(input, TemplateLockRelease::none(), guard)
         .await
         .unwrap();
     assert!(
@@ -54,6 +59,11 @@ async fn existing_rootfs_releases_template_lock_callback() {
         TemplateLockRelease::from_release(move || {
             released_for_callback.fetch_add(1, Ordering::SeqCst);
         }),
+        Arc::new(
+            lock::acquire(home.rootfs_lock("release-local-hash"))
+                .await
+                .unwrap(),
+        ),
     )
     .await
     .unwrap();

@@ -10,11 +10,10 @@ import type { Root } from "hast";
 import { Copy, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
-
-import type { BrandName } from "../../signals/branding.ts";
+  ASSISTANT_NAME,
+  BRAND_NAME,
+  type BrandName,
+} from "../../signals/branding.ts";
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -33,6 +32,7 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "../okou-page/chat-message-surface.tsx";
@@ -213,11 +213,11 @@ function SharedAssistantGroup({
       <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <SharedAssistantAvatar assistantName={assistantName} />
         <div className="relative flex min-w-0 flex-col gap-2">
-          {group.messages.map((message, index) => {
+          {group.messages.map((message) => {
             return (
               <ChatAssistantMessageBody
                 key={message.messageIndex}
-                compactTop={index > 0}
+                className={CHAT_THREAD_RESPONSE_LINE_CLASS}
               >
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody
@@ -285,13 +285,13 @@ function SharedThreadHandoff({
       data-shared-thread-handoff=""
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
-        paddingBottom: "max(0.5rem - var(--sab), 0px)",
+        paddingBottom: "max(0.5rem, var(--sab))",
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
         <div className="mx-auto max-w-[900px]">
-          <Card className="zero-composer relative z-10 overflow-visible">
+          <Card className="okou-composer relative z-10 overflow-visible">
             <CardContent className="p-0">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -358,7 +358,7 @@ function SharedThreadHeader({
           aria-label={brandName}
           className="shrink-0 text-foreground transition-opacity hover:opacity-70"
         >
-          <ProductBrandMark brandName={brandName} size="small" />
+          <ProductBrandMark size="small" />
         </a>
         {title !== null ? (
           <h1 className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -488,9 +488,9 @@ export function SharedThreadPage({
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
-  const publicBrand = sharedThread?.publicBrand ?? "vm0";
-  const presentation = publicBrandPresentation(publicBrand);
-  const homeUrl = appUrlForPublicBrand(window.location.origin, publicBrand);
+  // Threads shared under the retired brand keep their stored value, but only
+  // okou.ai serves this page, so it always presents the Okou brand.
+  const homeUrl = window.location.origin;
   const shareUrl = sharedThread
     ? `${window.location.origin}/share/threads/${encodeURIComponent(sharedThread.id)}`
     : null;
@@ -512,9 +512,9 @@ export function SharedThreadPage({
   signUpUrl.searchParams.set("redirect_url", handoffUrl.toString());
 
   return (
-    <div className="zero-app zero-workspace-bg flex h-full min-h-0 flex-col text-foreground">
+    <div className="okou-app okou-workspace-bg flex h-full min-h-0 flex-col text-foreground">
       <SharedThreadHeader
-        brandName={presentation.brandName}
+        brandName={BRAND_NAME}
         homeUrl={homeUrl}
         shareUrl={shareUrl}
         signInUrl={signInUrl.toString()}
@@ -524,12 +524,12 @@ export function SharedThreadPage({
       {sharedThread ? (
         <>
           <SharedThreadTranscript
-            assistantName={presentation.assistantName}
+            assistantName={ASSISTANT_NAME}
             groups={groups}
             richContent={sharedThread.richContent}
           />
           <SharedThreadHandoff
-            assistantName={presentation.assistantName}
+            assistantName={ASSISTANT_NAME}
             handoffUrl={handoffUrl.toString()}
             signInUrl={signInUrl.toString()}
           />

@@ -6,22 +6,25 @@ use api_contracts::generated::types::runners::runs::active_inputs::{
     receipt::Response as ActiveInputReceiptResponse,
     reserve::{Response as ActiveInputReserveResponse, ResponseRejectedReason},
 };
-use guest_contracts::active_input::encode_active_input;
+use guest_contracts::active_input::{ACTIVE_INPUT_CLOSED_DIAGNOSTIC, encode_active_input};
 use sandbox::{
     GuestProcessControlHandle, ProcessControlFailureKind, ProcessControlGuestStatus,
     ProcessControlOutcome, ProcessControlWriteState, Sandbox,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::active_input::{
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, ActiveInputBatch, ActiveInputSource,
     ApiActiveInputRecovery, local_active_input_delivery_id,
 };
+use crate::error::RunnerError;
 use crate::ids::RunId;
 
 const ACTIVE_INPUT_READ_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const ACTIVE_INPUT_CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
+pub(super) const ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL: Duration = Duration::from_millis(250);
+pub(super) const ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL: Duration = Duration::from_secs(4);
 const ACTIVE_INPUT_JOURNAL_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const ACTIVE_INPUT_RECEIPT_RECOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
@@ -87,6 +90,11 @@ enum ForwardDisposition {
     Stop,
 }
 
+struct PreparedActiveInput {
+    delivery_id: String,
+    payload: Vec<u8>,
+}
+
 async fn run_forwarder(
     run_id: RunId,
     mut source: ActiveInputSource,
@@ -117,8 +125,8 @@ async fn run_forwarder(
                     let delivery_id = local_active_input_delivery_id(run_id, entry.sequence);
                     let disposition = forward_with_retry(
                         run_id,
-                        &delivery_id,
-                        &entry.text,
+                        delivery_id,
+                        entry.text,
                         DeliveryMode::Local,
                         &control,
                         &job_cancel,
@@ -148,8 +156,8 @@ async fn run_forwarder(
                     } else {
                         let disposition = forward_with_retry(
                             run_id,
-                            &delivery_id,
-                            &prompt,
+                            delivery_id.clone(),
+                            prompt,
                             DeliveryMode::Api,
                             &control,
                             &job_cancel,
@@ -193,7 +201,26 @@ async fn run_forwarder(
             },
             Err(error) => {
                 if !warned_source_read_failure {
-                    warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying");
+                    match &error {
+                        RunnerError::ApiTransport(api_error) => warn!(
+                            run_id = %run_id,
+                            error = %error,
+                            endpoint = api_error.request.endpoint_label,
+                            method = %api_error.request.method,
+                            host = %api_error.request.host,
+                            path = %api_error.request.path,
+                            client_request_id = %api_error.request.client_request_id,
+                            client_session_id = %api_error.request.client_session_id,
+                            client_version = %api_error.request.client_version,
+                            failure_kind = api_error.failure_kind.as_str(),
+                            failure_cause = api_error.failure_cause.as_str(),
+                            error_summary = %api_error.summary,
+                            "active-input source read failed; retrying"
+                        ),
+                        _ => {
+                            warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying")
+                        }
+                    }
                     warned_source_read_failure = true;
                 }
                 true
@@ -209,7 +236,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             () = async {
                 if retry_after_read_error {
-                    tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                    source.wait_after_read_error().await;
                 } else {
                     source.wait_until_next_read().await;
                 }
@@ -220,47 +247,15 @@ async fn run_forwarder(
 
 async fn forward_with_retry(
     run_id: RunId,
-    delivery_id: &str,
-    text: &str,
+    delivery_id: String,
+    text: String,
     mode: DeliveryMode,
     control: &GuestProcessControlHandle,
     job_cancel: &CancellationToken,
     stop: &CancellationToken,
 ) -> ForwardDisposition {
-    let mut warn_retryable_failure = true;
-    loop {
-        let disposition = forward_once(
-            run_id,
-            delivery_id,
-            text,
-            mode,
-            control,
-            warn_retryable_failure,
-        )
-        .await;
-        if !matches!(disposition, ForwardDisposition::Retry) {
-            return disposition;
-        }
-        warn_retryable_failure = false;
-        tokio::select! {
-            biased;
-            () = stop.cancelled() => return ForwardDisposition::Stop,
-            () = job_cancel.cancelled() => return ForwardDisposition::Stop,
-            () = tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL) => {}
-        }
-    }
-}
-
-async fn forward_once(
-    run_id: RunId,
-    delivery_id: &str,
-    text: &str,
-    mode: DeliveryMode,
-    control: &GuestProcessControlHandle,
-    warn_retryable_failure: bool,
-) -> ForwardDisposition {
-    let bytes = match encode_active_input(delivery_id, text) {
-        Ok(bytes) if bytes.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => bytes,
+    let payload = match encode_active_input(&delivery_id, &text) {
+        Ok(payload) if payload.len() <= ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES => payload,
         Ok(_) => {
             warn!(
                 run_id = %run_id,
@@ -279,8 +274,43 @@ async fn forward_once(
             return ForwardDisposition::Stop;
         }
     };
+    drop(text);
+    let prepared = PreparedActiveInput {
+        delivery_id,
+        payload,
+    };
+    let mut warn_retryable_failure = true;
+    let mut retry_interval = ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL;
+    loop {
+        let disposition =
+            forward_once(run_id, &prepared, mode, control, warn_retryable_failure).await;
+        if !matches!(disposition, ForwardDisposition::Retry) {
+            return disposition;
+        }
+        warn_retryable_failure = false;
+        tokio::select! {
+            biased;
+            () = stop.cancelled() => return ForwardDisposition::Stop,
+            () = job_cancel.cancelled() => return ForwardDisposition::Stop,
+            () = tokio::time::sleep(retry_interval) => {}
+        }
+        retry_interval = (retry_interval * 2).min(ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL);
+    }
+}
+
+async fn forward_once(
+    run_id: RunId,
+    prepared: &PreparedActiveInput,
+    mode: DeliveryMode,
+    control: &GuestProcessControlHandle,
+    warn_retryable_failure: bool,
+) -> ForwardDisposition {
     let outcome = control
-        .control_owned_outcome(delivery_id.to_owned(), bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
+        .control_owned_outcome(
+            prepared.delivery_id.clone(),
+            prepared.payload.clone(),
+            ACTIVE_INPUT_CONTROL_TIMEOUT,
+        )
         .await;
     classify_control_outcome(run_id, mode, outcome, warn_retryable_failure)
 }
@@ -317,6 +347,15 @@ fn classify_control_outcome(
                 uncertain_disposition(mode)
             }
             ProcessControlGuestStatus::Inactive => ForwardDisposition::Stop,
+            ProcessControlGuestStatus::Rejected if diagnostic == ACTIVE_INPUT_CLOSED_DIAGNOSTIC => {
+                info!(
+                    run_id = %run_id,
+                    outcome = "closed",
+                    diagnostic = %diagnostic,
+                    "active-input control stopped"
+                );
+                ForwardDisposition::Stop
+            }
             ProcessControlGuestStatus::NonceMismatch
             | ProcessControlGuestStatus::Unsupported
             | ProcessControlGuestStatus::Rejected => {

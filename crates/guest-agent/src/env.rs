@@ -12,9 +12,10 @@ use api_contracts::generated::{
     constants::runners::paths::{CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_CODEX_HOME_DIR},
     types::runners::storage::ArtifactEntryMissingRootPolicy,
 };
+use guest_contracts::env::{CliAgentTypeSelection, CliFramework};
 
 use crate::constants;
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
@@ -43,10 +44,26 @@ pub enum Framework {
 impl Framework {
     /// Stable CLI agent type string used in runner/web contracts and logs.
     pub fn agent_type(self) -> &'static str {
-        match self {
-            Framework::ClaudeCode => "claude-code",
-            Framework::Codex => "codex",
-            Framework::Pi => "pi",
+        CliFramework::from(self).as_cli_agent_type()
+    }
+}
+
+impl From<CliFramework> for Framework {
+    fn from(framework: CliFramework) -> Self {
+        match framework {
+            CliFramework::ClaudeCode => Self::ClaudeCode,
+            CliFramework::Codex => Self::Codex,
+            CliFramework::Pi => Self::Pi,
+        }
+    }
+}
+
+impl From<Framework> for CliFramework {
+    fn from(framework: Framework) -> Self {
+        match framework {
+            Framework::ClaudeCode => Self::ClaudeCode,
+            Framework::Codex => Self::Codex,
+            Framework::Pi => Self::Pi,
         }
     }
 }
@@ -58,11 +75,11 @@ impl Framework {
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
 /// mock Claude path aliases are absent or non-Unicode.
-pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::MOCK_CLAUDE_PATH;
+pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::CLAUDE_MOCK_PATH;
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
-pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::MOCK_CODEX_PATH;
+pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::CODEX_MOCK_PATH;
 
 fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {
@@ -607,18 +624,14 @@ impl GuestConfig {
 }
 
 fn framework_from_cli_agent_type(value: &str) -> Framework {
-    match value {
-        "codex" => Framework::Codex,
-        "pi" => Framework::Pi,
-        "" | "claude-code" => Framework::ClaudeCode,
-        other => {
-            log_warn!(
-                LOG_TAG,
-                "Unknown CLI_AGENT_TYPE={other:?}, defaulting to claude-code"
-            );
-            Framework::ClaudeCode
-        }
+    let selection = CliAgentTypeSelection::parse(value);
+    if selection.is_unknown() {
+        log_warn!(
+            LOG_TAG,
+            "Unknown CLI_AGENT_TYPE={value:?}, defaulting to claude-code"
+        );
     }
+    selection.framework().into()
 }
 
 fn non_empty(value: &str) -> Option<&str> {
@@ -1038,10 +1051,26 @@ mod tests {
             Framework::ClaudeCode
         );
         assert_eq!(framework_from_cli_agent_type("codex"), Framework::Codex);
+        assert_eq!(framework_from_cli_agent_type("pi"), Framework::Pi);
         assert_eq!(
             framework_from_cli_agent_type("unexpected"),
             Framework::ClaudeCode
         );
+    }
+
+    #[test]
+    fn guest_config_preserves_unknown_cli_agent_type_while_falling_back() {
+        let (_tmp, raw) =
+            raw_config_fixture_with_run_payload(&guest_contracts::env::RunPayload::default());
+        let raw = GuestConfigRaw {
+            cli_agent_type: "custom-agent".to_string(),
+            ..raw
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.cli_agent_type, "custom-agent");
+        assert_eq!(config.framework, Framework::ClaudeCode);
     }
 
     #[test]

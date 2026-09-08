@@ -15,7 +15,8 @@
         "scripts/bench-p90-reporter.ts",
         "src/index.ts",
         "vite.config.ts",
-        "vitest.config.ts"
+        "vitest.config.ts",
+        "vitest.maintenance.config.ts"
       ],
       "rules": {
         "import/no-default-export": "off"
@@ -27,6 +28,7 @@
       "rules": {
         "no-restricted-imports": "allow",
         "valid-expect": ["deny", { "maxArgs": 2 }],
+        "vitest/valid-expect": ["deny", { "maxArgs": 2 }],
         "consistent-test-it": "deny",
         "eslint/max-nested-callbacks": ["allow"],
         "expect-expect": "allow",
@@ -68,7 +70,8 @@
         "vitest/prefer-to-be-object": "deny",
         "vitest/prefer-to-be-truthy": "deny",
         "jest/require-to-throw-message": "allow",
-        "jest/no-conditional-expect": "allow"
+        "jest/no-conditional-expect": "allow",
+        "vitest/no-conditional-expect": "allow"
       }
     },
     {

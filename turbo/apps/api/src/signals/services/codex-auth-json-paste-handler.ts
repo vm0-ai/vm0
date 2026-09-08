@@ -154,8 +154,8 @@ export async function handleCodexAuthJsonPaste(
 ) {
   const log = logger(
     args.scope === "personal"
-      ? "api:zero-me-model-providers"
-      : "api:zero-model-providers",
+      ? "api:personal-model-providers"
+      : "api:org-model-providers",
   );
   const logContext =
     args.scope === "personal"

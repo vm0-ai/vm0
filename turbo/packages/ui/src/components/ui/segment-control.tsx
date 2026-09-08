@@ -53,7 +53,7 @@ const segmentControlVariants = cva(
         lg: "h-10",
       },
       variant: {
-        default: "bg-muted p-0.5",
+        default: "bg-segment-track p-0.5",
         // No track means nothing to inset the segments from, so the track
         // padding goes with it and a segment is the full control height.
         plain: "p-0",

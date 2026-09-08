@@ -1,6 +1,6 @@
 import { createCipheriv, randomBytes } from "node:crypto";
 
-const TEST_KMS_KEY_ID = "alias/vm0-secrets-test";
+const TEST_KMS_KEY_ID = "alias/okou-secrets-test";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
 

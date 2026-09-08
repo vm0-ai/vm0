@@ -23,7 +23,7 @@ export function WorkflowAutomationCard({
   return (
     <article
       className={cn(
-        "zero-card overflow-hidden transition-colors",
+        "okou-card overflow-hidden transition-colors",
         dimmed && "opacity-75",
         className,
       )}

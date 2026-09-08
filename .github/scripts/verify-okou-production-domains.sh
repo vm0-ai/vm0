@@ -13,10 +13,8 @@ curl_retry=(
   --retry-all-errors
 )
 
-for url in "https://app.vm0.ai" "https://app.okou.ai"; do
-  curl -fsSL "${curl_retry[@]}" "$url" --output /dev/null
-  echo "Production App is serving: $url"
-done
+curl -fsSL "${curl_retry[@]}" "https://app.okou.ai" --output /dev/null
+echo "Production App is serving: https://app.okou.ai"
 
 verify_auth_redirect() {
   local api_origin="$1"
@@ -64,7 +62,5 @@ verify_api_cors() {
   echo "Production API CORS is correct: ${app_origin} -> ${api_origin}"
 }
 
-verify_auth_redirect "https://api.vm0.ai" "https://app.vm0.ai"
 verify_auth_redirect "https://api.okou.ai" "https://app.okou.ai"
-verify_api_cors "https://api.vm0.ai" "https://app.vm0.ai"
 verify_api_cors "https://api.okou.ai" "https://app.okou.ai"

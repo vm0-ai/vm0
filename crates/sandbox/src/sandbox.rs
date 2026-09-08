@@ -529,6 +529,13 @@ pub trait Sandbox: Send + Sync + Any {
         Ok(())
     }
 
+    /// Optional Guest-to-Runner RPC for this exact host-derived Run assignment.
+    /// Providers without guest RPC support, including local mode, return `None`.
+    /// Obtaining a capability does not authorize a destination or start guest RPC.
+    fn guest_rpc(&self, _expected_run_id: &str) -> Option<Arc<dyn crate::GuestRpcAcceptor>> {
+        None
+    }
+
     // -- lifecycle --
 
     /// Boot the guest and make the sandbox ready to serve operations.
@@ -689,6 +696,21 @@ pub trait Sandbox: Send + Sync + Any {
     /// safe.
     async fn unpark(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    /// Unpark only for terminal guest operations before destroying the sandbox.
+    ///
+    /// This has the same operation-readiness contract as [`unpark`](Self::unpark),
+    /// but providers may omit background work whose only purpose is serving a
+    /// future active workload. After this call succeeds, the lifecycle owner
+    /// must run only the bounded terminal operations needed to preserve state,
+    /// then terminate and destroy the sandbox without returning it to a pool or
+    /// binding another run.
+    ///
+    /// Providers that do not distinguish terminal finalization from normal
+    /// reuse preserve compatibility by performing a full unpark.
+    async fn unpark_for_terminal_operations(&mut self) -> Result<()> {
+        self.unpark().await
     }
 
     // -- operations --

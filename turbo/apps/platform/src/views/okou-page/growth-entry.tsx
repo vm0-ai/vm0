@@ -73,14 +73,9 @@ function useCombinedCreditLabel(): string | null {
   return formatLocalizedNumber(orgCredits + packCredits);
 }
 
-function CreditMenuItem({
-  creditLabel,
-  openCredits,
-}: {
-  creditLabel: string | null;
-  openCredits: () => void;
-}) {
+function GrowthCreditMenuItem({ openCredits }: { openCredits: () => void }) {
   const { t } = useTranslation();
+  const creditLabel = useCombinedCreditLabel();
   if (creditLabel === null) {
     return null;
   }
@@ -104,15 +99,6 @@ function CreditMenuItem({
       </DropdownMenuModalItem>
     </>
   );
-}
-
-function CombinedCreditMenuItem({ openCredits }: { openCredits: () => void }) {
-  const creditLabel = useCombinedCreditLabel();
-  return <CreditMenuItem creditLabel={creditLabel} openCredits={openCredits} />;
-}
-
-function GrowthCreditMenuItem({ openCredits }: { openCredits: () => void }) {
-  return <CombinedCreditMenuItem openCredits={openCredits} />;
 }
 
 function useGrowthActions() {
@@ -152,7 +138,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
       <div
         // 12px, not the Button default 8px: the split control and the menu it
         // opens read as one object when their outer radii agree.
-        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--zero-card-shadow)]"
+        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--okou-card-shadow)]"
       >
         <Button
           type="button"

@@ -1,13 +1,60 @@
-import { defineConfig } from "tsup";
-import { readFileSync } from "fs";
-import { execSync } from "child_process";
-import { resolve } from "path";
+import { execSync } from "node:child_process";
+import { copyFileSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { build, defineConfig } from "tsup";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
 };
 
 const isWatchMode = process.argv.includes("--watch");
+const banner = [
+  "#!/usr/bin/env node",
+  // Provide CJS require() for bundled CommonJS packages that call
+  // require("events"), require("fs"), etc. at runtime.
+  'import { createRequire as __createRequire } from "node:module";',
+  "const require = __createRequire(import.meta.url);",
+].join("\n");
+
+async function buildImageResizeWorker(): Promise<void> {
+  const piEntry = fileURLToPath(
+    import.meta.resolve("@earendil-works/pi-coding-agent"),
+  );
+  const photonEntry = createRequire(piEntry).resolve(
+    "@silvia-odwyer/photon-node",
+  );
+
+  await build({
+    config: false,
+    entry: {
+      "image-resize-worker": resolve(
+        dirname(piEntry),
+        "utils/image-resize-worker.js",
+      ),
+    },
+    outDir: "dist",
+    format: ["esm"],
+    platform: "node",
+    splitting: false,
+    dts: false,
+    sourcemap: true,
+    clean: false,
+    shims: true,
+    removeNodeProtocol: false,
+    banner: { js: banner },
+    esbuildOptions(options) {
+      options.nodePaths = [resolve("node_modules")];
+    },
+  });
+
+  copyFileSync(
+    resolve(dirname(photonEntry), "photon_rs_bg.wasm"),
+    resolve("dist/photon_rs_bg.wasm"),
+  );
+}
 
 export default defineConfig({
   entry: ["src/okou.ts"],
@@ -19,15 +66,7 @@ export default defineConfig({
   clean: true,
   shims: true,
   removeNodeProtocol: false,
-  banner: {
-    js: [
-      "#!/usr/bin/env node",
-      // Provide CJS require() for bundled CommonJS packages that call
-      // require("events"), require("fs"), etc. at runtime.
-      'import { createRequire as __createRequire } from "node:module";',
-      "const require = __createRequire(import.meta.url);",
-    ].join("\n"),
-  },
+  banner: { js: banner },
   // Resolve packages from the CLI's node_modules when bundling workspace deps
   // (e.g. @okouai/core imports zod, which lives in apps/cli/node_modules)
   esbuildOptions(options) {
@@ -41,6 +80,8 @@ export default defineConfig({
     ),
   },
   onSuccess: async () => {
+    await buildImageResizeWorker();
+
     if (!isWatchMode) {
       return;
     }

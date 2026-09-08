@@ -1,5 +1,6 @@
-use std::{future::Future, path::Path};
+use std::{future::Future, path::Path, time::Duration};
 
+use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use tokio::io::AsyncReadExt;
@@ -9,6 +10,10 @@ use super::{R2Error, R2ImageCache, archive::pack_template_to_writer, io_other};
 /// Multipart part size. R2 minimum is 5 MiB (except last part); 16 MiB
 /// keeps part count reasonable for large images and fits comfortably in memory.
 const PART_SIZE: usize = 16 * 1024 * 1024;
+
+/// The SDK response timeout includes sending the body. Allow slow 16 MiB
+/// uploads without leaving the final response wait unbounded.
+const UPLOAD_PART_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl R2ImageCache {
     pub(super) async fn do_multipart_upload(
@@ -82,12 +87,20 @@ impl R2ImageCache {
         const CONCURRENCY: usize = 4;
 
         let client = self.client.clone();
+        let part_timeouts = client
+            .config()
+            .timeout_config()
+            .map(TimeoutConfig::to_builder)
+            .unwrap_or_else(TimeoutConfig::builder)
+            .read_timeout(UPLOAD_PART_RESPONSE_TIMEOUT)
+            .build();
         let bucket = self.bucket.clone();
         let key_owned = key.to_string();
         let upload_id_owned = upload_id.to_string();
 
         upload_parts_streaming_with(reader, PART_SIZE, CONCURRENCY, move |pn, chunk| {
             let client = client.clone();
+            let part_timeouts = part_timeouts.clone();
             let bucket = bucket.clone();
             let key_owned = key_owned.clone();
             let upload_id_owned = upload_id_owned.clone();
@@ -99,6 +112,10 @@ impl R2ImageCache {
                     .upload_id(&upload_id_owned)
                     .part_number(pn)
                     .body(ByteStream::from(chunk))
+                    .customize()
+                    .config_override(
+                        aws_sdk_s3::config::Builder::new().timeout_config(part_timeouts),
+                    )
                     .send()
                     .await?;
                 // S3 / R2 always return ETag for a successful upload_part.

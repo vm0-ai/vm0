@@ -1,17 +1,23 @@
 import { command, computed, state } from "ccstate";
 import type { UsagePackManagementResponse } from "@okouai/api-contracts/contracts/billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
 import { reloadBuiltInModelCooldownDiagnostics$ } from "./built-in-model-cooldown-diagnostics.ts";
+import { reloadIndexedDbDiagnosticsFromWorker$ } from "../../shared-database.ts";
 import {
+  billingPlansStandalone$,
+  billingSubPage$,
   clearBillingScrollTarget$,
   clearPendingLogo$,
   initProfileName$,
   requestBuyCreditsScroll$,
+  setBillingPlansStandalone$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
 import {
@@ -26,6 +32,7 @@ import {
 // used to live at the bottom of it.
 export const SETTINGS_SECTIONS = [
   "preference",
+  "chat",
   "model",
   "debug",
   "general",
@@ -47,10 +54,26 @@ const ADMIN_ONLY_SETTINGS_SECTIONS_LIST = [
   "invoices",
 ] as const satisfies readonly SettingsSection[];
 
-export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
+function isAdminOnlySettingsSection(section: SettingsSection): boolean {
   return (
     ADMIN_ONLY_SETTINGS_SECTIONS_LIST as readonly SettingsSection[]
   ).includes(section);
+}
+
+export function resolveAvailableSettingsSection(
+  section: SettingsSection,
+  options: {
+    readonly isAdmin: boolean;
+    readonly chatPreferenceEnabled: boolean;
+  },
+): SettingsSection {
+  if (
+    (!options.isAdmin && isAdminOnlySettingsSection(section)) ||
+    (!options.chatPreferenceEnabled && section === "chat")
+  ) {
+    return "preference";
+  }
+  return section;
 }
 
 const internalSettingsDialogOpen$ = state(false);
@@ -103,6 +126,7 @@ export const setSettingsActiveSection$ = command(
     if (section === "debug" && get(internalActiveSection$) !== "debug") {
       set(reloadConnectorCatalogDiagnostics$);
       set(reloadBuiltInModelCooldownDiagnostics$);
+      set(reloadIndexedDbDiagnosticsFromWorker$);
     }
     set(internalActiveSection$, section);
     if (section !== "billing") {
@@ -188,6 +212,9 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
   set(resetUsagePackPricing$);
+  // The billing sub-page belongs to the session, not to the tab: a closed
+  // dialog must not reopen on the plans page the next time it is opened.
+  set(setBillingSubPage$, false);
   set(internalSettingsDialogOpen$, false);
 });
 
@@ -202,6 +229,20 @@ export const closeSettingsModal$ = command(({ get, set }) => {
     params.delete("billingView");
     set(updateSearchParams$, params);
   }
+});
+
+/**
+ * Dismiss the billing plans surface. A standalone upgrade flow was launched
+ * from outside Settings, so dismissing it closes the whole dialog and returns
+ * to the launching screen; a flow reached from inside Settings goes back to the
+ * billing tab.
+ */
+export const dismissBillingPlans$ = command(({ get, set }) => {
+  if (get(billingPlansStandalone$)) {
+    set(closeSettingsModal$);
+    return;
+  }
+  set(setBillingSubPage$, false);
 });
 
 export const setSettingsDialogOpen$ = command(
@@ -226,10 +267,14 @@ export const setSettingsDialogOpen$ = command(
     );
     set(internalSettingsDialogSignal$, modalSignal);
     set(internalSettingsDialogSessionActive$, true);
+    // A plans sub-page that is already open when the session starts was opened
+    // by an entry point outside Settings, so that flow owns the whole dialog.
+    set(setBillingPlansStandalone$, get(billingSubPage$));
     set(reloadBillingStatus$);
     if (get(internalActiveSection$) === "debug") {
       set(reloadConnectorCatalogDiagnostics$);
       set(reloadBuiltInModelCooldownDiagnostics$);
+      set(reloadIndexedDbDiagnosticsFromWorker$);
     }
     set(internalSettingsDialogOpen$, true);
     await set(initProfileName$, modalSignal);
@@ -309,8 +354,11 @@ export const checkUnifiedSettingsParam$ = command(
       return;
     }
 
-    const resolved: SettingsSection =
-      !isAdmin && isAdminOnlySettingsSection(section) ? "preference" : section;
+    const resolved = resolveAvailableSettingsSection(section, {
+      isAdmin,
+      chatPreferenceEnabled:
+        get(featureSwitch$)[FeatureSwitchKey.ChatPreference] ?? false,
+    });
     set(internalActiveSection$, resolved);
     set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
     if (opensBuyCredits && resolved === "billing") {

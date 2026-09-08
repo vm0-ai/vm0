@@ -17,6 +17,14 @@ pre-commit:
             root: turbo/
             glob: "turbo/**/*"
             stage_fixed: true
+          - name: style-policy
+            run: node scripts/style-policy.mjs
+            root: turbo/
+            glob: "turbo/**/*.{css,js,json,mjs,ts,tsx}"
+            fail_text: |
+              App style policy violations found. Use Tailwind utilities in business components;
+              do not expand the allowlist for first-party styling.
+              Read docs/styles.md for the style guide before fixing these errors.
           - name: platform-static-assets
             run: pnpm -F @okouai/app lint:static-assets
             root: turbo/
@@ -34,10 +42,10 @@ pre-commit:
             fail_text: "Knip found unused code. Run 'cd turbo && pnpm knip' to see details."
             timeout: "60s"
           - name: check-types
-            run: pnpm check-types
+            run: TSC_CHECKERS=2 pnpm check-types
             root: turbo/
             glob: "turbo/**/*.{ts,tsx}"
-            fail_text: "TypeScript errors found. Run 'cd turbo && pnpm check-types' to see details."
+            fail_text: "TypeScript errors found. Run 'cd turbo && TSC_CHECKERS=2 pnpm check-types' to see details."
             timeout: "300s"
     - name: crates
       group:
@@ -49,11 +57,11 @@ pre-commit:
             glob: "crates/**/*.{rs,toml}"
             stage_fixed: true
           - name: cargo-clippy
-            run: cargo clippy --all-targets --all-features
+            run: cargo clippy --profile local --all-targets --all-features
             root: crates/
             glob: "crates/**/*.{rs,toml}"
           - name: cargo-doc
-            run: cargo doc --workspace --all-features --no-deps
+            run: cargo doc --profile local --workspace --all-features --no-deps
             root: crates/
             glob: "crates/**/*.{rs,toml}"
           - name: uv-lock

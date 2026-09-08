@@ -25,7 +25,6 @@ describe("okou goal command", () => {
     vi.stubEnv("OKOU_APP_URL", undefined);
     vi.stubEnv("OKOU_AGENT_ID", undefined);
     vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
-    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", undefined);
   });
 
   afterEach(() => {

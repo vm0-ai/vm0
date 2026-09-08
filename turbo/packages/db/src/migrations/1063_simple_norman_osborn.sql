@@ -1,1 +1,0 @@
-ALTER TABLE "org_custom_connectors" DROP CONSTRAINT "chk_org_custom_connectors_oauth_setup";

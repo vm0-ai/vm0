@@ -1,6 +1,19 @@
-import type { ComponentPropsWithRef, MouseEvent, ReactElement } from "react";
-import { Download, Loader2, Share2 } from "lucide-react";
+import type {
+  ComponentPropsWithRef,
+  MouseEvent,
+  ReactElement,
+  ReactNode,
+} from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+  RotateCcw,
+  Share2,
+} from "lucide-react";
+import {
+  Button,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +26,6 @@ import {
   BrandGoogleDrive,
 } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactGoogleDriveRecovery,
@@ -21,6 +33,7 @@ import type {
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
+import type { PlatformConnectorAccountMutationIntent } from "../../signals/connector-domain.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { apiClient$ } from "../../signals/api-client.ts";
 import {
@@ -48,10 +61,10 @@ import {
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { copyAttachmentLinkToClipboard } from "./attachment-url.ts";
 import { useAttachmentShareUrl } from "./attachment-resource.ts";
+import { shouldIgnoreImageArtifactNavigationKey } from "./artifact-image-navigation.ts";
+import type { ZoomableImageControls } from "./zoomable-image-canvas.tsx";
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
-const ARTIFACT_FLOATING_TRANSITION_CLASS =
-  "transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -142,10 +155,7 @@ export function ArtifactActionTooltip({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger render={trigger} />
-        <TooltipContent
-          side={side}
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side={side}>
           <p className="text-xs">{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -233,10 +243,6 @@ function useGoogleDriveAvailability(
       ? null
       : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
   const accountReady = syncTarget?.accountReady === true;
-  // Remove the default-connector fallback after pre-accountReady APIs are
-  // outside the serving and rollback window.
-  const legacyDefaultAccountReady =
-    googleDriveConnected && syncTarget?.disconnected !== true;
 
   return {
     connectorListLoaded:
@@ -246,7 +252,7 @@ function useGoogleDriveAvailability(
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
-    googleDriveReady: accountReady || legacyDefaultAccountReady,
+    googleDriveReady: accountReady,
   };
 }
 
@@ -282,7 +288,7 @@ type GoogleDrivePendingAction =
   | { readonly kind: "authorize" }
   | {
       readonly kind: "connect";
-      readonly account: ConnectorAccountMutationIntent;
+      readonly account: PlatformConnectorAccountMutationIntent;
       readonly useDefaultConnectorProjection: boolean;
     }
   | { readonly kind: "unavailable" };
@@ -491,10 +497,7 @@ function GoogleDriveMenuItem({
             </DropdownMenuItem>
           }
         />
-        <TooltipContent
-          side="left"
-          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
-        >
+        <TooltipContent side="left">
           {t(($) => {
             return $.artifacts.googleDrive.connectTooltip;
           })}
@@ -646,7 +649,7 @@ export function ArtifactDownloadMenu({
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}
-        className={cn("w-56", ARTIFACT_FLOATING_TRANSITION_CLASS)}
+        className="w-56"
       >
         <DropdownMenuItem
           onClick={() => {
@@ -670,5 +673,218 @@ export function ArtifactDownloadMenu({
         <GoogleDriveMenuItem syncTarget={syncTarget} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Image artifact controls shared by the thread sidebar and the lightbox dialog.
+// ---------------------------------------------------------------------------
+
+export type ArtifactImageNavigationActions = {
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
+};
+
+export function ArtifactImageNavigationControls({
+  navigation,
+  testIdPrefix,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+  testIdPrefix: string;
+}) {
+  const { t } = useTranslation();
+  if (!navigation?.onPrevious && !navigation?.onNext) {
+    return null;
+  }
+
+  return (
+    <>
+      {navigation.onPrevious && (
+        <Button
+          showTooltip
+          type="button"
+          onClick={navigation.onPrevious}
+          aria-label={t(($) => {
+            return $.artifacts.actions.previousImage;
+          })}
+          data-testid={`${testIdPrefix}-previous-image`}
+          variant="quiet"
+          size="icon-lg"
+          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
+        >
+          <ChevronLeft size={22} />
+        </Button>
+      )}
+      {navigation.onNext && (
+        <Button
+          showTooltip
+          type="button"
+          onClick={navigation.onNext}
+          aria-label={t(($) => {
+            return $.artifacts.actions.nextImage;
+          })}
+          data-testid={`${testIdPrefix}-next-image`}
+          variant="quiet"
+          size="icon-lg"
+          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
+        >
+          <ChevronRight size={22} />
+        </Button>
+      )}
+    </>
+  );
+}
+
+const ARTIFACT_IMAGE_ZOOM_STEP_CLASS =
+  "flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
+
+function ArtifactImageZoomButton({
+  children,
+  className,
+  disabled,
+  label,
+  nativeTitle,
+  onClick,
+  testId,
+}: {
+  children: ReactNode;
+  className: string;
+  disabled?: boolean;
+  label: string;
+  nativeTitle: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+      aria-label={label}
+      title={nativeTitle ? label : undefined}
+      data-testid={testId}
+    >
+      {children}
+    </button>
+  );
+  return nativeTitle ? (
+    button
+  ) : (
+    <ArtifactActionTooltip label={label}>{button}</ArtifactActionTooltip>
+  );
+}
+
+export function ArtifactImageZoomControls({
+  controls,
+  nativeTitle = false,
+  testIdPrefix,
+}: {
+  controls: ZoomableImageControls;
+  /** Use the browser title tooltip instead of the floating action tooltip. */
+  nativeTitle?: boolean;
+  testIdPrefix: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
+      data-testid={`${testIdPrefix}-image-zoom-controls`}
+    >
+      <ArtifactImageZoomButton
+        className={ARTIFACT_IMAGE_ZOOM_STEP_CLASS}
+        disabled={!controls.canZoomOut}
+        label={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
+        nativeTitle={nativeTitle}
+        onClick={controls.zoomOut}
+        testId={`${testIdPrefix}-image-zoom-out`}
+      >
+        -
+      </ArtifactImageZoomButton>
+      <span
+        className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground"
+        data-testid={`${testIdPrefix}-image-zoom-level`}
+      >
+        {Math.round(controls.zoom * 100)}%
+      </span>
+      <ArtifactImageZoomButton
+        className={ARTIFACT_IMAGE_ZOOM_STEP_CLASS}
+        disabled={!controls.canZoomIn}
+        label={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
+        nativeTitle={nativeTitle}
+        onClick={controls.zoomIn}
+        testId={`${testIdPrefix}-image-zoom-in`}
+      >
+        +
+      </ArtifactImageZoomButton>
+      <ArtifactImageZoomButton
+        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
+        label={t(($) => {
+          return $.artifacts.actions.resetZoom;
+        })}
+        nativeTitle={nativeTitle}
+        onClick={controls.resetZoom}
+        testId={`${testIdPrefix}-image-reset-zoom`}
+      >
+        <RotateCcw size={15} />
+      </ArtifactImageZoomButton>
+    </div>
+  );
+}
+
+/**
+ * Document-level arrow-key navigation between image artifacts. Renders a
+ * hidden marker so the listener follows the mounted preview.
+ */
+export function ArtifactImageNavigationKeydown({
+  capture = false,
+  considerFocus,
+  enabled = true,
+  navigation,
+}: {
+  capture?: boolean;
+  considerFocus: boolean;
+  enabled?: boolean;
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
+          return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+          if (
+            !enabled ||
+            shouldIgnoreImageArtifactNavigationKey(event, { considerFocus })
+          ) {
+            return;
+          }
+          if (event.key === "ArrowLeft" && navigation.onPrevious) {
+            event.preventDefault();
+            navigation.onPrevious();
+          }
+          if (event.key === "ArrowRight" && navigation.onNext) {
+            event.preventDefault();
+            navigation.onNext();
+          }
+        };
+
+        document.addEventListener("keydown", onKeyDown, capture);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown, capture);
+        };
+      }}
+      hidden
+    />
   );
 }

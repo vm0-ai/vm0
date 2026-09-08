@@ -110,30 +110,32 @@ function documentPreviewAccentClass(kind: AttachmentAnchorChipKind) {
   return "from-slate-500/15 via-cyan-500/10 to-background";
 }
 
-function AttachmentDocumentThumbnailArtwork({
+function AttachmentCardArtwork({
+  accentClass,
   actionIcon,
   actionLabel,
+  contentType,
   filename,
-  kind,
+  iconTestId,
 }: {
+  accentClass: string;
   actionIcon: ReactNode;
   actionLabel: string;
+  contentType?: string;
   filename: string;
-  kind: AttachmentAnchorChipKind;
+  iconTestId: string;
 }) {
   return (
     <div
-      className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${documentPreviewAccentClass(
-        kind,
-      )}`}
+      className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
       <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
       <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
         <FilePreviewIcon
           filename={filename}
-          contentType={contentTypeForDocumentPreviewKind(kind)}
-          testId={`attachment-preview-${kind}-icon`}
+          contentType={contentType}
+          testId={iconTestId}
         />
       </div>
       <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
@@ -217,13 +219,15 @@ function AttachmentAnchorChip({
       title={filename}
       className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
-      <AttachmentDocumentThumbnailArtwork
+      <AttachmentCardArtwork
+        accentClass={documentPreviewAccentClass(kind)}
         actionIcon={<Eye size={10} />}
         actionLabel={t(($) => {
           return $.artifacts.preview.badge;
         })}
+        contentType={contentTypeForDocumentPreviewKind(kind)}
         filename={filename}
-        kind={kind}
+        iconTestId={`attachment-preview-${kind}-icon`}
       />
     </a>
   );
@@ -427,30 +431,16 @@ function FileThumbnailPreview({
       )}
       className="group/doc-preview inline-flex w-fit self-start align-top text-left"
     >
-      <div
-        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentType}
-            testId="attachment-preview-file-icon"
-          />
-        </div>
-        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <Eye size={10} />
-          {t(($) => {
-            return $.artifacts.preview.badge;
-          })}
-        </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium">{filename}</div>
-          </div>
-        </div>
-      </div>
+      <AttachmentCardArtwork
+        accentClass={accentClass}
+        actionIcon={<Eye size={10} />}
+        actionLabel={t(($) => {
+          return $.artifacts.preview.badge;
+        })}
+        contentType={contentType}
+        filename={filename}
+        iconTestId="attachment-preview-file-icon"
+      />
     </button>
   );
 }
@@ -495,30 +485,16 @@ function AudioPreview({
       data-testid="attachment-preview-audio"
       className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
     >
-      <div
-        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentType ?? "audio/mpeg"}
-            testId="attachment-preview-audio-icon"
-          />
-        </div>
-        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <FileMusic size={10} />
-          {t(($) => {
-            return $.artifacts.preview.badge;
-          })}
-        </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium">{filename}</div>
-          </div>
-        </div>
-      </div>
+      <AttachmentCardArtwork
+        accentClass={accentClass}
+        actionIcon={<FileMusic size={10} />}
+        actionLabel={t(($) => {
+          return $.artifacts.preview.badge;
+        })}
+        contentType={contentType ?? "audio/mpeg"}
+        filename={filename}
+        iconTestId="attachment-preview-audio-icon"
+      />
     </button>
   );
 }

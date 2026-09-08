@@ -301,6 +301,7 @@ fn log_connector_runtime_sync_api_failure(
                         client_session_id = %request.client_session_id,
                         client_version = %request.client_version,
                         failure_kind = api_error.failure_kind.as_str(),
+                        failure_cause = api_error.failure_cause.as_str(),
                         error_summary = %api_error.summary,
                         transport_retry_attempted,
                         reason = "api_error",
@@ -774,6 +775,7 @@ impl ConnectorRuntimeSyncCore {
                     client_session_id = %request.client_session_id,
                     client_version = %request.client_version,
                     failure_kind = error.failure_kind.as_str(),
+                    failure_cause = error.failure_cause.as_str(),
                     error_summary = %error.summary,
                     attempt = 1,
                     max_attempts = 2,
@@ -2556,6 +2558,11 @@ mod tests {
             ["timeout", "connect", "request", "body", "unknown"].contains(&failure_kind.as_str()),
             "unexpected failure kind; event={event:#?}"
         );
+        let failure_cause = event
+            .fields
+            .get("failure_cause")
+            .unwrap_or_else(|| panic!("missing field failure_cause; event={event:#?}"));
+        assert_eq!(failure_cause, "http_incomplete_message", "event={event:#?}");
         let error_summary = event
             .fields
             .get("error_summary")

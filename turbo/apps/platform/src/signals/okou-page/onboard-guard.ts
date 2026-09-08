@@ -60,7 +60,7 @@ const onboardingGuardedPathMatchers = ONBOARDING_GUARDED_PATHS.map((path) => {
   return match(path, { decode: decodeURIComponent });
 });
 
-export function isOnboardingGuardedPath(pathname: string): boolean {
+function isOnboardingGuardedPath(pathname: string): boolean {
   return onboardingGuardedPathMatchers.some((matcher) => {
     return matcher(pathname);
   });

@@ -1,6 +1,6 @@
 {
   "name": "@okouai/core",
-  "version": "8.619.0",
+  "version": "8.635.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -30,11 +30,13 @@
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "6.0.3",
-    "vitest": "^4.1.10"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@okouai/api-contracts": "workspace:*",
+    "fractional-indexing": "^3.4.0",
     "yaml": "^2.9.0"
   }
 }

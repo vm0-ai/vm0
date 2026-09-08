@@ -1,1 +1,0 @@
-ALTER TABLE "chat_teams_context" ALTER COLUMN "public_brand" DROP DEFAULT;

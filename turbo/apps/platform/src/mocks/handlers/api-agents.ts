@@ -45,9 +45,7 @@ let mockAgents: AgentResponse[] = [...DEFAULT_AGENTS];
 type MockAgentResponse = Pick<AgentResponse, "agentId"> &
   Partial<Omit<AgentResponse, "agentId">>;
 
-export function createMockAgentResponse(
-  agent: MockAgentResponse,
-): AgentResponse {
+function createMockAgentResponse(agent: MockAgentResponse): AgentResponse {
   return {
     ownerId: "user_mock",
     displayName: null,
@@ -251,6 +249,18 @@ export const apiAgentsHandlers = [
       createdAt: "2026-03-10T00:00:00Z",
       selectedModel: body.model ?? "claude-sonnet-4-6",
       serviceTier: body.serviceTier ?? null,
+    });
+  }),
+
+  // POST /api/chat/events/catch-up
+  mockApi(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          return [threadId, []];
+        }),
+      ),
+      notFoundThreads: [],
     });
   }),
 

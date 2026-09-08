@@ -136,14 +136,18 @@ fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> 
 }
 
 fn is_debootstrap_temp_tarball_name(name: &str) -> bool {
-    let Some(pid) = name
+    let Some(identity) = name
         .strip_suffix(".tar")
-        .and_then(|stem| stem.rsplit_once(".tmp.").map(|(_, pid)| pid))
+        .and_then(|stem| stem.rsplit_once(".tmp.").map(|(_, identity)| identity))
     else {
         return false;
     };
 
-    !pid.is_empty() && pid.bytes().all(|byte| byte.is_ascii_digit())
+    // Older builders used host PIDs; PID namespaces require mktemp identities.
+    (!identity.is_empty() && identity.bytes().all(|byte| byte.is_ascii_digit()))
+        || identity.strip_prefix("mktemp.").is_some_and(|random| {
+            random.len() == 6 && random.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
 }
 
 #[cfg(test)]
@@ -366,9 +370,12 @@ mod tests {
         std::fs::create_dir_all(&debootstrap_dir).unwrap();
         let stable_tar = debootstrap_dir.join("noble-amd64.tar");
         let newer_tmp = debootstrap_dir.join("noble-amd64.tmp.789.tar");
+        let random_tmp = debootstrap_dir.join("noble-amd64.tmp.mktemp.a9Bc2D.tar");
         std::fs::write(&stable_tar, b"stable").unwrap();
         std::fs::write(&newer_tmp, b"newer partial").unwrap();
-        let temp_size = std::fs::metadata(&newer_tmp).unwrap().len();
+        std::fs::write(&random_tmp, b"namespace partial").unwrap();
+        let temp_size = std::fs::metadata(&newer_tmp).unwrap().len()
+            + std::fs::metadata(&random_tmp).unwrap().len();
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let newer_time = old_time + Duration::from_secs(60);
         std::fs::File::open(&stable_tar)
@@ -379,11 +386,15 @@ mod tests {
             .unwrap()
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
+        std::fs::File::open(&random_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(newer_time))
+            .unwrap();
 
         let report = gc_debootstrap(&home, Some(1), false).await.unwrap();
 
         assert_eq!(report.freed_bytes, temp_size);
-        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.activity_count, 2);
         assert!(
             stable_tar.exists(),
             "keep_latest should protect the stable debootstrap tarball"
@@ -392,6 +403,7 @@ mod tests {
             !newer_tmp.exists(),
             "stale temp tarballs must not consume keep_latest slots"
         );
+        assert!(!random_tmp.exists());
     }
 
     #[tokio::test]

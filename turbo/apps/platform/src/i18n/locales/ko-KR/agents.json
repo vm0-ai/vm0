@@ -36,22 +36,19 @@
     },
     "create": "맞춤 아바타 생성",
     "description": "스타일을 선택하거나 셔플을 눌러 놀라움을 경험하세요.",
-    "intensity": {
-      "chill": "차분함",
-      "hyped": "활기참",
-      "normal": "보통"
-    },
+    "editDescription": "원하는 부분을 조정하거나 셔플을 눌러 새로운 모습을 만들어 보세요.",
+    "editTitle": "아바타 편집",
     "nextStep": "다음 단계",
     "previousStep": "이전 단계",
     "randomize": "아바타 무작위 설정",
     "shuffleHint": "셔플 — 무작위 외모를 시도해 보세요!",
     "steps": {
-      "angle": "각도",
       "color": "색상",
       "face": "얼굴",
       "hair": "머리카락",
       "mood": "기분",
-      "skin": "피부"
+      "skin": "피부",
+      "sweater": "스웨터"
     },
     "title": "에이전트에 얼굴을 부여하세요",
     "use": "이 아바타 사용"
@@ -74,7 +71,6 @@
   "detail": {
     "chatWith": "{{agentName}}와(과) 채팅하기",
     "defaultDescription": "당신에게 맞춘 AI 팀원",
-    "noSelection": "선택된 에이전트가 없습니다",
     "notFound": {
       "back": "팀으로 돌아가기",
       "description": "에이전트 “{{agentId}}”가 존재하지 않거나 접근 권한이 없습니다.",
@@ -615,8 +611,9 @@
     "resultCount_other": "결과 {{count}}개",
     "searchAgents": "에이전트 검색...",
     "searching": "검색 중...",
-    "searchWorkspace": "채팅, 메시지, 워크플로, 아티팩트 검색...",
+    "searchWorkspace": "워크스페이스 검색...",
     "sections": {
+      "agents": "에이전트",
       "artifacts": "아티팩트",
       "chats": "채팅",
       "messages": "메시지",

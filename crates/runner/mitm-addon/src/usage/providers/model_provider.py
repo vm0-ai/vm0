@@ -579,8 +579,9 @@ def _source_model_usage_pricing(
     if remembered_decision is not None:
         tier = remembered_decision.tier
         fast = remembered_decision.fast
-        if not remembered_decision.committed and billing_tier is not None:
-            tier = billing_tier
+        if not remembered_decision.committed:
+            if billing_tier is not None:
+                tier = billing_tier
             if observed_fast is not None:
                 fast = observed_fast
         tiers[message_id] = _ModelUsageTierDecision(

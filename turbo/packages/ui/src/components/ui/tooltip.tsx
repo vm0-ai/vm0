@@ -114,7 +114,7 @@ const TooltipContent = React.forwardRef<HTMLDivElement, TooltipContentProps>(
             ref={ref}
             data-slot="tooltip-content"
             className={cn(
-              "max-w-xs origin-[var(--transform-origin)] overflow-hidden rounded-md px-2 py-1 text-xs data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+              "max-w-xs origin-[var(--transform-origin)] overflow-hidden rounded-md px-2 py-1 text-xs transition-[transform,opacity] duration-100 ease-out data-starting-style:opacity-0 data-starting-style:[transform:scale(0.98)] data-ending-style:opacity-0 data-ending-style:[transform:scale(0.98)] data-instant:transition-none motion-reduce:transition-none",
               className,
             )}
             style={

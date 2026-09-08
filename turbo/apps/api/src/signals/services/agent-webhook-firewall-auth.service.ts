@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { performance } from "node:perf_hooks";
 
 import {
   getSecretNameForType,
@@ -73,7 +74,8 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
-import { settle, tapError } from "../utils";
+import { recordSandboxOperations } from "../external/sandbox-op-log";
+import { safeSync, settle, tapError } from "../utils";
 import {
   decryptPersistentSecretsMap,
   decryptStoredSecretValue,
@@ -84,7 +86,12 @@ import {
   lockModelProviderState,
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { resolveOrgCreditAvailability } from "./run-admission.service";
+import {
+  loadRunCreditAdmissionState,
+  resolveOrgCreditAvailability,
+  runHasActiveCreditAdmission,
+  type RunCreditAdmissionState,
+} from "./run-admission.service";
 import { resolveUsageAllowanceAvailabilityForRun } from "./usage-allowance.service";
 import {
   connectorRuntimeCredentialStatusForAccess,
@@ -274,6 +281,27 @@ type ResolveFirewallAuthResult =
       };
     };
 
+type FirewallAuthTimingActionType =
+  | "firewall_auth_prepare"
+  | "firewall_auth_resolve"
+  | "firewall_auth_admit";
+const FIREWALL_AUTH_SANDBOX_TYPE = "runner";
+
+interface FirewallAuthTimingRecord {
+  readonly actionType: FirewallAuthTimingActionType;
+  readonly durationMs: number;
+  readonly success: boolean;
+}
+
+type PreparedFirewallAuthRequest =
+  | {
+      readonly ok: true;
+      readonly referenced: ReferencedAuthKeys;
+      readonly prepared: PreparedFirewallAuth;
+      readonly billableExpiresAt: number | undefined;
+    }
+  | { readonly ok: false; readonly response: ResolveFirewallAuthResult };
+
 function connectorNotConfigured(): ResolveFirewallAuthResult {
   return {
     status: 424,
@@ -381,6 +409,7 @@ function mergeExpiresAt(
 async function resolveBillableFirewallCacheExpiry(params: {
   readonly db: Db;
   readonly auth: SandboxAuth;
+  readonly run: FirewallAuthRun;
   readonly firewallBillable: boolean | undefined;
 }): Promise<
   { readonly expiresAt?: number } | ReturnType<typeof insufficientCredits>
@@ -399,6 +428,13 @@ async function resolveBillableFirewallCacheExpiry(params: {
   }
   if (availability.status !== "active") {
     return insufficientCredits();
+  }
+  if (runHasActiveCreditAdmission(params.run)) {
+    return {
+      expiresAt:
+        Math.floor(nowDate().getTime() / 1000) +
+        NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS,
+    };
   }
   const allowance =
     availability.spendableCredits > 0
@@ -647,6 +683,49 @@ const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+async function measureFirewallAuthStage<T>(
+  records: FirewallAuthTimingRecord[],
+  actionType: FirewallAuthTimingActionType,
+  operation: () => Promise<T>,
+  isSuccess: (result: T) => boolean,
+): Promise<T> {
+  const startedAt = performance.now();
+  let success = false;
+  return await (async () => {
+    const result = await operation();
+    success = isSuccess(result);
+    return result;
+  })().finally(() => {
+    records.push({
+      actionType,
+      durationMs: Math.max(0, performance.now() - startedAt),
+      success,
+    });
+  });
+}
+
+function recordFirewallAuthTimings(
+  runId: string,
+  records: readonly FirewallAuthTimingRecord[],
+): void {
+  const result = safeSync(() => {
+    recordSandboxOperations(
+      records.map((record) => {
+        return {
+          sandboxType: FIREWALL_AUTH_SANDBOX_TYPE,
+          actionType: record.actionType,
+          durationMs: record.durationMs,
+          success: record.success,
+          runId,
+        };
+      }),
+    );
+  });
+  if ("error" in result) {
+    L.warn("Failed to record firewall auth timings", { runId });
+  }
+}
 
 function inferAccessSourceType(accessSourceKey: string): AccessSecretSource {
   return modelProviderTypeForProviderKey(accessSourceKey)
@@ -2476,7 +2555,11 @@ async function markAndReturnRefreshFailure(
   const message = error instanceof Error ? error.message : "Unknown error";
   const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
   if (shouldLogWarning) {
-    L.warn(`${args.accessSourceKey} token refresh failed: ${message}`, {
+    const logMessage =
+      args.accessSourceKey === "codex-oauth-token"
+        ? `${args.accessSourceKey} token refresh failed`
+        : `${args.accessSourceKey} token refresh failed: ${message}`;
+    L.warn(logMessage, {
       accessSourceKey: args.accessSourceKey,
       orgId: args.orgId,
       userId: args.userId,
@@ -4302,10 +4385,7 @@ function missingResolvedSecretsResponse(args: {
   );
 }
 
-interface FirewallAuthRun {
-  readonly orgId: string;
-  readonly status: typeof agentRuns.$inferSelect.status;
-}
+type FirewallAuthRun = RunCreditAdmissionState;
 
 function firewallAuthRunIsActive(
   status: typeof agentRuns.$inferSelect.status,
@@ -4319,18 +4399,12 @@ async function findFirewallAuthRun(
   db: Db,
   auth: SandboxAuth,
 ): Promise<FirewallAuthRun | undefined> {
-  const [run] = await db
-    .select({ orgId: agentRuns.orgId, status: agentRuns.status })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.id, auth.runId),
-        eq(agentRuns.userId, auth.userId),
-        eq(agentRuns.orgId, auth.orgId),
-      ),
-    )
-    .limit(1);
-  return run;
+  return await loadRunCreditAdmissionState({
+    db,
+    runId: auth.runId,
+    userId: auth.userId,
+    orgId: auth.orgId,
+  });
 }
 
 async function admitFirewallAuthResponse(
@@ -5625,20 +5699,20 @@ function matchedConnectorSourceConflicts(args: {
   });
 }
 
-export async function resolveFirewallAuth(
+async function prepareFirewallAuthRequest(
   db: Db,
   auth: SandboxAuth,
   body: FirewallAuthBody,
-): Promise<ResolveFirewallAuthResult> {
+): Promise<PreparedFirewallAuthRequest> {
   const matchedFirewall = body.matchedFirewall;
   const customConnectorId = matchedFirewall?.customConnectorId;
   const run = await findFirewallAuthRun(db, auth);
   if (!run) {
     L.warn(`[${auth.runId}] Run not found for firewall auth`);
-    return badRequestMessage("Run not found");
+    return { ok: false, response: badRequestMessage("Run not found") };
   }
   if (!firewallAuthRunIsActive(run.status)) {
-    return forbiddenTerminalRun();
+    return { ok: false, response: forbiddenTerminalRun() };
   }
   const orgId = run.orgId;
   const forceRefreshStartedAtMicros =
@@ -5657,15 +5731,18 @@ export async function resolveFirewallAuth(
       referencedSecretKeys: referenced.secrets,
     })
   ) {
-    return badRequestMessage(
-      "Matched connector source does not match secret metadata",
-    );
+    return {
+      ok: false,
+      response: badRequestMessage(
+        "Matched connector source does not match secret metadata",
+      ),
+    };
   }
-  let preparation;
+  let preparation: FirewallAuthPreparation<PreparedFirewallAuth>;
   if (customConnectorId) {
     const sourceId = matchedFirewall.sourceId;
     if (sourceId === undefined) {
-      return connectorNotConfigured();
+      return { ok: false, response: connectorNotConfigured() };
     }
     preparation = await prepareCurrentCustomConnectorFirewallAuth({
       db,
@@ -5688,36 +5765,97 @@ export async function resolveFirewallAuth(
     });
   }
   if (!preparation.ok) {
-    return preparation.response;
+    return { ok: false, response: preparation.response };
   }
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
     db,
     auth,
+    run,
     firewallBillable: body.firewallBillable,
   });
   if ("status" in billableCacheExpiry) {
-    return billableCacheExpiry;
+    return { ok: false, response: billableCacheExpiry };
   }
-  const resolution = await resolveFirewallAuthMaterial({
-    db,
-    auth,
-    body,
+  return {
+    ok: true,
     referenced,
     prepared: preparation.prepared,
-  });
+    billableExpiresAt: billableCacheExpiry.expiresAt,
+  };
+}
+
+async function resolveFirewallAuthWithTimings(
+  db: Db,
+  auth: SandboxAuth,
+  body: FirewallAuthBody,
+  timingRecords: FirewallAuthTimingRecord[],
+): Promise<ResolveFirewallAuthResult> {
+  const preparation = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_prepare",
+    async () => {
+      return await prepareFirewallAuthRequest(db, auth, body);
+    },
+    (result) => {
+      return result.ok;
+    },
+  );
+  if (!preparation.ok) {
+    return preparation.response;
+  }
+  const resolution = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_resolve",
+    async () => {
+      return await resolveFirewallAuthMaterial({
+        db,
+        auth,
+        body,
+        referenced: preparation.referenced,
+        prepared: preparation.prepared,
+      });
+    },
+    (result) => {
+      return result.ok;
+    },
+  );
   if (!resolution.ok) {
     return resolution.response;
   }
   const finalized = finalizeFirewallAuth({
     body,
-    referenced,
+    referenced: preparation.referenced,
     material: resolution.material,
-    billableExpiresAt: billableCacheExpiry.expiresAt,
+    billableExpiresAt: preparation.billableExpiresAt,
   });
   if (finalized.status !== 200) {
     return finalized;
   }
-  return (await admitFirewallAuthResponse(db, auth))
-    ? finalized
-    : forbiddenTerminalRun();
+  const admitted = await measureFirewallAuthStage(
+    timingRecords,
+    "firewall_auth_admit",
+    async () => {
+      return await admitFirewallAuthResponse(db, auth);
+    },
+    (result) => {
+      return result;
+    },
+  );
+  return admitted ? finalized : forbiddenTerminalRun();
+}
+
+export async function resolveFirewallAuth(
+  db: Db,
+  auth: SandboxAuth,
+  body: FirewallAuthBody,
+): Promise<ResolveFirewallAuthResult> {
+  const timingRecords: FirewallAuthTimingRecord[] = [];
+  return await resolveFirewallAuthWithTimings(
+    db,
+    auth,
+    body,
+    timingRecords,
+  ).finally(() => {
+    recordFirewallAuthTimings(auth.runId, timingRecords);
+  });
 }

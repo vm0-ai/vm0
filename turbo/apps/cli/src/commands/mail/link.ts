@@ -72,12 +72,13 @@ ${callbackPromptNotes}  - The user reviews the draft and sends it from the linke
           agentId,
           gmailDraftId,
         });
+        const reviewUrl = mailDraftReviewUrl({
+          mailDraftUrl: result.mailDraftUrl,
+          agentId,
+          callbackPrompt: opts.callbackPrompt,
+        });
         console.log(
-          mailDraftReviewUrl({
-            mailDraftUrl: result.mailDraftUrl,
-            agentId,
-            callbackPrompt: opts.callbackPrompt,
-          }),
+          `Return the exact review URL on its own line, separated from other text by blank lines. Example reply:\n\nYour email draft is ready to review and send.\n\n${reviewUrl}`,
         );
         if (opts.callbackPrompt !== undefined) {
           printCallbackTurnInstruction();

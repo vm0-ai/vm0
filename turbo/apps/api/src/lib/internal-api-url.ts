@@ -8,7 +8,7 @@ import { webUrl } from "./web-url";
  *
  * Resolves to the configured API backend origin. When unset,
  * production defaults to the known API backend origin so internal callbacks
- * never hop through the marketing surface at www.vm0.ai; other environments
+ * never hop through the marketing surface at www.okou.ai; other environments
  * fall back to the configured web URL, keeping local tunnels and tests usable.
  *
  * Use this only for internal self-dispatch URLs. User-provided / external

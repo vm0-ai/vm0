@@ -31,11 +31,11 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
         job_id,
         Some(HashMap::from([
             ("ANTHROPIC_MODEL".into(), "claude-haiku-4-5".into()),
-            ("VM0_FUTURE_RUNNER_KEY".into(), "ordinary-vm0-value".into()),
+            ("CUSTOM_RUNNER_KEY".into(), "ordinary-user-value".into()),
         ])),
         Some(HashMap::from([
             ("ANTHROPIC_API_KEY".into(), "sk-ant-local-secret".into()),
-            ("VM0_TEST_VALUE".into(), "ordinary-vm0-secret".into()),
+            ("CUSTOM_SECRET".into(), "ordinary-user-secret".into()),
         ])),
     );
 
@@ -56,12 +56,12 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
         Some("sk-ant-local-secret")
     );
     assert_eq!(
-        environment.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
-        Some("ordinary-vm0-value")
+        environment.get("CUSTOM_RUNNER_KEY").map(String::as_str),
+        Some("ordinary-user-value")
     );
     assert_eq!(
-        environment.get("VM0_TEST_VALUE").map(String::as_str),
-        Some("ordinary-vm0-secret")
+        environment.get("CUSTOM_SECRET").map(String::as_str),
+        Some("ordinary-user-secret")
     );
     assert_eq!(secret_values.len(), 2);
     assert!(
@@ -72,10 +72,10 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
     assert!(
         secret_values
             .iter()
-            .any(|value| value == "ordinary-vm0-secret")
+            .any(|value| value == "ordinary-user-secret")
     );
     assert!(local_secret_env_keys.contains("ANTHROPIC_API_KEY"));
-    assert!(local_secret_env_keys.contains("VM0_TEST_VALUE"));
+    assert!(local_secret_env_keys.contains("CUSTOM_SECRET"));
 }
 
 #[tokio::test]

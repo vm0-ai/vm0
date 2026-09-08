@@ -97,7 +97,7 @@ function InvoiceRowsSkeleton() {
       {[0, 1, 2].map((row) => {
         return (
           <div key={row}>
-            {row > 0 && <div className="h-0 zero-border-t mx-4" />}
+            {row > 0 && <div className="h-0 okou-border-t mx-4" />}
             <div className={cn(ROW_GRID, "px-4 py-3")}>
               <div className="flex items-center gap-3">
                 <Skeleton className="h-4 w-28" />
@@ -352,7 +352,7 @@ export function OrgInvoicesTab() {
           </div>
           <div />
         </div>
-        <div className="h-0 zero-border-t mx-4" />
+        <div className="h-0 okou-border-t mx-4" />
 
         {loading && <InvoiceRowsSkeleton />}
 
@@ -360,14 +360,14 @@ export function OrgInvoicesTab() {
           const invoiceMonth = formatInvoiceMonth(inv.date);
           return (
             <div key={inv.id}>
-              {i > 0 && <div className="h-0 zero-border-t mx-4" />}
+              {i > 0 && <div className="h-0 okou-border-t mx-4" />}
               <div className={cn(ROW_GRID, "px-4 py-3")}>
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-sm font-medium text-foreground truncate">
                     {inv.number ?? inv.id}
                   </span>
                   {inv.status && (
-                    <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+                    <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
                       <CircleCheck size={12} className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                     </span>

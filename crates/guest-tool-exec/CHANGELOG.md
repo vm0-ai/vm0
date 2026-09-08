@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.51](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.50...guest-tool-exec-v0.1.51) (2026-09-08)
+
+## [0.1.50](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.49...guest-tool-exec-v0.1.50) (2026-09-08)
+
+## [0.1.49](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.48...guest-tool-exec-v0.1.49) (2026-09-07)
+
+## [0.1.48](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.47...guest-tool-exec-v0.1.48) (2026-09-07)
+
+## [0.1.47](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.46...guest-tool-exec-v0.1.47) (2026-09-05)
+
+## [0.1.46](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.45...guest-tool-exec-v0.1.46) (2026-09-05)
+
+## [0.1.45](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.44...guest-tool-exec-v0.1.45) (2026-09-05)
+
+## [0.1.44](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.43...guest-tool-exec-v0.1.44) (2026-09-04)
+
+## [0.1.43](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.42...guest-tool-exec-v0.1.43) (2026-09-04)
+
+## [0.1.42](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.41...guest-tool-exec-v0.1.42) (2026-09-04)
+
 ## [0.1.41](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.40...guest-tool-exec-v0.1.41) (2026-09-03)
 
 ## [0.1.40](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.39...guest-tool-exec-v0.1.40) (2026-09-03)

@@ -218,7 +218,7 @@ describe("okou credit command", () => {
     }
   });
 
-  it("rejects zero-token credit status without billing:read", async () => {
+  it("rejects okou-token credit status without billing:read", async () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       return undefined as never;
     });
@@ -241,7 +241,7 @@ describe("okou credit command", () => {
     }
   });
 
-  it("rejects zero-token credit checkout without billing:write", async () => {
+  it("rejects okou-token credit checkout without billing:write", async () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       return undefined as never;
     });

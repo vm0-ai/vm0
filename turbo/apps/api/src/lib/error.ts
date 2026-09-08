@@ -22,10 +22,6 @@ export function conflict(message: string) {
   return httpError(409, "CONFLICT", message);
 }
 
-export function badGateway(message: string) {
-  return httpError(502, "UPSTREAM_UNAVAILABLE", message);
-}
-
 export const AUTONOMY_BUDGET_EXHAUSTED_MESSAGE =
   "Maximum autonomous delegation depth reached. Send a new human message or confirm a permission request to continue.";
 

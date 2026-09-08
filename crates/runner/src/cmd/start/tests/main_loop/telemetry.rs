@@ -244,7 +244,6 @@ async fn telemetry_flush_includes_reuse_hit_claim_phase_spans() {
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("sandbox_reuse_hit")
                 .body_includes("runner_claim_idle_reuse_lookup")
-                .body_includes("runner_claim_workspace_cache_state_lookup")
                 .body_includes("runner_claim_idle_unpark")
                 .body_includes("runner_claim_task_schedule_wait");
             then.status(200)

@@ -34,7 +34,7 @@ const tileBaseClass =
 function tileBorderClass(selected: boolean): string {
   return selected
     ? "border border-primary ring-2 ring-primary/20"
-    : "zero-border hover:border-muted-foreground/30";
+    : "okou-border hover:border-muted-foreground/30";
 }
 
 function PresetTile({
@@ -290,7 +290,7 @@ export function BuyCreditsSection() {
             onCustomChange={setCustomDollars}
           />
         </div>
-        <div className="h-0 zero-border-t mx-5" />
+        <div className="h-0 okou-border-t mx-5" />
         <div className="flex justify-end px-5 py-4">
           <Button
             type="button"

@@ -3,9 +3,9 @@ import { command } from "ccstate";
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import {
-  getVm0VisibleModels,
+  getBuiltInVisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -19,6 +19,7 @@ import {
   buildFeishuNoticeMessage,
 } from "../../lib/feishu-message-card";
 import { logger } from "../../lib/log";
+import { CONVERSATION_GUIDANCE } from "../../lib/conversation-guidance";
 import {
   addFeishuMessageReaction,
   listFeishuChatMessages,
@@ -77,6 +78,7 @@ export interface FeishuInboundMessage {
   readonly threadId: string | null;
   readonly openId: string;
   readonly text: string;
+  readonly promptText: string;
   readonly file: FeishuPromptFile | null;
 }
 
@@ -531,9 +533,6 @@ function formatFeishuContextMessage(
 const FEISHU_CONTEXT_PREAMBLE = [
   "The messages below are from a Feishu conversation. When responding:",
   "- Messages closer to RELATIVE_INDEX 0 are more recent — prioritize them.",
-  "- Match the tone of the conversation — casual messages deserve casual replies.",
-  "- Only provide technical analysis when explicitly asked a technical question.",
-  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function formatFeishuContext(
@@ -671,6 +670,8 @@ export function buildFeishuSystemPrompt(args: {
     ? ""
     : `Group ID: ${args.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`okou feishu message send\`)`;
   return [
+    CONVERSATION_GUIDANCE,
+    "",
     "# Current Integration",
     "You are currently running inside: Feishu",
     `Scope: ${typeLabel}`,
@@ -732,7 +733,7 @@ const feishuModelPickerState$ = command(
     readonly options: readonly FeishuModelOption[];
     readonly currentSelectedModel: string | null;
   }> => {
-    const visibleModels = new Set(getVm0VisibleModels());
+    const visibleModels = new Set(getBuiltInVisibleModels());
     const [policies, preference] = await Promise.all([
       set(listOrgModelPolicies$, { orgId, userId }, signal),
       get(userModelPreference({ orgId, userId })),
@@ -1097,7 +1098,7 @@ const handleConnectedCommand$ = command(
             db: args.db,
             message: args.message,
             title: "Already connected",
-            text: `Your Feishu account is already connected to ${publicBrandPresentation(args.installation.publicBrand).brandName}. Send a task to start working with your agent.`,
+            text: `Your Feishu account is already connected to ${PUBLIC_BRAND_PRESENTATION.brandName}. Send a task to start working with your agent.`,
             kind: "success",
           },
           signal,

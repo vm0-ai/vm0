@@ -15,7 +15,7 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
             "runner-secret-value".to_string(),
         ),
         (
-            "VM0_SECRET_VALUES".to_string(),
+            "CUSTOM_SECRET_VALUES".to_string(),
             "stored-secret-value".to_string(),
         ),
     ]);
@@ -99,7 +99,7 @@ fn agent_env_diagnostics_classifies_terminal_ownership_contract() {
             guest_contracts::env::CLI_AGENT_TYPE_ENV.to_string(),
             "explicit".to_string(),
         ),
-        ("VM0_SECRET_VALUES".to_string(), "ordinary".to_string()),
+        ("CUSTOM_SECRET_VALUES".to_string(), "ordinary".to_string()),
         ("CUSTOM_ENV".to_string(), "ordinary".to_string()),
     ]);
 

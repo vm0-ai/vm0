@@ -169,8 +169,3 @@ export interface SubagentInfo {
   agentId: string;
   displayName?: string | null;
 }
-
-export const leadAgentAvatarUrl$ = computed(async (get) => {
-  const agent = await get(defaultAgent$);
-  return agent?.avatarUrl ?? null;
-});

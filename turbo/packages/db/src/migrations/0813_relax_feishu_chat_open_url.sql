@@ -1,1 +1,0 @@
-ALTER TABLE "chat_feishu_context" ALTER COLUMN "chat_open_url" DROP NOT NULL;

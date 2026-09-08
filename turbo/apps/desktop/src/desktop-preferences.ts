@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 function isDesktopPreferenceRecord(
@@ -14,7 +22,9 @@ export function readDesktopPreferenceRecord(
     return {};
   }
   const parsed: unknown = JSON.parse(readFileSync(filePath, "utf8"));
-  return isDesktopPreferenceRecord(parsed) ? parsed : {};
+  if (!isDesktopPreferenceRecord(parsed))
+    throw new Error("Desktop preferences must be an object");
+  return parsed;
 }
 
 export function writeDesktopPreferenceRecord(
@@ -22,5 +32,14 @@ export function writeDesktopPreferenceRecord(
   preferences: Record<string, unknown>,
 ): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(preferences, null, 2)}\n`, "utf8");
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(preferences, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    renameSync(temporary, filePath);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }

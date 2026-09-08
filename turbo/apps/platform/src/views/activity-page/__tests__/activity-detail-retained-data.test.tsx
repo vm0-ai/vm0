@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@okouai/api-contracts/contracts/runs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -10,7 +10,7 @@ import {
   type RunContextResponse,
 } from "@okouai/api-contracts/contracts/run-routes";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
   AgentEvent,
@@ -99,135 +99,133 @@ function activityEvent(): AgentEvent {
   };
 }
 
-describe("activity retained diagnostic data", () => {
-  it("renders not found when the activity is missing or inaccessible", async () => {
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Log not found" },
-      });
+test("An unavailable activity shows a clear not-found page", async () => {
+  context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+    return respond(404, {
+      error: { code: "NOT_FOUND", message: "Log not found" },
     });
-
-    detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
-
-    await expect(
-      screen.findByRole("heading", { name: "Log not found" }),
-    ).resolves.toBeInTheDocument();
   });
 
-  it("downloads retained data from the previous log detail shape", async () => {
-    const downloads = context.mocks.browser.blobDownload();
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, logDetail());
-    });
-    context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
-      return respond(200, {
-        events: [activityEvent()],
-        hasMore: false,
-        status: "completed",
-        lastEventSequence: 0,
-      });
-    });
-    context.mocks.api(runContextContract.getContext, ({ respond }) => {
-      return respond(200, runContext());
-    });
-    context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
-      return respond(200, {
-        networkLogs: [networkLog()],
-        hasMore: false,
-      });
-    });
+  await setupPage({ context, path: `/activities/${RUN_ID}` });
 
-    detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Checkout Export" }),
-      ).toBeInTheDocument();
-    });
-    await expect(
-      screen.findByText("Checkout diagnostics exported"),
-    ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByRole("heading", { name: "Log not found" }),
+  ).resolves.toBeInTheDocument();
+});
 
-    click(screen.getByLabelText("Download raw data"));
-    await waitFor(() => {
-      expect(downloads.downloads).toHaveLength(1);
+test("A user can download all retained diagnostics for an older activity", async () => {
+  const downloads = context.mocks.browser.blobDownload();
+  context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+    return respond(200, logDetail());
+  });
+  context.mocks.api(runAgentEventsContract.getAgentEvents, ({ respond }) => {
+    return respond(200, {
+      events: [activityEvent()],
+      hasMore: false,
+      status: "completed",
+      lastEventSequence: 0,
     });
-
-    const download = downloads.downloads[0];
-    if (!download?.blob) {
-      throw new Error("Downloaded activity blob was not captured");
-    }
-    const downloaded = JSON.parse(await download.blob.text()) as Record<
-      string,
-      unknown
-    >;
-
-    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
-    expect(downloaded.events).toStrictEqual([activityEvent()]);
-    expect(downloaded.meta).toMatchObject({
-      id: RUN_ID,
-      displayName: "Checkout Export",
-      framework: "codex",
+  });
+  context.mocks.api(runContextContract.getContext, ({ respond }) => {
+    return respond(200, runContext());
+  });
+  context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+    return respond(200, {
+      networkLogs: [networkLog()],
+      hasMore: false,
     });
-    expect(downloaded.context).toMatchObject({ runId: RUN_ID });
-    expect(downloaded.networkLogs).toStrictEqual([networkLog()]);
   });
 
-  it("keeps downloads available when context is unavailable", async () => {
-    const downloads = context.mocks.browser.blobDownload();
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, managedLogDetail());
-    });
-    context.mocks.api(runContextContract.getContext, ({ respond }) => {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Run context not available" },
-      });
-    });
-    context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
-      return respond(200, { networkLogs: [], hasMore: false });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/activities/${RUN_ID}?tab=context`,
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Checkout Export" }),
-      ).toBeInTheDocument();
-    });
-    await expect(
-      screen.findByRole("heading", { name: "Model Route" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByText(RUNTIME_PROVIDER)).toBeInTheDocument();
-    expect(screen.getByText(RUNTIME_MODEL)).toBeInTheDocument();
+  await setupPage({ context, path: `/activities/${RUN_ID}` });
+  await waitFor(() => {
     expect(
-      screen.getByRole("heading", { name: "Context not available" }),
+      screen.getByRole("heading", { name: "Checkout Export" }),
     ).toBeInTheDocument();
-
-    click(screen.getByLabelText("Download raw data"));
-    await waitFor(() => {
-      expect(downloads.downloads).toHaveLength(1);
-    });
-
-    const download = downloads.downloads[0];
-    if (!download?.blob) {
-      throw new Error("Downloaded activity blob was not captured");
-    }
-    const downloaded = JSON.parse(await download.blob.text()) as Record<
-      string,
-      unknown
-    >;
-
-    expect(download.filename).toBe(`${RUN_ID}-logs.json`);
-    expect(downloaded.meta).toMatchObject({
-      modelProvider: "built-in",
-      selectedModel: SELECTED_MODEL,
-      modelRuntimeProvider: RUNTIME_PROVIDER,
-      modelRuntimeModel: RUNTIME_MODEL,
-    });
-    expect(downloaded.events).toStrictEqual([]);
-    expect(downloaded).not.toHaveProperty("context");
-    expect(downloaded.networkLogs).toStrictEqual([]);
   });
+  await expect(
+    screen.findByText("Checkout diagnostics exported"),
+  ).resolves.toBeInTheDocument();
+
+  click(screen.getByLabelText("Download raw data"));
+  await waitFor(() => {
+    expect(downloads.downloads).toHaveLength(1);
+  });
+
+  const download = downloads.downloads[0];
+  if (!download?.blob) {
+    throw new Error("Downloaded activity blob was not captured");
+  }
+  const downloaded = JSON.parse(await download.blob.text()) as Record<
+    string,
+    unknown
+  >;
+
+  expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+  expect(downloaded.events).toStrictEqual([activityEvent()]);
+  expect(downloaded.meta).toMatchObject({
+    id: RUN_ID,
+    displayName: "Checkout Export",
+    framework: "codex",
+  });
+  expect(downloaded.context).toMatchObject({ runId: RUN_ID });
+  expect(downloaded.networkLogs).toStrictEqual([networkLog()]);
+});
+
+test("Diagnostic export remains available when run context was not retained", async () => {
+  const downloads = context.mocks.browser.blobDownload();
+  context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+    return respond(200, managedLogDetail());
+  });
+  context.mocks.api(runContextContract.getContext, ({ respond }) => {
+    return respond(404, {
+      error: { code: "NOT_FOUND", message: "Run context not available" },
+    });
+  });
+  context.mocks.api(runNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+    return respond(200, { networkLogs: [], hasMore: false });
+  });
+
+  await setupPage({
+    context,
+    path: `/activities/${RUN_ID}?tab=context`,
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Checkout Export" }),
+    ).toBeInTheDocument();
+  });
+  await expect(
+    screen.findByRole("heading", { name: "Model Route" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.getByText(RUNTIME_PROVIDER)).toBeInTheDocument();
+  expect(screen.getByText(RUNTIME_MODEL)).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Context not available" }),
+  ).toBeInTheDocument();
+
+  click(screen.getByLabelText("Download raw data"));
+  await waitFor(() => {
+    expect(downloads.downloads).toHaveLength(1);
+  });
+
+  const download = downloads.downloads[0];
+  if (!download?.blob) {
+    throw new Error("Downloaded activity blob was not captured");
+  }
+  const downloaded = JSON.parse(await download.blob.text()) as Record<
+    string,
+    unknown
+  >;
+
+  expect(download.filename).toBe(`${RUN_ID}-logs.json`);
+  expect(downloaded.meta).toMatchObject({
+    modelProvider: "built-in",
+    selectedModel: SELECTED_MODEL,
+    modelRuntimeProvider: RUNTIME_PROVIDER,
+    modelRuntimeModel: RUNTIME_MODEL,
+  });
+  expect(downloaded.events).toStrictEqual([]);
+  expect(downloaded).not.toHaveProperty("context");
+  expect(downloaded.networkLogs).toStrictEqual([]);
 });

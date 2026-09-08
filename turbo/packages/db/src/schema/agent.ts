@@ -4,6 +4,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
@@ -54,6 +55,11 @@ export const agents = pgTable(
         table.name,
       ),
       orgIdx: index("idx_agents_org").on(table.orgId),
+      ownerReference: unique("idx_agents_id_org_owner").on(
+        table.id,
+        table.orgId,
+        table.owner,
+      ),
     };
   },
 );

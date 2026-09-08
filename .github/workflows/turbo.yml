@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   # Detect release-please context across all event types (PR, push, merge queue).
   # github.head_ref is empty in merge_group events, so we extract the PR number
@@ -388,7 +391,7 @@ jobs:
           # shellcheck disable=SC2086
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  # Lint jobs - split into 4 parallel jobs for faster CI
+  # Lint jobs - split into independent parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
@@ -416,6 +419,30 @@ jobs:
         working-directory: turbo
         run: pnpm lint
 
+  lint-style:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: ./.github/actions/toolchain-init
+      - name: Lint app styles
+        working-directory: turbo
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKOUT_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          STYLE_POLICY_RATCHET_REF=$(../.github/scripts/changed-base-ref.sh)
+          export STYLE_POLICY_RATCHET_REF
+          pnpm lint:style
+
   lint-types:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
@@ -427,28 +454,86 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # The two heavy app type-checks (api, @okouai/app ≈ 57% of the former
-      # serial total) run in the separate lint-types-apps job below. Here we
-      # check everything else. Dependency packages resolve via source
-      # (exports point at src/*.ts, no build step), so the apps job can run
-      # its tsc standalone without re-running these — no duplicated work.
+      # serial total) run in separate jobs below. Here we check everything
+      # else. Dependency packages resolve via source
+      # (exports point at src/*.ts, no build step), so both jobs can run tsc
+      # standalone without re-running these — no duplicated work.
       - name: Type Check (shared packages)
         working-directory: turbo
         run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@okouai/app'
 
-  lint-types-apps:
+  lint-type-app:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/toolchain-init
-      # Heaviest tsc projects, split off lint-types so they run on their own
-      # runner. Kept serial (one tsc at a time) to stay within runner memory —
-      # the same reason the root check-types uses --concurrency=1. Each app's
-      # check-types is invoked directly (pnpm --filter, not turbo) so turbo's
+      # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
+      # dependsOn ^check-types does not re-run the shared packages here.
+      - name: Type Check (@okouai/app)
+        working-directory: turbo
+        run: |
+          set +e
+          result_file=".memory-results/app-check-types.jsonl"
+          rm -f "$result_file"
+
+          node scripts/measure-memory.mjs \
+            --label ci-app-check-types \
+            --json "$result_file" \
+            -- pnpm --filter @okouai/app run check-types
+          status=$?
+
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const file = process.argv[1];
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
+
+            const lines = fs.readFileSync(file, "utf8").trim().split(/\n/).filter(Boolean);
+            if (lines.length === 0) {
+              process.exit(0);
+            }
+
+            const result = JSON.parse(lines[lines.length - 1]);
+            const durationSeconds = (result.durationMs / 1000).toFixed(1);
+            const summary = [
+              "### Type Check (@okouai/app) memory",
+              "",
+              `- Peak RSS: ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB)`,
+              `- Duration: ${durationSeconds}s`,
+              `- Exit code: ${result.exitCode}`,
+              "",
+            ].join("\n");
+
+            console.log(`Peak RSS (@okouai/app check-types): ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB), duration ${durationSeconds}s`);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          ' "$result_file"
+
+          exit "$status"
+
+  lint-type-api:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    env:
+      TSC_CHECKERS: "2"
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
       # dependsOn ^check-types does not re-run the shared packages here.
       - name: Type Check (api)
         working-directory: turbo
@@ -494,9 +579,6 @@ jobs:
           ' "$result_file"
 
           exit "$status"
-      - name: Type Check (@okouai/app)
-        working-directory: turbo
-        run: pnpm --filter @okouai/app run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -660,7 +742,7 @@ jobs:
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
           BASE_REF="${{ needs.prepare.outputs.base-ref }}"
-          MIGRATION_BASELINE=808
+          MIGRATION_BASELINE=1078
           # The squashed baseline and its history may be removed. Migrations after
           # the baseline must not be deleted once they land on main.
           DELETED=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
@@ -845,6 +927,40 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  test-pi-memory-boundary:
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
+    services:
+      postgres:
+        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 3s
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      - name: Build real Guest and maintenance runtime
+        run: |
+          cargo build --manifest-path crates/Cargo.toml --profile local -p guest-agent -j 2
+          pnpm --dir turbo --filter @okouai/pi-agent-runtime build
+          mkdir -p /home/user/workspace
+      - name: Exercise private maintenance boundaries
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: |
+          pnpm --filter @okouai/db db:migrate
+          pnpm --filter api exec vitest run --config vitest.maintenance.config.ts
+
   test-other:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
@@ -945,7 +1061,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+          cli-pkg-url: https://static.okou.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1057,7 +1173,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.api-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+          cli-pkg-url: https://static.okou.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1342,6 +1458,9 @@ jobs:
           OKOU_APP_GIT_COMMIT_SHA: ${{ steps.artifact.outputs.sha }}
           VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW: ${{ vars.PLAUSIBLE_SCRIPT_URL }}
           VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION: ${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+          # Merge-group and main builds create the release artifact. PR preview builds receive no token.
+          # Public by design: provision only an ingest-only token scoped to vm0-client-telemetry-prod.
+          VITE_AXIOM_CLIENT_TELEMETRY_TOKEN: ${{ github.event_name != 'pull_request' && vars.AXIOM_CLIENT_TELEMETRY_TOKEN || '' }}
           VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
           VITE_SENTRY_DSN_PROD: ${{ vars.SENTRY_DSN_APP_PROD }}
           VITE_VAPID_PUBLIC_KEY_PREVIEW: ${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
@@ -1433,7 +1552,6 @@ jobs:
       - name: Prepare standalone app Worker preview
         id: worker-preview
         env:
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
           ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           WORKER_PREVIEW_ALIAS: ${{ steps.worker-alias.outputs.alias }}
@@ -1523,7 +1641,7 @@ jobs:
             trap 'rm -f "$worker_secrets"' EXIT
             jq -n \
               '{
-                CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
+                CLERK_EDGE_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL,
                 CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
                 CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
               }' > "$worker_secrets"
@@ -2011,7 +2129,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
-      CLI_STATIC_BASE_URL: https://static.vm0.io
+      CLI_STATIC_BASE_URL: https://static.okou.io
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -2216,6 +2334,7 @@ jobs:
         prepare,
         deploy-cli,
         lint-eslint,
+        lint-style,
         lint-types,
         lint-format,
         lint-knip,
@@ -2532,23 +2651,6 @@ jobs:
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
-      - name: Enable runner connector account coverage
-        shell: bash
-        run: |
-          set -euo pipefail
-          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-
-          curl -fsS "${headers[@]}" \
-            -X POST \
-            -d '{"switches":{"connectorAccounts":true}}' \
-            "${E2E_API_URL}/api/feature-switches" \
-            | jq -e '.effectiveSwitches.connectorAccounts == true' \
-            >/dev/null
-        env:
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Reset runner model defaults
         shell: bash
         run: |
@@ -2997,14 +3099,17 @@ jobs:
       - prepare
       - file-size-check
       - lint-eslint
+      - lint-style
       - lint-types
-      - lint-types-apps
+      - lint-type-app
+      - lint-type-api
       - lint-format
       - lint-knip
       - test-migrate
       - test-cli
       - test-app
       - test-api
+      - test-pi-memory-boundary
       - test-other
       - deploy-api
       - deploy-app
@@ -3098,16 +3203,19 @@ jobs:
           check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
-          # Turbo TypeScript checks: only 'success' is acceptable unless
+          # Turbo checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-style" "${{ needs.lint-style.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
-          check_result "lint-types-apps" "${{ needs.lint-types-apps.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-type-app" "${{ needs.lint-type-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-type-api" "${{ needs.lint-type-api.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-format" "${{ needs.lint-format.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-knip" "${{ needs.lint-knip.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-cli" "${{ needs.test-cli.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-app" "${{ needs.test-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-api" "${{ needs.test-api.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-pi-memory-boundary" "${{ needs.test-pi-memory-boundary.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-other" "${{ needs.test-other.result }}" "$TS_CHECK_SKIP_ALLOWED"
 
           # May-skip: 'success' or 'skipped' are both acceptable

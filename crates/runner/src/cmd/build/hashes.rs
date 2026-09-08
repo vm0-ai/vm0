@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 use std::path::Path;
 
-use sandbox_fc::DNS_PROBE_RESOLVER_IPV4;
+use sandbox_firecracker::DNS_PROBE_RESOLVER_IPV4;
 use sha2::{Digest, Sha256};
 
 use crate::ca;
@@ -155,7 +155,7 @@ pub(super) async fn compute_ca_cert_fingerprint(paths: &HomePaths) -> RunnerResu
 ///   - `rootfs_hash` — the rootfs this snapshot is built from
 ///   - `vcpu`, `memory_mb`, `workspace_disk_mb` — VM resource config
 ///   - `fc_version`, `kernel_version` — Firecracker and guest kernel versions
-///   - `provider_config_hash` — sandbox-fc internal config (boot args, prewarm, etc.)
+///   - `provider_config_hash` — sandbox-firecracker internal config (boot args, prewarm, etc.)
 pub(super) fn compute_snapshot_hash(
     rootfs_hash: &str,
     vcpu: u32,
@@ -249,7 +249,7 @@ mod tests {
     #[tokio::test]
     async fn compute_rootfs_hash_separates_legacy_guest_boundary_collision() {
         const AGENT_DESTINATION: &str = "/usr/local/bin/guest-agent";
-        const DOWNLOAD_DESTINATION: &str = "/usr/local/bin/guest-download";
+        const DOWNLOAD_DESTINATION: &str = "/usr/local/bin/guest-storage-apply";
 
         let dir = tempfile::tempdir().unwrap();
         let tuple_a_agent = dir.path().join("tuple-a-agent");
@@ -394,7 +394,7 @@ mod tests {
 
         let different_dest = compute_rootfs_hash(
             "template-a",
-            &[(&bin_a, "/usr/local/bin/guest-download")],
+            &[(&bin_a, "/usr/local/bin/guest-storage-apply")],
             "ca-a",
             DNS_PROBE_RESOLVER_IPV4,
             16384,

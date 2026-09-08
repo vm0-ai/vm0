@@ -3,6 +3,7 @@ import {
   randomAvatarSvgConfig,
   serializeAvatarSvgConfig,
 } from "../../views/okou-page/avatar-svg-utils.ts";
+import { closeAvatarMaker$ } from "./settings/avatar-maker.ts";
 
 function randomSvgAvatarUrl(): string {
   return serializeAvatarSvgConfig(randomAvatarSvgConfig());
@@ -17,6 +18,9 @@ export const jobsDialogOpen$ = computed((get) => {
   return get(internalDialogOpen$);
 });
 export const setJobsDialogOpen$ = command(({ set }, open: boolean) => {
+  if (!open) {
+    set(closeAvatarMaker$);
+  }
   set(internalDialogOpen$, open);
 });
 
@@ -65,6 +69,7 @@ export const setJobsAvatarUrl$ = command(({ set }, url: string) => {
 // -- Create a fresh dialog draft --------------------------------------------
 
 export const resetJobsDialog$ = command(({ set }) => {
+  set(closeAvatarMaker$);
   set(internalNewName$, "");
   set(internalVisibility$, "private");
   set(internalAvatarUrl$, randomSvgAvatarUrl());

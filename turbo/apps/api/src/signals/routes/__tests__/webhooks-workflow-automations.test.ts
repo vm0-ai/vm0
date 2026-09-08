@@ -171,8 +171,8 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     );
 
     const rawBody = JSON.stringify({
-      event: "vm0-timing-sensitive-ping",
-      value: "vm0-timing-secret-value",
+      event: "okou-timing-sensitive-ping",
+      value: "okou-timing-secret-value",
     });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
@@ -213,19 +213,19 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       }),
     );
     for (const actionType of [
-      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_automation_event_load_source_state",
-      "api_dispatch_pre_create_zero_automation_event_match_automations",
-      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-      "api_dispatch_pre_create_zero_automation_event_build_run_input",
-      "api_dispatch_pre_create_zero_automation_event_handoff_run",
+      "api_dispatch_pre_create_agent_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_agent_automation_event_load_source_state",
+      "api_dispatch_pre_create_agent_automation_event_match_automations",
+      "api_dispatch_pre_create_agent_automation_event_record_processed_event",
+      "api_dispatch_pre_create_agent_automation_event_build_run_input",
+      "api_dispatch_pre_create_agent_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          op_type: "api_dispatch_pre_create_agent_automation_event_handoff_run",
           automation_event_source: "webhook",
           trigger_source: "automation-event",
           agent_run_origin: "workflow_automation",
@@ -234,8 +234,8 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       ]),
     );
     const serializedTiming = JSON.stringify(timingEvents);
-    expect(serializedTiming).not.toContain("vm0-timing-sensitive-ping");
-    expect(serializedTiming).not.toContain("vm0-timing-secret-value");
+    expect(serializedTiming).not.toContain("okou-timing-sensitive-ping");
+    expect(serializedTiming).not.toContain("okou-timing-secret-value");
     expect(serializedTiming).not.toContain(webhook.id);
     expect(serializedTiming).not.toContain(WORKFLOW_NAME);
     expect(serializedTiming).not.toContain(webhook.token);

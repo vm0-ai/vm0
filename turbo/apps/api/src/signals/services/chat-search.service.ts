@@ -3,6 +3,7 @@ import type {
   ChatSearchMessage,
   ChatSearchResult,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import { agents } from "@okouai/db/schema/agent";
 import { chatEventSearchMessages } from "@okouai/db/schema/chat-event-search";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -53,7 +54,10 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   return {
     chatThreadId: row.chatThreadId,
     role: row.role,
-    content: row.text,
+    content:
+      row.role === "assistant"
+        ? visiblePiMemoryCitationText(row.text)
+        : row.text,
     createdAt: row.createdAt.toISOString(),
     seqId: row.seqId,
     runId: row.runId,

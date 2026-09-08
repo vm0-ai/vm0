@@ -8,8 +8,10 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 fixture_bin="${tmp_dir}/bin"
 package_path="${tmp_dir}/package.tgz"
-mkdir -p "$fixture_bin"
-printf 'fixture\n' >"$package_path"
+fixture_package="${tmp_dir}/fixture/package"
+mkdir -p "$fixture_bin" "$fixture_package"
+printf 'fixture\n' >"${fixture_package}/okou.js"
+tar -czf "$package_path" -C "${tmp_dir}/fixture" package
 
 cat >"${fixture_bin}/node" <<'EOF'
 #!/usr/bin/env bash
@@ -40,6 +42,9 @@ if [[ "${EMIT_UNEXPECTED_STDERR:-false}" == "true" &&
 fi
 
 case "$entrypoint:$*" in
+  node:*smoke-okou-cli-image-resize.mjs)
+    echo "Smoke-tested packaged Pi image resize worker and fallback"
+    ;;
   "okou:--help")
     printf 'Usage: okou\nOkou CLI\n'
     ;;
@@ -50,10 +55,6 @@ case "$entrypoint:$*" in
     echo "Internal sandbox Pi agent loop"
     ;;
   "okou:__unsupported-command")
-    exit 1
-    ;;
-  "zero:--help")
-    echo "unsupported entrypoint" >&2
     exit 1
     ;;
   *)
@@ -68,8 +69,7 @@ chmod +x "${fixture_bin}/node" "${fixture_bin}/npx"
 output="$({
   PATH="${fixture_bin}:${PATH}" bash "$smoke_script" "$package_path"
 } 2>&1)"
-grep -Fq "Smoke-tested the canonical okou CLI and unsupported zero boundary" \
-  <<<"$output"
+grep -Fq "Smoke-tested the canonical okou CLI" <<<"$output"
 
 failure_output="${tmp_dir}/failure-output.txt"
 if PATH="${fixture_bin}:${PATH}" \

@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
-import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
+import {
+  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
+  type CreateCustomConnectorBody,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -144,7 +147,6 @@ describe("GET /api/mcp-connectors", () => {
     });
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const selected = await connectors.createCustomConnector(
       actor,
@@ -326,7 +328,6 @@ describe("GET /api/mcp-connectors", () => {
     await runs.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
-      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "MCP exact identity Agent",
@@ -510,9 +511,9 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       runs.acceptStorageDownloads();
       runs.acceptTelemetryIngest();
       const runnerGroup = runs.configureRunnerGroup();
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, {
         registration,
         initialExpiresIn: 3600,
@@ -526,7 +527,6 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       });
       await connectors.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.CustomConnectorMcp]: true,
-        [FeatureSwitchKey.ConnectorAccounts]: true,
       });
       const connector = await connectors.createCustomConnector(actor, {
         kind: "mcp",
@@ -550,7 +550,6 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
           context_valid: true,
         },
       });
@@ -629,7 +628,6 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "automatic",
-          context_format: "legacy",
           context_valid: true,
         },
       });
@@ -663,7 +661,11 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
         }),
         [409],
       );
-      expect(removedIssuer.body.error.code).toBe("CONFLICT");
+      expect(removedIssuer.body.error).toStrictEqual({
+        code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.BINDING_CHANGED,
+        message:
+          "Automatic MCP OAuth authorization changed. Reconnect the account and try again.",
+      });
       await runs.requestCancelRun(actor, run.runId, [200]);
     },
   );
@@ -673,9 +675,9 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     const runnerGroup = runs.configureRunnerGroup();
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",

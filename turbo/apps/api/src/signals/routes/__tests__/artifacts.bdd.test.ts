@@ -484,7 +484,7 @@ describe("artifact upload provenance", () => {
   );
 });
 
-describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
+describe("GET /api/chat-threads/:threadId/artifacts", () => {
   it("keeps every hosted-site version as a separate immutable artifact", async () => {
     const actor = bdd.user();
     const owner = await artifactActor(
@@ -605,7 +605,7 @@ describe("hosted Artifact previews", () => {
 
     const firstArtifact = await findCatalogArtifact(owner.actor, site);
     expect(firstArtifact?.thumbnail?.url).toMatch(
-      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.webp$/u,
     );
     const threadArtifacts = await chat.listThreadArtifacts(
       owner.actor,
@@ -711,7 +711,7 @@ describe("hosted Artifact previews", () => {
     });
     const previewedArtifact = await findCatalogArtifact(owner.actor, site);
     expect(previewedArtifact?.thumbnail?.url).toMatch(
-      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.webp$/u,
     );
   }, 120_000);
 

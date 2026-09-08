@@ -94,6 +94,32 @@ class TestOpenAIResponsesSseUsageExtractor:
             "tokens.output": 0,
         }
 
+    def test_discarded_failure_event_emits_invalid_evidence_and_recovers(self):
+        failure_observer = _IgnoringDeltaFailureObserver()
+        parse, usage = create_openai_responses_sse_usage_extractor(
+            failure_observer=failure_observer
+        )
+
+        parse(
+            b"event: response.failed\n"
+            b'data: {"type":"response.failed","response":{\n' + b"x" * 4097 + b"\n\n"
+            b"event: response.failed\n"
+            b'data: {"type":"response.failed","response":{'
+            b'"error":{"code":"server_error"}}}\n\n'
+        )
+
+        assert usage == {}
+        assert failure_observer.observed == [
+            ModelHttpFailureEvidence(event_name="response.failed"),
+            ModelHttpFailureEvidence(
+                event_name="response.failed",
+                payload_type="response.failed",
+                failure_codes=("server_error",),
+                has_error=True,
+                is_valid=True,
+            ),
+        ]
+
     @pytest.mark.parametrize(
         ("event_type", "event_prefix"),
         [

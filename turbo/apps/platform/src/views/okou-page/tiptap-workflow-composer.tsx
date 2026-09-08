@@ -24,8 +24,13 @@ import {
   SlashWorkflowMenu,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+
+import {
+  COMPOSER_CREATE_MODES,
+  composerCreateModeLabel,
+  composerCreatePlaceholder,
+  type ComposerCreateMode,
+} from "../../signals/okou-page/composer-create.ts";
 
 function isMacKeyboard(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -139,6 +144,21 @@ function workflowComposerPlaceholder(sending: boolean | undefined): string {
       });
 }
 
+function workflowComposerHasContent(editor: Editor): boolean {
+  let textblockCount = 0;
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (!node.isTextblock) {
+      continue;
+    }
+    textblockCount += 1;
+    if (node.content.size > 0 || textblockCount > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function WorkflowComposerPlaceholder({
   composer,
   sending,
@@ -147,27 +167,30 @@ function WorkflowComposerPlaceholder({
   sending: boolean | undefined;
 }) {
   useTranslation();
+  const createMode = useGet(composer.create.mode$);
   const hasInput = useGet(composer.editor.hasInput$);
-  const hasEditorText = useEditorState({
+  const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
     selector: ({ editor }) => {
-      return editor.state.doc.textContent.length > 0;
+      return workflowComposerHasContent(editor);
     },
   });
   const hasTemplateAttachment = useGet(
     composer.template.hasTemplateAttachment$,
   );
-  if (hasInput || hasEditorText) {
+  if (hasInput || hasEditorContent) {
     return null;
   }
   return (
     <div
-      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 ${
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/80 ${
         hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
       }`}
       aria-hidden="true"
     >
-      {workflowComposerPlaceholder(sending)}
+      {createMode
+        ? composerCreatePlaceholder(createMode)
+        : workflowComposerPlaceholder(sending)}
     </div>
   );
 }
@@ -275,6 +298,8 @@ interface ComposerSuggestionMenuState {
   readonly selectedIndex: number;
   readonly close: () => void;
   readonly workflows: readonly ComposerSlashWorkflow[];
+  readonly createModes: readonly ComposerCreateMode[];
+  readonly selectCreate: (mode: ComposerCreateMode) => void;
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
@@ -287,6 +312,30 @@ interface ComposerSuggestionMenuState {
   readonly handleKeyDown: (event: KeyboardEvent) => boolean;
 }
 
+function useComposerCreateSuggestions(
+  composer: ComposerSignals,
+  query: string | undefined,
+): readonly ComposerCreateMode[] {
+  useTranslation();
+  const enabled = useGet(composer.create.enabled$);
+  if (!enabled || query === undefined) {
+    return [];
+  }
+  return COMPOSER_CREATE_MODES.filter((mode) => {
+    if (
+      (mode === "image" && !composer.imageModel) ||
+      (mode === "video" && !composer.videoModel)
+    ) {
+      return false;
+    }
+    const normalized = query.toLowerCase().trim();
+    return (
+      `create ${mode}`.includes(normalized) ||
+      composerCreateModeLabel(mode).toLowerCase().includes(normalized)
+    );
+  });
+}
+
 function useComposerSuggestionMenu({
   composer,
   onKeyDown,
@@ -294,7 +343,9 @@ function useComposerSuggestionMenu({
   readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
+  const selectCreate = useSet(composer.create.setMode$);
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
+  const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
   const chatThreadRange = useGet(
     composer.suggestion.activeChatThreadSuggestionRange$,
   );
@@ -340,43 +391,39 @@ function useComposerSuggestionMenu({
       ? chatThreadRange
       : null;
   const suggestionCount = showWorkflows
-    ? workflowSuggestions.length
+    ? createModes.length + workflowSuggestions.length
     : agents.length + chatThreads.length;
-
-  function selectWorkflow(workflow: ComposerSlashWorkflow): void {
-    insertWorkflow(workflow);
-  }
-
-  function selectAgent(agent: ComposerAgentSuggestion): void {
-    insertAgent(agent);
-  }
-
-  function selectChatThread(chatThread: ComposerChatThreadSuggestion): void {
-    insertChatThread(chatThread);
-  }
 
   function selectSuggestion(index: number): void {
     if (showWorkflows) {
-      const workflow = workflowSuggestions[index];
+      const createMode = createModes[index];
+      if (createMode) {
+        selectCreate(createMode);
+        return;
+      }
+      const workflow = workflowSuggestions[index - createModes.length];
       if (workflow) {
-        selectWorkflow(workflow);
+        insertWorkflow(workflow);
       }
       return;
     }
     const agent = agents[index];
     if (agent) {
-      selectAgent(agent);
+      insertAgent(agent);
       return;
     }
     const chatThread = chatThreads[index - agents.length];
     if (chatThread) {
-      selectChatThread(chatThread);
+      insertChatThread(chatThread);
     }
   }
 
   function scrollSuggestionIntoView(index: number): void {
     if (showWorkflows) {
-      scrollSlashWorkflowIntoView(workflowSuggestions[index]);
+      const mode = createModes[index];
+      scrollSlashWorkflowIntoView(
+        mode ? { id: mode } : workflowSuggestions[index - createModes.length],
+      );
     }
   }
 
@@ -400,54 +447,18 @@ function useComposerSuggestionMenu({
     selectedIndex,
     close,
     workflows: workflowSuggestions,
+    createModes,
+    selectCreate,
     workflowQuery: slashRange?.query ?? "",
     workflowsLoading: workflowsLoadable.state === "loading",
     showWorkflows,
     agents,
     chatThreads,
     showMentions,
-    selectWorkflow,
-    selectAgent,
-    selectChatThread,
+    selectWorkflow: insertWorkflow,
+    selectAgent: insertAgent,
+    selectChatThread: insertChatThread,
     handleKeyDown,
-  };
-}
-
-function useVoiceDraftActionHandler(
-  composer: ComposerSignals,
-): (event: MouseEvent) => void {
-  const finishVoiceDraft = useSet(composer.voiceDraft.finish$);
-  const removeVoiceDraft = useSet(composer.voiceDraft.remove$);
-  const saveDraft = useSet(composer.draft.save$);
-  const pageSignal = useGet(pageSignal$);
-  return (event) => {
-    if (!(event.target instanceof Element)) {
-      return;
-    }
-    const button = event.target.closest<HTMLButtonElement>(
-      "button[data-voice-draft-action]",
-    );
-    const draft = button?.closest<HTMLElement>("[data-voice-draft]");
-    const id = draft?.dataset.voiceDraft;
-    if (!button || !id) {
-      return;
-    }
-    event.preventDefault();
-    if (button.dataset.voiceDraftAction === "finish") {
-      detach(
-        (async () => {
-          await finishVoiceDraft(id, "retry", pageSignal);
-          pageSignal.throwIfAborted();
-          await saveDraft(pageSignal);
-        })(),
-        Reason.DomCallback,
-      );
-      return;
-    }
-    if (button.dataset.voiceDraftAction === "remove") {
-      removeVoiceDraft(id);
-      detach(saveDraft(pageSignal), Reason.DomCallback);
-    }
   };
 }
 
@@ -469,7 +480,6 @@ export function TiptapWorkflowComposer({
     composer.template.hasTemplateAttachment$,
   );
   const setContainerRef = useSet(composer.editor.setContainerRef$);
-  const handleVoiceDraftAction = useVoiceDraftActionHandler(composer);
 
   function handlePaste(
     event: ClipboardEvent,
@@ -528,9 +538,6 @@ export function TiptapWorkflowComposer({
                 : "min-h-[96px]"
           }
           ref={setContainerRef}
-          onClickCapture={(event) => {
-            handleVoiceDraftAction(event.nativeEvent);
-          }}
           onInput={(event) => {
             // The mount command targets the container for semantic document
             // changes; native contenteditable input targets ProseMirror.
@@ -559,6 +566,8 @@ export function TiptapWorkflowComposer({
       {suggestionMenu.showWorkflows && (
         <SlashWorkflowMenu
           workflows={suggestionMenu.workflows}
+          createModes={suggestionMenu.createModes}
+          onSelectCreate={suggestionMenu.selectCreate}
           query={suggestionMenu.workflowQuery}
           loading={suggestionMenu.workflowsLoading}
           selectedIndex={suggestionMenu.selectedIndex}

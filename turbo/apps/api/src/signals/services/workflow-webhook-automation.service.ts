@@ -4,7 +4,6 @@ import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/workflows";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,
@@ -69,11 +68,8 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function workflowWebhookUrlForToken(
-  token: string,
-  publicBrand: PublicBrand,
-): string {
-  const baseUrl = apiUrlForPublicBrand(webUrl(), publicBrand);
+function workflowWebhookUrlForToken(token: string): string {
+  const baseUrl = webUrl();
   return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
   )}`;
@@ -154,10 +150,7 @@ export async function buildWorkflowWebhookSummaryFields(
   return {
     ...(args.webhookToken
       ? {
-          webhookUrl: workflowWebhookUrlForToken(
-            args.webhookToken,
-            args.publicBrand,
-          ),
+          webhookUrl: workflowWebhookUrlForToken(args.webhookToken),
         }
       : {}),
     secretLastFour: webhook.secretLastFour,
@@ -195,7 +188,7 @@ export async function revealWorkflowWebhookSecretFields(
     decryptWorkflowWebhookSecret(webhook.encryptedSecret, context),
   ]);
   return {
-    webhookUrl: workflowWebhookUrlForToken(token, args.publicBrand),
+    webhookUrl: workflowWebhookUrlForToken(token),
     webhookSecret: secret,
   };
 }
@@ -572,7 +565,7 @@ async function prepareWorkflowWebhookDispatch(
   signal: AbortSignal,
 ): Promise<PreparedWorkflowWebhookDispatch> {
   const row = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_source_state",
+    "api_dispatch_pre_create_agent_automation_event_load_source_state",
     async () => {
       return await loadWebhookAutomationForToken(
         {
@@ -589,7 +582,7 @@ async function prepareWorkflowWebhookDispatch(
   }
 
   const secret = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_load_source_state",
+    "api_dispatch_pre_create_agent_automation_event_load_source_state",
     async () => {
       return await decryptPersistentSecretValue(row.webhook.encryptedSecret, {
         orgId: row.automation.orgId,
@@ -600,7 +593,7 @@ async function prepareWorkflowWebhookDispatch(
   signal.throwIfAborted();
 
   const signatureValid = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_match_automations",
+    "api_dispatch_pre_create_agent_automation_event_match_automations",
     () => {
       return webhookSignatureValid({
         rawBody: args.rawBody,
@@ -616,7 +609,7 @@ async function prepareWorkflowWebhookDispatch(
 
   const currentTime = nowDate();
   const limited = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_automation_event_match_automations",
+    "api_dispatch_pre_create_agent_automation_event_match_automations",
     async () => {
       return await rateLimitExceeded({
         db: args.db,
@@ -690,7 +683,7 @@ const startWorkflowWebhookRun$ = command(
     }
 
     const runInput = await args.timing.measure(
-      "api_dispatch_pre_create_zero_automation_event_build_run_input",
+      "api_dispatch_pre_create_agent_automation_event_build_run_input",
       () => {
         const context = workflowWebhookTriggerContext({
           workflowName: args.row.workflowName,
@@ -772,7 +765,7 @@ export const dispatchWorkflowWebhook$ = command(
 
     const runTiming = sourceTiming.createRunTiming();
     const delivery = await runTiming.measure(
-      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+      "api_dispatch_pre_create_agent_automation_event_record_processed_event",
       async () => {
         return await acceptWebhookDelivery(db, {
           automationId: prepared.row.automation.id,

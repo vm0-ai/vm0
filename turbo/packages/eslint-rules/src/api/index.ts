@@ -1,6 +1,7 @@
 import { gatewayTypecheckBoundary } from "./rules/gateway-typecheck-boundary.ts";
 import { noCatchAbort } from "./rules/no-catch-abort.ts";
 import { noCrossTestTimeStaggering } from "./rules/no-cross-test-time-staggering.ts";
+import { noDirectAgentRunTerminalUpdate } from "./rules/no-direct-agent-run-terminal-update.ts";
 import { noFnDollarSuffix } from "./rules/no-fn-dollar-suffix.ts";
 import { noGetterSetterParams } from "./rules/no-getter-setter-params.ts";
 import { noGlobalSweepTestRoutes } from "./rules/no-global-sweep-test-routes.ts";
@@ -28,6 +29,7 @@ export const apiLintPlugin = {
     "gateway-typecheck-boundary": gatewayTypecheckBoundary,
     "no-catch-abort": noCatchAbort,
     "no-cross-test-time-staggering": noCrossTestTimeStaggering,
+    "no-direct-agent-run-terminal-update": noDirectAgentRunTerminalUpdate,
     "no-fn-dollar-suffix": noFnDollarSuffix,
     "no-getter-setter-params": noGetterSetterParams,
     "no-global-sweep-test-routes": noGlobalSweepTestRoutes,

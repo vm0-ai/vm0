@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,
@@ -18,7 +19,10 @@ import {
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState } from "./helpers/runtime-state";
+import {
+  readRunFailureReasonFixture,
+  seedBuiltInDefaultModelKey as seedBuiltInDefaultModelKeyState,
+} from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
@@ -40,8 +44,8 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-async function seedVm0BuiltInDefaultModelKey(): Promise<void> {
-  await seedVm0BuiltInDefaultModelKeyState(context);
+async function seedBuiltInDefaultModelKey(): Promise<void> {
+  await seedBuiltInDefaultModelKeyState(context);
 }
 
 interface AllowanceEntitlementArgs {
@@ -51,12 +55,12 @@ interface AllowanceEntitlementArgs {
 }
 
 /**
- * An org whose runs can be admitted with the vm0 built-in model key. Tier and
+ * An org whose runs can be admitted with the built-in model key. Tier and
  * credit balance are pinned through the org-metadata fixture; the allowance
  * entitlement (when given), window activation, usage events, and settlement
  * all run through product paths.
  */
-async function vm0AllowanceActor(args: {
+async function builtInAllowanceActor(args: {
   readonly credits: number;
   readonly allowance?: AllowanceEntitlementArgs;
 }): Promise<{
@@ -64,7 +68,7 @@ async function vm0AllowanceActor(args: {
   readonly orgId: string;
   readonly agentId: string;
 }> {
-  await seedVm0BuiltInDefaultModelKey();
+  await seedBuiltInDefaultModelKey();
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
   const actor = bdd.user();
@@ -130,11 +134,11 @@ async function cancelUsageAllowanceSubscription(orgId: string): Promise<void> {
   );
 }
 
-async function createVm0Run(
+async function createBuiltInRun(
   actor: ApiTestUser,
   agentId: string,
   prompt: string,
-): Promise<{ readonly runId: string }> {
+): Promise<{ readonly runId: string; readonly status: string }> {
   const api = createRunsApi(context);
   return await api.createRun(actor, {
     agentId,
@@ -212,11 +216,15 @@ async function readVisibleUsageCredits(actor: ApiTestUser): Promise<number> {
 
 describe("Usage Allowance", () => {
   it("applies usage allowance before legacy org credits", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 10,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
-    const run = await createVm0Run(actor, agentId, "allowance-covered usage");
+    const run = await createBuiltInRun(
+      actor,
+      agentId,
+      "allowance-covered usage",
+    );
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -232,12 +240,20 @@ describe("Usage Allowance", () => {
   });
 
   it("settles multiple events and runs against shared allowance windows", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 90 },
     });
-    const firstRun = await createVm0Run(actor, agentId, "batched first run");
-    const secondRun = await createVm0Run(actor, agentId, "batched second run");
+    const firstRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "batched first run",
+    );
+    const secondRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "batched second run",
+    );
     const provider = usageProvider();
     await recordPendingUsageEvents({
       actor,
@@ -270,11 +286,15 @@ describe("Usage Allowance", () => {
   });
 
   it("falls back to org credits after the binding window cap is exhausted", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 60 },
     });
-    const run = await createVm0Run(actor, agentId, "weekly cap binds first");
+    const run = await createBuiltInRun(
+      actor,
+      agentId,
+      "weekly cap binds first",
+    );
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -293,13 +313,13 @@ describe("Usage Allowance", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
     const startedAt = nowDate();
     mockNow(startedAt);
-    const firstRun = await createVm0Run(
+    const firstRun = await createBuiltInRun(
       actor,
       agentId,
       "exhausts short window",
@@ -314,7 +334,11 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     mockNow(addHours(startedAt, 1));
-    const secondRun = await createVm0Run(actor, agentId, "same short window");
+    const secondRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "same short window",
+    );
     await recordPendingUsage({
       actor,
       runId: secondRun.runId,
@@ -331,13 +355,13 @@ describe("Usage Allowance", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
     const startedAt = nowDate();
     mockNow(startedAt);
-    const firstRun = await createVm0Run(
+    const firstRun = await createBuiltInRun(
       actor,
       agentId,
       "exhausts short window",
@@ -352,7 +376,11 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     mockNow(addHours(startedAt, 6));
-    const secondRun = await createVm0Run(actor, agentId, "fresh short window");
+    const secondRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "fresh short window",
+    );
     await recordPendingUsage({
       actor,
       runId: secondRun.runId,
@@ -369,13 +397,17 @@ describe("Usage Allowance", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    const { actor, agentId } = await vm0AllowanceActor({
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 120 },
     });
     const startedAt = nowDate();
     mockNow(startedAt);
-    const firstRun = await createVm0Run(actor, agentId, "first weekly window");
+    const firstRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "first weekly window",
+    );
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -386,7 +418,11 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     mockNow(addDays(startedAt, 8));
-    const secondRun = await createVm0Run(actor, agentId, "fresh weekly window");
+    const secondRun = await createBuiltInRun(
+      actor,
+      agentId,
+      "fresh weekly window",
+    );
     await recordPendingUsage({
       actor,
       runId: secondRun.runId,
@@ -401,20 +437,20 @@ describe("Usage Allowance", () => {
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(50);
   });
 
-  it("admits vm0 runs with zero org credits when allowance remains", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
-      credits: 0,
+  it("admits built-in model runs with shared debt when allowance remains", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({
+      credits: -10,
       allowance: { shortWindowUnits: 10, weeklyWindowUnits: 10 },
     });
 
-    const run = await createVm0Run(
+    const run = await createBuiltInRun(
       actor,
       agentId,
-      "vm0 run admitted by usage allowance",
+      "built-in model run admitted by allowance under shared debt",
     );
 
     expect(run.runId).toStrictEqual(expect.any(String));
-    // The activated windows fully cover usage despite the zero balance.
+    // The activated windows fully cover usage without repaying shared debt.
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -423,19 +459,20 @@ describe("Usage Allowance", () => {
       quantity: 10,
     });
     await processOrgUsageEvents(actor);
+    await expect(readOrgCredits(actor)).resolves.toBe(-10);
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(10);
   });
 
-  it("rejects vm0 run admission after allowance is exhausted", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+  it("rejects built-in model run admission after allowance is exhausted", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 0,
       allowance: { shortWindowUnits: 1, weeklyWindowUnits: 1 },
     });
     const api = createRunsApi(context);
-    const firstRun = await createVm0Run(
+    const firstRun = await createBuiltInRun(
       actor,
       agentId,
-      "vm0 run consumes the only allowance unit",
+      "built-in model run consumes the only allowance unit",
     );
     const provider = usageProvider();
     await recordPendingUsage({
@@ -450,7 +487,7 @@ describe("Usage Allowance", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 run rejected after allowance exhaustion",
+        prompt: "built-in model run rejected after allowance exhaustion",
         modelProvider: "built-in",
       },
       [402],
@@ -460,13 +497,17 @@ describe("Usage Allowance", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("leases billable firewall auth from allowance and denies it after exhaustion", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+  it("keeps billable firewall auth available to an admitted run after exhaustion", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 0,
       allowance: { shortWindowUnits: 2, weeklyWindowUnits: 2 },
     });
     const api = createRunsApi(context);
-    const run = await createVm0Run(actor, agentId, "billable firewall lease");
+    const run = await createBuiltInRun(
+      actor,
+      agentId,
+      "billable firewall lease",
+    );
     const client = setupApp({
       context,
       routes: webhooksAgentFirewallAuthRoutes,
@@ -483,7 +524,8 @@ describe("Usage Allowance", () => {
     const before = Math.floor(now() / 1000);
     const leased = await accept(client.resolve({ headers, body }), [200]);
     expect(leased.body.expiresAt).not.toBeNull();
-    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 1);
+    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 25);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 35);
 
     const provider = usageProvider();
     await recordPendingUsage({
@@ -494,11 +536,190 @@ describe("Usage Allowance", () => {
     });
     await processOrgUsageEvents(actor);
 
-    const denied = await accept(client.resolve({ headers, body }), [402]);
+    const continued = await accept(client.resolve({ headers, body }), [200]);
+    expect(continued.body.expiresAt).not.toBeNull();
+    expect(continued.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 25);
+    expect(continued.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 35);
+
+    await recordPendingUsage({
+      actor,
+      runId: run.runId,
+      provider,
+      quantity: 3,
+    });
+    await processOrgUsageEvents(actor);
+
+    await expect(readOrgCredits(actor)).resolves.toBe(-3);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(5);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "new run after admitted run exhausted credits",
+        modelProvider: "built-in",
+      },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("uses run allowance for billable firewall fallback under shared debt", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({
+      credits: -10,
+      allowance: { shortWindowUnits: 2, weeklyWindowUnits: 2 },
+    });
+    const api = createRunsApi(context);
+    await api.ensureOrgModelProvider(actor);
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "BYOK run uses allowance for billable firewall",
+      modelProvider: "anthropic-api-key",
+    });
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+
+    const before = Math.floor(now() / 1000);
+    const leased = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [200],
+    );
+    const after = Math.floor(now() / 1000);
+
+    expect(leased.body.expiresAt).not.toBeNull();
+    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 4);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(after + 6);
+  });
+
+  it("does not let built-in credit admission bypass workspace suspension", async () => {
+    const { actor, orgId, agentId } = await builtInAllowanceActor({
+      credits: 1,
+    });
+    const api = createRunsApi(context);
+    const run = await createBuiltInRun(
+      actor,
+      agentId,
+      "admitted before suspension",
+    );
+    await seedOrgMetadata({ orgId, tier: "pro-suspend", credits: 1 });
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+
+    const denied = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [402],
+    );
+
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("backfills allowance windows during non-vm0 usage settlement", async () => {
+  it("fails an unfunded built-in queue promotion and continues to BYOK", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({ credits: 1 });
+    const api = createRunsApi(context);
+    const first = await createBuiltInRun(actor, agentId, "active built-in one");
+    const second = await createBuiltInRun(
+      actor,
+      agentId,
+      "active built-in two",
+    );
+    const unfunded = await createBuiltInRun(
+      actor,
+      agentId,
+      "queued built-in loses admission",
+    );
+    expect(unfunded.status).toBe("queued");
+
+    await api.ensureOrgModelProvider(actor);
+    const byok = await api.createRun(actor, {
+      agentId,
+      prompt: "queued BYOK remains admissible",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(byok.status).toBe("queued");
+
+    const provider = usageProvider();
+    await recordPendingUsage({
+      actor,
+      runId: first.runId,
+      provider,
+      quantity: 1,
+    });
+    await processOrgUsageEvents(actor);
+    await expect(readOrgCredits(actor)).resolves.toBe(0);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await flushWaitUntilForTest();
+
+    await expect
+      .poll(async () => {
+        return (await api.readRun(actor, unfunded.runId)).status;
+      })
+      .toBe("failed");
+    await expect
+      .poll(async () => {
+        return (await api.readRun(actor, byok.runId)).status;
+      })
+      .toBe("pending");
+    await expect(
+      readRunFailureReasonFixture(context, unfunded.runId),
+    ).resolves.toBe("insufficient_credits");
+
+    const missingJob = await api.requestClaimRunnerJob(
+      true,
+      unfunded.runId,
+      [404],
+    );
+    expectApiError(missingJob.body);
+    expect(missingJob.body.error.message).toBe("Job not found in queue");
+    await api.claimRunnerJob(byok.runId);
+
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
+    const denied = await accept(
+      client.resolve({
+        headers: {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, byok.runId)}`,
+        },
+        body: {
+          encryptedSecrets: encryptSecretForTests(JSON.stringify({})),
+          authHeaders: { Authorization: "Bearer static-token" },
+          firewallBillable: true,
+        },
+      }),
+      [402],
+    );
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, byok.runId, [200]);
+  });
+
+  it("backfills allowance windows during non-built-in usage settlement", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
@@ -523,7 +744,7 @@ describe("Usage Allowance", () => {
     });
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "non-vm0 run uses allowance",
+      prompt: "non-built-in run uses allowance",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();
@@ -540,12 +761,12 @@ describe("Usage Allowance", () => {
     await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
-  it("applies allowance to non-vm0 runs inside active allowance windows", async () => {
-    const { actor, agentId } = await vm0AllowanceActor({
+  it("applies allowance to non-built-in runs inside active allowance windows", async () => {
+    const { actor, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
-    await createVm0Run(actor, agentId, "activate allowance windows");
+    await createBuiltInRun(actor, agentId, "activate allowance windows");
 
     const api = createRunsApi(context);
     api.acceptStorageDownloads();
@@ -553,7 +774,7 @@ describe("Usage Allowance", () => {
     await api.ensureOrgModelProvider(actor);
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "non-vm0 run inside active allowance window",
+      prompt: "non-built-in run inside active allowance window",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();
@@ -576,8 +797,14 @@ describe("Usage Allowance", () => {
     });
     const runCreatedAt = nowDate();
     mockNow(runCreatedAt);
-    const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
-    const run = await createVm0Run(actor, agentId, "run before entitlement");
+    const { actor, orgId, agentId } = await builtInAllowanceActor({
+      credits: 100,
+    });
+    const run = await createBuiltInRun(
+      actor,
+      agentId,
+      "run before entitlement",
+    );
     mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 100,
@@ -601,13 +828,13 @@ describe("Usage Allowance", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    const { actor, orgId, agentId } = await vm0AllowanceActor({
+    const { actor, orgId, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
     const startedAt = nowDate();
     mockNow(startedAt);
-    const run = await createVm0Run(
+    const run = await createBuiltInRun(
       actor,
       agentId,
       "run created before allowance cancellation",
@@ -634,18 +861,18 @@ describe("Usage Allowance", () => {
     onTestFinished(() => {
       clearMockNow();
     });
-    const { actor, orgId, agentId } = await vm0AllowanceActor({
+    const { actor, orgId, agentId } = await builtInAllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
     const startedAt = nowDate();
     mockNow(startedAt);
-    await createVm0Run(actor, agentId, "activate allowance windows");
+    await createBuiltInRun(actor, agentId, "activate allowance windows");
     const canceledAt = addHours(startedAt, 1);
     mockNow(canceledAt);
     await cancelUsageAllowanceSubscription(orgId);
     mockNow(addHours(startedAt, 2));
-    const run = await createVm0Run(
+    const run = await createBuiltInRun(
       actor,
       agentId,
       "new run after allowance cancellation",
@@ -670,10 +897,18 @@ describe("Usage Allowance", () => {
     });
     const runCreatedAt = nowDate();
     mockNow(runCreatedAt);
-    const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
+    const { actor, orgId, agentId } = await builtInAllowanceActor({
+      credits: 100,
+    });
     const api = createRunsApi(context);
-    // The run predates the entitlement, so it has no allowance windows.
-    const run = await createVm0Run(actor, agentId, "run without windows");
+    await api.ensureOrgModelProvider(actor);
+    // BYOK runs do not receive built-in credit admission, and this run
+    // predates the entitlement, so it has no allowance windows.
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without windows",
+      modelProvider: "anthropic-api-key",
+    });
     mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 2,

@@ -42,9 +42,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 #
 # Uses a positional sentinel (not an env var) so we don't depend on sudoers
-# allowing env preservation. The sentinel is prefixed with `__vm0_` to make
+# allowing env preservation. The sentinel is prefixed with `__runner_` to make
 # an accidental arg collision vanishingly unlikely.
-readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+readonly UNSHARE_SENTINEL="--__runner_unshared__"
 if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
   for cmd in sudo unshare; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -113,16 +113,16 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.27.1"
-CLAUDE_CODE_VERSION="2.1.259"
-CODEX_CLI_VERSION="0.153.0"
+CLAUDE_CODE_VERSION="2.1.263"
+CODEX_CLI_VERSION="0.153.4"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
 AGENT_BROWSER_VERSION="0.33.0-vm0.1"
 AGENT_BROWSER_LINUX_X64_SHA256="a9e3fbe24c537960b9ac0d1f358224a10eb70d87a619aec7bcb1175222a46a18"
 AGENT_BROWSER_LINUX_ARM64_SHA256="6a74dba04c299a69d564eae5aff67adc2ffc6fda5ddf672994ff75b73d64a9fe"
-PNPM_VERSION="11.25.0"
-CHROMIUM_VERSION="151.0.7922.173-1~deb12u1"
-CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260824T110509Z"
+PNPM_VERSION="12.3.4"
+CHROMIUM_VERSION="152.0.7977.82-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260905T234553Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -257,8 +257,8 @@ debootstrap_cache_locked() {
     # partial tarball under the stable cache name that another runner may reuse.
     # debootstrap validates the tarball suffix when unpacking, so keep the
     # process-scoped temp file ending in .tar instead of appending after it.
-    CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar"
-    rm -f "$CACHE_TMP_TAR"
+    # PIDs can repeat across concurrent build namespaces; the cache is shared.
+    CACHE_TMP_TAR=$(mktemp "${cache_tar%.tar}.tmp.mktemp.XXXXXX.tar")
     sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
     if [[ ! -s "$CACHE_TMP_TAR" ]]; then
       echo "error: debootstrap --make-tarball failed to create $CACHE_TMP_TAR" >&2
@@ -352,6 +352,7 @@ install_packages() {
   apt-get update
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
+    libreoffice-impress poppler-utils \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
     libnss3 p11-kit-modules tzdata-legacy unzip \
     nodejs \

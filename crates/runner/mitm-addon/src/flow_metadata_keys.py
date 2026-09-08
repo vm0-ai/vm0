@@ -170,9 +170,8 @@ Request streaming
 Model-provider usage
 --------------------
 - ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
-  flow-level model response source. Written by streaming/JSON extractors,
-  WebSocket missing-response-id fallback extraction, or fallback extraction,
-  then read by the model usage-event reporter.
+  flow-level model response source. Written by HTTP SSE/JSON inspectors or
+  WebSocket extraction, then read by the model usage-event reporter.
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
   usage extraction and read by the model usage-event reporter.
@@ -188,9 +187,6 @@ Model-provider usage
   boundary.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry sandbox
   info. Read by model-provider reported-model selection.
-- ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
-  ran. Read by ``response()`` to skip legacy fallback JSON extraction.
-
 Connector usage and parser state
 --------------------------------
 - ``X_NDJSON_STATE``: ``dict`` owned by the X connector NDJSON parser. Written
@@ -254,7 +250,6 @@ MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_PROVIDER_USAGE_TIERS: Final = "model_provider_usage_tiers"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
-MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"

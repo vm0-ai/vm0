@@ -11,7 +11,7 @@ interface TeamsConnectPageState {
   readonly botName: string | null;
 }
 
-export const TEAMS_CLIENT_URL = "msteams://teams.microsoft.com/";
+const TEAMS_CLIENT_URL = "msteams://teams.microsoft.com/";
 
 export function openTeamsClient(): void {
   window.open(TEAMS_CLIENT_URL, "_self");

@@ -1,13 +1,14 @@
 #!/usr/bin/env bats
 
-# Deployed VM0 built-in fallback completion after a trusted exact-route cooldown.
+# Deployed built-in fallback completion after a trusted exact-route cooldown.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
-BUILT_IN_FALLBACK_MODEL="gpt-5.6-luna"
+# Keep Codex fallback coverage on a model outside the Pi expansion.
+BUILT_IN_FALLBACK_MODEL="gpt-6-astra"
 
 setup() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
@@ -76,8 +77,7 @@ report_built_in_model_failure() {
     ' <<<"$output"
     assert_success
 
-    local nonce primary_expected primary_response primary_context
-    local primary_session_id
+    local nonce primary_expected primary_context
     nonce="$(_runner_uuid)"
     primary_expected="RESULT=primary-${nonce%%-*}"
     run runner_chat_send \
@@ -91,11 +91,6 @@ report_built_in_model_failure() {
 
     run runner_wait_for_run "$RUN_ID" 180
     assert_success
-    primary_response="$output"
-    primary_session_id="$(jq -er \
-        '.result.agentSessionId | select(type == "string" and length > 0)' \
-        <<<"$primary_response")"
-
     run _wait_for_runner_chat_output \
         "$THREAD_ID" \
         "$RUN_ID" \
@@ -123,7 +118,7 @@ report_built_in_model_failure() {
     assert_success
 
     local fallback_expected fallback_result fallback_run_id
-    local fallback_session_id fallback_context
+    local fallback_context
     fallback_expected="RESULT=fallback-${nonce%%-*}"
     run runner_chat_send_after_completion \
         "$AGENT_ID" \
@@ -135,8 +130,6 @@ report_built_in_model_failure() {
     assert_success
     fallback_result="$output"
     fallback_run_id="$(runner_chat_field "$fallback_result" '.runId')"
-    fallback_session_id="$(runner_chat_field "$fallback_result" '.sessionId')"
-    [[ "$fallback_session_id" != "$primary_session_id" ]]
     RUN_ID="$fallback_run_id"
 
     run runner_api_curl "/api/runs/${fallback_run_id}/context"

@@ -242,13 +242,13 @@ def _assert_bounded_source_state_cleared(
 ) -> None:
     source = _bounded_source_websocket(running, from_client=from_client)
     assert sum(len(fragment) for fragment in source.frame_buf) == 0
-    assert len(source._vm0_bounded_deflates) == 1
-    bounded_deflate = source._vm0_bounded_deflates[0]
+    assert len(source._bounded_deflates) == 1
+    bounded_deflate = source._bounded_deflates[0]
     assert bounded_deflate._decompressor is None
     assert bounded_deflate._inbound_is_compressible is None
     assert bounded_deflate._inbound_compressed is None
-    assert source._vm0_message_limit._budget.decoded_bytes == 0
-    assert source._vm0_message_limit._budget.data_frames == 0
+    assert source._message_limit._budget.decoded_bytes == 0
+    assert source._message_limit._budget.data_frames == 0
 
 
 async def _assert_compressed_fragmented_message_accepted(
@@ -327,8 +327,8 @@ async def _assert_compressed_fragmented_byte_limit(
 
     assert _message_hooks(prefix) == []
     assert _data_sends(prefix) == []
-    assert source._vm0_message_limit._budget.data_frames == 1
-    assert 0 < source._vm0_message_limit._budget.decoded_bytes < decoded_limit
+    assert source._message_limit._budget.data_frames == 1
+    assert 0 < source._message_limit._budget.decoded_bytes < decoded_limit
 
     over_limit = await _handle_event(
         addon_context,
@@ -373,7 +373,7 @@ async def _assert_compressed_fragmented_frame_limit(
 
     assert _message_hooks(prefix) == []
     assert _data_sends(prefix) == []
-    assert source._vm0_message_limit._budget.data_frames == 1
+    assert source._message_limit._budget.data_frames == 1
 
     over_limit = await _handle_event(
         addon_context,
@@ -815,7 +815,7 @@ async def test_message_frame_limit_counts_frames_across_read_splits(
             accepted,
             from_client=from_client,
         )
-        accepted_budget = accepted_source._vm0_message_limit._budget
+        accepted_budget = accepted_source._message_limit._budget
 
         first_read = await _handle_event(
             addon_context,
@@ -879,7 +879,7 @@ async def test_message_frame_limit_counts_frames_across_read_splits(
             rejected,
             from_client=from_client,
         )
-        rejected_budget = rejected_source._vm0_message_limit._budget
+        rejected_budget = rejected_source._message_limit._budget
 
         first_frame_start = await _handle_event(
             addon_context,
@@ -1079,8 +1079,8 @@ async def test_uncompressed_message_after_deflate_negotiation_clears_state(
             permessage_deflate=_PERMESSAGE_DEFLATE,
         )
         source = _bounded_source_websocket(running, from_client=from_client)
-        assert len(source._vm0_bounded_deflates) == 1
-        bounded_deflate = source._vm0_bounded_deflates[0]
+        assert len(source._bounded_deflates) == 1
+        bounded_deflate = source._bounded_deflates[0]
 
         uncompressed_frame = _peer(from_client=from_client).send(_message_event(contents[0]))
         assert uncompressed_frame[0] & 0x40 == 0
@@ -1101,8 +1101,8 @@ async def test_uncompressed_message_after_deflate_negotiation_clears_state(
         assert sum(len(fragment) for fragment in source.frame_buf) == 0
         assert bounded_deflate._decompressor is None
         assert bounded_deflate._inbound_compressed is None
-        assert source._vm0_message_limit._budget.decoded_bytes == 0
-        assert source._vm0_message_limit._budget.data_frames == 0
+        assert source._message_limit._budget.decoded_bytes == 0
+        assert source._message_limit._budget.data_frames == 0
 
         compressed_frame = _peer(
             from_client=from_client,
@@ -1126,8 +1126,8 @@ async def test_uncompressed_message_after_deflate_negotiation_clears_state(
     assert sum(len(fragment) for fragment in source.frame_buf) == 0
     assert bounded_deflate._decompressor is not None
     assert bounded_deflate._inbound_compressed is None
-    assert source._vm0_message_limit._budget.decoded_bytes == 0
-    assert source._vm0_message_limit._budget.data_frames == 0
+    assert source._message_limit._budget.decoded_bytes == 0
+    assert source._message_limit._budget.data_frames == 0
 
 
 async def test_compression_preserves_context_takeover_and_is_connection_local(
@@ -1159,8 +1159,8 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
             running.layer.server_ws,
             websocket_framing._BoundedWebsocketConnection,
         )
-        assert len(running.layer.server_ws._vm0_bounded_deflates) == 1
-        bounded_deflate = running.layer.server_ws._vm0_bounded_deflates[0]
+        assert len(running.layer.server_ws._bounded_deflates) == 1
+        bounded_deflate = running.layer.server_ws._bounded_deflates[0]
         first_decompressor = bounded_deflate._decompressor
         assert first_decompressor is not None
 
@@ -1218,8 +1218,8 @@ async def test_compression_releases_negotiated_no_context_takeover_state(
             source_websocket,
             websocket_framing._BoundedWebsocketConnection,
         )
-        assert len(source_websocket._vm0_bounded_deflates) == 1
-        bounded_deflate = source_websocket._vm0_bounded_deflates[0]
+        assert len(source_websocket._bounded_deflates) == 1
+        bounded_deflate = source_websocket._bounded_deflates[0]
 
         for content in contents:
             delivered = await _handle_event(
@@ -1290,13 +1290,13 @@ async def test_malformed_compressed_frame_closes_only_the_rejected_flow(
     rejected_source = rejected.layer.client_ws if from_client else rejected.layer.server_ws
     assert isinstance(rejected_source, websocket_framing._BoundedWebsocketConnection)
     assert sum(len(fragment) for fragment in rejected_source.frame_buf) == 0
-    assert len(rejected_source._vm0_bounded_deflates) == 1
-    bounded_deflate = rejected_source._vm0_bounded_deflates[0]
+    assert len(rejected_source._bounded_deflates) == 1
+    bounded_deflate = rejected_source._bounded_deflates[0]
     assert bounded_deflate._decompressor is None
     assert bounded_deflate._inbound_is_compressible is None
     assert bounded_deflate._inbound_compressed is None
-    assert rejected_source._vm0_message_limit._budget.decoded_bytes == 0
-    assert rejected_source._vm0_message_limit._budget.data_frames == 0
+    assert rejected_source._message_limit._budget.decoded_bytes == 0
+    assert rejected_source._message_limit._budget.data_frames == 0
 
     assert len(_message_hooks(delivered)) == 1
     assert len(_data_sends(delivered)) == 1
@@ -1411,7 +1411,7 @@ async def test_compressed_message_uses_aggregate_output_budget(
             ),
         )
         rejected_source = _bounded_source_websocket(rejected, from_client=True)
-        assert 0 < rejected_source._vm0_message_limit._budget.decoded_bytes < aggregate_limit
+        assert 0 < rejected_source._message_limit._budget.decoded_bytes < aggregate_limit
 
         overflow = await _handle_event(
             addon_context,

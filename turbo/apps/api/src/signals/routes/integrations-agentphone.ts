@@ -2,7 +2,10 @@ import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
+} from "@okouai/core/public-brand";
 import { command, computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -14,7 +17,7 @@ import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
@@ -36,6 +39,7 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
 } from "../services/agentphone.service";
+import { isAgentPhoneMentionText } from "../services/agentphone-shared.service";
 import { safeJsonParse, tapError } from "../utils";
 
 interface AgentPhoneConfig {
@@ -214,8 +218,7 @@ const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
 
 const getLinkStatus$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const requestPublicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const requestPublicBrand = PUBLIC_BRAND;
 
   const config = getAgentPhoneConfig();
   const [link] = await get(db$)
@@ -307,7 +310,7 @@ const sendAgentPhoneVerificationText$ = command(
             {
               config: params.config,
               toNumber: params.phoneHandle,
-              body: `Confirm this phone number for ${publicBrandPresentation(params.publicBrand).brandName}: ${params.connectUrl}`,
+              body: `Confirm this phone number for ${PUBLIC_BRAND_PRESENTATION.brandName}: ${params.connectUrl}`,
             },
             signal,
           ),
@@ -347,8 +350,7 @@ const sendAgentPhoneVerificationText$ = command(
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -387,7 +389,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (currentLink) {
-    return connectConflict("vm0-org-linked", publicBrand);
+    return connectConflict("vm0-org-linked");
   }
 
   const [existingPhoneLink] = await readDb
@@ -398,7 +400,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existingPhoneLink) {
-    return connectConflict("phone-handle-linked", publicBrand);
+    return connectConflict("phone-handle-linked");
   }
 
   const connectUrl = buildAgentPhoneConnectUrl({
@@ -406,7 +408,6 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     agentphoneAgentId,
     channel: APPS_API_CONNECT_CHANNEL,
     secret: env("SECRETS_ENCRYPTION_KEY"),
-    publicBrand,
   });
 
   const cooldownKeys = agentPhoneCooldownKeys({
@@ -465,8 +466,8 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-function connectConflict(reason: LinkConflictReason, publicBrand: PublicBrand) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+function connectConflict(reason: LinkConflictReason) {
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const message =
     reason === "phone-handle-linked"
       ? `This phone number is already connected to another ${brandName} account or organization. Disconnect it first.`
@@ -482,8 +483,7 @@ type LinkConflictReason = "phone-handle-linked" | "vm0-org-linked" | "conflict";
 const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const bodyResult = await get(connectBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -525,7 +525,7 @@ const connectAgentPhone$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return connectConflict(result.reason, flowPublicBrand);
+      return connectConflict(result.reason);
     }
 
     await publishAgentPhoneUserChanged(auth.userId);
@@ -536,7 +536,7 @@ const connectAgentPhone$ = command(
         {
           agentphoneAgentId: body.agentphoneAgentId,
           toNumber: phoneHandle,
-          body: `Your phone number is now connected to ${publicBrandPresentation(flowPublicBrand).brandName}.
+          body: `Your phone number is now connected to ${PUBLIC_BRAND_PRESENTATION.brandName}.
 
 You can text this number like a teammate and it will actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
 
@@ -642,13 +642,9 @@ function parseDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function isZeroMentionText(value: string): boolean {
-  return /(^|\s)@(zero|vm0)\b/iu.test(value);
-}
-
-function mentionMatchesZero(value: unknown): boolean {
+function mentionMatchesAgentPhoneHandle(value: unknown): boolean {
   if (typeof value === "string") {
-    return isZeroMentionText(value.startsWith("@") ? value : `@${value}`);
+    return isAgentPhoneMentionText(value.startsWith("@") ? value : `@${value}`);
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -657,7 +653,7 @@ function mentionMatchesZero(value: unknown): boolean {
   const mention = value as Record<string, unknown>;
   return ["text", "name", "username", "handle", "value"].some((key) => {
     const field = mention[key];
-    return typeof field === "string" && mentionMatchesZero(field);
+    return typeof field === "string" && mentionMatchesAgentPhoneHandle(field);
   });
 }
 
@@ -715,12 +711,12 @@ function extractAgentPhoneMentioned(
 
   return (
     arrayValue(data, ["mentions", "mentionedUsers", "mentioned_users"]).some(
-      mentionMatchesZero,
+      mentionMatchesAgentPhoneHandle,
     ) ||
     arrayValue(body, ["mentions", "mentionedUsers", "mentioned_users"]).some(
-      mentionMatchesZero,
+      mentionMatchesAgentPhoneHandle,
     ) ||
-    isZeroMentionText(messageBody)
+    isAgentPhoneMentionText(messageBody)
   );
 }
 
@@ -888,7 +884,7 @@ function shouldDispatchAgentPhoneEvent(event: AgentPhoneMessageEvent): boolean {
 
 const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   const apiStartTime = now();
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const config = agentPhoneWebhookConfig();
   if (!config) {
     return textResponse("Not Found", 404);

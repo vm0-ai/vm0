@@ -1,4 +1,4 @@
-export type OfficeFilePreviewKind = "document" | "spreadsheet" | "presentation";
+type OfficeFilePreviewKind = "document" | "spreadsheet" | "presentation";
 
 function fileExtension(filename: string): string | null {
   const normalizedFilename = filename.split(/[?#]/u, 1)[0]?.toLowerCase();

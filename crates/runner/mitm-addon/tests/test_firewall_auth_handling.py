@@ -942,6 +942,7 @@ class TestHandleFirewallRequest:
             pytest.param({"Bad\nName": "value"}, id="newline-name"),
             pytest.param({":authority": "evil.example.com"}, id="pseudo-header-name"),
             pytest.param({"X-Test": "bad\r\nX-Injected: value"}, id="newline-value"),
+            pytest.param({"X-Test": "snowman ☃"}, id="non-latin-1-value"),
         ],
     )
     async def test_standard_auth_rejects_malformed_resolved_headers(
@@ -1100,8 +1101,14 @@ class TestHandleFirewallRequest:
                 ConnectionResetError("connection reset"),
                 "connection reset",
             ),
+            (
+                auth_client.FirewallAuthDeadlineExceededError(
+                    auth_client.FirewallAuthFetchPhase.RESPONSE_HEADERS
+                ),
+                "Firewall auth fetch deadline exceeded during response_headers",
+            ),
         ],
-        ids=["url-error", "socket-timeout", "connection-reset"],
+        ids=["url-error", "socket-timeout", "connection-reset", "deadline-phase"],
     )
     async def test_auth_endpoint_transport_failure_returns_502(
         self,

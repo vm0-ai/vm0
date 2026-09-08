@@ -1,23 +1,23 @@
 <!doctype html>
-<html lang="en-US" translate="no" data-app-brand-name="VM0">
+<html lang="en-US" translate="no" data-app-brand-name="Okou">
   <head>
     <script>
       window.__appBootstrapStart = performance.now();
     </script>
-    <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
+    <title>AI Teammate for Real Work — More Done, Same Team | Okou</title>
     <meta charset="UTF-8" />
     <link
       rel="icon"
       type="image/svg+xml"
       sizes="any"
-      href="https://static.vm0.io/public/okou-favicon-adaptive-b4eda9221bb7.svg"
+      href="https://static.okou.io/public/okou-favicon-adaptive-b4eda9221bb7.svg"
       integrity="sha384-vU35VFLSr/2zzsz0Lr2pvWhbXirYsiACGl2G+3/kIjyS4AWK414dwftOZhU78ida"
     />
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
-      href="https://static.vm0.io/platform/okou-pwa-be0be646-180.png"
+      href="https://static.okou.io/platform/okou-pwa-be0be646-180.png"
       integrity="sha384-A8vPZ6XPjFyg4cOXSE+wWCFl2m5p5SX8KPRw9CVJS2B1UJJ/pyTz2U6M8z0q5q+d"
     />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -26,41 +26,47 @@
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
-    <meta name="application-name" content="VM0" />
-    <meta name="apple-mobile-web-app-title" content="VM0" />
+    <meta name="application-name" content="Okou" />
+    <meta name="apple-mobile-web-app-title" content="Okou" />
     <meta
       name="description"
-      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="VM0" />
-    <meta property="og:title" content="VM0 - Your Trustworthy AI Teammate" />
+    <meta property="og:site_name" content="Okou" />
+    <meta
+      property="og:title"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
+    />
     <meta
       property="og:description"
-      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta
       property="og:image"
-      content="https://static.vm0.io/web/og-image.png"
+      content="https://static.okou.io/web/okou-og-image-373c892e.png"
     />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="VM0 - Your Trustworthy AI Teammate"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@okou_ai" />
     <meta name="twitter:creator" content="@okou_ai" />
-    <meta name="twitter:title" content="VM0 - Your Trustworthy AI Teammate" />
+    <meta
+      name="twitter:title"
+      content="AI Teammate for Real Work — More Done, Same Team | Okou"
+    />
     <meta
       name="twitter:description"
-      content="VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web."
+      content="An AI teammate that connects to 3,000+ tools: get the right data, run agentic workflows, and deliver finished work with team-wide context."
     />
     <meta
       name="twitter:image"
-      content="https://static.vm0.io/web/og-image.png"
+      content="https://static.okou.io/web/okou-og-image-373c892e.png"
     />
     <meta name="google" content="notranslate" />
     <meta
@@ -81,19 +87,6 @@
       // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
       (function () {
         var root = document.documentElement;
-        var isOkou = root.dataset.appBrandName === "Okou";
-        if (!isOkou) {
-          var vm0Preference = localStorage.getItem("theme");
-          var vm0Theme =
-            vm0Preference === "dark" || vm0Preference === "light"
-              ? vm0Preference
-              : window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
-          root.dataset.theme = vm0Theme;
-          if (vm0Theme === "dark") root.classList.add("dark");
-          return;
-        }
         var p = null;
         try {
           var prefix = "__Secure-okou-theme=";
@@ -134,13 +127,13 @@
     </script>
     <style id="app-bootstrap-critical-styles">
       :root {
-        --zero-viewport-height: 100dvh;
+        --okou-viewport-height: 100dvh;
       }
 
       @supports (height: 100lvh) {
         @media (display-mode: standalone) {
           :root {
-            --zero-viewport-height: 100lvh;
+            --okou-viewport-height: 100lvh;
           }
         }
       }
@@ -154,8 +147,8 @@
       body,
       #root {
         width: 100%;
-        height: var(--zero-viewport-height);
-        min-height: var(--zero-viewport-height);
+        height: var(--okou-viewport-height);
+        min-height: var(--okou-viewport-height);
         overflow: hidden;
       }
 
@@ -206,11 +199,6 @@
         height: 64px;
         animation: app-bootstrap-skeleton-avatar-pulse 2s
           cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        animation-play-state: paused;
-      }
-
-      .app-bootstrap-skeleton__avatar--animated {
-        animation-play-state: running;
       }
 
       .app-bootstrap-skeleton__avatar-layers {
@@ -221,73 +209,32 @@
       }
     </style>
     <script
-      id="vm0-clerk-core-script"
-      src="__VM0_CLERK_BROWSER_SCRIPT_URL__"
+      id="okou-clerk-core-script"
+      src="__OKOU_CLERK_BROWSER_SCRIPT_URL__"
       crossorigin="anonymous"
       defer
       type="text/javascript"
     ></script>
-    <script data-vm0-clerk-bootstrap="">
+    <script data-okou-clerk-bootstrap="">
       (function () {
         var hostname = location.hostname.toLowerCase();
         var production =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
+          hostname === "okou.ai" || hostname.endsWith(".okou.ai");
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        var productionPrimaryAppDomain =
-          "__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.okou.ai"
-            ? "app.okou.ai"
-            : "app.vm0.ai";
-        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
-        var satelliteDomain = null;
-        if (
-          production &&
-          okouPrimary &&
-          isDomainOrSubdomain(hostname, "vm0.ai")
-        ) {
-          satelliteDomain = "vm0.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app.okou.ai")
-        ) {
-          satelliteDomain = "app.okou.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app-worker.okou.ai")
-        ) {
-          satelliteDomain = "app-worker.okou.ai";
-        }
-        var satellite = satelliteDomain !== null;
-        var authOrigin = satellite
-          ? "https://" + productionPrimaryAppDomain
-          : location.origin;
+        var authOrigin = location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
           signInUrl: new URL("/sign-in", authOrigin).toString(),
           signUpUrl: new URL("/sign-up", authOrigin).toString(),
         };
-        if (satellite) {
-          loadOptions.isSatellite = true;
-          loadOptions.satelliteAutoSync = true;
-        }
 
         var bootstrap = {
-          domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
-          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
-        window.__vm0ClerkBootstrap = bootstrap;
-
-        function isDomainOrSubdomain(value, domain) {
-          return value === domain || value.endsWith("." + domain);
-        }
+        window.__okouClerkBootstrap = bootstrap;
 
         function startClerk() {
           var clerk = window.Clerk;
@@ -320,13 +267,10 @@
           bootstrap.loaded = clerk.load(loadOptions);
         }
 
-        var script = document.getElementById("vm0-clerk-core-script");
+        var script = document.getElementById("okou-clerk-core-script");
         if (!script) throw new Error("Clerk core script is unavailable");
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;
-        if (satellite) {
-          script.dataset.clerkDomain = satelliteDomain;
-        }
         script.onerror = function () {
           script.remove();
         };
@@ -335,7 +279,7 @@
     </script>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"
       media="print"
       onload="this.media = 'all'"
     />

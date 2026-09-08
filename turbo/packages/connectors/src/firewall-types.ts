@@ -1485,7 +1485,7 @@ function urlForHostPolicyValidation(
   const schemeEnd = base.indexOf("://");
   const scheme = schemeEnd === -1 ? "https" : base.slice(0, schemeEnd);
   const port = new URL(
-    `${scheme}://vm0-host.invalid${authorityParts.portSuffix}`,
+    `${scheme}://validation-host.invalid${authorityParts.portSuffix}`,
   ).port;
   return { hostname, port };
 }
@@ -2521,7 +2521,7 @@ function authorityForUrlSyntaxValidation(authority: string): string {
   if (rawHost.startsWith("[") && rawHost.endsWith("]")) {
     return authority;
   }
-  return `vm0-host.invalid${authority.slice(rawHost.length)}`;
+  return `validation-host.invalid${authority.slice(rawHost.length)}`;
 }
 
 function urlForCanonicalBaseSyntax(base: string): URL {

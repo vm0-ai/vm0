@@ -18,14 +18,14 @@ export default [
       "src/auth-providers/connectors/test-oauth/**",
     ],
     rules: {
-      "vm0/no-abort-signal-in-object-params": "error",
+      "okou/no-abort-signal-in-object-params": "error",
     },
   },
   // Public package entry points may aggregate implementation modules.
   {
     files: ["src/firewall-types.ts", "src/firewall-metadata/policy.ts"],
     rules: {
-      "vm0/no-re-export": "off",
+      "okou/no-re-export": "off",
     },
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),

@@ -464,7 +464,7 @@ describe("GET /api/attribution/google-ads-milestones", () => {
         kind: "model",
         provider: usageProvider,
         category: "tokens.input",
-        unitPrice: 3000,
+        unitPrice: 1000,
         unitSize: 1_000_000,
       },
     ]);

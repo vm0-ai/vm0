@@ -24,7 +24,10 @@ import {
   type CreditLowBalanceAlertArgs,
 } from "./credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./credit-recharge.service";
-import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
+import {
+  applyUsageAllowanceToUsageEventsInLockedTransaction,
+  lockOrgCredits,
+} from "./usage-allowance.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CreditUsage");
@@ -347,10 +350,7 @@ async function processOrgUsageEventsInTransaction(
   pricingResolution: UsagePricingResolution,
   signal: AbortSignal,
 ): Promise<ProcessOrgUsageEventsResult> {
-  // Same advisory key as web: 'credit_' prefix + orgId.
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
-  );
+  await lockOrgCredits(tx, orgId);
 
   const pendingRecords = await tx
     .select({

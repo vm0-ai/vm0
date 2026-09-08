@@ -59,6 +59,8 @@ import {
   admitPiMemoryStage1Candidate,
   type PiMemoryStage1Admission,
 } from "./pi-memory-stage1-candidate.service";
+import { isGptApiKeyPiProviderType } from "./pi-sandbox-config";
+import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -69,6 +71,8 @@ interface CompleteAgentRunInput {
   readonly auth: SandboxAuth;
   readonly body: WebhookCompleteBody;
   readonly allowCheckpointlessSuccess?: boolean;
+  readonly executionOwner?: "api-first";
+  readonly suppressFailureLog?: boolean;
 }
 
 export interface TerminalSideEffectsInput {
@@ -167,12 +171,48 @@ type CompletionTransactionResult =
 
 const L = logger("webhook:complete");
 
+function logGptApiKeyPiSandboxOutcome(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): boolean {
+  if (
+    input.executionOwner === "api-first" ||
+    commit.run.launchSnapshot?.framework !== "pi" ||
+    !isGptApiKeyPiProviderType(commit.run.modelProvider)
+  ) {
+    return false;
+  }
+  const details = {
+    runId: input.body.runId,
+    productProvider: commit.run.modelProvider,
+    dialect: "openai-responses",
+    executionOwner: "sandbox",
+    outcome:
+      commit.responseStatus === "completed"
+        ? "sandbox_completion"
+        : "terminal_failure",
+    reason:
+      commit.transitionFailureReason ??
+      (commit.responseStatus === "completed"
+        ? "settled_session"
+        : "sandbox_failure"),
+    ownershipStage: "sandbox",
+  } as const;
+  if (commit.responseStatus === "completed") {
+    L.debug("Pi API first-turn outcome", details);
+    return false;
+  }
+  L.warn("Pi API first-turn outcome", details);
+  return true;
+}
+
 function shouldSuppressKnownFailureLog(
   run: RunRecord,
   failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
-    case "input_too_large": {
+    case "input_too_large":
+    case "execution_timeout": {
       return true;
     }
     case "insufficient_credits":
@@ -201,6 +241,33 @@ function shouldSuppressKnownFailureLog(
   }
 }
 
+function logAgentRunCompletionOutcome(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): void {
+  const loggedPiSandboxFailure = logGptApiKeyPiSandboxOutcome(input, commit);
+  if (commit.responseStatus === "completed") {
+    L.debug("Run completed successfully", { runId: input.body.runId });
+    return;
+  }
+  if (loggedPiSandboxFailure) {
+    return;
+  }
+  if (commit.transitionFailureKind === "missing-checkpoint") {
+    L.warn("Run failed because checkpoint was not found", {
+      runId: input.body.runId,
+      error: commit.transitionError,
+    });
+    return;
+  }
+  if (
+    !input.suppressFailureLog &&
+    !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
+  ) {
+    logRunFailure(input, commit);
+  }
+}
+
 function shouldSuppressFailureLog(
   run: RunRecord,
   failureReason: RunFailureReasonToken | undefined,
@@ -211,6 +278,24 @@ function shouldSuppressFailureLog(
     return false;
   }
   return shouldSuppressKnownFailureLog(run, knownFailureReason.data);
+}
+
+function logRunFailure(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): void {
+  const isCreditError =
+    commit.transitionFailureReason === "insufficient_credits";
+  const logFailure = isCreditError ? L.debug : L.warn;
+  logFailure(
+    isCreditError ? "Run stopped: insufficient credits" : "Run failed",
+    {
+      runId: input.body.runId,
+      exitCode: input.body.exitCode,
+      error: commit.transitionError,
+      failureReason: commit.transitionFailureReason,
+    },
+  );
 }
 
 function checkpointInputForCompletion(
@@ -437,9 +522,8 @@ async function applyTerminalCompletion(
     }
   }
 
-  const [updated] = await tx
-    .update(agentRuns)
-    .set({
+  const [updated] = await transitionAgentRunsToTerminal(tx, {
+    values: {
       status: prepared.status,
       completedAt,
       ...(prepared.error !== undefined ? { error: prepared.error } : {}),
@@ -448,15 +532,13 @@ async function applyTerminalCompletion(
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
       workspaceReuseResult: input.body.workspaceReuseResult,
-    })
-    .where(
-      and(
-        eq(agentRuns.id, input.body.runId),
-        eq(agentRuns.userId, input.auth.userId),
-        inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
+    },
+    conditions: [
+      eq(agentRuns.id, input.body.runId),
+      eq(agentRuns.userId, input.auth.userId),
+      inArray(agentRuns.status, ["pending", "running"]),
+    ],
+  });
   if (!updated) {
     throw new Error("Locked agent run lost its terminal transition");
   }
@@ -945,23 +1027,7 @@ export const completeAgentRun$ = command(
             : {}),
         },
       });
-      if (commit.responseStatus === "completed") {
-        L.debug("Run completed successfully", { runId: input.body.runId });
-      } else if (commit.transitionFailureKind === "missing-checkpoint") {
-        L.warn("Run failed because checkpoint was not found", {
-          runId: input.body.runId,
-          error: commit.transitionError,
-        });
-      } else if (
-        !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
-      ) {
-        L.warn("Run failed", {
-          runId: input.body.runId,
-          exitCode: input.body.exitCode,
-          error: commit.transitionError,
-          failureReason: commit.transitionFailureReason,
-        });
-      }
+      logAgentRunCompletionOutcome(input, commit);
     } else if (
       commit.run.status === "completed" ||
       commit.run.status === "failed"

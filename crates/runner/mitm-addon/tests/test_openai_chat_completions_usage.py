@@ -17,7 +17,6 @@ import usage.openai_chat_completions as openai_chat_completions
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_flow
-from tests.stream_buffer_helpers import set_response_stream_buffer
 from usage.model_http import ModelHttpFailureEvidence
 from usage.quantities import MAX_USAGE_QUANTITY
 
@@ -148,6 +147,39 @@ def test_canonical_sse_deltas_skip_selective_extraction_across_framing_variants(
         ModelHttpFailureEvidence(has_choices=True, is_valid=True),
         ModelHttpFailureEvidence(event_name="chunk", has_choices=True, is_valid=True),
         ModelHttpFailureEvidence(has_choices=True, is_valid=True),
+    ]
+
+
+def test_discarded_failure_event_emits_invalid_evidence_and_recovers():
+    observer = _RecordingFailureObserver()
+    scanner, parsed_usage = (
+        openai_chat_completions.create_openai_chat_completions_sse_usage_extractor(
+            failure_observer=observer
+        )
+    )
+
+    scanner(
+        b"event: chunk\n"
+        b'data: {"object":"chat.completion.chunk","padding":"'
+        + b"x" * openai_chat_completions._CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES
+        + b"\n"
+        + b"x" * 4097
+        + b"\n\n"
+        b"event: chunk\n"
+        b'data: {"object":"chat.completion.chunk","choices":[{'
+        b'"error":{"metadata":{"error_type":"provider_overloaded"}}}]}\n\n'
+    )
+
+    assert parsed_usage == {}
+    assert observer.observed == [
+        ModelHttpFailureEvidence(event_name="chunk"),
+        ModelHttpFailureEvidence(
+            event_name="chunk",
+            failure_codes=("provider_overloaded",),
+            has_error=True,
+            has_choices=True,
+            is_valid=True,
+        ),
     ]
 
 
@@ -811,26 +843,6 @@ class TestOpenAIChatCompletionsUsage:
         assert response_stream(flow)(compressed[:midpoint]) == compressed[:midpoint]
         assert response_stream(flow)(compressed[midpoint:]) == compressed[midpoint:]
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
-
-        webhook = _run_response(flow, self._usage_webhook_api)
-
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input": 30,
-            "tokens.output": 5,
-        }
-
-    def test_buffered_json_fallback_uses_chat_completions_parser(
-        self,
-        tmp_path,
-        real_flow,
-    ):
-        flow = _chat_completions_flow(
-            tmp_path,
-            real_flow,
-            content_type="application/json",
-        )
-        body = _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
-        set_response_stream_buffer(flow, body)
 
         webhook = _run_response(flow, self._usage_webhook_api)
 

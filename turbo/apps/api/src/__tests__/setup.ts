@@ -50,7 +50,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mockApiTestConnectorProviderConfiguration();
-  mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
+  mockEnv("SECRETS_KMS_KEY_ID", "alias/okou-secrets-test");
 });
 
 afterEach(async () => {

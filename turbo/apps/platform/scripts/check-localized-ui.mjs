@@ -119,6 +119,10 @@ function getInternalAllowedLiterals() {
       "internal run event payload; the rendered cancellation message uses typed i18n",
     ],
     [
+      "src/shared-database/protocol.ts\u0000Realtime subscription is not supported",
+      "SharedWorker protocol validation error, not user-visible UI copy",
+    ],
+    [
       "src/signals/shared-database-browser.ts\u0000okou_{…}_{…}{…}",
       "SharedWorker browser identifier, not user-visible UI copy",
     ],
@@ -266,7 +270,7 @@ function getLocaleIndependentShellAllowedLiterals() {
       "locale-independent accessibility label for the copy-free app skeleton",
     ],
     [
-      "src/views/unsupported-browser-page.tsx\u0000Update your browser to continue",
+      "src/views/unsupported-browser-page.tsx\u0000Use a supported browser to continue",
       "English-only browser compatibility shell outside localized app bootstrap",
     ],
     [
@@ -287,6 +291,10 @@ function getLocaleIndependentShellAllowedLiterals() {
     ],
     [
       "src/views/unsupported-browser-page.tsx\u0000does not support your current browser version. Update your browser to continue.",
+      "English-only browser compatibility shell outside localized app bootstrap",
+    ],
+    [
+      "src/views/unsupported-browser-page.tsx\u0000does not support this browser on your device. Update your browser, or try another browser or device.",
       "English-only browser compatibility shell outside localized app bootstrap",
     ],
   ];

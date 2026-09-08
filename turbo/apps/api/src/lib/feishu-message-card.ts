@@ -1,5 +1,5 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import type { FeishuOutboundMessage } from "../signals/external/feishu-client";
 
@@ -51,7 +51,7 @@ export function buildFeishuLoginMessage(args: {
   readonly connectUrl: string;
   readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
-  const { assistantName } = publicBrandPresentation(args.publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return cardMessage({
     title: "Connect your account",
     template: "blue",
@@ -77,7 +77,7 @@ export function buildFeishuWelcomeMessage(args: {
   readonly botName: string | null;
   readonly publicBrand: PublicBrand;
 }): FeishuOutboundMessage {
-  const { brandName } = publicBrandPresentation(args.publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   // Provider bot metadata is legitimately unavailable until Feishu discovery
   // succeeds. This neutral presentation fallback carries neither provider nor
   // product identity and remains while botName is nullable (#27750).
@@ -110,7 +110,7 @@ export function buildFeishuHelpMessage(args: {
   readonly publicBrand: PublicBrand;
   readonly botName: string | null;
 }): FeishuOutboundMessage {
-  const { brandName } = publicBrandPresentation(args.publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   // Keep this provider-neutral while Feishu bot metadata is legitimately
   // nullable; it must never synthesize a VM0/Okou provider identity (#27750).
   const botName = args.botName ?? "Feishu bot";
@@ -157,7 +157,7 @@ export function buildFeishuAgentResponseMessage(args: {
   readonly auditUrl?: string;
   readonly footerText?: string;
 }): FeishuOutboundMessage {
-  const { assistantName } = publicBrandPresentation(args.publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const footerElements: Readonly<Record<string, unknown>>[] =
     args.auditUrl || args.footerText
       ? [

@@ -48,8 +48,8 @@ const DOCTOR_IO_CONCURRENCY: usize = 4;
 
 const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
 
-/// Total timeout for each API connectivity probe.
-const API_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+/// Total timeout for each API connectivity probe, including cold starts.
+const API_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Grace period where a freshly claimed new-sandbox run may still be preparing
 /// and may not have a stable Firecracker process yet.
@@ -79,8 +79,8 @@ enum Warning {
         sandbox_id: String,
         base_dir: PathBuf,
     },
-    /// A firecracker process exists but its sandbox_id is not tracked in
-    /// either `active_runs` or `idle_sandboxes` for this runner.
+    /// A firecracker process exists but its sandbox_id is not tracked as
+    /// active, exact idle, or blank inventory for this runner.
     FirecrackerNotInStatus {
         pid: u32,
         sandbox_id: String,
@@ -276,7 +276,7 @@ impl Warning {
             } => {
                 // Resolved if fresh discovery no longer contains the same
                 // Firecracker observation or sandbox_id is now known (either
-                // tracked as active or parked as idle).
+                // tracked as active or parked as exact/blank inventory).
                 if !fresh_contains_firecracker(
                     fresh,
                     *pid,
@@ -293,7 +293,11 @@ impl Warning {
                             .idle_sandboxes
                             .iter()
                             .any(|v| v.sandbox_id == *sandbox_id);
-                        !(active || idle)
+                        let blank = st
+                            .blank_sandboxes
+                            .iter()
+                            .any(|v| v.sandbox_id == *sandbox_id);
+                        !(active || idle || blank)
                     }
                     None => true,
                 }
@@ -431,6 +435,7 @@ struct StatusInfo {
     started_at: String,
     active_runs: Vec<ActiveRun>,
     idle_sandboxes: Vec<IdleSandbox>,
+    blank_sandboxes: Vec<BlankSandbox>,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
 }
@@ -995,6 +1000,10 @@ struct IdleSandbox {
     sandbox_id: String,
 }
 
+struct BlankSandbox {
+    sandbox_id: String,
+}
+
 /// Returns `true` for modes where proxy absence is expected (not a warning).
 fn is_inactive_mode(mode: &str) -> bool {
     matches!(mode, "stopped" | "draining")
@@ -1005,14 +1014,33 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         .await
         .ok()
         .flatten()?;
+    let blank_ids: HashSet<&str> = file
+        .blank_sandboxes
+        .iter()
+        .map(|sandbox| sandbox.sandbox_id.as_str())
+        .collect();
     let idle_sandboxes = file
         .idle_sandboxes()
         .iter()
+        .filter(|sandbox| !blank_ids.contains(sandbox.sandbox_id.as_str()))
         .map(|sandbox| IdleSandbox {
             reuse_key: sandbox.reuse_key.clone(),
             sandbox_id: sandbox.sandbox_id.clone(),
         })
         .collect();
+    let active_ids: HashSet<&str> = file
+        .active_runs
+        .iter()
+        .map(|run| run.sandbox_id.as_str())
+        .collect();
+    let mut blank_sandboxes: Vec<BlankSandbox> = blank_ids
+        .into_iter()
+        .filter(|sandbox_id| !active_ids.contains(sandbox_id))
+        .map(|sandbox_id| BlankSandbox {
+            sandbox_id: sandbox_id.to_owned(),
+        })
+        .collect();
+    blank_sandboxes.sort_by(|a, b| a.sandbox_id.cmp(&b.sandbox_id));
     let active_runs = file
         .active_runs
         .into_iter()
@@ -1028,6 +1056,7 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         started_at: file.started_at,
         active_runs,
         idle_sandboxes,
+        blank_sandboxes,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
     })
@@ -1150,7 +1179,7 @@ fn correlate_jobs(
         });
     }
 
-    // Known sandboxes = active + idle. FCs with sandbox_ids outside this set
+    // Known sandboxes = active + exact idle + blank. FCs outside this set
     // are flagged as orphans not reflected in status.json.
     for fc in &my_fcs {
         let known = status
@@ -1159,6 +1188,10 @@ fn correlate_jobs(
             .any(|r| r.sandbox_id == fc.sandbox_id)
             || status
                 .idle_sandboxes
+                .iter()
+                .any(|v| v.sandbox_id == fc.sandbox_id)
+            || status
+                .blank_sandboxes
                 .iter()
                 .any(|v| v.sandbox_id == fc.sandbox_id);
         if !known {
@@ -1261,7 +1294,7 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
     let Some(namespaces) = observe_network_namespaces().await else {
         return warnings;
     };
-    let lock_paths = sandbox_fc::LockPaths::new();
+    let lock_paths = sandbox_firecracker::LockPaths::new();
 
     for namespace in namespaces {
         let lock_path = lock_paths.netns_pool(namespace.pool_idx);
@@ -1303,7 +1336,7 @@ async fn observe_network_namespaces() -> Option<Vec<ObservedNetworkNamespace>> {
 fn parse_netns_list_line(line: &str) -> Option<(&str, u32)> {
     // ip netns list output: "vm0-ns-00-0a (id: 42)" or just "vm0-ns-00-0a"
     let ns_name = line.split_whitespace().next()?;
-    let parsed = sandbox_fc::parse_netns_name(ns_name)?;
+    let parsed = sandbox_firecracker::parse_netns_name(ns_name)?;
     Some((ns_name, parsed.pool_index))
 }
 
@@ -1446,14 +1479,8 @@ fn print_report(
             println!("    Jobs:    0 active");
         }
 
-        // Idle sandboxes (keep-alive)
-        if let Some(st) = &r.status
-            && !st.idle_sandboxes.is_empty()
-        {
-            println!("    Idle:    {} sandboxes", st.idle_sandboxes.len());
-            for sandbox in &st.idle_sandboxes {
-                println!("{}", format_idle_sandbox_diagnostic_line(sandbox));
-            }
+        if let Some(st) = &r.status {
+            print!("{}", format_parked_sandbox_diagnostics(st));
         }
 
         // Per-runner warnings
@@ -1494,6 +1521,31 @@ fn format_idle_sandbox_diagnostic_line(sandbox: &IdleSandbox) -> String {
         "      - reuse key {} -> sandbox {}",
         sandbox.reuse_key, sandbox.sandbox_id
     )
+}
+
+fn format_parked_sandbox_diagnostics(status: &StatusInfo) -> String {
+    let mut output = String::new();
+    if !status.idle_sandboxes.is_empty() {
+        let _ = writeln!(
+            output,
+            "    Idle:    {} exact sandboxes",
+            status.idle_sandboxes.len()
+        );
+        for sandbox in &status.idle_sandboxes {
+            let _ = writeln!(output, "{}", format_idle_sandbox_diagnostic_line(sandbox));
+        }
+    }
+    if !status.blank_sandboxes.is_empty() {
+        let _ = writeln!(
+            output,
+            "    Blank:   {} sandboxes",
+            status.blank_sandboxes.len()
+        );
+        for sandbox in &status.blank_sandboxes {
+            let _ = writeln!(output, "      - sandbox {}", sandbox.sandbox_id);
+        }
+    }
+    output
 }
 
 /// Format an ISO 8601 timestamp as a human-readable relative duration.
@@ -1636,6 +1688,7 @@ printf '%s\n' \
 
         assert!(status.active_runs.is_empty());
         assert!(status.idle_sandboxes.is_empty());
+        assert!(status.blank_sandboxes.is_empty());
     }
 
     #[tokio::test]
@@ -1714,6 +1767,68 @@ printf '%s\n' \
         assert!(read_status(dir.path()).await.is_none());
     }
 
+    #[tokio::test]
+    async fn read_status_rejects_malformed_blank_sandboxes() {
+        let dir = tempfile::tempdir().unwrap();
+        for blank_sandboxes in [
+            serde_json::json!(null),
+            serde_json::json!({}),
+            serde_json::json!([null]),
+            serde_json::json!([{}]),
+            serde_json::json!([{"sandbox_id": 1}]),
+        ] {
+            let content = serde_json::json!({
+                "mode": "running",
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "blank_sandboxes": blank_sandboxes,
+            });
+            std::fs::write(dir.path().join("status.json"), content.to_string()).unwrap();
+            assert!(read_status(dir.path()).await.is_none(), "{content}");
+        }
+    }
+
+    #[tokio::test]
+    async fn read_status_preserves_exact_inventory_without_blank_collection() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = serde_json::json!({
+            "mode": "running",
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "idle_sandboxes": [
+                {"sandbox_id": "S1", "reuse_key": "thread:exact"},
+            ],
+        });
+        std::fs::write(dir.path().join("status.json"), content.to_string()).unwrap();
+        let status = read_status(dir.path()).await.unwrap();
+        assert_eq!(status.idle_sandboxes.len(), 1);
+        assert_eq!(status.idle_sandboxes[0].sandbox_id, "S1");
+        assert_eq!(status.idle_sandboxes[0].reuse_key, "thread:exact");
+        assert!(status.blank_sandboxes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_status_claimed_blank_is_only_an_active_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = serde_json::json!({
+            "mode": "running",
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "active_runs": [{
+                "run_id": "R1", "sandbox_id": "S1", "phase": "running",
+                "phase_started_at": "2026-01-01T00:00:00.000Z",
+            }],
+            "idle_sandboxes": [{"sandbox_id": "S1", "reuse_key": "overlapping-mirror"}],
+            "blank_sandboxes": [{"sandbox_id": "S1"}],
+        });
+        std::fs::write(dir.path().join("status.json"), content.to_string()).unwrap();
+        let status = read_status(dir.path()).await.unwrap();
+        let (jobs, warnings) =
+            correlate_jobs(&status, dir.path(), &[fc_info(101, "S1", dir.path())]);
+        assert!(status.idle_sandboxes.is_empty());
+        assert!(status.blank_sandboxes.is_empty());
+        assert!(warnings.is_empty());
+        assert_eq!(jobs.len(), 1);
+        assert!(matches!(&jobs[0].status, JobStatus::Running { run_id, .. } if run_id == "R1"));
+    }
+
     #[test]
     fn active_run_unknown_phase_defaults_running() {
         let active = ActiveRun {
@@ -1784,6 +1899,7 @@ printf '%s\n' \
                     sandbox_id: sbid.into(),
                 })
                 .collect(),
+            blank_sandboxes: vec![],
             proxy_port: None,
             dns_port: None,
         }
@@ -3127,6 +3243,65 @@ printf '%s\n' \
         report
     }
 
+    #[tokio::test]
+    async fn report_distinguishes_owned_blank_inventory_with_overlapping_entries() {
+        for parked in [
+            serde_json::json!({
+                "idle_sandboxes": [{"reuse_key": "thread:exact", "sandbox_id": "exact-id"}],
+                "blank_sandboxes": [{"sandbox_id": "blank-id"}],
+            }),
+            serde_json::json!({
+                "idle_sandboxes": [
+                    {"reuse_key": "thread:exact", "sandbox_id": "exact-id"},
+                    {"reuse_key": "overlapping-mirror", "sandbox_id": "blank-id"},
+                ],
+                "blank_sandboxes": [{"sandbox_id": "blank-id"}, {"sandbox_id": "blank-id"}],
+            }),
+        ] {
+            let fixture = doctor_report_fixture("draining", None, None);
+            let mut content = parked;
+            content["mode"] = serde_json::json!("draining");
+            content["started_at"] = serde_json::json!("2026-01-01T00:00:00.000Z");
+            std::fs::write(fixture.base_dir.join("status.json"), content.to_string()).unwrap();
+            let runner = live_runner_instance(
+                std::process::id(),
+                fixture.config_path.clone(),
+                fixture.base_dir.clone(),
+            );
+            let firecrackers = vec![
+                fc_info(101, "blank-id", &fixture.base_dir),
+                fc_info(102, "exact-id", &fixture.base_dir),
+            ];
+            let report = build_runner_report(&runner, None, &firecrackers, &[], &[], &[]).await;
+            assert!(
+                report.jobs.is_empty(),
+                "unclaimed inventory must not become jobs"
+            );
+            assert!(report.warnings.is_empty());
+            let status = report.status.as_ref().unwrap();
+            assert_eq!(status.idle_sandboxes.len(), 1);
+            assert_eq!(status.blank_sandboxes.len(), 1);
+            assert_eq!(
+                format_parked_sandbox_diagnostics(status),
+                concat!(
+                    "    Idle:    1 exact sandboxes\n",
+                    "      - reuse key thread:exact -> sandbox exact-id\n",
+                    "    Blank:   1 sandboxes\n",
+                    "      - sandbox blank-id\n",
+                )
+            );
+
+            let fresh = fresh_with_firecracker(101, "blank-id", &fixture.base_dir);
+            let warning = Warning::FirecrackerNotInStatus {
+                pid: 101,
+                sandbox_id: "blank-id".into(),
+                base_dir: fixture.base_dir.clone(),
+                generation: fresh.firecrackers[0].generation,
+            };
+            assert!(!warning.persists(None, &fresh, &[], None).await);
+        }
+    }
+
     fn mitm_proc(pid: u32, port: u16) -> process::MitmproxyProcessInfo {
         process::MitmproxyProcessInfo {
             pid,
@@ -3561,6 +3736,39 @@ printf '%s\n' \
 
         assert!(reports.is_empty());
         api.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn build_runner_reports_allows_api_cold_starts() {
+        let server = MockServer::start_async().await;
+        let api = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/api")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).delay(Duration::from_secs(6));
+            })
+            .await;
+        let api_url = server.url("/api");
+        let fixture = doctor_report_fixture_with_server(
+            "running",
+            None,
+            None,
+            Some((&api_url, "test-token")),
+        );
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let client = build_api_client();
+
+        let reports =
+            build_runner_reports(&[runner], None, client.as_ref(), &empty_discovered(), &[]).await;
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].api_ok, Some(true));
+        api.assert_calls_async(1).await;
     }
 
     #[tokio::test]

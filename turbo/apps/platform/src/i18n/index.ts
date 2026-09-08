@@ -1,9 +1,6 @@
 import { createInstance, type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
-import {
-  resolveAssistantNameForHostname,
-  resolveBrandNameForHostname,
-} from "../signals/branding.ts";
+import { ASSISTANT_NAME, BRAND_NAME } from "../signals/branding.ts";
 import {
   DEFAULT_LOCALE,
   DEFAULT_NAMESPACE,
@@ -20,7 +17,7 @@ export function currentLocale(): string {
   return i18n.resolvedLanguage ?? i18n.language;
 }
 
-export interface InitialLocaleResources {
+interface InitialLocaleResources {
   readonly locale: SupportedLocale;
   readonly resources: Resource;
 }
@@ -47,19 +44,10 @@ export async function loadInitialLocaleResources(
   };
 }
 
-export async function initializeI18n(
-  locale: SupportedLocale = DEFAULT_LOCALE,
-  signal?: AbortSignal,
-): Promise<SupportedLocale> {
-  const initial = await loadInitialLocaleResources(locale, signal);
-  return initializeI18nWithResources(initial, signal);
-}
-
 export async function initializeI18nWithResources(
   initial: InitialLocaleResources,
   signal?: AbortSignal,
 ): Promise<SupportedLocale> {
-  const hostname = location.hostname;
   signal?.throwIfAborted();
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
@@ -67,8 +55,8 @@ export async function initializeI18nWithResources(
     fallbackLng: DEFAULT_LOCALE,
     interpolation: {
       defaultVariables: {
-        assistantName: resolveAssistantNameForHostname(hostname),
-        brandName: resolveBrandNameForHostname(hostname),
+        assistantName: ASSISTANT_NAME,
+        brandName: BRAND_NAME,
       },
       escapeValue: false,
     },
@@ -97,14 +85,6 @@ export function loadI18nLanguageResources(
     !i18n.hasResourceBundle(locale, "common")
     ? loadLocaleResources(locale, signal)
     : Promise.resolve(undefined);
-}
-
-export async function changeI18nLanguage(
-  locale: SupportedLocale,
-  signal?: AbortSignal,
-): Promise<void> {
-  const resources = await loadI18nLanguageResources(locale, signal);
-  await changeI18nLanguageWithResources(locale, resources, signal);
 }
 
 export async function changeI18nLanguageWithResources(

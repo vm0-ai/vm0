@@ -169,6 +169,63 @@ class TestAuthBaseUrlRewriteSafety:
         assert "super-secret-token" not in log_text
         assert "real-token" not in log_text
 
+    async def test_oversized_cached_resolved_base_fails_closed_before_forwarding(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        resolved_base_prefix = "https://real.example.com/webhook/super-secret-token-"
+        resolved_base = resolved_base_prefix + "x" * (
+            auth_base_rewrite.MAX_RESOLVED_AUTH_BASE_CHARACTERS + 1 - len(resolved_base_prefix)
+        )
+        flow, allow, sandbox_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            resolved_base=resolved_base,
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+                "cache_hit": True,
+            },
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock()
+        mock_log = MagicMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(
+                flow, allow, sandbox_info
+            )
+
+        assert len(resolved_base) == auth_base_rewrite.MAX_RESOLVED_AUTH_BASE_CHARACTERS + 1
+        assert token_meta["cache_hit"] is True
+        get_headers.assert_awaited_once()
+        mock_forward.assert_not_awaited()
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert json.loads(flow.response.content)["error"] == "url_rewrite_forward_failed"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_CACHE_HIT not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+        assert "super-secret-token" not in flow.response.text
+        assert "super-secret-token" not in json.dumps(mock_log.call_args_list)
+
     @pytest.mark.parametrize(
         ("extra_bytes", "accepted"),
         [

@@ -200,7 +200,7 @@ violations.py:295: use metadata_keys.AUTH_REFRESHED_SECRETS for flow.metadata ac
 violations.py:297: use metadata_keys.AUTH_RESOLVED_SECRETS for flow.metadata access
 violations.py:299: use metadata_keys.MODEL_PROVIDER_USAGE for flow.metadata access
 violations.py:304: use metadata_keys.MODEL_PROVIDER_USAGE_SOURCES for flow.metadata access
-violations.py:310: use metadata_keys.MODEL_JSON_USAGE_FINALIZED for flow.metadata access
+violations.py:310: use metadata_keys.MODEL_PROVIDER_USAGE_TIERS for flow.metadata access
 violations.py:317: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
 violations.py:322: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
 violations.py:324: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access

@@ -2,14 +2,14 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeSandboxTokenPayload,
   type SandboxTokenPayload,
 } from "./lib/api/sandbox-token.js";
 import { getOkouToken } from "./lib/okou-env.js";
+import { introVideoCatalogCommand } from "./commands/__intro-video-catalog.js";
+import { introVideoAgentCommand } from "./commands/__intro-video-agent.js";
 
 interface CommandDefinition {
   name: string;
@@ -49,7 +49,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   ],
   resource: null,
   github: ["github:read", "github:write"],
-  slack: "slack:write",
+  slack: ["slack:read", "slack:write"],
   feishu: "feishu:write",
   teams: "teams:write",
   telegram: ["telegram:read", "telegram:write"],
@@ -70,19 +70,13 @@ const COMMAND_CAPABILITY_MAP: Record<
   "people-search": "people-search:read",
   "web-search": "web-search:read",
   social: "social:read",
-  recognize: "image-recognition:write",
+  "image-recognition": "image-recognition:write",
   finance: "finance:read",
   seo: "seo:read",
   banking: "banking:read",
 };
 
-const COMMAND_FEATURE_SWITCH_MAP: Readonly<
-  Partial<Record<string, FeatureSwitchKey>>
-> = {
-  presentation: FeatureSwitchKey.PresentationScreenshot,
-};
-
-const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize"]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "image-recognition"]);
 
 const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
@@ -90,6 +84,36 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     description: "Internal sandbox agent loop",
     load: async () => {
       return (await import("./commands/__agent-loop")).agentLoopCommand;
+    },
+  },
+  {
+    name: "__intro-video-catalog",
+    description: "Internal public HeyGen catalog discovery for Intro Video",
+    load: async () => {
+      return introVideoCatalogCommand;
+    },
+  },
+  {
+    name: "__intro-video-agent",
+    description: "Internal managed HeyGen Video Agent submission and status",
+    load: async () => {
+      return introVideoAgentCommand;
+    },
+  },
+  {
+    name: "__intro-video-presenter",
+    description: "Internal Intro Video presenter renderer",
+    load: async () => {
+      return (await import("./commands/__intro-video-presenter"))
+        .introVideoPresenterCommand;
+    },
+  },
+  {
+    name: "__intro-video-voice",
+    description: "Internal Intro Video HeyGen narration renderer",
+    load: async () => {
+      return (await import("./commands/__intro-video-voice"))
+        .introVideoVoiceCommand;
     },
   },
   {
@@ -166,7 +190,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
     name: "slack",
     description:
-      "Send messages, upload files, and download files from Slack as the bot",
+      "List channels, read history, send messages, and transfer files as the Slack bot",
     load: async () => {
       return (await import("./commands/slack")).slackCommand;
     },
@@ -351,10 +375,11 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
-    name: "recognize",
+    name: "image-recognition",
     description: "Recognize one image through a managed multimodal model",
     load: async () => {
-      return (await import("./commands/recognize")).recognizeCommand;
+      return (await import("./commands/image-recognition"))
+        .imageRecognitionCommand;
     },
   },
   {
@@ -399,16 +424,6 @@ function shouldHideCommand(
   payload: SandboxTokenPayload | undefined,
 ): boolean {
   if (name.startsWith("__")) return true;
-  const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
-  if (
-    featureSwitch !== undefined &&
-    !isFeatureEnabled(featureSwitch, {
-      userId: payload?.userId,
-      orgId: payload?.orgId,
-    })
-  ) {
-    return true;
-  }
   if (!payload) return RUN_ONLY_COMMANDS.has(name);
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
@@ -468,6 +483,29 @@ async function loadRequestedCommand(
   }
 
   return COMMAND_DEFINITION_BY_NAME.get(name)?.load();
+}
+
+export async function registerRequestedCommand(
+  prog: Command,
+  argv: string[] = process.argv,
+): Promise<void> {
+  const requestedCommandName = getRequestedCommandName(argv);
+  const requestedCommand = await loadRequestedCommand(requestedCommandName);
+  registerCommands(prog, requestedCommand ? [requestedCommand] : undefined);
+
+  if (
+    getNonOptionArgs(argv)[0] === "help" &&
+    requestedCommandName !== undefined &&
+    requestedCommand === undefined
+  ) {
+    prog
+      .command("help <command>", { hidden: true })
+      .action((commandName: string) => {
+        prog.error(`error: unknown command '${commandName}'`, {
+          code: "commander.unknownCommand",
+        });
+      });
+  }
 }
 
 function commandExampleIfVisible(
@@ -565,8 +603,8 @@ export function buildHelpText(
       payload,
     ),
     ...commandExampleIfVisible(
-      "recognize",
-      '  Recognize an image?    okou recognize --file ./image.png --prompt "Describe it"',
+      "image-recognition",
+      '  Recognize an image?    okou image-recognition --file ./image.png --prompt "Describe it"',
       payload,
     ),
     ...commandExampleIfVisible(
@@ -633,9 +671,6 @@ if (
   process.argv[1]?.endsWith("okou")
 ) {
   await configureGlobalProxyFromEnv();
-  const requestedCommand = await loadRequestedCommand(
-    getRequestedCommandName(),
-  );
-  registerCommands(program, requestedCommand ? [requestedCommand] : undefined);
+  await registerRequestedCommand(program);
   program.parse();
 }

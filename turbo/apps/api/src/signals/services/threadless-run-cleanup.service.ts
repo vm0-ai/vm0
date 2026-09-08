@@ -3,6 +3,7 @@ import { agentRunCallbacks } from "@okouai/db/schema/agent-run-callback";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreadEvents } from "@okouai/db/schema/chat-thread-event";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
@@ -16,6 +17,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  notExists,
   or,
   sql,
 } from "drizzle-orm";
@@ -29,6 +31,10 @@ import {
   drainOrgQueue$,
 } from "./agent-run-lifecycle.service";
 import { cancelRun$, dispatchCancelSideEffects$ } from "./run-cancel.service";
+import {
+  activePiMemoryPhase2MaintenanceRunCondition,
+  lockPiMemoryPhase2MaintenanceCleanupProtection,
+} from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("ThreadlessRunCleanup");
 
@@ -103,6 +109,7 @@ function terminalError(candidate: ThreadlessRunCandidate): string | undefined {
 async function loadThreadlessRunCandidates(
   db: Db,
   runIds: readonly string[] | null,
+  currentTime: Date,
 ): Promise<readonly ThreadlessRunCandidate[]> {
   const forwardCutoff = new Date(THREADLESS_RUN_FORWARD_CUTOFF_ISO);
   return await db
@@ -125,6 +132,19 @@ async function loadThreadlessRunCandidates(
           ...ACTIVE_RUN_STATUSES,
           ...TERMINAL_RUN_STATUSES,
         ]),
+        notExists(
+          db
+            .select({ memoryStorageId: piMemoryPhase2Jobs.memoryStorageId })
+            .from(piMemoryPhase2Jobs)
+            .where(
+              activePiMemoryPhase2MaintenanceRunCondition(db, {
+                runId: agentRuns.id,
+                orgId: agentRuns.orgId,
+                userId: agentRuns.userId,
+                currentTime,
+              }),
+            ),
+        ),
         runIds === null ? undefined : inArray(agentRuns.id, runIds),
         or(
           gte(agentRuns.createdAt, forwardCutoff),
@@ -252,6 +272,16 @@ async function deleteIfStillEligible(
       return false;
     }
 
+    if (
+      await lockPiMemoryPhase2MaintenanceCleanupProtection(tx, {
+        runId: candidate.runId,
+        orgId: candidate.orgId,
+        userId: candidate.userId,
+      })
+    ) {
+      return false;
+    }
+
     if (await hasDeletionBlocker(tx, candidate.runId)) {
       return false;
     }
@@ -323,7 +353,12 @@ export const cleanupThreadlessRuns$ = command(
     signal: AbortSignal,
   ): Promise<ThreadlessRunCleanupResult> => {
     const db = set(writeDb$);
-    const candidates = await loadThreadlessRunCandidates(db, runIds);
+    const currentTime = nowDate();
+    const candidates = await loadThreadlessRunCandidates(
+      db,
+      runIds,
+      currentTime,
+    );
     signal.throwIfAborted();
 
     let cancelled = 0;
@@ -331,7 +366,7 @@ export const cleanupThreadlessRuns$ = command(
     let deleted = 0;
     const errors: ThreadlessRunCleanupError[] = [];
     const quietBefore = new Date(
-      nowDate().getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+      currentTime.getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
     );
 
     for (const candidate of candidates) {
@@ -345,6 +380,7 @@ export const cleanupThreadlessRuns$ = command(
                 userId: candidate.userId,
                 orgId: candidate.orgId,
                 runnerCancellationMode: "hard",
+                protectActivePiMemoryPhase2Maintenance: true,
               },
               signal,
             );

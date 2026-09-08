@@ -179,7 +179,7 @@ async function createStripeFrameBaseline(
 ): Promise<StripeFrameBaseline> {
   stripeFrameBaselineSequence += 1;
   const attributeName =
-    `data-vm0-stripe-frame-baseline-${Date.now()}-` +
+    `data-okou-stripe-frame-baseline-${Date.now()}-` +
     stripeFrameBaselineSequence;
   await frame.locator("iframe").evaluateAll((elements, attribute) => {
     for (const element of elements) {

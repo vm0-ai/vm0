@@ -13,10 +13,11 @@
 //! - `jsonl_result`: shared terminal result parsing for JSONL CLI backends.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` owns the shared Claude Code/Pi JSONL subprocess orchestration,
-//! while `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
-//! retains ownership of its process, event delivery, heartbeat races, and child
-//! reaping until completion.
+//! [`execute_cli_with_controls_for_config_started_at`] enters the shared Claude
+//! Code/Pi JSONL subprocess orchestration implemented by the private
+//! `execute_cli_inner`, while `codex_app_server_backend` owns the Codex JSON-RPC
+//! lifecycle. Each path retains ownership of its process, event delivery,
+//! heartbeat races, and child reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
@@ -35,6 +36,7 @@ mod event_delivery;
 mod exec_boundary;
 mod jsonl_result;
 mod line_reader;
+mod pi_memory_citation;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;
@@ -58,13 +60,13 @@ use crate::session_metadata::{SessionHistoryLaunchSource, SessionMetadataStore};
 use crate::timing;
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
 use event_delivery::{EventDeliveryReport, EventDeliveryRuntime, EventDeliverySender};
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
     FailureDetailSource, FailureReason, HeartbeatFailureDiagnostic,
 };
 use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_info, log_warn};
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -279,7 +281,7 @@ pub struct CliExecutionResult {
     pub active_input_delivery_ids: Vec<String>,
 }
 
-/// How top-level guest-agent handling should settle a finished CLI execution.
+/// One-shot outcome reported by the heartbeat loop or task while CLI execution is in progress.
 ///
 /// Heartbeat completion signal observed by CLI execution.
 ///
@@ -302,9 +304,10 @@ pub enum HeartbeatStatus {
 
     /// The heartbeat task itself failed, such as a task panic or join error.
     ///
-    /// `execute_cli` surfaces this as a guest-agent execution error and may
-    /// terminate the CLI process group if no earlier control-path termination
-    /// is already in progress.
+    /// The shared [`execute_cli_with_controls_for_config_started_at`] execution
+    /// path surfaces this as a guest-agent execution error and may terminate
+    /// the CLI process group if no earlier control-path termination is already
+    /// in progress.
     TaskFailed(String),
 }
 
@@ -516,10 +519,22 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     Ok(vec![
         "npx".to_string(),
         "--yes".to_string(),
+        "--no-audit".to_string(),
         format!("--package={package_url}"),
         "okou".to_string(),
         "__agent-loop".to_string(),
     ])
+}
+
+fn is_pi_memory_maintenance(runtime: &CliRuntimeConfig<'_>) -> Result<bool, AgentError> {
+    if !matches!(runtime.framework, env::Framework::Pi) {
+        return Ok(false);
+    }
+    let launch_config: serde_json::Value = serde_json::from_str(runtime.pi_launch_config.as_ref())
+        .map_err(|_| AgentError::Execution("Pi launch config is invalid".to_string()))?;
+    Ok(launch_config
+        .get("maintenance")
+        .is_some_and(|value| !value.is_null()))
 }
 
 /// Write the private launch payload the Pi CLI child reads at startup.
@@ -829,8 +844,12 @@ impl<'a> CliEventPipeline<'a> {
         http: &HttpClient,
         initial_sequence: u32,
     ) -> Result<Self, AgentError> {
-        let delivery =
-            EventDeliveryRuntime::start(http.clone(), &runtime.run_id, initial_sequence)?;
+        let delivery = EventDeliveryRuntime::start(
+            http.clone(),
+            &runtime.run_id,
+            initial_sequence,
+            runtime.framework == env::Framework::Pi,
+        )?;
         let ingestor = CliEventIngestor::new_with_session_metadata(
             runtime,
             None,
@@ -973,6 +992,15 @@ async fn execute_cli_inner(
         session_metadata,
     } = controls;
 
+    let maintenance_execution = is_pi_memory_maintenance(runtime)?;
+    if maintenance_execution
+        && !session_metadata.capture_maintenance_launch(runtime.pi_session_id.as_ref())
+    {
+        return Err(AgentError::Execution(
+            "Invalid private maintenance session identity".into(),
+        ));
+    }
+
     let replay_user_messages =
         active_input.is_enabled() && matches!(runtime.framework, env::Framework::ClaudeCode);
     log_info!(
@@ -1089,20 +1117,21 @@ async fn execute_cli_inner(
 
     let active_input_controller = active_input.controller();
     let pi_execution = matches!(runtime.framework, env::Framework::Pi);
-    let (pi_rpc_response_tx, pi_rpc_response_rx) = tokio::sync::mpsc::unbounded_channel();
+    let pi_rpc_execution = pi_execution && !maintenance_execution;
+    let (pi_rpc_response_tx, pi_rpc_response_rx) = pi_rpc::response_channel();
     let (pi_rpc_startup_tx, pi_rpc_startup_rx) = tokio::sync::oneshot::channel();
-    let mut pi_rpc_startup_tx = pi_execution.then_some(pi_rpc_startup_tx);
+    let mut pi_rpc_startup_tx = pi_rpc_execution.then_some(pi_rpc_startup_tx);
     let pi_rpc_cancellation = CancellationToken::new();
-    let mut pi_rpc_projection = pi_execution.then(|| {
+    let mut pi_rpc_projection = pi_rpc_execution.then(|| {
         pi_rpc::PiRpcProjection::new(runtime.run_id.as_ref(), runtime.pi_session_id.as_ref())
     });
-    let mut pi_rpc_startup_boundary = pi_execution.then(pi_rpc::PiRpcStartupBoundary::default);
+    let mut pi_rpc_startup_boundary = pi_rpc_execution.then(pi_rpc::PiRpcStartupBoundary::default);
     let mut stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         let pi_rpc_cancellation = pi_rpc_cancellation.clone();
         tokio::spawn(async move {
-            if pi_execution {
+            if pi_rpc_execution {
                 pi_rpc::write_commands(
                     cli_stdin,
                     &run_id,
@@ -1113,6 +1142,9 @@ async fn execute_cli_inner(
                     pi_rpc_cancellation,
                 )
                 .await
+            } else if pi_execution {
+                drop(cli_stdin);
+                Ok(())
             } else {
                 drop(pi_rpc_response_rx);
                 write_claude_stream_json_to_stdin(cli_stdin, &run_id, &prompt, active_input).await
@@ -1226,7 +1258,7 @@ async fn execute_cli_inner(
                     CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
                 }
                 user_cancellation_handled = true;
-                if pi_execution {
+                if pi_rpc_execution {
                     pi_user_cancelled = true;
                     active_input_controller.close_terminal();
                     pi_rpc_cancellation.cancel();
@@ -1433,7 +1465,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             if let Some(projection) = pi_rpc_projection.as_mut() {
-                                match projection.project(event, &pi_rpc_response_tx) {
+                                match projection.project(event, &pi_rpc_response_tx, line.len()) {
                                     Ok(Some(projected)) => event = projected,
                                     Ok(None) => {
                                         agent_log.write_raw_line(line.as_bytes()).await;
@@ -1588,7 +1620,7 @@ async fn execute_cli_inner(
                                 }
                                 let active_input_idle =
                                     active_input_controller.close_for_result_if_idle();
-                                if pi_execution && active_input_idle {
+                                if pi_rpc_execution && active_input_idle {
                                     active_input_controller.close_terminal();
                                 }
                                 // Arm the post-result reap deadline once per
@@ -2004,7 +2036,8 @@ async fn execute_cli_inner(
         );
     }
     let (mut exit_code, cli_observed_exit) = cli_exit_summary_from_status(&status);
-    if pi_execution && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
+    if pi_rpc_execution
+        && jsonl_result.is_some_and(|result| result.status == JsonlResultStatus::Error)
     {
         exit_code = 1;
     }
@@ -2237,14 +2270,14 @@ mod tests {
 
     impl SystemLogOverrideGuard {
         fn set(path: &Path) -> Self {
-            guest_common::log::set_system_log_file(path);
+            guest_telemetry::log::set_system_log_file(path);
             Self
         }
     }
 
     impl Drop for SystemLogOverrideGuard {
         fn drop(&mut self) {
-            guest_common::log::clear_system_log_file();
+            guest_telemetry::log::clear_system_log_file();
         }
     }
 
@@ -2437,7 +2470,9 @@ mod tests {
     fn pi_child_env_omits_launch_config_value() {
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
-        runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
+        runtime.pi_launch_config = Cow::Borrowed(
+            r#"{"schemaVersion":2,"maintenance":{"rawMemory":"PRIVATE_MAINTENANCE_CANDIDATE_31891"}}"#,
+        );
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);
@@ -2450,7 +2485,8 @@ mod tests {
         assert!(
             !values
                 .iter()
-                .any(|(_, value)| value.contains("schemaVersion"))
+                .any(|(_, value)| value.contains("schemaVersion")
+                    || value.contains("PRIVATE_MAINTENANCE_CANDIDATE_31891"))
         );
     }
 

@@ -1,1 +1,0 @@
-ALTER TABLE "chat_events" DROP COLUMN "trigger_source";

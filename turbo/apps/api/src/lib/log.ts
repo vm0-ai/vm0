@@ -181,6 +181,15 @@ interface UnhandledRequestErrorRootFields {
   readonly errorCode?: string;
 }
 
+interface ProviderUnavailableRootFields {
+  readonly type: "provider_unavailable";
+  readonly provider: "clerk";
+  readonly provider_status: number;
+  readonly failure_class: "transient_read_exhausted";
+  readonly method: string;
+  readonly route: string;
+}
+
 function usageUnderbillingRootFields(
   fields: Record<string, unknown>,
 ): UsageUnderbillingRootFields | null {
@@ -234,12 +243,51 @@ function unhandledRequestErrorRootFields(
   };
 }
 
+function providerUnavailableRootFields(
+  fields: Record<string, unknown>,
+): ProviderUnavailableRootFields | null {
+  const type = fields.type;
+  const provider = fields.provider;
+  const providerStatus = fields.provider_status;
+  const failureClass = fields.failure_class;
+  const method = fields.method;
+  const route = fields.route;
+
+  if (
+    type !== "provider_unavailable" ||
+    provider !== "clerk" ||
+    typeof providerStatus !== "number" ||
+    !Number.isInteger(providerStatus) ||
+    providerStatus < 500 ||
+    providerStatus > 599 ||
+    failureClass !== "transient_read_exhausted" ||
+    typeof method !== "string" ||
+    typeof route !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    provider,
+    provider_status: providerStatus,
+    failure_class: failureClass,
+    method,
+    route,
+  };
+}
+
 function rootEventFields(
   fields: Record<string, unknown>,
-): UsageUnderbillingRootFields | UnhandledRequestErrorRootFields | null {
+):
+  | UsageUnderbillingRootFields
+  | UnhandledRequestErrorRootFields
+  | ProviderUnavailableRootFields
+  | null {
   return (
     usageUnderbillingRootFields(fields) ??
-    unhandledRequestErrorRootFields(fields)
+    unhandledRequestErrorRootFields(fields) ??
+    providerUnavailableRootFields(fields)
   );
 }
 

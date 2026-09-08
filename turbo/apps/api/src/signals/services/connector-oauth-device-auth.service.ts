@@ -50,7 +50,6 @@ import {
 } from "./connector-action-resolver.service";
 import {
   connectorById,
-  connectorBySlug,
   connectorConnectionWriteRejection,
   upsertConnectorTokenConnection$,
 } from "./connector-data.service";
@@ -61,12 +60,8 @@ import {
   connectorAgentAuthorizationRequested,
   validateConnectorAuthorizationTarget$,
 } from "./connected-connector-authorization.service";
-import {
-  connectorAccountSiblingWritesEnabled,
-  storedConnectorAccountMutationSelection,
-} from "./connector-account-mutation.service";
+import { storedConnectorAccountMutationSelection } from "./connector-account-mutation.service";
 import { resolveConnectorConnectionMutation } from "./connector-connection-write.service";
-import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -884,25 +879,19 @@ const completedDeviceSessionResponse$ = command(
     const response = await completeSessionResponse(
       {
         connectorLoader: () => {
-          // Previous API releases completed sessions without an exact
-          // connector ID. Preserve their single-account replay until the old
-          // API rollback targets and persisted sessions drain; remove with
-          // #29777 after its contraction gate passes.
+          if (!args.session.completedConnectorId) {
+            throw new Error(
+              "Completed OAuth device session is missing its connector ID",
+            );
+          }
           return get(
-            args.session.completedConnectorId
-              ? connectorById({
-                  orgId: args.orgId,
-                  userId: args.userId,
-                  connectorSlug: args.method.connectorSlug,
-                  connectorId: args.session.completedConnectorId,
-                  snapshot: args.method.snapshot,
-                })
-              : connectorBySlug({
-                  orgId: args.orgId,
-                  userId: args.userId,
-                  connectorSlug: args.method.connectorSlug,
-                  snapshot: args.method.snapshot,
-                }),
+            connectorById({
+              orgId: args.orgId,
+              userId: args.userId,
+              connectorSlug: args.method.connectorSlug,
+              connectorId: args.session.completedConnectorId,
+              snapshot: args.method.snapshot,
+            }),
           );
         },
       },
@@ -1039,7 +1028,6 @@ async function createDeviceAuthSession(
     readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly account: ConnectorAccountMutationIntent;
-    readonly allowSiblings: boolean;
     readonly sessionToken: string;
     readonly encryptedProviderState: string;
     readonly oauthRequestedScopes: readonly string[];
@@ -1065,7 +1053,7 @@ async function createDeviceAuthSession(
       userId: args.userId,
       target: { kind: "builtin", connectorSlug: args.connectorSlug },
       mutation: args.account,
-      allowSiblings: args.allowSiblings,
+      allowSiblings: true,
     });
     signal.throwIfAborted();
     if (mutationResolution.kind !== "ready") {
@@ -1188,10 +1176,6 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchContext = await get(
-      userFeatureSwitchContext(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
     const sessionResult = await createDeviceAuthSession(
       set(writeDb$),
       {
@@ -1202,8 +1186,6 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         agentId: args.agentId,
         authorizeAgent: args.authorizeAgent,
         account: args.account,
-        allowSiblings:
-          connectorAccountSiblingWritesEnabled(featureSwitchContext),
         sessionToken,
         encryptedProviderState,
         oauthRequestedScopes: connectorGrantScopes(resolvedMethod.method.grant),
@@ -1224,7 +1206,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         : conflict(
             sessionResult.kind === "ambiguous"
               ? "Multiple connector accounts require an exact choice"
-              : "Additional connector accounts are not enabled yet",
+              : "This connector does not support additional accounts",
           );
     }
 

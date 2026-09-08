@@ -1,55 +1,26 @@
+import { authContract } from "@okouai/api-contracts/contracts/auth";
+import type { DesktopAuthWindowRequest } from "./desktop-auth-window";
 import type { DesktopAuthState } from "./desktop-bridge";
 import type { DesktopAuthCallback } from "./desktop-auth";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
-import {
-  headersWithSessionCookies,
-  type DesktopSessionCookieSource,
-} from "./desktop-session-cookies";
 import { singleFlight } from "./desktop-async-control";
 
 const AUTH_ME_PATH = "/api/auth/me";
-const ZERO_ORG_PATH = "/api/org";
+const ORG_PATH = "/api/org";
 
-interface AuthMeResponse {
-  readonly userId: string;
-  readonly email: string;
-}
-
-interface ZeroOrgResponse {
-  readonly id: string;
-  readonly name: string;
-}
-
-/**
- * Injected auth-window driver: the core behavior seam, analogous to
- * `ComputerUseHostRuntime`'s `sessionFetch`. The production implementation wraps
- * all the Electron window machinery (create window, navigation policy, wait for
- * the completion navigation, load the URL) and resolves once the window reaches
- * a completion navigation. The token does NOT flow back through here — it is
- * delivered out-of-band via `completeSignIn` (the single global auth IPC).
- */
-type RunAuthWindow = (request: {
-  readonly url: string;
-  readonly visible: boolean;
-  readonly allowInteractiveFallbacks: boolean;
-}) => Promise<void>;
+type RunAuthWindow = (
+  request: DesktopAuthWindowRequest,
+) => Promise<string | null>;
 
 interface DesktopAuthSessionOptions {
   /** Pre-resolved API base URL (`resolveComputerUseApiBaseUrl(platformUrl)`). */
   readonly apiBaseUrl: string;
-  /**
-   * Cookie-merge URLs for auth-state requests, in precedence order
-   * (`[webUrl, platformUrl]`). The per-request URL is appended internally so
-   * its cookies win last, matching the original `[webUrl, platformUrl, requestUrl]`.
-   */
-  readonly cookieUrls: readonly URL[];
-  readonly cookieSource: DesktopSessionCookieSource;
   readonly addClientHeaders: DesktopClientHeaderInjector;
-  /** `buildDesktopAuthTokenUrl(webUrl)`. */
+  /** `buildDesktopAuthTokenUrl(authUrl)`. */
   readonly tokenUrl: string;
-  /** `buildDesktopAuthConsumeUrl(webUrl, code, handoffId)`. */
+  /** `buildDesktopAuthConsumeUrl(authUrl, code, handoffId)`. */
   readonly consumeUrl: (code: string, handoffId: string | null) => string;
-  /** `buildDesktopAuthSelectOrgUrl(webUrl, true)`. */
+  /** `buildDesktopAuthSelectOrgUrl(authUrl, true)`. */
   readonly selectOrgUrl: string;
   readonly runAuthWindow: RunAuthWindow;
   /** Zero-arg "something changed" signal; defaults to a no-op. */
@@ -59,7 +30,7 @@ interface DesktopAuthSessionOptions {
    * caller can restart dependent runtimes. Background token refresh does NOT
    * trigger it.
    */
-  readonly onAuthCompleted?: () => Promise<void> | void;
+  readonly onAuthCompleted?: (signal: AbortSignal) => Promise<void> | void;
 }
 
 function signedOutDesktopAuthState(): DesktopAuthState {
@@ -85,8 +56,6 @@ function signingInDesktopAuthState(): DesktopAuthState {
  */
 export class DesktopAuthSession {
   private readonly apiBaseUrl: string;
-  private readonly cookieUrls: readonly URL[];
-  private readonly cookieSource: DesktopSessionCookieSource;
   private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly tokenUrl: string;
   private readonly consumeUrl: (
@@ -96,18 +65,55 @@ export class DesktopAuthSession {
   private readonly selectOrgUrl: string;
   private readonly runAuthWindow: RunAuthWindow;
   private readonly onChange: () => void;
-  private readonly onAuthCompleted: () => Promise<void> | void;
+  private readonly onAuthCompleted: (
+    signal: AbortSignal,
+  ) => Promise<void> | void;
 
   private token: string | null = null;
+  private lifetime = new AbortController();
+  private appState: DesktopAuthState = signedOutDesktopAuthState();
   private readonly tokenRefresh = singleFlight(() => this.refreshToken());
   private pendingCallback: DesktopAuthCallback | null = null;
   private signingIn = false;
-  private acceptsSignInCompletions = true;
+  private restoreEnabled = true;
+  private authority: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly lifetime: AbortSignal;
+  } | null = null;
+
+  /** Opaque, current identity/session proof. Never sent over the renderer bridge. */
+  getAuthority(): object | null {
+    return !this.signingIn && !this.lifetime.signal.aborted
+      ? this.authority
+      : null;
+  }
+
+  private rememberAuthority(
+    state: DesktopAuthState,
+    lifetime: AbortController,
+  ): void {
+    if (this.lifetime !== lifetime || lifetime.signal.aborted) return;
+    const next =
+      state.status === "signed_in" && state.organization
+        ? {
+            userId: state.user.userId,
+            orgId: state.organization.id,
+            lifetime: lifetime.signal,
+          }
+        : null;
+    if (
+      this.authority?.userId === next?.userId &&
+      this.authority?.orgId === next?.orgId &&
+      this.authority?.lifetime === next?.lifetime
+    )
+      return;
+    this.authority = next;
+    this.onChange();
+  }
 
   constructor(options: DesktopAuthSessionOptions) {
     this.apiBaseUrl = options.apiBaseUrl;
-    this.cookieUrls = options.cookieUrls;
-    this.cookieSource = options.cookieSource;
     this.addClientHeaders = options.addClientHeaders;
     this.tokenUrl = options.tokenUrl;
     this.consumeUrl = options.consumeUrl;
@@ -120,10 +126,11 @@ export class DesktopAuthSession {
   async getToken(options?: {
     readonly forceRefresh?: boolean;
   }): Promise<string | null> {
+    if (this.signingIn) return null;
     if (!options?.forceRefresh && this.token) {
       return this.token;
     }
-    if (!this.acceptsSignInCompletions) {
+    if (!this.restoreEnabled) {
       return null;
     }
     return await this.refresh();
@@ -132,43 +139,13 @@ export class DesktopAuthSession {
   /**
    * `init` carries the method and body for non-GET calls. Its `headers` are
    * merged under the session headers, which always win, so a caller cannot
-   * accidentally drop the cookie or bearer token.
+   * accidentally drop the bearer token.
    */
   async fetchWithSessionAuth(
     requestUrl: URL,
     init?: RequestInit,
   ): Promise<Response> {
-    const response = await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
-    if (response.status !== 401 || !this.token) {
-      return response;
-    }
-
-    this.token = null;
-    const withCookies = await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
-    if (withCookies.status !== 401) {
-      return withCookies;
-    }
-
-    // The token is short-lived, and a call made minutes after the last one —
-    // the click track uploaded after a long video — arrives with an expired
-    // bearer and cookies that no longer answer either. Delivering a recording
-    // must not depend on the token still being the one minted at sign-in:
-    // mint a fresh one and try once more. A refresh that yields nothing means
-    // the sign-in itself is gone, and the 401 stands.
-    const refreshed = await this.getToken({ forceRefresh: true });
-    if (!refreshed) {
-      return withCookies;
-    }
-    return await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
+    return await this.fetchWithAppAuth(requestUrl, init);
   }
 
   getCachedToken(): string | null {
@@ -179,77 +156,22 @@ export class DesktopAuthSession {
     if (this.signingIn) {
       return signingInDesktopAuthState();
     }
-    if (!this.acceptsSignInCompletions) {
+    if (!this.restoreEnabled) {
       return signedOutDesktopAuthState();
     }
 
-    // With a cached token, a rejected request already refreshes and retries
-    // inside fetchWithSessionAuth; a second hidden refresh here would only
-    // open the window again for the same answer.
-    const hadToken = this.token !== null;
-    const state = await this.fetchAuthState();
-    if (state.status !== "signed_out" || hadToken) {
-      return state;
-    }
-
-    const restoredToken = await this.getToken({ forceRefresh: true });
-    if (!restoredToken) {
-      return state;
-    }
-
-    return await this.fetchAuthState();
-  }
-
-  private async fetchAuthState(): Promise<DesktopAuthState> {
-    const meUrl = new URL(AUTH_ME_PATH, this.apiBaseUrl);
-    const meResponse = await this.fetchWithSessionAuth(meUrl);
-    if (meResponse.status === 401) {
-      return signedOutDesktopAuthState();
-    }
-    if (!meResponse.ok) {
-      throw new Error(`Desktop auth status failed: ${meResponse.status}`);
-    }
-
-    const user = (await meResponse.json()) as AuthMeResponse;
-    const orgUrl = new URL(ZERO_ORG_PATH, this.apiBaseUrl);
-    const orgResponse = await this.fetchWithSessionAuth(orgUrl);
-    if (orgResponse.status === 401) {
-      return signedOutDesktopAuthState();
-    }
-    if (orgResponse.status === 404) {
-      return { status: "signed_in", user, organization: null };
-    }
-    if (!orgResponse.ok) {
-      throw new Error(
-        `Desktop organization status failed: ${orgResponse.status}`,
-      );
-    }
-
-    const organization = (await orgResponse.json()) as ZeroOrgResponse;
-    return {
-      status: "signed_in",
-      user,
-      organization: {
-        id: organization.id,
-        name: organization.name,
-      },
-    };
-  }
-
-  completeSignIn(token: string): void {
-    if (!this.acceptsSignInCompletions) {
-      return;
-    }
-    this.token = token;
-    this.onChange();
+    return await this.getAppAuthState();
   }
 
   signOut(): void {
+    this.lifetime.abort();
+    this.authority = null;
     this.token = null;
+    this.appState = signedOutDesktopAuthState();
     this.tokenRefresh.clear();
     this.pendingCallback = null;
     this.signingIn = false;
-    this.acceptsSignInCompletions = false;
+    this.restoreEnabled = false;
     this.onChange();
   }
 
@@ -257,29 +179,13 @@ export class DesktopAuthSession {
     code: string,
     handoffId: string | null = null,
   ): Promise<void> {
-    this.acceptsSignInCompletions = true;
-    this.setSigningIn(true);
-    try {
-      await this.runAuthWindow({
-        url: this.consumeUrl(code, handoffId),
-        visible: false,
-        allowInteractiveFallbacks: true,
-      });
-    } finally {
-      this.setSigningIn(false);
-    }
-
-    await this.onAuthCompleted();
+    this.tokenRefresh.clear();
+    await this.authenticate(this.consumeUrl(code, handoffId), true, false);
   }
 
   async selectOrganization(): Promise<void> {
-    this.acceptsSignInCompletions = true;
-    await this.runAuthWindow({
-      url: this.selectOrgUrl,
-      visible: true,
-      allowInteractiveFallbacks: true,
-    });
-    await this.onAuthCompleted();
+    this.tokenRefresh.clear();
+    await this.authenticate(this.selectOrgUrl, true, true);
   }
 
   /**
@@ -308,18 +214,201 @@ export class DesktopAuthSession {
   }
 
   private async refreshToken(): Promise<string | null> {
-    const before = this.token;
-    await this.runAuthWindow({
-      url: this.tokenUrl,
-      visible: false,
-      allowInteractiveFallbacks: false,
+    try {
+      return await this.authenticate(this.tokenUrl, false, false);
+    } catch {
+      // A failed App restoration requires explicit sign-in, never another
+      // identity source. Interactive failures still reject to the caller.
+      return null;
+    }
+  }
+
+  private async authenticate(
+    url: string,
+    interactive: boolean,
+    visible: boolean,
+  ): Promise<string | null> {
+    this.lifetime.abort();
+    const lifetime = new AbortController();
+    this.lifetime = lifetime;
+    this.authority = null;
+    this.restoreEnabled = true;
+    this.token = null;
+    this.appState = signedOutDesktopAuthState();
+    this.setSigningIn(interactive);
+    // Even a hidden token restoration replaces session execution authority.
+    this.onChange();
+    // The lifetime also owns validation requests after the window closes.
+    const signal = AbortSignal.any([
+      lifetime.signal,
+      AbortSignal.timeout(30_000),
+    ]);
+    try {
+      const token = await this.runAuthWindow({
+        url,
+        visible,
+        allowInteractiveFallbacks: interactive,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (!token) return null;
+      const state = await this.readAppIdentity(token, signal);
+      signal.throwIfAborted();
+      if (state.status !== "signed_in") return null;
+      this.appState = state;
+      this.rememberAuthority(state, lifetime);
+      this.token = token;
+      this.onChange();
+      if (interactive) {
+        this.setSigningIn(false);
+        await this.onAuthCompleted(lifetime.signal);
+        lifetime.signal.throwIfAborted();
+      }
+      return token;
+    } catch (error) {
+      if (this.lifetime === lifetime) {
+        this.token = null;
+        this.appState = signedOutDesktopAuthState();
+      }
+      if (!interactive && signal.aborted) return null;
+      throw error;
+    } finally {
+      if (this.lifetime === lifetime) {
+        if (!this.token) {
+          // Notify renderer/tray subscribers, and keep their reads from
+          // reopening a failed hidden restore until explicit sign-in.
+          this.restoreEnabled = false;
+          this.onChange();
+        }
+        this.setSigningIn(false);
+      }
+    }
+  }
+
+  private async appRequest(
+    requestUrl: URL,
+    token: string,
+    signal: AbortSignal,
+    init?: RequestInit,
+  ): Promise<Response> {
+    if (requestUrl.origin !== new URL(this.apiBaseUrl).origin) {
+      throw new Error("Invalid Desktop API origin");
+    }
+    signal.throwIfAborted();
+    const headers = new Headers(init?.headers);
+    headers.delete("cookie");
+    headers.set("authorization", `Bearer ${token}`);
+    this.addClientHeaders(headers);
+    const response = await fetch(requestUrl, {
+      ...init,
+      headers,
+      credentials: "omit",
+      redirect: "error",
+      signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
     });
-    const after = this.token;
-    // completeSignIn() is the token's only write path. If the refresh window
-    // reached a completion navigation without ever delivering a token, the
-    // token is unchanged, so surface an explicit null instead of the stale
-    // value the 401 retry would otherwise resend.
-    return after === before ? null : after;
+    signal.throwIfAborted();
+    return response;
+  }
+
+  private async readAppIdentity(
+    token: string,
+    signal: AbortSignal,
+  ): Promise<DesktopAuthState> {
+    const me = await this.appRequest(
+      new URL(AUTH_ME_PATH, this.apiBaseUrl),
+      token,
+      signal,
+    );
+    if (me.status === 401) return signedOutDesktopAuthState();
+    if (!me.ok) throw new Error(`Desktop auth status failed: ${me.status}`);
+    const user = authContract.me.responses[200].parse(await me.json());
+    signal.throwIfAborted();
+    if (!user.userId || !user.orgId) return signedOutDesktopAuthState();
+    // Both reads use the identical server-verified bearer; never refresh only
+    // the second half of the user/workspace pair.
+    const org = await this.appRequest(
+      new URL(ORG_PATH, this.apiBaseUrl),
+      token,
+      signal,
+    );
+    if (org.status === 401 || org.status === 404)
+      return signedOutDesktopAuthState();
+    if (!org.ok)
+      throw new Error(`Desktop organization status failed: ${org.status}`);
+    const organization: unknown = await org.json();
+    signal.throwIfAborted();
+    if (
+      typeof organization !== "object" ||
+      organization === null ||
+      !("id" in organization) ||
+      organization.id !== user.orgId ||
+      !("name" in organization) ||
+      typeof organization.name !== "string"
+    ) {
+      return signedOutDesktopAuthState();
+    }
+    return {
+      status: "signed_in",
+      user: { userId: user.userId, email: user.email },
+      organization: { id: user.orgId, name: organization.name },
+    };
+  }
+
+  private async getAppAuthState(): Promise<DesktopAuthState> {
+    if (!this.token) {
+      await this.getToken();
+      return this.appState;
+    }
+    const lifetime = this.lifetime;
+    try {
+      const state = await this.readAppIdentity(this.token, lifetime.signal);
+      lifetime.signal.throwIfAborted();
+      if (state.status === "signed_in") {
+        this.appState = state;
+        this.rememberAuthority(state, lifetime);
+        return state;
+      }
+      await this.getToken({ forceRefresh: true });
+      return this.appState;
+    } catch (error) {
+      if (lifetime.signal.aborted) return signedOutDesktopAuthState();
+      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
+      throw error;
+    }
+  }
+
+  private async fetchWithAppAuth(
+    requestUrl: URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const token = await this.getToken();
+    if (!token || token !== this.token)
+      return new Response(null, { status: 401 });
+    const lifetime = this.lifetime;
+    const response = await this.appRequest(
+      requestUrl,
+      token,
+      lifetime.signal,
+      init,
+    );
+    if (response.status !== 401) return response;
+    // No cookie-only retry. One App refresh and at most one authenticated retry.
+    const refreshed = await this.getToken({ forceRefresh: true });
+    if (!refreshed || refreshed !== this.token) return response;
+    const retried = await this.appRequest(
+      requestUrl,
+      refreshed,
+      this.lifetime.signal,
+      init,
+    );
+    if (retried.status === 401) {
+      this.restoreEnabled = false;
+      this.token = null;
+      this.appState = signedOutDesktopAuthState();
+      this.authority = null;
+      this.onChange();
+    }
+    return retried;
   }
 
   private setSigningIn(value: boolean): void {
@@ -328,21 +417,5 @@ export class DesktopAuthSession {
     }
     this.signingIn = value;
     this.onChange();
-  }
-
-  private async headersFor(
-    requestUrl: URL,
-    extraHeaders?: HeadersInit,
-  ): Promise<Headers> {
-    const headers = await headersWithSessionCookies(
-      this.cookieSource,
-      [...this.cookieUrls, requestUrl],
-      extraHeaders,
-    );
-    if (this.token) {
-      headers.set("authorization", `Bearer ${this.token}`);
-    }
-    this.addClientHeaders(headers);
-    return headers;
   }
 }

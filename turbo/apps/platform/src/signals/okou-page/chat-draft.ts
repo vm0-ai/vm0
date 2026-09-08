@@ -32,10 +32,9 @@ import { logger } from "../log.ts";
 import { pageAttachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
 import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
-import { desktopRecordingAgentInstructions } from "./intro-video-agent-instructions.ts";
 
 // ---------------------------------------------------------------------------
-// Attachment types (moved from zero-chat.ts)
+// Attachment types
 // ---------------------------------------------------------------------------
 
 interface FileInfo {
@@ -180,7 +179,7 @@ function uploadContentTypeByExtension(ext: string): string | undefined {
   return contentTypeByExtension[ext];
 }
 
-function inferUploadContentType(file: File): string {
+export function inferUploadContentType(file: File): string {
   const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
   if (explicitType && explicitType !== "application/octet-stream") {
     return explicitType;
@@ -235,7 +234,7 @@ async function uploadPartWithRetry(
  * a second, subtly different uploader. The file body never travels through the
  * app runtime in either case.
  */
-export const uploadFileToStorage$ = command(
+const uploadFileToStorage$ = command(
   async ({ get, set }, file: File, signal: AbortSignal): Promise<FileInfo> => {
     const createClient = get(apiClient$);
     const client = createClient(uploadsContract);
@@ -354,11 +353,16 @@ function createAttachmentAnnotationSignals(args: {
   const internalAnnotations$ = state<ImageAnnotation | null>(
     args.initialAnnotations ?? null,
   );
+  // Marks without their annotated copy mean the copy is MISSING, not that
+  // making it failed. Reporting `failed` here put a retry badge on a draft
+  // nothing had been attempted for, and the user reads that as an error they
+  // caused. `restoreAttachments$` regenerates the copy instead, so the state
+  // that describes it is `pending`.
   const initialUploadState: AttachmentAnnotationUploadState =
     args.initialAnnotations && args.initialAnnotatedFileId
       ? { status: "uploaded", fileId: args.initialAnnotatedFileId }
       : args.initialAnnotations
-        ? { status: "failed" }
+        ? { status: "pending" }
         : { status: "idle" };
   const internalUploadState$ =
     state<AttachmentAnnotationUploadState>(initialUploadState);
@@ -404,20 +408,16 @@ function createAttachmentAnnotationSignals(args: {
           if (!original) {
             throw new Error("Original image is unavailable");
           }
-          // Read the address the editor just proved loadable, not the stored
-          // one. A persisted attachment's canonical URL answers only to an
-          // Authorization header, so it has to be exchanged for a presigned
-          // object URL before anything can fetch it — which is exactly what
-          // the editor's `useResolvedAttachmentUrl` does to display the same
-          // image. Deriving the URL a second way here meant the picture the
-          // user had just drawn on could still be refused at attach time.
+          // A presigned resource URL can render in an image element while its
+          // response remains unreadable to fetch because of CORS. Flattening
+          // needs the bytes, so use the public CDN URL for the same attachment.
           const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
           const resolved = await get(
             resolveResourceUrl(publicAttachmentUrl(original.url)),
           );
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
-            resolved.resourceUrl,
+            resolved.shareUrl,
             annotations,
             args.filename,
             signal,
@@ -571,13 +571,12 @@ function createChatAttachment(file: File): ChatAttachment {
 // ---------------------------------------------------------------------------
 
 export interface DraftSignals {
+  hasLocalInput$: Computed<boolean>;
   input$: Computed<string>;
   hasInput$: Computed<boolean>;
   readInput$: Command<string, []>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
-  agentInstructions$: Computed<string | null>;
-  setAgentInstructions$: Command<void, [string | null]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   readEditorDocument$: Command<EditorDocumentSnapshot | null, []>;
@@ -620,7 +619,7 @@ interface DraftSeed {
 
 export interface DraftInputSyncTarget {
   syncInput(value: string): void;
-  syncUserMessage(value: UserMessageDocument): void;
+  syncUserMessage(value: UserMessageDocument | null): void;
 }
 
 /**
@@ -736,28 +735,33 @@ function reportUnavailableAttachments(filenames: readonly string[]): string {
 }
 
 function createDraftInputSignals() {
-  const internalInput$ = state("");
+  const internalInput$ = state<string | undefined>(undefined);
+  const hasLocalInput$ = computed((get) => {
+    return get(internalInput$) !== undefined;
+  });
   const internalInputSyncTarget$ = state<DraftInputSyncTarget | null>(null);
   const input$ = computed((get) => {
-    return get(internalInput$);
+    return get(internalInput$) ?? "";
   });
   const hasInput$ = computed((get) => {
-    return get(internalInput$).trim().length > 0;
+    return (get(internalInput$) ?? "").trim().length > 0;
   });
   const readInput$ = command(({ get }) => {
-    return get(internalInput$);
+    return get(internalInput$) ?? "";
   });
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
-  const syncUserMessage$ = command(({ get }, value: UserMessageDocument) => {
-    const target = get(internalInputSyncTarget$);
-    if (!target) {
-      return false;
-    }
-    target.syncUserMessage(value);
-    return true;
-  });
+  const syncUserMessage$ = command(
+    ({ get }, value: UserMessageDocument | null) => {
+      const target = get(internalInputSyncTarget$);
+      if (!target) {
+        return false;
+      }
+      target.syncUserMessage(value);
+      return true;
+    },
+  );
   const setInputSyncTarget$ = command(
     ({ set }, target: DraftInputSyncTarget | null) => {
       set(internalInputSyncTarget$, target);
@@ -772,11 +776,12 @@ function createDraftInputSignals() {
     if (!text) {
       return;
     }
-    const base = get(internalInput$);
+    const base = get(internalInput$) ?? "";
     const separator = base.length > 0 && !base.endsWith(" ") ? " " : "";
     set(setInput$, `${base}${separator}${text}`);
   });
   return {
+    hasLocalInput$,
     input$,
     hasInput$,
     readInput$,
@@ -817,12 +822,20 @@ function createDraftDocumentSignals() {
 }
 
 /**
- * Drops restored attachments whose artifact no longer resolves for this
- * account. Leaving them in place strands the composer: the chip waits on a file
- * it can never load and every send is rejected, so removing them and saying so
- * is the only state the user can act on.
+ * Makes restored attachments usable, in two passes.
+ *
+ * Drops the ones whose artifact no longer resolves for this account. Leaving
+ * them in place strands the composer: the chip waits on a file it can never
+ * load and every send is rejected, so removing them and saying so is the only
+ * state the user can act on.
+ *
+ * Then rebuilds any annotated copy the draft is missing. Both restore paths —
+ * `seed$` on page load and `restoreAttachments$` on paste — end here, and an
+ * attachment that reaches either one without the rebuild is stuck: marks with
+ * no copy start as `pending`, so nothing would move that state and the
+ * composer would refuse to send with no affordance to fix it.
  */
-function createPruneUnavailableAttachments(
+function createReconcileRestoredAttachments(
   internalAttachments$: State<ChatAttachment[]>,
 ): Command<Promise<boolean>, [readonly ChatAttachment[], AbortSignal]> {
   return command(
@@ -844,20 +857,38 @@ function createPruneUnavailableAttachments(
       const unavailable = candidates.filter((attachment, index) => {
         return infos[index] === null && currentAttachments.includes(attachment);
       });
-      if (unavailable.length === 0) {
-        return false;
-      }
-      set(internalAttachments$, (prev) => {
-        return prev.filter((attachment) => {
-          return !unavailable.includes(attachment);
+      if (unavailable.length > 0) {
+        set(internalAttachments$, (prev) => {
+          return prev.filter((attachment) => {
+            return !unavailable.includes(attachment);
+          });
         });
-      });
-      reportUnavailableAttachments(
-        unavailable.map((attachment) => {
-          return attachment.filename;
-        }),
+        reportUnavailableAttachments(
+          unavailable.map((attachment) => {
+            return attachment.filename;
+          }),
+        );
+      }
+
+      // The annotated copy is what the model reads, so a restored draft only
+      // still means what the user drew once it exists. Awaited rather than
+      // left running: both callers use the result solely to decide whether to
+      // re-save, and that save should land after the copy exists rather than
+      // persisting the same marks-without-copy shape again.
+      await Promise.all(
+        candidates
+          .filter((attachment) => {
+            return (
+              !unavailable.includes(attachment) &&
+              get(attachment.annotatedFileId$) === null
+            );
+          })
+          .map((attachment) => {
+            return set(attachment.retryAnnotationUpload$, signal);
+          }),
       );
-      return true;
+      signal.throwIfAborted();
+      return unavailable.length > 0;
     },
   );
 }
@@ -865,19 +896,17 @@ function createPruneUnavailableAttachments(
 function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
-  internalAgentInstructions$,
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
-  pruneUnavailableAttachments$,
+  reconcileRestoredAttachments$,
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
-  internalAgentInstructions$: State<string | null>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
-  pruneUnavailableAttachments$: Command<
+  reconcileRestoredAttachments$: Command<
     Promise<boolean>,
     [readonly ChatAttachment[], AbortSignal]
   >;
@@ -886,7 +915,6 @@ function createDraftLifecycleSignals({
     set(draftInput.setInput$, "");
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
-    set(internalAgentInstructions$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -906,7 +934,6 @@ function createDraftLifecycleSignals({
     ): Promise<boolean> => {
       set(draftDocument.setEditorDocument$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
-      set(internalAgentInstructions$, null);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
       set(draftInput.setInput$, value.content);
@@ -916,7 +943,11 @@ function createDraftLifecycleSignals({
       ) {
         set(draftDocument.takeRestoredUserMessage$);
       }
-      return await set(pruneUnavailableAttachments$, value.attachments, signal);
+      return await set(
+        reconcileRestoredAttachments$,
+        value.attachments,
+        signal,
+      );
     },
   );
 
@@ -926,27 +957,11 @@ function createDraftLifecycleSignals({
 export function createDraftSignals(): DraftSignals {
   const draftInput = createDraftInputSignals();
   const draftDocument = createDraftDocumentSignals();
-  const internalAgentInstructions$ = state<string | null>(null);
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
   const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
-
-  // Instructions set by a flow win; a draft that carries a desktop screen
-  // recording and its click track earns them from the attachments themselves,
-  // which is the only part of the draft the server gives back.
-  const agentInstructions$ = computed((get) => {
-    return (
-      get(internalAgentInstructions$) ??
-      desktopRecordingAgentInstructions(get(internalAttachments$))
-    );
-  });
-  const setAgentInstructions$ = command(
-    ({ set }, value: string | null): void => {
-      set(internalAgentInstructions$, value);
-    },
-  );
 
   const generationTemplate$ = computed((get) => {
     return get(internalGenerationTemplate$);
@@ -993,8 +1008,8 @@ export function createDraftSignals(): DraftSignals {
     },
   );
 
-  const pruneUnavailableAttachments$ =
-    createPruneUnavailableAttachments(internalAttachments$);
+  const reconcileRestoredAttachments$ =
+    createReconcileRestoredAttachments(internalAttachments$);
 
   const restoreAttachments$ = command(
     async (
@@ -1009,7 +1024,7 @@ export function createDraftSignals(): DraftSignals {
       set(internalAttachments$, (prev) => {
         return [...prev, ...restored];
       });
-      return await set(pruneUnavailableAttachments$, restored, signal);
+      return await set(reconcileRestoredAttachments$, restored, signal);
     },
   );
 
@@ -1032,17 +1047,14 @@ export function createDraftSignals(): DraftSignals {
   const { clear$, seed$ } = createDraftLifecycleSignals({
     draftInput,
     draftDocument,
-    internalAgentInstructions$,
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
-    pruneUnavailableAttachments$,
+    reconcileRestoredAttachments$,
   });
 
   return {
     ...draftInput,
-    agentInstructions$,
-    setAgentInstructions$,
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     readEditorDocument$: draftDocument.readEditorDocument$,
     setEditorDocument$: draftDocument.setEditorDocument$,

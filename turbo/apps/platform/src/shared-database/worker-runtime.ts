@@ -8,6 +8,7 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import type {
   AppRouter,
   InitClientArgs,
@@ -21,6 +22,7 @@ import {
 } from "../lib/sentry-config.ts";
 import { now } from "../lib/time.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-opener.ts";
+import { createIdbDiagnosticsStore } from "../signals/external/idb-diagnostics-store.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
 import type { ApiClientFactory } from "../signals/api-client.ts";
@@ -39,12 +41,17 @@ import {
   type ScopedChatThreadEventDataKey,
   type ScopedSharedDatabaseDataKey,
 } from "./data-key.ts";
+import type {
+  IndexedDbDiagnostics,
+  IndexedDbSnapshotMeasurement,
+} from "./computed-key.ts";
 import { CHAT_THREAD_EVENT_LOG_SNAPSHOT_REBASE_THRESHOLD } from "./event-log-policy.ts";
 import {
   assertChatEventSchemaVersion,
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
 } from "./chat-event-schema-version.ts";
 import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
+import { SharedDatabaseHttpError } from "./http-error.ts";
 type SharedDatabaseContractClient<TContract extends AppRouter> =
   InitClientReturn<TContract, InitClientArgs>;
 
@@ -67,7 +74,7 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
 
 type WorkerRuntimeEvent = Extract<
   SharedDatabaseWorkerMessage,
-  { readonly type: "reload-required" }
+  { readonly type: "worker-unavailable" }
 >;
 
 type ChatEventContractClient = SharedDatabaseContractClient<
@@ -120,13 +127,6 @@ interface SharedDatabaseWorkerRuntimeOptions {
   readonly identity: SharedDatabaseIdentity;
   readonly emit: (message: WorkerRuntimeEvent) => void;
   readonly createContractClient: ApiClientFactory;
-}
-
-class SharedDatabaseHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`Shared database request failed with status ${status}`);
-    this.name = "SharedDatabaseHttpError";
-  }
 }
 
 class ChatThreadNotFoundError extends Error {
@@ -285,6 +285,30 @@ export class SharedDatabaseWorkerRuntime {
     return result.value;
   }
 
+  async getIndexedDbDiagnostics(
+    signal: AbortSignal,
+  ): Promise<IndexedDbDiagnostics> {
+    return await this.runChatIdbOperation(
+      createIdbDiagnosticsStore,
+      (store) => {
+        return store.read(signal);
+      },
+      signal,
+    );
+  }
+
+  async measureIndexedDbSnapshot(
+    signal: AbortSignal,
+  ): Promise<IndexedDbSnapshotMeasurement | null> {
+    return await this.runChatIdbOperation(
+      createIdbDiagnosticsStore,
+      (store) => {
+        return store.measureSnapshot(signal);
+      },
+      signal,
+    );
+  }
+
   async catchUpChatEvents(
     requestedThreadIds: readonly string[],
     signal: AbortSignal,
@@ -343,7 +367,10 @@ export class SharedDatabaseWorkerRuntime {
       fetchOptions: { signal },
     });
     signal.throwIfAborted();
-    if (response.status === 401) {
+    if (
+      response.status === 401 ||
+      response.status === CLIENT_FORCE_UPGRADE_STATUS
+    ) {
       throw new SharedDatabaseHttpError(response.status);
     }
     assertChatEventSchemaVersion(response.headers);
@@ -359,19 +386,20 @@ export class SharedDatabaseWorkerRuntime {
 
     const writes: ChatEventBatchWrite[] = Object.entries(
       response.body.events,
-    ).map(([threadId, rows]) => {
+    ).flatMap(([threadId, rows]) => {
       const last = rows.at(-1);
-      return {
-        dataKey: scopeSharedDatabaseDataKey(
-          { kind: "chat-event", threadId },
-          this.identity,
-        ),
-        rows,
-        cursor:
-          last === undefined
-            ? requireChatEventCursor(cursors, threadId)
-            : { lastEventId: last.id, lastSeqId: last.seqId },
-      };
+      return last === undefined
+        ? []
+        : [
+            {
+              dataKey: scopeSharedDatabaseDataKey(
+                { kind: "chat-event", threadId },
+                this.identity,
+              ),
+              rows,
+              cursor: { lastEventId: last.id, lastSeqId: last.seqId },
+            },
+          ];
     });
     const batchWritten = await this.persistChatEventBatch(writes, signal);
     const rebuiltThreadIds = await Promise.all(
@@ -715,7 +743,7 @@ export class SharedDatabaseWorkerRuntime {
         fetchOptions: { signal },
       });
       signal.throwIfAborted();
-      if (page.status === 401) {
+      if (page.status === 401 || page.status === CLIENT_FORCE_UPGRADE_STATUS) {
         throw new SharedDatabaseHttpError(page.status);
       }
       assertChatEventSchemaVersion(page.headers);
@@ -769,7 +797,10 @@ export class SharedDatabaseWorkerRuntime {
       fetchOptions: { signal },
     });
     signal.throwIfAborted();
-    if (snapshot.status === 401) {
+    if (
+      snapshot.status === 401 ||
+      snapshot.status === CLIENT_FORCE_UPGRADE_STATUS
+    ) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
     assertChatEventSchemaVersion(snapshot.headers);
@@ -1130,11 +1161,14 @@ export class SharedDatabaseWorkerRuntime {
     let entry = this.databaseEntry;
     if (!entry) {
       const opener = createChatIdbOpener({
-        reload: () => {
+        onVersionChange: () => {
           if (this.databaseEntry) {
             this.databaseEntry.invalidated = true;
           }
-          this.emit({ type: "reload-required" });
+          this.emit({
+            type: "worker-unavailable",
+            reason: "indexeddb-version-changed",
+          });
         },
       });
       const nextEntry: ChatDatabaseEntry = {

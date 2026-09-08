@@ -1,18 +1,11 @@
 import type { InboundMessage } from "ably";
 import { command, computed, state } from "ccstate";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { delay } from "signal-timers";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 
-import {
-  derivePlatformServiceOrigin,
-  resolvePlatformEnvironment,
-} from "../lib/platform-host.ts";
+import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
-import { now } from "../lib/time.ts";
-import { accept } from "../lib/accept.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
@@ -22,7 +15,6 @@ import {
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "../signals/connection-diagnostics.ts";
-import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 import {
   computerUseHosts$,
   reloadComputerUseHosts$,
@@ -39,13 +31,14 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import { settle, withCleanup } from "../signals/utils.ts";
-import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
+import { settle } from "../signals/utils.ts";
+import { throttleCommand } from "../signals/command-scheduling.ts";
 import {
   chatThreadIndicators$,
   reloadChatThreadIndicators$,
 } from "../signals/chat-page/chat-thread-indicators.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
+import type { SharedDatabaseTokenProvider } from "./bridge.ts";
 import {
   sharedDatabaseIdentitySchema,
   type ChatThreadIndicators,
@@ -59,7 +52,7 @@ import {
   broadcastSharedDatabaseWorkerMessage$,
   forwardChatThreadReadCursorUpdated$,
   reloadComputedForConnections$,
-  reloadConnections$,
+  reportWorkerUnavailableForConnections$,
   requireConnectionSignal$,
   updateRealtimeStatusForConnections$,
   type ConnectionId,
@@ -68,11 +61,11 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
-export interface BootstrapSharedDatabaseWorkerOptions {
+interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
-  readonly clerk: Promise<ClerkTokenSource>;
+  readonly getToken: SharedDatabaseTokenProvider;
   readonly oauthApiBaseUrl: string;
   readonly onForceUpgrade: () => void;
   readonly vercelProtectionBypass?: string;
@@ -89,59 +82,6 @@ function requireRuntime(
 
 const CHAT_EVENT_CATCH_UP_THROTTLE_MS = 1000;
 const RECENT_CHAT_EVENT_CATCH_UP_THREAD_COUNT = 100;
-
-const batchChatEventCatchUpEnabled$ = computed(
-  async (get): Promise<boolean> => {
-    const signal = get(rootSignal$);
-    signal.throwIfAborted();
-    const client = get(apiClient$)(featureSwitchesContract);
-    const response = await accept(
-      client.get({ fetchOptions: { signal } }),
-      [200],
-    );
-    return (
-      response.body.effectiveSwitches[FeatureSwitchKey.BatchChatEventCatchUp] ??
-      false
-    );
-  },
-);
-
-const catchUpLegacyChatEvents$ = command(
-  async (
-    { get },
-    indicators: ChatThreadIndicators,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    signal.throwIfAborted();
-    const runtime = requireRuntime(get(workerRuntimeState$));
-    await Promise.all(
-      Object.keys(indicators.threads).map((threadId) => {
-        return runtime.query(
-          {
-            dataKey: { kind: "chat-event", threadId },
-            afterSeqId: null,
-            consistency: "catch-up",
-          },
-          signal,
-        );
-      }),
-    );
-  },
-);
-
-interface CatchUpChatEventThrottle {
-  lastStartedAt: number | null;
-  active: Promise<void> | null;
-  trailing: {
-    readonly owner: object;
-    readonly promise: Promise<void>;
-  } | null;
-}
-
-const catchUpChatEventThrottle$ = computed((get): CatchUpChatEventThrottle => {
-  get(rootSignal$).throwIfAborted();
-  return { lastStartedAt: null, active: null, trailing: null };
-});
 
 const executeCatchUpChatEvent$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -185,77 +125,17 @@ const executeCatchUpChatEvent$ = command(
   },
 );
 
-const runCatchUpChatEventNow$ = command(
-  async (
-    { set },
-    throttle: CatchUpChatEventThrottle,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    throttle.lastStartedAt = now();
-    const execution = set(executeCatchUpChatEvent$, signal);
-    throttle.active = execution;
-    await withCleanup(execution, () => {
-      if (throttle.active === execution) {
-        throttle.active = null;
-      }
-    });
-  },
-);
-
-const runTrailingCatchUpChatEvent$ = command(
-  async (
-    { set },
-    throttle: CatchUpChatEventThrottle,
-    owner: object,
-    active: Promise<void> | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (active) {
-      await settle(active, signal);
-    }
-    const lastStartedAt = throttle.lastStartedAt;
-    if (lastStartedAt === null) {
-      throw new Error("Trailing ChatEvent catch-up has no prior start time");
-    }
-    const remaining = Math.max(
-      0,
-      lastStartedAt + CHAT_EVENT_CATCH_UP_THROTTLE_MS - now(),
-    );
-    if (remaining > 0) {
-      await delay(remaining, { signal });
-    }
-    if (throttle.trailing?.owner === owner) {
-      throttle.trailing = null;
-    }
-    await set(runCatchUpChatEventNow$, throttle, signal);
-  },
-);
+const catchUpChatEventThrottle$ = computed((get) => {
+  get(rootSignal$).throwIfAborted();
+  return throttleCommand(
+    executeCatchUpChatEvent$,
+    CHAT_EVENT_CATCH_UP_THROTTLE_MS,
+  );
+});
 
 /** Globally serialize ChatEvent catch-up with leading and trailing throttle. */
-export const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
-  const signal = get(rootSignal$);
-  signal.throwIfAborted();
-  const throttle = get(catchUpChatEventThrottle$);
-  if (throttle.trailing) {
-    return throttle.trailing.promise;
-  }
-  if (
-    throttle.active === null &&
-    (throttle.lastStartedAt === null ||
-      now() - throttle.lastStartedAt >= CHAT_EVENT_CATCH_UP_THROTTLE_MS)
-  ) {
-    return set(runCatchUpChatEventNow$, throttle, signal);
-  }
-  const owner = {};
-  const promise = set(
-    runTrailingCatchUpChatEvent$,
-    throttle,
-    owner,
-    throttle.active,
-    signal,
-  );
-  throttle.trailing = { owner, promise };
-  return promise;
+const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
+  return set(get(catchUpChatEventThrottle$), get(rootSignal$));
 });
 
 interface WorkerChatThreadIndicatorsCache {
@@ -272,20 +152,13 @@ const workerChatThreadIndicatorsCache$ = computed(
 
 const loadWorkerChatThreadIndicators$ = command(
   async (
-    { get, set },
+    { set },
     source: Promise<ChatThreadIndicators>,
     signal: AbortSignal,
   ): Promise<ChatThreadIndicators> => {
-    const [indicators, batchCatchUpEnabled] = await Promise.all([
-      source,
-      get(batchChatEventCatchUpEnabled$),
-    ]);
+    const indicators = await source;
     signal.throwIfAborted();
-    if (batchCatchUpEnabled) {
-      await set(catchUpChatEvent$);
-    } else {
-      await set(catchUpLegacyChatEvents$, indicators, signal);
-    }
+    await set(catchUpChatEvent$);
     signal.throwIfAborted();
     return indicators;
   },
@@ -341,7 +214,7 @@ export const initializeSharedDatabaseWorker$ = command(
     set(initializeAppVersion$, options.appVersion);
     set(setRootSignal$, signal);
     set(setApiClientRuntime$, {
-      clerk: options.clerk,
+      getToken: options.getToken,
       apiBaseUrl: options.apiBaseUrl,
       oauthApiBaseUrl: options.oauthApiBaseUrl,
       ...(options.vercelProtectionBypass
@@ -364,17 +237,6 @@ export const initializeSharedDatabaseWorker$ = command(
   },
 );
 
-export const bootstrapSharedDatabaseWorkerStore$ = command(
-  (
-    { set },
-    options: BootstrapSharedDatabaseWorkerOptions,
-    signal: AbortSignal,
-  ): Promise<void> | null => {
-    set(initializeSharedDatabaseWorker$, options, signal);
-    return set(startSharedDatabaseWorkerDaemons$);
-  },
-);
-
 function resolveWorkerIdentity(): SharedDatabaseIdentity {
   const params = new URL(location.href).searchParams;
   return sharedDatabaseIdentitySchema.parse({
@@ -384,7 +246,11 @@ function resolveWorkerIdentity(): SharedDatabaseIdentity {
 }
 
 export const bootstrapWorker$ = command(
-  ({ get, set }, signal: AbortSignal): Promise<void> | null => {
+  (
+    { set },
+    getToken: SharedDatabaseTokenProvider,
+    signal: AbortSignal,
+  ): void => {
     const params = new URL(location.href).searchParams;
     const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
     const vercelProtectionBypass = params.get(VERCEL_PROTECTION_BYPASS_NAME);
@@ -399,16 +265,16 @@ export const bootstrapWorker$ = command(
       resolvePlatformEnvironment() === "production"
         ? derivePlatformServiceOrigin(location.origin, "www")
         : apiBaseUrl;
-    return set(
-      bootstrapSharedDatabaseWorkerStore$,
+    set(
+      initializeSharedDatabaseWorker$,
       {
         appVersion: __OKOU_APP_VERSION__,
         identity: resolveWorkerIdentity(),
         apiBaseUrl,
-        clerk: get(workerClerk$),
+        getToken,
         oauthApiBaseUrl,
         onForceUpgrade: () => {
-          set(reloadConnections$);
+          set(reportWorkerUnavailableForConnections$, "force-upgrade-required");
         },
         ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
@@ -498,7 +364,7 @@ const refreshWorkerChatIndicators$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromRealtime$ = command(
+const reloadWorkerChatIndicatorsFromRealtime$ = command(
   async ({ set }, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(reloadComputedForConnections$, "chat-thread-indicators");
@@ -506,7 +372,7 @@ export const reloadWorkerChatIndicatorsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
+const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   async ({ set }, payload: unknown, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(forwardChatThreadReadCursorUpdated$, payload);
@@ -515,7 +381,7 @@ export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   },
 );
 
-export const reloadWorkerComputerUseHostsFromRealtime$ = command(
+const reloadWorkerComputerUseHostsFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "computer-use-hosts");
@@ -524,7 +390,7 @@ export const reloadWorkerComputerUseHostsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerQueueDataFromRealtime$ = command(
+const reloadWorkerQueueDataFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "queue-data");
@@ -702,6 +568,18 @@ export const getComputedStoreMessage$ = command(
     set(requireConnectionSignal$, connectionId, signal);
     if (message.computedKey === "connection-diagnostics") {
       return get(connectionDiagnostics$);
+    }
+    if (message.computedKey === "indexeddb-diagnostics") {
+      const diagnostics = await requireRuntime(
+        get(workerRuntimeState$),
+      ).getIndexedDbDiagnostics(signal);
+      signal.throwIfAborted();
+      return diagnostics;
+    }
+    if (message.computedKey === "indexeddb-snapshot-measurement") {
+      return await requireRuntime(
+        get(workerRuntimeState$),
+      ).measureIndexedDbSnapshot(signal);
     }
     const value =
       message.computedKey === "chat-thread-indicators"

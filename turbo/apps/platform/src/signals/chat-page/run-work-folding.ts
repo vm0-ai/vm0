@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { ChatEventUsagePayload } from "@okouai/api-contracts/contracts/chat-threads";
+import type { Element, Root } from "hast";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
@@ -12,6 +13,7 @@ import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import { isGoalContinuationInput, type ChatEvent } from "./chat-event-types.ts";
 import { mergeChatEventUsagePayloads } from "./chat-event-usage.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
+import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 
 const internalRunWorkExpandedKeys$ = state<Set<string>>(new Set());
 
@@ -33,19 +35,36 @@ export const toggleRunWorkExpanded$ = command(({ set }, key: string) => {
 
 export interface RunWorkSection {
   readonly key: string;
+  readonly runGroupId: string | undefined;
+  readonly runIds: readonly string[];
   readonly anchorEventId: string;
+  readonly collapsible: boolean;
+  readonly stepCount: number;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
+  readonly previewMessages: readonly EnrichedChatEvent[];
+  readonly remainingArtifactCards: readonly RunWorkArtifactCard[];
   readonly startTime: number;
   readonly endTime?: number;
 }
 
+type RunWorkArtifactCard = Extract<
+  MarkdownCardRef,
+  { readonly kind: "artifact" }
+> & { readonly label?: string; readonly tree: Root };
+
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
   readonly sectionsByAnchorEventId: Map<string, RunWorkSection>;
+  readonly statusTail: RunWorkStatusTail | null;
 }
 
-export function chatEventDisplayError(event: ChatEvent): string | undefined {
+interface RunWorkStatusTail {
+  readonly anchorEventId: string | undefined;
+  readonly events: readonly EnrichedChatEvent[];
+}
+
+function chatEventDisplayError(event: ChatEvent): string | undefined {
   if (
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||
@@ -67,7 +86,7 @@ function chatEventHasAttachments(event: EnrichedChatEvent): boolean {
   );
 }
 
-export function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
+function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
     ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
@@ -83,6 +102,82 @@ function isRunWorkAssistantOutput(event: EnrichedChatEvent): boolean {
     !isCancelledRunEvent(event) &&
     isRenderableAssistantEvent(event)
   );
+}
+
+function isRunWorkMessage(event: EnrichedChatEvent): boolean {
+  return event.eventType === "output.message";
+}
+
+function artifactNodeText(node: Element): string {
+  return node.children
+    .map((child) => {
+      if (child.type === "text") {
+        return child.value;
+      }
+      return child.type === "element" ? artifactNodeText(child) : "";
+    })
+    .join("");
+}
+
+function artifactNodeLabel(node: Element): string | undefined {
+  const label =
+    node.tagName === "img" && typeof node.properties.alt === "string"
+      ? node.properties.alt
+      : artifactNodeText(node);
+  const normalized = label.trim().replace(/\s+/g, " ");
+  return normalized || undefined;
+}
+
+function artifactCardsInTree(
+  tree: Root | undefined,
+): readonly RunWorkArtifactCard[] {
+  if (tree === undefined) {
+    return [];
+  }
+  const cards: RunWorkArtifactCard[] = [];
+  const visit = (node: Root | Element): void => {
+    if (node.type === "element" && node.data?.card?.kind === "artifact") {
+      const label = artifactNodeLabel(node);
+      cards.push({
+        ...node.data.card,
+        ...(label === undefined ? {} : { label }),
+        tree: { type: "root", children: [node] },
+      });
+      return;
+    }
+    for (const child of node.children) {
+      if (child.type === "element") {
+        visit(child);
+      }
+    }
+  };
+  visit(tree);
+  return cards;
+}
+
+function remainingArtifactCards(
+  outputMessages: readonly EnrichedChatEvent[],
+): readonly RunWorkArtifactCard[] {
+  const finalUrls = new Set(
+    artifactCardsInTree(outputMessages.at(-1)?.tree).map((card) => {
+      return card.signals.url;
+    }),
+  );
+  const seenUrls = new Set<string>();
+  const remaining: RunWorkArtifactCard[] = [];
+  for (const message of outputMessages) {
+    for (const card of artifactCardsInTree(message.tree)) {
+      const { url } = card.signals;
+      if (seenUrls.has(url)) {
+        continue;
+      }
+      seenUrls.add(url);
+      if (!finalUrls.has(url)) {
+        remaining.push(card);
+      }
+    }
+  }
+  return remaining;
 }
 
 export function runWorkSectionForGroup(
@@ -159,18 +254,8 @@ function groupEventsForRunWorkDisplay(
     const role = chatEventCompatibilityRole(event.eventType);
     const forceStandalone = workAnchorEventIds.has(event.id);
     const last = groups[groups.length - 1];
-    const lastHasWorkAnchor =
-      last?.events.some((candidate) => {
-        return workAnchorEventIds.has(candidate.id);
-      }) ?? false;
-    const joinsWorkAnchor = lastHasWorkAnchor && isCancelledRunEvent(event);
 
-    if (
-      !forceStandalone &&
-      last &&
-      last.role === role &&
-      (!lastHasWorkAnchor || joinsWorkAnchor)
-    ) {
+    if (!forceStandalone && last && last.role === role) {
       last.events.push(event);
       continue;
     }
@@ -339,6 +424,12 @@ function standaloneRunWorkUnit(segment: RunWorkEventSegment): RunWorkUnit {
   };
 }
 
+function isRunGroupInternalInput(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType === "input.automation" || isGoalContinuationInput(event)
+  );
+}
+
 function canAnchorGoalRun(unit: RunWorkUnit | undefined): boolean {
   return unit !== undefined && !unit.isGoal && unit.runGroupId === undefined;
 }
@@ -365,7 +456,21 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
       return item.events.filter(isGoalContinuationInput);
     });
     if (goalInputEvents.length === 0) {
-      units.push(...streak.map(standaloneRunWorkUnit));
+      const events = streak.flatMap((item) => {
+        return item.events;
+      });
+      units.push({
+        key: `group:${segment.runGroupId}`,
+        runGroupId: segment.runGroupId,
+        events,
+        runIds: uniqueRunIds(streak),
+        hiddenUserEventIds: new Set(
+          events.filter(isRunGroupInternalInput).map((event) => {
+            return event.id;
+          }),
+        ),
+        isGoal: false,
+      });
       index = endIndex;
       continue;
     }
@@ -375,8 +480,11 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
     // naturally starts a new visual work section after an interruption.
     const previousUnit = units[units.length - 1];
     const anchorUnit = canAnchorGoalRun(previousUnit) ? units.pop() : undefined;
+    const groupedEvents = streak.flatMap((item) => {
+      return item.events;
+    });
     const hiddenUserEventIds = new Set(
-      goalInputEvents.map((event) => {
+      groupedEvents.filter(isRunGroupInternalInput).map((event) => {
         return event.id;
       }),
     );
@@ -389,12 +497,7 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
     units.push({
       key: `goal:${segment.runGroupId}`,
       runGroupId: segment.runGroupId,
-      events: [
-        ...(anchorUnit?.events ?? []),
-        ...streak.flatMap((item) => {
-          return item.events;
-        }),
-      ],
+      events: [...(anchorUnit?.events ?? []), ...groupedEvents],
       runIds: [...(anchorUnit?.runIds ?? []), ...goalRunIds],
       hiddenUserEventIds,
       isGoal: true,
@@ -440,23 +543,13 @@ function eventTime(event: EnrichedChatEvent | undefined): number | null {
   if (event === undefined) {
     return null;
   }
-  const timestamp = Date.parse(event.createdAt);
+  const timestamp = Date.parse(event.inputCreatedAt ?? event.createdAt);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function firstEventTime(events: readonly EnrichedChatEvent[]): number | null {
   for (const event of events) {
     const timestamp = eventTime(event);
-    if (timestamp !== null) {
-      return timestamp;
-    }
-  }
-  return null;
-}
-
-function lastEventTime(events: readonly EnrichedChatEvent[]): number | null {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const timestamp = eventTime(events[index]);
     if (timestamp !== null) {
       return timestamp;
     }
@@ -477,37 +570,57 @@ function lastEventMatching(
   return undefined;
 }
 
-interface RunWorkPhaseFolding {
+interface RunWorkGroupFolding {
   readonly visibleEvents: readonly EnrichedChatEvent[];
   readonly section: RunWorkSection | null;
+  readonly statusTail: RunWorkStatusTail;
 }
 
-function foldRunWorkPhase(
-  key: string,
-  events: readonly EnrichedChatEvent[],
-  endTime: number | undefined,
-  hiddenUserEventIds: ReadonlySet<string>,
+// A work group is bounded by visible user inputs, independently of execution:
+// one run can span several groups, and goal continuations can span several runs.
+interface RunWorkGroup {
+  readonly unit: RunWorkUnit;
+  readonly events: readonly EnrichedChatEvent[];
+  readonly endTime: number | undefined;
+}
+
+function foldRunWorkGroup(
+  group: RunWorkGroup,
   foldedEventIds: ReadonlySet<string>,
-): RunWorkPhaseFolding {
-  const latestAssistantOutput = lastEventMatching(
-    events,
-    isRunWorkAssistantOutput,
-  );
-  const terminalEvent = lastEventMatching(events, (event) => {
-    return isChatRunTerminalEventType(event.eventType);
+): RunWorkGroupFolding {
+  const { unit, events, endTime } = group;
+  const { hiddenUserEventIds } = unit;
+  const outputMessages = events.filter(isRunWorkMessage);
+  const anchorEvent = outputMessages.at(-1);
+  const anchorIndex =
+    anchorEvent === undefined ? -1 : events.indexOf(anchorEvent);
+  const latestRunId = latestRunIdForEvents(events);
+  const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
+    return (
+      isRenderableAssistantEvent(event) && Boolean(chatEventDisplayError(event))
+    );
   });
-  const anchorEvent = latestAssistantOutput ?? terminalEvent;
+  const statusTail = {
+    anchorEventId: anchorEvent?.id,
+    events: trailingStatusEvents.filter((event) => {
+      return event.runId === latestRunId;
+    }),
+  };
   const startTime = firstEventTime(events);
   if (anchorEvent === undefined || startTime === null) {
     return {
       visibleEvents: events.filter((event) => {
-        return !hiddenUserEventIds.has(event.id);
+        return (
+          !hiddenUserEventIds.has(event.id) &&
+          !trailingStatusEvents.includes(event)
+        );
       }),
       section: null,
+      statusTail,
     };
   }
+  const stepCount = outputMessages.length - 1;
 
-  const anchorIndex = events.indexOf(anchorEvent);
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
     return (
       isRunWorkAssistantOutput(event) ||
@@ -519,30 +632,24 @@ function foldRunWorkPhase(
     .filter((event) => {
       return hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id);
     });
-  const hiddenEventIds = new Set(
-    [...hiddenEvents, ...hiddenEventsAfterAnchor].map((event) => {
-      return event.id;
-    }),
-  );
-  const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
-    return (
-      !hiddenEventIds.has(event.id) &&
-      !hiddenUserEventIds.has(event.id) &&
-      isRenderableAssistantEvent(event) &&
-      !isRunWorkAssistantOutput(event)
-    );
-  });
   const userEvents = events.filter((event) => {
     return visibleRunWorkUserEvent(event, hiddenUserEventIds);
   });
 
   return {
-    visibleEvents: [...userEvents, anchorEvent, ...trailingStatusEvents],
+    visibleEvents: [...userEvents, anchorEvent],
+    statusTail,
     section: {
-      key: `${key}:${events[0]!.id}`,
+      key: `${unit.key ?? events[0]!.id}:${events[0]!.id}`,
+      runGroupId: unit.runGroupId,
+      runIds: unit.runIds,
       anchorEventId: anchorEvent.id,
+      collapsible: stepCount > 3,
+      stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
+      previewMessages: outputMessages.slice(-4, -1),
+      remainingArtifactCards: remainingArtifactCards(outputMessages),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),
     },
@@ -587,73 +694,84 @@ function mergedUsageForRunIds(
   );
 }
 
-function phaseEndTime(
-  phase: readonly EnrichedChatEvent[],
-  isFinalPhase: boolean,
-  terminalEvent: EnrichedChatEvent | undefined,
-): number | undefined {
-  if (!isFinalPhase) {
-    return lastEventTime(phase) ?? undefined;
+function runWorkGroups(events: readonly EnrichedChatEvent[]): RunWorkGroup[] {
+  const groups = runWorkUnits(events).flatMap((unit) => {
+    return splitRunWorkEventsAtUsers(unit.events, unit.hiddenUserEventIds).map(
+      (events) => {
+        return { unit, events };
+      },
+    );
+  });
+  const workGroups: RunWorkGroup[] = [];
+  let nextInputTime: number | undefined;
+  for (let index = groups.length - 1; index >= 0; index--) {
+    const group = groups[index]!;
+    const terminalTime =
+      eventTime(terminalEventForLatestRun(group.events)) ?? undefined;
+    const endTime =
+      terminalTime === undefined
+        ? nextInputTime
+        : nextInputTime === undefined
+          ? terminalTime
+          : Math.min(terminalTime, nextInputTime);
+    workGroups.push({ ...group, endTime });
+
+    const input = group.events.find((event) => {
+      return visibleRunWorkUserEvent(event, group.unit.hiddenUserEventIds);
+    });
+    if (input !== undefined) {
+      nextInputTime = eventTime(input) ?? undefined;
+    }
   }
-  if (terminalEvent === undefined) {
-    return undefined;
-  }
-  return eventTime(terminalEvent) ?? lastEventTime(phase) ?? undefined;
+  return workGroups.reverse();
 }
 
 export function buildRunWorkFolding(
   groups: readonly ChatEventGroup[],
   foldedEventIds: ReadonlySet<string> = new Set(),
-): RunWorkFolding | null {
+): RunWorkFolding {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
     return group.events;
   });
   const visibleEvents: EnrichedChatEvent[] = [];
   const sections: RunWorkSection[] = [];
+  let statusTail: RunWorkStatusTail | null = null;
   const usageByAnchorEventId = new Map<string, ChatEventUsagePayload>();
+  const finalSectionByUnit = new Map<RunWorkUnit, RunWorkSection>();
 
-  for (const unit of runWorkUnits(events)) {
-    if (unit.key === undefined) {
-      visibleEvents.push(
-        ...unit.events.filter((event) => {
-          return !unit.hiddenUserEventIds.has(event.id);
-        }),
-      );
-      continue;
+  for (const group of runWorkGroups(events)) {
+    const folding = foldRunWorkGroup(group, foldedEventIds);
+    visibleEvents.push(...folding.visibleEvents);
+    // Work groups exist before their first output, so a pending input retires
+    // the previous tail immediately. Bookkeeping alone does not start a group.
+    if (
+      group.events.some((event) => {
+        return (
+          isChatInputEventType(event.eventType) ||
+          isRenderableAssistantEvent(event) ||
+          event.eventType === "output.thinking"
+        );
+      })
+    ) {
+      statusTail = folding.statusTail;
     }
-
-    const terminalEvent = terminalEventForLatestRun(unit.events);
-    const phases = splitRunWorkEventsAtUsers(
-      unit.events,
-      unit.hiddenUserEventIds,
-    );
-    const firstSectionIndex = sections.length;
-    for (const [phaseIndex, phase] of phases.entries()) {
-      const phaseFolding = foldRunWorkPhase(
-        unit.key,
-        phase,
-        phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
-        unit.hiddenUserEventIds,
-        foldedEventIds,
-      );
-      visibleEvents.push(...phaseFolding.visibleEvents);
-      if (phaseFolding.section !== null) {
-        sections.push(phaseFolding.section);
-      }
+    if (folding.section !== null) {
+      sections.push(folding.section);
+      finalSectionByUnit.set(group.unit, folding.section);
     }
-    if (unit.isGoal && sections.length > firstSectionIndex) {
+  }
+  for (const [unit, finalSection] of finalSectionByUnit) {
+    if (unit.runGroupId !== undefined) {
       const mergedUsage = mergedUsageForRunIds(unit.runIds, usageByRunId);
-      const finalSection = sections[sections.length - 1];
-      if (mergedUsage !== undefined && finalSection !== undefined) {
+      if (mergedUsage !== undefined) {
         usageByAnchorEventId.set(finalSection.anchorEventId, mergedUsage);
       }
     }
   }
 
-  if (sections.length === 0) {
-    return null;
-  }
+  // Historical errors stay in the source events; only the latest tail is rendered.
+  visibleEvents.push(...(statusTail?.events ?? []));
 
   const workAnchorEventIds = new Set(
     sections.map((section) => {
@@ -661,6 +779,7 @@ export function buildRunWorkFolding(
     }),
   );
   return {
+    statusTail,
     visibleGroups: attachUsageToRunWorkGroups(
       groupEventsForRunWorkDisplay(visibleEvents, workAnchorEventIds),
       usageByRunId,

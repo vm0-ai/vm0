@@ -1,5 +1,8 @@
 name: release-please-refresh
 
+env:
+  npm_config_audit: "false"
+
 on:
   push:
     branches: ["main"]

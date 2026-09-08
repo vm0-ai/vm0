@@ -1,3 +1,6 @@
+//! Filesystem scenarios use explicit process discovery state so unrelated host
+//! processes cannot trigger the production fail-closed guard before assertions.
+
 use std::time::Duration;
 
 use nix::fcntl::FlockArg;
@@ -313,7 +316,16 @@ async fn gc_workspace_orphans_deletes_old_orphan() {
         .set_times(FileTimes::new().set_modified(old_time))
         .unwrap();
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert!(!workspace.exists(), "orphaned workspace should be deleted");
     assert_eq!(summary.workspaces_cleaned, 1);
@@ -391,7 +403,16 @@ async fn gc_workspace_orphans_skips_recent() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert!(workspace.exists(), "recent workspace should NOT be deleted");
     assert_eq!(summary.workspaces_cleaned, 0);
@@ -748,7 +769,16 @@ async fn gc_workspace_orphans_skips_non_directory_entries() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
     assert_eq!(summary.workspaces_cleaned, 0);
     assert!(stray_file.exists(), "non-directory entries must be skipped");
 }
@@ -766,7 +796,16 @@ async fn gc_workspace_orphans_base_dir_without_workspaces_subdir() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.bytes_freed, 0);
     assert_eq!(summary.base_dir_locks_removed, 1);
@@ -802,7 +841,16 @@ async fn gc_workspace_orphans_mixed_old_and_recent() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         summary.workspaces_cleaned, 1,
@@ -833,7 +881,16 @@ async fn gc_workspace_orphans_skips_symlink_workspaces_dir() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.bytes_freed, 0);
@@ -865,7 +922,16 @@ async fn gc_workspace_orphans_skips_symlink_base_dir() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.bytes_freed, 0);
@@ -896,7 +962,16 @@ async fn gc_workspace_orphans_skips_symlink_workspace_entry() {
 
     write_base_dir_lock(&home, &base_dir);
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.bytes_freed, 0);
@@ -1039,7 +1114,16 @@ async fn gc_workspace_orphans_multiple_base_dirs() {
             .unwrap();
     }
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         summary.workspaces_cleaned, 2,

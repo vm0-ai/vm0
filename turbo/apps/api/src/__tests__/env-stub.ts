@@ -21,7 +21,7 @@ function stubTestDatabaseUrl(): void {
   );
   databaseUrl.searchParams.set(
     "application_name",
-    `vm0-api-test-${process.pid}-${vitestWorkerId}`,
+    `okou-api-test-${process.pid}-${vitestWorkerId}`,
   );
   vi.stubEnv("DATABASE_URL", databaseUrl.toString());
 }
@@ -41,6 +41,7 @@ vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 vi.stubEnv("FAL_KEY", "test-fal-key");
 vi.stubEnv("JOGGAI_API_KEY", "test-joggai-key");
 vi.stubEnv("JOGGAI_WEBHOOK_SECRET", "test-joggai-webhook-secret");
+vi.stubEnv("HEYGEN_API_KEY", "test-heygen-key");
 vi.stubEnv("BYTEPLUS_API_KEY", "test-byteplus-key");
 vi.stubEnv("MINIMAX_API_KEY", "test-minimax-key");
 vi.stubEnv("BYTEPLUS_STT_API_KEY", "test-byteplus-stt-key");
@@ -66,7 +67,7 @@ stubTestWebUrlEnvironment("http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",
-  "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+  "https://static.okou.io/okou-cli/test-commit/package.tgz",
 );
 vi.stubEnv("RESEND_API_KEY", "test-resend-key");
 vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test");
@@ -83,3 +84,12 @@ vi.stubEnv("ABLY_API_KEY", "test-ably-key");
 // The Vercel connector builds its authorization URL from the Integration slug
 // read straight from the process environment, outside the API env contract.
 vi.stubEnv("VERCEL_INTEGRATION_SLUG", "okou-test-integration");
+
+// Preserve the host's existing filesystem/runtime environment when launching a
+// test-owned real Guest. Never inherit the active sandbox's control endpoints.
+export function guestBoundaryEnvironment(): Pick<
+  NodeJS.ProcessEnv,
+  "HOME" | "PATH"
+> {
+  return { HOME: process.env.HOME, PATH: process.env.PATH };
+}

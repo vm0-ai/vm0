@@ -1,11 +1,13 @@
-import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ConnectorAccountMutationIntent,
+  ConnectorAccountTarget,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectors } from "@okouai/db/schema/connector";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { logger } from "../../lib/log";
 import { deleteConnectorOwnedCredentialRows } from "./connector-credential-storage-write.service";
-import type { ConnectorAccountMutation } from "./connector-account-mutation.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 const log = logger("api:connector-account-mutation");
@@ -126,7 +128,7 @@ function connectorConnectionMutationOutcome(
 function observeConnectorConnectionMutation(
   args: {
     readonly targetKind: ConnectorAccountTarget["kind"];
-    readonly intent: ConnectorAccountMutation["intent"];
+    readonly intent: ConnectorAccountMutationIntent["intent"];
     readonly selectedCount: number;
   },
   resolution: ConnectorConnectionMutationResolution,
@@ -182,7 +184,7 @@ export async function resolveConnectorConnectionMutation(
     readonly orgId: string;
     readonly userId: string;
     readonly target: ConnectorAccountTarget;
-    readonly mutation: ConnectorAccountMutation;
+    readonly mutation: ConnectorAccountMutationIntent;
     readonly allowSiblings: boolean;
     readonly matchExternalId?: string;
   },
@@ -261,29 +263,17 @@ export async function resolveConnectorConnectionMutation(
     .for("update")
     .limit(2);
   let resolution: ConnectorConnectionMutationResolution;
-  if (args.mutation.intent === "add") {
-    if (existing.length > 0 && !args.allowSiblings) {
-      resolution = { kind: "sibling-disabled" };
-    } else {
-      resolution = {
-        kind: "ready",
-        mutation: {
-          kind: "insert",
-          displayName: args.mutation.displayName ?? null,
-          isDefault: existing.length === 0,
-        },
-      };
-    }
-  } else if (existing.length > 1) {
-    resolution = { kind: "ambiguous" };
+  if (existing.length > 0 && !args.allowSiblings) {
+    resolution = { kind: "sibling-disabled" };
   } else {
-    const [singleton] = existing;
-    resolution = singleton
-      ? { kind: "ready", mutation: { kind: "update", existing: singleton } }
-      : {
-          kind: "ready",
-          mutation: { kind: "insert", displayName: null, isDefault: true },
-        };
+    resolution = {
+      kind: "ready",
+      mutation: {
+        kind: "insert",
+        displayName: args.mutation.displayName ?? null,
+        isDefault: existing.length === 0,
+      },
+    };
   }
   return observeConnectorConnectionMutation(
     {

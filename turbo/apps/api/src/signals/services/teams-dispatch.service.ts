@@ -2,10 +2,10 @@ import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
-  getVm0VisibleModels,
+  getBuiltInVisibleModels,
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -108,15 +108,12 @@ type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
 type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 
-function teamsIdentity(
-  installation: TeamsInstallation | null | undefined,
-  publicBrand: PublicBrand,
-): {
+function teamsIdentity(installation: TeamsInstallation | null | undefined): {
   readonly assistantName: "Zero" | "Okou";
   readonly brandName: "VM0" | "Okou";
   readonly botName: string;
 } {
-  const presentation = publicBrandPresentation(publicBrand);
+  const presentation = PUBLIC_BRAND_PRESENTATION;
   return {
     ...presentation,
     botName: teamsBotDisplayName(installation?.botName),
@@ -125,9 +122,8 @@ function teamsIdentity(
 
 export function teamsWelcomeText(
   installation: TeamsInstallation | null | undefined,
-  publicBrand: PublicBrand,
 ): string {
-  const { botName, brandName } = teamsIdentity(installation, publicBrand);
+  const { botName, brandName } = teamsIdentity(installation);
   return [
     `Hi, I'm ${botName}. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.`,
     "",
@@ -282,10 +278,7 @@ function commandHelpNotice(args: {
   readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
-  const { assistantName, botName } = teamsIdentity(
-    args.installation,
-    args.publicBrand,
-  );
+  const { assistantName, botName } = teamsIdentity(args.installation);
   const switchLine = args.canSwitch
     ? "\n- `switch` - Choose which agent responds to your messages"
     : "";
@@ -308,19 +301,17 @@ function commandHelpNotice(args: {
 
 function greetingNotice(
   installation: TeamsInstallation | null | undefined,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
   return {
     kind: "notice",
-    replyText: teamsWelcomeText(installation, publicBrand),
+    replyText: teamsWelcomeText(installation),
   };
 }
 
 function connectedNotice(
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { assistantName, botName } = teamsIdentity(installation, publicBrand);
+  const { assistantName, botName } = teamsIdentity(installation);
   return {
     kind: "notice",
     replyText: `You're already connected to ${assistantName}. Mention @${botName} in any channel or send a DM to start chatting with your agent.`,
@@ -329,9 +320,8 @@ function connectedNotice(
 
 function notInstalledNotice(
   installation: TeamsInstallation | null | undefined,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { botName, brandName } = teamsIdentity(installation, publicBrand);
+  const { botName, brandName } = teamsIdentity(installation);
   return {
     kind: "notice",
     replyText: `The ${botName} Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in ${brandName}.`,
@@ -940,7 +930,7 @@ const teamsModelPickerState$ = command(
     readonly options: readonly TeamsModelPickerOption[];
     readonly currentSelectedModel: string | null;
   }> => {
-    const visibleModels = new Set(getVm0VisibleModels());
+    const visibleModels = new Set(getBuiltInVisibleModels());
     const [policies, preference] = await Promise.all([
       set(listOrgModelPolicies$, { orgId, userId }, signal),
       get(userModelPreference({ orgId, userId })),
@@ -1002,9 +992,6 @@ function formatTeamsContextMessage(
 const TEAMS_CONTEXT_PREAMBLE = [
   "The messages below are from a Microsoft Teams conversation. When responding:",
   "- Messages closer to RELATIVE_INDEX 0 are more recent; prioritize them.",
-  "- Match the tone of the conversation; casual messages deserve casual replies.",
-  "- Only provide technical analysis when explicitly asked a technical question.",
-  "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
 
 function formatTeamsThreadContext(
@@ -1519,7 +1506,7 @@ function teamsValidationFallbackNotice(args: {
     });
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation, args.publicBrand);
+    return greetingNotice(args.installation);
   }
   return null;
 }
@@ -1800,7 +1787,7 @@ const runAgentForTeams$ = command(
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
     args.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_teams_create_run",
+      "api_dispatch_pre_create_agent_teams_create_run",
       "nested",
       nowDate().getTime(),
     );
@@ -1854,7 +1841,7 @@ function connectNotice(
   installation: TeamsInstallation | null,
   publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
-  const { assistantName } = teamsIdentity(installation, publicBrand);
+  const { assistantName } = teamsIdentity(installation);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
     publicBrand,
@@ -1911,10 +1898,10 @@ function unboundInstallationNotice(args: {
     });
   }
   if (args.command === "connect" && !args.installation) {
-    return notInstalledNotice(args.installation, args.publicBrand);
+    return notInstalledNotice(args.installation);
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation, args.publicBrand);
+    return greetingNotice(args.installation);
   }
   return connectNotice(args.activity, args.installation, args.publicBrand);
 }
@@ -1935,7 +1922,7 @@ function missingConnectionNotice(args: {
     });
   }
   if (args.isGreeting) {
-    return greetingNotice(args.installation, args.publicBrand);
+    return greetingNotice(args.installation);
   }
   return connectNotice(args.activity, args.installation, args.publicBrand);
 }
@@ -1964,7 +1951,7 @@ const connectedCommandBeforeCompose$ = command(
         });
       }
       case "connect": {
-        return connectedNotice(args.installation, args.publicBrand);
+        return connectedNotice(args.installation);
       }
       case "disconnect": {
         const result = await set(
@@ -2279,6 +2266,14 @@ const runResolvedTeamsAgentForActivity$ = command(
   },
 );
 
+function teamsAgentPrompt(activity: TeamsMessageActivity): string {
+  const recipientMention =
+    activity.mentionsRecipient && activity.recipient
+      ? `@${activity.recipient.name ?? activity.recipient.id}`
+      : "";
+  return [recipientMention, activity.text.trim()].filter(Boolean).join(" ");
+}
+
 export const dispatchTeamsMessageToAgent$ = command(
   async (
     { set },
@@ -2297,9 +2292,10 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const cardAction = teamsCardAction(activity.value);
-    const prompt = activity.text.trim();
-    const command = cardAction ? null : parseTeamsBotCommand(prompt);
-    const isGreeting = !cardAction && isTeamsBotGreeting(prompt);
+    const commandText = activity.text.trim();
+    const prompt = teamsAgentPrompt(activity);
+    const command = cardAction ? null : parseTeamsBotCommand(commandText);
+    const isGreeting = !cardAction && isTeamsBotGreeting(commandText);
     if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
       return (
         teamsValidationFallbackNotice({
@@ -2315,7 +2311,7 @@ export const dispatchTeamsMessageToAgent$ = command(
 
     const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
     if (!prompt && promptFiles.length === 0 && !cardAction) {
-      const { botName } = teamsIdentity(args.installation, args.publicBrand);
+      const { botName } = teamsIdentity(args.installation);
       return {
         kind: "notice",
         replyText: `Please include a message for ${botName}.`,

@@ -64,8 +64,27 @@ describe("Pi memory recall compatibility", () => {
       "5adb68a49933ae446bf11935662c83dba55a0804",
     );
     const rendered = renderPiMemoryRecall("Prefer focused targeted tests.");
+    expect(rendered).toContain(
+      "MUST use `memories_search` and `memories_read` before saying that it is unavailable",
+    );
+    expect(rendered).toContain("including `extensions/ad_hoc/notes/`");
+    expect(rendered).toContain(
+      "Use `add_ad_hoc_note` only when the user explicitly asks you to remember, forget, or update something",
+    );
+    expect(rendered).toContain(
+      "do not use Bash or another generic filesystem tool",
+    );
+    expect(rendered).toContain(
+      "A successful tool result means only that the note is staged in the current sandbox",
+    );
+    expect(rendered).toContain(
+      "Durable retention still depends on the terminal artifact checkpoint succeeding",
+    );
+    expect(rendered).toContain(
+      "Do not claim that the update is durable, published, or persistently saved before the run completes successfully",
+    );
     expect(sha256(rendered ?? "")).toBe(
-      "5d1b2eb64f6badf3c6dc83463c6096eedf104170f5ea34e9781e41bfbe122217",
+      "54c661e1d38e525dabe6cab63e94ef7362b02e442448c7b39e968bbc1b045e89",
     );
 
     const oversized = Array.from({ length: 4000 }, (_, index) => {

@@ -254,7 +254,7 @@ export function TiptapInstructionsEditor({
     <div
       className={cn(
         "relative transition-colors",
-        surface === "card" ? "zero-card focus-within:border-primary" : "",
+        surface === "card" ? "okou-card focus-within:border-primary" : "",
         disabled ? "pointer-events-none opacity-60" : "",
       )}
     >
@@ -262,7 +262,7 @@ export function TiptapInstructionsEditor({
         <BubbleMenu
           editor={editor}
           updateDelay={0}
-          className="z-50 flex items-center gap-1 rounded-lg zero-border bg-popover px-1.5 py-1 shadow-lg"
+          className="z-50 flex items-center gap-1 rounded-lg okou-border bg-popover px-1.5 py-1 shadow-lg"
         >
           <ToolbarButton
             onAction={() => {
@@ -374,7 +374,7 @@ export function TiptapInstructionsEditor({
       )}
       <EditorContent editor={editor} />
       {resolvedFooterHint ? (
-        <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
+        <p className="mx-4 okou-border-t pt-2 pb-3 text-xs text-muted-foreground">
           {resolvedFooterHint}
         </p>
       ) : null}

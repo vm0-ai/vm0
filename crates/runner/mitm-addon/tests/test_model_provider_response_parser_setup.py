@@ -15,19 +15,17 @@ from tests.jsonl_log_helpers import jsonl_exists_after_flush
 from tests.x_flow_helpers import make_x_response_flow
 
 
-class TestModelJsonUsageProtocolDispatch:
-    """Tests for the public typed model JSON dispatch owner."""
+class TestModelJsonResponseInspectorProtocolDispatch:
+    """Tests exhaustive dispatch for the shared model JSON inspector."""
 
     def test_unsupported_protocol_fails_explicitly(self):
         unsupported_protocol = cast(usage.ModelUsageProtocol, "unsupported")
 
         with pytest.raises(AssertionError, match="Expected code to be unreachable"):
-            usage.create_model_json_usage_extractor(unsupported_protocol)
-        with pytest.raises(AssertionError, match="Expected code to be unreachable"):
-            usage.extract_model_usage_with_error_from_json(
+            usage.create_model_json_response_inspector(
                 unsupported_protocol,
-                b"{}",
-                None,
+                include_usage=True,
+                include_failure=False,
             )
 
 
@@ -143,7 +141,6 @@ class TestBodyBearingConnectModelResponseParserAdmission:
 
             response_streaming.finalize_model_json_usage(flow, str(proxy_log_path))
 
-        assert flow.metadata[metadata_keys.MODEL_JSON_USAGE_FINALIZED] is True
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
             "model": "gpt-5.5",
             "tokens.input": 12,
@@ -219,7 +216,6 @@ class TestBodylessModelResponseParserAdmission:
             response_streaming.finalize_model_sse_usage(flow)
             response_streaming.finalize_model_json_usage(flow, str(proxy_log_path))
 
-        assert metadata_keys.MODEL_JSON_USAGE_FINALIZED not in flow.metadata
         assert not jsonl_exists_after_flush(proxy_log_path)
 
 

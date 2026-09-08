@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -58,69 +57,34 @@ async function connectGithubAdd(
 }
 
 describe("GitHub OAuth account mutation selection", () => {
-  it("persists the setup brand for state-less GitHub App updates", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  it("redirects state-less GitHub App updates to the configured Okou app", async () => {
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     await installApiTestConnectorCatalog();
 
-    const okouActor = bdd.user();
-    const okouAgent = await bdd.createAgent(okouActor, {
+    const actor = bdd.user();
+    const agent = await bdd.createAgent(actor, {
       displayName: `Okou GitHub setup ${randomUUID()}`,
     });
-    const okouInstallation = await github.installGithubApp(
-      okouActor,
-      okouAgent.agentId,
-      { publicBrand: "okou" },
-    );
-    const okouUpdate = await github.requestSetupCallback(
+    const installation = await github.installGithubApp(actor, agent.agentId, {
+      publicBrand: "okou",
+    });
+    const update = await github.requestSetupCallback(
       new URLSearchParams({
-        installation_id: okouInstallation.remoteInstallationId,
+        installation_id: installation.remoteInstallationId,
         setup_action: "update",
       }).toString(),
       { origin: "https://api.okou.ai" },
     );
-    expect(okouUpdate.status).toBe(307);
-    expect(new URL(okouUpdate.location ?? "").origin).toBe(
-      "https://app.okou.ai",
-    );
-
-    const vm0Actor = bdd.user();
-    const vm0Agent = await bdd.createAgent(vm0Actor, {
-      displayName: `VM0 GitHub setup ${randomUUID()}`,
-    });
-    const vm0Installation = await github.installGithubApp(
-      vm0Actor,
-      vm0Agent.agentId,
-      { publicBrand: "vm0" },
-    );
-    const vm0UpdateQuery = new URLSearchParams({
-      installation_id: vm0Installation.remoteInstallationId,
-      setup_action: "update",
-    }).toString();
-    const vm0Ingress = await github.requestSetupCallback(vm0UpdateQuery, {
-      origin: "https://api.okou.ai",
-    });
-    expect(vm0Ingress.status).toBe(307);
-    const vm0Replay = new URL(vm0Ingress.location ?? "");
-    expect(vm0Replay.origin).toBe("https://api.vm0.ai");
-    expect(vm0Replay.pathname).toBe("/api/github/app/setup/callback");
-    expect(vm0Replay.search.slice(1)).toBe(vm0UpdateQuery);
-
-    const vm0Update = await github.requestSetupCallback(
-      vm0Replay.search.slice(1),
-      { origin: vm0Replay.origin },
-    );
-    expect(vm0Update.status).toBe(307);
-    expect(new URL(vm0Update.location ?? "").origin).toBe("https://app.vm0.ai");
+    expect(update.status).toBe(307);
+    expect(new URL(update.location ?? "").origin).toBe("https://app.okou.ai");
   });
 
   it("adds a new identity and refreshes the exact existing sibling", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
 
     await connectGithubAdd(actor, {
       code: "github-first-add",
@@ -188,9 +152,7 @@ describe("GitHub OAuth account mutation selection", () => {
   it("serializes concurrent callbacks for the same new identity", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     mockGitHubConnectorOAuth({ userId: 303, login: "github-concurrent" });
 
     const [first, second] = await Promise.all([
@@ -229,12 +191,8 @@ describe("GitHub OAuth account mutation selection", () => {
     await installApiTestConnectorCatalog();
     const firstActor = bdd.user();
     const secondActor = bdd.user();
-    await connectors.updateFeatureSwitches(firstActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
-    await connectors.updateFeatureSwitches(secondActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(firstActor, {});
+    await connectors.updateFeatureSwitches(secondActor, {});
 
     await connectGithubAdd(firstActor, {
       code: "github-first-owner",
@@ -269,9 +227,7 @@ describe("GitHub OAuth account mutation selection", () => {
   it("fails closed when historical rows duplicate an owned identity", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     await connectGithubAdd(actor, {
       code: "github-duplicate-first",
       displayName: "Duplicate first",
@@ -342,9 +298,7 @@ describe("GitHub OAuth account mutation selection", () => {
   it("uses the same exact-identity selection for GitHub App setup", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(actor, {});
     await connectGithubAdd(actor, {
       code: "github-before-setup-first",
       displayName: "Before setup first",
@@ -397,9 +351,7 @@ describe("GitHub OAuth account mutation selection", () => {
     });
 
     const siblingActor = bdd.user();
-    await connectors.updateFeatureSwitches(siblingActor, {
-      [FeatureSwitchKey.ConnectorAccounts]: true,
-    });
+    await connectors.updateFeatureSwitches(siblingActor, {});
     await connectGithubAdd(siblingActor, {
       code: "github-before-setup-sibling",
       displayName: "Existing before setup",

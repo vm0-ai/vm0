@@ -2,10 +2,10 @@
 
 use crate::env::{Framework, GuestConfig};
 use crate::paths;
-use guest_common::{log_info, log_warn};
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::session_history_identity::SessionHistorySourceRef;
+use guest_telemetry::{log_info, log_warn};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -179,6 +179,16 @@ impl CapturedSessionMetadata {
 pub struct SessionMetadataStore(Arc<OnceLock<CapturedSessionMetadata>>);
 
 impl SessionMetadataStore {
+    /// A private maintenance launch has no public CLI session event or history.
+    /// Its authenticated launch ID is sufficient for the generic checkpoint;
+    /// artifact validation remains an independent prerequisite.
+    pub(crate) fn capture_maintenance_launch(&self, session_id: &str) -> bool {
+        let Some(metadata) = SessionHistoryLaunchSource::Pi.capture(session_id, None) else {
+            return false;
+        };
+        self.capture(metadata)
+    }
+
     /// Return the captured metadata, if a valid identity event was observed.
     pub fn captured(&self) -> Option<&CapturedSessionMetadata> {
         self.0.get()

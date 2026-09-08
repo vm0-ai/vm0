@@ -8,19 +8,19 @@ import { createRunResponseSchema } from "@okouai/api-contracts/contracts/runs";
 import { runCreateBodySchema } from "@okouai/api-contracts/contracts/run-routes";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import { createTestFixtureAgentRun$ } from "../services/agent-runs-create.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const c = initContract();
 
 export const runFixtureContract = c.router({
   create: {
     method: "POST",
-    path: "/api/test/zero-run-fixture",
+    path: "/api/test/agent-run-fixture",
     headers: authHeadersSchema,
     body: runCreateBodySchema,
     responses: {
@@ -43,7 +43,7 @@ const createAgentRunFixture$ = command(
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     const body = await timing.measure(
-      "api_dispatch_pre_create_zero_parse_body",
+      "api_dispatch_pre_create_agent_parse_body",
       "nested",
       async () => {
         return await get(agentRunFixtureBody$);
@@ -55,7 +55,7 @@ const createAgentRunFixture$ = command(
     }
 
     const args = await timing.measure(
-      "api_dispatch_pre_create_zero_prepare_args",
+      "api_dispatch_pre_create_agent_prepare_args",
       "nested",
       () => {
         const auth = get(organizationAuthContext$);
@@ -63,7 +63,7 @@ const createAgentRunFixture$ = command(
           auth,
           body: body.data,
           apiStartTime,
-          publicBrand: get(publicBrand$),
+          publicBrand: PUBLIC_BRAND,
           piExecution: false,
           timing,
         };
@@ -75,7 +75,7 @@ const createAgentRunFixture$ = command(
 );
 
 /**
- * Test-only Zero run creation adapter. This route is intentionally omitted
+ * Test-only agent run creation adapter. This route is intentionally omitted
  * from every production and E2E route registry.
  */
 export const runFixtureRoutes: readonly RouteEntry[] = [

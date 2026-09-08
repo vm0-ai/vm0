@@ -31,17 +31,20 @@ export const availableLocalePreferences$ = computed(async (get) => {
   return preferences.supportedLocales;
 });
 
+const loadInitialLocale$ = command(
+  async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
+    return await Promise.all([
+      loadInitialLocaleResources(locale, signal),
+      set(loadClerkLocalization$, locale, signal),
+    ]);
+  },
+);
+
 export const initLocale$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     const requestedLocale = resolveInitialLocaleFallbackFromBrowser();
-    const loadInitialLocale = (locale: SupportedLocale) => {
-      return Promise.all([
-        loadInitialLocaleResources(locale, signal),
-        set(loadClerkLocalization$, locale, signal),
-      ]);
-    };
     const initialResult = await settle(
-      loadInitialLocale(requestedLocale),
+      set(loadInitialLocale$, requestedLocale, signal),
       signal,
     );
     if (!initialResult.ok) {
@@ -52,7 +55,7 @@ export const initLocale$ = command(
     }
     const [initial, clerkLocalization] = initialResult.ok
       ? initialResult.value
-      : await loadInitialLocale(DEFAULT_LOCALE);
+      : await set(loadInitialLocale$, DEFAULT_LOCALE, signal);
     signal.throwIfAborted();
     const locale = await initializeI18nWithResources(initial, signal);
     signal.throwIfAborted();
@@ -62,7 +65,7 @@ export const initLocale$ = command(
   },
 );
 
-export const setLocale$ = command(
+const setLocale$ = command(
   async ({ set }, locale: SupportedLocale, signal: AbortSignal) => {
     const [resources, clerkLocalization] = await Promise.all([
       loadI18nLanguageResources(locale, signal),

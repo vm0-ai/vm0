@@ -34,6 +34,7 @@ const ARTIFACTS_BUCKET = "test-user-artifacts";
 
 const SOURCE_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const LEGACY_SOURCE_CONTENT_TYPE = "application/vnd.ms-powerpoint";
 
 interface StoredObject {
   readonly body: Buffer;
@@ -269,6 +270,10 @@ async function uploadInputs(
   actor: ApiTestUser,
   fixture: Fixture,
   archive: Buffer,
+  source: { readonly filename: string; readonly contentType: string } = {
+    filename: "brand-system.pptx",
+    contentType: SOURCE_CONTENT_TYPE,
+  },
 ): Promise<{
   readonly sourceFileId: string;
   readonly pageFileIds: string[];
@@ -277,7 +282,7 @@ async function uploadInputs(
   const sourceFileId = await upload(
     actor,
     fixture,
-    { filename: "brand-system.pptx", contentType: SOURCE_CONTENT_TYPE },
+    source,
     Buffer.from("PK deck bytes", "utf8"),
   );
   const pageFileIds: string[] = [];
@@ -396,6 +401,30 @@ describe("presentation template publish", () => {
         return key.endsWith("/archive.tar.gz");
       }),
     ).toBeTruthy();
+  });
+
+  it("publishes a legacy PowerPoint source without conversion", async () => {
+    const actor = bdd.user();
+    await enablePresentationTemplates(actor);
+    const fixture = installS3Fixture();
+    const inputs = await uploadInputs(actor, fixture, tarGz(guidance()), {
+      filename: "legacy-deck.ppt",
+      contentType: LEGACY_SOURCE_CONTENT_TYPE,
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const published = await accept(
+      templateClient().publish({
+        headers: webHeaders(),
+        body: { title: "Legacy brand system", ...inputs },
+      }),
+      [200],
+    );
+    expect(published.body).toMatchObject({
+      title: "Legacy brand system",
+      sourceFilename: "legacy-deck.ppt",
+      pageCount: 2,
+    });
   });
 
   it("shares a public template with workspace members while keeping management owner-only", async () => {

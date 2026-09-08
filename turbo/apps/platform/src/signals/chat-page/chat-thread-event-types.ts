@@ -8,6 +8,13 @@ export type UnsequencedChatThreadEvent = WithoutSeqId<ChatThreadEvent>;
 
 export type OptimisticChatThreadEvent = UnsequencedChatThreadEvent;
 
+/** Placeholder fields default inside `registerOptimisticChatThreadEvent$`. */
+export type OptimisticChatThreadEventInput = Pick<
+  OptimisticChatThreadEvent,
+  "id" | "kind" | "chatThreadId" | "agentId"
+> &
+  Partial<OptimisticChatThreadEvent>;
+
 export type CompatibleChatThreadEvent =
   | ChatThreadEvent
   | UnsequencedChatThreadEvent;

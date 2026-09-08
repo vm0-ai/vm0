@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
-import type {
-  ConnectorCheckDiagnosticResult,
-  ConnectorCheckPolicy,
-  ConnectorCheckRequest,
+import {
+  connectorCheckRequestBodySchema,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckPolicy,
+  type ConnectorCheckRequest,
 } from "@okouai/api-contracts/contracts/connector-check";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
@@ -19,7 +20,7 @@ import {
 import { server } from "../../../mocks/server";
 import { checkConnectorCommand } from "../check";
 
-const API_BASE_URL = "https://app.vm0.ai";
+const API_BASE_URL = "https://app.okou.ai";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
 const SELECTED_CONNECTION_ID = "00000000-0000-4000-8000-000000000099";
 
@@ -171,6 +172,27 @@ function stubDiagnostic(
     http.post(diagnosticEndpoint(baseUrl), async ({ request }) => {
       const body: unknown = await request.json();
       onRequest?.(body);
+      const parsed = connectorCheckRequestBodySchema.parse(body);
+      if ("includeCustomConnectors" in parsed || "target" in parsed) {
+        if ("connector" in result) {
+          const { connectorSlug, ...identity } = result.connector;
+          return HttpResponse.json({
+            ...result,
+            connector: {
+              ...identity,
+              target: { kind: "builtin", connectorSlug },
+            },
+          });
+        }
+        if (result.outcome === "ambiguous") {
+          return HttpResponse.json({
+            ...result,
+            candidates: result.candidates.map(({ connectorSlug, label }) => {
+              return { target: { kind: "builtin", connectorSlug }, label };
+            }),
+          });
+        }
+      }
       return HttpResponse.json(result);
     }),
   );
@@ -467,7 +489,7 @@ describe("okou connector check command", () => {
     it.each([
       {
         name: "Computer Use URL",
-        args: ["--url", "https://api.vm0.ai/computer-use/commands"],
+        args: ["--url", "https://api.okou.ai/computer-use/commands"],
       },
       {
         name: "Computer Use permission",
@@ -782,23 +804,18 @@ describe("okou connector check command", () => {
     it.each([
       {
         name: "production API",
-        baseUrl: "https://api.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://api.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "legacy production web",
-        baseUrl: "https://www.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
-      },
-      {
-        name: "legacy production platform",
-        baseUrl: "https://platform.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://www.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "canonical production app",
-        baseUrl: "https://app.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://app.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "staging API",

@@ -53,10 +53,10 @@ function updatedThreadFields(
     return { title: event.title, renamedAt: event.createdAt };
   }
   if (event.kind === "pinned") {
-    return { pinnedAt: event.createdAt };
+    return { pinnedAt: event.createdAt, pinOrder: event.pinOrder ?? null };
   }
   if (event.kind === "unpinned") {
-    return { pinnedAt: null };
+    return { pinnedAt: null, pinOrder: null };
   }
   if (event.kind === "model_selection_updated") {
     return { selectedModel: event.selectedModel };
@@ -71,7 +71,7 @@ function updatedThreadFields(
     };
   }
   if (event.kind === "video_model_updated") {
-    return { selectedVideoModel: event.selectedVideoModel ?? null };
+    return { selectedVideoModel: event.selectedVideoModel };
   }
   if (event.kind === "image_model_updated") {
     return { selectedImageModel: event.selectedImageModel ?? null };
@@ -98,7 +98,7 @@ function applyEvent(
       serviceTier: event.serviceTier,
       computerUseHostId: event.computerUseHostId,
       cloudBrowserEnabled: event.cloudBrowserEnabled ?? false,
-      selectedVideoModel: event.selectedVideoModel ?? null,
+      selectedVideoModel: event.selectedVideoModel,
       selectedImageModel: event.selectedImageModel ?? null,
     });
     const pendingUpdates = pendingThreadUpdates.get(event.chatThreadId) ?? [];
@@ -125,6 +125,15 @@ function applyEvent(
     return;
   }
 
+  // Additive payload on the existing ordering event keeps older readers able
+  // to parse the stream. Manual moves do not change pin time or activity time.
+  if (event.kind === "sort_touched" && event.pinOrder != null) {
+    if (thread.pinnedAt !== null) {
+      threads.set(event.chatThreadId, { ...thread, pinOrder: event.pinOrder });
+    }
+    return;
+  }
+
   const fields = updatedThreadFields(event);
   if (fields === null) {
     threads.set(event.chatThreadId, {
@@ -142,13 +151,8 @@ function applyEvent(
 }
 
 /**
- * Rollout fallback: `selectedVideoModel` is optional on the wire, so a snapshot
- * or event from an API deployed before this change (DB/API skew, observed max
- * ~102min) or from an IndexedDB row an older bundle wrote (old web clients,
- * ~2d) arrives without it and must replay as an unset pin. Remove with the
- * contract's optional marker once the client floor passes the build that
- * introduced the field. Follow-up: https://github.com/vm0-ai/vm0/issues/26765
- * `selectedImageModel` has the same compatibility boundary for #27688.
+ * `selectedImageModel` remains optional during the compatibility window tracked
+ * by #27688, so an absent value replays as an unset pin.
  */
 export function replayChatThreadEvents(
   snapshot: readonly ChatThreadSnapshotProjection[],
@@ -162,7 +166,7 @@ export function replayChatThreadEvents(
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
-      selectedVideoModel: thread.selectedVideoModel ?? null,
+      selectedVideoModel: thread.selectedVideoModel,
       selectedImageModel: thread.selectedImageModel ?? null,
     });
   }

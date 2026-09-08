@@ -27,6 +27,7 @@ export interface SlashWorkflowRange {
 }
 
 export interface ComposerSlashWorkflow {
+  readonly id: string;
   readonly name: string;
   readonly displayName: string | null;
   readonly description: string | null;
@@ -42,7 +43,9 @@ export function findActiveSlashWorkflowRange(
   }
 
   const beforeCaret = value.slice(0, caretIndex);
-  const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
+  const match = /(?:^|\s)\/((?:create\s+[a-z]*)|[a-z0-9-]*)$/i.exec(
+    beforeCaret,
+  );
   if (!match) {
     return null;
   }
@@ -79,11 +82,15 @@ export function buildComposerSlashWorkflows({
 
   return workflows
     .filter((workflow) => {
-      return workflow.agentId === agentId;
+      return (
+        workflow.agentId === agentId &&
+        (workflow.shadowedBy === null || workflow.shadowedBy === undefined)
+      );
     })
     .map((workflow) => {
       const name = workflow.name;
       return {
+        id: workflow.id,
         name,
         displayName: workflow.displayName,
         description: workflow.description,

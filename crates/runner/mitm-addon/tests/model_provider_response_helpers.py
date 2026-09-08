@@ -1,14 +1,8 @@
 """Shared fixtures for model-provider JSON response usage tests."""
 
-import gzip
 import json
-import zlib
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-
-import brotli
-import zstandard
 
 import mitm_addon
 import usage
@@ -28,14 +22,6 @@ class ModelProviderJsonCase:
     input_tokens: int = 50
     output_tokens: int = 200
     cached_tokens: int | None = None
-
-
-@dataclass(frozen=True)
-class JsonCompressionFailureCase:
-    id: str
-    make_body: Callable[[bytes], bytes]
-    content_encoding: str
-    expected_error: str
 
 
 ANTHROPIC_JSON_CASE = ModelProviderJsonCase(
@@ -61,177 +47,11 @@ OPENAI_RESPONSES_CASE = ModelProviderJsonCase(
     cached_tokens=10,
 )
 
-CODEX_OAUTH_RESPONSES_CASE = ModelProviderJsonCase(
-    id="codex-oauth",
-    host="chatgpt.com",
-    original_url="https://chatgpt.com/backend-api/codex/responses",
-    firewall_name="model-provider:codex-oauth-token",
-    cli_agent_type="codex",
-    message_id="resp_1",
-    model="gpt-5.5",
-    uses_openai_responses=True,
-    cached_tokens=10,
-)
-
 MODEL_PROVIDER_JSON_CASES = (ANTHROPIC_JSON_CASE, OPENAI_RESPONSES_CASE)
 
 
 def model_provider_json_case_id(provider_case: ModelProviderJsonCase) -> str:
     return provider_case.id
-
-
-def json_compression_failure_case_id(encoding_case: JsonCompressionFailureCase) -> str:
-    return encoding_case.id
-
-
-def _identity_body(payload: bytes) -> bytes:
-    return payload
-
-
-def _raw_deflate_body(payload: bytes) -> bytes:
-    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
-    return compressor.compress(payload) + compressor.flush()
-
-
-def _truncated_gzip_prefix(payload: bytes) -> bytes:
-    return gzip.compress(payload)[:10]
-
-
-def _truncated_gzip_trailer(payload: bytes) -> bytes:
-    return gzip.compress(payload)[:-1]
-
-
-def _truncated_deflate_trailer(payload: bytes) -> bytes:
-    return zlib.compress(payload)[:-1]
-
-
-def _empty_gzip_member_before_garbage(_payload: bytes) -> bytes:
-    return gzip.compress(b"") + b"garbage"
-
-
-def _empty_deflate_stream_before_garbage(_payload: bytes) -> bytes:
-    return zlib.compress(b"") + b"garbage"
-
-
-def _truncated_brotli_prefix(payload: bytes) -> bytes:
-    return brotli.compress(payload)[:2]
-
-
-def _truncated_brotli_trailer(payload: bytes) -> bytes:
-    return brotli.compress(payload)[:-1]
-
-
-def _truncated_zstd_prefix(payload: bytes) -> bytes:
-    return zstandard.ZstdCompressor().compress(payload)[:5]
-
-
-def _zstd_frame_before_garbage(payload: bytes) -> bytes:
-    return zstandard.ZstdCompressor().compress(payload) + b"garbage"
-
-
-def _zstd_frame_before_truncated_frame(payload: bytes) -> bytes:
-    trailing_frame = zstandard.ZstdCompressor().compress(b"{}")
-    return zstandard.ZstdCompressor().compress(payload) + trailing_frame[:5]
-
-
-JSON_COMPRESSION_FAILURE_CASES = (
-    JsonCompressionFailureCase(
-        id="chained-gzip",
-        make_body=gzip.compress,
-        content_encoding="gzip, identity",
-        expected_error="unsupported content encoding",
-    ),
-    JsonCompressionFailureCase(
-        id="raw-json-with-unknown-header",
-        make_body=_identity_body,
-        content_encoding="x-custom",
-        expected_error="unsupported content encoding",
-    ),
-    JsonCompressionFailureCase(
-        id="raw-deflate",
-        make_body=_raw_deflate_body,
-        content_encoding="deflate",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="raw-json-with-gzip-header",
-        make_body=_identity_body,
-        content_encoding="gzip",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="raw-json-with-br-header",
-        make_body=_identity_body,
-        content_encoding="br",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="raw-json-with-zstd-header",
-        make_body=_identity_body,
-        content_encoding="zstd",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-gzip-prefix",
-        make_body=_truncated_gzip_prefix,
-        content_encoding="gzip",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-gzip-trailer",
-        make_body=_truncated_gzip_trailer,
-        content_encoding="gzip",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-deflate-trailer",
-        make_body=_truncated_deflate_trailer,
-        content_encoding="deflate",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="empty-gzip-member-before-garbage",
-        make_body=_empty_gzip_member_before_garbage,
-        content_encoding="gzip",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="empty-deflate-stream-before-garbage",
-        make_body=_empty_deflate_stream_before_garbage,
-        content_encoding="deflate",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-brotli-prefix",
-        make_body=_truncated_brotli_prefix,
-        content_encoding="br",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-brotli-trailer",
-        make_body=_truncated_brotli_trailer,
-        content_encoding="br",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="truncated-zstd-prefix",
-        make_body=_truncated_zstd_prefix,
-        content_encoding="zstd",
-        expected_error="incomplete compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="zstd-frame-before-garbage",
-        make_body=_zstd_frame_before_garbage,
-        content_encoding="zstd",
-        expected_error="invalid compressed body",
-    ),
-    JsonCompressionFailureCase(
-        id="zstd-frame-before-truncated-frame",
-        make_body=_zstd_frame_before_truncated_frame,
-        content_encoding="zstd",
-        expected_error="incomplete compressed body",
-    ),
-)
 
 
 def standard_success_payload(

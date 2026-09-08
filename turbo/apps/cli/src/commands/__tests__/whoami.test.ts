@@ -1285,7 +1285,7 @@ describe("okou whoami command", () => {
     });
 
     it("should identify an invalid OKOU_TOKEN", async () => {
-      vi.stubEnv("OKOU_TOKEN", "not-a-zero-token");
+      vi.stubEnv("OKOU_TOKEN", "not-an-okou-token");
 
       await runWhoami();
 

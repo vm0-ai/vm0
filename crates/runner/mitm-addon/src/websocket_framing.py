@@ -29,8 +29,8 @@ MAX_AGGREGATE_DECODED_BYTES = 1024 * 1024 * 1024
 MAX_MESSAGE_DATA_FRAMES = 8_192
 
 _EMPTY_DEFLATE_BLOCK = b"\x00\x00\xff\xff"
-_CONNECTION_MARKER_ATTRIBUTE = "_vm0_bounded_websocket_framing"
-_MESSAGE_LIMIT_VIOLATION_ATTRIBUTE = "_vm0_websocket_message_limit_violation"
+_CONNECTION_MARKER_ATTRIBUTE = "_bounded_websocket_framing"
+_MESSAGE_LIMIT_VIOLATION_ATTRIBUTE = "_websocket_message_limit_violation"
 _ORIGINAL_WEBSOCKET_CONNECTION = websocket.WebsocketConnection
 
 _MessageLimitReason = Literal[
@@ -371,8 +371,8 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
             trailing_data,
             conn=conn,
         )
-        self._vm0_message_limit = message_limit
-        self._vm0_bounded_deflates = bounded_deflates
+        self._message_limit = message_limit
+        self._bounded_deflates = bounded_deflates
         self.frame_buf = [self._mutable_fragment()]
 
     @staticmethod
@@ -389,8 +389,8 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
 
     def _clear_partial_state(self) -> None:
         self.frame_buf = [self._mutable_fragment()]
-        self._vm0_message_limit.clear()
-        for extension in self._vm0_bounded_deflates:
+        self._message_limit.clear()
+        for extension in self._bounded_deflates:
             extension.clear()
 
     def events(self) -> Generator[events.Event, None, None]:
@@ -402,7 +402,7 @@ class _BoundedWebsocketConnection(_ORIGINAL_WEBSOCKET_CONNECTION):
                     yield event
                 finally:
                     if isinstance(event, events.Message) and event.message_finished:
-                        self._vm0_message_limit._budget.finish_message()
+                        self._message_limit._budget.finish_message()
                     self._ensure_mutable_fragment()
         finally:
             self._ensure_mutable_fragment()

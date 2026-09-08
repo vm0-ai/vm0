@@ -16,7 +16,6 @@ import { latestWinsGuard } from "./desktop-async-control";
 import type { DesktopRecorderState } from "./desktop-recorder-types";
 
 interface DesktopTrayControllerOptions {
-  readonly brandName: "Zero" | "Okou";
   readonly displayName: string;
   readonly iconPath: string;
   readonly disabledIconPath: string;
@@ -42,12 +41,11 @@ interface DesktopTrayControllerOptions {
   readonly quit: () => void;
 }
 
-type DesktopTrayIconFrame = "disabled" | "online" | "running";
+type DesktopTrayIconFrame = "disabled" | "online" | "running" | number;
 type DesktopTrayIconMode = "disabled" | "online" | "running";
 
-const RUNNING_TRAY_ICON_FRAME_MS = 500;
+const RUNNING_TRAY_ICON_FRAME_MS = 50;
 const RUNNING_TRAY_ACTIVITY_LINGER_MS = 15_000;
-const RUNNING_TRAY_ICON_FRAME_COUNT = 4;
 
 function desktopTrayIcon(
   iconPath: string,
@@ -64,27 +62,6 @@ function hasRunningLocalCommand(state: DesktopComputerUseState): boolean {
   return state.host.localCommandLog.some((entry) => {
     return entry.status === "running";
   });
-}
-
-function initialIconFrameForMode(
-  mode: DesktopTrayIconMode,
-): DesktopTrayIconFrame {
-  return mode === "running" ? runningTrayIconFrameAt(0) : mode;
-}
-
-function runningTrayIconFrameAt(index: number): DesktopTrayIconFrame {
-  switch (index % RUNNING_TRAY_ICON_FRAME_COUNT) {
-    case 0:
-      return "disabled";
-    case 1:
-      return "running";
-    case 2:
-      return "online";
-    case 3:
-      return "running";
-    default:
-      return "disabled";
-  }
 }
 
 function electronMenuItem(
@@ -143,7 +120,8 @@ export class DesktopTrayController {
 
     const computerUseState = this.options.getComputerUseState();
     const iconMode = this.iconModeForComputerUseState(computerUseState);
-    const iconFrame = initialIconFrameForMode(iconMode);
+    const iconFrame =
+      iconMode === "running" ? this.runningTrayIconFrameAt(0) : iconMode;
     this.tray = new Tray(this.iconForFrame(iconFrame));
     this.iconFrame = iconFrame;
     this.tray.setToolTip(this.options.displayName);
@@ -162,7 +140,6 @@ export class DesktopTrayController {
     this.refreshIcon(tray, computerUseState);
     const items = buildDesktopTrayMenuItems(
       {
-        brandName: this.options.brandName,
         computerUse: computerUseState,
         auth: this.authState,
         authLoading: this.authLoading,
@@ -187,14 +164,30 @@ export class DesktopTrayController {
       return cached;
     }
 
-    const image = desktopTrayIcon(this.iconPathForFrame(frame), {
-      template: frame === "online",
-    });
+    const image =
+      typeof frame === "number"
+        ? this.runningIconFrame(frame)
+        : desktopTrayIcon(this.iconPathForFrame(frame), {
+            template: frame === "online",
+          });
     this.iconCache.set(frame, image);
     return image;
   }
 
-  private iconPathForFrame(frame: DesktopTrayIconFrame): string {
+  private runningIconFrame(index: number): NativeImage {
+    const strip = this.iconForFrame("running");
+    const size = strip.getSize().height;
+    return strip.crop({ x: index * size, y: 0, width: size, height: size });
+  }
+
+  private runningTrayIconFrameAt(index: number): DesktopTrayIconFrame {
+    const { width, height } = this.iconForFrame("running").getSize();
+    return index % (width / height);
+  }
+
+  private iconPathForFrame(
+    frame: Exclude<DesktopTrayIconFrame, number>,
+  ): string {
     switch (frame) {
       case "disabled":
         return this.options.disabledIconPath;
@@ -250,7 +243,7 @@ export class DesktopTrayController {
     }
 
     this.runningIconFrameIndex = 0;
-    this.setTrayIconFrame(tray, runningTrayIconFrameAt(0));
+    this.setTrayIconFrame(tray, this.runningTrayIconFrameAt(0));
     this.runningIconTimer = setInterval(() => {
       const iconMode = this.iconModeForComputerUseState(
         this.options.getComputerUseState(),
@@ -261,11 +254,10 @@ export class DesktopTrayController {
         return;
       }
 
-      this.runningIconFrameIndex =
-        (this.runningIconFrameIndex + 1) % RUNNING_TRAY_ICON_FRAME_COUNT;
+      this.runningIconFrameIndex += 1;
       this.setTrayIconFrame(
         tray,
-        runningTrayIconFrameAt(this.runningIconFrameIndex),
+        this.runningTrayIconFrameAt(this.runningIconFrameIndex),
       );
     }, RUNNING_TRAY_ICON_FRAME_MS);
   }

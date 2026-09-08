@@ -1,4 +1,5 @@
-import { okouAppWorkerPreviewJobRef } from "./platform-host.ts";
+import { okouAppWorkerPreviewJobRef } from "@okouai/core/platform-service-origin";
+
 import { VERCEL_PROTECTION_BYPASS_NAME } from "./preview-bypass-name.ts";
 
 const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;

@@ -58,10 +58,7 @@ describe("desktop update feed", () => {
     ).toBe(false);
   });
 
-  it("builds the static feed base URL used by update-electron-app", () => {
-    expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai", "zero")).toBe(
-      "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64",
-    );
+  it("builds the static Squirrel.Mac feed base URL", () => {
     expect(
       desktopUpdateFeedBaseUrl("https://api.okou.ai", "ai-okou-desktop"),
     ).toBe(

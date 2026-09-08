@@ -18,13 +18,15 @@ const startPiApiFirstTurn$ = command(function startPiApiFirstTurn(
   { set },
   activation: NonNullable<PendingRunActivation["piApiFirstTurn"]>,
 ): void {
-  const deadlineAt =
+  const coordinationDeadlineAt =
     activation.executionContext.piLaunchConfig.apiFirstTurn.deadlineAt;
+  // waitUntil owns only the bounded API-to-Sandbox coordination window.
+  // A successful Sandbox transfer continues under the runner lifecycle.
   waitUntil(
     set(
       dispatchConfiguredPiApiFirstTurn$,
       activation,
-      AbortSignal.timeout(Math.max(1, deadlineAt - now())),
+      AbortSignal.timeout(Math.max(1, coordinationDeadlineAt - now())),
     ),
   );
 });

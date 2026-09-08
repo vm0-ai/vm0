@@ -18,7 +18,7 @@ import flow_metadata_keys as metadata_keys
 import stream_capture
 from body_limits import STREAM_BUFFER_LIMIT
 
-_REQUEST_STREAM_CALLBACK = "_vm0_request_stream_callback"
+_REQUEST_STREAM_CALLBACK = "_request_stream_callback"
 
 
 def configure_request_stream(

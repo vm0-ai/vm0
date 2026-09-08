@@ -29,16 +29,15 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  VOICE_IO_POLISH_MAX_TEXT_CHARS,
-  voiceIoPolishContract,
-} from "@okouai/api-contracts/contracts/voice-io-polish";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
-import { accept } from "../../lib/accept.ts";
+import {
+  VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS,
+  type VoiceIoEditorContext,
+} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { onRef, resetSignal, settle } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createComposerFeedbackModel,
@@ -58,6 +57,7 @@ import {
   splitAgentMentionSegments,
   type ComposerAgentSuggestion,
 } from "./composer-agent-suggestion-domain.ts";
+import { avatarNeckSweaterEnabled$ } from "../external/feature-switch.ts";
 import {
   agentMentionText,
   createAgentMentionAvatarRuntime,
@@ -79,10 +79,10 @@ import {
   AGENT_MENTION_NODE_NAME,
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
+  draftToEditorDoc,
   INLINE_TEMPLATE_NODE_NAME,
   messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
-  VOICE_DRAFT_NODE_NAME,
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
 import {
@@ -93,8 +93,6 @@ import { createComposerWorkflows } from "./composer-workflows.ts";
 import type { OpenTemplatePickerDialogCommand } from "./chat-composer.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
-import { apiClient$ } from "../api-client.ts";
-import { toast } from "@okouai/ui/components/ui/sonner";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -222,36 +220,24 @@ export interface WorkflowComposerSignals {
     [OpenComposerTemplatePickerIntent]
   >;
   readonly insertText$: Command<void, [string]>;
+  readonly readVoiceContext$: Command<VoiceIoEditorContext, []>;
   readonly appendText$: Command<void, [string]>;
   readonly selectOrAppendText$: Command<void, [string]>;
   readonly readInputForSubmission$: Command<
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
   >;
-  readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: ComposerFeedbackSignals;
 }
 
 export type OpenComposerTemplatePickerIntent =
   | { readonly kind: "insert"; readonly category: string }
-  | { readonly kind: "edit-selected"; readonly category: string }
+  | {
+      readonly kind: "edit-selected";
+      readonly category: string;
+      readonly position: number;
+    }
   | { readonly kind: "edit-legacy"; readonly category: string };
-
-export type VoiceDraftStatus = "recording" | "processing" | "failed";
-export type VoiceDraftFinishMode = "automatic" | "retry";
-
-export interface WorkflowComposerVoiceDraftSignals {
-  readonly hasDraft$: Computed<boolean>;
-  readonly status$: Computed<VoiceDraftStatus | null>;
-  readonly start$: Command<string, []>;
-  readonly appendTranscript$: Command<void, [string, string]>;
-  readonly markFailed$: Command<void, [string]>;
-  readonly finish$: Command<
-    Promise<boolean>,
-    [string, VoiceDraftFinishMode, AbortSignal]
-  >;
-  readonly remove$: Command<void, [string]>;
-}
 
 export type ComposerTemplateAttachmentType =
   | "presentation"
@@ -557,149 +543,6 @@ function createComposerIcon(
   return icon;
 }
 
-interface VoiceDraftNodeAttributes {
-  readonly id: string;
-  readonly transcript: string;
-  readonly status: VoiceDraftStatus;
-  readonly visible: boolean;
-}
-
-function voiceDraftNodeAttributes(
-  node: ProseMirrorNode,
-): VoiceDraftNodeAttributes {
-  const id: unknown = node.attrs.id;
-  const transcript: unknown = node.attrs.transcript;
-  const status: unknown = node.attrs.status;
-  const visible: unknown = node.attrs.visible;
-  if (
-    typeof id !== "string" ||
-    typeof transcript !== "string" ||
-    (status !== "recording" &&
-      status !== "processing" &&
-      status !== "failed") ||
-    typeof visible !== "boolean"
-  ) {
-    throw new Error("Voice draft node attributes are invalid");
-  }
-  return { id, transcript, status, visible };
-}
-
-function voiceDraftActionButton(action: "finish" | "remove") {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.dataset.voiceDraftAction = action;
-  button.className =
-    "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2 " +
-    "text-xs font-medium text-muted-foreground transition-colors " +
-    "hover:bg-background hover:text-foreground focus-visible:outline-none " +
-    "focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none " +
-    "disabled:opacity-50";
-  return button;
-}
-
-function createVoiceDraftNodeView(
-  node: ProseMirrorNode,
-  localizedUi: Set<() => void>,
-): NodeView {
-  const dom = document.createElement("div");
-  dom.contentEditable = "false";
-
-  const heading = document.createElement("div");
-  heading.className = "flex items-center gap-2";
-  const icon = createComposerIcon(15, 1.7, [
-    "M12 2a3 3 0 0 0 -3 3v7a3 3 0 0 0 6 0v-7a3 3 0 0 0 -3 -3z",
-    "M5 10a7 7 0 0 0 14 0",
-    "M8 21h8",
-    "M12 17v4",
-  ]);
-  icon.setAttribute("class", "shrink-0");
-  const title = document.createElement("span");
-  title.className = "text-xs font-semibold";
-  const actions = document.createElement("div");
-  actions.className = "ml-auto flex items-center gap-1";
-  const finishButton = voiceDraftActionButton("finish");
-  const finishIcon = createComposerIcon(13, 1.8, ["M20 6l-11 11l-5 -5"]);
-  const finishLabel = document.createElement("span");
-  finishButton.append(finishIcon, finishLabel);
-  const removeButton = voiceDraftActionButton("remove");
-  removeButton.className = `${removeButton.className} w-7 px-0`;
-  removeButton.append(
-    createComposerIcon(13, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
-  );
-  actions.append(finishButton, removeButton);
-  heading.append(icon, title, actions);
-
-  const transcript = document.createElement("div");
-  transcript.className =
-    "mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words " +
-    "text-sm leading-5 text-foreground/70";
-  dom.append(heading, transcript);
-
-  let currentNode = node;
-  function localize(): void {
-    const attributes = voiceDraftNodeAttributes(currentNode);
-    const draftLabel = i18n.t(($) => {
-      return $.chat.voice.draft;
-    });
-    title.textContent = draftLabel;
-    dom.setAttribute("aria-label", draftLabel);
-    const finishDraft = i18n.t(($) => {
-      return $.chat.voice.finishDraft;
-    });
-    const finishingDraft = i18n.t(($) => {
-      return $.chat.voice.finishingDraft;
-    });
-    finishLabel.textContent =
-      attributes.status === "processing" ? finishingDraft : finishDraft;
-    finishButton.setAttribute("aria-label", finishDraft);
-    finishButton.title = finishDraft;
-    const removeDraft = i18n.t(($) => {
-      return $.chat.voice.removeDraft;
-    });
-    removeButton.setAttribute("aria-label", removeDraft);
-    removeButton.title = removeDraft;
-  }
-  function render(nextNode: ProseMirrorNode): void {
-    currentNode = nextNode;
-    const attributes = voiceDraftNodeAttributes(nextNode);
-    dom.dataset.voiceDraft = attributes.id;
-    dom.dataset.voiceDraftStatus = attributes.status;
-    dom.hidden = !attributes.visible;
-    dom.className =
-      "my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 " +
-      "text-muted-foreground";
-    transcript.textContent = attributes.transcript;
-    finishButton.disabled = attributes.status === "processing";
-    removeButton.disabled = attributes.status === "processing";
-    localize();
-  }
-  localizedUi.add(localize);
-  render(node);
-
-  return {
-    dom,
-    update(nextNode) {
-      if (nextNode.type !== currentNode.type) {
-        return false;
-      }
-      render(nextNode);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof Element &&
-        event.target.closest("button[data-voice-draft-action]") !== null
-      );
-    },
-    ignoreMutation() {
-      return true;
-    },
-    destroy() {
-      localizedUi.delete(localize);
-    },
-  };
-}
-
 interface FeedbackQuoteChip {
   readonly quoteDom: HTMLDivElement;
   readonly quoteText: HTMLSpanElement;
@@ -826,7 +669,8 @@ function buildFeedbackItemChrome(
 // nodes: the placeholder text lives in an attribute and appears via CSS.
 const FEEDBACK_PLACEHOLDER_PARAGRAPH_CLASS =
   "before:pointer-events-none before:float-left before:h-0 " +
-  "before:text-muted-foreground/40 before:content-[attr(data-placeholder)]";
+  "before:text-muted-foreground/80 " +
+  "before:content-[attr(data-placeholder)]";
 
 function buildFeedbackChromeDecorations(
   doc: ProseMirrorNode,
@@ -1409,279 +1253,6 @@ function feedbackItemsFromWorkflowComposer(
   return items;
 }
 
-interface LocatedVoiceDraft {
-  readonly node: ProseMirrorNode;
-  readonly position: number;
-  readonly index: number;
-}
-
-function locateVoiceDraft(
-  document: ProseMirrorNode,
-  id: string,
-): LocatedVoiceDraft | null {
-  let position = 0;
-  for (let index = 0; index < document.childCount; index++) {
-    const node = document.child(index);
-    if (
-      node.type.name === VOICE_DRAFT_NODE_NAME &&
-      voiceDraftNodeAttributes(node).id === id
-    ) {
-      return { node, position, index };
-    }
-    position += node.nodeSize;
-  }
-  return null;
-}
-
-function voiceDraftStatus(document: ProseMirrorNode): VoiceDraftStatus | null {
-  let status: VoiceDraftStatus | null = null;
-  for (let index = 0; index < document.childCount; index++) {
-    const node = document.child(index);
-    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
-      status = voiceDraftNodeAttributes(node).status;
-    }
-  }
-  return status;
-}
-
-function startVoiceDraft(editor: Editor): string {
-  const id = crypto.randomUUID();
-  const node = editor.schema.node(VOICE_DRAFT_NODE_NAME, {
-    id,
-    transcript: "",
-    status: "recording",
-    visible: false,
-  });
-  const position = isEmptyComposerDocument(editor.state.doc)
-    ? 0
-    : editor.state.doc.content.size;
-  editor.view.dispatch(
-    editor.state.tr.insert(position, node).setMeta("addToHistory", false),
-  );
-  return id;
-}
-
-function setVoiceDraftAttributes(
-  editor: Editor,
-  id: string,
-  patch: Partial<VoiceDraftNodeAttributes>,
-): boolean {
-  const located = locateVoiceDraft(editor.state.doc, id);
-  if (!located) {
-    return false;
-  }
-  const current = voiceDraftNodeAttributes(located.node);
-  editor.view.dispatch(
-    editor.state.tr
-      .setNodeMarkup(located.position, undefined, {
-        ...current,
-        ...patch,
-      })
-      .setMeta("addToHistory", false),
-  );
-  return true;
-}
-
-function appendVoiceDraftTranscript(
-  editor: Editor,
-  id: string,
-  value: string,
-): void {
-  const text = value.trim();
-  if (!text) {
-    return;
-  }
-  const located = locateVoiceDraft(editor.state.doc, id);
-  if (!located) {
-    return;
-  }
-  const current = voiceDraftNodeAttributes(located.node);
-  const transcript = current.transcript
-    ? `${current.transcript}\n${text}`
-    : text;
-  if (transcript.length > VOICE_IO_POLISH_MAX_TEXT_CHARS) {
-    setVoiceDraftAttributes(editor, id, {
-      status: "failed",
-      visible: true,
-    });
-    toast.error(
-      i18n.t(($) => {
-        return $.chat.voice.draftTooLong;
-      }),
-    );
-    return;
-  }
-  setVoiceDraftAttributes(editor, id, { transcript });
-}
-
-function removeVoiceDraft(
-  editor: Editor,
-  id: string,
-  addToHistory = true,
-): void {
-  const located = locateVoiceDraft(editor.state.doc, id);
-  if (!located) {
-    return;
-  }
-  const transaction = editor.state.tr.delete(
-    located.position,
-    located.position + located.node.nodeSize,
-  );
-  if (transaction.doc.childCount === 0) {
-    transaction.insert(0, editor.schema.node("paragraph"));
-  }
-  if (!addToHistory) {
-    transaction.setMeta("addToHistory", false);
-  }
-  editor.view.dispatch(transaction.scrollIntoView());
-}
-
-function replaceVoiceDraftWithText(
-  editor: Editor,
-  id: string,
-  text: string,
-  insertAtSelection: boolean,
-): void {
-  // Keep the successful replacement undoable, but make its inverse safe: an
-  // undo restores an actionable raw draft instead of a hidden processing node.
-  setVoiceDraftAttributes(editor, id, {
-    status: "failed",
-    visible: true,
-  });
-  const located = locateVoiceDraft(editor.state.doc, id);
-  if (!located) {
-    return;
-  }
-  if (insertAtSelection) {
-    const { selection } = editor.state;
-    const transaction = editor.state.tr.delete(
-      located.position,
-      located.position + located.node.nodeSize,
-    );
-    const mappedSelection = selection.map(transaction.doc, transaction.mapping);
-    const from = mappedSelection.from;
-    transaction.insertText(text, from, mappedSelection.to);
-    transaction.setSelection(
-      TextSelection.create(transaction.doc, from, from + text.length),
-    );
-    editor.view.dispatch(transaction.scrollIntoView());
-    editor.view.focus();
-    return;
-  }
-  const textDocument = editor.schema.nodeFromJSON(
-    valueToWorkflowComposerDoc(text),
-  );
-  const replacement: ProseMirrorNode[] = [];
-  for (let index = 0; index < textDocument.childCount; index++) {
-    replacement.push(textDocument.child(index));
-  }
-  const onlyVoiceAndEmptyParagraph =
-    editor.state.doc.childCount === 2 &&
-    located.index === 0 &&
-    editor.state.doc.child(1).type.name === "paragraph" &&
-    editor.state.doc.child(1).content.size === 0;
-  const replaceTo = onlyVoiceAndEmptyParagraph
-    ? editor.state.doc.content.size
-    : located.position + located.node.nodeSize;
-  editor.view.dispatch(
-    editor.state.tr
-      .replaceWith(located.position, replaceTo, replacement)
-      .scrollIntoView(),
-  );
-}
-
-function createVoiceDraftSignals(
-  editor: Editor,
-  statusState$: State<VoiceDraftStatus | null>,
-  lastAssistantMessage$: Computed<string | undefined> | undefined,
-): WorkflowComposerVoiceDraftSignals {
-  const hasDraft$ = computed((get): boolean => {
-    return get(statusState$) !== null;
-  });
-  const status$ = computed((get): VoiceDraftStatus | null => {
-    return get(statusState$);
-  });
-  const start$ = command((): string => {
-    return startVoiceDraft(editor);
-  });
-  const appendTranscript$ = command(
-    (_context, id: string, value: string): void => {
-      appendVoiceDraftTranscript(editor, id, value);
-    },
-  );
-  const markFailed$ = command((_context, id: string): void => {
-    setVoiceDraftAttributes(editor, id, {
-      status: "failed",
-      visible: true,
-    });
-  });
-  const remove$ = command((_context, id: string): void => {
-    removeVoiceDraft(editor, id);
-  });
-  const finish$ = command(
-    async (
-      { get },
-      id: string,
-      mode: VoiceDraftFinishMode,
-      signal: AbortSignal,
-    ): Promise<boolean> => {
-      const located = locateVoiceDraft(editor.state.doc, id);
-      if (!located) {
-        return false;
-      }
-      const attributes = voiceDraftNodeAttributes(located.node);
-      if (attributes.status === "processing") {
-        return false;
-      }
-      const text = attributes.transcript.trim();
-      if (!text) {
-        removeVoiceDraft(editor, id, false);
-        return true;
-      }
-      const lastAssistantMessage = lastAssistantMessage$
-        ? get(lastAssistantMessage$)
-        : undefined;
-      setVoiceDraftAttributes(editor, id, {
-        status: "processing",
-        visible: mode === "retry",
-      });
-      const client = get(apiClient$)(voiceIoPolishContract);
-      const body =
-        lastAssistantMessage === undefined
-          ? { text }
-          : { text, lastAssistantMessage };
-      const result = await settle(
-        accept(client.post({ body, fetchOptions: { signal } }), [200], signal),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!result.ok) {
-        setVoiceDraftAttributes(editor, id, {
-          status: "failed",
-          visible: true,
-        });
-        return false;
-      }
-      replaceVoiceDraftWithText(
-        editor,
-        id,
-        result.value.body.text,
-        mode === "automatic",
-      );
-      return true;
-    },
-  );
-  return {
-    hasDraft$,
-    status$,
-    start$,
-    appendTranscript$,
-    markFailed$,
-    finish$,
-    remove$,
-  };
-}
-
 interface LocatedTemplateAttachment {
   readonly node: ProseMirrorNode;
   readonly position: number;
@@ -1806,15 +1377,6 @@ function workflowComposerDocToString(editor: Editor): string {
   for (let index = 0; index < editor.state.doc.childCount; index++) {
     const node = editor.state.doc.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      continue;
-    }
-    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
-      flushTextBlocks();
-      flushFeedbackItems();
-      const { transcript } = voiceDraftNodeAttributes(node);
-      if (transcript.length > 0) {
-        sections.push(transcript);
-      }
       continue;
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
@@ -2018,28 +1580,21 @@ function createInlineTemplateNode(
       return `Select ${attachment.title} ${attachment.type} template`;
     },
     addNodeView() {
-      return ({ node, getPos, editor }) => {
-        const selectSelf = (): boolean => {
+      return ({ node, getPos }) => {
+        const openTemplate = (category: string): void => {
           const position = getPos();
           if (typeof position !== "number") {
-            return false;
+            return;
           }
-          editor.view.dispatch(
-            editor.state.tr.setSelection(
-              NodeSelection.create(editor.state.doc, position),
-            ),
-          );
-          return true;
+          runtime.openTemplate({
+            kind: "edit-selected",
+            category,
+            position,
+          });
         };
         return createInlineTemplateNodeView(
           node,
-          {
-            openTemplate: (category) => {
-              if (selectSelf()) {
-                runtime.openTemplate({ kind: "edit-selected", category });
-              }
-            },
-          },
+          { openTemplate },
           runtime.localizedUi,
         );
       };
@@ -2089,38 +1644,6 @@ function createFeedbackItemNode(
   });
 }
 
-function createVoiceDraftNode(
-  runtime: WorkflowComposerRuntime,
-): Node<undefined, unknown> {
-  return Node.create({
-    name: VOICE_DRAFT_NODE_NAME,
-    group: "block",
-    atom: true,
-    defining: true,
-    isolating: true,
-    selectable: false,
-    addAttributes() {
-      return {
-        id: { default: "" },
-        transcript: { default: "" },
-        status: { default: "failed" },
-        visible: { default: true },
-      };
-    },
-    parseHTML() {
-      return [{ tag: "div[data-voice-draft]" }];
-    },
-    renderHTML({ HTMLAttributes }) {
-      return ["div", { ...HTMLAttributes, "data-voice-draft": "" }];
-    },
-    addNodeView() {
-      return ({ node }) => {
-        return createVoiceDraftNodeView(node, runtime.localizedUi);
-      };
-    },
-  });
-}
-
 function createWorkflowEditor(
   runtime: WorkflowComposerRuntime,
   agentMentionAvatarRuntime: AgentMentionAvatarRuntime,
@@ -2132,7 +1655,6 @@ function createWorkflowEditor(
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
-      createVoiceDraftNode(runtime),
       createAgentMentionNode(
         COMPOSER_INLINE_REFERENCE_CLASS,
         agentMentionAvatarRuntime,
@@ -2199,7 +1721,7 @@ function workflowComposerDocumentForUserMessage(
   editor: Editor,
   value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value);
+  const document = draftToEditorDoc(value);
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
@@ -2351,6 +1873,7 @@ function createSyncAgentMentionAvatarsCommand(
   return command(async ({ get }, signal: AbortSignal): Promise<void> => {
     const agents = await get(agents$);
     signal.throwIfAborted();
+    avatarRuntime.setNeckSweaterEnabled(get(avatarNeckSweaterEnabled$));
     avatarRuntime.replaceAgents(agents);
   });
 }
@@ -2397,7 +1920,6 @@ interface MountEditorOptions {
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
-  voiceDraftStatusState$: State<VoiceDraftStatus | null>;
   feedback: ComposerFeedbackModel;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
@@ -2409,7 +1931,6 @@ interface MountEditorOptions {
 interface WorkflowComposerOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
-  readonly lastAssistantMessage$?: Computed<string | undefined>;
 }
 
 function focusMountedEditorAtEnd(editor: Editor): void {
@@ -2424,14 +1945,12 @@ interface MountedDraftInputSyncTargetOptions {
   editor: Editor;
   runtime: WorkflowComposerRuntime;
   setEditorDocument(snapshot: EditorDocumentSnapshot): void;
-  onDocumentChanged(): void;
 }
 
 function createMountedDraftInputSyncTarget({
   editor,
   runtime,
   setEditorDocument,
-  onDocumentChanged,
 }: MountedDraftInputSyncTargetOptions): DraftInputSyncTarget {
   const syncEditorDocument = () => {
     setEditorDocument(createEditorDocumentSnapshot(editor.state.doc));
@@ -2447,7 +1966,6 @@ function createMountedDraftInputSyncTarget({
       );
       if (changed) {
         runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
-        onDocumentChanged();
         syncEditorDocument();
       }
     },
@@ -2459,7 +1977,6 @@ function createMountedDraftInputSyncTarget({
       const changed = setWorkflowComposerDocument(editor, document);
       if (changed) {
         runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
-        onDocumentChanged();
       }
       syncEditorDocument();
     },
@@ -2475,7 +1992,6 @@ function createMountEditorCommand({
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
-  voiceDraftStatusState$,
   feedback,
   compositionGate,
   syncWorkflowNames$,
@@ -2497,7 +2013,6 @@ function createMountEditorCommand({
         );
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
-        set(voiceDraftStatusState$, voiceDraftStatus(updatedEditor.state.doc));
         compositionGate.notifySettled();
         // Forward TipTap updates through the React-owned DOM boundary.
         element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2533,7 +2048,6 @@ function createMountEditorCommand({
           editorDocument: set(draft.readEditorDocument$),
         }),
       );
-      set(voiceDraftStatusState$, voiceDraftStatus(editor.state.doc));
       set(
         draft.setEditorDocument$,
         createEditorDocumentSnapshot(editor.state.doc),
@@ -2550,9 +2064,6 @@ function createMountEditorCommand({
           setEditorDocument(snapshot) {
             set(draft.setEditorDocument$, snapshot);
             set(legacyTemplateAttachment.sync$);
-          },
-          onDocumentChanged() {
-            set(voiceDraftStatusState$, voiceDraftStatus(editor.state.doc));
           },
         }),
       );
@@ -2572,7 +2083,6 @@ function createMountEditorCommand({
         set(legacyTemplateAttachment.reset$);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
-        set(voiceDraftStatusState$, null);
         editor.unmount();
       });
       await Promise.all([
@@ -2701,8 +2211,39 @@ function createSuggestionInsertionCommands(
 }
 
 function createInsertTextCommands(editor: Editor) {
+  const readVoiceContext$ = command((): VoiceIoEditorContext => {
+    const { doc, selection } = editor.state;
+    const { from, to } = selection;
+    const limit = VOICE_IO_TRANSCRIBE_MAX_EDITOR_CONTEXT_CHARS;
+    const leafText = (node: ProseMirrorNode): string => {
+      if (node.type.name === AGENT_MENTION_NODE_NAME) {
+        const name: unknown = node.attrs.name;
+        if (typeof name !== "string") {
+          throw new Error("Agent mention name is invalid");
+        }
+        return `@${name}`;
+      }
+      if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
+        return `@${chatThreadMentionAttributes(node).title}`;
+      }
+      return node.type.name === "hardBreak" ? "\n" : "";
+    };
+    return {
+      before: doc.textBetween(0, from, "\n", leafText).slice(-limit),
+      selected: doc.textBetween(from, to, "\n", leafText).slice(0, limit),
+      after: doc
+        .textBetween(to, doc.content.size, "\n", leafText)
+        .slice(0, limit),
+    };
+  });
   const insertText$ = command((_context, value: string) => {
-    editor.chain().focus().insertContent(value).run();
+    const { from, to } = editor.state.selection;
+    const transaction = editor.state.tr.insertText(value, from, to);
+    transaction.setSelection(
+      TextSelection.create(transaction.doc, from + value.length),
+    );
+    editor.view.dispatch(transaction.scrollIntoView());
+    editor.view.focus();
   });
   const insertPromptMarkdown$ = command((_context, value: string) => {
     const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
@@ -2777,6 +2318,7 @@ function createInsertTextCommands(editor: Editor) {
   });
 
   return {
+    readVoiceContext$,
     insertText$,
     insertPromptMarkdown$,
     appendText$,
@@ -2919,6 +2461,7 @@ function createTemplateCommands(
       set(legacyReplacementPending$, intent.kind === "edit-legacy");
       let referenceValue: GenerationTemplateRequest | null = null;
       if (intent.kind === "edit-selected") {
+        editor.commands.setNodeSelection(intent.position);
         referenceValue = set(readSelectedTemplate$) ?? null;
       } else if (intent.kind === "edit-legacy") {
         referenceValue = get(draft.generationTemplate$) ?? null;
@@ -3066,7 +2609,6 @@ export function createWorkflowComposerSignals<
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
-  const voiceDraftStatusState$ = state<VoiceDraftStatus | null>(null);
   const runtime = createWorkflowComposerRuntime();
   const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
@@ -3074,11 +2616,6 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
-  const voiceDraft = createVoiceDraftSignals(
-    editor,
-    voiceDraftStatusState$,
-    options.lastAssistantMessage$,
-  );
   connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
@@ -3130,7 +2667,6 @@ export function createWorkflowComposerSignals<
     caretIndex$,
     editorFocusedState$,
     selectedSuggestionIndexState$,
-    voiceDraftStatusState$,
     feedback,
     compositionGate,
     syncWorkflowNames$,
@@ -3174,7 +2710,6 @@ export function createWorkflowComposerSignals<
     ...templateCommands,
     insertUserMessage$,
     readInputForSubmission$,
-    voiceDraft,
     feedback: feedback.signals,
   };
 }

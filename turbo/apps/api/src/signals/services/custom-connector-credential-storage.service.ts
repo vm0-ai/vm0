@@ -9,9 +9,7 @@ import {
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
-import { resolveConnectorAccount } from "./connector-account-resolution.service";
 import { prepareConnectorAccountDeletion } from "./connector-account-lifecycle.service";
-import { lockConnectorAccountTarget } from "./auth-state-lock.service";
 
 export type PreparedCustomConnectorValue =
   | {
@@ -87,45 +85,6 @@ export async function upsertCustomConnectorStoredValues(
     }
     signal.throwIfAborted();
   }
-}
-
-export async function deleteCustomConnectorMemberConnection(
-  db: Tx,
-  args: CustomConnectorMemberConnection,
-  signal: AbortSignal,
-): Promise<"deleted" | "missing" | "ambiguous"> {
-  await lockConnectorAccountTarget(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    target: { kind: "custom", customConnectorId: args.connectorId },
-  });
-  signal.throwIfAborted();
-  const resolution = await resolveConnectorAccount(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    request: {
-      target: { kind: "custom", customConnectorId: args.connectorId },
-      selection: { kind: "target-only-client-singleton" },
-    },
-  });
-  signal.throwIfAborted();
-  if (resolution.kind === "ambiguous") {
-    return "ambiguous";
-  }
-  if (resolution.kind !== "resolved") {
-    return "missing";
-  }
-  await deleteCustomConnectorMemberConnectionById(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorId: args.connectorId,
-      memberConnectorId: resolution.account.connectorId,
-    },
-    signal,
-  );
-  return "deleted";
 }
 
 export async function deleteCustomConnectorMemberConnectionById(

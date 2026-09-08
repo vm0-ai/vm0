@@ -1,5 +1,4 @@
-import { command, state, type Command } from "ccstate";
-import { delay } from "signal-timers";
+import { command, computed, state, type Command } from "ccstate";
 import {
   agentDraftContract,
   agentDraftResponseSchema,
@@ -10,91 +9,57 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { debounceCommand } from "../command-scheduling.ts";
 import { collectSuccessfulAttachmentInfos } from "../chat-page/resolve-draft-attachments.ts";
 import { resetSignal } from "../utils.ts";
 import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
-  type RestorableAttachment,
 } from "./chat-draft.ts";
 import {
   buildDraftPersistencePayload,
   type DraftPersistencePayload,
 } from "./draft-persistence.ts";
 import {
-  messageDocumentToEditorDoc,
+  draftToEditorDoc,
   messageDocumentToPrompt,
+  userMessageDraftAttachments,
+  type RestoredDraftState,
 } from "./user-message-document-codec.ts";
 
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
 
 interface AgentDraftEntry {
   readonly draft: DraftSignals;
+  readonly load$: Command<Promise<void>, [AbortSignal]>;
   readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly cancelDraftSync$: Command<void, []>;
   readonly flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export interface EnsuredAgentDraft extends AgentDraftEntry {
-  readonly isNew: boolean;
-}
-
-interface RestoredAgentDraftState {
-  readonly content: string;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachments: RestorableAttachment[];
-}
+export type EnsuredAgentDraft = AgentDraftEntry;
 
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
-
-function userMessageAgentDraftAttachments(
-  document: UserMessageDocument,
-  attachments: readonly PersistedAttachment[],
-): RestorableAttachment[] {
-  const attachmentById = new Map(
-    attachments.map((attachment) => {
-      return [attachment.id, attachment] as const;
-    }),
-  );
-  return document.parts.flatMap((part) => {
-    if (part.type !== "file") {
-      return [];
-    }
-    const attachment = attachmentById.get(part.fileId);
-    return attachment
-      ? [
-          {
-            ...attachment,
-            ...(part.annotatedFileId
-              ? { annotatedFileId: part.annotatedFileId }
-              : {}),
-            ...(part.annotations ? { annotations: part.annotations } : {}),
-          },
-        ]
-      : [];
-  });
-}
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
   readonly draftAttachments: PersistedAttachment[] | null;
-}): RestoredAgentDraftState | null {
-  const document = args.draftUserMessage;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+}): RestoredDraftState | null {
+  const document = args.draftUserMessage ?? null;
+  if (draftToEditorDoc(document) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = document ? messageDocumentToPrompt(document) : "";
   if (content === null) {
     return null;
   }
   return {
     content,
     userMessage: document,
-    attachments: userMessageAgentDraftAttachments(
-      document,
-      args.draftAttachments ?? [],
-    ),
+    attachments: document
+      ? userMessageDraftAttachments(document, args.draftAttachments ?? [])
+      : [],
   };
 }
 
@@ -118,43 +83,45 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
     },
   );
 
-  const debouncedSyncDraft$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
-      signal.throwIfAborted();
+  const syncDraft$ = command(async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
 
-      const draftAttachments = get(draft.attachments$);
-      const infos = await Promise.allSettled(
-        draftAttachments.map((attachment) => {
-          return get(attachment.fileInfo$);
-        }),
-      );
-      signal.throwIfAborted();
-      const attachments = collectSuccessfulAttachmentInfos(
-        draftAttachments,
-        infos,
-      ).map((result) => {
-        const annotations = get(result.attachment.annotations$);
-        const annotatedFileId = get(result.attachment.annotatedFileId$);
-        return {
-          id: result.info.id,
-          url: result.info.url,
-          filename: result.attachment.filename,
-          contentType: result.info.contentType,
-          size: result.attachment.size,
-          ...(annotatedFileId ? { annotatedFileId } : {}),
-          ...(annotations ? { annotations } : {}),
-        };
-      });
-      const payload = buildDraftPersistencePayload({
-        input: get(draft.input$),
-        editorDocument: set(draft.readEditorDocument$),
-        generationTemplate: get(draft.generationTemplate$),
-        attachments,
-      });
+    const draftAttachments = get(draft.attachments$);
+    const infos = await Promise.allSettled(
+      draftAttachments.map((attachment) => {
+        return get(attachment.fileInfo$);
+      }),
+    );
+    signal.throwIfAborted();
+    const attachments = collectSuccessfulAttachmentInfos(
+      draftAttachments,
+      infos,
+    ).map((result) => {
+      const annotations = get(result.attachment.annotations$);
+      const annotatedFileId = get(result.attachment.annotatedFileId$);
+      return {
+        id: result.info.id,
+        url: result.info.url,
+        filename: result.attachment.filename,
+        contentType: result.info.contentType,
+        size: result.attachment.size,
+        ...(annotatedFileId ? { annotatedFileId } : {}),
+        ...(annotations ? { annotations } : {}),
+      };
+    });
+    const payload = buildDraftPersistencePayload({
+      input: get(draft.input$),
+      editorDocument: set(draft.readEditorDocument$),
+      generationTemplate: get(draft.generationTemplate$),
+      attachments,
+    });
 
-      await set(patchDraft$, payload, signal);
-    },
+    await set(patchDraft$, payload, signal);
+  });
+
+  const debouncedSyncDraft$ = debounceCommand(
+    syncDraft$,
+    DRAFT_SYNC_DEBOUNCE_MS,
   );
 
   const queueDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
@@ -177,8 +144,8 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 export function createAgentDraftSignals(agentId: string): EnsuredAgentDraft {
   const draft = createDraftSignals();
   const sync = createAgentDraftSync(agentId, draft);
-  const entry: AgentDraftEntry = { draft, ...sync };
-  return { ...entry, isNew: true };
+  const load$ = createAgentDraftLoad(agentId, draft, sync.queueDraftSync$);
+  return { draft, load$, ...sync };
 }
 
 export const ensureAgentDraft$ = command(
@@ -186,12 +153,13 @@ export const ensureAgentDraft$ = command(
     const cache = get(agentDraftCache$);
     const existing = cache.get(agentId);
     if (existing) {
-      return { ...existing, isNew: false };
+      return existing;
     }
 
     const created = createAgentDraftSignals(agentId);
     const entry: AgentDraftEntry = {
       draft: created.draft,
+      load$: created.load$,
       queueDraftSync$: created.queueDraftSync$,
       cancelDraftSync$: created.cancelDraftSync$,
       flushDraftClear$: created.flushDraftClear$,
@@ -203,21 +171,26 @@ export const ensureAgentDraft$ = command(
   },
 );
 
-export const loadAgentDraft$ = command(
-  async (
-    { get, set },
-    agentId: string,
-    agentDraft: EnsuredAgentDraft,
-    signal: AbortSignal,
-  ) => {
-    const { draft, isNew } = agentDraft;
-    if (!isNew) {
-      return;
-    }
-
+function createAgentDraftLoad(
+  agentId: string,
+  draft: DraftSignals,
+  queueDraftSync$: AgentDraftEntry["queueDraftSync$"],
+): AgentDraftEntry["load$"] {
+  const revision$ = state(0);
+  const serverDraft$ = computed(async (get) => {
+    get(revision$);
+    const result = await accept(
+      get(apiClient$)(agentDraftContract).get({ params: { id: agentId } }),
+      [200],
+    );
+    return userMessageAgentDraftState(
+      agentDraftResponseSchema.parse(result.body),
+    );
+  });
+  const load$ = command(async ({ get, set }, signal: AbortSignal) => {
     const hasLocalDraft = (): boolean => {
       return (
-        get(draft.input$).trim() !== "" ||
+        get(draft.hasLocalInput$) ||
         get(draft.generationTemplate$) !== undefined ||
         get(draft.attachments$).length > 0
       );
@@ -226,14 +199,16 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const client = get(apiClient$)(agentDraftContract);
-    const result = await accept(
-      client.get({
-        params: { id: agentId },
-        fetchOptions: { signal },
-      }),
-      [200],
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(revision$, (revision) => {
+          return revision + 1;
+        });
+      },
+      { once: true },
     );
+    const restoredDraft = await get(serverDraft$);
     signal.throwIfAborted();
 
     // The composer is interactive while the remote draft loads. Preserve any
@@ -243,8 +218,6 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const response = agentDraftResponseSchema.parse(result.body);
-    const restoredDraft = userMessageAgentDraftState(response);
     if (!restoredDraft) {
       return;
     }
@@ -267,10 +240,11 @@ export const loadAgentDraft$ = command(
       signal,
     );
     if (removedUnavailableAttachments) {
-      await set(agentDraft.queueDraftSync$, signal);
+      await set(queueDraftSync$, signal);
     }
-  },
-);
+  });
+  return load$;
+}
 
 export const clearAgentDraftById$ = command(
   async ({ set }, agentId: string, signal: AbortSignal) => {

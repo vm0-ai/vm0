@@ -123,6 +123,35 @@ metadata, and this contract together. The
 [`test_mitmproxy_websocket_framing.py`](../../crates/runner/mitm-addon/tests/test_mitmproxy_websocket_framing.py)
 suite must continue to pass as the executable framing contract.
 
+## Path normalization work boundary
+
+Path safety validation accepts at most 65,536 input characters and five percent
+decoding passes. Before whole-segment NFKC, each raw or decoded segment must have
+at most 30 consecutive non-starters after compatibility decomposition (NFKD).
+This is the [UAX #15 stream-safe input boundary](https://www.unicode.org/reports/tr15/#Stream_Safe_Text_Format):
+the addon rejects unsupported paths; it does not insert characters or rewrite
+the request path. Already ordered sequences above the limit are rejected too.
+
+The guard decomposes one code point at a time and counts nonzero canonical
+combining classes across decompositions. This catches characters with class zero
+that decompose into marks, as well as multi-mark expansions. It never applies
+NFKD to an unbounded segment. With bounded non-starter runs, the subsequent
+whole-segment NFKC cannot perform unbounded canonical reordering per character.
+The Unicode scan adds linear work; the plain-ASCII fast path is unchanged.
+
+Long starter-separated Unicode paths remain supported within the total limit.
+Existing dot/matrix syntax, malformed escapes, UTF-8, compatibility syntax, and
+decode-depth checks remain in place. Matching rejects over-budget paths with the
+existing `unsafe_path` decision before credentials are resolved. Shared base and
+auth-rewrite URL validation uses the same boundary. During runner rollout, old
+runners retain the previous pathological-input behavior until drained; no wire
+format or persisted data changes.
+
+`test_request_path_normalization_budget.py` exercises both real addon request
+phases, observes the standard-library normalization boundary, and checks denial
+before auth as well as successful unchanged Unicode paths. Correctness tests use
+structural assertions rather than elapsed-time thresholds.
+
 ## Environment Setup
 
 The addon uses uv for dependency management. The supported devcontainer installs
@@ -359,7 +388,6 @@ suites before committing the upgrade.
 | `test_x_response_parsers.py`                            | X connector NDJSON and JSON response parser state and finalization                                                   |
 | `test_model_provider_response_parser_setup.py`          | Model-provider JSON and SSE response parser selection, feeding, and finalization                                     |
 | `test_response_stream_state_release.py`                 | Direct response-stream state release, idempotency, and callback ownership                                            |
-| `test_model_provider_json_fallback.py`                  | Model provider buffered JSON fallback usage pipeline                                                                 |
 | `test_model_provider_json_streaming.py`                 | Model provider streaming JSON response usage pipeline                                                                |
 | `model_provider_sse_usage_helpers.py`                   | Shared model-provider SSE flow, hook-driving, compression, and warning test mechanics                                |
 | `test_model_provider_sse_usage_openai_responses.py`     | OpenAI Responses-shaped model-provider SSE usage pipeline                                                            |

@@ -131,6 +131,8 @@ import { scrapeRoutes } from "./routes/scrape";
 import { peopleSearchRoutes } from "./routes/people-search";
 import { webSearchRoutes } from "./routes/web-search";
 import { socialRoutes } from "./routes/social";
+import { sshConnectionsRoutes } from "./routes/ssh-connections";
+import { runnerSshRoutes } from "./routes/runner-ssh";
 import { browserRoutes } from "./routes/browser";
 import { browserAuthorizationRoutes } from "./routes/browser-authorization";
 import { workflowsRoutes } from "./routes/workflows";
@@ -149,6 +151,7 @@ import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github
 import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
 import { integrationsSlackRoutes } from "./routes/integrations-slack";
 import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
+import { integrationsSlackReadRoutes } from "./routes/integrations-slack-read";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "./routes/integrations-slack-upload-init";
@@ -185,10 +188,13 @@ import { userPreferencesRoutes } from "./routes/user-preferences";
 import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
+import { introVideoAgentRoutes } from "./routes/intro-video-agent";
+import { introVideoPresenterRoutes } from "./routes/intro-video-presenter";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoPolishRoutes } from "./routes/voice-io-polish";
 import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
 import { voiceIoSttRoutes } from "./routes/voice-io-stt";
+import { voiceIoTranscribeRoutes } from "./routes/voice-io-transcribe";
 import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
@@ -292,6 +298,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
   ...avatarVideoRoutes,
+  ...introVideoPresenterRoutes,
+  ...introVideoAgentRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
   ...mailRoutes,
@@ -303,6 +311,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...peopleSearchRoutes,
   ...webSearchRoutes,
   ...socialRoutes,
+  ...sshConnectionsRoutes,
+  ...runnerSshRoutes,
   ...browserRoutes,
   ...browserAuthorizationRoutes,
   ...modelPoliciesRoutes,
@@ -317,6 +327,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...voiceIoPolishRoutes,
   ...voiceIoSpeechRoutes,
   ...voiceIoSttRoutes,
+  ...voiceIoTranscribeRoutes,
   ...webDownloadRoutes,
   ...webFileUrlRoutes,
   ...queuePositionRoutes,
@@ -366,6 +377,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsFeishuFileRoutes,
   ...integrationsSlackRoutes,
   ...integrationsSlackMessageRoutes,
+  ...integrationsSlackReadRoutes,
   ...integrationsFeishuMessageRoutes,
   ...integrationsSlackUploadCompleteRoutes,
   ...integrationsSlackUploadInitRoutes,

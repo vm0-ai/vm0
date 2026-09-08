@@ -1,3 +1,4 @@
+import { classifyPiApiProviderFailure } from "./api-failure";
 import { runPiApiFirstTurn as runPiApiFirstTurnImpl } from "./api-turn";
 import { MemoryPiSession } from "./session-memory";
 import type {
@@ -70,6 +71,7 @@ import type {
   PiMemoryStage1ProviderUsage,
 } from "./stage1-memory";
 export {
+  classifyPiApiProviderFailure,
   PI_MEMORY_STAGE1_RESPONSE_SCHEMA,
   PiMemoryStage1ProviderError,
   projectPiMemoryStage1History,
@@ -147,6 +149,11 @@ export function createPiSessionJsonl(args: {
     id: args.sessionId,
     timestamp: args.timestamp,
   }).toJsonl();
+}
+
+/** Project canonical Pi JSONL into a citation-free user export derivative. */
+export function projectPiSessionJsonlForExport(jsonl: string): string {
+  return MemoryPiSession.fromJsonl(jsonl).toPublicJsonl();
 }
 
 /** Inspect one native Pi JSONL session through a stable structural result. */

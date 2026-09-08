@@ -1,5 +1,5 @@
 import { logger } from "../../lib/log";
-import { generateText } from "../external/openrouter";
+import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
 import { tapError } from "../utils";
 import {
   capGoalObjectiveBriefText,
@@ -8,7 +8,6 @@ import {
 } from "./goal-objective-brief-normalization.service";
 
 const log = logger("api:goal-objective-brief");
-const OBJECTIVE_BRIEF_MODEL = "google/gemini-3.1-flash-lite-preview";
 const OBJECTIVE_CONTEXT_CHAR_CAP = 4000;
 export async function generateGoalObjectiveBrief(
   objective: string,
@@ -16,7 +15,7 @@ export async function generateGoalObjectiveBrief(
   const fallback = fallbackGoalObjectiveBrief(objective);
   const generated = await tapError(
     generateText(
-      OBJECTIVE_BRIEF_MODEL,
+      FAST_PATH_MODEL,
       [
         {
           role: "system",
@@ -28,7 +27,8 @@ export async function generateGoalObjectiveBrief(
           content: `Objective:\n${objective.slice(0, OBJECTIVE_CONTEXT_CHAR_CAP)}`,
         },
       ],
-      80,
+      768,
+      { reasoning: { effort: "low" } },
     ),
     (error) => {
       log.warn("Failed to generate goal objective brief", {

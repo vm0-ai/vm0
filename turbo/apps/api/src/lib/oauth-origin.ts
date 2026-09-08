@@ -5,11 +5,11 @@ const WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
 type HostRole = "api" | "www";
 
-function isVm0Host(hostname: string, role: HostRole): boolean {
+function isTrustedFirstPartyHost(hostname: string, role: HostRole): boolean {
   return (
     (role === "www" &&
       (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
-    hostname === `${role}.vm0.ai` ||
+    hostname === `${role}.okou.ai` ||
     hostname === `${role}.vm6.ai` ||
     hostname.endsWith(`-${role}.vm6.ai`) ||
     hostname === `${role}.vm7.ai` ||
@@ -31,7 +31,9 @@ function isTrustedOrigin(origin: string, role: HostRole): boolean {
     return url.protocol === "http:" || url.protocol === "https:";
   }
 
-  return url.protocol === "https:" && isVm0Host(url.hostname, role);
+  return (
+    url.protocol === "https:" && isTrustedFirstPartyHost(url.hostname, role)
+  );
 }
 
 function isTrustedHostedOrigin(origin: string, role: HostRole): boolean {
@@ -45,7 +47,7 @@ function isTrustedHostedOrigin(origin: string, role: HostRole): boolean {
     url.pathname === "/" &&
     url.search === "" &&
     url.hash === "" &&
-    isVm0Host(url.hostname, role)
+    isTrustedFirstPartyHost(url.hostname, role)
   );
 }
 
@@ -53,7 +55,7 @@ function isTrustedWebOrigin(origin: string): boolean {
   return isTrustedOrigin(origin, "www");
 }
 
-export function getTrustedOAuthWebOrigin(request: Request): string | null {
+function getTrustedOAuthWebOrigin(request: Request): string | null {
   const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
   return webOrigin && isTrustedWebOrigin(webOrigin)
     ? new URL(webOrigin).origin

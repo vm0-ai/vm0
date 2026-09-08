@@ -1,7 +1,7 @@
-import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
+import type { LegacyAvatarSvgConfig } from "./avatar-svg-utils.ts";
 
-/** Preset avatar configurations rendered via SVG layer stacking. */
-export function getAvatarPresets(): readonly AvatarSvgConfig[] {
+/** Legacy preset configurations retained for existing `preset:*` data. */
+export function getAvatarPresets(): readonly LegacyAvatarSvgConfig[] {
   return [
     {
       rotation: 1,

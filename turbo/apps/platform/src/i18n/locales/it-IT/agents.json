@@ -36,22 +36,19 @@
     },
     "create": "Crea avatar personalizzato",
     "description": "Scegli uno stile oppure usa Mescola per una sorpresa.",
-    "intensity": {
-      "chill": "Tranquillo",
-      "hyped": "Carico",
-      "normal": "Normale"
-    },
+    "editDescription": "Ritocca ogni dettaglio oppure usa Mescola per un nuovo look.",
+    "editTitle": "Modifica avatar",
     "nextStep": "Prossimo passo",
     "previousStep": "Passaggio precedente",
     "randomize": "Genera un avatar casuale",
     "shuffleHint": "Mescola — prova un look casuale!",
     "steps": {
-      "angle": "Angolo",
       "color": "Colore",
       "face": "Viso",
       "hair": "Capelli",
       "mood": "Umore",
-      "skin": "Pelle"
+      "skin": "Pelle",
+      "sweater": "Maglione"
     },
     "title": "Dai un volto al tuo agente",
     "use": "Usa questo avatar"
@@ -74,7 +71,6 @@
   "detail": {
     "chatWith": "Chatta con {{agentName}}",
     "defaultDescription": "Il tuo collega IA, pensato per te",
-    "noSelection": "Nessun agente selezionato",
     "notFound": {
       "back": "Torna al team",
       "description": "L'agente \"{{agentId}}\" non esiste o non puoi accedervi.",
@@ -617,8 +613,9 @@
     "resultCount_other": "{{count}} risultati",
     "searchAgents": "Cerca agenti...",
     "searching": "Ricerca in corso...",
-    "searchWorkspace": "Cerca chat, messaggi, flussi di lavoro e artefatti...",
+    "searchWorkspace": "Cerca nello spazio di lavoro...",
     "sections": {
+      "agents": "Agenti",
       "artifacts": "Artefatti",
       "chats": "Chat",
       "messages": "Messaggi",

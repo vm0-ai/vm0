@@ -1,3 +1,0 @@
-ALTER TABLE "org_concurrency_subscriptions" ADD COLUMN "scheduled_slots" integer;--> statement-breakpoint
-ALTER TABLE "org_concurrency_subscriptions" ADD COLUMN "scheduled_change_at" timestamp;--> statement-breakpoint
-ALTER TABLE "org_concurrency_subscriptions" ADD CONSTRAINT "chk_org_concurrency_subscriptions_scheduled_slots" CHECK ("org_concurrency_subscriptions"."scheduled_slots" IS NULL OR "org_concurrency_subscriptions"."scheduled_slots" > 0);

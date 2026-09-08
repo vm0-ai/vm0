@@ -1,1 +1,0 @@
-DROP INDEX "idx_presentation_templates_active_import";

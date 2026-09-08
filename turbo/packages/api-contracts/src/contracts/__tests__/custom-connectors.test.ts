@@ -45,15 +45,6 @@ describe("Custom connector no-auth contracts", () => {
     );
   });
 
-  it("strips the obsolete OAuth setup request field", () => {
-    expect(
-      customConnectorHttpCreateBodySchema.parse({
-        ...httpNone,
-        oauthSetup: "custom",
-      }),
-    ).toStrictEqual(httpNone);
-  });
-
   it.each([
     {
       name: "a secret field",

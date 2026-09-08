@@ -313,7 +313,7 @@ fn collect_metrics(
         .as_ref()
         .and_then(|paths| read_cgroup_cpu_stat(paths.workload()));
     MetricsEntry {
-        ts: guest_common::log::timestamp(),
+        ts: guest_telemetry::log::timestamp(),
         cpu: cpu.busy,
         cpu_steal_percent: cpu.steal,
         scheduled_lag_ms,

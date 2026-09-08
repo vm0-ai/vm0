@@ -5,14 +5,14 @@ struct SystemLogOverrideGuard;
 
 impl SystemLogOverrideGuard {
     fn set(path: &std::path::Path) -> Self {
-        guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+        guest_telemetry::log::set_system_log_file(path.to_string_lossy().as_ref());
         Self
     }
 }
 
 impl Drop for SystemLogOverrideGuard {
     fn drop(&mut self) {
-        guest_common::log::clear_system_log_file();
+        guest_telemetry::log::clear_system_log_file();
     }
 }
 
@@ -1533,22 +1533,6 @@ fn cli_failure_reason_classifies_claude_usage_limit() {
 }
 
 #[test]
-fn cli_failure_reason_classifies_claude_fable_limits() {
-    for message in [
-        "Fable 5 requires usage credits. /model to switch models.",
-        "You've reached your Fable 5 limit. /model to switch models.",
-    ] {
-        let reason = classify_cli_failure_reason(AgentFramework::ClaudeCode, message);
-
-        assert_eq!(
-            reason,
-            Some(FailureReason::UsageLimit),
-            "message: {message}"
-        );
-    }
-}
-
-#[test]
 fn cli_failure_reason_classifies_claude_subscription_access_disabled_as_usage_limit() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
@@ -1674,6 +1658,30 @@ fn cli_termination_is_attached_without_changing_failure_reason() {
     );
     assert_eq!(with_termination.cli_termination, Some(termination));
     assert_eq!(unchanged, diagnostic);
+}
+
+#[test]
+fn execution_timeout_termination_sets_authoritative_failure_reason() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliExecutionError,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(124)
+    .with_failure_reason(FailureReason::ProviderOverloaded);
+    let termination = CliTerminationDiagnostic::new(CliTerminationReason::ExecutionTimeout);
+
+    let with_termination = with_cli_termination(diagnostic, Some(termination));
+
+    assert_eq!(
+        with_termination.failure_class,
+        FailureClass::CliExecutionError
+    );
+    assert_eq!(
+        with_termination.failure_reason,
+        Some(FailureReason::ExecutionTimeout)
+    );
+    assert_eq!(with_termination.cli_termination, Some(termination));
 }
 
 #[test]

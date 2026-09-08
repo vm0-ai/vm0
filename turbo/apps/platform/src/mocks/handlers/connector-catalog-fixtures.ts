@@ -777,27 +777,3 @@ export const testConnectorCatalogCategoryMetadata = {
   ],
   groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
 } satisfies PublicConnectorCatalogCategoryMetadata;
-
-export const composerOverflowConnectorSlugs = [
-  "asana",
-  "box",
-  "cal-com",
-  "cloudflare",
-  "datadog",
-  "dropbox",
-  "gmail",
-  "google-ads",
-  "google-calendar",
-  "google-drive",
-  "google-maps",
-  "google-sheets",
-  "hubspot",
-  "linear",
-  "mailchimp",
-  "meta-ads",
-  "notion",
-  "quickbooks",
-  "tiktok-ads",
-  "youtube",
-  "zoom",
-] satisfies readonly ConnectorSlug[];

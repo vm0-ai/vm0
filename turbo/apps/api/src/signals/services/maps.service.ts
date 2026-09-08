@@ -84,6 +84,7 @@ interface CompleteGoogleMapsResultArgs {
 interface MapsCreditCheckArgs {
   readonly orgId: string;
   readonly userId: string;
+  readonly runId?: string;
   readonly provider?: string;
   readonly category: string;
 }
@@ -304,6 +305,7 @@ export const checkMapsCredits$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
+        runId: args.runId,
         resource: {
           kind: USAGE_KIND,
           provider,
@@ -386,6 +388,7 @@ export const mapsGeocode$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -438,6 +441,7 @@ export const mapsReverseGeocode$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -493,6 +497,7 @@ export const mapsDirections$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         category: billingCategory,
       },
       signal,
@@ -561,6 +566,7 @@ export const mapsPlacesSearch$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         category: billingCategory,
       },
       signal,
@@ -628,6 +634,7 @@ export const mapsPlacesDetails$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         category: billingCategory,
       },
       signal,

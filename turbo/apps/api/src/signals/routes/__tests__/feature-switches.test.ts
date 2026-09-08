@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
@@ -16,21 +17,31 @@ function client() {
 }
 
 describe("/api/feature-switches", () => {
-  it("keeps Office preview enabled for App clients during switch cleanup", async () => {
-    createRouteMocks(context).clerk.session(
-      "user_office_preview_compatibility_test",
-      "org_office_preview_compatibility_test",
+  it("defaults the compact model menu to Bingjie and the staff org while excluding other orgs", async () => {
+    const clerk = createRouteMocks(context).clerk;
+    const headers = { authorization: "Bearer clerk-session" };
+    clerk.session(
+      "user_3EWY21Oe3f15kfs3yYmbGgDb3NV",
+      `org_${randomUUID()}`,
       "org:member",
     );
+    const owner = await accept(client().get({ headers }), [200]);
+    expect(
+      owner.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
+    ).toBeTruthy();
 
-    const current = await accept(
-      client().get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const staffUserId = `user_${randomUUID()}`;
+    clerk.session(staffUserId, "org_3ANttyrbWYJk6JKRSTRLEsbsDLe", "org:member");
+    const staff = await accept(client().get({ headers }), [200]);
+    expect(
+      staff.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
+    ).toBeTruthy();
 
-    expect(current.body.effectiveSwitches.officeDocumentPreview).toBeTruthy();
+    clerk.session(staffUserId, `org_${randomUUID()}`, "org:member");
+    const nonStaffOrg = await accept(client().get({ headers }), [200]);
+    expect(
+      nonStaffOrg.body.effectiveSwitches[FeatureSwitchKey.ModelPickerMenu],
+    ).toBeFalsy();
   });
 
   it("persists and activates a user override for a non-staff org", async () => {

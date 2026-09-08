@@ -1,2 +1,0 @@
-ALTER TABLE "chat_events" ADD CONSTRAINT "chat_events_input_context_type_check" CHECK ("chat_events"."event_type" NOT IN ('input.prompt', 'input.automation', 'input.goal')
-          OR "chat_events"."context_type" IS NOT NULL);

@@ -12,6 +12,7 @@ import { unified, type PluggableList } from "unified";
 import { SKIP, visit } from "unist-util-visit";
 
 import {
+  collectText,
   MARKDOWN_MERMAID_FENCE_ATTRIBUTE,
   rehypeMermaid,
 } from "../rehype-mermaid.ts";
@@ -278,21 +279,6 @@ const VALID_HTML_TAGS: ReadonlySet<string> = new Set([
   "polygon",
   "g",
 ]);
-
-function collectText(node: unknown): string {
-  const candidate = node as {
-    type?: string;
-    value?: string;
-    children?: unknown[];
-  };
-  if (candidate.type === "text" && typeof candidate.value === "string") {
-    return candidate.value;
-  }
-  if (Array.isArray(candidate.children)) {
-    return candidate.children.map(collectText).join("");
-  }
-  return "";
-}
 
 const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   // Raw HTML written at the top level of a document lands directly under the

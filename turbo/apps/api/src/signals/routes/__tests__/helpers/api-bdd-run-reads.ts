@@ -40,10 +40,10 @@ interface RunsListQuery {
   readonly until?: string;
   readonly limit?: number;
 }
-type ZeroAgentEventsQuery = z.input<
+type AgentEventsQuery = z.input<
   (typeof runAgentEventsContract.getAgentEvents)["query"]
 >;
-type ZeroNetworkLogsQuery = z.input<
+type NetworkLogsQuery = z.input<
   (typeof runNetworkLogsContract.getNetworkLogs)["query"]
 >;
 type LogsListQuery = z.input<(typeof logsListContract.list)["query"]>;
@@ -157,7 +157,7 @@ export function createRunReadsApi(context: TestContext) {
     >(
       actor: ApiTestUser | null,
       runId: string,
-      query: ZeroAgentEventsQuery,
+      query: AgentEventsQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(
@@ -177,7 +177,7 @@ export function createRunReadsApi(context: TestContext) {
     >(
       actor: ApiTestUser | null,
       runId: string,
-      query: ZeroNetworkLogsQuery,
+      query: NetworkLogsQuery,
       statuses: readonly TStatus[],
     ) {
       return await accept(
@@ -235,7 +235,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    /** Lists logs with a raw bearer credential (run-scoped zero token). */
+    /** Lists logs with a raw bearer credential (Okou run token). */
     async requestListLogsAs<TStatus extends 200 | 401 | 403>(
       authorization: string,
       query: LogsListQuery,
@@ -264,7 +264,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    /** Reads one log detail with a raw bearer credential (zero token). */
+    /** Reads one log detail with a raw bearer credential (Okou run token). */
     async requestReadLogByIdAs<TStatus extends 200 | 401 | 403 | 404>(
       authorization: string,
       runId: string,

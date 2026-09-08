@@ -4,10 +4,6 @@ import {
   CAPABILITIES,
   Capability,
 } from "@okouai/api-contracts/contracts/capabilities";
-import {
-  publicBrandSchema,
-  type PublicBrand,
-} from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";
@@ -31,6 +27,7 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
+  ["slack:read", FeatureSwitchKey.SlackRead],
 ] as const satisfies readonly (readonly [Capability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -38,7 +35,6 @@ const AGENT_EXCLUDED_CAPABILITIES = [
 ] as const satisfies readonly Capability[];
 
 interface OkouTokenOptions {
-  readonly publicBrand?: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
@@ -79,9 +75,6 @@ const okouTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: agentCapabilitiesSchema,
-  // The public brand is presentation-only. Tokens from before this claim and
-  // intentionally unbranded callers keep the permanent VM0 presentation.
-  publicBrand: publicBrandSchema.optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
   customConnectorSourceIds: z
@@ -102,22 +95,11 @@ const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
   jobId: z.string().min(1),
 });
 
-// The `zero` scope is retired and no issuer produces it any more. The shape
-// stays reachable through the test signer alone so verification tests can
-// prove a legacy token is rejected.
-type RetiredZeroScopePayload = Omit<
-  z.input<typeof okouTokenPayloadSchema>,
-  "scope"
-> & {
-  readonly scope: "zero";
-};
-
 type JwtPayloadInput =
   | z.input<typeof sandboxTokenPayloadSchema>
   | z.input<typeof okouTokenPayloadSchema>
   | z.input<typeof cliTokenPayloadSchema>
-  | z.input<typeof composeJobTokenPayloadSchema>
-  | RetiredZeroScopePayload;
+  | z.input<typeof composeJobTokenPayloadSchema>;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
@@ -279,7 +261,6 @@ export function verifyOkouToken(token: string): AgentAuth | null {
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
     capabilities: parsed.data.capabilities,
-    publicBrand: parsed.data.publicBrand ?? "vm0",
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
@@ -375,7 +356,6 @@ function buildOkouTokenClaims(
     runId,
     orgId,
     capabilities,
-    publicBrand: options?.publicBrand ?? "vm0",
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

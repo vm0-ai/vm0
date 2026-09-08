@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { delay, timeout } from "signal-timers";
+import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -170,6 +170,26 @@ export function throwIfAbort(e: unknown) {
  * Parse JSON with a fallback value for untrusted input (e.g. localStorage).
  * Re-throws abort errors; swallows parse errors and returns `fallback`.
  */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function isNonArrayRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
+}
+
+export function stringProperty(
+  value: Record<string, unknown>,
+  property: string,
+): string | undefined {
+  const candidate = value[property];
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : undefined;
+}
+
 export function jsonParseOr<T>(value: string, fallback: T): T {
   // We must use this approach to silence the exception here. This is because
   // the function itself is designed to help the caller avoid having to handle
@@ -228,20 +248,21 @@ export async function tapError<T>(
 }
 
 /**
- * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
- * Use as a `.catch(handler)` replacement when the caller needs to run a
- * cleanup side effect before the rejection propagates. `fn` runs on abort by
- * design so cleanup still happens when the page is cancelled, which is why
- * `ccstate/no-catch-abort` cannot apply to this file.
+ * Await a promise or invoke a factory and call `fn` on any rejection (including
+ * synchronous throws and abort), then re-throw. Use as a `.catch(handler)`
+ * replacement when the caller needs to run a side effect before the rejection
+ * propagates. `fn` runs on abort by design so cleanup still happens when the
+ * page is cancelled, which is why `ccstate/no-catch-abort` cannot apply to this
+ * file.
  */
 export async function onRejection<T>(
-  p: Promise<T>,
+  operation: Promise<T> | (() => Promise<T> | T),
   fn: (error: unknown) => unknown,
 ): Promise<T> {
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
-    return await p;
+    return await (typeof operation === "function" ? operation() : operation);
   } catch (error) {
     await fn(error);
     throw error;
@@ -371,7 +392,7 @@ async function waitForFibonacciRetry(
   signal: AbortSignal,
 ): Promise<void> {
   const delayMs = fibonacciRetryDelayMs(retryIndex);
-  await (IN_VITEST ? waitForNextMacrotask(signal) : delay(delayMs, { signal }));
+  await delay(IN_VITEST ? 0 : delayMs, { signal });
   signal.throwIfAborted();
 }
 
@@ -408,13 +429,9 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      // In VITEST, yield to the macrotask queue so React can flush renders
-      // between iterations. Using Promise.resolve() only queues a microtask,
-      // which starves React's render cycle. The callback timer avoids
-      // signal-timers' delay Promise.race while still honoring the loop signal.
-      await (IN_VITEST
-        ? waitForNextMacrotask(signal)
-        : delay(interval, { signal }));
+      // Keep yielding to the macrotask queue in tests so React can flush renders
+      // between iterations, without waiting for the production interval.
+      await delay(IN_VITEST ? 0 : interval, { signal });
     } catch (error) {
       throwIfAbort(error);
       if (
@@ -435,20 +452,6 @@ export async function setLoop(
       fibIndex++;
     }
   }
-}
-
-function waitForNextMacrotask(signal: AbortSignal): Promise<void> {
-  const deferred = createDeferredPromise<void>(signal);
-  if (!signal.aborted) {
-    timeout(
-      () => {
-        deferred.resolve(undefined);
-      },
-      0,
-      { signal },
-    );
-  }
-  return deferred.promise;
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {

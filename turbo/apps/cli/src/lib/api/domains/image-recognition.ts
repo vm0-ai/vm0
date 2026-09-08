@@ -12,7 +12,7 @@ export async function callImageRecognition(
 ): Promise<ImageRecognitionResponse> {
   const config = await getClientConfig();
   const client = initClient(imageRecognitionContract, config);
-  const result = await client.recognize({ headers: {}, body });
+  const result = await client.imageRecognition({ headers: {}, body });
   if (result.status === 200) {
     return result.body;
   }

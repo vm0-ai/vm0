@@ -275,14 +275,24 @@ export function ChatVideoPreviewButton({
 }
 
 /**
- * The body cards an event's markdown tree can stand a slot on. `MarkdownCardView`
- * is the single dispatch the markdown renderer uses for `data.card` nodes.
+ * Renders action slots and explicit artifact preview cards. Artifact links and
+ * image tiles keep their own Markdown renderers while sharing these signals.
  */
-export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
+export function MarkdownCardView({
+  card,
+  label,
+}: {
+  card: MarkdownCardRef;
+  label?: string;
+}) {
   switch (card.kind) {
     case "artifact": {
       return (
-        <ArtifactCardView signals={card.signals} threadId={card.threadId} />
+        <ArtifactCardView
+          signals={card.signals}
+          threadId={card.threadId}
+          label={label}
+        />
       );
     }
     case "connector-action": {
@@ -318,9 +328,11 @@ export function MarkdownCardView({ card }: { card: MarkdownCardRef }) {
 function ArtifactCardView({
   signals,
   threadId,
+  label,
 }: {
   signals: ArtifactSignals;
   threadId: string;
+  label?: string;
 }) {
   const { t } = useTranslation();
   const openFileLightbox = useSet(openAttachmentFileLightbox$);
@@ -391,7 +403,7 @@ function ArtifactCardView({
   return (
     <AttachmentPreview
       attachment={{
-        filename: signals.filename,
+        filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,
         contentType: contentTypeForBodyPreviewKind(signals.kind),
         ...(previewImagePending ? { previewImagePending: true } : {}),
@@ -416,7 +428,7 @@ function UnavailableActionCard() {
   return (
     <div
       data-testid="unavailable-action-card"
-      className="zero-chat-card flex min-h-[88px] w-full items-center gap-3 p-3 text-left"
+      className="okou-chat-card flex min-h-[88px] w-full items-center gap-3 p-3 text-left"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
         <AlertCircle size={22} />
@@ -442,7 +454,7 @@ function ConnectorActionCardSkeleton() {
     <Skeleton
       data-testid="connector-action-card-loading"
       className={cn(
-        "w-full rounded-[var(--zero-card-radius)]",
+        "w-full rounded-[var(--okou-card-radius)]",
         CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
       )}
     />
@@ -565,7 +577,7 @@ function ComputerUseAuthorizationCard({
   return (
     <div
       data-testid="computer-use-authorization-card"
-      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
+      className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
@@ -611,7 +623,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   return (
     <div
       data-testid="plan-upgrade-card"
-      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
+      className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
@@ -1225,7 +1237,7 @@ function PermissionActionCardContent({
   return (
     <div
       data-testid="permission-action-card"
-      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
+      className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">

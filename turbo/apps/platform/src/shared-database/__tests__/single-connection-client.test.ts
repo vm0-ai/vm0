@@ -1,65 +1,74 @@
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
-import {
-  createChildAbortController,
-  createDeferredPromise,
-} from "../../signals/utils.ts";
+import { createChildAbortController } from "../../signals/utils.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
 } from "../bridge.ts";
-import {
-  parseComputedValue,
-  type ComputedKey,
-  type ComputedValue,
-} from "../computed-key.ts";
+import type { ComputedKey, ComputedValue } from "../computed-key.ts";
 import type {
   SharedDatabaseDataKey,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import {
-  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
-  type SharedDatabaseConnectionStatus,
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseRealtimeMessage,
+  SharedDatabaseRealtimeScope,
 } from "../protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../single-connection-client.ts";
 
-class FakeBridge implements SharedDatabaseBridge {
-  readonly registrationSignals: AbortSignal[] = [];
-  queryCalls = 0;
-  queryError: Error | null = null;
-  pendingQuery = false;
+const axiomTelemetry = vi.hoisted(() => {
+  return {
+    ingest:
+      vi.fn<
+        (dataset: string, events: readonly Record<string, unknown>[]) => void
+      >(),
+  };
+});
 
-  registerTab(signal: AbortSignal): Promise<void> {
-    this.registrationSignals.push(signal);
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: class {
+      ingest(
+        dataset: string,
+        events: readonly Record<string, unknown>[],
+      ): void {
+        axiomTelemetry.ingest(dataset, events);
+      }
+    },
+  };
+});
+
+class FakeBridge implements SharedDatabaseBridge {
+  queryCalls = 0;
+
+  registerTab(): Promise<void> {
     return Promise.resolve();
   }
 
+  subscribeRealtime(
+    _subscriptionId: string,
+    _scope: SharedDatabaseRealtimeScope,
+    _topic: string,
+    _listener: (message: SharedDatabaseRealtimeMessage) => void,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  unsubscribeRealtime(_subscriptionId: string): void {}
+
   getComputed<TKey extends ComputedKey>(
-    computedKey: TKey,
+    _computedKey: TKey,
   ): Promise<ComputedValue<TKey>> {
-    const value =
-      computedKey === "chat-thread-indicators"
-        ? { agents: {}, threads: {} }
-        : [];
-    return Promise.resolve(parseComputedValue(computedKey, value));
+    return Promise.reject(new Error("Computed data is not configured"));
   }
 
   query<TKey extends SharedDatabaseDataKey>(
     _query: SharedDatabaseQuery<TKey>,
-    signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     this.queryCalls += 1;
-    if (this.queryError) {
-      const error = this.queryError;
-      this.queryError = null;
-      return Promise.reject(error);
-    }
-    if (this.pendingQuery) {
-      return createDeferredPromise<SharedDatabaseQueryResult<TKey>>(signal)
-        .promise;
-    }
     return Promise.resolve([] as SharedDatabaseQueryResult<TKey>);
   }
 }
@@ -67,27 +76,20 @@ class FakeBridge implements SharedDatabaseBridge {
 const context = testContext();
 
 function dataKey(): SharedDatabaseDataKey {
-  return { kind: "chat-event", threadId: "single-connection-thread" };
-}
-
-function clientNotConnectedError(): Error {
-  const error = new Error("Shared database client is not connected");
-  error.name = SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME;
-  return error;
-}
-
-function createEvents(
-  statuses: SharedDatabaseConnectionStatus[] = [],
-): SharedDatabaseBridgeEvents {
   return {
+    kind: "chat-event",
+    threadId: "single-connection-thread",
+  };
+}
+
+function createEvents(): SharedDatabaseBridgeEvents {
+  return {
+    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
+    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
-    chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
-    reloadRequired: vi.fn<() => void>(),
-    statusChanged: (status) => {
-      statuses.push(status);
-    },
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
+    statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
 }
 
@@ -99,100 +101,99 @@ function query() {
   };
 }
 
-describe("single-connection shared database bridge", () => {
-  it("prepares one transport and registers the tab once", async () => {
-    const bridges: FakeBridge[] = [];
-    const statuses: SharedDatabaseConnectionStatus[] = [];
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events: createEvents(statuses),
-    });
-    const owner = createChildAbortController(context.signal);
+function configureClientTelemetry(url: string, token: string): void {
+  vi.stubEnv("VITE_AXIOM_CLIENT_TELEMETRY_TOKEN", token);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      vi.unstubAllEnvs();
+    },
+    { once: true },
+  );
+  context.mocks.browser.url(url);
+  axiomTelemetry.ingest.mockClear();
+}
 
-    await bridge.prepare(owner.signal);
-
-    expect(bridges).toHaveLength(1);
-    expect(bridges[0]!.registrationSignals).toStrictEqual([]);
-    expect(statuses).toStrictEqual(["connecting"]);
-
-    await bridge.registerTab(owner.signal);
-
-    expect(bridges).toHaveLength(1);
-    expect(bridges[0]!.registrationSignals).toHaveLength(1);
-    owner.abort();
+async function createRegisteredBridge(): Promise<{
+  readonly bridge: SingleConnectionSharedDatabaseBridge;
+  readonly bridges: readonly FakeBridge[];
+  readonly owner: AbortController;
+}> {
+  const bridges: FakeBridge[] = [];
+  const bridge = new SingleConnectionSharedDatabaseBridge({
+    createBridge: () => {
+      const created = new FakeBridge();
+      bridges.push(created);
+      return created;
+    },
+    events: createEvents(),
   });
+  const owner = createChildAbortController(context.signal);
+  await bridge.registerTab(owner.signal);
+  return { bridge, bridges, owner };
+}
 
-  it("requests a reload when transport construction fails", async () => {
-    const statuses: SharedDatabaseConnectionStatus[] = [];
-    const events = createEvents(statuses);
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        throw new Error("SharedWorker construction failed");
+test("Reports production shared worker queries without entity identifiers", async () => {
+  configureClientTelemetry("https://app.okou.ai/", "xaat-test-ingest-token");
+  const { bridge, bridges, owner } = await createRegisteredBridge();
+  const sensitiveThreadId = `private-thread-${crypto.randomUUID()}`;
+
+  await expect(
+    bridge.query(
+      {
+        dataKey: { kind: "chat-event", threadId: sensitiveThreadId },
+        afterSeqId: 42,
+        consistency: "cache-only",
       },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
+      owner.signal,
+    ),
+  ).resolves.toStrictEqual([]);
 
-    const registration = bridge.registerTab(owner.signal);
-    await vi.waitFor(() => {
-      expect(events.reloadRequired).toHaveBeenCalledOnce();
-    });
-
-    expect(statuses).toStrictEqual(["connecting"]);
-    owner.abort(new DOMException("App unloaded", "AbortError"));
-    await expect(registration).rejects.toMatchObject({ name: "AbortError" });
+  expect(bridges[0]?.queryCalls).toBe(1);
+  await vi.waitFor(() => {
+    expect(axiomTelemetry.ingest).toHaveBeenCalledOnce();
   });
-
-  it("requests a reload after the registered port expires", async () => {
-    const bridges: FakeBridge[] = [];
-    const events = createEvents();
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
-    await bridge.registerTab(owner.signal);
-    bridges[0]!.queryError = clientNotConnectedError();
-
-    const pendingQuery = bridge.query(query(), owner.signal);
-    await vi.waitFor(() => {
-      expect(events.reloadRequired).toHaveBeenCalledOnce();
-    });
-
-    expect(bridges[0]!.queryCalls).toBe(1);
-    owner.abort(new DOMException("App unloaded", "AbortError"));
-    await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
+  const [dataset, events] = axiomTelemetry.ingest.mock.calls[0]!;
+  expect(dataset).toBe("vm0-client-telemetry-prod");
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    "attributes.custom": {
+      "okou.client.outcome": "success",
+      "okou.client.runtime": "window",
+    },
+    kind: "client",
+    name: "chat-event.cache-only",
+    "resource.deployment.environment.name": "production",
+    "scope.name": "okou-app/shared-worker-query",
+    "service.name": "Okou-app",
+    "service.version": "0.540.0",
+    "status.code": "OK",
   });
+  expect(events[0]?.duration).toStrictEqual(expect.any(Number));
+  expect(JSON.stringify(events[0])).not.toContain(sensitiveThreadId);
+  expect(events[0]).not.toHaveProperty("after_seq_id");
+  expect(events[0]).not.toHaveProperty("resource.custom");
+});
 
-  it("does not reload when a query caller aborts", async () => {
-    const bridges: FakeBridge[] = [];
-    const events = createEvents();
-    const bridge = new SingleConnectionSharedDatabaseBridge({
-      createBridge: () => {
-        const created = new FakeBridge();
-        bridges.push(created);
-        return created;
-      },
-      events,
-    });
-    const owner = createChildAbortController(context.signal);
-    const caller = createChildAbortController(context.signal);
-    await bridge.registerTab(owner.signal);
-    bridges[0]!.pendingQuery = true;
+test("Does not report preview shared worker queries", async () => {
+  configureClientTelemetry(
+    "https://pr-123-app.omby.ai/",
+    "xaat-test-ingest-token",
+  );
+  const { bridge, bridges, owner } = await createRegisteredBridge();
 
-    const pendingQuery = bridge.query(query(), caller.signal);
-    caller.abort(new DOMException("Query cancelled", "AbortError"));
+  await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
 
-    await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
-    expect(events.reloadRequired).not.toHaveBeenCalled();
-    owner.abort();
-  });
+  expect(bridges[0]?.queryCalls).toBe(1);
+  expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
+});
+
+test("Does not report shared worker queries without a token", async () => {
+  configureClientTelemetry("https://app.okou.ai/", "");
+  const { bridge, bridges, owner } = await createRegisteredBridge();
+
+  await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
+
+  expect(bridges[0]?.queryCalls).toBe(1);
+  expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
 });

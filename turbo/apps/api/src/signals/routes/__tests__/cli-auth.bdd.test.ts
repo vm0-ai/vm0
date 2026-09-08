@@ -12,11 +12,13 @@ import {
   makeCodexJwt,
 } from "./helpers/api-bdd-auth-device";
 import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const support = createAuthDeviceSupportApi(context);
+const connectors = createConnectorBddApi(context);
 
 const DEVICE_CODE_EXPIRY_MS = 16 * 60 * 1000;
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
@@ -528,8 +530,16 @@ describe("CLI-TEST: test-connector", () => {
       connectorSlug: "test-oauth",
       orgId: actor.orgId,
     });
-    const apiState = await support.readConnectorBySlug(actor, "test-oauth");
-    expect(apiState.authMethod).toBe("api");
+    const accounts = await connectors.listBuiltinConnectorAccounts(
+      actor,
+      "test-oauth",
+    );
+    expect(accounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: oauthState.id, authMethod: "oauth" }),
+        expect.objectContaining({ authMethod: "api" }),
+      ]),
+    );
 
     await authDevice.requestTestConnector(
       { email: "custom@test.com" },
@@ -1008,6 +1018,7 @@ describe("CLI-TEST: test-codex-oauth", () => {
   });
 
   it("maps invalid pasted auth.json inputs to endpoint errors", async () => {
+    expect.hasAssertions();
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
 

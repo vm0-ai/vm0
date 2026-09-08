@@ -29,7 +29,11 @@ export interface PiApiFirstTurnActivation {
   };
 }
 
-export const PI_API_FIRST_TURN_TIMEOUT_MS = 45_000;
+export const PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS = 45_000;
+const PI_API_FIRST_TURN_HANDOFF_SETTLEMENT_TIMEOUT_MS = 10_000;
+export const PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS =
+  PI_API_FIRST_TURN_API_OWNERSHIP_TIMEOUT_MS +
+  PI_API_FIRST_TURN_HANDOFF_SETTLEMENT_TIMEOUT_MS;
 export const PI_API_FIRST_TURN_URL_TTL_SECONDS = 6 * 60 * 60;
 
 export function requirePiApiFirstTurnExecutionContext(
@@ -51,6 +55,7 @@ export function requirePiApiFirstTurnExecutionContext(
 ): PiApiFirstTurnActivation["executionContext"] {
   if (
     context.apiStartTime === undefined ||
+    context.billableFirewalls === undefined ||
     context.piLaunchConfig === undefined ||
     context.piModelConfig === undefined ||
     context.piSessionId === undefined
@@ -59,11 +64,7 @@ export function requirePiApiFirstTurnExecutionContext(
   }
   return {
     apiStartTime: context.apiStartTime,
-    // A pre-#31157 API can leave this stored billing snapshot absent during its
-    // rollback window and the two-hour runner/Sandbox drain plus finalization.
-    // Treat that old context as non-billable; remove after production proves no
-    // executable Pi context omits the field. Follow-up: #31161.
-    billableFirewalls: context.billableFirewalls ?? [],
+    billableFirewalls: context.billableFirewalls,
     encryptedSecrets: context.encryptedSecrets,
     environment: context.environment,
     modelUsageProvider: context.modelUsageProvider,
@@ -104,7 +105,9 @@ export function refreshPiApiFirstTurnDeadline<
       ...launchConfig,
       apiFirstTurn: {
         ...slot,
-        deadlineAt: apiStartTime + PI_API_FIRST_TURN_TIMEOUT_MS,
+        // The wire deadline is the absolute API-to-Sandbox coordination cap.
+        // API ownership ends earlier and is derived from apiStartTime.
+        deadlineAt: apiStartTime + PI_API_FIRST_TURN_COORDINATION_TIMEOUT_MS,
       },
     },
   } as T;

@@ -20,14 +20,17 @@ function webHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
+async function setPresentationTemplatesEnabled(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
   if (!actor.orgId) {
     throw new Error("Presentation template tests require an organization");
   }
   await updateFeatureSwitchesForUser(
     context,
     { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.PresentationTemplates]: true },
+    { [FeatureSwitchKey.PresentationTemplates]: enabled },
   );
 }
 
@@ -42,14 +45,21 @@ beforeEach(() => {
 });
 
 describe("presentation template owner routes", () => {
-  it("keeps the owner collection behind the feature switch", async () => {
+  it("enables the owner collection by default and respects explicit overrides", async () => {
     const actor = bdd.user();
     mocks.clerk.session(actor.userId, actor.orgId);
     const client = templateClient();
 
+    const defaultResponse = await accept(
+      client.list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(defaultResponse.body).toStrictEqual([]);
+
+    await setPresentationTemplatesEnabled(actor, false);
     await accept(client.list({ headers: webHeaders() }), [403]);
 
-    await enablePresentationTemplates(actor);
+    await setPresentationTemplatesEnabled(actor, true);
     const response = await accept(
       client.list({ headers: webHeaders() }),
       [200],
@@ -59,16 +69,15 @@ describe("presentation template owner routes", () => {
 
   it("does not expose an unknown template through owner routes", async () => {
     const actor = bdd.user();
-    await enablePresentationTemplates(actor);
     mocks.clerk.session(actor.userId, actor.orgId);
     const client = templateClient();
     const templateId = randomUUID();
 
-    await accept(
+    const readResponse = await accept(
       client.get({ headers: webHeaders(), params: { templateId } }),
       [404],
     );
-    await accept(
+    const updateResponse = await accept(
       client.update({
         headers: webHeaders(),
         params: { templateId },
@@ -76,9 +85,21 @@ describe("presentation template owner routes", () => {
       }),
       [404],
     );
-    await accept(
+    const deleteResponse = await accept(
       client.delete({ headers: webHeaders(), params: { templateId } }),
       [404],
     );
+
+    const notFoundBody = {
+      error: {
+        message: `Presentation template not found: ${templateId}`,
+        code: "NOT_FOUND",
+      },
+    };
+    expect([
+      readResponse.body,
+      updateResponse.body,
+      deleteResponse.body,
+    ]).toStrictEqual([notFoundBody, notFoundBody, notFoundBody]);
   });
 });

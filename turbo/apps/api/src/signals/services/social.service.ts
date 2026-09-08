@@ -801,6 +801,7 @@ export const socialKitRequest$ = command(
       {
         orgId: args.auth.orgId,
         userId: args.auth.userId,
+        runId: runIdForUsage(args.auth),
         resource: preflightResource,
         label: "Okou SocialKit",
       },

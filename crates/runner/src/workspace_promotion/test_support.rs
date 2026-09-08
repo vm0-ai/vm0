@@ -1,5 +1,9 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use guest_contracts::session_history_identity::{
+    SessionHistoryFramework, SessionHistoryIdentity, SessionHistoryRefKind, SessionHistorySourceRef,
+};
 use sandbox::SandboxId;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use crate::ids::RunId;
@@ -15,6 +19,31 @@ use crate::workspace_image_cache::{
 pub(crate) const TEST_COMPLETED_AT: &str = "2026-06-03T00:00:00.000Z";
 const TEST_WORKSPACE_IMAGE: &[u8] = b"workspace image";
 pub(crate) const TEST_WORKSPACE_IMAGE_SIZE_BYTES: u64 = TEST_WORKSPACE_IMAGE.len() as u64;
+
+pub(crate) fn test_restored_session_identity(
+    session_id: &str,
+    history: &[u8],
+) -> RestoredSessionIdentity {
+    let metadata = SessionHistoryIdentity::new(
+        SessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        SessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        SessionHistorySourceRef::ClaudeCode {
+            config_dir: "/home/user/.claude".to_string(),
+            working_dir: CANONICAL_WORKING_DIR.to_string(),
+            session_id: session_id.to_string(),
+        },
+    )
+    .unwrap();
+    RestoredSessionIdentity::from_final_metadata(
+        metadata,
+        "/home/user/.vm0/guest-agent/runs/run-1/final-session-history-identity.json",
+        "/home/user/.vm0/guest-agent/runs/run-1",
+    )
+    .unwrap()
+}
 
 pub(crate) struct WorkspacePromotionFixture {
     pub(crate) _dir: Arc<tempfile::TempDir>,
@@ -50,7 +79,7 @@ impl WorkspacePromotionFixture {
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = WorkspaceImageCache::new(paths.clone())
-            .with_session_history_sidecar_export_capacity_for_test(export_capacity);
+            .with_promotion_capacity_for_test(export_capacity);
 
         Self::new_with_cache(dir, cache, reuse_key, restored_session_identity).await
     }

@@ -156,12 +156,14 @@ async function expectErrorResponse(
 
 describe("GET /api/web/download-file", () => {
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const response = await requestDownload({ fileId: "abc" });
 
     await expectErrorResponse(response, 401, "UNAUTHORIZED");
   });
 
   it("returns 403 for an agent token without file:read capability", async () => {
+    expect.hasAssertions();
     const token = mintOkouToken({
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
@@ -174,6 +176,7 @@ describe("GET /api/web/download-file", () => {
   });
 
   it("returns 400 when file_id query param is missing", async () => {
+    expect.hasAssertions();
     const { token } = await mintFileReadToken();
 
     const response = await requestDownload({ token });
@@ -182,6 +185,7 @@ describe("GET /api/web/download-file", () => {
   });
 
   it("returns 400 when file_id query param is empty", async () => {
+    expect.hasAssertions();
     const { token } = await mintFileReadToken();
 
     const response = await requestDownload({ fileId: "", token });
@@ -190,6 +194,7 @@ describe("GET /api/web/download-file", () => {
   });
 
   it("returns 404 when the file is not found in S3", async () => {
+    expect.hasAssertions();
     const { token } = await mintFileReadToken();
     mockS3Objects([]);
 

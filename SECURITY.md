@@ -14,7 +14,7 @@ We only provide security updates for the latest release. We recommend always run
 
 If you discover a security vulnerability, please report it responsibly by emailing us at:
 
-**[contact@vm0.ai](mailto:contact@vm0.ai)**
+**[contact@okou.ai](mailto:contact@okou.ai)**
 
 ### What to Include
 
@@ -66,7 +66,7 @@ To qualify for safe harbor, you must:
 
 ### In Scope
 
-- The VM0 platform and its public-facing services
+- The Okou platform and its public-facing services
 - Code in this repository and related official repositories
 - Authentication, authorization, and access control mechanisms
 - Data handling and storage
@@ -74,14 +74,14 @@ To qualify for safe harbor, you must:
 ### Out of Scope
 
 - Third-party services and dependencies (report these to the respective maintainers)
-- Social engineering attacks against VM0 team members or users
+- Social engineering attacks against Okou team members or users
 - Physical attacks
 - Denial-of-service attacks
 - Issues already reported or known publicly
 
 ## Recognition
 
-We appreciate the security research community's efforts in helping keep VM0 and our users safe. With your permission, we will acknowledge your contribution in our security advisories.
+We appreciate the security research community's efforts in helping keep Okou and our users safe. With your permission, we will acknowledge your contribution in our security advisories.
 
 While we do not currently operate a formal bug bounty program, we evaluate significant, responsibly disclosed vulnerabilities on a case-by-case basis for recognition or rewards.
 

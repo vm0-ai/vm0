@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import type { ResolvedAttachFile } from "@okouai/api-contracts/contracts/chat-threads";
-import { getModelImageInputSupport } from "@okouai/api-contracts/contracts/model-providers";
 import type { DraftSignals, ChatAttachment } from "../okou-page/chat-draft.ts";
 import { i18n } from "../../i18n/index.ts";
 import { isAnnotationMeaningful } from "../okou-page/image-annotation.ts";
@@ -36,42 +35,6 @@ interface AttachmentFileInfo {
 interface ResolvedDraftAttachment {
   attachment: ChatAttachment;
   info: AttachmentFileInfo;
-}
-
-interface VisualAttachmentDescriptor {
-  contentType?: string | null;
-  filename?: string | null;
-}
-
-interface PrepareUserMessageOptions {
-  excludeVisualAttachments?: boolean;
-}
-
-const VISUAL_ATTACHMENT_EXTENSION_RE =
-  /\.(?:png|jpe?g|gif|webp|avif|heic|heif|bmp|svg|mp4|m4v|mov|webm|avi|mkv)$/i;
-
-export function isVisualAttachment({
-  contentType,
-  filename,
-}: VisualAttachmentDescriptor): boolean {
-  const normalizedContentType = contentType?.toLowerCase() ?? "";
-  if (
-    normalizedContentType.startsWith("image/") ||
-    normalizedContentType.startsWith("video/")
-  ) {
-    return true;
-  }
-  return VISUAL_ATTACHMENT_EXTENSION_RE.test(filename ?? "");
-}
-
-export function shouldExcludeVisualAttachmentsForModel(
-  selectedModel: string | null | undefined,
-  imageRecognitionEnabled: boolean,
-): boolean {
-  return (
-    !imageRecognitionEnabled &&
-    getModelImageInputSupport(selectedModel) === "unsupported"
-  );
 }
 
 export function collectSuccessfulAttachmentInfos(
@@ -138,15 +101,9 @@ export const prepareUserMessageFromDraft$ = command(
     { get },
     draft: DraftSignals,
     prompt: string,
-    options: PrepareUserMessageOptions,
     signal: AbortSignal,
   ): Promise<PreparedUserMessage | null> => {
-    const draftAttachments = get(draft.attachments$);
-    const allAttachments = options.excludeVisualAttachments
-      ? draftAttachments.filter((attachment) => {
-          return !isVisualAttachment(attachment);
-        })
-      : draftAttachments;
+    const allAttachments = get(draft.attachments$);
     const allInfos = await Promise.allSettled(
       allAttachments.map((a) => {
         return get(a.fileInfo$);
@@ -172,8 +129,7 @@ export const prepareUserMessageFromDraft$ = command(
     // User prompt is clean text only — file description blocks are appended
     // server-side via buildFullPrompt so the agent gets the [Web file] [ID]
     // format it knows how to download with `okou web download-file`.
-    const finalPrompt =
-      trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
+    const finalPrompt = trimmedPrompt || ATTACH_ONLY_PLACEHOLDER;
 
     const attachments: ResolvedAttachFile[] | undefined =
       ready.length > 0

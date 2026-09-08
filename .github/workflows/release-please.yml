@@ -18,6 +18,9 @@ permissions:
   packages: write
   checks: write
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   # A push to main can carry several merge-queue entries at once, so look at every
   # commit subject in the push rather than only the head commit. Without this the
@@ -152,28 +155,30 @@ jobs:
               ${{ toJSON(steps.release.outputs['crates/ably-subscriber--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/api-contracts--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-agent--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-common--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-telemetry--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-contracts--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-download--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-storage-apply--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-init--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-reseed--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/claude-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/codex-mock--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-state-restore--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/session-history-selector--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-client--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-write-file--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/nbd-cow--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/process-control-ipc--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/runner--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-firecracker--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox-mock--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/shell-quote--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-proto--sha']) }},
               ${{ toJSON(steps.release.outputs['crates/tracing-test-support--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-guest--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-host--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-proto--sha']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-test--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-server--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-client--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-proto--sha']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-tests--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/api--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/cli--sha']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--sha']) }},
@@ -227,28 +232,30 @@ jobs:
               ${{ toJSON(steps.release.outputs['crates/ably-subscriber--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/api-contracts--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-agent--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-common--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-telemetry--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-contracts--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-download--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-storage-apply--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-init--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-claude--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-mock-codex--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-reseed--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/guest-session-prune--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/claude-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/codex-mock--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-state-restore--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/session-history-selector--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-client--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-tool-exec--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/guest-write-file--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/nbd-cow--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/process-control-ipc--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/runner--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/sandbox-fc--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/sandbox-firecracker--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/sandbox-mock--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/shell-quote--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/runner-rpc-proto--tag_name']) }},
               ${{ toJSON(steps.release.outputs['crates/tracing-test-support--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-guest--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-host--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-proto--tag_name']) }},
-              ${{ toJSON(steps.release.outputs['crates/vsock-test--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-server--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-client--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-proto--tag_name']) }},
+              ${{ toJSON(steps.release.outputs['crates/guest-control-tests--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/api--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/cli--tag_name']) }},
               ${{ toJSON(steps.release.outputs['turbo/apps/desktop--tag_name']) }},
@@ -568,8 +575,7 @@ jobs:
           dmg_artifact_path="apps/desktop/out/Okou-darwin-arm64-$DESKTOP_VERSION.dmg"
 
           node apps/desktop/scripts/sign-and-notarize-packaged-app.mjs \
-            --app "$app_dir" \
-            --product okou
+            --app "$app_dir"
           ditto -c -k --sequesterRsrc --keepParent \
             "$app_dir" \
             "$zip_artifact_path"
@@ -853,7 +859,6 @@ jobs:
           zip_url="https://github.com/${{ github.repository }}/releases/download/$OKOU_RELEASE_TAG/Okou-darwin-arm64-$DESKTOP_VERSION.zip"
           node apps/desktop/scripts/update-desktop-release-manifest.mjs \
             --manifest "$manifest_path" \
-            --product okou \
             --version "$DESKTOP_VERSION" \
             --zip-url "$zip_url" \
             --channel stable \
@@ -1138,7 +1143,7 @@ jobs:
         shell: bash
         env:
           ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
-          CLI_STATIC_BASE_URL: https://static.vm0.io
+          CLI_STATIC_BASE_URL: https://static.okou.io
         run: |
           set -euo pipefail
 
@@ -1183,8 +1188,8 @@ jobs:
           app: api
           environment: production
           database-url: ${{ steps.get-db-url.outputs.database-url }}
-          web-url: https://www.vm0.ai
-          app-url: https://app.vm0.ai
+          web-url: https://www.okou.ai
+          app-url: https://app.okou.ai
           api-backend-url: ${{ vars.OKOU_API_BACKEND_URL }}
           cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
@@ -1349,6 +1354,50 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
+      - name: Reconcile production connector catalog (best effort)
+        shell: bash
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if ! response=$(vercel curl /api/cron/sync-connector-catalog \
+            --deployment "$API_DEPLOYMENT_URL" \
+            --token "$VERCEL_TOKEN" \
+            -- \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 120 \
+            --header "Authorization: Bearer ${CRON_SECRET}"); then
+            echo "::warning::Connector catalog reconcile request failed; the scheduled cron will retry"
+            exit 0
+          fi
+
+          if ! summary=$(jq -c '{
+            outcome,
+            hasActive: (.active != null),
+            lastAttemptOutcome: .lastAttempt.outcome,
+            filtering: {
+              stale: .filtering.stale,
+              filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)
+            }
+          }' <<< "$response"); then
+            echo "::warning::Connector catalog reconcile returned invalid JSON; the scheduled cron will retry"
+            exit 0
+          fi
+
+          echo "Connector catalog reconcile: ${summary}"
+          if ! jq -e '
+            .state == "current"
+            and .active != null
+            and .filtering.stale == false
+          ' <<< "$response" >/dev/null; then
+            echo "::warning::Connector catalog is not ready; the scheduled cron will retry"
+          fi
+
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
@@ -1474,8 +1523,8 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # The Worker owns the live App routes and direct canary domains. App releases
-  # must wait for the canonical build artifact and API production lifecycle.
+  # The Worker owns the live App routes. App releases must wait for the
+  # canonical build artifact and API production lifecycle.
   promote-app-worker-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
@@ -1560,7 +1609,6 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
         run: |
@@ -1643,49 +1691,66 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
         run: |
           set -euo pipefail
 
           : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${CLERK_PUBLISHABLE_KEY:?production Clerk publishable key is required}"
+          : "${CLERK_SECRET_KEY:?production Clerk secret key is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
           : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          case "$CLERK_PUBLISHABLE_KEY" in
+            pk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live publishable key" >&2; exit 1 ;;
+          esac
+          case "$CLERK_SECRET_KEY" in
+            sk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live secret key" >&2; exit 1 ;;
+          esac
+
+          umask 077
+          worker_secrets="$(mktemp)"
+          trap 'rm -f "$worker_secrets"' EXIT
+          jq -n '{
+            CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
+            CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
+          }' > "$worker_secrets"
+          unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY
 
           cd turbo
           pnpm --filter @okouai/app-worker exec wrangler deploy \
             --env production \
+            --secrets-file "$worker_secrets" \
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
-          for mapping in \
-            "https://app.vm0.ai|https://api.vm0.ai" \
-            "https://app.okou.ai|https://api.okou.ai" \
-            "https://app-worker.vm0.ai|https://api.vm0.ai" \
-            "https://app-worker.okou.ai|https://api.okou.ai"; do
-            IFS='|' read -r app_origin api_origin <<< "$mapping"
-            cors_result="$(
-              curl -fsS \
-                --connect-timeout 10 \
-                --max-time 30 \
-                --retry 12 \
-                --retry-delay 5 \
-                --retry-all-errors \
-                --request OPTIONS \
-                --header "Origin: ${app_origin}" \
-                --header "Access-Control-Request-Method: GET" \
-                --output /dev/null \
-                --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
-                "${api_origin}/api/__brand-smoke__"
-            )"
-            mapfile -t cors_values <<< "$cors_result"
-            if [[ "${cors_values[0]:-}" != "204" ||
-                  "${cors_values[1]:-}" != "$app_origin" ||
-                  "${cors_values[2]:-}" != "true" ]]; then
-              echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
-              exit 1
-            fi
-          done
+          app_origin="https://app.okou.ai"
+          api_origin="https://api.okou.ai"
+          cors_result="$(
+            curl -fsS \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --retry 12 \
+              --retry-delay 5 \
+              --retry-all-errors \
+              --request OPTIONS \
+              --header "Origin: ${app_origin}" \
+              --header "Access-Control-Request-Method: GET" \
+              --output /dev/null \
+              --write-out $'%{http_code}\n%header{access-control-allow-origin}\n%header{access-control-allow-credentials}' \
+              "${api_origin}/api/__brand-smoke__"
+          )"
+          mapfile -t cors_values <<< "$cors_result"
+          if [[ "${cors_values[0]:-}" != "204" ||
+                "${cors_values[1]:-}" != "$app_origin" ||
+                "${cors_values[2]:-}" != "true" ]]; then
+            echo "::error title=App Worker API CORS mismatch::${api_origin} rejected ${app_origin}" >&2
+            exit 1
+          fi
 
       - name: Finish GitHub Deployment
         if: always()
@@ -1695,7 +1760,7 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: https://app.okou.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Report App Worker URLs
@@ -1706,11 +1771,6 @@ jobs:
             echo
             echo "### Live"
             echo "- https://app.okou.ai"
-            echo "- https://app.vm0.ai"
-            echo
-            echo "### Direct canaries"
-            echo "- https://app-worker.okou.ai"
-            echo "- https://app-worker.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Calculate duration
@@ -1738,7 +1798,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
+                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.okou.ai|Okou App>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -2431,6 +2491,7 @@ jobs:
           echo "Resolved ${host_count} metal host(s) for ${RUNNER_HOST_GROUP_ID}"
 
       - name: Promote runner on production hosts with Ansible
+        id: promote-runner
         env:
           RUNNER_HOSTS: ${{ steps.matrix-hosts.outputs.hosts }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
@@ -2438,7 +2499,10 @@ jobs:
           AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           RUNNER_TARGET: ${{ matrix.target }}
+        shell: bash
         run: |
+          promotion_warning_dir="${RUNNER_TEMP}/runner-promotion-warnings"
+          mkdir -p "$promotion_warning_dir"
           cd ansible
           ansible-playbook \
             -i "${RUNNER_HOSTS}," \
@@ -2449,7 +2513,24 @@ jobs:
             -e "axiom_dataset_suffix=prod" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "runner_target=${RUNNER_TARGET}" \
+            -e "promotion_warning_dir=${promotion_warning_dir}" \
             -v
+
+          warning_manifest="${RUNNER_TEMP}/runner-promotion-warning-files"
+          find "$promotion_warning_dir" -type f -name '*.json' -print0 | sort -z > "$warning_manifest"
+          mapfile -d '' warning_files < "$warning_manifest"
+          if (( ${#warning_files[@]} > 0 )); then
+            echo "has_warnings=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Runner promotion warnings"
+              echo
+              for warning_file in "${warning_files[@]}"; do
+                sed 's/^/    /' "$warning_file"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_warnings=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Global health check (non-blocking)
         id: global-doctor
@@ -2483,7 +2564,7 @@ jobs:
           echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.promote-runner.outputs.has_warnings != 'true' && steps.global-doctor.outputs.has_warnings != 'true' }}
         uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update
@@ -2499,7 +2580,7 @@ jobs:
                   text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🏗️ Target: `${{ matrix.target }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Success with warnings
-        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
+        if: ${{ success() && steps.slack-start.outputs.ts && (steps.promote-runner.outputs.has_warnings == 'true' || steps.global-doctor.outputs.has_warnings == 'true') }}
         uses: slackapi/slack-github-action@v4.0.0
         with:
           method: chat.update

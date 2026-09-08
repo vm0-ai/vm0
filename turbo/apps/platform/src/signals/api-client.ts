@@ -13,7 +13,6 @@ import type {
 import { appVersion$ } from "./app-version.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { apiClientRuntime$ } from "./api-client-runtime.ts";
-import { readClerkToken } from "./clerk-token.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
@@ -40,6 +39,8 @@ export const OAUTH_API_BASE = "oauth" as OAuthApiBase;
 
 export interface ApiClientOptions {
   readonly apiBase?: "auto" | "api" | OAuthApiBase;
+  /** Pin an exchange to its freshly activated session, or make it unauthenticated. */
+  readonly getToken?: (signal: AbortSignal) => Promise<string | null>;
 }
 
 function rebaseApiPath(
@@ -74,15 +75,11 @@ export const apiClient$ = computed((get) => {
   const clientVersion = get(appVersion$);
   const rootSignal = get(rootSignal$);
   const tokenOptions = {
-    getToken: async (signal: AbortSignal) => {
-      const clerk = await runtime.clerk;
-      signal.throwIfAborted();
-      return await readClerkToken(clerk, signal);
-    },
+    getToken: runtime.getToken,
   };
   return <T extends AppRouter>(contract: T, options?: ApiClientOptions) => {
     return createAuthedContractClient(contract, {
-      ...tokenOptions,
+      getToken: options?.getToken ?? tokenOptions.getToken,
       baseUrl: runtime.apiBaseUrl,
       clientVersion,
       getRootSignal: () => {

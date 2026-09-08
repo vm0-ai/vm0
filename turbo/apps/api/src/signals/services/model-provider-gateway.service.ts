@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq, notExists, notInArray } from "drizzle-orm";
 import {
   getFrameworkForType,
-  getVm0ConcreteProviderType,
-  isSupportedRunModel,
+  getBuiltInConcreteProviderType,
+  isActiveRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type {
   CreateModelProviderConnectionRequest,
@@ -160,10 +160,10 @@ function protocolSupportsModel(
   protocol: ModelProviderSurfaceProtocol,
   model: string,
 ): boolean {
-  if (!isSupportedRunModel(model)) {
+  if (!isActiveRunModel(model)) {
     return false;
   }
-  const framework = getFrameworkForType(getVm0ConcreteProviderType(model));
+  const framework = getFrameworkForType(getBuiltInConcreteProviderType(model));
   return protocol === "anthropic-messages"
     ? framework === "claude-code"
     : framework === "codex";

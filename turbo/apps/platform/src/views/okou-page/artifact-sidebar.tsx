@@ -3,12 +3,9 @@ import {
   ArrowLeft,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
   Ellipsis,
   ExternalLink,
   Loader2,
-  RotateCcw,
   X,
 } from "lucide-react";
 import {
@@ -45,18 +42,19 @@ import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
 import { retryRichMarkdown$ } from "../../signals/rich-markdown-retry.ts";
 import type { ZoomableImageCanvasSignals } from "../../signals/zoomable-image-canvas.ts";
-import {
-  ZoomableArtifactImageCanvas,
-  type ZoomableImageControls,
-} from "./zoomable-image-canvas.tsx";
+import { ZoomableArtifactImageCanvas } from "./zoomable-image-canvas.tsx";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,
   ArtifactActionTooltip,
   ArtifactDownloadMenu,
+  ArtifactImageNavigationControls,
+  ArtifactImageNavigationKeydown,
+  ArtifactImageZoomControls,
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
+  type ArtifactImageNavigationActions,
 } from "./artifact-actions.tsx";
 import {
   artifactFallbackSubtitle,
@@ -66,7 +64,6 @@ import {
   currentEventImageArtifactNavigation,
   equalEventImageGroups,
   type ImageArtifactNavigationItem,
-  shouldIgnoreImageArtifactNavigationKey,
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
@@ -82,30 +79,6 @@ import { isOfficeFilePreview } from "./office-file-preview.ts";
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
   "fixed inset-0 flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 const ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME = "z-[100]";
-
-export function ArtifactSidebar({
-  artifactRef,
-  fullscreenState,
-  markdownTree$,
-  onBack,
-  onClose,
-  onNavigateImage,
-  text$,
-  thread,
-}: ArtifactSidebarProps) {
-  return (
-    <ArtifactSidebarWithThreadContext
-      artifactRef={artifactRef}
-      fullscreenState={fullscreenState}
-      markdownTree$={markdownTree$}
-      onBack={onBack}
-      onClose={onClose}
-      onNavigateImage={onNavigateImage}
-      text$={text$}
-      thread={thread}
-    />
-  );
-}
 
 type ArtifactSidebarFullscreenState = {
   readonly active: boolean;
@@ -128,11 +101,6 @@ type ArtifactSidebarItem = {
   file: ChatThreadArtifactFile;
 };
 
-type ArtifactImageNavigationActions = {
-  readonly onNext?: () => void;
-  readonly onPrevious?: () => void;
-};
-
 type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
@@ -143,12 +111,12 @@ type ArtifactSidebarContentProps = {
   markdownTree$?: MarkdownPreviewTreeComputed;
   onBack?: () => void;
   onClose: () => void;
-  onSyncSuccess?: () => void;
+  onSyncSuccess: () => void;
   text$?: TextPreviewComputed;
   threadId?: string;
 };
 
-function ArtifactSidebarWithThreadContext({
+export function ArtifactSidebar({
   artifactRef,
   fullscreenState,
   markdownTree$: providedMarkdownTree$,
@@ -212,10 +180,6 @@ function ArtifactSidebarWithThreadContext({
   );
 }
 
-function noop() {
-  return undefined;
-}
-
 function artifactSidebarSyncTargetForItem({
   agentId,
   item,
@@ -224,14 +188,14 @@ function artifactSidebarSyncTargetForItem({
 }: {
   agentId?: string | null;
   item?: ArtifactSidebarItem;
-  onSyncSuccess?: () => void;
+  onSyncSuccess: () => void;
   threadId?: string;
 }): ArtifactDownloadSyncTarget | undefined {
   return item && threadId
     ? artifactSidebarSyncTarget({
         agentId,
         item,
-        onSyncSuccess: onSyncSuccess ?? noop,
+        onSyncSuccess,
         threadId,
       })
     : undefined;
@@ -332,62 +296,6 @@ function ArtifactSidebarResolvedContent({
         />
       </div>
     </ArtifactSidebarSurface>
-  );
-}
-
-function ArtifactSidebarImageNavigationKeydown({
-  fullscreen,
-  modalOpen,
-  navigation,
-}: {
-  fullscreen: boolean;
-  modalOpen: boolean;
-  navigation?: ArtifactImageNavigationActions;
-}) {
-  let cleanup: (() => void) | null = null;
-
-  return (
-    <span
-      ref={(node) => {
-        cleanup?.();
-        cleanup = null;
-        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
-          return;
-        }
-
-        const onKeyDown = (event: KeyboardEvent) => {
-          // When the lightbox modal is open it owns arrow-key navigation; the
-          // sidebar must not also react.
-          if (modalOpen) {
-            return;
-          }
-          // Focus is only considered in the non-fullscreen sidebar, where the
-          // chat composer and other controls remain reachable. In fullscreen
-          // the sidebar is immersive, so arrow keys always navigate.
-          if (
-            shouldIgnoreImageArtifactNavigationKey(event, {
-              considerFocus: !fullscreen,
-            })
-          ) {
-            return;
-          }
-          if (event.key === "ArrowLeft" && navigation.onPrevious) {
-            event.preventDefault();
-            navigation.onPrevious();
-          }
-          if (event.key === "ArrowRight" && navigation.onNext) {
-            event.preventDefault();
-            navigation.onNext();
-          }
-        };
-
-        document.addEventListener("keydown", onKeyDown);
-        cleanup = () => {
-          document.removeEventListener("keydown", onKeyDown);
-        };
-      }}
-      hidden
-    />
   );
 }
 
@@ -1180,9 +1088,13 @@ function ArtifactImageBody({
     <ArtifactStageShell flush scrollable={false}>
       <ArtifactStageCard fillHeight>
         <div className="relative h-full min-h-0">
-          <ArtifactSidebarImageNavigationKeydown
-            fullscreen={fullscreen}
-            modalOpen={modalOpen}
+          {/*
+            The lightbox modal owns arrow keys while open. Focus only matters in
+            the non-fullscreen sidebar, where the composer stays reachable.
+          */}
+          <ArtifactImageNavigationKeydown
+            considerFocus={!fullscreen}
+            enabled={!modalOpen}
             navigation={imageNavigation}
           />
           <ZoomableArtifactImageCanvas
@@ -1194,126 +1106,21 @@ function ArtifactImageBody({
             contentClassName="p-6"
           >
             {(controls) => {
-              return <ArtifactImageZoomControls controls={controls} />;
+              return (
+                <ArtifactImageZoomControls
+                  controls={controls}
+                  testIdPrefix="artifact-sidebar"
+                />
+              );
             }}
           </ZoomableArtifactImageCanvas>
-          <ArtifactImageNavigationControls navigation={imageNavigation} />
+          <ArtifactImageNavigationControls
+            navigation={imageNavigation}
+            testIdPrefix="artifact-sidebar"
+          />
         </div>
       </ArtifactStageCard>
     </ArtifactStageShell>
-  );
-}
-
-function ArtifactImageNavigationControls({
-  navigation,
-}: {
-  navigation?: ArtifactImageNavigationActions;
-}) {
-  const { t } = useTranslation();
-  if (!navigation?.onPrevious && !navigation?.onNext) {
-    return null;
-  }
-
-  return (
-    <>
-      {navigation.onPrevious && (
-        <Button
-          showTooltip
-          type="button"
-          onClick={navigation.onPrevious}
-          aria-label={t(($) => {
-            return $.artifacts.actions.previousImage;
-          })}
-          data-testid="artifact-sidebar-previous-image"
-          variant="quiet"
-          size="icon-lg"
-          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
-        >
-          <ChevronLeft size={22} />
-        </Button>
-      )}
-      {navigation.onNext && (
-        <Button
-          showTooltip
-          type="button"
-          onClick={navigation.onNext}
-          aria-label={t(($) => {
-            return $.artifacts.actions.nextImage;
-          })}
-          data-testid="artifact-sidebar-next-image"
-          variant="quiet"
-          size="icon-lg"
-          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
-        >
-          <ChevronRight size={22} />
-        </Button>
-      )}
-    </>
-  );
-}
-
-function ArtifactImageZoomControls({
-  controls,
-}: {
-  controls: ZoomableImageControls;
-}) {
-  const { t } = useTranslation();
-  const zoomOutLabel = t(($) => {
-    return $.artifacts.actions.zoomOut;
-  });
-  const zoomInLabel = t(($) => {
-    return $.artifacts.actions.zoomIn;
-  });
-  const resetZoomLabel = t(($) => {
-    return $.artifacts.actions.resetZoom;
-  });
-  return (
-    <div
-      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
-      data-testid="artifact-sidebar-image-zoom-controls"
-    >
-      <ArtifactActionTooltip label={zoomOutLabel}>
-        <button
-          type="button"
-          onClick={controls.zoomOut}
-          disabled={!controls.canZoomOut}
-          className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          aria-label={zoomOutLabel}
-          data-testid="artifact-sidebar-image-zoom-out"
-        >
-          -
-        </button>
-      </ArtifactActionTooltip>
-      <span
-        className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground"
-        data-testid="artifact-sidebar-image-zoom-level"
-      >
-        {Math.round(controls.zoom * 100)}%
-      </span>
-      <ArtifactActionTooltip label={zoomInLabel}>
-        <button
-          type="button"
-          onClick={controls.zoomIn}
-          disabled={!controls.canZoomIn}
-          className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          aria-label={zoomInLabel}
-          data-testid="artifact-sidebar-image-zoom-in"
-        >
-          +
-        </button>
-      </ArtifactActionTooltip>
-      <ArtifactActionTooltip label={resetZoomLabel}>
-        <button
-          type="button"
-          onClick={controls.resetZoom}
-          className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
-          aria-label={resetZoomLabel}
-          data-testid="artifact-sidebar-image-reset-zoom"
-        >
-          <RotateCcw size={15} />
-        </button>
-      </ArtifactActionTooltip>
-    </div>
   );
 }
 

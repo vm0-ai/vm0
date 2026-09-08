@@ -8,6 +8,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason;
 use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
@@ -96,6 +97,27 @@ pub(super) struct SpawnContext {
     pub(super) test_observer: StartLoopTestObserver,
 }
 
+fn completion_failure_reason(
+    exit_code: i32,
+    cancelled: bool,
+    failure: Option<&executor::ExecutionFailure>,
+) -> Option<RequestFailureReason> {
+    if exit_code == 0 || cancelled {
+        return None;
+    }
+    let failure = failure?;
+    match failure.kind {
+        executor::ExecutionFailureKind::Generic => failure
+            .diagnostic
+            .as_ref()
+            .and_then(|diagnostic| diagnostic.failure_reason)
+            .map(Into::into),
+        executor::ExecutionFailureKind::RunnerJobTimeout { .. } => {
+            Some(RequestFailureReason::ExecutionTimeout)
+        }
+    }
+}
+
 pub(super) struct SpawnJobRequest {
     pub(super) claimed: ClaimedJob,
     pub(super) sandbox_id: SandboxId,
@@ -159,6 +181,7 @@ impl ExecutorInvocation {
             if let Some(idle_entry) = reuse_entry {
                 executor::execute_job_reuse_with_hooks(
                     idle_entry,
+                    reuse_result,
                     context,
                     &exec_config,
                     &params,
@@ -745,17 +768,11 @@ pub(super) async fn run_job(
             cancelled_for_log,
             executor_result.outcome.failure.as_ref(),
         );
-        let failure_reason = if executor_result.exit_code == 0 || cancelled_for_log {
-            None
-        } else {
-            executor_result
-                .outcome
-                .failure
-                .as_ref()
-                .and_then(|failure| failure.diagnostic.as_ref())
-                .and_then(|diagnostic| diagnostic.failure_reason)
-                .map(Into::into)
-        };
+        let failure_reason = completion_failure_reason(
+            executor_result.exit_code,
+            cancelled_for_log,
+            executor_result.outcome.failure.as_ref(),
+        );
 
         let completion_payload = CompletionPayload::new(
             run_id,
@@ -881,6 +898,9 @@ pub(super) async fn handle_job_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use guest_contracts::diagnostics::{
+        AgentFramework, FailureClass, FailureDiagnostic, FailureReason, PromptMetadata,
+    };
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -1130,6 +1150,74 @@ mod tests {
                 panic!("expected runner job timeout failure kind")
             }
         }
+    }
+
+    #[test]
+    fn completion_reason_uses_diagnostic_for_generic_failure() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_failure_reason(FailureReason::UsageLimit);
+        let failure = executor::ExecutionFailure::new(1, "usage limit", Some(diagnostic));
+
+        assert_eq!(
+            completion_failure_reason(1, false, Some(&failure)),
+            Some(RequestFailureReason::UsageLimit)
+        );
+    }
+
+    #[test]
+    fn completion_reason_uses_runner_kind_for_timeout_and_overrides_diagnostic() {
+        let failure = executor::ExecutionFailure::runner_job_timeout(
+            124,
+            "execution timed out",
+            None,
+            Duration::from_secs(7200),
+            Duration::from_secs(7200),
+            None,
+        );
+
+        assert_eq!(
+            completion_failure_reason(124, false, Some(&failure)),
+            Some(RequestFailureReason::ExecutionTimeout)
+        );
+
+        let conflicting_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_failure_reason(FailureReason::UsageLimit);
+        let failure_with_conflicting_diagnostic = executor::ExecutionFailure::runner_job_timeout(
+            124,
+            "execution timed out",
+            Some(conflicting_diagnostic),
+            Duration::from_secs(7200),
+            Duration::from_secs(7200),
+            None,
+        );
+
+        assert_eq!(
+            completion_failure_reason(124, false, Some(&failure_with_conflicting_diagnostic)),
+            Some(RequestFailureReason::ExecutionTimeout)
+        );
+    }
+
+    #[test]
+    fn completion_reason_omits_success_and_cancellation() {
+        let failure = executor::ExecutionFailure::runner_job_timeout(
+            124,
+            "execution timed out",
+            None,
+            Duration::from_secs(7200),
+            Duration::from_secs(7200),
+            None,
+        );
+
+        assert_eq!(completion_failure_reason(0, false, None), None);
+        assert_eq!(completion_failure_reason(124, true, Some(&failure)), None);
     }
 
     #[tokio::test]

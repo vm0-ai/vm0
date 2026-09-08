@@ -14,6 +14,10 @@ import type {
   AvatarVideoVoice,
   AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
+import type {
+  IntroVideoVoice,
+  IntroVideoVoicesQuery,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 import {
   Button,
   Popover,
@@ -30,10 +34,6 @@ import {
   cn,
 } from "@okouai/ui";
 import { readAvatarTemplateOptions } from "@okouai/core/avatar-template";
-import {
-  INTRO_VIDEO_AVATARS,
-  type IntroVideoAvatar,
-} from "@okouai/core/intro-video-avatars";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -48,7 +48,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isSelectedAvatarTemplate } from "../../signals/okou-page/avatar-template-selection.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
+import { introVideoVoicePickerSignals } from "../../signals/okou-page/intro-video-voice-picker.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import { IntroVideoCatalogPagination } from "./intro-video-catalog-pagination.tsx";
 
 const AVATAR_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
@@ -97,13 +99,30 @@ const VOICE_AGE_VALUES = [
   "middle_aged",
   "old",
 ] as const satisfies readonly NonNullable<AvatarVideoVoicesQuery["age"]>[];
+const INTRO_VIDEO_VOICE_GENDER_VALUES = [
+  "female",
+  "male",
+] as const satisfies readonly NonNullable<IntroVideoVoicesQuery["gender"]>[];
+const INTRO_VIDEO_VOICE_LANGUAGE_VALUES = [
+  "English",
+  "Spanish",
+  "French",
+  "German",
+  "Portuguese",
+  "Italian",
+  "Hindi",
+  "Indonesian",
+  "Japanese",
+  "Korean",
+  "Chinese",
+] as const;
 
 interface CatalogFilterOption<T extends string> {
   readonly value: T;
   readonly label: string;
 }
 
-function formatJoggCategoryValue(value: string): string {
+function formatCatalogCategoryValue(value: string): string {
   const words = value.replaceAll("_", " ").replaceAll("-", " ");
   return `${words.charAt(0).toLocaleUpperCase()}${words.slice(1)}`;
 }
@@ -112,7 +131,7 @@ function catalogFilterOptions<T extends string>(
   values: readonly T[],
 ): readonly CatalogFilterOption<T>[] {
   return values.map((value) => {
-    return { value, label: formatJoggCategoryValue(value) };
+    return { value, label: formatCatalogCategoryValue(value) };
   });
 }
 
@@ -792,7 +811,18 @@ function toggleVoicePreview(event: ReactMouseEvent<HTMLButtonElement>): void {
   detach(audio.play(), Reason.DomCallback);
 }
 
-function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
+interface VoiceCardVoice {
+  readonly id: string;
+  readonly name: string;
+  readonly sampleUrl?: string;
+  readonly language?: string;
+  readonly gender?: string;
+  readonly age?: string;
+  readonly accent?: string;
+  readonly useCase?: string;
+}
+
+function VoicePreviewControl({ voice }: { readonly voice: VoiceCardVoice }) {
   const { t } = useTranslation();
   return (
     <>
@@ -841,18 +871,18 @@ function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
   );
 }
 
-function AvatarVoiceCard({
+function AvatarVoiceCard<T extends VoiceCardVoice>({
   voice,
   selected,
   recommended,
   highlightRecommendation,
   onSelect,
 }: {
-  readonly voice: AvatarVideoVoice;
+  readonly voice: T;
   readonly selected: boolean;
   readonly recommended: boolean;
   readonly highlightRecommendation: boolean;
-  readonly onSelect: (voice: AvatarVideoVoice) => void;
+  readonly onSelect: (voice: T) => void;
 }) {
   const { t } = useTranslation();
   const recommendedDescriptionId = `avatar-voice-recommendation-${encodeURIComponent(voice.id)}`;
@@ -862,11 +892,11 @@ function AvatarVoiceCard({
         .filter((value): value is string => {
           return value !== undefined;
         })
-        .map(formatJoggCategoryValue),
+        .map(formatCatalogCategoryValue),
     ),
   );
   const description = voice.useCase
-    ? formatJoggCategoryValue(voice.useCase)
+    ? formatCatalogCategoryValue(voice.useCase)
     : undefined;
   const selectVoice = () => {
     onSelect(voice);
@@ -1250,194 +1280,145 @@ export function AvatarTemplatePickerToolbar({
   return <AvatarCatalogFilters signals={signals} />;
 }
 
-/**
- * The opt-out card that opens the intro-video presenter grid.
- *
- * Selecting a presenter is optional, but the grid is a set of avatars with no
- * empty state and the cards do not toggle off, so without this card a user who
- * picks one can only get back to a deck with no presenter by closing the whole
- * wizard and starting over.
- */
-function NoAvatarCard({
-  selected,
-  onSelect,
-}: {
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-}) {
+function IntroVideoVoiceFilters() {
   const { t } = useTranslation();
-  const label = t(($) => {
-    return $.chat.introVideo.avatar.none;
+  const filters = useGet(introVideoVoicePickerSignals.filters$);
+  const setFilters = useSet(introVideoVoicePickerSignals.setFilters$);
+  const allLabel = t(($) => {
+    return $.artifacts.templates.filters.all;
   });
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      aria-label={label}
-      data-intro-video-no-avatar=""
-      onClick={onSelect}
-      className={cn(
-        avatarTemplateCardClass(selected),
-        "mb-4 w-full break-inside-avoid",
-      )}
-    >
-      <div className="flex aspect-[3/4] w-full items-center justify-center bg-gradient-to-b from-card to-muted">
-        <User size={40} className="text-muted-foreground" aria-hidden="true" />
-      </div>
-      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
-        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-          {label}
-        </p>
-        {selected ? (
-          <span
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-            aria-hidden="true"
-          >
-            <Check size={13} />
-          </span>
-        ) : null}
-      </div>
-    </button>
-  );
-}
+  const activeCount = [filters.language, filters.gender].filter(Boolean).length;
 
-function IntroVideoAvatarCard({
-  avatar,
-  selected,
-  onSelect,
-}: {
-  readonly avatar: IntroVideoAvatar;
-  readonly selected: boolean;
-  readonly onSelect: (avatar: IntroVideoAvatar) => void;
-}) {
-  const { t } = useTranslation();
   return (
-    <button
-      type="button"
-      aria-label={t(
-        ($) => {
-          return $.artifacts.templates.selectTemplate;
-        },
-        { title: avatar.name },
-      )}
-      aria-pressed={selected}
-      onClick={() => {
-        onSelect(avatar);
+    <CatalogFiltersPopover
+      activeCount={activeCount}
+      onClear={() => {
+        setFilters({ language: undefined, gender: undefined });
       }}
-      className={cn(
-        avatarTemplateCardClass(selected),
-        "mb-4 w-full break-inside-avoid",
-      )}
     >
-      <div
-        className="flex w-full items-end justify-center overflow-hidden bg-gradient-to-b from-card to-muted"
-        style={{
-          aspectRatio: `${avatar.cutoutWidth} / ${avatar.cutoutHeight}`,
-        }}
-      >
-        <img
-          src={avatar.coverUrl}
-          alt={avatar.name}
-          width={avatar.cutoutWidth}
-          height={avatar.cutoutHeight}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          className="h-full w-full object-contain"
+      <div className="grid grid-cols-2 gap-3">
+        <CatalogFilterField
+          label={t(($) => {
+            return $.artifacts.templates.filters.language;
+          })}
+          allLabel={allLabel}
+          value={filters.language}
+          options={catalogFilterOptions(INTRO_VIDEO_VOICE_LANGUAGE_VALUES)}
+          onChange={(language) => {
+            setFilters({ ...filters, language });
+          }}
+        />
+        <CatalogFilterField
+          label={t(($) => {
+            return $.artifacts.templates.filters.gender;
+          })}
+          allLabel={allLabel}
+          value={filters.gender}
+          options={catalogFilterOptions(INTRO_VIDEO_VOICE_GENDER_VALUES)}
+          onChange={(gender) => {
+            setFilters({ ...filters, gender });
+          }}
         />
       </div>
-      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
-        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-          {avatar.name}
-        </p>
-        {selected && (
-          <span
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-            aria-hidden="true"
-          >
-            <Check size={13} />
-          </span>
-        )}
-      </div>
-    </button>
+    </CatalogFiltersPopover>
   );
 }
 
-/**
- * Presenter picker for the intro-video wizard.
- *
- * Unlike the generic avatar-video template picker this renders a fixed,
- * curated set of background-removed cutouts instead of paging the JoggAI
- * catalog, so there is no aspect-ratio choice and no catalog filtering. The
- * cards keep their native aspect ratio in a masonry layout because the cutouts
- * are framed anywhere between head-and-shoulders and full body.
- */
-export function AvatarLibraryContent({
-  selectedAvatarId,
-  onSelect,
-  onClear,
-}: {
-  readonly selectedAvatarId: number | undefined;
-  readonly onSelect: (avatar: AvatarVideoAvatar) => void;
-  readonly onClear: () => void;
-}) {
-  return (
-    <div
-      data-intro-video-avatar-grid=""
-      className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {/*
-        The multi-column container is kept separate from the scroller and left
-        at auto height: a multicol box with a definite height overflows in the
-        inline direction, which would turn this into a horizontal scroller.
-      */}
-      <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
-        <NoAvatarCard
-          selected={selectedAvatarId === undefined}
-          onSelect={onClear}
-        />
-        {INTRO_VIDEO_AVATARS.map((avatar) => {
-          return (
-            <IntroVideoAvatarCard
-              key={avatar.id}
-              avatar={avatar}
-              selected={avatar.id === selectedAvatarId}
-              onSelect={onSelect}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function VoiceLibraryToolbar({
-  signals,
-}: {
-  readonly signals: ComposerSignals;
-}) {
-  return <AvatarVoiceFilters signals={signals} />;
-}
-
-export function VoiceLibraryContent({
-  signals,
-  selectionActive,
+function IntroVideoVoiceCatalog({
   selectedVoiceId,
   onSelect,
 }: {
-  readonly signals: ComposerSignals;
-  readonly selectionActive: boolean;
   readonly selectedVoiceId: string | undefined;
-  readonly onSelect: (voice: AvatarVideoVoice) => void;
+  readonly onSelect: (voice: IntroVideoVoice) => void;
+}) {
+  const { t } = useTranslation();
+  const catalog = useLoadable(introVideoVoicePickerSignals.catalogPage$);
+  const lastCatalog = useLastResolved(
+    introVideoVoicePickerSignals.catalogPage$,
+  );
+  const generation = useGet(introVideoVoicePickerSignals.generation$);
+  const loadMore = useSet(introVideoVoicePickerSignals.loadMore$);
+  const paging = useLoadable(introVideoVoicePickerSignals.paging$);
+  const setSentinelRef = useSet(introVideoVoicePickerSignals.setSentinelRef$);
+  const reload = useSet(introVideoVoicePickerSignals.reload$);
+  const pageSignal = useGet(pageSignal$);
+  const visibleCatalog =
+    catalog.state === "hasData"
+      ? catalog.data
+      : lastCatalog?.generation === generation
+        ? lastCatalog
+        : undefined;
+  const handleLoadMore = () => {
+    detach(loadMore(pageSignal), Reason.DomCallback, "HeyGen voice paging");
+  };
+
+  return (
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        data-avatar-voice-list-scroll=""
+        data-intro-video-catalog-scroll=""
+        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {catalog.state === "hasError" ? (
+          <div className="grid justify-items-center gap-3">
+            <AvatarTemplateEmpty error />
+            <Button type="button" variant="outline" size="sm" onClick={reload}>
+              {t(($) => {
+                return $.chat.introVideo.catalog.retry;
+              })}
+            </Button>
+          </div>
+        ) : visibleCatalog === undefined ? (
+          <AvatarVoiceSkeletonGrid />
+        ) : visibleCatalog.items.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2.5">
+            {visibleCatalog.items.map((voice) => {
+              return (
+                <AvatarVoiceCard
+                  key={voice.id}
+                  voice={voice}
+                  selected={voice.id === selectedVoiceId}
+                  recommended={false}
+                  highlightRecommendation={false}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <AvatarTemplateEmpty error={false} />
+        )}
+        <IntroVideoCatalogPagination
+          hasNext={visibleCatalog?.hasNext ?? false}
+          loading={paging.state === "loading"}
+          error={paging.state === "hasError" ? paging.error : null}
+          onLoadMore={handleLoadMore}
+          onReload={reload}
+          onSentinelRef={setSentinelRef}
+        />
+      </div>
+    </section>
+  );
+}
+
+export function VoiceLibraryToolbar() {
+  return <IntroVideoVoiceFilters />;
+}
+
+export function VoiceLibraryContent({
+  selectedVoiceId,
+  onSelect,
+}: {
+  readonly selectedVoiceId: string | undefined;
+  readonly onSelect: (voice: IntroVideoVoice) => void;
 }) {
   return (
     <div
       data-avatar-voice-picker=""
+      data-intro-video-voice-provider="heygen"
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <AvatarVoiceCatalog
-        signals={signals}
-        selectionActive={selectionActive}
+      <IntroVideoVoiceCatalog
         selectedVoiceId={selectedVoiceId}
         onSelect={onSelect}
       />

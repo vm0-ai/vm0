@@ -1627,6 +1627,24 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "quickbooks",
+    label: "QuickBooks",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "quickbooks",
+        prefix: "QUICKBOOKS",
+        tokenEnvironmentNames: ["QUICKBOOKS_TOKEN"],
+        additionalValues: { realmId: variable("QUICKBOOKS_REALM_ID") },
+        scopes: [
+          "com.intuit.quickbooks.accounting",
+          "openid",
+          "profile",
+          "email",
+        ],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "reap",
     label: "Reap",
     authMethods: [

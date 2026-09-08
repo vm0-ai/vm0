@@ -2,11 +2,9 @@
 // oxlint-disable max-lines-per-function
 import {
   useGet,
-  useLoadable,
   useSet,
   useLastResolved,
   useLastLoadable,
-  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Plus, ChevronRight, Pin, PinOff, CheckCheck } from "lucide-react";
@@ -44,15 +42,14 @@ import {
   setAgentPinned$,
   movePinnedAgent$,
   pinnedAgents$,
-  cachedPinnedAgentPreviewSnapshot$,
-  type PinnedAgentPreviewSnapshot,
 } from "../../signals/okou-page/pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { refreshSidebarChatThreadLayoutOnRef$ } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
-import { AvatarFromUrl } from "./sidebar-shared.tsx";
+import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { PinAgentDialog } from "./sidebar-dialogs.tsx";
 import {
@@ -62,15 +59,29 @@ import {
   type AgentRowMenuAction,
 } from "./sidebar-agent-row-actions.tsx";
 
+const pinnedAgentGridCardFrameClassName =
+  "flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5";
+// `leading-tight` at 11px is 13.75px. Keep both loading and resolved labels on
+// the same whole-pixel line box so swapping their DOM elements cannot round the
+// baseline onto different device pixels.
+const pinnedAgentGridLabelFrameClassName = "h-3.5 leading-[14px]";
+
 function PinnedAgentGridSkeletonCard() {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   return (
     <div
+      ref={refreshLayoutRef}
       aria-hidden="true"
       data-testid="pinned-agent-skeleton"
-      className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5"
+      className={pinnedAgentGridCardFrameClassName}
     >
-      <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
-      <Skeleton className="h-[13.75px] w-10" />
+      <span className="flex h-9 w-9 shrink-0">
+        <Skeleton className="h-full w-full rounded-full" />
+      </span>
+      <Skeleton
+        data-testid="pinned-agent-label-frame"
+        className={`${pinnedAgentGridLabelFrameClassName} w-10`}
+      />
     </div>
   );
 }
@@ -191,43 +202,6 @@ function PinnedAgentContextDecorator({
 interface PinnedGridAgent {
   readonly agentId: string;
   readonly displayName?: string | null;
-  readonly avatarUrl?: string | null;
-}
-
-function loadableData<T>(loadable: Loadable<T>): T | undefined {
-  return loadable.state === "hasData" ? loadable.data : undefined;
-}
-
-function resolvePinnedAgentPresentation({
-  pinnedAgentsLoadable,
-  displayedPinnedAgentsLoadable,
-  cachedPreviewLoadable,
-  defaultAgentId,
-}: {
-  readonly pinnedAgentsLoadable: Loadable<readonly PinnedGridAgent[]>;
-  readonly displayedPinnedAgentsLoadable: Loadable<readonly PinnedGridAgent[]>;
-  readonly cachedPreviewLoadable: Loadable<PinnedAgentPreviewSnapshot | null>;
-  readonly defaultAgentId: string | null | undefined;
-}) {
-  const livePinnedAgents = loadableData(pinnedAgentsLoadable);
-  const cachedPreview = loadableData(cachedPreviewLoadable);
-  const pinnedAgents = livePinnedAgents ?? cachedPreview?.agents ?? [];
-  const loadingWithoutCache =
-    livePinnedAgents === undefined &&
-    (cachedPreview === null || cachedPreview === undefined) &&
-    (pinnedAgentsLoadable.state === "loading" ||
-      cachedPreviewLoadable.state === "loading");
-  const basePinnedAgents = loadingWithoutCache ? null : pinnedAgents;
-  return {
-    displayedAgents:
-      loadableData(displayedPinnedAgentsLoadable) ?? basePinnedAgents,
-    pinnedAgentIds: new Set(
-      pinnedAgents.map((agent) => {
-        return agent.agentId;
-      }),
-    ),
-    defaultAgentId: defaultAgentId ?? cachedPreview?.defaultAgentId,
-  };
 }
 
 /** Which side of the hovered card the dragged agent lands on. */
@@ -296,6 +270,7 @@ function PinnedAgentGridCard({
   const setDropTarget = useSet(setPinnedAgentDropTarget$);
   const endDrag = useSet(endPinnedAgentDrag$);
   const [, moveAgent] = useLoadableSet(movePinnedAgent$);
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const displayName = agent.displayName ?? agent.agentId;
 
   const isDragging = draggingAgentId === agent.agentId;
@@ -307,6 +282,7 @@ function PinnedAgentGridCard({
 
   const card = (
     <Link
+      ref={refreshLayoutRef}
       pathname="/agents/:agentId/chat"
       options={{ pathParams: { agentId: agent.agentId } }}
       data-testid="pinned-agent-card"
@@ -357,7 +333,7 @@ function PinnedAgentGridCard({
         );
         endDrag();
       }}
-      className={`group relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+      className={`group relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
         isPrimarySelected
           ? "bg-state-selected text-sidebar-foreground"
           : "text-sidebar-foreground hover:bg-state-hover"
@@ -381,12 +357,15 @@ function PinnedAgentGridCard({
           className="pointer-events-none absolute inset-0.5 rounded-lg border border-dashed border-[hsl(var(--gray-400))] bg-state-hover"
         />
       )}
-      <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
-        <AvatarFromUrl
-          avatarUrl={agent.avatarUrl}
+      <span
+        className={`relative flex h-9 w-9 shrink-0 ${
+          isDragging ? "opacity-0" : ""
+        }`}
+      >
+        <AgentAvatarImg
+          name={agent.agentId}
           alt=""
-          className="h-9 w-9 rounded-full object-cover object-top"
-          data-testid="pinned-agent-avatar"
+          className="block h-full w-full rounded-full object-cover object-top"
         />
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 flex">
@@ -395,7 +374,8 @@ function PinnedAgentGridCard({
         )}
       </span>
       <span
-        className={`zero-nav-copy w-full truncate text-center text-[11px] leading-tight ${
+        data-testid="pinned-agent-label-frame"
+        className={`okou-nav-copy ${pinnedAgentGridLabelFrameClassName} w-full truncate text-center text-[11px] ${
           isPrimarySelected ? "font-medium" : ""
         } ${isDragging ? "opacity-0" : ""}`}
       >
@@ -476,6 +456,7 @@ export function PinnedAgentListSection({
 }: {
   layout?: "vertical" | "horizontal";
 }) {
+  const refreshLayoutRef = useSet(refreshSidebarChatThreadLayoutOnRef$);
   const { t } = useTranslation("agents");
   const activeRoute = useGet(activeRoute$);
   const pathParams = useGet(pathParams$);
@@ -484,9 +465,6 @@ export function PinnedAgentListSection({
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
   const displayedPinnedAgentsLoadable = useLastLoadable(displayedPinnedAgents$);
-  const cachedPinnedAgentPreviewLoadable = useLoadable(
-    cachedPinnedAgentPreviewSnapshot$,
-  );
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -498,31 +476,32 @@ export function PinnedAgentListSection({
   const draggingAgentId = useGet(draggingPinnedAgentId$);
   const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const pinnedAgentPresentation = resolvePinnedAgentPresentation({
-    pinnedAgentsLoadable,
-    displayedPinnedAgentsLoadable,
-    cachedPreviewLoadable: cachedPinnedAgentPreviewLoadable,
-    defaultAgentId,
-  });
-  const displayedPinnedAgents = pinnedAgentPresentation.displayedAgents;
-  const pinnedAgentIds = pinnedAgentPresentation.pinnedAgentIds;
-  const resolvedDefaultAgentId = pinnedAgentPresentation.defaultAgentId;
+  const pinnedAgents =
+    pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
+  const pinnedAgentIds = new Set(
+    pinnedAgents.map((agent) => {
+      return agent.agentId;
+    }),
+  );
+  const displayedPinnedAgents =
+    displayedPinnedAgentsLoadable.state === "hasData"
+      ? displayedPinnedAgentsLoadable.data
+      : pinnedAgents;
 
   const selectedAgentId = routeAgentId ?? sidebarAgentId;
 
   if (layout === "horizontal") {
-    const horizontalPinnedAgents = displayedPinnedAgents;
+    const horizontalPinnedAgents =
+      pinnedAgentsLoadable.state === "loading" ? null : displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
-        ? Array.from({ length: 4 }, (_, index) => {
-            return <PinnedAgentGridSkeletonCard key={index} />;
-          })
+        ? [<PinnedAgentGridSkeletonCard key="loading" />]
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
             const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
             const isPinned = pinnedAgentIds.has(agent.agentId);
-            const isDefaultAgent = agent.agentId === resolvedDefaultAgentId;
+            const isDefaultAgent = agent.agentId === defaultAgentId;
             return (
               <PinnedAgentContextDecorator
                 key={agent.agentId}
@@ -549,7 +528,7 @@ export function PinnedAgentListSection({
 
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
-        <span className="zero-nav-copy-muted flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
+        <span className="okou-nav-copy-muted flex h-8 items-center pl-2 text-[13px] font-medium leading-4 text-muted-foreground">
           {t(($) => {
             return $.sidebar.pinnedAgents;
           })}
@@ -559,25 +538,30 @@ export function PinnedAgentListSection({
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 4)}
-          <button
-            type="button"
-            onClick={() => {
-              openPinAgentDialog();
-            }}
-            aria-label={t(($) => {
-              return $.sidebar.pinAgent;
-            })}
-            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={18} />
-            </span>
-            <span className="zero-nav-copy-muted text-[11px] leading-tight">
-              {t(($) => {
-                return $.sidebar.addPin;
+          {horizontalPinnedAgents !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                openPinAgentDialog();
+              }}
+              aria-label={t(($) => {
+                return $.sidebar.pinAgent;
               })}
-            </span>
-          </button>
+              className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
+                <Plus size={18} />
+              </span>
+              <span
+                data-testid="pinned-agent-label-frame"
+                className={`okou-nav-copy-muted ${pinnedAgentGridLabelFrameClassName} text-[11px]`}
+              >
+                {t(($) => {
+                  return $.sidebar.addPin;
+                })}
+              </span>
+            </button>
+          )}
           {pinnedAgentCards.slice(4)}
         </div>
       </div>
@@ -593,7 +577,7 @@ export function PinnedAgentListSection({
           return setCollapsed(!collapsed);
         }}
       >
-        <span className="zero-nav-copy-muted zero-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+        <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
           {t(($) => {
             return $.sidebar.pinned;
           })}
@@ -606,10 +590,13 @@ export function PinnedAgentListSection({
         </span>
       </div>
       {!collapsed && (
-        <div className="flex flex-col gap-0.5 mt-1">
-          {displayedPinnedAgents === null && (
+        <div ref={refreshLayoutRef} className="flex flex-col gap-0.5 mt-1">
+          {pinnedAgentsLoadable.state === "loading" && (
             <>
-              <div className="flex h-8 items-center gap-2 px-2">
+              <div
+                ref={refreshLayoutRef}
+                className="flex h-8 items-center gap-2 px-2"
+              >
                 <div className="h-5 w-5 shrink-0 rounded-md bg-muted animate-pulse" />
                 <div className="h-3 w-20 rounded bg-muted animate-pulse" />
               </div>
@@ -619,18 +606,19 @@ export function PinnedAgentListSection({
               </div>
             </>
           )}
-          {displayedPinnedAgents !== null &&
+          {pinnedAgentsLoadable.state === "hasData" &&
             displayedPinnedAgents.map((agent) => {
               const isPrimarySelected =
                 isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
               const isFromChat = sidebarAgentId === agent.agentId;
               const isPinned = pinnedAgentIds.has(agent.agentId);
               const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
-              const isDefaultAgent = agent.agentId === resolvedDefaultAgentId;
+              const isDefaultAgent = agent.agentId === defaultAgentId;
               const hasSideActions = hasUnread || (!isDefaultAgent && isPinned);
               return (
                 <div
                   key={agent.agentId}
+                  ref={refreshLayoutRef}
                   className="group relative"
                   data-testid="pinned-agent-card"
                 >
@@ -654,13 +642,12 @@ export function PinnedAgentListSection({
                           : "text-sidebar-foreground hover:bg-state-hover"
                     }`}
                   >
-                    <AvatarFromUrl
-                      avatarUrl={agent.avatarUrl}
+                    <AgentAvatarImg
+                      name={agent.agentId}
                       alt={agent.displayName ?? agent.agentId}
                       className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-                      data-testid="pinned-agent-avatar"
                     />
-                    <span className="zero-nav-copy truncate">
+                    <span className="okou-nav-copy truncate">
                       {agent.displayName ?? agent.agentId}
                     </span>
                   </Link>

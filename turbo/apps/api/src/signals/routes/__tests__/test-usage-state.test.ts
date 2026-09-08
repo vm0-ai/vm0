@@ -1,8 +1,11 @@
 import { createStore } from "ccstate";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { seedOwnedConnectorSecret } from "./helpers/connector-credential-storage-state";
+import {
+  readConnectorCredentialStorageState,
+  seedOwnedConnectorSecret,
+} from "./helpers/connector-credential-storage-state";
 import {
   deleteUsageStateFixture$,
   insertUsageEvent$,
@@ -32,6 +35,17 @@ describe("usage state test state", () => {
     });
 
     await store.set(deleteUsageStateFixture$, fixture, context.signal);
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      ...fixture,
+      connectorSlug: "fixture-connector",
+      secretNames: ["FIXTURE_CONNECTOR_TOKEN"],
+    });
+    expect(storageState).toMatchObject({
+      connector: null,
+      secrets: [],
+      variables: [],
+    });
   });
 
   it("moves processed fixture usage to hourly storage", async () => {

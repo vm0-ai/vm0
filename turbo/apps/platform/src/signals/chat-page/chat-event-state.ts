@@ -3,6 +3,7 @@ import {
   foldChatRunStates,
   isBrowserLifecycleEventType,
   isChatGoalMarkerEventType,
+  isChatInputEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
@@ -91,6 +92,7 @@ export function isInterruptedAssistantCancellation(
 export interface SemanticChatEventState {
   readonly event: ChatEvent;
   readonly isQueued: boolean;
+  readonly inputCreatedAt?: string;
 }
 
 type QueuedChatEvent = Extract<
@@ -173,6 +175,18 @@ export function semanticChatEventsFromChatEvents(
     }),
   );
 
+  // Resolve submission times before hiding replaced inputs. Delivery appends a
+  // new event, but does not start another user-facing work interval.
+  const inputCreatedAtById = new Map<string, string>();
+  for (const event of events) {
+    if (isChatInputEventType(event.eventType)) {
+      const previousCreatedAt = event.revokesEventId
+        ? inputCreatedAtById.get(event.revokesEventId)
+        : undefined;
+      inputCreatedAtById.set(event.id, previousCreatedAt ?? event.createdAt);
+    }
+  }
+
   return events.flatMap((event): SemanticChatEventState[] => {
     if (
       isHiddenSemanticChatEvent(event, {
@@ -204,7 +218,9 @@ export function semanticChatEventsFromChatEvents(
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
       event.eventType === "input.automation";
-    return [{ event, isQueued }];
+    return [
+      { event, isQueued, inputCreatedAt: inputCreatedAtById.get(event.id) },
+    ];
   });
 }
 

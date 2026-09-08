@@ -10,6 +10,10 @@ pub(crate) fn complete_url(base_url: &str) -> String {
     routes::webhooks::agent::complete::COMPLETE.url(base_url)
 }
 
+pub(crate) fn maintenance_usage_url(base_url: &str) -> String {
+    routes::webhooks::agent::pi_memory_phase2::usage::SEND.url(base_url)
+}
+
 pub(crate) fn heartbeat_url(base_url: &str) -> String {
     routes::webhooks::agent::heartbeat::SEND.url(base_url)
 }

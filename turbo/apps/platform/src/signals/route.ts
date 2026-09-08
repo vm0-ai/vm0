@@ -1,3 +1,4 @@
+import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "./route-paths";
@@ -61,9 +62,18 @@ export const updateSearchParams$ = command(
 );
 
 export const replaceSearchParams$ = command(
-  ({ set }, searchParams: URLSearchParams, historyState: unknown = {}) => {
+  (
+    { set },
+    searchParams: URLSearchParams,
+    historyState: unknown = {},
+    hash = "",
+  ) => {
     const str = searchParams.toString();
-    replaceState(historyState, "", `${pathname()}${str ? `?${str}` : ""}`);
+    replaceState(
+      historyState,
+      "",
+      `${pathname()}${str ? `?${str}` : ""}${hash}`,
+    );
     set(internalHistoryState$, historyState);
     set(reloadPathname$, (x) => {
       return x + 1;
@@ -77,10 +87,15 @@ export const replacePathSilently$ = command(
     pathnameTemplate: Parameters<typeof generateRouterPath>[0],
     pathParams?: Parameters<typeof generateRouterPath>[1],
     searchParams?: URLSearchParams,
+    hash = "",
   ) => {
     const newPath = generateRouterPath(pathnameTemplate, pathParams);
     const searchStr = searchParams?.toString();
-    replaceState({}, "", `${newPath}${searchStr ? `?${searchStr}` : ""}`);
+    replaceState(
+      {},
+      "",
+      `${newPath}${searchStr ? `?${searchStr}` : ""}${hash}`,
+    );
     set(internalHistoryState$, {});
     set(reloadPathname$, (x) => {
       return x + 1;
@@ -241,7 +256,10 @@ const navigate$ = command(
   ) => {
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
-    L.debug("navigating to", newPath);
+    L.debug(
+      "navigating to",
+      isDesktopAuthFlow(new URL(newPath, location.origin)) ? pathname : newPath,
+    );
     set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
       replaceState({}, "", newPath);

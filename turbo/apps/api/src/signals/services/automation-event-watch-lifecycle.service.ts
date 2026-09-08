@@ -15,6 +15,7 @@ import {
 import {
   ensureGoogleCalendarWatchForUser,
   reconcileGoogleCalendarWatchesForUser,
+  stageGoogleCalendarWatchTargetForReconfiguration,
 } from "./google-calendar-automation-event.service";
 import {
   ensureGoogleFormsWatchForUser,
@@ -322,18 +323,29 @@ async function ensureNonFormsTarget(
             message:
               "Connect Google Calendar before using Google Calendar event automations",
           }
-        : await ensureGoogleCalendarWatchForUser(
-            {
-              db,
-              orgId: target.orgId,
-              userId: target.userId,
-              connectorId: target.connectorId,
-              calendarId: target.calendarId,
-              forceRefresh: false,
-              allowStagedOfficialTarget,
-            },
-            signal,
-          );
+        : allowStagedOfficialTarget
+          ? await stageGoogleCalendarWatchTargetForReconfiguration(
+              {
+                db,
+                orgId: target.orgId,
+                userId: target.userId,
+                connectorId: target.connectorId,
+                calendarId: target.calendarId,
+                forceRefresh: false,
+              },
+              signal,
+            )
+          : await ensureGoogleCalendarWatchForUser(
+              {
+                db,
+                orgId: target.orgId,
+                userId: target.userId,
+                connectorId: target.connectorId,
+                calendarId: target.calendarId,
+                forceRefresh: false,
+              },
+              signal,
+            );
   }
   signal.throwIfAborted();
   return result.kind === "ok"

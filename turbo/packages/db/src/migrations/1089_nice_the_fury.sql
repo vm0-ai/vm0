@@ -1,0 +1,2 @@
+ALTER TABLE "google_calendar_watch_states" ADD COLUMN "action_required_reason" varchar(64);--> statement-breakpoint
+ALTER TABLE "google_calendar_watch_states" ADD COLUMN "action_required_at" timestamp;

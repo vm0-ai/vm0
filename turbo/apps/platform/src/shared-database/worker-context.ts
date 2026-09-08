@@ -1,11 +1,15 @@
-import { command, computed, state } from "ccstate";
+import { command, state } from "ccstate";
 
 import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
-import type { SharedDatabasePortLike } from "./bridge.ts";
+import type {
+  SharedDatabasePortLike,
+  SharedDatabaseTokenProvider,
+} from "./bridge.ts";
 import type { ComputedKey } from "./computed-key.ts";
 import type {
   SharedDatabaseConnectionStatus,
+  SharedDatabaseWorkerUnavailableReason,
   SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 
@@ -21,8 +25,18 @@ export type WorkerBroadcastMessage = Extract<
       | "invalidate"
       | "reconnect"
       | "reload-computed"
-      | "reload-required"
-      | "status";
+      | "status"
+      | "worker-unavailable";
+  }
+>;
+
+type WorkerConnectionMessage = Extract<
+  SharedDatabaseWorkerMessage,
+  {
+    readonly type:
+      | "realtime-event"
+      | "realtime-subscribed"
+      | "realtime-subscription-error";
   }
 >;
 
@@ -32,8 +46,13 @@ const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
-const connectionPortsState$ = state<
-  ReadonlyMap<ConnectionId, SharedDatabasePortLike>
+interface RegisteredConnection {
+  readonly getToken: SharedDatabaseTokenProvider;
+  readonly port: SharedDatabasePortLike;
+}
+
+const connectionsState$ = state<
+  ReadonlyMap<ConnectionId, RegisteredConnection>
 >(new Map());
 
 function deleteMapKey<TKey, TValue>(
@@ -45,20 +64,27 @@ function deleteMapKey<TKey, TValue>(
   return next;
 }
 
-export const connectionControllers$ = computed((get) => {
-  return get(connectionControllersState$);
-});
-
-export const connectionPorts$ = computed((get) => {
-  return get(connectionPortsState$);
-});
-
 export const broadcastSharedDatabaseWorkerMessage$ = command(
   ({ get }, message: WorkerBroadcastMessage): void => {
-    for (const [connectionId, port] of get(connectionPortsState$)) {
+    for (const [connectionId, connection] of get(connectionsState$)) {
       L.debug("send message to app", connectionId, message);
-      port.postMessage(message);
+      connection.port.postMessage(message);
     }
+  },
+);
+
+export const sendSharedDatabaseWorkerMessageToConnection$ = command(
+  (
+    { get },
+    connectionId: ConnectionId,
+    message: WorkerConnectionMessage,
+  ): void => {
+    const connection = get(connectionsState$).get(connectionId);
+    if (!connection) {
+      return;
+    }
+    L.debug("send message to app", connectionId, message);
+    connection.port.postMessage(message);
   },
 );
 
@@ -68,10 +94,7 @@ const removeConnection$ = command(
       connectionControllersState$,
       deleteMapKey(get(connectionControllersState$), connectionId),
     );
-    set(
-      connectionPortsState$,
-      deleteMapKey(get(connectionPortsState$), connectionId),
-    );
+    set(connectionsState$, deleteMapKey(get(connectionsState$), connectionId));
   },
 );
 
@@ -80,7 +103,7 @@ export const registerConnection$ = command(
     { get, set },
     connectionId: ConnectionId,
     connectionController: AbortController,
-    port: SharedDatabasePortLike,
+    connection: RegisteredConnection,
     connectionControllerSignal: AbortSignal,
   ): AbortSignal => {
     connectionControllerSignal.throwIfAborted();
@@ -99,8 +122,8 @@ export const registerConnection$ = command(
       ),
     );
     set(
-      connectionPortsState$,
-      new Map(get(connectionPortsState$)).set(connectionId, port),
+      connectionsState$,
+      new Map(get(connectionsState$)).set(connectionId, connection),
     );
     signal.addEventListener(
       "abort",
@@ -113,9 +136,20 @@ export const registerConnection$ = command(
     // tab, so a tab that registers later has to be told the status it missed.
     const status = get(lastConnectionStatusState$);
     if (status) {
-      port.postMessage({ type: "status", status });
+      connection.port.postMessage({ type: "status", status });
     }
     return signal;
+  },
+);
+
+export const requestTokenFromFirstConnection$ = command(
+  async ({ get }, signal: AbortSignal): Promise<string | null> => {
+    signal.throwIfAborted();
+    const connection = get(connectionsState$).values().next().value;
+    if (!connection) {
+      throw new Error("Shared database token requires a registered tab");
+    }
+    return await connection.getToken(signal);
   },
 );
 
@@ -146,9 +180,14 @@ export const forwardChatThreadReadCursorUpdated$ = command(
   },
 );
 
-export const reloadConnections$ = command(({ set }): void => {
-  set(broadcastSharedDatabaseWorkerMessage$, { type: "reload-required" });
-});
+export const reportWorkerUnavailableForConnections$ = command(
+  ({ set }, reason: SharedDatabaseWorkerUnavailableReason): void => {
+    set(broadcastSharedDatabaseWorkerMessage$, {
+      type: "worker-unavailable",
+      reason,
+    });
+  },
+);
 
 export const updateRealtimeStatusForConnections$ = command(
   ({ set }, status: SharedDatabaseConnectionStatus): void => {

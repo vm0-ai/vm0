@@ -841,6 +841,103 @@ async function inventoryFiles(
   return result;
 }
 
+/** Read the exact mounted memory tree without reconstructing it from Storage. */
+export async function snapshotMountedPiMemoryPhase2Base(
+  memoryRoot: string,
+): Promise<readonly PiMemoryPhase2BaseFile[]> {
+  let files: Map<string, Buffer>;
+  try {
+    files = await inventoryFiles(memoryRoot);
+  } catch {
+    throw new Phase2InputInvalidError();
+  }
+  return [...files]
+    .map(([path, bytes]) => {
+      return Object.freeze({
+        type: "file" as const,
+        path,
+        hash: hashBytes(bytes),
+        size: bytes.length,
+        bytes: Buffer.from(bytes),
+      });
+    })
+    .sort(comparePathHash);
+}
+
+async function removeEmptyDirectories(
+  root: string,
+  relative = "",
+): Promise<void> {
+  const directory = relative ? join(root, ...relative.split("/")) : root;
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) {
+      continue;
+    }
+    const child = relative ? `${relative}/${entry.name}` : entry.name;
+    await removeEmptyDirectories(root, child);
+  }
+  if (relative && (await fs.readdir(directory)).length === 0) {
+    await fs.rmdir(directory);
+  }
+}
+
+/**
+ * Commit an already validated result to the mounted memory tree. The exact
+ * base is rechecked first so the sandbox cannot apply a prepared result to a
+ * different mount epoch.
+ */
+export async function applyValidatedPiMemoryPhase2Result(args: {
+  readonly memoryRoot: string;
+  readonly memoryStorageId: string;
+  readonly baseFiles: readonly PiMemoryPhase2BaseFile[];
+  readonly files: readonly PiMemoryPhase2PreparedFile[];
+  readonly contentIdentity: string;
+}): Promise<void> {
+  const expectedBase = snapshotBaseFiles(args.baseFiles).files;
+  const mountedBefore = await inventoryFiles(args.memoryRoot);
+  const expectedBaseMap = new Map(
+    expectedBase.map((file) => {
+      return [file.path, file.bytes] as const;
+    }),
+  );
+  if (!mapsEqual(mountedBefore, expectedBaseMap)) {
+    throw new Phase2OutputInvalidError();
+  }
+
+  const prepared = new Map<string, Buffer>();
+  for (const file of args.files) {
+    const bytes = Buffer.from(file.contentBase64, "base64");
+    if (
+      bytes.length !== file.size ||
+      hashBytes(bytes) !== file.hash ||
+      prepared.has(file.path)
+    ) {
+      throw new Phase2OutputInvalidError();
+    }
+    prepared.set(file.path, bytes);
+  }
+
+  for (const path of mountedBefore.keys()) {
+    if (!prepared.has(path)) {
+      await fs.unlink(join(args.memoryRoot, ...path.split("/")));
+    }
+  }
+  for (const [path, bytes] of prepared) {
+    await writeWorkspaceFile(args.memoryRoot, path, bytes);
+  }
+  await removeEmptyDirectories(args.memoryRoot);
+
+  const mountedAfter = await inventoryFiles(args.memoryRoot);
+  const committed = manifestForFiles(args.memoryStorageId, mountedAfter);
+  if (
+    !mapsEqual(mountedAfter, prepared) ||
+    committed.contentIdentity !== args.contentIdentity
+  ) {
+    throw new Phase2OutputInvalidError();
+  }
+}
+
 function validateImmutablePaths(
   finalFiles: ReadonlyMap<string, Buffer>,
   baseline: ReadonlyMap<string, Buffer>,

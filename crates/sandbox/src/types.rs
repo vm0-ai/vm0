@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
+/// Default host deadline for starting a supervised guest process.
+pub const DEFAULT_PROCESS_START_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExecOutputLimits {
@@ -216,6 +219,9 @@ pub struct StartProcessRequest<'a> {
     pub cmd: &'a str,
     /// Guest-side process timeout.
     pub timeout: Duration,
+    /// Host deadline for writing the start request and receiving the guest
+    /// process-start acknowledgement.
+    pub start_timeout: Duration,
     /// Environment variables passed to the command. Keys must satisfy the vm0
     /// guest shell exec env key contract.
     pub env: &'a [(&'a str, &'a str)],
@@ -1248,6 +1254,7 @@ mod tests {
     fn start_process_timeout_ms_rounds_nonzero_submillisecond_up() {
         let req = StartProcessRequest {
             cmd: "true",
+            start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_nanos(1),
             env: &[],
             sudo: false,

@@ -22,6 +22,7 @@ describe("user preferences contract", () => {
       theme: null,
       colorTheme: null,
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
 
     expect(preferences.locale).toBe("id-ID");
@@ -39,6 +40,7 @@ describe("user preferences contract", () => {
       theme: null,
       colorTheme: null,
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
 
     expect(preferences.success).toBe(false);
@@ -58,6 +60,7 @@ describe("user preferences contract", () => {
         theme: null,
         colorTheme: null,
         captureNetworkBodiesRemaining: 0,
+        voiceInputModel: null,
       }),
     ).toMatchObject({
       locale: "ja-JP",
@@ -80,6 +83,7 @@ describe("user preferences contract", () => {
         theme: null,
         colorTheme: null,
         captureNetworkBodiesRemaining: 0,
+        voiceInputModel: null,
       }),
     ).toMatchObject({
       locale: "ko-KR",
@@ -102,6 +106,7 @@ describe("user preferences contract", () => {
         theme: null,
         colorTheme: null,
         captureNetworkBodiesRemaining: 0,
+        voiceInputModel: null,
       }),
     ).toMatchObject({
       locale: "es-ES",
@@ -126,6 +131,7 @@ describe("user preferences contract", () => {
       theme: null,
       colorTheme: null,
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
 
     expect(preferences.locale).toBe("it-IT");
@@ -157,6 +163,7 @@ describe("user preferences contract", () => {
       theme: null,
       colorTheme: null,
       captureNetworkBodiesRemaining: 0,
+      voiceInputModel: null,
     });
 
     expect(preferences.locale).toBe("hi-IN");

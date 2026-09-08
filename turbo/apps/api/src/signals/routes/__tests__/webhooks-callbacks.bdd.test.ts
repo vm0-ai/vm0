@@ -692,7 +692,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const billing = await runs.readBillingStatus(admin);
     expect(billing).toMatchObject({
-      credits: 3000,
+      credits: 1000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
@@ -723,8 +723,8 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       return grant.source === "onboarding";
     });
     expect(onboardingCreditGrant).toMatchObject({
-      amount: 3000,
-      remaining: 3000,
+      amount: 1000,
+      remaining: 1000,
     });
     expectExpiresAboutThirtyDaysFromNow(onboardingCreditGrant?.expiresAt);
     const limitedFreeProviders = await runs.listOrgModelProviders(admin);
@@ -749,7 +749,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
     const repeatedBilling = await runs.readBillingStatus(admin);
     expect(repeatedBilling).toMatchObject({
-      credits: 3000,
+      credits: 1000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });

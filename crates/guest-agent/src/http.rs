@@ -10,7 +10,7 @@ use api_contracts::generated::constants::client::headers::{
 use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use api_contracts::generated::types::runners::runs::active_inputs::receipt::Response as ActiveInputReceiptResponse;
 use bytes::{Bytes, BytesMut};
-use guest_common::log_warn;
+use guest_telemetry::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
 use reqwest::header::CONTENT_TYPE;
@@ -34,9 +34,9 @@ const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "OKOU_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
-    "VM0 API response body exceeds the configured limit";
+    "API response body exceeds the configured limit";
 const API_ERROR_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
-    "VM0 API error response body exceeds the configured limit";
+    "API error response body exceeds the configured limit";
 
 enum ResponseBodyCollectionError {
     TooLarge,
@@ -181,6 +181,7 @@ struct ApiHttpConfig {
 struct ApiUrls {
     events: String,
     complete: String,
+    maintenance_usage: String,
     heartbeat: String,
     telemetry: String,
     checkpoint_prepare_history: String,
@@ -372,6 +373,10 @@ impl HttpClient {
         Ok(&self.api_config()?.urls.complete)
     }
 
+    pub(crate) fn maintenance_usage_url(&self) -> Result<&str, AgentError> {
+        Ok(&self.api_config()?.urls.maintenance_usage)
+    }
+
     pub(crate) fn heartbeat_url(&self) -> Result<&str, AgentError> {
         Ok(&self.api_config()?.urls.heartbeat)
     }
@@ -439,6 +444,7 @@ impl ApiUrls {
         Self {
             events: urls::events_url(base_url),
             complete: urls::complete_url(base_url),
+            maintenance_usage: urls::maintenance_usage_url(base_url),
             heartbeat: urls::heartbeat_url(base_url),
             telemetry: urls::telemetry_url(base_url),
             checkpoint_prepare_history: urls::checkpoint_prepare_history_url(base_url),

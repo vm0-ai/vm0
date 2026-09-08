@@ -1,19 +1,30 @@
 use std::sync::Arc;
+use std::time::Duration;
+
+use guest_contracts::active_input::{ACTIVE_INPUT_CLOSED_DIAGNOSTIC, encode_active_input};
+use tracing::Level;
+use tracing_subscriber::prelude::*;
 
 use crate::active_input::{
-    API_ACTIVE_INPUT_RECHECK_INTERVAL, ActiveInputNotifications, ActiveInputSource,
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, API_ACTIVE_INPUT_RECHECK_INTERVAL,
+    ActiveInputNotifications, ActiveInputSource, identified_active_input_payload_len,
     local_active_input_delivery_id,
+};
+use crate::executor::active_input::{
+    ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL, ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
 };
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::support::{
-    RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context,
-    sandbox_read_file_error, test_executor_config, test_telemetry,
+    CapturedEvent, CapturedEvents, RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox,
+    minimal_context, sandbox_read_file_error, test_executor_config, test_telemetry,
 };
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::provider::ApiClient;
 use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, json_response};
 use crate::types::SandboxReuseResult;
+
+mod read_backoff;
 
 const DELIVERY_ID: &str = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
 const EVENT_ID: &str = "e6bc287d-8c08-464e-831a-cad771610157";
@@ -65,6 +76,114 @@ fn api_active_input_source(
         "sandbox-token".to_string(),
         notifications.subscribe(run_id),
     )
+}
+
+async fn run_local_active_input_rejection(diagnostic: &str) -> Vec<CapturedEvent> {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    overrides.push_process_control_outcome(sandbox::ProcessControlOutcome::GuestStatus {
+        status: sandbox::ProcessControlGuestStatus::Rejected,
+        diagnostic: diagnostic.to_string(),
+    });
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let group_dir = dir.path().join("active-inputs");
+    LocalQueue::new(group_dir.clone())
+        .write_active_input_sync(&ActiveInputEntry {
+            run_id: ctx.run_id,
+            sequence: 1,
+            text: "late follow-up".to_string(),
+        })
+        .unwrap();
+    let source = ActiveInputSource::local_queue(LocalQueue::new(group_dir), ctx.run_id);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let release_overrides = Arc::clone(&overrides);
+    let release_task = tokio::spawn(async move {
+        assert!(
+            release_overrides
+                .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+                .await
+        );
+        wait_gate.notify_one();
+    });
+
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    drop(guard);
+    release_task.await.unwrap();
+
+    assert!(result.failure.is_none());
+    assert_eq!(overrides.process_control_calls().len(), 1);
+    captured.entries()
+}
+
+fn active_input_stop_event(events: &[CapturedEvent]) -> &CapturedEvent {
+    let mut matching = events.iter().filter(|event| {
+        event
+            .fields
+            .get("message")
+            .is_some_and(|message| message == "active-input control stopped")
+    });
+    let event = matching
+        .next()
+        .unwrap_or_else(|| panic!("missing active-input stop event; captured={events:#?}"));
+    assert!(
+        matching.next().is_none(),
+        "expected one active-input stop event; captured={events:#?}"
+    );
+    event
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    assert_eq!(
+        event.fields.get(field).map(String::as_str),
+        Some(expected),
+        "field {field} mismatch; event={event:#?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_classifies_active_input_rejection_logs() {
+    let closed_events = run_local_active_input_rejection(ACTIVE_INPUT_CLOSED_DIAGNOSTIC).await;
+    let closed = active_input_stop_event(&closed_events);
+    assert_eq!(closed.level, Level::INFO);
+    assert_event_field(closed, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(closed, "outcome", "closed");
+    assert_event_field(closed, "diagnostic", ACTIVE_INPUT_CLOSED_DIAGNOSTIC);
+
+    let rejected_events = run_local_active_input_rejection("unexpected rejection").await;
+    let rejected = active_input_stop_event(&rejected_events);
+    assert_eq!(rejected.level, Level::WARN);
+    assert_event_field(rejected, "run_id", "00000000-0000-0000-0000-000000000000");
+    assert_event_field(rejected, "outcome", "rejected");
+    assert_event_field(rejected, "diagnostic", "unexpected rejection");
 }
 
 #[tokio::test]
@@ -514,13 +633,17 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
     let api_url = server.url();
     let notifications = ActiveInputNotifications::new();
     let source = api_active_input_source(
-        api_url,
+        api_url.clone(),
         run_id,
         &notifications,
         "active-input-lost-reserve-response-test",
     );
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
 
     let run_task = tokio::spawn(async move {
         run_in_sandbox(
@@ -550,6 +673,7 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
         .unwrap()
         .unwrap()
         .unwrap();
+    drop(guard);
     assert!(result.failure.is_none());
     let requests = server.assert_finished_with_requests().await;
     assert_eq!(requests.len(), 2);
@@ -561,6 +685,23 @@ async fn run_in_sandbox_retrieves_reservation_after_lost_first_response() {
     let calls = overrides.process_control_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].message_id, DELIVERY_ID);
+    let event = captured
+        .entries()
+        .into_iter()
+        .find(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|message| message == "active-input source read failed; retrying")
+        })
+        .expect("active-input transport failure should be logged");
+    assert_eq!(event.fields["endpoint"], "reserve active inputs");
+    assert!(event.fields["error"].starts_with("api error: "));
+    assert_eq!(event.fields["failure_kind"], "request");
+    assert_eq!(event.fields["failure_cause"], "http_incomplete_message");
+    let event_debug = format!("{event:#?}");
+    assert!(!event_debug.contains("runner-token"));
+    assert!(!event_debug.contains(&api_url));
 }
 
 #[tokio::test]
@@ -991,10 +1132,12 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&wait_gate),
     ));
-    for status in [
-        sandbox::ProcessControlGuestStatus::QueueFull,
-        sandbox::ProcessControlGuestStatus::SinkUnavailable,
-    ] {
+    for attempt in 0..7 {
+        let status = if attempt % 2 == 0 {
+            sandbox::ProcessControlGuestStatus::QueueFull
+        } else {
+            sandbox::ProcessControlGuestStatus::SinkUnavailable
+        };
         overrides.push_process_control_outcome(sandbox::ProcessControlOutcome::GuestStatus {
             status,
             diagnostic: "retryable guest backpressure".to_string(),
@@ -1003,10 +1146,17 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let ctx = minimal_context();
     let run_id = ctx.run_id;
+    let payload_overhead = identified_active_input_payload_len("").unwrap();
+    let prompt = "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - payload_overhead);
+    let expected_payload = encode_active_input(DELIVERY_ID, &prompt).unwrap();
+    assert_eq!(
+        expected_payload.len(),
+        ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
+    );
     let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
         "200 OK",
         &format!(
-            r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"retry guest backpressure"}}"#,
+            r#"{{"outcome":"reserved","deliveryId":"{DELIVERY_ID}","eventIds":["{EVENT_ID}"],"prompt":"{prompt}"}}"#,
         ),
     ))])
     .await;
@@ -1038,11 +1188,40 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
         .await
     });
 
+    let retry_delays = [
+        ACTIVE_INPUT_CONTROL_RETRY_INITIAL_INTERVAL,
+        Duration::from_millis(500),
+        Duration::from_secs(1),
+        Duration::from_secs(2),
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+        ACTIVE_INPUT_CONTROL_RETRY_MAX_INTERVAL,
+    ];
+    let scheduling_margin = Duration::from_millis(10);
     assert!(
         overrides
-            .wait_for_process_control_calls(3, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
+    tokio::time::pause();
+    let mut previous_attempt_at = tokio::time::Instant::now();
+    for (index, expected_delay) in retry_delays.into_iter().enumerate() {
+        assert!(
+            overrides
+                .wait_for_process_control_calls(index + 2, Duration::from_secs(30))
+                .await,
+            "control did not retry after backoff interval {index}"
+        );
+        let attempted_at = tokio::time::Instant::now();
+        let elapsed = attempted_at.duration_since(previous_attempt_at);
+        assert!(
+            elapsed >= expected_delay && elapsed <= expected_delay + scheduling_margin,
+            "retry interval {index} was {elapsed:?}, expected {expected_delay:?}"
+        );
+        previous_attempt_at = attempted_at;
+    }
+
+    tokio::time::resume();
     wait_gate.notify_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await
@@ -1052,12 +1231,12 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     assert!(result.failure.is_none());
     server.assert_finished().await;
     let calls = overrides.process_control_calls();
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), retry_delays.len() + 1);
     assert!(calls.iter().all(|call| call.message_id == DELIVERY_ID));
     assert!(
         calls
-            .windows(2)
-            .all(|pair| pair[0].payload == pair[1].payload)
+            .iter()
+            .all(|call| call.payload.as_slice() == expected_payload)
     );
 }
 

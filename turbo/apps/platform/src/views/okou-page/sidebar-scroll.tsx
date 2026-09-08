@@ -6,12 +6,8 @@ import type {
   UIEvent,
 } from "react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { useGet, useSet } from "ccstate-react";
-import type {
-  SidebarChatThreadScrollMetrics,
-  SidebarChatThreadScrollSignals,
-} from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
-import { baseUiSidebarScrollAreaEnabled$ } from "../../signals/external/feature-switch.ts";
+import { useSet } from "ccstate-react";
+import type { SidebarChatThreadScrollSignals } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 
 interface OverlayScrollAreaProps {
   readonly "aria-label"?: string;
@@ -26,73 +22,8 @@ interface OverlayScrollAreaProps {
   readonly tabIndex?: number;
 }
 
-function updateScrollMetrics(
-  event: UIEvent<HTMLDivElement>,
-  setScrollMetrics: (metrics: SidebarChatThreadScrollMetrics) => void,
-): void {
-  const element = event.currentTarget;
-  setScrollMetrics({
-    scrollTop: element.scrollTop,
-    scrollHeight: element.scrollHeight,
-    clientHeight: element.clientHeight,
-  });
-}
-
-/** Existing custom scroll behavior retained behind the disabled switch. */
-function LegacyOverlayScrollArea({
-  "aria-label": ariaLabel,
-  className,
-  contentClassName,
-  children,
-  onFocus,
-  onPointerDownCapture,
-  scrollSignals,
-  style,
-  "data-testid": dataTestId,
-  tabIndex,
-}: OverlayScrollAreaProps) {
-  const thumbStyleValue = useGet(scrollSignals.thumbStyle$);
-  const setScrollMetrics = useSet(scrollSignals.setScrollMetrics$);
-  const setViewportRef = useSet(scrollSignals.setScrollViewport$);
-
-  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
-    updateScrollMetrics(event, setScrollMetrics);
-  };
-
-  return (
-    <div className={`group/sidebar-scroll relative ${className ?? ""}`}>
-      <div
-        ref={setViewportRef}
-        className="h-full overflow-y-auto overflow-x-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={style}
-        onFocus={onFocus}
-        onPointerDownCapture={onPointerDownCapture}
-        onScroll={handleScroll}
-        tabIndex={tabIndex}
-        role={ariaLabel ? "region" : undefined}
-        aria-label={ariaLabel}
-        data-testid={dataTestId}
-      >
-        <div className={contentClassName}>{children}</div>
-      </div>
-      <div
-        className={`absolute right-1 top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
-          thumbStyleValue.visible
-            ? "group-hover/sidebar-scroll:opacity-100"
-            : ""
-        }`}
-        aria-hidden="true"
-      >
-        <div
-          className="absolute right-0 w-[5px] rounded-full bg-foreground/15"
-          style={{ top: thumbStyleValue.top, height: thumbStyleValue.height }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function BaseUiOverlayScrollArea({
+/** Overlay scroll area with a draggable Base UI scrollbar. */
+export function OverlayScrollArea({
   "aria-label": ariaLabel,
   className,
   contentClassName,
@@ -108,7 +39,11 @@ function BaseUiOverlayScrollArea({
   const setViewportRef = useSet(scrollSignals.setScrollViewport$);
 
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
-    updateScrollMetrics(event, setScrollMetrics);
+    const element = event.currentTarget;
+    setScrollMetrics({
+      scrollTop: element.scrollTop,
+      clientHeight: element.clientHeight,
+    });
   };
 
   return (
@@ -130,7 +65,7 @@ function BaseUiOverlayScrollArea({
         </ScrollArea.Content>
       </ScrollArea.Viewport>
       <ScrollArea.Scrollbar
-        className="m-px flex w-3 justify-center opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
+        className="pointer-events-none m-px flex w-3 justify-center opacity-0 transition-opacity duration-150 data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100 data-scrolling:duration-0"
         data-testid="sidebar-scrollbar"
       >
         <ScrollArea.Thumb
@@ -140,13 +75,4 @@ function BaseUiOverlayScrollArea({
       </ScrollArea.Scrollbar>
     </ScrollArea.Root>
   );
-}
-
-/** Overlay scroll area with a feature-gated draggable Base UI scrollbar. */
-export function OverlayScrollArea(props: OverlayScrollAreaProps) {
-  const baseUiEnabled = useGet(baseUiSidebarScrollAreaEnabled$);
-  if (baseUiEnabled) {
-    return <BaseUiOverlayScrollArea {...props} />;
-  }
-  return <LegacyOverlayScrollArea {...props} />;
 }

@@ -32,7 +32,7 @@ function command(app: string): ComputerUseCommand {
 describe("desktop automation permission prompt", () => {
   it("builds a dialog that opens the macOS Automation settings pane", () => {
     const options = buildAutomationPermissionDialogOptions(
-      "Zero Computer Use",
+      "Okou",
       "Google Chrome",
     );
 
@@ -42,7 +42,7 @@ describe("desktop automation permission prompt", () => {
       defaultId: 0,
       cancelId: 1,
       title: "Browser Automation Permission Required",
-      message: "Allow Zero Computer Use to control Google Chrome",
+      message: "Allow Okou to control Google Chrome",
     });
     expect(options.detail).toContain(
       "System Settings > Privacy & Security > Automation",
@@ -59,7 +59,7 @@ describe("desktop automation permission prompt", () => {
     const openAutomationSettings = vi.fn<() => void>();
     const onPermissionDenied = vi.fn();
     const prompt = createAutomationPermissionDeniedPrompt({
-      sourceLabel: "Zero Computer Use",
+      sourceLabel: "Okou",
       showDialog,
       openAutomationSettings,
       onPermissionDenied,
@@ -75,7 +75,7 @@ describe("desktop automation permission prompt", () => {
 
     expect(showDialog).toHaveBeenCalledOnce();
     expect(showDialog.mock.calls[0]?.[0].message).toBe(
-      "Allow Zero Computer Use to control Google Chrome",
+      "Allow Okou to control Google Chrome",
     );
     expect(onPermissionDenied).toHaveBeenCalledWith(
       "chrome",
@@ -89,7 +89,7 @@ describe("desktop automation permission prompt", () => {
     );
     const openAutomationSettings = vi.fn<() => void>();
     const prompt = createAutomationPermissionDeniedPrompt({
-      sourceLabel: "Zero Computer Use",
+      sourceLabel: "Okou",
       showDialog,
       openAutomationSettings,
     });
@@ -110,7 +110,7 @@ describe("desktop automation permission prompt", () => {
     );
     const openAutomationSettings = vi.fn<() => void>();
     const prompt = createAutomationPermissionDeniedPrompt({
-      sourceLabel: "Zero Computer Use",
+      sourceLabel: "Okou",
       showDialog,
       openAutomationSettings,
     });

@@ -237,7 +237,7 @@ function ProfileSection({
             </button>
           </div>
         </div>
-        <div className="h-0 zero-border-t mx-5" />
+        <div className="h-0 okou-border-t mx-5" />
         {/* Name row */}
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
@@ -424,7 +424,7 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
         )}
         {isAdmin && (
           <>
-            {canLeave && <div className="h-0 zero-border-t mx-5" />}
+            {canLeave && <div className="h-0 okou-border-t mx-5" />}
             {/* Delete workspace */}
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
@@ -563,7 +563,7 @@ function GeneralTabSkeleton() {
             </div>
             <div className="h-9 w-9 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
           </div>
-          <div className="h-0 zero-border-t mx-5" />
+          <div className="h-0 okou-border-t mx-5" />
           {/* Name row */}
           <div className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="min-w-0">

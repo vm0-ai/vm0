@@ -15,7 +15,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 helper gap:
-- AUTH-02 device, desktop, sandbox, zero, realtime, and run-scoped token flows
+- AUTH-02 device, desktop, sandbox, realtime, and Okou run-token flows
   need a dedicated token helper; this file covers the CLI PAT flow end to end
   through device authorization and use.
 - AUTH-03 built-in/user connector and push subscription flows need their own
@@ -150,15 +150,6 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
       onboardingPaymentPending: false,
     });
 
-    const removedLimitedFreeEndpoint = await api.requestRawJson(
-      admin,
-      "/api/zero/onboarding/complete-limited-free",
-      "POST",
-      {},
-      [404],
-    );
-    expect(removedLimitedFreeEndpoint.status).toBe(404);
-
     const afterRepeatedBootstrap = await api.listAgents(admin);
     expect(
       afterRepeatedBootstrap.filter((agent) => {
@@ -244,7 +235,7 @@ describe("AUTH-03", () => {
 
 describe("ORG-01 and ORG-02", () => {
   it("projects direct invitation redirects by request brand", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const admin = api.user();
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
@@ -264,7 +255,7 @@ describe("ORG-01 and ORG-02", () => {
       emailAddress: vm0Email,
       inviterUserId: admin.userId,
       role: "org:member",
-      redirectUrl: "https://app.vm0.ai",
+      redirectUrl: "https://app.okou.ai",
     });
 
     const okouEmail = `okou-invite-${shortId()}@example.test`;
@@ -651,7 +642,7 @@ describe("ORG-03 onboarding status mapping", () => {
 
     const bootstrappedBilling = await runsApi.readBillingStatus(admin);
     expect(bootstrappedBilling).toMatchObject({
-      credits: 3000,
+      credits: 1000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
@@ -922,7 +913,7 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expect(cleared.grants).toStrictEqual([]);
 
-    await api.disconnectSingleCustomConnectorAccount(admin, connector.id);
+    await api.deleteDefaultCustomConnectorAccount(admin, connector.id);
     const afterDisconnect = await api.listCustomConnectors(admin);
     expect(
       afterDisconnect.connectors.find((candidate) => {

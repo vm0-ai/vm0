@@ -5,12 +5,16 @@ import {
   testCronCleanupSandboxesStateContract,
 } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
-import { MIN_EPOCH_MS_TIMESTAMP } from "@okouai/api-contracts/contracts/runners";
+import {
+  agentRunConnectorDiagnosticRegistrationPayloadSchema,
+  MIN_EPOCH_MS_TIMESTAMP,
+} from "@okouai/api-contracts/contracts/runners";
 import { agents } from "@okouai/db/schema/agent";
 import { artifacts } from "@okouai/db/schema/artifact";
 import { browserSessions } from "@okouai/db/schema/browser-session";
 import { builtInGenerationJobs } from "@okouai/db/schema/built-in-generation-job";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
+import { agentRunConnectorDiagnosticRegistrations } from "@okouai/db/schema/agent-run-connector-diagnostic-registration";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatEvents } from "@okouai/db/schema/chat-event";
@@ -23,7 +27,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { command } from "ccstate";
-import { and, eq, inArray, notExists } from "drizzle-orm";
+import { and, eq, inArray, notExists, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -38,6 +42,7 @@ import {
   normalizeRunMetadata,
   writeRunMetadata,
 } from "../services/agent-run-metadata-write.service";
+import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { insertChatEvent } from "../services/chat-event.service";
 import {
@@ -206,6 +211,96 @@ async function seedRunForAction(
     org_id: orgId,
     user_id: userId,
   });
+}
+
+async function seedConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const payload =
+    agentRunConnectorDiagnosticRegistrationPayloadSchema.safeParse(
+      body["payload"],
+    );
+  if (!payload.success) {
+    return actionBadRequest("payload is invalid");
+  }
+  await db.insert(agentRunConnectorDiagnosticRegistrations).values({
+    runId,
+    payload: payload.data,
+    createdAt: readDate(body, "created_at") ?? undefined,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function getConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const [registration] = await db
+    .select({
+      payload: agentRunConnectorDiagnosticRegistrations.payload,
+      createdAt: agentRunConnectorDiagnosticRegistrations.createdAt,
+    })
+    .from(agentRunConnectorDiagnosticRegistrations)
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    connector_diagnostic_registration: registration
+      ? {
+          payload: agentRunConnectorDiagnosticRegistrationPayloadSchema.parse(
+            registration.payload,
+          ),
+          created_at: registration.createdAt.toISOString(),
+        }
+      : null,
+  });
+}
+
+async function deleteConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .delete(agentRunConnectorDiagnosticRegistrations)
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function corruptConnectorDiagnosticRegistrationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .update(agentRunConnectorDiagnosticRegistrations)
+    .set({
+      payload: sql`'null'::jsonb`,
+    })
+    .where(eq(agentRunConnectorDiagnosticRegistrations.runId, runId));
+  signal.throwIfAborted();
+  return actionOk();
 }
 
 async function deleteRunForAction(
@@ -946,23 +1041,23 @@ async function transitionRunTerminalForAction(
   if (!terminalStatus) {
     return actionBadRequest("terminal status is required");
   }
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: terminalStatus,
-      completedAt: nowDate(),
-      error:
-        terminalStatus === "completed"
-          ? null
-          : `Run entered ${terminalStatus} in endpoint integration fixture`,
-    })
-    .where(
-      and(
+  const updated = await db.transaction(async (tx) => {
+    const [run] = await transitionAgentRunsToTerminal(tx, {
+      values: {
+        status: terminalStatus,
+        completedAt: nowDate(),
+        error:
+          terminalStatus === "completed"
+            ? null
+            : `Run entered ${terminalStatus} in endpoint integration fixture`,
+      },
+      conditions: [
         eq(agentRuns.id, runId),
         inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
+      ],
+    });
+    return run;
+  });
   signal.throwIfAborted();
   return updated ? actionOk() : actionBadRequest("active run not found");
 }
@@ -985,6 +1080,14 @@ const cronCleanupSandboxesActionHandlers = {
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,
+  "seed-connector-diagnostic-registration":
+    seedConnectorDiagnosticRegistrationForAction,
+  "get-connector-diagnostic-registration":
+    getConnectorDiagnosticRegistrationForAction,
+  "corrupt-connector-diagnostic-registration":
+    corruptConnectorDiagnosticRegistrationForAction,
+  "delete-connector-diagnostic-registration":
+    deleteConnectorDiagnosticRegistrationForAction,
   "transition-run-terminal": transitionRunTerminalForAction,
 } satisfies Record<
   CronCleanupSandboxesAction,

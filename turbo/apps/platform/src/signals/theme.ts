@@ -4,7 +4,9 @@ import {
   type ColorTheme,
   type ThemePreference,
 } from "@okouai/api-contracts/contracts/user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { localStorageSignals } from "./external/local-storage.ts";
+import { featureSwitchCacheState$ } from "./external/feature-switch-state.ts";
 import { clerk$ } from "./auth.ts";
 import {
   updateUserPreference$,
@@ -15,11 +17,11 @@ import {
   readOkouThemePreferenceFromDocument,
   writeOkouThemePreferenceToDocument,
 } from "../lib/okou-theme-cookie.ts";
+import { onRef } from "./utils.ts";
 
-export { COLOR_THEMES };
 export type { ColorTheme, ThemePreference };
 
-export const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
+const DEFAULT_COLOR_THEME: ColorTheme = "blue-horizon";
 
 function isThemePreference(v: string | null): v is ThemePreference {
   return v === "light" || v === "dark" || v === "system";
@@ -34,6 +36,7 @@ function isColorTheme(value: string | null): value is ColorTheme {
 const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
 const internalColorTheme$ = state<ColorTheme>(DEFAULT_COLOR_THEME);
+const shellDocumentAttributesMounted$ = state(false);
 
 const { get$: themeStorageGet$, set$: themeStorageSet$ } =
   localStorageSignals("theme");
@@ -105,8 +108,9 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
 /**
  * Set and persist the palette-derived workspace color theme.
  */
-export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
+const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(internalColorTheme$, colorTheme);
+  set(syncShellDocumentAttributes$);
   if (isOkouHostname(location.hostname)) {
     /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
     // eslint-disable-next-line no-restricted-syntax -- blocked localStorage must not prevent the authenticated theme preference from synchronizing.
@@ -184,7 +188,7 @@ export const syncThemePreferences$ = command(
  * mounted. Document scope lets portaled dialogs and popovers inherit the same
  * semantic tokens as the app shell.
  */
-export function applyColorThemeDocumentAttributes(
+function applyColorThemeDocumentAttributes(
   enabled: boolean,
   colorTheme: ColorTheme,
 ) {
@@ -200,35 +204,38 @@ export function applyColorThemeDocumentAttributes(
 }
 
 /**
- * Keep the Geist typeface attribute on the document while a themed app shell is
- * mounted. Document scope matches the color themes above: portaled dialogs,
- * popovers, and toasts read the same font tokens as the app shell.
+ * Project the current shell color theme onto the document. Mount state is owned
+ * by the shell ref; semantic setters call this command again when their source
+ * state changes without replacing the committed shell element.
  */
-export function applyTypefaceDocumentAttribute(enabled: boolean) {
-  const root = document.documentElement;
+export const syncShellDocumentAttributes$ = command(
+  ({ get, set }, mounted?: boolean): void => {
+    if (mounted !== undefined) {
+      set(shellDocumentAttributesMounted$, mounted);
+    }
 
-  if (enabled) {
-    root.dataset.typeface = "geist";
-  } else {
-    delete root.dataset.typeface;
-  }
-}
+    const shellMounted = get(shellDocumentAttributesMounted$);
+    const featureSwitches = get(featureSwitchCacheState$);
+    applyColorThemeDocumentAttributes(
+      shellMounted &&
+        (featureSwitches[FeatureSwitchKey.GradientColorThemes] ?? false),
+      get(colorTheme$),
+    );
+  },
+);
 
-/**
- * Keep the new shell attribute on the document while the app shell is mounted.
- * Document scope matches the two above: the shell's surfaces are read by the
- * sidebars and the workspace card, and portaled dialogs inherit the same
- * sidebar token.
- */
-export function applyNewUiDocumentAttribute(enabled: boolean) {
-  const root = document.documentElement;
-
-  if (enabled) {
-    root.dataset.newUi = "";
-  } else {
-    delete root.dataset.newUi;
-  }
-}
+export const shellDocumentAttributesRef$ = onRef(
+  command(({ set }, _element: HTMLDivElement, signal: AbortSignal): void => {
+    set(syncShellDocumentAttributes$, true);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(syncShellDocumentAttributes$, false);
+      },
+      { once: true },
+    );
+  }),
+);
 
 /**
  * Initialize theme from localStorage or system preference.

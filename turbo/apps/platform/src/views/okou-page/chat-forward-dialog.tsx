@@ -1,3 +1,8 @@
+import { prepareChatForwardComposer$ } from "../../signals/chat-page/chat-forward-composer.ts";
+import { useLoadableSet } from "ccstate-react/experimental";
+import type { ChatThreadFeedbackSignals } from "../../signals/chat-page/chat-thread-feedback.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -15,12 +20,10 @@ import {
 } from "@okouai/ui";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import type {
-  ChatForwardComposerState,
   ChatForwardContext,
   ChatForwardSelection,
   ChatForwardTarget,
 } from "../../signals/chat-page/chat-forward.ts";
-import { createChatForwardComposerState$ } from "../../signals/chat-page/chat-forward-composer.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -82,6 +85,7 @@ function ForwardTargetPicker({
   const { t } = useTranslation();
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const signal = useGet(pageSignal$);
   const assistantName = useGet(assistantName$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const defaultAgentName = useLastResolved(defaultAgentName$) ?? assistantName;
@@ -104,7 +108,9 @@ function ForwardTargetPicker({
       shouldFilter={false}
       loop
       value={query}
-      onValueChange={setQuery}
+      onValueChange={(value) => {
+        detach(setQuery(value, signal), Reason.DomCallback);
+      }}
       className="min-h-0"
     >
       <div className="relative px-5 pb-4 pt-3">
@@ -214,46 +220,24 @@ function ForwardComposerSurface({
   );
 }
 
-function ForwardComposer({
-  state,
-}: {
-  readonly state: ChatForwardComposerState;
-}) {
-  const ready = useGet(state.ready$);
-  const setLifecycleRef = useSet(state.setLifecycleRef$);
-  return (
-    <div ref={setLifecycleRef} className="min-w-0">
-      {ready ? (
-        <ForwardComposerSurface composer={state.composer} />
-      ) : (
-        <div className="flex min-h-40 items-center justify-center text-muted-foreground">
-          <Loader2 size={16} className="animate-spin" aria-hidden />
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function ChatForwardDialog({
   selection,
-  composerState,
+  feedback,
   sourceAgentId,
   sourceThreadTitle,
-  onComposerStateChange,
   onDismiss,
 }: {
   readonly selection: ChatForwardSelection;
-  readonly composerState: ChatForwardComposerState | null;
+  readonly feedback: ChatThreadFeedbackSignals;
   readonly sourceAgentId: string;
   readonly sourceThreadTitle: string;
-  readonly onComposerStateChange: (
-    composerState: ChatForwardComposerState | null,
-  ) => void;
   readonly onDismiss: () => void;
 }) {
   const { t } = useTranslation();
-  const createForwardComposerState = useSet(createChatForwardComposerState$);
-  const target = composerState?.target ?? null;
+  const target = useGet(feedback.forwardTarget$);
+  const [prepared, prepare] = useLoadableSet(feedback.prepareForwardComposer$);
+  const resetTarget = useSet(feedback.resetForwardTarget$);
+  const signal = useGet(pageSignal$);
   const handleTargetSelect = (nextTarget: ChatForwardTarget) => {
     const forward = createForwardContext(
       selection,
@@ -268,8 +252,13 @@ export function ChatForwardDialog({
         }),
       );
     };
-    onComposerStateChange(
-      createForwardComposerState(nextTarget, forward, onOptimisticSend),
+    detach(
+      prepare(
+        prepareChatForwardComposer$,
+        { target: nextTarget, forward, onOptimisticSend },
+        signal,
+      ),
+      Reason.DomCallback,
     );
   };
   return (
@@ -281,14 +270,14 @@ export function ChatForwardDialog({
         }
       }}
     >
-      <DialogContent className="zero-app w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="okou-app w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="min-w-0 px-5 pb-3 pt-5">
           <div className="flex min-w-0 items-center gap-2 pr-8">
             {target ? (
               <IconTooltipButton
                 type="button"
                 onClick={() => {
-                  onComposerStateChange(null);
+                  resetTarget();
                 }}
                 className="-ml-2 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
                 aria-label={t(($) => {
@@ -315,8 +304,12 @@ export function ChatForwardDialog({
           </DialogDescription>
         </DialogHeader>
         {target ? null : <ForwardContent text={selection.quote} />}
-        {target && composerState ? (
-          <ForwardComposer state={composerState} />
+        {target && prepared.state === "loading" ? (
+          <div className="flex min-h-40 items-center justify-center text-muted-foreground">
+            <Loader2 size={16} className="animate-spin" aria-hidden />
+          </div>
+        ) : target && prepared.state === "hasData" ? (
+          <ForwardComposerSurface composer={prepared.data.composer} />
         ) : (
           <ForwardTargetPicker onSelect={handleTargetSelect} />
         )}

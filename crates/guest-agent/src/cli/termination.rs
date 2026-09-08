@@ -1,18 +1,18 @@
 //! CLI process-group termination state machine.
 //!
-//! `execute_cli` owns the select-loop orchestration and decides when external
-//! events happen. This module owns the termination policy state transitions,
-//! process-group signal side effects, diagnostics, and post-result cleanup
-//! deadlines for those events.
+//! The shared CLI execution path owns the select-loop orchestration and decides
+//! when external events happen. This module owns the termination policy state
+//! transitions, process-group signal side effects, diagnostics, and post-result
+//! cleanup deadlines for those events.
 
 use super::process_group::ChildProcessGroup;
 use crate::error::AgentError;
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
     CliTerminationSignal,
 };
+use guest_telemetry::telemetry::record_sandbox_op;
+use guest_telemetry::{log_info, log_warn};
 use std::pin::Pin;
 use std::time::Duration;
 use tokio::time::{Instant, Sleep};
@@ -105,7 +105,7 @@ impl TerminationState {
     /// event. Only the initial Idle -> SigtermPending transition should
     /// fire -- later events (or a result that races a CLI exit) must
     /// not re-arm. Single source of truth consumed by both the
-    /// production guard in `execute_cli` and the FSM unit tests.
+    /// production guard in the shared CLI select loop and the FSM unit tests.
     fn should_arm_post_result(self, cli_exited: bool) -> bool {
         matches!(self, TerminationState::Idle) && !cli_exited
     }

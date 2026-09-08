@@ -3,7 +3,7 @@ import { cliTokens } from "@okouai/db/schema/cli-tokens";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { and, eq, gt } from "drizzle-orm";
 
-import { membershipsByUserId } from "../external/clerk";
+import { clerk$ } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import type { ApiOrgRole, CliAuth, CliTokenRecord } from "../../types/auth";
@@ -94,7 +94,11 @@ export const getMemberRoleAndUpdateCache$ = command(
       return { role };
     }
 
-    const memberships = await get(membershipsByUserId(userId));
+    const memberships = await get(clerk$).users.getOrganizationMembershipList(
+      { userId, limit: 100 },
+      undefined,
+      signal,
+    );
     signal.throwIfAborted();
     const membership = memberships.data.find((candidate) => {
       return candidate.organization.id === orgId;

@@ -10,7 +10,6 @@ import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -518,7 +517,7 @@ async function resolveTeamsAdmissionFailurePresentation(
     );
   }
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
-    ? `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities`
+    ? `${env("APP_URL")}/activities`
     : undefined;
   return {
     logsUrl,

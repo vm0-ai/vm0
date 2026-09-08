@@ -35,7 +35,6 @@ export type OrgCustomConnectorAuthMode =
   | "oauth"
   | "automatic";
 export type OrgCustomConnectorMcpTransport = "streamable-http";
-export type OrgCustomConnectorOAuthSetup = "custom" | "automatic";
 
 /**
  * Org-defined custom connectors (v1 of the connector gallery).
@@ -71,10 +70,6 @@ export const orgCustomConnectors = pgTable(
       .$type<OrgCustomConnectorAuthMode>()
       .notNull()
       .default("manual"),
-    // Retained only until #30891 after the #31387 API rollback window drains.
-    oauthSetup: varchar("oauth_setup", {
-      length: 16,
-    }).$type<OrgCustomConnectorOAuthSetup>(),
     enabled: boolean("enabled").notNull().default(true),
     permissionBundleRef: varchar("permission_bundle_ref", { length: 128 }),
     mcpEndpoint: text("mcp_endpoint"),

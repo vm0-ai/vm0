@@ -4,11 +4,6 @@ import json
 import math
 from collections.abc import Callable
 
-from mitmproxy import http
-
-import body_decoding
-from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
-
 from .json_selective import (
     FIRST_ARRAY_ELEMENT,
     JsonExtractionResult,
@@ -441,30 +436,6 @@ def create_openai_chat_completions_sse_usage_extractor(
     return parser, usage
 
 
-class OpenAIChatCompletionsJsonUsageExtractor:
-    """Incrementally extract usage from a Chat Completions JSON response."""
-
-    def __init__(self) -> None:
-        self._extractor = _new_extractor()
-
-    def feed(self, chunk: bytes) -> None:
-        self._extractor.feed(chunk)
-
-    def accepts_more_input(self) -> bool:
-        return self._extractor.accepts_more_input()
-
-    def finish(self) -> tuple[dict | None, str | None]:
-        result = self._extractor.finish()
-        return model_json_usage_from_result(result)
-
-
-def create_openai_chat_completions_json_usage_extractor() -> (
-    OpenAIChatCompletionsJsonUsageExtractor
-):
-    """Create an incremental parser for a Chat Completions JSON response."""
-    return OpenAIChatCompletionsJsonUsageExtractor()
-
-
 def model_json_scalar_fields() -> dict:
     """Return Chat Completions JSON fields selected for usage inspection."""
 
@@ -490,23 +461,3 @@ def model_json_usage_from_result(
     if usage is None or not any(category in usage for category in MODEL_USAGE_CATEGORIES):
         return None, None
     return usage, None
-
-
-def extract_openai_chat_completions_usage_with_error_from_json(
-    body: bytes,
-    headers: http.Headers | None,
-) -> tuple[dict | None, str | None]:
-    """Extract usage from a complete, optionally encoded Chat Completions body."""
-    if headers:
-        body, decompress_error = body_decoding.decompress_json_usage_body(
-            body,
-            headers,
-            max_output=LARGE_RESPONSE_DECOMPRESS_LIMIT,
-        )
-        if decompress_error:
-            return None, decompress_error
-    if not body:
-        return None, None
-    extractor = create_openai_chat_completions_json_usage_extractor()
-    extractor.feed(body)
-    return extractor.finish()

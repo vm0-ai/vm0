@@ -89,6 +89,20 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expect(draft.draftAttachments).toHaveLength(1);
     await expect(api.listThreadDrafts(actor)).resolves.toContain(created.id);
 
+    await api.patchThread(actor, created.id, {
+      draftUserMessage: null,
+      draftAttachments: null,
+    });
+    await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
+      {
+        draftUserMessage: null,
+        draftAttachments: null,
+      },
+    );
+    await expect(api.listThreadDrafts(actor)).resolves.not.toContain(
+      created.id,
+    );
+
     await api.renameThread(actor, created.id, "Renamed launch notes");
     detail = await api.readThread(actor, created.id);
     expect(detail.lastReadAt).toStrictEqual(expect.any(String));
@@ -784,7 +798,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
       /^https?:\/\//,
     );
-    expect(prepared.url).toMatch(/\/artifacts\/[0-9a-z]{10}\.txt$/u);
+    expect(prepared.url).toMatch(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.txt$/u);
     expect(prepared.url).not.toContain(actor.userId);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);

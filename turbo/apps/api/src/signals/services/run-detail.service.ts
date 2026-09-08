@@ -1,5 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import type { RunContextResponse } from "@okouai/api-contracts/contracts/run-routes";
+import { visiblePiMemoryCitationText } from "@okouai/api-contracts/contracts/pi-memory-citations";
 import {
   runStatusSchema,
   type AgentEventsResponse,
@@ -168,6 +169,62 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
+function publicAgentEventData(
+  eventData: Record<string, unknown>,
+): Record<string, unknown> {
+  const { memoryCitation: _citation, ...event } = eventData;
+  const message =
+    typeof event.message === "object" && event.message !== null
+      ? (event.message as Record<string, unknown>)
+      : null;
+  const content = message?.content;
+  const publicMessage = message
+    ? {
+        ...Object.fromEntries(
+          Object.entries(message).filter(([key]) => {
+            return key !== "memoryCitation";
+          }),
+        ),
+        ...(Array.isArray(content)
+          ? {
+              content: content.map((block) => {
+                if (typeof block !== "object" || block === null) {
+                  return block;
+                }
+                const record = block as Record<string, unknown>;
+                if (record.type === "text" && typeof record.text === "string") {
+                  return {
+                    ...record,
+                    text: visiblePiMemoryCitationText(record.text),
+                  };
+                }
+                return block;
+              }),
+            }
+          : {}),
+      }
+    : null;
+  const nested =
+    typeof event.eventData === "object" && event.eventData !== null
+      ? (event.eventData as Record<string, unknown>)
+      : null;
+  return {
+    ...event,
+    ...(publicMessage ? { message: publicMessage } : {}),
+    ...(typeof event.result === "string"
+      ? { result: visiblePiMemoryCitationText(event.result) }
+      : {}),
+    ...(nested && typeof nested.result === "string"
+      ? {
+          eventData: {
+            ...nested,
+            result: visiblePiMemoryCitationText(nested.result),
+          },
+        }
+      : {}),
+  };
+}
+
 export function runAgentEvents(
   params: AgentEventsParams,
 ): Computed<Promise<AgentEventsResponse | null>> {
@@ -227,7 +284,7 @@ ${paginationFilter}
         return {
           sequenceNumber: e.sequenceNumber,
           eventType: e.eventType,
-          eventData: e.eventData,
+          eventData: publicAgentEventData(e.eventData),
           createdAt: e._time,
         } satisfies RunEvent;
       }),

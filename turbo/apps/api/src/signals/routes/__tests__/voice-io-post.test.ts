@@ -645,11 +645,11 @@ describe("POST /api/voice-io/*", () => {
     expect(new Set(requestIds).size).toBe(2);
   });
 
-  it("accepts BytePlus no-speech responses as empty transcripts", async () => {
+  it("rounds fractional WAV usage for a BytePlus no-speech response", async () => {
     const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     // Pre-fill the daily duration counter to two seconds under the free-tier
-    // limit so the 2s clip's metering is observable on the quota surface.
+    // limit so the fractional clip's rounded usage is visible on the quota surface.
     await seedBehaviorCount(
       fixture,
       sttDailyDurationKey(),
@@ -675,7 +675,7 @@ describe("POST /api/voice-io/*", () => {
     const response = await app.request("/api/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
-      body: sttForm(sttFile(wavBytes(2))),
+      body: sttForm(sttFile(wavBytes(1.56))),
     });
 
     expect(response.status).toBe(200);
@@ -1178,7 +1178,7 @@ describe("POST /api/voice-io/*", () => {
     expect(calledOpenAi).toBeFalsy();
   });
 
-  it("generates /speech WAV files for run-scoped agent tokens", async () => {
+  it("generates /speech WAV files and rounds fractional usage for run-scoped agent tokens", async () => {
     const fixture = await seedVoiceFixture({});
     const usagePricingResolution =
       await createSpeechPricingResolution("configured");
@@ -1198,7 +1198,7 @@ describe("POST /api/voice-io/*", () => {
       context.signal,
     );
 
-    const wav = wavBytes(2);
+    const wav = wavBytes(1.56);
     let observedBody: unknown = null;
     server.use(
       http.post(OPENAI_AUDIO_SPEECH_URL, async ({ request }) => {

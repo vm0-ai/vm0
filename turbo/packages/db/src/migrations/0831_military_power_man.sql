@@ -1,1 +1,0 @@
-ALTER TABLE "org_cache" ALTER COLUMN "slug" DROP NOT NULL;

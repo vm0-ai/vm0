@@ -3,7 +3,7 @@ import { delay } from "signal-timers";
 
 import { localStorageSignals } from "./external/local-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { jsonParseOr, setLoop } from "./utils.ts";
+import { isRecord, jsonParseOr, setLoop } from "./utils.ts";
 import { resolvePlatformServiceStatusConfig } from "../lib/platform-host.ts";
 
 const STATUS_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
@@ -19,10 +19,6 @@ export interface InstatusIssue {
   readonly status: string;
   readonly title: string;
   readonly type: InstatusIssueType;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function parseIssue(value: unknown, type: InstatusIssueType): InstatusIssue {

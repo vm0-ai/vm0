@@ -20,11 +20,17 @@ interface HastNode {
 }
 
 export const MARKDOWN_MERMAID_FENCE_ATTRIBUTE =
-  "data-vm0-markdown-mermaid-fence";
+  "data-okou-markdown-mermaid-fence";
 
-const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataVm0MarkdownMermaidFence";
+const MARKDOWN_MERMAID_FENCE_PROPERTY = "dataOkouMarkdownMermaidFence";
 
-function collectText(node: HastNode): string {
+interface TextTreeNode {
+  readonly type: string;
+  readonly value?: string;
+  readonly children?: readonly TextTreeNode[];
+}
+
+export function collectText(node: TextTreeNode): string {
   if (node.type === "text") {
     return node.value ?? "";
   }

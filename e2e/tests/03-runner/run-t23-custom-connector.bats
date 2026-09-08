@@ -8,12 +8,6 @@ setup() {
     runner_e2e_require_environment
     runner_e2e_setup_test
     CUSTOM_CONNECTOR_ID=""
-
-    local feature_switches
-    feature_switches="$(runner_api_curl "/api/feature-switches")"
-    jq -e '.effectiveSwitches.connectorAccounts == true' \
-        <<<"$feature_switches" \
-        >/dev/null
 }
 
 teardown() {
@@ -111,7 +105,8 @@ teardown() {
     local prompt
     prompt=$(cat <<'EOF'
 set -euo pipefail
-curl --silent --show-error --max-time 10 \
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \
     --output /dev/null \
     'https://www.google.com/robots.txt' || true
 printf 'CUSTOM_CONNECTOR_REQUEST_SENT\n'
@@ -315,7 +310,8 @@ EOF
     local default_prompt
     default_prompt=$(cat <<EOF
 set -euo pipefail
-curl --silent --show-error --max-time 10 \\
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \\
     --output /dev/null \\
     'https://example.com/'
 printf '${default_marker}\\n'
@@ -452,7 +448,8 @@ EOF
     local selected_prompt
     selected_prompt=$(cat <<EOF
 set -euo pipefail
-curl --silent --show-error --max-time 10 \\
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \\
     --output /dev/null \\
     'https://www.google.com/robots.txt'
 printf '${selected_marker}\\n'

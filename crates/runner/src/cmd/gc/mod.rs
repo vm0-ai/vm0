@@ -220,6 +220,8 @@ async fn run_gc_with_operations(
     home: &HomePaths,
     operations: &mut impl GcOperations,
 ) -> RunnerResult<()> {
+    let _gc_lock = crate::lock::acquire(home.gc_lock()).await?;
+
     // Retained version and service configs protect their image pairs before
     // version cleanup consumes the same retention analysis.
     let version_analysis = operations
@@ -294,8 +296,12 @@ fn record_gc_phase(total: &mut GcReport, domain: &str, phase: GcReport, dry_run:
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+
     use super::*;
     use clap::{CommandFactory, Parser};
+    use tokio::sync::oneshot;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::CapturedEvents;
 
@@ -320,6 +326,7 @@ mod tests {
     struct FakeGcOperations {
         events: Vec<SafetyGcPhase>,
         expected_analysis: VersionGcAnalysis,
+        first_phase_gate: Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>,
     }
 
     impl FakeGcOperations {
@@ -327,6 +334,17 @@ mod tests {
             Self {
                 events: Vec::new(),
                 expected_analysis: versions::empty_complete_version_gc_analysis(),
+                first_phase_gate: None,
+            }
+        }
+
+        fn with_first_phase_gate(
+            entered: oneshot::Sender<()>,
+            resume: oneshot::Receiver<()>,
+        ) -> Self {
+            Self {
+                first_phase_gate: Some((entered, resume)),
+                ..Self::new()
             }
         }
     }
@@ -339,6 +357,10 @@ mod tests {
             _keep_latest: Option<usize>,
         ) -> RunnerResult<VersionGcAnalysis> {
             self.events.push(SafetyGcPhase::AnalyzeVersions);
+            if let Some((entered, resume)) = self.first_phase_gate.take() {
+                entered.send(()).unwrap();
+                resume.await.unwrap();
+            }
             Ok(self.expected_analysis.clone())
         }
 
@@ -489,6 +511,68 @@ mod tests {
                 SafetyGcPhase::OrphanedVersionServiceLocks,
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn gc_coordinator_serializes_complete_runs_and_initializes_lock_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let first_home = home.clone();
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (resume_tx, resume_rx) = oneshot::channel();
+
+        let first_gc = tokio::spawn(async move {
+            let args = GcArgs {
+                dry_run: true,
+                keep_latest: None,
+                protect_version: None,
+            };
+            let mut operations = FakeGcOperations::with_first_phase_gate(entered_tx, resume_rx);
+            run_gc_with_operations(&args, &first_home, &mut operations).await
+        });
+
+        entered_rx.await.unwrap();
+        assert_eq!(
+            std::fs::metadata(home.locks_dir())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(home.gc_lock())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+
+        let second_args = GcArgs {
+            dry_run: true,
+            keep_latest: None,
+            protect_version: None,
+        };
+        let mut second_operations = FakeGcOperations::new();
+        let mut second_gc = Box::pin(run_gc_with_operations(
+            &second_args,
+            &home,
+            &mut second_operations,
+        ));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut second_gc)
+                .await
+                .is_err(),
+            "a second GC must wait while the first GC is inside a phase"
+        );
+
+        resume_tx.send(()).unwrap();
+        first_gc.await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), &mut second_gc)
+            .await
+            .expect("second GC should acquire the released global lock")
+            .unwrap();
     }
 
     #[test]

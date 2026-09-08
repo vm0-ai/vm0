@@ -57,7 +57,14 @@ async fn warm_cache_existing_remote_uses_head_without_download_or_build() {
     let cache = mock_r2_cache(&[&head]);
     let input = template_input(&home, TemplateCache::Required(&cache));
 
-    ensure_template_cached_under_lock(&input).await.unwrap();
+    let guard = std::sync::Arc::new(
+        lock::acquire(home.template_lock(input.template_hash))
+            .await
+            .unwrap(),
+    );
+    ensure_template_cached_under_lock(&input, guard)
+        .await
+        .unwrap();
 
     assert_eq!(head.num_calls(), 1);
     assert!(
@@ -88,7 +95,14 @@ async fn warm_cache_head_hit_cleans_stale_local_attempts() {
     let cache = mock_r2_cache(&[&head]);
     let input = template_input(&home, TemplateCache::Required(&cache));
 
-    ensure_template_cached_under_lock(&input).await.unwrap();
+    let guard = std::sync::Arc::new(
+        lock::acquire(home.template_lock(input.template_hash))
+            .await
+            .unwrap(),
+    );
+    ensure_template_cached_under_lock(&input, guard)
+        .await
+        .unwrap();
 
     assert_eq!(head.num_calls(), 1);
     assert!(
@@ -113,7 +127,14 @@ async fn warm_cache_head_request_failure_is_fatal() {
     let cache = mock_r2_cache(&[&head]);
     let input = template_input(&home, TemplateCache::Required(&cache));
 
-    let err = ensure_template_cached_under_lock(&input).await.unwrap_err();
+    let guard = std::sync::Arc::new(
+        lock::acquire(home.template_lock(input.template_hash))
+            .await
+            .unwrap(),
+    );
+    let err = ensure_template_cached_under_lock(&input, guard)
+        .await
+        .unwrap_err();
 
     assert!(
         err.to_string()

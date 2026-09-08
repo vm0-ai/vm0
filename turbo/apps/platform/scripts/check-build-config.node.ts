@@ -367,8 +367,8 @@ function clerkDiscoveryFixture(): string {
   return [
     "<!doctype html><html><head>",
     '<style id="app-bootstrap-critical-styles">body { color: black; }</style>',
-    '<script id="vm0-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
-    '<script data-vm0-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
+    '<script id="okou-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
+    '<script data-okou-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
     '<script type="module" src="/src/main.js"></script>',
     "</head><body>",
     '<div id="app-bootstrap-skeleton"></div>',
@@ -377,8 +377,10 @@ function clerkDiscoveryFixture(): string {
 }
 
 function assertClerkDiscoveryOrder(htmlSource: string): void {
-  const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
-  const clerkBootstrapIndex = htmlSource.indexOf('data-vm0-clerk-bootstrap=""');
+  const clerkCoreIndex = htmlSource.indexOf('id="okou-clerk-core-script"');
+  const clerkBootstrapIndex = htmlSource.indexOf(
+    'data-okou-clerk-bootstrap=""',
+  );
   const appModuleIndex = htmlSource.indexOf('<script type="module"');
   assert.notEqual(clerkCoreIndex, -1);
   assert.ok(clerkBootstrapIndex > clerkCoreIndex);
@@ -389,12 +391,14 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   const criticalStyleIndex = htmlSource.indexOf(
     '<style id="app-bootstrap-critical-styles">',
   );
-  const stylesheetIndex = htmlSource.indexOf('id="vm0-main-stylesheet"');
+  const stylesheetIndex = htmlSource.indexOf('id="okou-main-stylesheet"');
   const stylesheetLoaderIndex = htmlSource.indexOf(
-    'id="vm0-main-stylesheet-loader"',
+    'id="okou-main-stylesheet-loader"',
   );
-  const clerkCoreIndex = htmlSource.indexOf('id="vm0-clerk-core-script"');
-  const clerkBootstrapIndex = htmlSource.indexOf('data-vm0-clerk-bootstrap=""');
+  const clerkCoreIndex = htmlSource.indexOf('id="okou-clerk-core-script"');
+  const clerkBootstrapIndex = htmlSource.indexOf(
+    'data-okou-clerk-bootstrap=""',
+  );
   const headEndIndex = htmlSource.indexOf("</head>");
   const skeletonIndex = htmlSource.indexOf('id="app-bootstrap-skeleton"');
   const appModuleIndex = htmlSource.indexOf('<script type="module"');
@@ -409,7 +413,7 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   assert.ok(skeletonIndex > headEndIndex);
   assert.match(
     htmlSource,
-    /<link id="vm0-main-stylesheet" rel="preload" as="style"[^>]*>/u,
+    /<link id="okou-main-stylesheet" rel="preload" as="style"[^>]*>/u,
   );
   assert.equal((htmlSource.match(/<link rel="stylesheet"/gu) ?? []).length, 0);
   assert.doesNotMatch(htmlSource, /\sfetchpriority=/u);

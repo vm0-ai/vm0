@@ -86,7 +86,7 @@ function AddConnectionMenu() {
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-9 gap-2 rounded-lg border"
+          className="okou-btn-morandi h-9 gap-2 rounded-lg border"
         >
           <Plus size={14} />
           {t(($) => {

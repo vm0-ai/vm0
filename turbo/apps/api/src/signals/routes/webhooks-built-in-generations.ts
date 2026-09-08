@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
+  webhookBuiltInGenerationHeyGenContract,
   webhookBuiltInGenerationJoggAiContract,
   webhookBuiltInGenerationMiniMaxContract,
 } from "@okouai/api-contracts/contracts/webhooks";
@@ -65,6 +66,25 @@ import {
   parseJoggAiWebhookPayload,
   recordGeneratedAvatarVideo$,
 } from "../services/avatar-video.service";
+import {
+  downloadHeyGenAvatarVideo,
+  getHeyGenAvatarVideoStatus,
+  isHeyGenErrorResponse,
+  parseHeyGenVideoAgentCallback,
+  type HeyGenAvatarVideoStatus,
+} from "../services/heygen.service";
+import {
+  reconcileIntroVideoAgentJob$,
+  loadIntroVideoAgentJob$,
+  recordIntroVideoAgentIdentity$,
+} from "../services/intro-video-agent.service";
+import {
+  introVideoPresenterPricing$,
+  isIntroVideoPresenterErrorResponse,
+  parseIntroVideoPresenterOptions,
+  parsedIntroVideoPresenterGeneration,
+  recordGeneratedIntroVideoPresenter$,
+} from "../services/intro-video-presenter.service";
 
 const L = logger("BuiltInGenerationWebhooks");
 
@@ -83,6 +103,12 @@ const miniMaxWebhookPathParams$ = pathParamsOf(
 );
 const miniMaxWebhookQuery$ = queryOf(
   webhookBuiltInGenerationMiniMaxContract.post,
+);
+const heyGenWebhookPathParams$ = pathParamsOf(
+  webhookBuiltInGenerationHeyGenContract.post,
+);
+const heyGenWebhookQuery$ = queryOf(
+  webhookBuiltInGenerationHeyGenContract.post,
 );
 interface GenerationErrorResponse {
   readonly status: number;
@@ -181,6 +207,14 @@ function parseJobAvatarVideoOptions(job: BuiltInGenerationWebhookJob) {
   return options;
 }
 
+function parseJobIntroVideoPresenterOptions(job: BuiltInGenerationWebhookJob) {
+  const options = parseIntroVideoPresenterOptions(job.request);
+  if (isIntroVideoPresenterErrorResponse(options)) {
+    throw new Error(options.body.error.message);
+  }
+  return options;
+}
+
 function failError(message: string, code = "INTERNAL_SERVER_ERROR") {
   return { message, code };
 }
@@ -223,10 +257,13 @@ function activeVideoPricing(
   return pricing;
 }
 
-function falPayloadBody(payload: unknown): {
+interface FalWebhookPayload {
   readonly status: string | undefined;
   readonly body: unknown;
-} | null {
+  readonly providerHttpStatus: number | undefined;
+}
+
+function falPayloadBody(payload: unknown): FalWebhookPayload | null {
   if (!isRecord(payload)) {
     return null;
   }
@@ -241,6 +278,400 @@ function falPayloadBody(payload: unknown): {
   return {
     status: typeof payload.status === "string" ? payload.status : undefined,
     body,
+    providerHttpStatus: falProviderHttpStatus(payload.error),
+  };
+}
+
+const FAL_STATUS_CODE_ERROR =
+  /^(?:Invalid|Unexpected) status code: ([1-5]\d{2})$/u;
+
+function falProviderHttpStatus(error: unknown): number | undefined {
+  if (typeof error !== "string") {
+    return undefined;
+  }
+  const match = FAL_STATUS_CODE_ERROR.exec(error.trim());
+  return match ? Number(match[1]) : undefined;
+}
+
+const FAL_OUTPUT_SAFETY_FILTER_MESSAGE =
+  "The generated image was blocked by the safety filter.";
+const FAL_INPUT_SAFETY_FILTER_MESSAGE =
+  "The content could not be processed because it contained material flagged by a content checker.";
+const FAL_INPUT_MEDIA_DOWNLOAD_MESSAGE =
+  "Failed to download the file. Please check if the URL is accessible and try again.";
+const FAL_INPUT_MEDIA_LOAD_MESSAGE =
+  "Failed to load the image. Please ensure the image file is not corrupted and is in a supported format.";
+const FAL_INVALID_IMAGE_URL_SCHEME_MESSAGES = [
+  "Value error, Invalid URL scheme ':' in image URL. Only http://, https://, and data: URLs are supported. Browser-only URLs like blob: cannot be used.",
+  "Value error, Invalid URL scheme 'file:' in image URL. Only http://, https://, and data: URLs are supported. Browser-only URLs like blob: cannot be used.",
+] as const;
+const FAL_INVALID_REQUEST_MESSAGE =
+  "Could not generate images with the given prompts and images. Please try again with different inputs.";
+const FAL_INVALID_ASPECT_RATIO_MESSAGE =
+  "Input should be 'auto', '21:9', '16:9', '3:2', '4:3', '5:4', '1:1', '4:5', '3:4', '2:3', '9:16', '4:1', '1:4', '8:1' or '1:8'";
+const FAL_MISSING_FIELD_MESSAGE = "Field required";
+const FAL_PROMPT_TOO_SHORT_MESSAGE = "String should have at least 3 characters";
+const FAL_DOWNSTREAM_UNAVAILABLE_MESSAGE = "Downstream service unavailable";
+
+type FalGenerationFailureKind =
+  | "output_safety_blocked"
+  | "input_safety_rejected"
+  | "input_media_unreachable"
+  | "input_media_invalid"
+  | "invalid_parameters"
+  | "provider_unavailable"
+  | "unknown";
+
+type FalGenerationFailureStage = "input" | "output" | "provider" | "unknown";
+
+type FalGenerationFailureRetryPolicy =
+  | "manual_once"
+  | "after_input_change"
+  | "retry_once";
+
+interface FalGenerationFailure {
+  readonly error: {
+    readonly message: string;
+    readonly code: string;
+  };
+  readonly kind: FalGenerationFailureKind;
+  readonly stage: FalGenerationFailureStage;
+  readonly retryPolicy: FalGenerationFailureRetryPolicy;
+  readonly classificationSource:
+    | "normalized_message_exact"
+    | "structured_detail_exact"
+    | "fallback";
+  readonly expected: boolean;
+  readonly providerHttpStatus: number | undefined;
+  readonly providerErrorType: string | undefined;
+}
+
+function normalizeFalFailureMessage(message: string): string {
+  return message.trim().replace(/\s+/gu, " ");
+}
+
+interface FalFailureDiagnostic {
+  readonly message: string;
+  readonly providerErrorType: string | undefined;
+  readonly location: readonly (string | number)[] | undefined;
+}
+
+function falFailureDetailDiagnostics(detail: unknown): FalFailureDiagnostic[] {
+  if (typeof detail === "string") {
+    return [
+      {
+        message: normalizeFalFailureMessage(detail),
+        providerErrorType: undefined,
+        location: undefined,
+      },
+    ];
+  }
+  const entries = Array.isArray(detail) ? detail : [detail];
+  return entries.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.msg !== "string") {
+      return [];
+    }
+    const location =
+      Array.isArray(entry.loc) &&
+      entry.loc.every((segment) => {
+        return typeof segment === "string" || typeof segment === "number";
+      })
+        ? entry.loc
+        : undefined;
+    return [
+      {
+        message: normalizeFalFailureMessage(entry.msg),
+        providerErrorType:
+          typeof entry.type === "string" ? entry.type : undefined,
+        location,
+      },
+    ];
+  });
+}
+
+interface FalStructuredFailureRule {
+  readonly providerErrorType: string;
+  readonly message: string;
+  readonly locations: readonly string[];
+  readonly kind: Exclude<
+    FalGenerationFailureKind,
+    "output_safety_blocked" | "unknown"
+  >;
+  readonly stage: Exclude<FalGenerationFailureStage, "output" | "unknown">;
+  readonly retryPolicy: Exclude<FalGenerationFailureRetryPolicy, "manual_once">;
+  readonly error: FalGenerationFailure["error"];
+  readonly expected: boolean;
+}
+
+// These tuples are an allowlist of sanitized diagnostics observed in Fal's
+// webhook contract. Keep all three fields exact: provider type alone is not a
+// safe classifier because content_policy_violation is used for both input and
+// generated-output moderation.
+const FAL_STRUCTURED_FAILURE_RULES: readonly FalStructuredFailureRule[] = [
+  {
+    providerErrorType: "content_policy_violation",
+    message: FAL_INPUT_SAFETY_FILTER_MESSAGE,
+    locations: ["body.prompt", "body.image"],
+    kind: "input_safety_rejected",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message:
+        "The prompt or reference image was blocked by the safety filter.",
+      code: "GENERATION_INPUT_SAFETY_REJECTED",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "file_download_error",
+    message: FAL_INPUT_MEDIA_DOWNLOAD_MESSAGE,
+    locations: [
+      "body.image_urls",
+      "body.input.image_urls",
+      "body.image_url",
+      "body.input.image_url",
+    ],
+    kind: "input_media_unreachable",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message:
+        "An input image could not be downloaded by the generation provider.",
+      code: "GENERATION_INPUT_MEDIA_UNREACHABLE",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "image_load_error",
+    message: FAL_INPUT_MEDIA_LOAD_MESSAGE,
+    locations: ["body.image_urls", "body.input.image_urls", "body.image_url"],
+    kind: "input_media_invalid",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message: "An input image could not be read by the generation provider.",
+      code: "GENERATION_INPUT_MEDIA_INVALID",
+    },
+    expected: true,
+  },
+  ...FAL_INVALID_IMAGE_URL_SCHEME_MESSAGES.map(
+    (message): FalStructuredFailureRule => {
+      return {
+        providerErrorType: "value_error",
+        message,
+        locations: ["body.image_urls"],
+        kind: "input_media_unreachable",
+        stage: "input",
+        retryPolicy: "after_input_change",
+        error: {
+          message:
+            "An input image could not be downloaded by the generation provider.",
+          code: "GENERATION_INPUT_MEDIA_UNREACHABLE",
+        },
+        expected: true,
+      };
+    },
+  ),
+  {
+    providerErrorType: "invalid_request",
+    message: FAL_INVALID_REQUEST_MESSAGE,
+    locations: ["prompt"],
+    kind: "invalid_parameters",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message: "The image generation request contains invalid parameters.",
+      code: "GENERATION_INVALID_PARAMETERS",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "literal_error",
+    message: FAL_INVALID_ASPECT_RATIO_MESSAGE,
+    locations: ["body.aspect_ratio"],
+    kind: "invalid_parameters",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message: "The image generation request contains invalid parameters.",
+      code: "GENERATION_INVALID_PARAMETERS",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "missing",
+    message: FAL_MISSING_FIELD_MESSAGE,
+    locations: ["body.image_urls"],
+    kind: "invalid_parameters",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message: "The image generation request contains invalid parameters.",
+      code: "GENERATION_INVALID_PARAMETERS",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "string_too_short",
+    message: FAL_PROMPT_TOO_SHORT_MESSAGE,
+    locations: ["body.prompt"],
+    kind: "invalid_parameters",
+    stage: "input",
+    retryPolicy: "after_input_change",
+    error: {
+      message: "The image generation request contains invalid parameters.",
+      code: "GENERATION_INVALID_PARAMETERS",
+    },
+    expected: true,
+  },
+  {
+    providerErrorType: "downstream_service_unavailable",
+    message: FAL_DOWNSTREAM_UNAVAILABLE_MESSAGE,
+    locations: ["body"],
+    kind: "provider_unavailable",
+    stage: "provider",
+    retryPolicy: "retry_once",
+    error: {
+      message: "The image generation provider is temporarily unavailable.",
+      code: "GENERATION_PROVIDER_UNAVAILABLE",
+    },
+    expected: false,
+  },
+];
+
+function allowedFalProviderErrorType(value: unknown): string | undefined {
+  const rule = FAL_STRUCTURED_FAILURE_RULES.find((candidate) => {
+    return candidate.providerErrorType === value;
+  });
+  if (rule) {
+    return rule.providerErrorType;
+  }
+  // Legacy validation type in Fal's documented ERROR webhook envelope:
+  // https://fal.ai/docs/documentation/model-apis/inference/webhooks
+  if (value === "value_error.missing") {
+    return "value_error.missing";
+  }
+  return undefined;
+}
+
+function falProviderErrorTypeForLog(body: unknown): string | undefined {
+  if (!isRecord(body)) {
+    return undefined;
+  }
+  const entries = Array.isArray(body.detail) ? body.detail : [body.detail];
+  for (const entry of entries) {
+    if (isRecord(entry)) {
+      const providerErrorType = allowedFalProviderErrorType(entry.type);
+      if (providerErrorType !== undefined) {
+        return providerErrorType;
+      }
+    }
+  }
+  return undefined;
+}
+
+function falFailureLocationMatches(
+  location: readonly (string | number)[],
+  expected: string,
+): boolean {
+  const expectedSegments = expected.split(".");
+  return (
+    location.length >= expectedSegments.length &&
+    expectedSegments.every((segment, index) => {
+      return location[index] === segment;
+    }) &&
+    location.slice(expectedSegments.length).every((segment) => {
+      return typeof segment === "number";
+    })
+  );
+}
+
+function falGenerationFailure(
+  type: BuiltInGenerationWebhookJob["type"],
+  payload: FalWebhookPayload,
+): FalGenerationFailure {
+  const providerErrorType = falProviderErrorTypeForLog(payload.body);
+  const diagnostics = isRecord(payload.body)
+    ? falFailureDetailDiagnostics(payload.body.detail)
+    : [];
+  const outputSafetyDiagnostic =
+    type === "image"
+      ? diagnostics.find((diagnostic) => {
+          return (
+            diagnostic.message ===
+            normalizeFalFailureMessage(FAL_OUTPUT_SAFETY_FILTER_MESSAGE)
+          );
+        })
+      : undefined;
+  if (outputSafetyDiagnostic) {
+    return {
+      error: {
+        message: FAL_OUTPUT_SAFETY_FILTER_MESSAGE,
+        code: "GENERATION_OUTPUT_SAFETY_BLOCKED",
+      },
+      kind: "output_safety_blocked",
+      stage: "output",
+      retryPolicy: "manual_once",
+      classificationSource: "normalized_message_exact",
+      expected: true,
+      providerHttpStatus: payload.providerHttpStatus,
+      providerErrorType:
+        allowedFalProviderErrorType(outputSafetyDiagnostic.providerErrorType) ??
+        providerErrorType,
+    };
+  }
+  if (type === "image") {
+    for (const diagnostic of diagnostics) {
+      const diagnosticLocation = diagnostic.location;
+      const rule = FAL_STRUCTURED_FAILURE_RULES.find((candidate) => {
+        return (
+          candidate.providerErrorType === diagnostic.providerErrorType &&
+          normalizeFalFailureMessage(candidate.message) ===
+            diagnostic.message &&
+          diagnosticLocation !== undefined &&
+          candidate.locations.some((location) => {
+            return falFailureLocationMatches(diagnosticLocation, location);
+          })
+        );
+      });
+      if (rule) {
+        return {
+          error: rule.error,
+          kind: rule.kind,
+          stage: rule.stage,
+          retryPolicy: rule.retryPolicy,
+          classificationSource: "structured_detail_exact",
+          expected: rule.expected,
+          providerHttpStatus: payload.providerHttpStatus,
+          providerErrorType: rule.providerErrorType,
+        };
+      }
+    }
+  }
+  if (type !== "image") {
+    return {
+      error: failError("Generation failed"),
+      kind: "unknown",
+      stage: "unknown",
+      retryPolicy: "retry_once",
+      classificationSource: "fallback",
+      expected: false,
+      providerHttpStatus: payload.providerHttpStatus,
+      providerErrorType,
+    };
+  }
+  return {
+    error: {
+      message: "Image generation failed.",
+      code: "GENERATION_FAILED",
+    },
+    kind: "unknown",
+    stage: "unknown",
+    retryPolicy: "retry_once",
+    classificationSource: "fallback",
+    expected: false,
+    providerHttpStatus: payload.providerHttpStatus,
+    providerErrorType,
   };
 }
 
@@ -868,6 +1299,89 @@ const handleJoggAiAvatarVideoCompletion$ = command(
   },
 );
 
+const handleHeyGenIntroVideoPresenterCompletion$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly job: BuiltInGenerationWebhookJob;
+      readonly status: Extract<
+        HeyGenAvatarVideoStatus,
+        { readonly kind: "completed" }
+      >;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const options = parseJobIntroVideoPresenterOptions(args.job);
+    if (!args.job.runId) {
+      throw new Error("Expected a run-bound Intro Video presenter job");
+    }
+    const pricing = await get(introVideoPresenterPricing$);
+    signal.throwIfAborted();
+    if (!pricing) {
+      await set(
+        failBuiltInGenerationJob$,
+        {
+          generationId: args.job.id,
+          error: failError(
+            "HeyGen Intro Video presenter pricing is not configured",
+            "NOT_CONFIGURED",
+          ),
+        },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const downloaded = await downloadHeyGenAvatarVideo(args.status, signal);
+    if (isHeyGenErrorResponse(downloaded)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.job.id, error: downloaded.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, {
+        job: args.job,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return;
+    }
+    const result = await set(
+      recordGeneratedIntroVideoPresenter$,
+      {
+        orgId: args.job.orgId,
+        userId: args.job.userId,
+        runId: args.job.runId,
+        publicBrand: builtInGenerationPublicBrand(args.job.request),
+        pricing,
+        generation: parsedIntroVideoPresenterGeneration({
+          ...downloaded,
+          options,
+        }),
+        usageIdempotency: {
+          generationId: args.job.id,
+          scope: "intro-video-presenter",
+        },
+      },
+      signal,
+    );
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.job.id, result },
+      signal,
+    );
+    await set(completeAdmissionForJob$, {
+      job: args.job,
+      status: "completed",
+    });
+    signal.throwIfAborted();
+  },
+);
+
 const postFalBuiltInGenerationWebhook$ = command(
   async (
     { get, set },
@@ -922,24 +1436,48 @@ const postFalBuiltInGenerationWebhook$ = command(
 
     const status = payload.status?.toUpperCase();
     if (status === "ERROR" || status === "FAILED") {
-      const failureDetails = providerFailureDetailsForLog(parsed);
-      L.warn("Fal built-in generation webhook reported failed generation", {
-        generationId: job.id,
-        type: job.type,
-        status: payload.status,
-        visualKey: query.visualKey,
-        ...failureDetails,
-      });
-      await set(
+      const failure = falGenerationFailure(job.type, payload);
+      const transitioned = await set(
         failBuiltInGenerationJob$,
         {
           generationId: job.id,
-          error: failError("Generation failed"),
+          error: failure.error,
         },
         signal,
       );
       await set(completeAdmissionForJob$, { job, status: "failed" });
       signal.throwIfAborted();
+      if (transitioned) {
+        const fields = {
+          provider: "fal",
+          generationId: job.id,
+          type: job.type,
+          providerStatus: status,
+          providerHttpStatus: failure.providerHttpStatus,
+          providerErrorType: failure.providerErrorType ?? "unknown",
+          failureKind: failure.kind,
+          failureStage: failure.stage,
+          classificationSource: failure.classificationSource,
+          publicErrorCode: failure.error.code,
+          retryPolicy: failure.retryPolicy,
+          billingDisposition: "not_charged",
+          artifactRecorded: false,
+          usageRecorded: false,
+          admissionStatus: "failed",
+          expected: failure.expected,
+        };
+        if (failure.expected) {
+          L.info(
+            "Fal built-in generation webhook reported failed generation",
+            fields,
+          );
+        } else {
+          L.warn(
+            "Fal built-in generation webhook reported failed generation",
+            fields,
+          );
+        }
+      }
       return okResponse();
     }
 
@@ -1307,6 +1845,174 @@ const postJoggAiBuiltInGenerationWebhook$ = command(
   },
 );
 
+const handleHeyGenIntroVideoAgentWebhook$ = command(
+  async (
+    { get, set },
+    job: BuiltInGenerationWebhookJob,
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
+    const internal = readBuiltInGenerationRequestInternal(job.request);
+    if (!internal.providerSessionId || !internal.providerJobId) {
+      const rawBody = await get(request$).text();
+      signal.throwIfAborted();
+      const hints = parseHeyGenVideoAgentCallback(
+        safeJsonParse(rawBody),
+        job.id,
+      );
+      if (hints) {
+        if (
+          (internal.providerSessionId &&
+            hints.sessionId &&
+            internal.providerSessionId !== hints.sessionId) ||
+          (internal.providerJobId &&
+            hints.videoId &&
+            internal.providerJobId !== hints.videoId)
+        ) {
+          return jsonError("Video Agent callback identity mismatch", 400);
+        }
+        const recorded = await set(
+          recordIntroVideoAgentIdentity$,
+          {
+            generationId: job.id,
+            ...(hints.sessionId ? { sessionId: hints.sessionId } : {}),
+            ...(hints.videoId ? { videoId: hints.videoId } : {}),
+          },
+          signal,
+        );
+        if (!recorded) {
+          return jsonError("Video Agent callback identity mismatch", 400);
+        }
+      }
+    }
+    await set(reconcileIntroVideoAgentJob$, job.id, signal);
+    const updated = await set(loadIntroVideoAgentJob$, job.id, signal);
+    return updated?.status === "completed" || updated?.status === "failed"
+      ? okResponse()
+      : jsonError("Video Agent generation is still pending", 503);
+  },
+);
+
+const postHeyGenBuiltInGenerationWebhook$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
+    const params = get(heyGenWebhookPathParams$);
+    const query = get(heyGenWebhookQuery$);
+    if (
+      !verifyBuiltInGenerationProviderWebhookToken({
+        provider: "heygen",
+        generationId: params.generationId,
+        visualKey: undefined,
+        token: query.token,
+      })
+    ) {
+      L.warn("HeyGen built-in generation webhook rejected invalid token", {
+        generationId: params.generationId,
+      });
+      return jsonError("Invalid token", 401);
+    }
+
+    const job = await set(
+      getBuiltInGenerationWebhookJob$,
+      params.generationId,
+      signal,
+    );
+    if (!job) {
+      L.debug("HeyGen built-in generation webhook ignored inactive job", {
+        generationId: params.generationId,
+      });
+      return okResponse();
+    }
+    const internal = readBuiltInGenerationRequestInternal(job.request);
+    if (
+      internal.provider === "heygen" &&
+      internal.providerTask === "intro-video-agent"
+    ) {
+      return await set(handleHeyGenIntroVideoAgentWebhook$, job, signal);
+    }
+    if (
+      internal.provider !== "heygen" ||
+      internal.providerTask !== "intro-video-presenter" ||
+      !internal.providerJobId
+    ) {
+      L.warn("HeyGen built-in generation webhook found an invalid job", {
+        generationId: job.id,
+      });
+      return jsonError("Invalid generation job", 400);
+    }
+    const apiKey = env("HEYGEN_API_KEY");
+    if (!apiKey) {
+      return jsonError("Webhook is not configured", 503);
+    }
+    const status = await getHeyGenAvatarVideoStatus(
+      internal.providerJobId,
+      apiKey,
+      signal,
+    );
+    if (isHeyGenErrorResponse(status)) {
+      if (status.status === 503) {
+        return jsonError(status.body.error.message, 503);
+      }
+      L.warn("HeyGen built-in generation webhook received invalid status", {
+        generationId: job.id,
+        providerVideoId: internal.providerJobId,
+        providerMessage: status.body.error.message,
+      });
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: job.id, error: status.body.error },
+        signal,
+      );
+      await set(completeAdmissionForJob$, { job, status: "failed" });
+      signal.throwIfAborted();
+      return okResponse();
+    }
+    if (status.kind === "pending") {
+      return jsonError("Generation is still pending", 503);
+    }
+    if (status.kind === "failed") {
+      L.warn("HeyGen built-in generation webhook reported failure", {
+        generationId: job.id,
+        providerVideoId: internal.providerJobId,
+        providerMessage: redactPresignedUrls(status.message),
+      });
+      await set(
+        failBuiltInGenerationJob$,
+        {
+          generationId: job.id,
+          error: failError(
+            "HeyGen Intro Video presenter generation failed",
+            "HEYGEN_GENERATION_FAILED",
+          ),
+        },
+        signal,
+      );
+      await set(completeAdmissionForJob$, { job, status: "failed" });
+      signal.throwIfAborted();
+      return okResponse();
+    }
+
+    waitUntil(
+      tapError(
+        set(
+          handleHeyGenIntroVideoPresenterCompletion$,
+          { job, status },
+          signal,
+        ),
+        (error) => {
+          L.error("HeyGen built-in generation webhook processing failed", {
+            generationId: job.id,
+            providerVideoId: internal.providerJobId,
+            error,
+          });
+        },
+      ),
+    );
+    return okResponse();
+  },
+);
+
 export const webhooksBuiltInGenerationRoutes: readonly RouteEntry[] = [
   {
     route: webhookBuiltInGenerationFalContract.post,
@@ -1323,5 +2029,9 @@ export const webhooksBuiltInGenerationRoutes: readonly RouteEntry[] = [
   {
     route: webhookBuiltInGenerationJoggAiContract.post,
     handler: postJoggAiBuiltInGenerationWebhook$,
+  },
+  {
+    route: webhookBuiltInGenerationHeyGenContract.post,
+    handler: postHeyGenBuiltInGenerationWebhook$,
   },
 ];

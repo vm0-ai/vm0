@@ -4,6 +4,7 @@ import {
   type IDBPDatabase,
   type OpenDBCallbacks,
 } from "idb";
+import { observeClientOperation } from "../../lib/client-telemetry.ts";
 import { logger } from "../log.ts";
 import { CHAT_IDB_VERSION, upgradeChatIdb } from "./chat-idb-schema.ts";
 
@@ -17,10 +18,8 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
 
 interface ChatIdbOpenerOptions {
   readonly openDatabase?: OpenChatIdbDatabase;
-  // Required: the page reloads itself, while the shared database worker has no
-  // window to reload and instead tells its clients to reload. Keeping this
-  // explicit is what allows this module to stay free of DOM globals.
-  readonly reload: () => void;
+  // Notify the caller after closing a connection whose schema changed.
+  readonly onVersionChange: () => void;
 }
 
 interface ChatIdbOpener {
@@ -45,21 +44,30 @@ export function createChatIdbOpener(
   options: ChatIdbOpenerOptions,
 ): ChatIdbOpener {
   const openDatabase = options.openDatabase ?? openDB;
-  const reload = options.reload;
+  const onVersionChange = options.onVersionChange;
 
   return {
     async openChatIdb(userId, orgId) {
       const dbName = chatIdbName(userId, orgId);
       L.debug("openDB", { dbName });
-      const db = await openDatabase(dbName, CHAT_IDB_VERSION, {
-        upgrade(db, oldVersion) {
-          L.debug("openDB:upgrade", { dbName });
-          upgradeChatIdb(db, oldVersion);
+      const db = await observeClientOperation(
+        { event_name: "indexeddb.open", database: "chat" },
+        () => {
+          return openDatabase(dbName, CHAT_IDB_VERSION, {
+            upgrade(db, oldVersion) {
+              L.debug("openDB:upgrade", { dbName });
+              upgradeChatIdb(db, oldVersion);
+            },
+            blocked(currentVersion, blockedVersion) {
+              L.warn("openDB:blocked", {
+                dbName,
+                currentVersion,
+                blockedVersion,
+              });
+            },
+          });
         },
-        blocked(currentVersion, blockedVersion) {
-          L.warn("openDB:blocked", { dbName, currentVersion, blockedVersion });
-        },
-      });
+      );
       db.addEventListener(
         "versionchange",
         (event) => {
@@ -69,7 +77,7 @@ export function createChatIdbOpener(
             nextVersion: event.newVersion,
           });
           db.close();
-          reload();
+          onVersionChange();
         },
         { once: true },
       );

@@ -12,6 +12,7 @@ if [[ ! -f "$package_path" ]]; then
   exit 1
 fi
 package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_path")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -25,17 +26,15 @@ mkdir -p "$clean_bin"
 ln -s "$node_path" "$clean_bin/node"
 clean_path="${clean_bin}:/usr/bin:/bin"
 
-if PATH="$clean_path" command -v zero >/dev/null 2>&1; then
-  echo "Clean CLI smoke environment unexpectedly contains zero" >&2
-  exit 1
-fi
-
 run_cli() {
   local entrypoint="$1"
   local stdout_file="$2"
   local stderr_file="$3"
   shift 3
-  PATH="$clean_path" npm_config_audit=false "$node_path" "$npx_path" \
+  PATH="$clean_path" \
+    npm_config_audit=false \
+    npm_config_cache="$tmp_dir/npm-cache" \
+    "$node_path" "$npx_path" \
     --yes --package="$package_path" "$entrypoint" "$@" \
     >"$stdout_file" 2>"$stderr_file"
 }
@@ -66,27 +65,14 @@ assert_clean_success() {
   fi
 }
 
-assert_unsupported_entrypoint() {
-  local entrypoint="$1"
-  local output_name="$2"
-  shift 2
-  local status=0
-  run_cli \
-    "$entrypoint" \
-    "$tmp_dir/${output_name}.stdout" \
-    "$tmp_dir/${output_name}.stderr" \
-    "$@" || status=$?
-  if ((status == 0)); then
-    echo "Unsupported CLI entry point unexpectedly succeeded: $entrypoint $*" >&2
-    exit 1
-  fi
-  if grep -Fq "Usage: okou" \
-    "$tmp_dir/${output_name}.stdout" \
-    "$tmp_dir/${output_name}.stderr"; then
-    echo "Unsupported CLI entry point reached the Okou implementation: $entrypoint $*" >&2
-    exit 1
-  fi
-}
+assert_clean_success \
+  node \
+  image-resize \
+  "$script_dir/smoke-okou-cli-image-resize.mjs"
+grep -Fxq \
+  "Smoke-tested packaged Pi image resize worker and fallback" \
+  "$tmp_dir/image-resize.stdout"
+cat "$tmp_dir/image-resize.stdout"
 
 assert_clean_success okou okou-help --help
 grep -Fq "Usage: okou" "$tmp_dir/okou-help.stdout"
@@ -110,6 +96,4 @@ if ((okou_error_status == 0)); then
   exit 1
 fi
 
-assert_unsupported_entrypoint zero zero-help --help
-
-echo "Smoke-tested the canonical okou CLI and unsupported zero boundary"
+echo "Smoke-tested the canonical okou CLI"

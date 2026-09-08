@@ -70,6 +70,10 @@ impl IdleDestroyTracker {
         }));
     }
 
+    pub(super) fn notify_reuse_state(&self) {
+        self.reuse_state_notify.notify_one();
+    }
+
     pub(super) async fn close_and_wait(&self) {
         let _ = self.tasks.close();
         self.tasks.wait().await;
@@ -102,7 +106,7 @@ pub(super) async fn drain_idle_pool(
 
 pub(super) struct RetiringIdleEntry {
     budget_lease: BudgetLease,
-    reuse_key: String,
+    reuse_key: Option<String>,
     profile_name: String,
 }
 
@@ -112,6 +116,7 @@ pub(super) struct IdlePressureRequest<'a> {
     pub(super) profile_name: &'a str,
     pub(super) device_rate_limits: &'a Option<DeviceRateLimits>,
     pub(super) history_generation_run_id: Option<RunId>,
+    pub(super) allow_compatible_blank: bool,
     pub(super) vcpu: u32,
     pub(super) memory_mb: u32,
     pub(super) context: &'static str,
@@ -153,8 +158,8 @@ impl Deref for ReservedIdleActivation {
 }
 
 impl RetiringIdleEntry {
-    pub(super) fn reuse_key(&self) -> &str {
-        &self.reuse_key
+    pub(super) fn reuse_key(&self) -> Option<&str> {
+        self.reuse_key.as_deref()
     }
 
     pub(super) fn profile_name(&self) -> &str {
@@ -174,8 +179,8 @@ impl RetiringIdleEntry {
     }
 }
 
-/// Prefer a matching reusable entry; otherwise retire only enough oldest idle
-/// entries for the incoming resource shape.
+/// Prefer a matching exact entry, then an allowed compatible blank; otherwise
+/// retire only enough oldest idle entries for the incoming resource shape.
 ///
 /// The idle pool stays locked while one deterministic oldest-first ordering is
 /// consumed. Resource-budget substitution takes only its short synchronous
@@ -192,12 +197,20 @@ pub(super) async fn select_idle_entries_for_pressure(
 ) -> IdlePressureSelection {
     let (selection, snapshot) = {
         let mut pool = idle_pool.lock().await;
-        if let Some(reservation) = pool.reserve_reusable_for_pressure(
-            request.reuse_key,
-            request.profile_name,
-            request.device_rate_limits,
-            request.history_generation_run_id,
-        ) {
+        let reservation = pool
+            .reserve_reusable_for_pressure(
+                request.reuse_key,
+                request.profile_name,
+                request.device_rate_limits,
+                request.history_generation_run_id,
+            )
+            .or_else(|| {
+                request
+                    .allow_compatible_blank
+                    .then(|| pool.reserve_blank(request.profile_name, request.device_rate_limits))
+                    .flatten()
+            });
+        if let Some(reservation) = reservation {
             drop(retiring_leases);
             let snapshot = pool.status_snapshot();
             (
@@ -216,8 +229,9 @@ pub(super) async fn select_idle_entries_for_pressure(
                 request.memory_mb,
             );
             if fresh_lease.is_none() {
-                for reuse_key in pool.oldest_first_pressure_keys() {
-                    let Some(job) = pool.evict_for_pressure(&reuse_key) else {
+                for identity in pool.oldest_first_pressure_keys() {
+                    let idle_kind = identity.kind();
+                    let Some(job) = pool.evict_for_pressure(&identity) else {
                         continue;
                     };
                     mutated = true;
@@ -225,8 +239,9 @@ pub(super) async fn select_idle_entries_for_pressure(
                     info!(
                         run_id = %request.run_id,
                         context = request.context,
-                        reuse_key_fingerprint = %short_digest(retiring.reuse_key()),
-                        reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
+                        idle_kind = ?idle_kind,
+                        reuse_key_fingerprint = retiring.reuse_key().map(short_digest),
+                        reuse_key_kind = retiring.reuse_key().map(reuse_key_kind),
                         profile = %retiring.profile_name(),
                         vcpu = retiring.budget_vcpu(),
                         memory_mb = retiring.budget_memory_mb(),
@@ -279,20 +294,16 @@ fn try_substitute_retiring_leases(
 }
 
 pub(super) async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
-    let result = status
-        .set_idle_info_at_revision(snapshot.revision, snapshot.idle_sandboxes)
-        .await;
+    let revision = snapshot.revision;
+    let result = status.set_idle_snapshot(snapshot).await;
     match result {
         Ok(false) => {
-            info!(
-                revision = snapshot.revision,
-                "ignored stale idle pool status snapshot"
-            );
+            info!(revision, "ignored stale idle pool status snapshot");
         }
         Ok(true) => {}
         Err(error) => {
             warn!(
-                revision = snapshot.revision,
+                revision,
                 %error,
                 "failed to persist idle pool status snapshot"
             );
@@ -306,17 +317,13 @@ pub(super) async fn add_running_run_with_idle_status_snapshot(
     sandbox_id: SandboxId,
     snapshot: IdlePoolSnapshot,
 ) -> StatusResult<()> {
+    let revision = snapshot.revision;
     let applied = status
-        .add_running_run_with_idle_info_at_revision(
-            run_id,
-            sandbox_id,
-            snapshot.revision,
-            snapshot.idle_sandboxes,
-        )
+        .add_running_run_with_idle_snapshot(run_id, sandbox_id, snapshot)
         .await?;
     if !applied {
         info!(
-            revision = snapshot.revision,
+            revision,
             "ignored stale idle pool status snapshot while adding active run"
         );
     }
@@ -329,17 +336,13 @@ pub(super) async fn add_preparing_run_with_idle_status_snapshot(
     sandbox_id: SandboxId,
     snapshot: IdlePoolSnapshot,
 ) -> StatusResult<()> {
+    let revision = snapshot.revision;
     let applied = status
-        .add_preparing_run_with_idle_info_at_revision(
-            run_id,
-            sandbox_id,
-            snapshot.revision,
-            snapshot.idle_sandboxes,
-        )
+        .add_preparing_run_with_idle_snapshot(run_id, sandbox_id, snapshot)
         .await?;
     if !applied {
         info!(
-            revision = snapshot.revision,
+            revision,
             "ignored stale idle pool status snapshot while adding preparing run"
         );
     }
@@ -359,7 +362,7 @@ fn retire_idle_destroy_job(
     job: IdleDestroyJob,
     context: &'static str,
 ) -> RetiringIdleEntry {
-    let reuse_key = job.reuse_key().to_owned();
+    let reuse_key = job.reuse_key().map(str::to_owned);
     let profile_name = job.profile_name().to_owned();
     let (payload, budget_lease) = job.into_retiring_parts();
     tracker.spawn_payload(payload, context);
@@ -376,9 +379,9 @@ pub(super) async fn destroy_idle_jobs_and_wait(
     jobs: Vec<IdleDestroyJob>,
     context: &'static str,
 ) -> bool {
-    // Destroy in parallel -- each `stop_and_destroy` is ~1-3s (FC shutdown +
-    // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
-    // budget-pressure recovery budgets on multi-sandbox cleanup.
+    // Destroy in parallel -- cgroup/NBD/netns teardown can still make serial
+    // cleanup exceed shutdown and budget-pressure recovery budgets when many
+    // sandboxes are idle.
     let mut set = JoinSet::new();
     for job in jobs {
         set.spawn(destroy_idle_job(job, context));

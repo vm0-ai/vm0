@@ -1,8 +1,7 @@
 import { toast } from "@okouai/ui/components/ui/sonner";
-import {
-  resolvePlatformOriginForTarget,
-  rewritePlatformHostname,
-} from "../../signals/api-base.ts";
+import { rewritePlatformHostname } from "@okouai/core/platform-service-origin";
+
+import { resolvePlatformOriginForTarget } from "../../signals/api-base.ts";
 import { isAllowedDevArtifactFetchUrl } from "../../lib/dev-artifact-fetch-url.ts";
 import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -10,12 +9,12 @@ import { logger } from "../../signals/log.ts";
 import { throwIfAbort } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 
-const log = logger("zero-attachment-url");
+const log = logger("okou-attachment-url");
 
 const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const CLERK_USER_ID_PREFIX = "user_";
-const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
+const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__okou-dev-artifact-fetch";
 
 export function attachmentFilenameFromUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
@@ -246,9 +245,9 @@ async function fetchBlobForDownload(
 
 export async function downloadAttachmentUrl(
   url: string,
-  signal: AbortSignal = AbortSignal.any([]),
-  filename = attachmentFilenameFromUrl(url),
-  mode: "blob" | "native" = "blob",
+  signal: AbortSignal,
+  filename: string,
+  mode: "blob" | "native",
 ): Promise<void> {
   if (mode === "native") {
     signal.throwIfAborted();

@@ -10,7 +10,7 @@ export const PI_AGENT_THINKING_LEVELS = [
 
 export type PiAgentThinkingLevel = (typeof PI_AGENT_THINKING_LEVELS)[number];
 
-export type PiAgentServiceTier = "priority";
+export type PiAgentServiceTier = "priority" | "fast";
 
 export type PiAgentDialect = "openai-responses" | "openai-codex-responses";
 

@@ -6,11 +6,11 @@ Deployed E2E tests exercise the product exactly through supported user-facing
 entry points. The current suite covers:
 
 - the packaged canonical `okou` binary through unauthenticated command-boundary
-  smoke checks, including rejection of the retired executable name;
+  smoke checks;
 - Clerk-backed sign-up and sign-in through the platform-owned Auth v2 UI;
 - onboarding, chat submission, runner dispatch, and the assistant result through
   the deployed web application;
-- real Claude BYOK, vm0 built-in Codex, and vm0 built-in Pi execution, including
+- real Claude BYOK, built-in Codex, and built-in Pi execution, including
   public usage attribution;
 - active-run cancellation through the public run and chat-events APIs;
 - ordinary and empty chat attachments across continuation, plus runner-mounted
@@ -46,6 +46,18 @@ Keep each layer focused:
   journey.
 
 ## Adding deployed E2E coverage
+
+Playwright product specs import `test` from `e2e/playwright/fixtures.ts`.
+Its fixture-managed page drains already-running page route handlers before
+Playwright closes the page/context, including after a failed test. Route errors
+remain test failures; do not suppress them with `ignoreErrors`. A test that gates
+a route must release its gate in `finally` before fixture teardown can drain it.
+Callers still own cleanup of manually created pages and context-level routes.
+
+The local fixture integration suite (`cd e2e && pnpm test`) exercises this
+lifecycle through the real Playwright runner, Chromium and a loopback HTTP server.
+It requires the Chromium headless shell (`pnpm exec playwright install --only-shell
+chromium` from `e2e`), but not a deployed preview or Clerk credentials.
 
 Before adding a case, verify that it:
 
@@ -85,7 +97,7 @@ The number is a stable file identifier, not an execution order. Test titles
 should describe behavior without repeating the file identifier.
 
 The workflow also prepares dedicated real-Codex and real-Claude identities.
-Use the Codex identity for vm0 built-in model billing coverage and the Claude
+Use the Codex identity for built-in model billing coverage and the Claude
 identity for BYOK coverage so provider policy and usage assertions remain
 isolated. The shared mock-runner identity starts with `UTC` as its timezone.
 Runner BATS must not mutate shared account-level preferences from parallel

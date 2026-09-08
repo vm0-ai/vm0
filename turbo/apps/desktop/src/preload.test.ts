@@ -34,9 +34,9 @@ const electronMock = vi.hoisted(() => {
     listeners.get(channel)?.delete(listener);
   });
   const sendSync = vi.fn<IpcSendSync>(() => ({
-    product: "zero",
-    brandName: "Zero",
-    displayName: "Zero Computer Use",
+    product: "okou",
+    brandName: "Okou",
+    displayName: "Okou",
   }));
 
   return {
@@ -100,9 +100,9 @@ describe("Desktop preload bridge", () => {
       exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
     ).toBeTruthy();
     expect(exposedApi("vm0DesktopIdentity")).toStrictEqual({
-      product: "zero",
-      brandName: "Zero",
-      displayName: "Zero Computer Use",
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou",
     });
     expect(electronMock.ipcRenderer.sendSync).toHaveBeenCalledExactlyOnceWith(
       DESKTOP_IDENTITY_CHANNEL,
@@ -136,6 +136,8 @@ describe("Desktop preload bridge", () => {
 
     await computerUse.getState();
     await computerUse.refreshPermissions();
+    await computerUse.setExperimentalCuaEnabled(true);
+    await computerUse.selectDriver("cua");
     await computerUse.start({ userInitiated: true });
     await computerUse.stop();
     await computerUse.requestAccessibilityPermission();
@@ -155,6 +157,8 @@ describe("Desktop preload bridge", () => {
     expect(electronMock.ipcRenderer.invoke.mock.calls).toStrictEqual([
       [COMPUTER_USE_CHANNELS.getState],
       [COMPUTER_USE_CHANNELS.refreshPermissions],
+      [COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled, true],
+      [COMPUTER_USE_CHANNELS.selectDriver, "cua"],
       [COMPUTER_USE_CHANNELS.start, { userInitiated: true }],
       [COMPUTER_USE_CHANNELS.stop],
       [COMPUTER_USE_CHANNELS.requestAccessibilityPermission],

@@ -8,22 +8,20 @@ only; runner-requested snapshots are JSON written atomically (tmp +
 process or old flush request.
 """
 
-import json
 import os
 import threading
 import time
 import uuid
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import runner_flush_request
+import state_file
 
 from .underbilling import log_usage_underbilling
 
 _counter_lock = threading.Lock()
-_pending_write_lock = threading.Lock()
+_pending_state_publisher = state_file.AtomicJsonPublisher()
 _buffered_usage_events = 0
 _pending_path = ""
 _usage_state_id = str(uuid.uuid4())
@@ -83,8 +81,8 @@ def current_usage_state_id() -> str:
         return _usage_state_id
 
 
-def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, dict[str, Any]]:
-    state: dict[str, Any] = {
+def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, dict[str, object]]:
+    state: dict[str, object] = {
         "pid": os.getpid(),
         "usageStateId": _usage_state_id,
         "updatedAtMs": int(time.time() * 1000),
@@ -122,38 +120,32 @@ def read_usage_flush_request_id() -> str | None:
     return request.flush_request_id
 
 
-def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
+def _write_pending_state(pending_path: str, state: dict[str, object]) -> None:
     """Atomically write a pending-count snapshot to file."""
     global _pending_write_error_logged
     if not pending_path:
         return
-    tmp = Path(f"{pending_path}.{uuid.uuid4()}.tmp")
-    with _pending_write_lock:
-        try:
-            with tmp.open("w") as f:
-                json.dump(state, f, separators=(",", ":"))
-            tmp.replace(pending_path)
-        except OSError as exc:
-            with suppress(OSError):
-                tmp.unlink()
-            # Best-effort: the runner polls this file to wait for in-flight
-            # flows, buffered work, and pending reports to drain before
-            # SIGTERM. Transient write failures are upper-bounded by the
-            # runner's drain timeout and mitmdump stop timeout.
-            if not _pending_write_error_logged:
-                _pending_write_error_logged = True
-                log_usage_underbilling(
-                    "",
-                    (
-                        "Failed to write pending count. Subsequent failures in this process will "
-                        "be silent; runner shutdown may hit the bounded proxy stop timeout."
-                    ),
-                    "pending_snapshot_write_failed",
-                    "risk",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                    pending_path=pending_path,
-                )
+    try:
+        _pending_state_publisher.publish(Path(pending_path), state)
+    except OSError as exc:
+        # Best-effort: the runner polls this file to wait for in-flight
+        # flows, buffered work, and pending reports to drain before
+        # SIGTERM. Transient write failures are upper-bounded by the
+        # runner's drain timeout and mitmdump stop timeout.
+        if not _pending_write_error_logged:
+            _pending_write_error_logged = True
+            log_usage_underbilling(
+                "",
+                (
+                    "Failed to write pending count. Subsequent failures in this process will "
+                    "be silent; runner shutdown may hit the bounded proxy stop timeout."
+                ),
+                "pending_snapshot_write_failed",
+                "risk",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                pending_path=pending_path,
+            )
 
 
 def increment_in_flight_flows() -> None:

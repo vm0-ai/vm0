@@ -210,7 +210,7 @@ const MAX_NOTE_WIDTH = 1;
 const NOTE_GAP = 0.015;
 
 /** The box a mark occupies, used to place its note under it. */
-export function markBounds(mark: ImageAnnotationMark): {
+function markBounds(mark: ImageAnnotationMark): {
   x: number;
   y: number;
   width: number;
@@ -251,7 +251,7 @@ export function markBounds(mark: ImageAnnotationMark): {
  * at least as wide, so the sentence reads as belonging to that region without
  * the user having to place it.
  */
-export function defaultNoteBox(mark: ImageAnnotationMark): {
+function defaultNoteBox(mark: ImageAnnotationMark): {
   x: number;
   y: number;
   width: number;
@@ -270,7 +270,7 @@ export function defaultNoteBox(mark: ImageAnnotationMark): {
 const NOTE_ROOM = 0.06;
 
 /** Keeps a note inside the image, so the flatten cannot crop it away. */
-export function clampNoteBox(box: { x: number; y: number; width: number }): {
+function clampNoteBox(box: { x: number; y: number; width: number }): {
   x: number;
   y: number;
   width: number;

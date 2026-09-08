@@ -1,9 +1,10 @@
 import { command, computed, state } from "ccstate";
+import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import {
-  resolveClerkInstanceConfig,
-  resolveClerkSatelliteConfig,
-  resolveConfiguredProductionPrimaryAppDomain,
-} from "../lib/clerk-instance-config.ts";
+  derivePlatformServiceOrigin,
+  isOkouProductionHostname,
+  type PlatformService,
+} from "@okouai/core/platform-service-origin";
 import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
@@ -13,17 +14,10 @@ import {
 } from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
-  derivePlatformServiceOrigin,
-  isOkouProductionHostname,
-  type PlatformService,
   resolvePlatformEnvironment,
+  resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
-import {
-  resolveClerkProductionSatelliteDomain,
-  resolveClerkProductionTopology,
-  VM0_CLERK_PRIMARY_APP_ORIGIN,
-} from "../lib/clerk-production-topology.ts";
-import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
+import { BRAND_NAME, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
@@ -34,13 +28,9 @@ const clerkVersion$ = state(0);
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
-const VM0_ONBOARDING_PATH = "/onboarding";
-const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
+const ONBOARDING_PATH = "/onboarding";
+const PRODUCTION_AUTH_REDIRECT_ORIGIN_PATTERN =
   /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
-const PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS = [
-  VM0_CLERK_PRIMARY_APP_ORIGIN,
-  "https://www.vm0.ai",
-] as const;
 
 type AllowedAuthRedirectOrigin = string | RegExp;
 
@@ -85,29 +75,16 @@ const MAX_URL_PORT = 65_535;
 // port: https://app.vm7.ai:8443 + "www" -> https://www.vm7.ai:8443. No
 // environment fallback — a wrong-environment URL is silent and sticks, while
 // an error here surfaces the actual bug.
-export function deriveServiceOrigin(
+function deriveServiceOrigin(
   currentOrigin: string,
   service: Extract<PlatformService, "www" | "app" | "api">,
-  primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain(),
 ): string {
   const currentUrl = new URL(currentOrigin);
-  if (
-    isOkouProductionHostname(currentUrl.hostname) &&
-    resolveClerkProductionTopology(primaryAppDomain).primaryBrand === "okou"
-  ) {
+  if (isOkouProductionHostname(currentUrl.hostname)) {
     currentUrl.hostname = `${service}.okou.ai`;
     return currentUrl.origin;
   }
   return derivePlatformServiceOrigin(currentOrigin, service);
-}
-
-// The WWW origin sibling of the current host.
-export function resolveWebOrigin(): string {
-  const origin = location.origin;
-  if (!origin || origin === "null") {
-    throw new Error("Cannot resolve the www origin without a browser origin");
-  }
-  return deriveServiceOrigin(origin, "www");
 }
 
 function resolveAppOrigin(): string {
@@ -115,22 +92,8 @@ function resolveAppOrigin(): string {
   return !origin || origin === "null" ? "" : origin;
 }
 
-export { resolveClerkSatelliteConfig };
-
 function resolveAuthOrigin(): string {
-  const primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain();
-  return resolveClerkProductionSatelliteDomain(
-    location.hostname,
-    primaryAppDomain,
-  )
-    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
-    : resolveAppOrigin();
-}
-
-export function resolvePrimaryClerkUserProfileUrl(): string {
-  return resolveClerkProductionTopology(
-    resolveConfiguredProductionPrimaryAppDomain(),
-  ).primaryUserProfileUrl;
+  return resolveAppOrigin();
 }
 
 function parseUrl(value: string): URL | null {
@@ -158,24 +121,8 @@ function parseUrl(value: string): URL | null {
   return new URL(trimmed);
 }
 
-export function resolveAppUrl(): string {
+function resolveAppUrl(): string {
   return resolveAppOrigin();
-}
-
-export function resolveWebAuthUrl(
-  path: `/sign-${string}`,
-  options: { redirectUrl?: string } = {},
-): string {
-  const webOrigin = resolveWebOrigin();
-  if (!webOrigin) {
-    return path;
-  }
-  const url = new URL(path, webOrigin);
-  if (options.redirectUrl) {
-    url.searchParams.set("redirect_url", options.redirectUrl);
-  }
-  appendCapturedPreviewBypassToUrl(url);
-  return url.toString();
 }
 
 export function resolveAppAuthUrl(
@@ -193,51 +140,17 @@ export function resolveAppAuthUrl(
   return url.toString();
 }
 
-export function resolveSatelliteAuthRouteRedirectUrl(
-  mode: "sign-in" | "sign-up",
-): string | null {
-  if (!resolveClerkSatelliteConfig()) {
-    return null;
-  }
-
-  // Clerk authentication must run on the configured primary app. Keep the
-  // satellite destination explicit so the primary flow can safely return to
-  // the originating brand after it completes.
-  const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
-  const completionRedirectUrl =
-    mode === "sign-in"
-      ? buildSignInRedirectUrl(
-          location.search,
-          allowedRedirectOrigins,
-          location.hash,
-        )
-      : buildSignupRedirectUrl(
-          location.search,
-          allowedRedirectOrigins,
-          location.hash,
-        );
-  const redirectUrl = new URL(resolveAppAuthUrl("/sign-in"));
-  redirectUrl.pathname = location.pathname;
-  redirectUrl.search = location.search;
-  redirectUrl.hash = location.hash;
-  redirectUrl.searchParams.set("redirect_url", completionRedirectUrl);
-  return redirectUrl.toString();
-}
-
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
-// and api siblings. Production also includes the satellite domain family and
-// primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
-export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
+// and api siblings. Production also includes the okou.ai family so Clerk can
+// safely return between those services.
+function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   const self = resolveAppOrigin();
   if (!self) {
     return [];
   }
   const productionOrigins =
     resolvePlatformEnvironment() === "production"
-      ? [
-          ...PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS,
-          CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN,
-        ]
+      ? [PRODUCTION_AUTH_REDIRECT_ORIGIN_PATTERN]
       : [];
   return [
     ...new Set([
@@ -281,10 +194,10 @@ function setCurrentLandingContext(params: URLSearchParams): void {
   }
 }
 
-function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
+function buildOnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   const params = new URLSearchParams(paramsInit);
   setCurrentLandingContext(params);
-  const url = new URL(VM0_ONBOARDING_PATH, resolveAppOrigin());
+  const url = new URL(ONBOARDING_PATH, resolveAppOrigin());
   url.search = params.toString();
   appendCapturedPreviewBypassToUrl(url);
   return url.toString();
@@ -346,28 +259,8 @@ function readAuthRedirectParams(
   return searchParams;
 }
 
-export function resolveAuthBrandContext(
-  authSearch: string = location.search,
-  authHash: string = location.hash,
-  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
-): AuthBrandContext {
-  const currentBrandName = resolveBrandNameForHostname(location.hostname);
-  if (currentBrandName === "Okou") {
-    return { brandName: currentBrandName, homeUrl: "/" };
-  }
-
-  const redirectUrl = readAllowedRedirectUrl(
-    readAuthRedirectParams(authSearch, authHash),
-    allowedRedirectOrigins,
-  );
-  if (
-    redirectUrl &&
-    resolveBrandNameForHostname(redirectUrl.hostname) === "Okou"
-  ) {
-    return { brandName: "Okou", homeUrl: redirectUrl.origin };
-  }
-
-  return { brandName: currentBrandName, homeUrl: "/" };
+export function resolveAuthBrandContext(): AuthBrandContext {
+  return { brandName: BRAND_NAME, homeUrl: "/" };
 }
 
 export function buildSignupRedirectUrl(
@@ -383,12 +276,12 @@ export function buildSignupRedirectUrl(
   }
 
   if (!hasAdTraffic(params)) {
-    return new URL(VM0_ONBOARDING_PATH, appUrl).toString();
+    return new URL(ONBOARDING_PATH, appUrl).toString();
   }
 
   const redirectParams = new URLSearchParams();
   appendHomepageAttributionParams(redirectParams, params.toString());
-  return buildVm0OnboardingEntryUrl(redirectParams);
+  return buildOnboardingEntryUrl(redirectParams);
 }
 
 export function buildSignInRedirectUrl(
@@ -404,21 +297,14 @@ export function buildSignInRedirectUrl(
 
 /** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async () => {
-  const { publishableKey, satelliteConfig } = resolveClerkInstanceConfig();
+  const { clerkPublishableKey } = resolvePlatformRuntimeConfig();
   const runtime = await startClerkBrowserRuntime({
-    domain: satelliteConfig?.domain,
     loadOptions: {
-      ...(satelliteConfig
-        ? {
-            isSatellite: true,
-            satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-          }
-        : {}),
       afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
       signInUrl: resolveAppAuthUrl("/sign-in"),
       signUpUrl: resolveAppAuthUrl("/sign-up"),
     },
-    publishableKey,
+    publishableKey: clerkPublishableKey,
   });
   await runtime.loaded;
 
@@ -533,12 +419,19 @@ export const watchOrgSwitch$ = command(
         set(persistOrgId$, newOrgId);
         setPostHogOrganization(newOrgId);
 
+        // Desktop owns navigation until fresh-token IPC and handoff acknowledgement.
+        // Check both sides of the token wait: a route can change while it is pending.
+        if (signal.aborted || isDesktopAuthFlow()) {
+          return;
+        }
         await bestEffort(
           (async () => {
             return await clerk.session?.getToken({ skipCache: true });
           })(),
         );
-        location.href = "/";
+        if (!signal.aborted && !isDesktopAuthFlow()) {
+          location.href = "/";
+        }
       }),
     );
     signal.addEventListener("abort", unsubscribe);

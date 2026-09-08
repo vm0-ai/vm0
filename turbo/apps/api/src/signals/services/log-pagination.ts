@@ -17,7 +17,7 @@ interface DecodedTimeCursor {
 
 interface TimedAxiomRecord {
   readonly _time: string;
-  readonly _vm0Cursor?: unknown;
+  readonly _timeCursor?: unknown;
 }
 
 interface TimePaginationParams {
@@ -30,7 +30,7 @@ interface TimePaginationParams {
 const ISO_UTC_TIMESTAMP_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/;
 const MAX_TIME_CURSOR_TIE_BREAKER_LENGTH = 2048;
-const TIME_CURSOR_APL_FIELD = "_vm0Cursor";
+const TIME_CURSOR_APL_FIELD = "_timeCursor";
 
 function safeInteger(value: number | undefined): number | undefined {
   return value !== undefined && Number.isSafeInteger(value) ? value : undefined;
@@ -337,7 +337,7 @@ export function nextTimeCursor<T extends TimedAxiomRecord>(
 
   const timestamp = exactUtcTimestamp(lastRecord._time);
   const tieBreaker =
-    typeof lastRecord._vm0Cursor === "string" ? lastRecord._vm0Cursor : null;
+    typeof lastRecord._timeCursor === "string" ? lastRecord._timeCursor : null;
   if (timestamp === null) {
     timeCursorInvariantFailure("boundary record has invalid _time");
   }

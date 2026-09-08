@@ -1,11 +1,10 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { Loader2, AlertCircle, CircleCheck, ArrowLeft } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import { Button, BrandSlack } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../signals/utils.ts";
-import { Link } from "../router/link.tsx";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   effectiveError$,
@@ -13,96 +12,23 @@ import {
   type SlackConnectStatus,
   connectSlackAccount$,
 } from "../../signals/okou-page/slack-connect-signals.ts";
+import {
+  CenterText,
+  ConnectCheckingState,
+  ConnectErrorState,
+  ConnectInvalidLinkState,
+  ConnectSubmitButton,
+  PageShell,
+  SettingsBackLink,
+} from "./connect-page-shell.tsx";
 
 type PageStatus = SlackConnectStatus | "checking" | "error";
 
-function BackLink() {
-  const { t } = useTranslation();
-  return (
-    <Link
-      pathname="/works"
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
-    >
-      <ArrowLeft size={14} />
-      {t(($) => {
-        return $.connectors.providerConnect.common.backToSettings;
-      })}
-    </Link>
-  );
-}
-
 export function SlackConnectPage() {
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
-      <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
-          <PageContent />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <AlertCircle size={40} className="text-destructive" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.connectionFailed;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {message}
-        </p>
-      </div>
-      <BackLink />
-    </>
-  );
-}
-
-function CheckingState() {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Loader2 size={40} className="animate-spin" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.checkingTitle;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {t(($) => {
-            return $.connectors.providerConnect.common.verifying;
-          })}
-        </p>
-      </div>
-    </>
-  );
-}
-
-function InvalidState() {
-  const { t } = useTranslation();
-  return (
-    <>
-      <AlertCircle size={40} className="" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          {t(($) => {
-            return $.connectors.providerConnect.common.invalidLink;
-          })}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {t(($) => {
-            return $.connectors.providerConnect.slack.invalidDescription;
-          })}
-        </p>
-      </div>
-      <BackLink />
-    </>
+    <PageShell>
+      <PageContent />
+    </PageShell>
   );
 }
 
@@ -133,7 +59,7 @@ function PageContent() {
 
   // Error state
   if (status === "error") {
-    return <ErrorState message={effectiveError} />;
+    return <ConnectErrorState message={effectiveError} />;
   }
 
   // Success state
@@ -141,14 +67,12 @@ function PageContent() {
     return (
       <>
         <CircleCheck size={40} className="text-emerald-500" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            {t(($) => {
-              return $.connectors.providerConnect.slack.successTitle;
-            })}
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {workspaceName
+        <CenterText
+          title={t(($) => {
+            return $.connectors.providerConnect.slack.successTitle;
+          })}
+          body={
+            workspaceName
               ? t(
                   ($) => {
                     return $.connectors.providerConnect.slack
@@ -158,9 +82,9 @@ function PageContent() {
                 )
               : t(($) => {
                   return $.connectors.providerConnect.slack.successDescription;
-                })}
-          </p>
-        </div>
+                })
+          }
+        />
         <div className="flex flex-col gap-3 w-full">
           <Button
             size="default"
@@ -175,7 +99,7 @@ function PageContent() {
             })}
           </Button>
           <div className="flex justify-center">
-            <BackLink />
+            <SettingsBackLink />
           </div>
         </div>
       </>
@@ -184,7 +108,7 @@ function PageContent() {
 
   // Loading — checking login / connection status
   if (status === "checking") {
-    return <CheckingState />;
+    return <ConnectCheckingState />;
   }
 
   // Connect confirmation (from Slack link with w + u params)
@@ -192,40 +116,30 @@ function PageContent() {
     return (
       <>
         <BrandSlack size={40} className="" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            {t(($) => {
-              return $.connectors.providerConnect.slack.connectTitle;
-            })}
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {t(($) => {
-              return $.connectors.providerConnect.slack.connectDescription;
-            })}
-          </p>
-        </div>
-        <Button
-          className="w-full"
-          size="default"
-          onClick={handleConnect}
-          disabled={connectLoading}
-        >
-          {connectLoading ? (
-            <Loader2 size={16} className="animate-spin mr-2" />
-          ) : null}
-          {connectLoading
-            ? t(($) => {
-                return $.connectors.actions.connecting;
-              })
-            : t(($) => {
-                return $.connectors.actions.connect;
-              })}
-        </Button>
-        <BackLink />
+        <CenterText
+          title={t(($) => {
+            return $.connectors.providerConnect.slack.connectTitle;
+          })}
+          body={t(($) => {
+            return $.connectors.providerConnect.slack.connectDescription;
+          })}
+        />
+        <ConnectSubmitButton
+          connecting={connectLoading}
+          onConnect={handleConnect}
+          spinnerClassName="animate-spin mr-2"
+        />
+        <SettingsBackLink />
       </>
     );
   }
 
   // No params — invalid access
-  return <InvalidState />;
+  return (
+    <ConnectInvalidLinkState
+      description={t(($) => {
+        return $.connectors.providerConnect.slack.invalidDescription;
+      })}
+    />
+  );
 }

@@ -536,7 +536,7 @@ async def test_sigv4_request_header_list_inspection_boundary(
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
-async def test_sigv4_request_header_field_count_fails_closed(
+async def test_sigv4_request_hook_header_field_count_fails_closed(
     tmp_path,
     real_flow,
     headers,
@@ -562,7 +562,6 @@ async def test_sigv4_request_header_field_count_fails_closed(
         mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
-        assert mitm_addon.requestheaders(flow) is None
         await mitm_addon.request(flow)
 
         assert flow.response is not None

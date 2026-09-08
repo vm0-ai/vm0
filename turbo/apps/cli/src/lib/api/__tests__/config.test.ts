@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getActiveOrg,
-  getActiveToken,
-  getApiUrl,
-  getCliPublicBrand,
-  getToken,
-} from "../config";
+import { getActiveOrg, getActiveToken, getApiUrl, getToken } from "../config";
 
-function buildFakeZeroJwt(payload: Record<string, unknown>): string {
+function buildFakeSandboxJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(
     JSON.stringify({ alg: "HS256", typ: "JWT" }),
   ).toString("base64url");
@@ -28,23 +22,10 @@ describe("Okou configuration", () => {
     await expect(getActiveToken()).resolves.toBe("okou-token-value");
   });
 
-  it("rejects a zero-scoped OKOU_TOKEN", async () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildFakeZeroJwt({
-        scope: "zero",
-        orgId: "org-from-zero-token",
-        capabilities: [],
-      }),
-    );
-
-    await expect(getActiveOrg()).resolves.toBeUndefined();
-  });
-
   it("reads the active organization from an okou-scoped OKOU_TOKEN", async () => {
     vi.stubEnv(
       "OKOU_TOKEN",
-      buildFakeZeroJwt({
+      buildFakeSandboxJwt({
         scope: "okou",
         orgId: "org-from-okou-token",
         capabilities: [],
@@ -81,41 +62,6 @@ describe("Okou configuration", () => {
       vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
 
       await expect(getApiUrl()).resolves.toBe("https://api.okou.ai");
-    },
-  );
-
-  it("prefers the run-token public brand over the configured API URL", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildFakeZeroJwt({
-        scope: "okou",
-        capabilities: [],
-        publicBrand: "okou",
-      }),
-    );
-    vi.stubEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-
-    expect(getCliPublicBrand()).toBe("okou");
-  });
-
-  it.each([
-    ["api.vm0.ai", "vm0"],
-    ["https://api.okou.ai", "okou"],
-  ] as const)(
-    "selects the %s API URL brand as %s",
-    (canonicalUrl, expectedBrand) => {
-      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
-
-      expect(getCliPublicBrand()).toBe(expectedBrand);
-    },
-  );
-
-  it.each([undefined, ""])(
-    "defaults the public brand to Okou when the canonical URL is %s",
-    (canonicalUrl) => {
-      vi.stubEnv("OKOU_API_BACKEND_URL", canonicalUrl);
-
-      expect(getCliPublicBrand()).toBe("okou");
     },
   );
 });
