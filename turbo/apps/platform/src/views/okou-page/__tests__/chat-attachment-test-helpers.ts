@@ -107,6 +107,41 @@ export function boxAnnotation(
   };
 }
 
+/** One arrow, drawn top-left to bottom-right across the middle of the image. */
+export function arrowAnnotation(id: string): ImageAnnotation {
+  return {
+    marks: [
+      {
+        id,
+        ordinal: 1,
+        shape: "arrow" as const,
+        from: { x: 0.2, y: 0.2 },
+        to: { x: 0.7, y: 0.6 },
+        ink: "#5E6AD2",
+      },
+    ],
+  };
+}
+
+/** One freehand stroke, as a short diagonal run of points. */
+export function penAnnotation(id: string): ImageAnnotation {
+  return {
+    marks: [
+      {
+        id,
+        ordinal: 1,
+        shape: "pen" as const,
+        points: [
+          { x: 0.2, y: 0.25 },
+          { x: 0.35, y: 0.4 },
+          { x: 0.5, y: 0.45 },
+        ],
+        ink: "#5E6AD2",
+      },
+    ],
+  };
+}
+
 export function draftForAttachment(
   attachment: AnnotatedPersistedAttachment,
   text = "Draft message",

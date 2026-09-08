@@ -7,7 +7,9 @@ import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
+from wsproto.utilities import generate_accept_token
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.model_provider_flow_helpers import (
@@ -17,6 +19,16 @@ from tests.model_provider_flow_helpers import (
 from tests.model_provider_websocket_helpers import feed_websocket_server_message
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
+
+
+class _RawValueDecodeGuard(bytes):
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("raw WebSocket value must not be decoded by lifecycle hooks")
+
+
+_LARGE_RAW_VALUE = _RawValueDecodeGuard(b"\xff" * (1024 * 1024))
+_WEBSOCKET_KEY = b"dGhlIHNhbXBsZSBub25jZQ=="
+_WEBSOCKET_ACCEPT = b"s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
 def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
@@ -63,6 +75,31 @@ class TestModelProviderWebSocketLifecycle:
                     connection="Upgrade," + "x" * 10_000,
                 ),
                 id="connection-token-before-oversized-suffix",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", _RawValueDecodeGuard(b"websocket," + _LARGE_RAW_VALUE)),
+                        (b"Upgrade", _LARGE_RAW_VALUE),
+                        (b"Connection", _RawValueDecodeGuard(b"Upgrade," + _LARGE_RAW_VALUE)),
+                        (b"Connection", _LARGE_RAW_VALUE),
+                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT),
+                    ]
+                ),
+                id="raw-early-tokens-ignore-suffixes-and-later-values",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", b"websocket"),
+                        (b"Connection", b"upgrade"),
+                        (
+                            b"Sec-WebSocket-Accept",
+                            _RawValueDecodeGuard(b" " * (8 * 1024 - 28) + _WEBSOCKET_ACCEPT),
+                        ),
+                    ]
+                ),
+                id="accept-at-inclusive-raw-byte-limit",
             ),
         ],
     )
@@ -222,6 +259,47 @@ class TestModelProviderWebSocketLifecycle:
                 make_openai_responses_websocket_response_headers(accept="x" * (8 * 1024 + 1)),
                 id="accept-work-limit",
             ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", b"websocket"),
+                        (b"Connection", b"upgrade"),
+                        (b"Sec-WebSocket-Accept", _LARGE_RAW_VALUE),
+                    ]
+                ),
+                id="oversized-non-utf8-accept",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", b"websocket"),
+                        (b"Connection", b"upgrade"),
+                        (b"Sec-WebSocket-Accept", _RawValueDecodeGuard(_WEBSOCKET_ACCEPT)),
+                        (b"Sec-WebSocket-Accept", _LARGE_RAW_VALUE),
+                    ]
+                ),
+                id="duplicate-accept-with-oversized-non-utf8-value",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", _RawValueDecodeGuard(_LARGE_RAW_VALUE + b",websocket")),
+                        (b"Connection", b"upgrade"),
+                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT),
+                    ]
+                ),
+                id="raw-upgrade-token-beyond-work-limit",
+            ),
+            pytest.param(
+                http.Headers(
+                    [
+                        (b"Upgrade", b"websocket"),
+                        (b"Connection", _RawValueDecodeGuard(_LARGE_RAW_VALUE + b",upgrade")),
+                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT),
+                    ]
+                ),
+                id="raw-connection-token-beyond-work-limit",
+            ),
         ],
     )
     async def test_invalid_websocket_switching_protocols_response_releases_usage_flow(
@@ -264,6 +342,62 @@ class TestModelProviderWebSocketLifecycle:
             buffered=0,
             reports=0,
             flush_request_id="after-response",
+        )
+
+    @pytest.mark.parametrize(
+        ("request_keys", "response_accept"),
+        [
+            pytest.param((_LARGE_RAW_VALUE,), _WEBSOCKET_ACCEPT, id="oversized-raw-request-key"),
+            pytest.param(
+                (_RawValueDecodeGuard(_WEBSOCKET_KEY), _LARGE_RAW_VALUE),
+                _WEBSOCKET_ACCEPT,
+                id="duplicate-raw-request-key",
+            ),
+            pytest.param(
+                (_RawValueDecodeGuard(b"\xff" * 24),),
+                generate_accept_token(b"\xff" * 24),
+                id="non-ascii-key-even-with-matching-accept",
+            ),
+        ],
+    )
+    async def test_response_rechecks_raw_request_key_before_retaining_usage_flow(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        request_keys: tuple[bytes, ...],
+        response_accept: bytes,
+    ) -> None:
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+        reg_path = _write_openai_model_websocket_registry(tmp_path)
+        flow = make_openai_responses_websocket_request_flow(real_flow)
+
+        with mitm_ctx(registry_path=str(reg_path)), fake_firewall_headers():
+            await mitm_addon.request(flow)
+            assert flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] is True
+            usage.write_pending_snapshot(flush_request_id="before-response")
+            assert_pending(
+                pending_path, flows=1, buffered=0, reports=0, flush_request_id="before-response"
+            )
+
+            # Response confirmation owns its raw-key boundary even after the
+            # request was classified; do not trust an earlier metadata marker.
+            flow.request.headers.fields = tuple(
+                (name, value)
+                for name, value in flow.request.headers.fields
+                if name.lower() != b"sec-websocket-key"
+            ) + tuple((b"Sec-WebSocket-Key", value) for value in request_keys)
+            response_headers = make_openai_responses_websocket_response_headers()
+            response_headers["Sec-WebSocket-Accept"] = response_accept
+            flow.response = tutils.tresp(status_code=101, headers=response_headers)
+            mitm_addon.responseheaders(flow)
+            mitm_addon.response(flow)
+            usage.write_pending_snapshot(flush_request_id="after-response")
+
+        assert_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="after-response"
         )
 
     async def test_model_websocket_error_releases_usage_flow_after_upgrade(

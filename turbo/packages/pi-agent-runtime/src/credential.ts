@@ -123,6 +123,9 @@ export async function materializePiAgentModelConfig(args: {
   ) => string | Promise<string>;
 }): Promise<PiAgentModelConfig> {
   if (!("schemaVersion" in args.config)) {
+    // Old API/Runner payloads and stored contexts can still carry this alias
+    // through the rollback, queue, execution and finalization gates in #31085.
+    // Strip it before spreading the route; only dialect selects the adapter.
     const {
       api: _legacyApi,
       apiKeyEnv: _apiKeyEnv,
@@ -137,7 +140,6 @@ export async function materializePiAgentModelConfig(args: {
     });
     return {
       ...route,
-      api: "openai-responses",
       dialect: "openai-responses",
       ...resolvePiAgentCredential({
         credential,
@@ -162,7 +164,6 @@ export async function materializePiAgentModelConfig(args: {
     });
     return {
       ...route,
-      api: dialect,
       dialect,
       transport,
       ...resolvePiAgentCredential({
@@ -188,7 +189,6 @@ export async function materializePiAgentModelConfig(args: {
   });
   return {
     ...route,
-    api: dialect,
     dialect,
     transport,
     apiKey,

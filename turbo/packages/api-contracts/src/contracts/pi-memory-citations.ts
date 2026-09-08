@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CitationLiteralEscaper } from "./pi-memory-citation-literals";
 
 /**
  * Adapted from OpenAI Codex rust-v0.152.1 at
@@ -256,6 +257,10 @@ function isPrefix(value: string, candidate: string): boolean {
 }
 
 class CitationScanner {
+  readonly #literals = new CitationLiteralEscaper(
+    PI_MEMORY_CITATION_OPEN,
+    PI_MEMORY_CITATION_CLOSE,
+  );
   readonly #visibleBySource = new Map<number, string[]>();
   readonly #citation: MutableCitation = { entries: [], rolloutIds: [] };
   readonly #diagnostics = emptyDiagnostics();
@@ -268,7 +273,23 @@ class CitationScanner {
 
   push(chunk: string, source = 0): void {
     for (const value of chunk) {
-      this.#pushCharacter({ value, source });
+      this.#literals.push({ value, source }, (item, escape) => {
+        this.#pushLiteralCharacter(item, escape);
+      });
+    }
+  }
+
+  #pushLiteralCharacter(item: SourcedCharacter, escape: boolean): void {
+    const replacement =
+      escape && !this.#inside
+        ? item.value === "<"
+          ? "&lt;"
+          : item.value === ">"
+            ? "&gt;"
+            : item.value
+        : item.value;
+    for (const value of replacement) {
+      this.#pushCharacter({ value, source: item.source });
     }
   }
 
@@ -366,6 +387,9 @@ class CitationScanner {
   }
 
   finish(): PiMemoryCitationProjection {
+    this.#literals.finish((item, escape) => {
+      this.#pushLiteralCharacter(item, escape);
+    });
     if (this.#inside) {
       for (const character of this.#closePending) {
         this.#appendBody(character.value);

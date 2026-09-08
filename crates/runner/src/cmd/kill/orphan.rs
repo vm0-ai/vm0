@@ -5,13 +5,16 @@ use tracing::info;
 
 use crate::process::{
     self, DiscoveredProcesses, ProcessDiscovery, ProcessStat, ProcessStatRead,
-    ProcfsProcessGeneration,
+    ProcfsProcessGeneration, ProcfsProcessHandle,
 };
 
 use super::target::KillTarget;
 
 const ORPHAN_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const ORPHAN_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+#[cfg(test)]
+mod identity_tests;
 
 #[derive(Debug)]
 pub(super) enum Outcome {
@@ -37,8 +40,8 @@ where
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
 {
-    let generation = match validate_orphan_target(target).await {
-        OrphanTargetValidation::Valid { generation } => generation,
+    let validated = match validate_orphan_target(target).await {
+        OrphanTargetValidation::Valid(validated) => validated,
         OrphanTargetValidation::AlreadyGone => {
             return already_gone_orphan_outcome_with_discovery(target, discover).await;
         }
@@ -47,9 +50,9 @@ where
         }
     };
 
-    match signal_process_group(target.pid, generation.pgid) {
+    match signal_process_group(target.pid, &validated) {
         ProcessGroupSignalResult::Signaled => {
-            match wait_for_orphan_exit(target.pid, &generation).await {
+            match wait_for_orphan_exit(target.pid, &validated.generation).await {
                 Ok(()) => Outcome::Killed(target.clone()),
                 Err(failure) => Outcome::TerminationUnconfirmed {
                     target: target.clone(),
@@ -137,8 +140,13 @@ fn discovered_has_same_or_unidentified_firecracker(
     })
 }
 
+struct ValidatedOrphanTarget {
+    process: ProcfsProcessHandle,
+    generation: ProcfsProcessGeneration,
+}
+
 enum OrphanTargetValidation {
-    Valid { generation: ProcfsProcessGeneration },
+    Valid(ValidatedOrphanTarget),
     AlreadyGone,
     Changed,
 }
@@ -153,7 +161,21 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return OrphanTargetValidation::Changed;
     };
 
-    let stat = match process::read_process_stat_checked(target.pid).await {
+    let process = match ProcfsProcessHandle::open(target.pid) {
+        Ok(process) => process,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return OrphanTargetValidation::AlreadyGone;
+        }
+        Err(error) => {
+            tracing::warn!(
+                pid = target.pid,
+                %error,
+                "refusing orphan kill because process identity cannot be retained"
+            );
+            return OrphanTargetValidation::Changed;
+        }
+    };
+    let stat = match process.read_stat().await {
         ProcessStatRead::Found(stat) => stat,
         ProcessStatRead::Missing => {
             tracing::warn!(
@@ -198,12 +220,16 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return OrphanTargetValidation::AlreadyGone;
     }
 
-    let Some(cmdline) = process::read_cmdline(target.pid).await else {
+    if !process_group_is_safe(target.pid, generation.pgid) {
+        return OrphanTargetValidation::Changed;
+    }
+
+    let Some(cmdline) = process.read_cmdline().await else {
         tracing::warn!(
             pid = target.pid,
             "failed to read cmdline before orphan kill"
         );
-        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, generation).await;
+        return classify_orphan_validation_after_unreadable_pid_fact(&process, generation).await;
     };
     if !process::is_firecracker_cmdline(&cmdline) {
         tracing::warn!(
@@ -213,8 +239,8 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return OrphanTargetValidation::Changed;
     }
 
-    let cwd_info = process::read_cwd(target.pid)
-        .await
+    let cwd_info = process
+        .read_cwd()
         .and_then(|cwd| process::parse_workspace_cwd(&cwd));
     if !orphan_target_matches_facts(target, generation, &stat, true, cwd_info.as_ref()) {
         tracing::warn!(
@@ -222,10 +248,10 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             sandbox_id = %target.sandbox_id,
             "refusing orphan kill after workspace identity changed"
         );
-        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, generation).await;
+        return classify_orphan_validation_after_unreadable_pid_fact(&process, generation).await;
     }
 
-    let final_stat = match process::read_process_stat_checked(target.pid).await {
+    let final_stat = match process.read_stat().await {
         ProcessStatRead::Found(stat) => stat,
         ProcessStatRead::Missing => {
             tracing::warn!(
@@ -270,16 +296,17 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         return OrphanTargetValidation::AlreadyGone;
     }
 
-    OrphanTargetValidation::Valid {
+    OrphanTargetValidation::Valid(ValidatedOrphanTarget {
+        process,
         generation: *generation,
-    }
+    })
 }
 
 async fn classify_orphan_validation_after_unreadable_pid_fact(
-    pid: u32,
+    process: &ProcfsProcessHandle,
     generation: &ProcfsProcessGeneration,
 ) -> OrphanTargetValidation {
-    match process::read_process_stat_checked(pid).await {
+    match process.read_stat().await {
         ProcessStatRead::Found(stat)
             if generation == &stat.procfs_generation() && !process::process_stat_is_live(&stat) =>
         {
@@ -464,39 +491,59 @@ enum ProcessGroupSignalResult {
     Failed,
 }
 
-/// Send `SIGKILL` to a validated process group.
-fn signal_process_group(pid: u32, pgid: u32) -> ProcessGroupSignalResult {
+fn process_group_is_safe(pid: u32, pgid: u32) -> bool {
     if pgid <= 1 {
         tracing::warn!(pid, pgid, "refusing to signal system process group");
-        return ProcessGroupSignalResult::Failed;
+        return false;
+    }
+    if pid != pgid {
+        tracing::warn!(
+            pid,
+            pgid,
+            "refusing to signal orphan that is not a process-group leader"
+        );
+        return false;
     }
 
     let Ok(pgid_i32) = i32::try_from(pgid) else {
-        return ProcessGroupSignalResult::Failed;
+        return false;
     };
     if nix::unistd::getpgrp().as_raw() == pgid_i32 {
         tracing::warn!(pid, pgid = pgid_i32, "refusing to signal own process group");
+        return false;
+    }
+    true
+}
+
+/// The numeric facts are only for safety checks and diagnostics, never delivery.
+fn signal_process_group(pid: u32, validated: &ValidatedOrphanTarget) -> ProcessGroupSignalResult {
+    signal_process_group_with(pid, validated, ProcfsProcessHandle::kill_process_group)
+}
+
+fn signal_process_group_with(
+    pid: u32,
+    validated: &ValidatedOrphanTarget,
+    send_signal: impl FnOnce(&ProcfsProcessHandle) -> nix::Result<()>,
+) -> ProcessGroupSignalResult {
+    let pgid = validated.generation.pgid;
+    if !process_group_is_safe(pid, pgid) {
         return ProcessGroupSignalResult::Failed;
     }
 
-    match nix::sys::signal::killpg(
-        nix::unistd::Pid::from_raw(pgid_i32),
-        nix::sys::signal::Signal::SIGKILL,
-    ) {
+    match send_signal(&validated.process) {
         Ok(()) => {
-            info!(pid, pgid = pgid_i32, "killed process group");
+            info!(
+                pid,
+                pgid, "killed process group through retained process identity"
+            );
             ProcessGroupSignalResult::Signaled
         }
         Err(nix::errno::Errno::ESRCH) => {
-            info!(
-                pid,
-                pgid = pgid_i32,
-                "process group already exited before signal"
-            );
+            info!(pid, pgid, "process group already exited before signal");
             ProcessGroupSignalResult::AlreadyGone
         }
         Err(e) => {
-            tracing::warn!(pid, pgid = pgid_i32, error = %e, "failed to kill process group");
+            tracing::warn!(pid, pgid, error = %e, "failed to kill process group through retained process identity; refusing numeric signal fallback");
             ProcessGroupSignalResult::Failed
         }
     }
@@ -1135,38 +1182,24 @@ mod tests {
 
     #[test]
     fn signal_process_group_rejects_zero_pgid() {
-        assert_eq!(
-            signal_process_group(1234, 0),
-            ProcessGroupSignalResult::Failed
-        );
+        assert!(!process_group_is_safe(0, 0));
     }
 
     #[test]
     fn signal_process_group_rejects_init_pgid() {
-        assert_eq!(
-            signal_process_group(1234, 1),
-            ProcessGroupSignalResult::Failed
-        );
+        assert!(!process_group_is_safe(1, 1));
     }
 
     #[test]
     fn signal_process_group_rejects_own_pgid() {
         let current_pgid = u32::try_from(nix::unistd::getpgrp().as_raw()).unwrap();
 
-        assert_eq!(
-            signal_process_group(1234, current_pgid),
-            ProcessGroupSignalResult::Failed
-        );
+        assert!(!process_group_is_safe(current_pgid, current_pgid));
     }
 
     #[test]
-    fn signal_process_group_reports_already_gone_for_missing_group() {
-        let missing_pgid = i32::MAX as u32;
-
-        assert_eq!(
-            signal_process_group(1234, missing_pgid),
-            ProcessGroupSignalResult::AlreadyGone
-        );
+    fn signal_process_group_rejects_out_of_range_pgid() {
+        assert!(!process_group_is_safe(u32::MAX, u32::MAX));
     }
 
     #[tokio::test]

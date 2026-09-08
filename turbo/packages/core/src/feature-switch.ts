@@ -197,12 +197,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
-  },
-  [FeatureSwitchKey.SharedWorkerRealtime]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Route application realtime subscriptions through the SharedWorker",
-    enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Banking]: {
@@ -297,7 +291,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Run web chat jobs with the sandbox-owned official Pi runtime, JSONL session persistence, and shared Codex-compatible memory.",
+      "Run owned chat threads with the official Pi runtime, native session persistence, and shared memory learning across interactive, Automation, and Goal turns.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -373,6 +367,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Use private storage and authenticated previews for CLI artifact uploads.",
     enabled: false,
+  },
+  [FeatureSwitchKey.AgentMessageMath]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Render explicit LaTeX delimiters in Agent messages as native MathML.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@okou.ai",
@@ -462,7 +463,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SshAccess]: {
-    maintainer: "ethan@okou.ai",
+    maintainer: "liangyou@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
   },

@@ -709,6 +709,92 @@ test("Rebuild a cached chat when batched catch-up cannot continue its cursor", a
   ).resolves.toStrictEqual([rebuiltRow, tailRow]);
 });
 
+test.each(["readonly", "readwrite"] as const)(
+  "Serve remote chat data without Sentry reports when IndexedDB %s transactions fail",
+  async (mode) => {
+    const { runtime } = startRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    const remoteRow = chatEventRow(dataKey.threadId, 1);
+    const snapshot = {
+      chatThreads: [snapshotThread("Available conversation")],
+      latestEventId: null,
+      latestSeqId: null,
+    };
+    await queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    });
+    const transaction = IDBDatabase.prototype.transaction;
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+      this: IDBDatabase,
+      storeNames,
+      transactionMode,
+      options,
+    ) {
+      if (transactionMode === mode) {
+        throw new DOMException(
+          "Local storage unavailable",
+          "InvalidStateError",
+        );
+      }
+      return transaction.call(this, storeNames, transactionMode, options);
+    });
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(200, chatEventRowsResponse([remoteRow], query));
+    });
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      return respond(200, snapshot);
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual([remoteRow]);
+    await expect(
+      queryRuntime(runtime, {
+        dataKey: chatThreadEventKey(),
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).resolves.toStrictEqual({ snapshot, events: [] });
+    expect(context.mocks.sentry().reports).toStrictEqual([]);
+
+    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+      return respond(500, {
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Remote storage unavailable",
+        },
+      });
+    });
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      }),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(context.mocks.sentry().reports).toMatchObject([
+      { type: "exception", error: { status: 500 } },
+    ]);
+  },
+);
+
 test("Continue online when local chat storage becomes unavailable", async () => {
   const currentIdentity = identity();
   const { events, runtime } = startRuntime(currentIdentity);
@@ -762,4 +848,5 @@ test("Continue online when local chat storage becomes unavailable", async () => 
       consistency: "cache-only",
     }),
   ).resolves.toStrictEqual([]);
+  expect(context.mocks.sentry().reports).toStrictEqual([]);
 });

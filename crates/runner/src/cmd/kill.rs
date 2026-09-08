@@ -810,7 +810,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[tokio::test]
-    async fn unconfirmed_orphan_termination_preserves_cleanup_paths() {
+    async fn failed_or_unconfirmed_orphan_termination_preserves_cleanup_paths() {
         let workspace_base = tempfile::tempdir().unwrap();
         let socket_base = tempfile::tempdir().unwrap();
         let control = MockSandboxControl::new(socket_base.path());
@@ -819,16 +819,20 @@ mod tests {
         let socket_dir = control.runtime_dir("sbox-123");
         tokio::fs::create_dir_all(&workspace).await.unwrap();
         tokio::fs::create_dir_all(&socket_dir).await.unwrap();
-        let outcome = KillOutcome::OrphanTerminationUnconfirmed {
-            target: target.clone(),
-            failure: OrphanExitFailure::TimedOut,
-        };
+        for outcome in [
+            KillOutcome::OrphanTerminationUnconfirmed {
+                target: target.clone(),
+                failure: OrphanExitFailure::TimedOut,
+            },
+            KillOutcome::SignalFailed(target.clone()),
+            KillOutcome::AlreadyExitedOrChanged(target.clone()),
+        ] {
+            let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
 
-        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
-
-        assert_eq!(exit_code, ExitCode::FAILURE);
-        assert!(workspace.exists());
-        assert!(socket_dir.exists());
+            assert_eq!(exit_code, ExitCode::FAILURE);
+            assert!(workspace.exists());
+            assert!(socket_dir.exists());
+        }
     }
 
     #[tokio::test]

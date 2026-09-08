@@ -19,7 +19,7 @@ export default createRule({
     schema: [],
     messages: {
       noTestAfterEach:
-        "Do not use afterEach() in platform test files. Bind resources to testContext.signal, use testContext.track() for long-running promises, and rely on Vitest restoration for stubs and spies.",
+        "Do not use afterEach() in platform test files. Bind resources to testContext.signal and await operation completion. Shared test setup owns clearAllDetached(); Vitest restores stubs and spies.",
     },
   },
   create(context) {

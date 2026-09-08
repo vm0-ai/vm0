@@ -55,7 +55,6 @@ const CONFIG: PiSandboxAgentConfig = {
     provider: "deepseek",
     baseUrl: "https://api.deepseek.com/",
     model: "deepseek-v4-flash",
-    api: "openai-responses",
     dialect: "openai-responses",
     apiKey: "test-api-key",
   },
@@ -576,7 +575,6 @@ async function startOwnershipTransferHost(args: {
                 : "deepseek-v4-flash",
             ...(terra
               ? {
-                  api: "openai-responses" as const,
                   thinkingLevel: "low" as const,
                 }
               : {}),
@@ -811,6 +809,7 @@ describe("sandbox Pi agent loop", () => {
   });
 
   it.each([
+    undefined,
     "openai-completions",
     "openai-responses",
     "openai-codex-responses",
@@ -829,17 +828,15 @@ describe("sandbox Pi agent loop", () => {
         credentialSecretName: "OPENAI_API_KEY",
       });
 
-      await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
-        model: {
-          provider: "openai",
-          baseUrl: "https://api.openai.com/v1",
-          model: "gpt-5.6-terra",
-          api: "openai-responses",
-          dialect: "openai-responses",
-          thinkingLevel: "low",
-          serviceTier: "priority",
-          apiKey: "test-api-key",
-        },
+      const resolved = await piSandboxAgentConfigFromEnv(env);
+      expect(resolved.model).toStrictEqual({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        dialect: "openai-responses",
+        thinkingLevel: "low",
+        serviceTier: "priority",
+        apiKey: "test-api-key",
       });
     },
   );
@@ -867,7 +864,6 @@ describe("sandbox Pi agent loop", () => {
         baseUrl: "https://gateway.example.com/v1",
         model: "company-deepseek-production",
         catalogModel: "deepseek-v4-flash",
-        api: "openai-responses",
         dialect: "openai-responses",
         apiKey: "unused",
         requestHeaders: {
@@ -913,7 +909,6 @@ describe("sandbox Pi agent loop", () => {
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
           model: "gpt-5.6-terra",
-          api: "openai-codex-responses",
           ...(schemaVersion === 3 ? { serviceTier: "fast" } : {}),
           dialect: "openai-codex-responses",
           transport: "sse",

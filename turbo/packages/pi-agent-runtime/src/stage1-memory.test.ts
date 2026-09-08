@@ -4,6 +4,10 @@ import { createServer, type ServerResponse } from "node:http";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { CURRENT_SESSION_VERSION } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import {
+  PI_MEMORY_CITATION_OPEN,
+  PI_MEMORY_CITATION_CLOSE,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 
 import {
   PI_MEMORY_STAGE1_RESPONSE_SCHEMA,
@@ -237,6 +241,20 @@ describe("Pi memory Stage 1 runtime", () => {
     expect(projected).toContain('"content":"visible"');
     expect(projected).not.toContain("oai-mem-citation");
     expect(projected).not.toContain("memory.md");
+  });
+
+  it("retains delimiter examples and the following answer in Stage 1 without private provenance", () => {
+    const hidden = `${PI_MEMORY_CITATION_OPEN}<citation_entries>private.md:1-1|note=[private note]</citation_entries>${PI_MEMORY_CITATION_CLOSE}`;
+    const text = `explain \`${PI_MEMORY_CITATION_OPEN}\` complete suffix${hidden}`;
+    const projected = projectPiMemoryStage1History({
+      jsonl: branchedJsonl().replace("finished", text),
+      expectedSessionId: SESSION_ID,
+    });
+    expect(projected).toContain("&lt;oai-mem-citation&gt;");
+    expect(projected).toContain("complete suffix");
+    expect(projected).not.toContain("private.md");
+    expect(projected).not.toContain("private note");
+    expect(projected).not.toContain("private reasoning");
   });
 
   it("redacts adversarial secret forms and truncates both ends deterministically", () => {

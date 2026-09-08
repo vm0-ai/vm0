@@ -45,7 +45,10 @@ interface TruncatedOpenRouterCompletion {
   readonly finishReason: "length";
 }
 
-type OpenRouterCompletionResult = string | TruncatedOpenRouterCompletion;
+type OpenRouterCompletionResult =
+  | string
+  | TruncatedOpenRouterCompletion
+  | Response;
 
 interface StoredS3Object {
   readonly bucket: string;
@@ -326,6 +329,9 @@ export function createChatCallbacksApi(context: TestContext) {
             return contractError;
           }
           const result = await handler(body);
+          if (result instanceof Response) {
+            return result;
+          }
           return HttpResponse.json({
             choices: [
               typeof result === "string"

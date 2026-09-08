@@ -253,3 +253,9 @@ store, an abort signal, and external mocks. Bind external resources to
 `context.signal`. Do not manually clear detached work, browser storage, spies,
 globals, or mocks in file-level cleanup hooks; the shared Vitest setup and test
 context own that lifecycle.
+
+`testContext` aborts the test's root signal. The existing global `afterEach` in
+`src/test/setup.ts` then calls `clearAllDetached()` before resetting MSW handlers.
+This is the single detached-work cleanup mechanism. Do not create a separate
+promise registry or call `clearAllDetached()` from test cases or their hooks.
+During the test, await the operation or its observable completion instead.

@@ -11,7 +11,8 @@ _HTTP_TOKEN_CHARS: frozenset[str] = frozenset(
 )
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
-_HTTP_OWS_CHARS = " \t"
+_HTTP_OWS_BYTES = b" \t"
+_HTTP_LIST_DELIMITER = ord(",")
 
 
 def is_http_header_name(value: str) -> bool:
@@ -40,28 +41,32 @@ def has_forbidden_header_value_control(value: str) -> bool:
     )
 
 
-def header_values_contain_token(
-    values: Sequence[str],
-    expected: str,
+def header_fields_contain_token(
+    fields: Sequence[tuple[bytes, bytes]],
+    name: bytes,
+    expected: bytes,
     *,
     max_work_units: int,
 ) -> bool:
-    """Return whether any field value contains ``expected`` as a list token.
+    """Return whether a raw ``name`` field contains ``expected`` as a list token.
 
-    Matching consumes one work unit per field value and one per inspected
-    character. It stops at ``max_work_units`` and fails closed without scanning
-    the remaining input. A complete early match returns before an irrelevant
-    suffix. Only HTTP OWS (SP and HTAB) is ignored at token edges, and comparison
-    is ASCII case-insensitive. Callers must provide ``expected`` in lowercase
-    ASCII and choose a work limit for their trust boundary.
+    Matching consumes one work unit per visited field and one per inspected
+    matching-value byte, without decoding values. It stops at ``max_work_units``
+    and fails closed without scanning remaining fields or bytes. A complete early
+    match returns before an irrelevant suffix. Only HTTP OWS (SP and HTAB) is
+    ignored at token edges, and comparison is ASCII case-insensitive. Callers
+    provide lowercase ASCII ``name`` and ``expected`` and a trust-boundary limit.
     """
     expected_upper = expected.upper()
     work_units = 0
 
-    for value in values:
+    for field_index in range(len(fields)):
         if work_units >= max_work_units:
             return False
+        raw_name, value = fields[field_index]
         work_units += 1
+        if len(raw_name) != len(name) or raw_name.lower() != name:
+            continue
         token_matches = True
         matched_chars = 0
 
@@ -73,7 +78,7 @@ def header_values_contain_token(
             value_index += 1
             work_units += 1
 
-            if char == ",":
+            if char == _HTTP_LIST_DELIMITER:
                 if token_matches and matched_chars == len(expected):
                     return True
                 token_matches = True
@@ -82,10 +87,10 @@ def header_values_contain_token(
 
             if not token_matches:
                 continue
-            if matched_chars == 0 and char in _HTTP_OWS_CHARS:
+            if matched_chars == 0 and char in _HTTP_OWS_BYTES:
                 continue
             if matched_chars == len(expected):
-                if char not in _HTTP_OWS_CHARS:
+                if char not in _HTTP_OWS_BYTES:
                     token_matches = False
                 continue
             expected_char = expected[matched_chars]
@@ -101,22 +106,30 @@ def header_values_contain_token(
 
 
 def single_header_value(
-    values: Sequence[str],
+    fields: Sequence[tuple[bytes, bytes]],
+    name: bytes,
     *,
-    max_value_chars: int,
-) -> str | None:
-    """Return one header value with HTTP OWS stripped, or ``None`` if not singleton.
+    max_fields: int,
+    max_value_bytes: int,
+) -> bytes | None:
+    """Return one bounded raw value with SP/HTAB stripped, or ``None``.
 
-    ``None`` represents missing or repeated field values: ``values`` must contain
-    exactly one item. Values above ``max_value_chars`` are rejected before
-    stripping, which bounds the possible copy. Only SP and HTAB are stripped
-    from the item, so a blank singleton returns an empty string and other
-    whitespace is preserved. Callers remain responsible for validating the
-    returned value's content.
+    Reject excess field count, missing/repeated ``name`` fields, and values above
+    ``max_value_bytes`` before stripping or decoding anything. Check cardinality
+    across the complete bounded field tuple before copying a singleton. Only SP
+    and HTAB are stripped, so a blank singleton returns empty bytes and other
+    whitespace is preserved. Callers provide lowercase ASCII ``name`` and remain
+    responsible for content validation.
     """
-    if len(values) != 1:
+    if len(fields) > max_fields:
         return None
-    value = values[0]
-    if len(value) > max_value_chars:
+    value: bytes | None = None
+    for raw_name, raw_value in fields:
+        if len(raw_name) != len(name) or raw_name.lower() != name:
+            continue
+        if value is not None or len(raw_value) > max_value_bytes:
+            return None
+        value = raw_value
+    if value is None:
         return None
-    return value.strip(_HTTP_OWS_CHARS)
+    return value.strip(_HTTP_OWS_BYTES)

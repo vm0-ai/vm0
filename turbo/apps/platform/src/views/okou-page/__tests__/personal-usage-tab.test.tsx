@@ -157,19 +157,24 @@ function usageRow(args: {
   };
 }
 
-function mockBillingStatus(tier: "limited-free-1" | "pro" = "pro"): void {
+function mockBillingStatus(
+  tier: "limited-free-1" | "pro" = "pro",
+  showUsagePack = tier === "pro",
+  subscriptionStatus = "active",
+): void {
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier,
+      showUsagePack,
       supportByok: tier !== "limited-free-1",
       restrictedVm0Models: tier === "limited-free-1",
       credits: 12_500,
       onboardingPaymentPending: false,
-      subscriptionStatus: "active",
+      subscriptionStatus,
       currentPeriodEnd: "2026-04-01T00:00:00Z",
       cancelAtPeriodEnd: false,
       scheduledChange: null,
-      hasSubscription: true,
+      hasSubscription: subscriptionStatus === "active",
       autoRecharge: { enabled: false, threshold: null, amount: null },
       creditExpiry: {
         expiringNextCycle: 0,
@@ -359,24 +364,61 @@ test("Review your member-package credit balance", async () => {
   await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
 });
 
-test("Hide an empty member-package balance", async () => {
-  const creditsLoaded = context.mocks.deferred<void>();
-  mockPersonalUsageStory(usageRows(), "pro", false, "member");
+test("Show an empty member-package balance for the new Pro plan", async () => {
+  mockPersonalUsageStory(usageRows(), "pro", true, "member");
+
+  await openUsageSettings();
+
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  expect(within(card).getByText("Usage pack credits")).toBeVisible();
+  expect(
+    within(card).queryByText("Configure member packages"),
+  ).not.toBeInTheDocument();
+});
+
+test("Hide Usage package controls when the capability is disabled, even with credits", async () => {
+  mockPersonalUsageStory();
+  mockBillingStatus("pro", false);
   context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-    creditsLoaded.resolve();
     return respond(200, {
-      totalCredits: 0,
+      totalCredits: 1000,
       purchasedCredits: 0,
-      bonusCredits: 0,
+      bonusCredits: 1000,
       creditGrants: [],
-      hasUsagePack: false,
+      hasUsagePack: true,
     });
   });
 
   await openUsageSettings();
+  await expect(
+    screen.findByTestId("credit-balance-info"),
+  ).resolves.toBeVisible();
+  expect(
+    screen.queryByTestId("usage-pack-credit-card"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Configure member packages"),
+  ).not.toBeInTheDocument();
+});
 
-  await creditsLoaded.promise;
-  expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
+test("Start package configuration from an empty Atom balance", async () => {
+  mockPersonalUsageStory();
+  mockBillingStatus("pro", true, "atom_grant");
+  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+    return respond(404, {
+      error: { code: "NOT_FOUND", message: "No usage pack subscription" },
+    });
+  });
+
+  await openUsageSettings();
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  const configureButton = await within(card).findByText(
+    "Configure member packages",
+  );
+  click(configureButton);
+  await expect(
+    screen.findByRole("heading", { name: "Choose a plan" }),
+  ).resolves.toBeVisible();
 });
 
 test("Show one-time bonus credits without an active package", async () => {

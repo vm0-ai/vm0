@@ -13,6 +13,11 @@ import {
 } from "./pi-memory-citations";
 
 interface Fixture {
+  readonly literalCases: readonly {
+    readonly name: string;
+    readonly text: string;
+    readonly visibleText: string;
+  }[];
   readonly cases: readonly {
     readonly name: string;
     readonly chunks: readonly string[];
@@ -27,6 +32,20 @@ const fixturePath = fileURLToPath(
 );
 const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as Fixture;
 
+function expand(template: string): string {
+  return template
+    .replaceAll(
+      "$ESCAPED_OPEN",
+      `&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;`,
+    )
+    .replaceAll(
+      "$ESCAPED_CLOSE",
+      `&lt;${PI_MEMORY_CITATION_CLOSE.slice(1, -1)}&gt;`,
+    )
+    .replaceAll("$OPEN", PI_MEMORY_CITATION_OPEN)
+    .replaceAll("$CLOSE", PI_MEMORY_CITATION_CLOSE);
+}
+
 function parseChunks(chunks: readonly string[]) {
   const parser = new PiMemoryCitationStreamParser();
   for (const chunk of chunks) {
@@ -36,6 +55,66 @@ function parseChunks(chunks: readonly string[]) {
 }
 
 describe("Pi memory citations", () => {
+  for (const example of fixture.literalCases) {
+    it(`preserves the shared literal boundary at every split: ${example.name}`, () => {
+      const text = expand(example.text);
+      const visible = expand(example.visibleText);
+      for (let split = 0; split <= text.length; split += 1) {
+        const chunks = [text.slice(0, split), text.slice(split)];
+        expect(parseChunks(chunks).visibleText).toBe(visible);
+        expect(
+          projectPiMemoryCitationSegments(chunks).visibleSegments.join(""),
+        ).toBe(visible);
+      }
+      expect(projectPiMemoryCitationText(visible).visibleText).toBe(visible);
+      // A previous literal-only reader sees no control bytes to consume.
+      expect(visible).not.toContain(PI_MEMORY_CITATION_OPEN);
+      expect(visible).not.toContain(PI_MEMORY_CITATION_CLOSE);
+    });
+  }
+
+  it("preserves the entire 872-character incident equivalent at all 873 boundaries", () => {
+    const prefix =
+      "The implementation uses a reserved delimiter, shown here as inline code: ".padEnd(
+        113,
+        " ",
+      ) + "`";
+    const suffix = " SENTINEL_END_OF_REPLY";
+    const text =
+      (
+        prefix +
+        PI_MEMORY_CITATION_OPEN +
+        "` marks internal transport. The complete explanation continues. "
+      ).padEnd(872 - suffix.length, "x") + suffix;
+    expect(text).toHaveLength(872);
+    const visible = text.replace(
+      PI_MEMORY_CITATION_OPEN,
+      expand("$ESCAPED_OPEN"),
+    );
+    for (let split = 0; split <= text.length; split += 1) {
+      expect(
+        parseChunks([text.slice(0, split), text.slice(split)]).visibleText,
+      ).toBe(visible);
+    }
+  });
+
+  it("retains source placement while expanding only delimiter angle brackets", () => {
+    expect(
+      projectPiMemoryCitationSegments(["a `<", "oai-mem-citation", ">` tail"])
+        .visibleSegments,
+    ).toEqual(["a `&lt;", "oai-mem-citation", "&gt;` tail"]);
+  });
+
+  it("fails oversized literal candidates closed without retaining hidden body bytes", () => {
+    const text =
+      "```\n" +
+      " ".repeat(4096) +
+      PI_MEMORY_CITATION_OPEN +
+      "\n```\nprivate suffix";
+    expect(projectPiMemoryCitationText(text).visibleText).toBe(
+      "```\n" + " ".repeat(4096),
+    );
+  });
   for (const fixtureCase of fixture.cases) {
     it(`matches the shared fixture: ${fixtureCase.name}`, () => {
       const result = parseChunks(fixtureCase.chunks);

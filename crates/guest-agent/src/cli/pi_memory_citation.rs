@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
+mod literals;
+
 pub(super) const OPEN: &str = "<oai-mem-citation>";
 pub(super) const CLOSE: &str = "</oai-mem-citation>";
 const MAX_BODY_BYTES: usize = 64 * 1024;
@@ -64,6 +66,7 @@ fn delimiter_starts_with(delimiter: &str, pending: &[SourcedChar]) -> bool {
 }
 
 pub(super) struct CitationParser {
+    literals: literals::LiteralEscaper,
     visible_segments: Vec<String>,
     citation: PiMemoryCitation,
     diagnostics: CitationDiagnostics,
@@ -77,6 +80,7 @@ pub(super) struct CitationParser {
 impl CitationParser {
     pub(super) fn new(segment_count: usize) -> Self {
         Self {
+            literals: literals::LiteralEscaper::default(),
             visible_segments: vec![String::new(); segment_count],
             citation: PiMemoryCitation::default(),
             diagnostics: CitationDiagnostics::default(),
@@ -89,11 +93,42 @@ impl CitationParser {
     }
 
     pub(super) fn push(&mut self, chunk: &str, source: usize) {
+        // Preserve the allocation-free ordinary-text path from #32348. Code
+        // recognition adds work only when the chunk can change Markdown state.
+        if self.literals.bypass_plain_chunk(chunk) {
+            for value in chunk.chars() {
+                self.push_character(SourcedChar { value, source });
+            }
+            return;
+        }
+        let mut literals = std::mem::take(&mut self.literals);
         for value in chunk.chars() {
-            self.push_character(SourcedChar { value, source });
+            literals.push(SourcedChar { value, source }, &mut |item, escape| {
+                self.push_literal_character(item, escape);
+            });
+        }
+        self.literals = literals;
+    }
+
+    fn push_literal_character(&mut self, item: SourcedChar, escape: bool) {
+        let replacement = match (escape && !self.inside, item.value) {
+            (true, '<') => Some("&lt;"),
+            (true, '>') => Some("&gt;"),
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            for value in replacement.chars() {
+                self.push_character(SourcedChar {
+                    value,
+                    source: item.source,
+                });
+            }
+        } else {
+            self.push_character(item);
         }
     }
 
+    #[inline(always)]
     fn push_character(&mut self, character: SourcedChar) {
         if self.inside {
             self.close_pending.push(character);
@@ -167,6 +202,8 @@ impl CitationParser {
     }
 
     pub(super) fn finish(mut self) -> CitationProjection {
+        let mut literals = std::mem::take(&mut self.literals);
+        literals.finish(&mut |item, escape| self.push_literal_character(item, escape));
         if self.inside {
             let pending = std::mem::take(&mut self.close_pending);
             for character in pending {
@@ -312,6 +349,54 @@ mod tests {
     #[derive(Deserialize)]
     struct Fixture {
         cases: Vec<FixtureCase>,
+        #[serde(rename = "literalCases")]
+        literal_cases: Vec<LiteralCase>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct LiteralCase {
+        name: String,
+        text: String,
+        visible_text: String,
+    }
+
+    fn expand(template: &str) -> String {
+        template
+            .replace(
+                "$ESCAPED_OPEN",
+                &OPEN.replace('<', "&lt;").replace('>', "&gt;"),
+            )
+            .replace(
+                "$ESCAPED_CLOSE",
+                &CLOSE.replace('<', "&lt;").replace('>', "&gt;"),
+            )
+            .replace("$OPEN", OPEN)
+            .replace("$CLOSE", CLOSE)
+    }
+
+    #[test]
+    fn shared_literals_preserve_every_split_and_repeat_projection() {
+        for case in fixture().literal_cases {
+            let text = expand(&case.text);
+            let visible = expand(&case.visible_text);
+            for split in (0..=text.len()).filter(|&split| text.is_char_boundary(split)) {
+                let projected = project_segments(&[&text[..split], &text[split..]]);
+                assert_eq!(
+                    projected.visible_segments.concat(),
+                    visible,
+                    "{} split {split}",
+                    case.name
+                );
+            }
+            assert_eq!(
+                project_segments(&[&visible]).visible_segments.concat(),
+                visible,
+                "{} repeated",
+                case.name
+            );
+            assert!(!visible.contains(OPEN) && !visible.contains(CLOSE));
+        }
     }
 
     fn fixture() -> Fixture {
