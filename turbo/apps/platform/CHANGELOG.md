@@ -11,6 +11,32 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.863.0](https://github.com/vm0-ai/vm0/compare/app-v0.862.8...app-v0.863.0) (2026-09-08)
+
+
+### Features
+
+* **platform:** add related artifacts dialog ([#32505](https://github.com/vm0-ai/vm0/issues/32505)) ([b47a771](https://github.com/vm0-ai/vm0/commit/b47a771269cc545c8f6dc216903e943930795272))
+
+
+### Bug Fixes
+
+* **platform:** clean up abort listeners in polling delays ([#32566](https://github.com/vm0-ai/vm0/issues/32566)) ([fe57f9e](https://github.com/vm0-ai/vm0/commit/fe57f9eb1df389c1e4d1e396e96f29f9114a4d90))
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+    * @okouai/connectors bumped to 3.8.3
+    * @okouai/core bumped to 8.635.1
+
 ## [0.862.8](https://github.com/vm0-ai/vm0/compare/app-v0.862.7...app-v0.862.8) (2026-09-08)
 
 

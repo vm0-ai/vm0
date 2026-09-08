@@ -1872,8 +1872,8 @@
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
       "create": {
-        "chooseStyle": "शैली चुनें",
-        "chooseTemplate": "टेम्पलेट चुनें",
+        "addStyle": "शैली जोड़ें",
+        "addTemplate": "टेम्पलेट जोड़ें",
         "exit": "बनाने के मोड से बाहर निकलें",
         "image": "छवि बनाएँ",
         "imagePlaceholder": "आप जो छवि बनाना चाहते हैं उसका वर्णन करें…",
@@ -2240,6 +2240,9 @@
       "keepGoingAt": "चलते रहें · {{timestamp}}",
       "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "relatedArtifactCount_one": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifactCount_other": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifacts": "संबंधित आर्टिफ़ैक्ट",
       "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",

@@ -2987,11 +2987,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       accessToken: "x-projection-access",
       refreshToken: "x-projection-refresh",
     });
-    const createProjectedRun = async (prompt: string) => {
+    const createProjectedRun = async (
+      prompt: string,
+      connectorSlugs = ["x", "runtime-projection-unknown", "x"],
+    ) => {
       return await api.createDirectRun(actor, {
         ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
-          allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
+          allowedConnectorSlugs: connectorSlugs,
           allowedCustomConnectorIds: [],
         },
       });
@@ -3024,6 +3027,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       cacheOutcomes.filter((outcome) => {
         return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentLoads.filter((event) => {
+        return (
+          event.connector_catalog_projection_cache_observation === "reuse_1"
+        );
       }),
     ).toHaveLength(1);
     for (const load of concurrentLoads) {
@@ -3122,9 +3132,68 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         connector_catalog_runtime_selection_source: "projection",
         connector_catalog_projection_cache_outcome: "hit",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+
+    const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const rotatedRun = await createProjectedRun("observe catalog rotation", [
+      "x",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(rotatedRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, rotatedRun.runId, [200]);
+
+    const resetRun = await createProjectedRun(
+      "do not reuse old identity history",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(resetRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "not_in_recent_history",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, resetRun.runId, [200]);
+
+    mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const capabilityRun = await createProjectedRun(
+      "observe capability rotation",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(capabilityRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, capabilityRun.runId, [200]);
   });
 
   it("reuses current validator package authority", async () => {
@@ -3230,6 +3299,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         connector_catalog_projection_fallback_reason: "compatibility_not_ready",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).not.toHaveProperty("connector_catalog_projection_cache_observation");
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
@@ -3422,6 +3497,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, run.runId, [200]);
+
+    const repeatedRun = await api.createDirectRun(actor, {
+      ...agentBackedDirectRunBody({
+        agentId,
+        prompt: "repeat digest-mismatched projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    const repeatedEvents = apiDispatchTimingEventsForRun(repeatedRun.runId);
+    expectProjectionRowReadActionCounts(repeatedEvents, 1);
+    expect(
+      singleApiDispatchEvent(
+        repeatedEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_cache_observation: "reuse_1",
+        connector_catalog_projection_fallback_reason: "digest_mismatch",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
   });
 
   it.each([
@@ -12506,6 +12608,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         connector_catalog_projection_cache_outcome: "hit",
         connector_catalog_requested_connector_count_bucket: "0",
         connector_catalog_metadata_connector_count_bucket: "1",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     const directClaim = await api.claimRunnerJob(directRun.runId);

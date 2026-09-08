@@ -9,13 +9,11 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
-  Menu,
   net,
   powerSaveBlocker,
   protocol,
   session,
   shell,
-  type MenuItemConstructorOptions,
 } from "electron";
 import { isComputerUseMcpPluginCallPayload } from "@okouai/api-contracts/contracts/computer-use-plugins";
 import {
@@ -63,7 +61,7 @@ import { createCuaComputerUseDriver } from "./computer-use-cua";
 import { createComputerUseHostPermissions } from "./computer-use-host-permissions";
 import { DesktopComputerUseDriverPreferences } from "./desktop-computer-use-driver-preferences";
 import { DesktopComputerUseDriverSelection } from "./desktop-computer-use-driver-selection";
-import { desktopDeveloperToolsMenu } from "./desktop-developer-tools-menu";
+import { DesktopApplicationMenu } from "./desktop-application-menu";
 import { CuaEmbeddedRuntime } from "./cua-runtime";
 import { assertCuaDormant } from "./cua-runtime-files";
 import { runCuaHostProbe } from "./cua-host-probe";
@@ -341,6 +339,13 @@ const developerTools = new DeveloperToolsController({
     console.warn("Unable to refresh desktop developer tools state", error);
   },
 });
+const applicationMenu = new DesktopApplicationMenu({
+  displayName: config.identity.displayName,
+  developerTools,
+  updatesEnabled: () => desktopAutoUpdates !== null,
+  checkForUpdates: requestDesktopUpdateCheck,
+  quit: requestDesktopQuit,
+});
 const computerUseController = new ComputerUseRuntimeController({
   driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
@@ -369,7 +374,7 @@ const driverSelection = new DesktopComputerUseDriverSelection({
   drivers: { okou: okouDriver, cua: cuaDriver },
   onChange: () => {
     notifyComputerUseChanged();
-    if (app.isReady()) applyApplicationMenu();
+    if (app.isReady()) applicationMenu.refresh();
   },
 });
 
@@ -514,7 +519,7 @@ function notifyDeveloperToolsChanged(): void {
   notifyDesktopDeveloperToolsChanged();
   notifyDesktopComputerUseChanged();
   if (app.isReady()) {
-    applyApplicationMenu();
+    applicationMenu.refresh();
   }
 }
 
@@ -1053,6 +1058,7 @@ function refreshComputerUsePermissionsForState(): void {
 async function prepareForQuitAndInstall(): Promise<void> {
   quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
+  applicationMenu.dispose();
   releaseKeepAwake();
   await computerUseController.stopForQuit("update_relaunch");
 }
@@ -1069,7 +1075,7 @@ export const desktopUpdateHooks: DesktopMainModule["desktopUpdateHooks"] =
 export const notifyDesktopAutoUpdatesInstalled: DesktopMainModule["notifyDesktopAutoUpdatesInstalled"] =
   (autoUpdates) => {
     desktopAutoUpdates = autoUpdates;
-    applyApplicationMenu();
+    applicationMenu.refresh();
   };
 
 async function signOutDesktopSession(): Promise<void> {
@@ -1170,48 +1176,6 @@ function requestDesktopUpdateCheck(): void {
   }
 
   desktopAutoUpdates.checkForUpdates(config.identity.displayName);
-}
-
-function applyApplicationMenu(): void {
-  const appSubmenu: MenuItemConstructorOptions[] = [
-    { role: "about" },
-    {
-      label: "Check for Updates...",
-      enabled: desktopAutoUpdates !== null,
-      click: requestDesktopUpdateCheck,
-    },
-    { type: "separator" },
-  ];
-  appSubmenu.push(...desktopDeveloperToolsMenu(developerTools));
-  appSubmenu.push({
-    label: `Quit ${config.identity.displayName}`,
-    accelerator: "CommandOrControl+Q",
-    click: requestDesktopQuit,
-  });
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: config.identity.displayName,
-      submenu: appSubmenu,
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
-      ],
-    },
-    {
-      label: "Window",
-      submenu: [{ role: "minimize" }, { role: "close" }],
-    },
-  ]);
-  Menu.setApplicationMenu(menu);
 }
 
 function currentDialogWindow(): BrowserWindow | undefined {
@@ -1590,6 +1554,7 @@ if (!hasSingleInstanceLock) {
     }
 
     appIsQuitting = true;
+    applicationMenu.dispose();
     releaseKeepAwake();
     globalShortcut.unregisterAll();
     if (computerUseQuitPreparationComplete) {
@@ -1665,7 +1630,7 @@ if (!hasSingleInstanceLock) {
     hideDockForInactiveMainWindow();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
-    applyApplicationMenu();
+    applicationMenu.refresh();
     installKeepAwake();
     installComputerUse();
     installDesktopDeveloperTools();

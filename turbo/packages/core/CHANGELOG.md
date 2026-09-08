@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.635.1](https://github.com/vm0-ai/vm0/compare/core-v8.635.0...core-v8.635.1) (2026-09-08)
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+
 ## [8.635.0](https://github.com/vm0-ai/vm0/compare/core-v8.634.6...core-v8.635.0) (2026-09-08)
 
 
