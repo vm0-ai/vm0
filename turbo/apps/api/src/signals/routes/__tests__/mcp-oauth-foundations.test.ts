@@ -43,9 +43,9 @@ async function requestProbeFailure(body: TestMcpOAuthFetchRequest) {
 
 describe("MCP OAuth foundations", () => {
   it("publishes exact public Okou client metadata from configured origins", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
 
     const response = await accept(metadataClient().okouClientMetadata(), [200]);
 
@@ -62,9 +62,9 @@ describe("MCP OAuth foundations", () => {
   });
 
   it("does not let the request host change the Okou client identity", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
 
     const response = await accept(
       metadataClient("https://attacker.example.com").okouClientMetadata(),

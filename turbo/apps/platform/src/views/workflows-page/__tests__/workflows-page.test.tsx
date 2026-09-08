@@ -1,9 +1,16 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as timers from "signal-timers";
+import { mockNow } from "../../../lib/time.ts";
 import {
   billingStatusContract,
   type BillingStatusResponse,
 } from "@okouai/api-contracts/contracts/billing";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import {
   workflowsCollectionContract,
   workflowsDetailContract,
@@ -15,6 +22,7 @@ import {
   type WorkflowDetailResponse,
   type WorkflowSummary,
   type WorkflowAutomationSummary,
+  type GoogleCalendarAutomationEventConfig,
 } from "@okouai/api-contracts/contracts/workflows";
 import {
   agentsByIdContract,
@@ -43,6 +51,12 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+
+vi.mock("signal-timers", async () => {
+  return {
+    ...(await vi.importActual<typeof import("signal-timers")>("signal-timers")),
+  };
+});
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -96,6 +110,15 @@ function installScrollIntoViewMock(): Mock<HTMLElement["scrollIntoView"]> {
     value: scrollIntoView,
   });
   return scrollIntoView;
+}
+
+function createAuthWindow(): Window {
+  const authWindow = context.mocks.browser.authWindow();
+  Object.defineProperty(authWindow, "location", {
+    configurable: true,
+    value: { href: "" },
+  });
+  return authWindow;
 }
 
 function billingStatus(
@@ -181,6 +204,10 @@ type WorkflowGoogleCalendarEventCancelledAutomationSummary = Extract<
   WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
+type WorkflowGoogleCalendarAutomationSummary =
+  | WorkflowGoogleCalendarEventCreatedAutomationSummary
+  | WorkflowGoogleCalendarEventUpdatedAutomationSummary
+  | WorkflowGoogleCalendarEventCancelledAutomationSummary;
 type WorkflowGoogleFormsResponseSubmittedAutomationSummary = Extract<
   WorkflowAutomationSummary,
   { kind: "event"; eventType: "google-forms-response-submitted" }
@@ -299,7 +326,9 @@ function githubPullRequestWorkflowAutomation(): WorkflowGithubPullRequestAutomat
   };
 }
 
-function googleCalendarWorkflowAutomation(): WorkflowGoogleCalendarEventCreatedAutomationSummary {
+function googleCalendarWorkflowAutomation(
+  overrides: Partial<WorkflowGoogleCalendarEventCreatedAutomationSummary> = {},
+): WorkflowGoogleCalendarEventCreatedAutomationSummary {
   return {
     id: GOOGLE_CALENDAR_AUTOMATION_ID,
     kind: "event",
@@ -316,11 +345,14 @@ function googleCalendarWorkflowAutomation(): WorkflowGoogleCalendarEventCreatedA
     chatThreadId: "thread_google_calendar_event_created",
     nextRunAt: null,
     lastRunAt: null,
+    ...overrides,
     official: null,
   };
 }
 
-function googleCalendarUpdatedWorkflowAutomation(): WorkflowGoogleCalendarEventUpdatedAutomationSummary {
+function googleCalendarUpdatedWorkflowAutomation(
+  overrides: Partial<WorkflowGoogleCalendarEventUpdatedAutomationSummary> = {},
+): WorkflowGoogleCalendarEventUpdatedAutomationSummary {
   return {
     id: "workflow-automation-google-calendar-updated",
     kind: "event",
@@ -337,11 +369,14 @@ function googleCalendarUpdatedWorkflowAutomation(): WorkflowGoogleCalendarEventU
     chatThreadId: "thread_google_calendar_event_updated",
     nextRunAt: null,
     lastRunAt: null,
+    ...overrides,
     official: null,
   };
 }
 
-function googleCalendarCancelledWorkflowAutomation(): WorkflowGoogleCalendarEventCancelledAutomationSummary {
+function googleCalendarCancelledWorkflowAutomation(
+  overrides: Partial<WorkflowGoogleCalendarEventCancelledAutomationSummary> = {},
+): WorkflowGoogleCalendarEventCancelledAutomationSummary {
   return {
     id: "workflow-automation-google-calendar-cancelled",
     kind: "event",
@@ -358,6 +393,7 @@ function googleCalendarCancelledWorkflowAutomation(): WorkflowGoogleCalendarEven
     chatThreadId: "thread_google_calendar_event_cancelled",
     nextRunAt: null,
     lastRunAt: null,
+    ...overrides,
     official: null,
   };
 }
@@ -1332,6 +1368,75 @@ function mockUpdateWorkflowAutomation(
       });
     },
   );
+}
+
+function applyGoogleCalendarAutomationUpdate(
+  automation: WorkflowAutomationSummary,
+  eventConfig: GoogleCalendarAutomationEventConfig,
+): WorkflowGoogleCalendarAutomationSummary {
+  switch (eventConfig.event) {
+    case "event_created": {
+      if (
+        automation.kind !== "event" ||
+        automation.eventType !== "google-calendar-event-created"
+      ) {
+        throw new Error("Expected a Google Calendar event-created automation");
+      }
+      const { warning: _warning, ...rest } = automation;
+      return { ...rest, eventConfig };
+    }
+    case "event_updated": {
+      if (
+        automation.kind !== "event" ||
+        automation.eventType !== "google-calendar-event-updated"
+      ) {
+        throw new Error("Expected a Google Calendar event-updated automation");
+      }
+      const { warning: _warning, ...rest } = automation;
+      return { ...rest, eventConfig };
+    }
+    case "event_cancelled": {
+      if (
+        automation.kind !== "event" ||
+        automation.eventType !== "google-calendar-event-cancelled"
+      ) {
+        throw new Error(
+          "Expected a Google Calendar event-cancelled automation",
+        );
+      }
+      const { warning: _warning, ...rest } = automation;
+      return { ...rest, eventConfig };
+    }
+  }
+}
+
+function googleCalendarAccount(args: {
+  readonly id: string;
+  readonly displayName: string;
+  readonly isDefault: boolean;
+  readonly externalUsername: string;
+  readonly status?: ConnectorAccountConnection["connectionStatus"];
+}): ConnectorAccountConnection {
+  return {
+    id: args.id,
+    target: { kind: "builtin", connectorSlug: "google-calendar" },
+    authMethod: "oauth",
+    displayName: args.displayName,
+    isDefault: args.isDefault,
+    externalId: null,
+    externalUsername: args.externalUsername,
+    externalEmail: `${args.externalUsername}@example.com`,
+    oauthScopes: [],
+    scopeMismatch: false,
+    connectionStatus: args.status ?? "connected",
+    reconnectReason:
+      args.status === "reconnect-required"
+        ? "authorization_expired_or_revoked"
+        : null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
 }
 
 function mockRunWorkflowAutomation(
@@ -3259,23 +3364,936 @@ test("Create a Google Calendar event-cancelled automation", async () => {
   });
 });
 
-test("Hide Google Forms automation creation when the feature is unavailable", async () => {
-  mockWorkflowApis([salesResearch()]);
+test.each([
+  {
+    label: "created",
+    automation: googleCalendarWorkflowAutomation({
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "missing-created@example.com",
+      },
+      warning: "calendar_not_found",
+    }),
+    expectedEventConfig: {
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "replacement@example.com",
+    },
+  },
+  {
+    label: "updated",
+    automation: googleCalendarUpdatedWorkflowAutomation({
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_updated",
+        calendarId: "missing-updated@example.com",
+      },
+      warning: "calendar_not_found",
+    }),
+    expectedEventConfig: {
+      provider: "google-calendar",
+      event: "event_updated",
+      calendarId: "replacement@example.com",
+    },
+  },
+  {
+    label: "cancelled",
+    automation: googleCalendarCancelledWorkflowAutomation({
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_cancelled",
+        calendarId: "missing-cancelled@example.com",
+      },
+      warning: "calendar_not_found",
+    }),
+    expectedEventConfig: {
+      provider: "google-calendar",
+      event: "event_cancelled",
+      calendarId: "replacement@example.com",
+    },
+  },
+] satisfies readonly {
+  readonly label: string;
+  readonly automation: WorkflowGoogleCalendarAutomationSummary;
+  readonly expectedEventConfig: GoogleCalendarAutomationEventConfig;
+}[])(
+  "Recover a missing Calendar for an event-$label automation without changing its event contract",
+  async ({ automation, expectedEventConfig }) => {
+    const updates: {
+      readonly automationId: string;
+      readonly body: WorkflowAutomationUpdateRequest;
+    }[] = [];
+    const workflow = { ...salesResearch(), automations: [automation] };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowAutomation((automationId, body) => {
+      updates.push({ automationId, body });
+      if (
+        !("eventConfig" in body) ||
+        body.eventConfig.provider !== "google-calendar"
+      ) {
+        throw new Error("Expected a Google Calendar event-config update");
+      }
+      const current = workflow.automations[0];
+      if (!current) {
+        throw new Error("Expected a Google Calendar automation");
+      }
+      workflow.automations[0] = applyGoogleCalendarAutomationUpdate(
+        current,
+        body.eventConfig,
+      );
+    });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
+    await setupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Enabled · Action required — delivery paused",
+    );
+    expect(alert).toHaveTextContent(
+      "This calendar is no longer available. Choose another calendar to resume this automation.",
+    );
+    const row = alert.closest("[data-automation-id]");
+    if (!(row instanceof HTMLElement)) {
+      throw new Error("Expected the Calendar automation row");
+    }
+    expect(row).not.toHaveClass("opacity-75");
+    expect(within(row).getByRole("switch")).toBeChecked();
+    expect(buttonByText("Edit automation", row)).toBeInTheDocument();
+
+    click(buttonByText("Change calendar", alert));
+    const form = await screen.findByRole("form", {
+      name: "Change Google Calendar automation",
+    });
+    expect(within(form).getByLabelText("Calendar ID")).toHaveValue(
+      automation.eventConfig.calendarId,
+    );
+    await fill(
+      within(form).getByLabelText("Calendar ID"),
+      expectedEventConfig.calendarId,
+    );
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          automationId: automation.id,
+          body: { eventConfig: expectedEventConfig },
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("form", {
+          name: "Change Google Calendar automation",
+        }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  },
+);
+
+test("Keep the Calendar recovery editor open and disabled while the update is pending", async () => {
+  const automation = googleCalendarWorkflowAutomation({
+    warning: "calendar_not_found",
+  });
+  const workflow: WorkflowDetailResponse = {
+    ...salesResearch(),
+    automations: [automation],
+  };
+  const updateGate = context.mocks.deferred<void>();
+  mockWorkflowApis([workflow]);
+  context.mocks.api(
+    workflowAutomationsContract.update,
+    async ({ body, params, respond }) => {
+      if (
+        !("eventConfig" in body) ||
+        body.eventConfig.provider !== "google-calendar"
+      ) {
+        return respond(400, {
+          error: { code: "BAD_REQUEST", message: "Expected Calendar update" },
+        });
+      }
+      await updateGate.promise;
+      const updated = applyGoogleCalendarAutomationUpdate(
+        automation,
+        body.eventConfig,
+      );
+      workflow.automations[0] = updated;
+      return respond(200, { ...updated, id: params.id });
+    },
+  );
+
+  await setupWorkflowDetailPage(workflowDetailPath("automations"));
+  const warning = await screen.findByRole("alert");
+  click(buttonByText("Change calendar", warning));
+  const form = await screen.findByRole("form", {
+    name: "Change Google Calendar automation",
+  });
+  const calendarId = within(form).getByLabelText("Calendar ID");
+  await fill(calendarId, "replacement@example.com");
+  fireEvent.submit(form);
+
+  await waitFor(() => {
+    expect(calendarId).toBeDisabled();
+    expect(buttonByText("Save calendar", form)).toBeDisabled();
+    expect(form).toBeInTheDocument();
+  });
+  updateGate.resolve();
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("form", {
+        name: "Change Google Calendar automation",
+      }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Keep the Calendar recovery editor open with an inline error when the update fails", async () => {
+  const automation = googleCalendarWorkflowAutomation({
+    warning: "calendar_not_found",
+  });
+  const workflow = { ...salesResearch(), automations: [automation] };
+  mockWorkflowApis([workflow]);
+  context.mocks.api(workflowAutomationsContract.update, ({ respond }) => {
+    return respond(409, {
+      error: { code: "CONFLICT", message: "Calendar update failed" },
+    });
   });
 
-  click(await screen.findByText("Add automation"));
-  const picker = await screen.findByRole("dialog");
-  expect(
-    queryAllByRoleFast("button", picker).some((candidate) => {
-      return textFor(candidate) === "Google Forms";
+  await setupWorkflowDetailPage(workflowDetailPath("automations"));
+  click(buttonByText("Change calendar", await screen.findByRole("alert")));
+  const form = await screen.findByRole("form", {
+    name: "Change Google Calendar automation",
+  });
+  await fill(
+    within(form).getByLabelText("Calendar ID"),
+    "replacement@example.com",
+  );
+  fireEvent.submit(form);
+
+  const updateError = await within(form).findByRole("alert");
+  expect(updateError).toHaveTextContent(
+    "We couldn't change this calendar. Try again.",
+  );
+  expect(within(form).getByLabelText("Calendar ID")).toBeEnabled();
+  expect(form).toBeInTheDocument();
+});
+
+test("Accept a server-normalized Calendar ID after recovery", async () => {
+  const automation = googleCalendarWorkflowAutomation({
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "missing@example.com",
+    },
+    warning: "calendar_not_found",
+  });
+  const workflow: WorkflowDetailResponse = {
+    ...salesResearch(),
+    automations: [automation],
+  };
+  mockWorkflowApis([workflow]);
+  context.mocks.api(
+    workflowAutomationsContract.update,
+    ({ body, params, respond }) => {
+      if (
+        !("eventConfig" in body) ||
+        body.eventConfig.provider !== "google-calendar"
+      ) {
+        return respond(400, {
+          error: { code: "BAD_REQUEST", message: "Expected Calendar update" },
+        });
+      }
+      const normalized = applyGoogleCalendarAutomationUpdate(automation, {
+        ...body.eventConfig,
+        calendarId: "primary",
+      });
+      workflow.automations[0] = normalized;
+      return respond(200, { ...normalized, id: params.id });
+    },
+  );
+
+  await setupWorkflowDetailPage(workflowDetailPath("automations"));
+  click(buttonByText("Change calendar", await screen.findByRole("alert")));
+  const form = await screen.findByRole("form", {
+    name: "Change Google Calendar automation",
+  });
+  await fill(within(form).getByLabelText("Calendar ID"), "owner@example.com");
+  fireEvent.submit(form);
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("form", {
+        name: "Change Google Calendar automation",
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  const enabledSwitch = await screen.findByRole("switch", {
+    name: "Disable Google Calendar event created",
+  });
+  const row = enabledSwitch.closest("[data-automation-id]");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Expected the reloaded Calendar automation row");
+  }
+  click(buttonByText("Edit automation", row));
+  const normalizedForm = await screen.findByRole("form", {
+    name: "Change Google Calendar automation",
+  });
+  expect(within(normalizedForm).getByLabelText("Calendar ID")).toHaveValue(
+    "primary",
+  );
+});
+
+test.each(["calendar_not_found", "reconnect_required"] as const)(
+  "Show the %s Calendar warning without recovery mutations for another user's automation",
+  async (warning) => {
+    const automation = googleCalendarWorkflowAutomation({
+      ownerUserId: UPDATED_USER_ID,
+      warning,
+    });
+    const workflow = {
+      ...salesResearch(),
+      canManage: false,
+      automations: [automation],
+    };
+    mockWorkflowApis([workflow]);
+
+    await setupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Enabled · Action required — delivery paused",
+    );
+    const row = alert.closest("[data-automation-id]");
+    if (!(row instanceof HTMLElement)) {
+      throw new Error("Expected the Calendar automation row");
+    }
+    expect(within(row).getByRole("switch")).toBeChecked();
+    expect(within(row).getByRole("switch")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(queryButtonByText("Change calendar", alert)).toBeNull();
+    expect(queryButtonByText("Reconnect Google Calendar", alert)).toBeNull();
+  },
+);
+
+test("Open a Calendar action-required workflow at the exact automation from the workflow list", async () => {
+  const automation = googleCalendarWorkflowAutomation({
+    warning: "calendar_not_found",
+  });
+  const workflow = { ...salesResearch(), automations: [automation] };
+  const scrollIntoView = installScrollIntoViewMock();
+  mockWorkflowApis([workflow]);
+
+  await setupPage({ context, path: "/workflows" });
+
+  click(
+    await waitFor(() => {
+      return buttonByText("Action required");
     }),
-  ).toBeFalsy();
+  );
+  const recoveryLink = await waitFor(() => {
+    return linkByText("Open Sales Research recovery");
+  });
+  expect(recoveryLink).toHaveAttribute(
+    "href",
+    `/workflows/${SALES_WORKFLOW_ID}/automations?automationId=${GOOGLE_CALENDAR_AUTOMATION_ID}`,
+  );
+  const popover = recoveryLink.closest('[data-slot="popover-content"]');
+  if (!(popover instanceof HTMLElement)) {
+    throw new Error("Expected the automation popover");
+  }
+  expect(within(popover).getByRole("switch")).toBeChecked();
+  click(recoveryLink);
+
+  await waitFor(() => {
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+    expect(search()).toBe(`?automationId=${GOOGLE_CALENDAR_AUTOMATION_ID}`);
+  });
+  const row = document.querySelector(
+    `[data-automation-id="${GOOGLE_CALENDAR_AUTOMATION_ID}"]`,
+  );
+  expect(row).toHaveAttribute("aria-current", "true");
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Action required — delivery paused",
+  );
+});
+
+test("Keep a healthy Calendar automation on the existing workflow surfaces", async () => {
+  const workflow = {
+    ...salesResearch(),
+    automations: [googleCalendarWorkflowAutomation()],
+  };
+  mockWorkflowApis([workflow]);
+
+  await setupWorkflowDetailPage(workflowDetailPath("automations"));
+
+  const enabledSwitch = await screen.findByRole("switch", {
+    name: "Disable Google Calendar event created",
+  });
+  expect(enabledSwitch).toBeChecked();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByText("Change calendar")).not.toBeInTheDocument();
+
+  const row = enabledSwitch.closest("[data-automation-id]");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Expected the Calendar automation row");
+  }
+  click(buttonByText("Edit automation", row));
+  const form = await screen.findByRole("form", {
+    name: "Change Google Calendar automation",
+  });
+  expect(within(form).getByLabelText("Calendar ID")).toHaveValue("primary");
+});
+
+function mockCalendarReconnect(
+  workflow: WorkflowDetailResponse,
+  selectedAccount: "work" | "personal" = "personal",
+) {
+  let healthyAccount = googleCalendarAccount({
+    id: "10000000-0000-4000-a000-000000000020",
+    displayName: "Work Calendar",
+    isDefault: true,
+    externalUsername: "work",
+  });
+  let reconnectAccount = googleCalendarAccount({
+    id: "10000000-0000-4000-a000-000000000021",
+    displayName: "Personal Calendar",
+    isDefault: false,
+    externalUsername: "personal",
+    status: "reconnect-required",
+  });
+  mockWorkflowApis([workflow]);
+  context.mocks.data.connectors([
+    {
+      id: healthyAccount.id,
+      slug: "google-calendar",
+      authMethod: "oauth",
+      externalId: "google-calendar-work",
+      externalUsername: "work",
+      externalEmail: "work@example.com",
+      oauthScopes: [],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: healthyAccount.target,
+          accountCount: 2,
+          attentionCount:
+            reconnectAccount.connectionStatus === "reconnect-required" ? 1 : 0,
+          defaultConnection: healthyAccount,
+        },
+      ],
+    });
+  });
+  context.mocks.api(
+    connectorAccountsContract.connection,
+    ({ params, respond }) => {
+      if (params.connectionId === healthyAccount.id) {
+        return respond(200, healthyAccount);
+      }
+      if (params.connectionId !== reconnectAccount.id) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Account not found" },
+        });
+      }
+      return respond(200, reconnectAccount);
+    },
+  );
+  context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+    return respond(200, {
+      connections: [healthyAccount, reconnectAccount],
+      nextCursor: null,
+    });
+  });
+  const submittedAccounts: unknown[] = [];
+  context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
+    submittedAccounts.push(body.account);
+    return respond(200, {
+      authorizationUrl: "https://oauth.test/google-calendar/authorize",
+    });
+  });
+  const authWindow = createAuthWindow();
+  context.mocks.browser.open(authWindow);
+
+  return {
+    submittedAccounts,
+    open: async () => {
+      await setupWorkflowDetailPage(workflowDetailPath("automations"));
+
+      const warning = await screen.findByRole("alert");
+      expect(warning).toHaveTextContent(
+        "Google Calendar needs to be reconnected before this automation can resume.",
+      );
+      const reconnectEntry = buttonByText("Reconnect Google Calendar", warning);
+      await waitFor(() => {
+        expect(reconnectEntry).toBeEnabled();
+      });
+      click(reconnectEntry);
+
+      const manager = await screen.findByRole("dialog", {
+        name: "Manage Google Calendar accounts",
+      });
+      const healthyRow = within(manager).getByRole("group", {
+        name: "Work Calendar",
+      });
+      const reconnectRow = within(manager).getByRole("group", {
+        name: "Personal Calendar",
+      });
+      expect(healthyRow).toHaveTextContent("Connected");
+      expect(reconnectRow).toHaveTextContent("Reconnect required");
+      expect(submittedAccounts).toStrictEqual([]);
+      expect(queryButtonByText("Reconnect", healthyRow)).toBeNull();
+      if (selectedAccount === "personal") {
+        click(buttonByText("Reconnect", reconnectRow));
+      } else {
+        click(buttonByText("Account actions", healthyRow));
+        const menu = await screen.findByRole("menu");
+        const reconnectItem = queryAllByRoleFast("menuitem", menu).find(
+          (item) => {
+            return textFor(item) === "Reconnect";
+          },
+        );
+        if (!reconnectItem) {
+          throw new Error("Expected account reconnect action");
+        }
+        click(reconnectItem);
+      }
+
+      const connectDialog = await waitFor(() => {
+        const dialog = screen
+          .getAllByRole("dialog", { name: "Google Calendar" })
+          .find((candidate) => {
+            return queryButtonByText("Reconnect", candidate);
+          });
+        if (!dialog) {
+          throw new Error("Expected Google Calendar reconnect dialog");
+        }
+        return dialog;
+      });
+      const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
+      click(buttonByText("Reconnect", connectDialog));
+
+      await connectorChangedSubscribe.started;
+      connectorChangedSubscribe.attach();
+      await waitFor(() => {
+        expect(authWindow.location.href).toBe(
+          "https://oauth.test/google-calendar/authorize",
+        );
+      });
+      expect(submittedAccounts).toStrictEqual([
+        {
+          intent: "reconnect",
+          connectionId:
+            selectedAccount === "personal"
+              ? reconnectAccount.id
+              : healthyAccount.id,
+        },
+      ]);
+    },
+    complete: () => {
+      if (selectedAccount === "work") {
+        healthyAccount = {
+          ...healthyAccount,
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        };
+      } else {
+        reconnectAccount = {
+          ...reconnectAccount,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        };
+      }
+      context.mocks.ably.trigger("connector:changed", {
+        connectorSlug: "google-calendar",
+      });
+    },
+  };
+}
+
+test("Converge Calendar recovery after the first stale summary without another connector event", async () => {
+  const workflow = {
+    ...salesResearch(),
+    automations: [
+      googleCalendarWorkflowAutomation({ warning: "reconnect_required" }),
+    ],
+  };
+  const reconnect = mockCalendarReconnect(workflow);
+  const firstRead = context.mocks.deferred<void>();
+  const watchRecovery = context.mocks.deferred<void>();
+  let oauthCompleted = false;
+  let returnedStaleSummary = false;
+  context.mocks.api(workflowsDetailContract.get, async ({ respond }) => {
+    if (oauthCompleted && !returnedStaleSummary) {
+      returnedStaleSummary = true;
+      const response = respond(200, publicWorkflowDetail(workflow));
+      firstRead.resolve();
+      return response;
+    }
+    if (oauthCompleted) {
+      await watchRecovery.promise;
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
+  await reconnect.open();
+  oauthCompleted = true;
+  reconnect.complete();
+  await firstRead.promise;
+  expect(screen.getByRole("alert")).toHaveTextContent("delivery paused");
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  watchRecovery.resolve();
+  await waitFor(() => {
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(reconnect.submittedAccounts).toHaveLength(1);
+});
+
+function calendarRecoveryWorkflow(): WorkflowDetailResponse {
+  return {
+    ...salesResearch(),
+    automations: [
+      googleCalendarWorkflowAutomation({ warning: "reconnect_required" }),
+    ],
+  };
+}
+
+function holdCalendarRecoveryDeadline() {
+  const deadline = context.mocks.deferred<{
+    readonly expire: () => void;
+    readonly signal: AbortSignal;
+  }>();
+  const timeout = timers.timeout;
+  vi.spyOn(timers, "timeout").mockImplementation((callback, ms, options) => {
+    if (ms !== 30_000) {
+      timeout(callback, ms, options);
+      return;
+    }
+    const signal = options?.signal;
+    if (!signal) {
+      throw new Error("Expected an owned recovery deadline");
+    }
+    deadline.resolve({
+      signal,
+      expire: () => {
+        if (!signal.aborted) {
+          callback();
+        }
+      },
+    });
+  });
+  return deadline;
+}
+
+async function expectUnconfirmedCalendarRecovery() {
+  const recovery = await screen.findByRole("region", {
+    name: "Google Calendar recovery",
+  });
+  await within(recovery).findByRole("alert");
+  expect(buttonByText("Check status", recovery)).toBeEnabled();
+  return recovery;
+}
+
+test("Bound a permanent Calendar warning and retry status without another OAuth", async () => {
+  const workflow = calendarRecoveryWorkflow();
+  const reconnect = mockCalendarReconnect(workflow);
+  mockNow(new Date("2026-09-08T06:00:00Z"), context.signal);
+  const requestBudgetReached = context.mocks.deferred<void>();
+  let oauthCompleted = false;
+  let statusReads = 0;
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    if (oauthCompleted) {
+      statusReads++;
+      if (statusReads === 10) {
+        requestBudgetReached.resolve();
+      }
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
+  await reconnect.open();
+  oauthCompleted = true;
+  reconnect.complete();
+  await requestBudgetReached.promise;
+  const recovery = await expectUnconfirmedCalendarRecovery();
+  // The request ceiling is part of the recovery contract, not a cache detail.
+  expect(statusReads).toBe(10);
+  expect(screen.getByRole("switch")).toBeChecked();
   expect(
-    within(picker).queryByText("Google Forms response submitted"),
-  ).not.toBeInTheDocument();
+    screen.getByText(
+      "Google Calendar needs to be reconnected before this automation can resume.",
+    ),
+  ).toBeVisible();
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  click(buttonByText("Check status", recovery));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("region", { name: "Google Calendar recovery" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(reconnect.submittedAccounts).toHaveLength(1);
+});
+
+test("Reject Calendar recovery read at the total deadline", async () => {
+  const workflow = calendarRecoveryWorkflow();
+  const reconnect = mockCalendarReconnect(workflow);
+  const startedAt = new Date("2026-09-08T06:00:00Z").getTime();
+  mockNow(startedAt, context.signal);
+  let oauthCompleted = false;
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    if (oauthCompleted) {
+      mockNow(startedAt + 30_000, context.signal);
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
+  await reconnect.open();
+  oauthCompleted = true;
+  reconnect.complete();
+  await expectUnconfirmedCalendarRecovery();
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(reconnect.submittedAccounts).toHaveLength(1);
+});
+
+test("Abort a hanging Calendar summary at the recovery deadline", async () => {
+  const workflow = calendarRecoveryWorkflow();
+  const reconnect = mockCalendarReconnect(workflow);
+  const deadline = holdCalendarRecoveryDeadline();
+  const requested = context.mocks.deferred<AbortSignal>();
+  const response = context.mocks.deferred<void>();
+  let oauthCompleted = false;
+  context.mocks.api(
+    workflowsDetailContract.get,
+    async ({ request, respond }) => {
+      if (oauthCompleted) {
+        requested.resolve(request.signal);
+        await response.promise;
+      }
+      return respond(200, publicWorkflowDetail(workflow));
+    },
+  );
+  await reconnect.open();
+  oauthCompleted = true;
+  reconnect.complete();
+  const requestSignal = await requested.promise;
+  const scheduled = await deadline.promise;
+  const recovery = await screen.findByRole("region", {
+    name: "Google Calendar recovery",
+  });
+  expect(within(recovery).getByRole("status")).toBeVisible();
+  expect(buttonByText("Check status", recovery)).toBeDisabled();
+  expect(buttonByText("Reconnect Google Calendar")).toBeDisabled();
+  scheduled.expire();
+  await expectUnconfirmedCalendarRecovery();
+  expect(requestSignal.aborted).toBeTruthy();
+  expect(scheduled.signal.aborted).toBeTruthy();
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  response.resolve();
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(
+    screen.getByText(
+      "Google Calendar needs to be reconnected before this automation can resume.",
+    ),
+  ).toBeVisible();
+});
+
+test("Keep the Calendar warning after a read failure and allow a status-only retry", async () => {
+  const workflow = calendarRecoveryWorkflow();
+  const reconnect = mockCalendarReconnect(workflow);
+  let failStatusRead = false;
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    if (failStatusRead) {
+      return respond(500, {
+        error: { code: "INTERNAL_SERVER_ERROR", message: "Status unavailable" },
+      });
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
+  await reconnect.open();
+  failStatusRead = true;
+  reconnect.complete();
+  const recovery = await expectUnconfirmedCalendarRecovery();
+  expect(screen.getByRole("switch")).toBeChecked();
+  expect(
+    screen.getByText(
+      "Google Calendar needs to be reconnected before this automation can resume.",
+    ),
+  ).toBeVisible();
+  failStatusRead = false;
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  click(buttonByText("Check status", recovery));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("region", { name: "Google Calendar recovery" }),
+    ).not.toBeInTheDocument();
+  });
+  expect(reconnect.submittedAccounts).toHaveLength(1);
+});
+
+test.each(["cancel", "navigate"] as const)(
+  "Stop Calendar recovery on %s and ignore the late response",
+  async (action) => {
+    const workflow = calendarRecoveryWorkflow();
+    const reconnect = mockCalendarReconnect(workflow);
+    const deadline = holdCalendarRecoveryDeadline();
+    const requested = context.mocks.deferred<AbortSignal>();
+    const response = context.mocks.deferred<void>();
+    let oauthCompleted = false;
+    context.mocks.api(
+      workflowsDetailContract.get,
+      async ({ request, respond }) => {
+        if (oauthCompleted) {
+          requested.resolve(request.signal);
+          await response.promise;
+        }
+        return respond(200, publicWorkflowDetail(workflow));
+      },
+    );
+    await reconnect.open();
+    oauthCompleted = true;
+    reconnect.complete();
+    const requestSignal = await requested.promise;
+    const scheduled = await deadline.promise;
+    const recovery = await screen.findByRole("region", {
+      name: "Google Calendar recovery",
+    });
+    if (action === "cancel") {
+      click(buttonByText("Cancel", recovery));
+    } else {
+      click(linkByText("Workflows"));
+      await screen.findByRole("heading", { name: "Workflows" });
+    }
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: "Google Calendar recovery" }),
+      ).not.toBeInTheDocument();
+      expect(requestSignal.aborted).toBeTruthy();
+    });
+    expect(scheduled.signal.aborted).toBeTruthy();
+    workflow.automations[0] = googleCalendarWorkflowAutomation();
+    response.resolve();
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return textFor(button) === "Reconnect Google Calendar";
+      }),
+    ).toHaveLength(action === "cancel" ? 1 : 0);
+    expect(screen.queryAllByRole("switch", { checked: true })).toHaveLength(
+      action === "cancel" ? 1 : 0,
+    );
+    expect(reconnect.submittedAccounts).toHaveLength(1);
+  },
+);
+
+test("Do not recover the target Calendar automation by reconnecting another account", async () => {
+  const workflow = calendarRecoveryWorkflow();
+  workflow.automations.unshift(
+    googleCalendarWorkflowAutomation({ id: "healthy-other-calendar" }),
+  );
+  const reconnect = mockCalendarReconnect(workflow, "work");
+  const requestBudgetReached = context.mocks.deferred<void>();
+  let oauthCompleted = false;
+  let statusReads = 0;
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    if (oauthCompleted) {
+      statusReads++;
+      if (statusReads === 10) {
+        requestBudgetReached.resolve();
+      }
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
+  await reconnect.open();
+  oauthCompleted = true;
+  reconnect.complete();
+  await requestBudgetReached.promise;
+  await expectUnconfirmedCalendarRecovery();
+  expect(
+    screen.getByText(
+      "Google Calendar needs to be reconnected before this automation can resume.",
+    ),
+  ).toBeVisible();
+  for (const enabled of screen.getAllByRole("switch")) {
+    expect(enabled).toBeChecked();
+  }
+  expect(reconnect.submittedAccounts).toStrictEqual([
+    {
+      intent: "reconnect",
+      connectionId: "10000000-0000-4000-a000-000000000020",
+    },
+  ]);
+});
+
+test.each([
+  "missing automation",
+  "different event",
+  "different workflow",
+  "changed warning",
+] as const)("Keep Calendar recovery unconfirmed for %s", async (change) => {
+  const workflow = calendarRecoveryWorkflow();
+  const reconnect = mockCalendarReconnect(workflow);
+  await reconnect.open();
+  if (change === "missing automation") {
+    workflow.automations = [];
+  }
+  if (change === "different event") {
+    workflow.automations = [
+      googleCalendarUpdatedWorkflowAutomation({
+        id: GOOGLE_CALENDAR_AUTOMATION_ID,
+      }),
+    ];
+  }
+  if (change === "different workflow") {
+    workflow.id = OPS_WORKFLOW_ID;
+  }
+  if (change === "changed warning") {
+    workflow.automations = [
+      googleCalendarWorkflowAutomation({ warning: "calendar_not_found" }),
+    ];
+  }
+  reconnect.complete();
+  await expectUnconfirmedCalendarRecovery();
+  expect(
+    queryAllByRoleFast("button").filter((button) => {
+      return textFor(button) === "Change calendar";
+    }),
+  ).toHaveLength(change === "changed warning" ? 1 : 0);
+  expect(
+    screen.queryAllByText(
+      "This calendar is no longer available. Choose another calendar to resume this automation.",
+    ),
+  ).toHaveLength(change === "changed warning" ? 1 : 0);
+});
+
+test("Reconnect the selected Calendar account and reload the warning state", async () => {
+  const workflow = {
+    ...salesResearch(),
+    automations: [
+      googleCalendarWorkflowAutomation({ warning: "reconnect_required" }),
+    ],
+  };
+  const reconnect = mockCalendarReconnect(workflow);
+  await reconnect.open();
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  reconnect.complete();
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Google Calendar" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole("switch")).toBeChecked();
 });
 
 test("Create a Google Forms automation and surface its warning", async () => {
@@ -3290,9 +4308,7 @@ test("Create a Google Forms automation and surface its warning", async () => {
     );
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   click(await screen.findByText("Add automation"));
   await screen.findByRole("dialog");
@@ -3332,9 +4348,7 @@ test("Explain how to provide a valid Google Forms link", async () => {
     });
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   click(await screen.findByText("Add automation"));
   await screen.findByRole("dialog");
@@ -3397,9 +4411,7 @@ test("Create a Notion database-item automation", async () => {
     createBodies.push(body);
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   await waitFor(() => {
     expect(buttonByText("Add automation")).toBeInTheDocument();

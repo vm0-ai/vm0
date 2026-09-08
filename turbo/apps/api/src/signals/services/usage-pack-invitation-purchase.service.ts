@@ -4,7 +4,6 @@ import type {
 } from "@okouai/api-contracts/contracts/org-members";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   usagePackAllocations,
   usagePackInvitationPurchases,
@@ -1073,7 +1072,7 @@ async function ensurePaidInvitationCreated(
       emailAddress: purchase.normalizedEmail,
       inviterUserId: purchase.inviterUserId,
       role: purchase.role === "admin" ? "org:admin" : "org:member",
-      redirectUrl: appUrlForPublicBrand(env("APP_URL"), purchase.publicBrand),
+      redirectUrl: env("APP_URL"),
       expiresInDays: Math.max(
         1,
         Math.ceil(

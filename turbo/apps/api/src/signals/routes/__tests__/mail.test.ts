@@ -766,7 +766,7 @@ describe("POST /api/mail/drafts/link", () => {
   });
 
   it("links without injecting a duplicate card and sends without rebuilding MIME", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
 
@@ -786,7 +786,7 @@ describe("POST /api/mail/drafts/link", () => {
     const duplicateLink = await linkDraft(fixture);
     expect(duplicateLink.body).toStrictEqual({
       mailDraftId: linked.body.mailDraftId,
-      mailDraftUrl: `https://app.vm0.ai/mail/drafts/${linked.body.mailDraftId}`,
+      mailDraftUrl: `https://app.okou.ai/mail/drafts/${linked.body.mailDraftId}`,
     });
 
     const loaded = await accept(
@@ -797,7 +797,7 @@ describe("POST /api/mail/drafts/link", () => {
       [200],
     );
     expect(loaded.body.mailDraftUrl).toBe(
-      `https://app.vm0.ai/mail/drafts/${linked.body.mailDraftId}`,
+      `https://app.okou.ai/mail/drafts/${linked.body.mailDraftId}`,
     );
     expect(loaded.body.mailDraft).toMatchObject({
       version: 3,

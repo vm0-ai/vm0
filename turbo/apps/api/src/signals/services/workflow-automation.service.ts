@@ -130,8 +130,6 @@ import {
   prepareNotionPageContentUpdatedEventConfigForPersist,
   validateNotionEventConfigForConnector,
 } from "./notion-automation-event.service";
-import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
-import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
 import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
@@ -246,26 +244,6 @@ function workflowWebhookTeamRequiredResult(): {
   return {
     kind: "team-required",
     message: "Webhook automations require a Team or Custom workspace",
-  };
-}
-
-function notionWorkflowAutomationsDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "Notion workflow automations are not enabled",
-  };
-}
-
-function googleFormsWorkflowAutomationsDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "Google Forms workflow automations are not enabled",
   };
 }
 
@@ -2979,7 +2957,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
@@ -3034,16 +3012,6 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (automationCreateInputIsGoogleForms(input)) {
-      const featureEnabled = await get(
-        googleFormsWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return googleFormsWorkflowAutomationsDisabledResult();
-      }
       return await createGoogleFormsEventAutomationForWorkflow(
         {
           context: args,
@@ -3062,17 +3030,6 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (automationCreateInputIsNotion(input)) {
-      const featureEnabled = await get(
-        notionWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return notionWorkflowAutomationsDisabledResult();
-      }
-
       return await createNotionEventAutomationForWorkflow(
         {
           context: args,
@@ -3859,12 +3816,8 @@ async function prepareOfficialGoogleFormsReconfiguration(
   db: Db,
   input: CreateGoogleFormsEventAutomationInput,
   currentConfig: unknown,
-  enabled: boolean,
   signal: AbortSignal,
 ): Promise<OfficialAutomationEventPreparationResult> {
-  if (!enabled) {
-    return googleFormsWorkflowAutomationsDisabledResult();
-  }
   return preserveGoogleFormsCursorForSameTarget(
     currentConfig,
     await prepareOfficialGoogleFormsEvent(db, input, signal),
@@ -3962,20 +3915,12 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleCalendarEvent(db, input, signal);
     }
     if (automationCreateInputIsGoogleForms(input)) {
-      const enabled = await get(
-        googleFormsWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
       return await prepareOfficialGoogleFormsReconfiguration(
         db,
         input,
         automation.eventType === input.eventType
           ? automation.eventConfig
           : undefined,
-        enabled,
         signal,
       );
     }
@@ -3983,16 +3928,12 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGoogleMeetEvent(db, input, signal);
     }
     if (automationCreateInputIsNotion(input)) {
-      const enabled = await get(
-        notionWorkflowAutomationCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
+      return await prepareOfficialNotionEvent(
+        db,
+        input,
+        args.publicBrand,
+        signal,
       );
-      signal.throwIfAborted();
-      return enabled
-        ? await prepareOfficialNotionEvent(db, input, args.publicBrand, signal)
-        : notionWorkflowAutomationsDisabledResult();
     }
     if (automationCreateInputIsStripeInvoicePaid(input)) {
       const enabled = await get(

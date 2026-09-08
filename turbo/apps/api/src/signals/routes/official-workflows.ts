@@ -9,7 +9,6 @@ import { command, computed } from "ccstate";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
@@ -24,6 +23,7 @@ import {
 } from "../services/official-workflow-installation.service";
 import { reconcileOfficialWorkflowInstallation$ } from "../services/official-workflow-reconciliation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const officialWorkflowReadAuth = {
   requireOrganization: true,
@@ -130,7 +130,7 @@ const installOfficialWorkflowInner$ = command(
         definitionName: params.definitionName,
         blueprints: body.data.blueprints,
       },
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+      PUBLIC_BRAND,
       signal,
     );
     signal.throwIfAborted();
@@ -201,8 +201,7 @@ const reconfigureInstallationInner$ = command(
     if (!body.ok) {
       return body.response;
     }
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const reconciliation = await set(
       reconcileOfficialWorkflowInstallation$,
       {

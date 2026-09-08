@@ -2282,6 +2282,10 @@
       "keepGoingAt": "Continua · {{timestamp}}",
       "modelChangedTo": "Modello cambiato in {{model}}",
       "queueEllipsis": "in coda...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefatto",
+      "relatedArtifactCount_many": "{{formattedCount}} artefatti",
+      "relatedArtifactCount_other": "{{formattedCount}} artefatti",
+      "relatedArtifacts": "Artefatti correlati",
       "selectedModelAppliesAfterCurrentRun": "Il modello {{model}} selezionato entrerà in vigore dopo questa esecuzione",
       "thinking": {
         "assembling": "Assemblando i pezzi...",
@@ -5594,6 +5598,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Azione richiesta — consegna in pausa",
         "addAction": "Aggiungi l'automazione del calendario",
         "addAria": "Aggiungi automazione di Google Calendar",
         "addDescriptionCancelled": "Esegui questo flusso di lavoro quando un evento del calendario Google viene annullato.",
@@ -5602,16 +5607,29 @@
         "addTitle": "Aggiungi automazione di Google Calendar",
         "calendarId": "Calendario ID",
         "calendarIdPlaceholder": "primario",
+        "calendarNotFoundDescription": "Questo calendario non è più disponibile. Scegli un altro calendario per riprendere questa automazione.",
         "cancelledDescription": "Esegui quando un evento del calendario viene annullato.",
         "cancelledRule": "Quando l'evento del calendario {{calendar}} viene annullato",
         "cancelledTitle": "Google Evento del calendario annullato",
+        "cancelRecovery": "Annulla",
+        "changeAria": "Modifica automazione Google Calendar",
+        "changeCalendar": "Cambia calendario",
+        "checkingRecovery": "Verifica della possibilità di riprendere questa automazione…",
+        "checkRecoveryStatus": "Verifica stato",
         "createdDescription": "Esegui quando viene creato un evento del calendario.",
         "createdRule": "Quando il calendario {{calendar}} riceve un nuovo evento",
         "createdTitle": "Google Evento del calendario creato",
+        "enabledIntent": "Attivata",
+        "reconnectDescription": "Google Calendar deve essere riconnesso prima che questa automazione possa riprendere.",
+        "reconnectGoogleCalendar": "Riconnetti Google Calendar",
+        "recoveryStatus": "Ripristino di Google Calendar",
+        "recoveryUnconfirmed": "Il ripristino non è confermato. Controlla l’avviso di questa automazione, poi verificane di nuovo lo stato.",
+        "saveCalendar": "Salva calendario",
         "summary": "Calendario {{calendar}}",
         "updatedDescription": "Esegui quando un evento del calendario viene aggiornato.",
         "updatedRule": "Quando l'evento {{calendar}} del calendario viene aggiornato",
-        "updatedTitle": "Google Evento del calendario aggiornato"
+        "updatedTitle": "Google Evento del calendario aggiornato",
+        "updateError": "Non è stato possibile cambiare questo calendario. Riprova."
       },
       "chat": {
         "addAction": "Aggiungi l'automazione della chat",
@@ -6191,6 +6209,7 @@
       }
     },
     "list": {
+      "actionRequired": "Azione richiesta",
       "agentEmpty": "Nessun flusso di lavoro ancora eseguito come questo agente.",
       "all": "Tutto",
       "allAgents": "Tutti gli agenti",
@@ -6208,6 +6227,7 @@
       },
       "noWorkflows": "Nessun flusso di lavoro",
       "open": "Apri {{title}}",
+      "openRecovery": "Apri il ripristino di {{title}}",
       "runsAs": "Eseguito come",
       "runsAsAria": "Eseguito come {{agent}}",
       "section": {

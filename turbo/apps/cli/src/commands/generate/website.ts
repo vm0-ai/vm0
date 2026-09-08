@@ -13,7 +13,6 @@ import {
   formatRegistryListing,
 } from "../shared/resource-listing";
 import { dispatchGenerate } from "./lib/dispatch";
-import { getCliPublicBrand } from "../../lib/api/config";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
 
 const WEBSITE_TARGET = "website";
@@ -159,7 +158,6 @@ ${formatRegistryListing(templates, "website templates")}`;
 
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
-        publicBrand: getCliPublicBrand(),
         prompt,
         slugSource: options.title,
         siteSlug: options.siteSlug,

@@ -123,7 +123,7 @@ function connectorAuthorizationUrl(args: {
   readonly threadId?: string;
   readonly callbackPrompt?: string;
 }): string {
-  const url = new URL("/connectors/slack/authorize", "https://app.vm0.ai");
+  const url = new URL("/connectors/slack/authorize", "https://app.okou.ai");
   if (args.agentId !== undefined) {
     url.searchParams.set("agentId", args.agentId);
   }
@@ -168,9 +168,9 @@ test("Follow a managed browser session from its chat card", async () => {
     screenshotUrl: INITIAL_SCREENSHOT_URL,
     liveUrl: ACTIVE_BROWSER_URL,
   });
-  const trustedBrowserUrl = `https://app.vm0.ai/browsers/${RUN_THREAD_ID}`;
-  const foreignBrowserUrl = `https://app.vm0.ai/browsers/${OTHER_THREAD_ID}`;
-  const untrustedBrowserUrl = `https://app.vm0.ai.evil.test/browsers/${RUN_THREAD_ID}`;
+  const trustedBrowserUrl = `https://app.okou.ai/browsers/${RUN_THREAD_ID}`;
+  const foreignBrowserUrl = `https://app.okou.ai/browsers/${OTHER_THREAD_ID}`;
+  const untrustedBrowserUrl = `https://app.okou.ai.evil.test/browsers/${RUN_THREAD_ID}`;
   installCapabilityChat({
     events: completedConversation(
       [
@@ -194,7 +194,7 @@ test("Follow a managed browser session from its chat card", async () => {
     return respond(200, { browser });
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   const renderAppStyles = await createRenderedAppStyles(context.signal);
@@ -211,6 +211,9 @@ test("Follow a managed browser session from its chat card", async () => {
   );
   expect(card).toHaveTextContent("Cloud browser");
   expect(card).toHaveTextContent("Live");
+  const status = within(card).getByText("Live");
+  renderAppStyles(status);
+  expect(getComputedStyle(status).lineHeight).toBe("16px");
   expect(screen.getByTestId("browser-session-thumbnail")).toHaveAttribute(
     "src",
     INITIAL_SCREENSHOT_URL,
@@ -289,7 +292,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
   const assistantText = [
     `[Assistant plan action](${trustedPlan})`,
     `[Assistant computer action](${trustedComputer})`,
-    `[Forged action](${computerAuthorizationUrl("https://app.vm0.ai.evil.test", "forged")})`,
+    `[Forged action](${computerAuthorizationUrl("https://app.okou.ai.evil.test", "forged")})`,
     "Wrong agent:",
     connectorAuthorizationUrl({
       agentId: OTHER_AGENT_ID,
@@ -305,7 +308,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
     "Missing action context:",
     connectorAuthorizationUrl({}),
     "Unavailable agent:",
-    `https://app.vm0.ai/agents/${OTHER_AGENT_ID}/permissions?connectorSlug=slack&permission=messages.read`,
+    `https://app.okou.ai/agents/${OTHER_AGENT_ID}/permissions?connectorSlug=slack&permission=messages.read`,
   ].join("\n\n");
   installCapabilityChat({
     events: [
@@ -324,7 +327,7 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
     ],
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   await expect(
@@ -370,5 +373,5 @@ test("Recognize trusted assistant actions without trusting lookalikes", async ()
   await expect(
     screen.findByRole("dialog", { name: "Choose a plan" }),
   ).resolves.toBeVisible();
-  expect(window.location.hostname).toBe("app.vm0.ai");
+  expect(window.location.hostname).toBe("app.okou.ai");
 });

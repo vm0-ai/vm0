@@ -62,7 +62,7 @@ test("Match model-provider recovery guidance to the failure", async () => {
     "No model provider configured. Configure a model provider to start running agents.",
   );
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   const configureProvider = await findButton(
@@ -85,7 +85,7 @@ test("Start a compatible session after a model-provider mismatch", async () => {
     "Provider not compatible. This session was created with a different provider type.",
   );
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   await expect(
@@ -104,7 +104,7 @@ test("Start a new conversation after a model provider disappears", async () => {
     "Model provider unavailable. The model provider used by this thread has been deleted.",
   );
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   const startNewChat = await findLink("Start a new chat thread");

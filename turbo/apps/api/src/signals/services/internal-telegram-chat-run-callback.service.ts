@@ -8,7 +8,6 @@ import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@okouai/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -448,7 +447,7 @@ async function resolveTelegramPresentation(
   signal.throwIfAborted();
   return {
     logsUrl: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
-      ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`
+      ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
       : undefined,
     footerText,
   };

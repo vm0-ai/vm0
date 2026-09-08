@@ -372,7 +372,7 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   height: 126,
 } as const;
 const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
-  "https://static.vm0.io/web/assets/presentation-gallery/2026-07-04",
+  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04",
 );
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;

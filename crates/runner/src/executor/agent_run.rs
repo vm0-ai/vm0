@@ -40,8 +40,7 @@ use super::diagnostics::{
 };
 use super::effective_cli_framework;
 use super::env::{
-    PreparedRunPayload, build_env_json_for_run, build_user_env_json,
-    write_connector_account_context_file, write_required_agent_files,
+    PreparedRunPayload, build_env_json_for_run, build_user_env_json, write_required_agent_files,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
@@ -2030,37 +2029,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // to bootstrap guest-agent. User-provided env is passed through a private
     // guest file and injected into the CLI child after guest-agent has started.
     let mut user_env_map = build_user_env_json(context);
-    let connector_account_context_started = Instant::now();
-    match write_connector_account_context_file(sandbox, context).await {
-        Ok(path) => {
-            telemetry.record(
-                "runner_connector_account_context_write",
-                connector_account_context_started.elapsed(),
-                true,
-                None,
-            );
-            user_env_map.insert(
-                guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
-                path,
-            );
-        }
-        Err(error) => {
-            let outcome = private_write_timeout_stage(&error);
-            telemetry.record_with_outcome(
-                "runner_connector_account_context_write",
-                connector_account_context_started.elapsed(),
-                false,
-                Some("connector account context unavailable"),
-                outcome,
-            );
-            warn!(
-                run_id = %context.run_id,
-                outcome = outcome.unwrap_or("write_failed"),
-                "connector account context unavailable"
-            );
-            return Err(error);
-        }
-    }
     let env_build_started = Instant::now();
     let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
@@ -2113,7 +2081,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let required_private_files_started = Instant::now();
     let required_files =
-        match write_required_agent_files(sandbox, context.run_id, &user_env_map, &run_payload).await {
+        match write_required_agent_files(sandbox, context, &mut user_env_map, &run_payload).await {
             Ok(required_files) => {
                 telemetry.record(
                     "runner_required_private_files_write",
@@ -2136,12 +2104,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
-    if let Some(path) = user_env_file {
-        env_map.insert(
-            guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
-            path,
-        );
-    }
+    env_map.insert(
+        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
+        user_env_file,
+    );
     env_map.insert(
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV.into(),
         run_payload_file,

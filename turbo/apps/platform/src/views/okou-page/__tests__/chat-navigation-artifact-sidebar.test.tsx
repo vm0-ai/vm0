@@ -142,7 +142,7 @@ async function setupGeneratedOfficePreview(
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
   return url;
 }
@@ -216,7 +216,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -319,7 +319,7 @@ test("Use a public URL for a private Office attachment preview", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   click(await screen.findByLabelText(`Preview ${filename}`));
@@ -372,7 +372,7 @@ test("Explain empty and unavailable CSV previews", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -437,7 +437,7 @@ test("Expand a diagram from a Markdown artifact", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -491,7 +491,7 @@ test("Preview a hosted site artifact in the thread sidebar", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -534,7 +534,7 @@ test("Zoom and reset an image artifact preview", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -594,7 +594,7 @@ test("Keep the utility sidebar selected by the user", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -667,7 +667,7 @@ test("Show artifacts that belong to the current thread", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -702,7 +702,7 @@ test("Return to the artifact list when a preview is unavailable", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {

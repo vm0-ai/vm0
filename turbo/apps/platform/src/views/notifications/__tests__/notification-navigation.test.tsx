@@ -15,7 +15,7 @@ function pushedUrls(): string[] {
 
 test("A relative chat notification opens its conversation", async () => {
   const serviceWorker = context.mocks.browser.serviceWorker();
-  await setupPage({ context, path: "/agents", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/agents", host: "app.okou.ai" });
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeVisible();
@@ -61,7 +61,7 @@ test("An untrusted or non-chat notification does not navigate Platform", async (
   });
   serviceWorker.dispatchMessage({
     type: "NOTIFICATION_CLICK",
-    url: `https://app.vm0.ai/chats/${THREAD_ID}`,
+    url: `https://okou.ai/chats/${THREAD_ID}`,
   });
   serviceWorker.dispatchMessage({
     type: "NOTIFICATION_CLICK",

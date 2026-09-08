@@ -1,5 +1,5 @@
 import { command, state, type Command } from "ccstate";
-import { delay, timeout } from "signal-timers";
+import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -392,7 +392,7 @@ async function waitForFibonacciRetry(
   signal: AbortSignal,
 ): Promise<void> {
   const delayMs = fibonacciRetryDelayMs(retryIndex);
-  await (IN_VITEST ? waitForNextMacrotask(signal) : delay(delayMs, { signal }));
+  await delay(IN_VITEST ? 0 : delayMs, { signal });
   signal.throwIfAborted();
 }
 
@@ -429,13 +429,9 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      // In VITEST, yield to the macrotask queue so React can flush renders
-      // between iterations. Using Promise.resolve() only queues a microtask,
-      // which starves React's render cycle. The callback timer avoids
-      // signal-timers' delay Promise.race while still honoring the loop signal.
-      await (IN_VITEST
-        ? waitForNextMacrotask(signal)
-        : delay(interval, { signal }));
+      // Keep yielding to the macrotask queue in tests so React can flush renders
+      // between iterations, without waiting for the production interval.
+      await delay(IN_VITEST ? 0 : interval, { signal });
     } catch (error) {
       throwIfAbort(error);
       if (
@@ -456,20 +452,6 @@ export async function setLoop(
       fibIndex++;
     }
   }
-}
-
-function waitForNextMacrotask(signal: AbortSignal): Promise<void> {
-  const deferred = createDeferredPromise<void>(signal);
-  if (!signal.aborted) {
-    timeout(
-      () => {
-        deferred.resolve(undefined);
-      },
-      0,
-      { signal },
-    );
-  }
-  return deferred.promise;
 }
 
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {

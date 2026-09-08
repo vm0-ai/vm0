@@ -732,7 +732,7 @@ describe("POST /api/telegram/setup-status", () => {
       username: "setup_bot",
       privacyDisabled: true,
     });
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const observedOrigins: (string | null)[] = [];
     server.use(telegramOauthHead("2048", observedOrigins));
 
@@ -747,7 +747,7 @@ describe("POST /api/telegram/setup-status", () => {
       },
       body: JSON.stringify({
         botToken: TEST_BOT_TOKEN,
-        origin: "https://app.vm0.ai/settings/telegram",
+        origin: "https://app.okou.ai/settings/telegram",
       }),
     });
 
@@ -878,8 +878,8 @@ describe("POST /api/telegram/register", () => {
       seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockTelegramGetMe({ botId: telegramBotId, username: "owner_named_bot" });
     context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
     context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
@@ -919,7 +919,7 @@ describe("POST /api/telegram/register", () => {
   it.each([
     {
       caseName: "the VM0 canonical default rename attempt",
-      apiOrigin: "https://api.vm0.ai",
+      apiOrigin: "https://api.okou.ai",
       displayName: "Zero",
       seedDefaultAgent: true,
       expectedAgentName: "Okou",
@@ -960,8 +960,8 @@ describe("POST /api/telegram/register", () => {
       await authOrgApi.updateAgentMetadata(actor, fixture.composeId, {
         displayName,
       });
-      mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       mockTelegramGetMe({
         botId: telegramBotId,
         username: `command_bot_${telegramBotId}`,
@@ -1257,7 +1257,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(
       stateRecord((await readTelegramState(fixture.telegramBotId)).installation)
         ?.publicBrand,
-    ).toBe("vm0");
+    ).toBe("okou");
 
     const response = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -2059,8 +2059,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   });
 
   it("keeps Telegram callbacks typed when OKOU_API_BACKEND_URL is set", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const fixture = await trackFixture(
       seedTelegramPostFixture({ linkTelegramUser: true }),
     );
@@ -2835,7 +2835,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const officialReply = await postWebhook({
       telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
       secret: OFFICIAL_WEBHOOK_SECRET,

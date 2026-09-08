@@ -242,6 +242,54 @@ test("Use the fallback window before sidebar geometry is available", async () =>
   expect(within(sidebar).queryByText("History 101")).not.toBeInTheDocument();
 });
 
+test("Do not retain rows or show an empty state when the list query fails", async () => {
+  mockThreads(120);
+  const unreads = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.unreads, async ({ respond }) => {
+    await unreads.promise;
+    return respond(403, {
+      error: {
+        code: "FORBIDDEN",
+        message: "Unread conversations are unavailable",
+      },
+    });
+  });
+  await setupPage({ context, path: `/chats/${threadId(0)}` });
+
+  const sidebar = screen.getByTestId("chat-list-column");
+  await within(sidebar).findByText("History 1");
+  click(within(sidebar).getByLabelText("Open chat list menu"));
+  const unreadOnlyItem = queryAllByRoleFast("menuitem").find((item) => {
+    return item.textContent?.trim() === "Unread only";
+  });
+  if (!unreadOnlyItem) {
+    throw new Error("Unread-only menu item is missing");
+  }
+  click(unreadOnlyItem);
+
+  await waitFor(() => {
+    expect(within(sidebar).queryByText("History 1")).not.toBeInTheDocument();
+    expect(within(sidebar).getAllByTestId("sidebar-skeleton")).toHaveLength(3);
+  });
+
+  unreads.resolve(undefined);
+  await waitFor(() => {
+    expect(within(sidebar).queryAllByTestId("sidebar-skeleton")).toHaveLength(
+      0,
+    );
+  });
+  const [visibleError] = await screen.findAllByText(
+    "Unread conversations are unavailable",
+  );
+  expect(visibleError).toBeVisible();
+  expect(
+    within(sidebar).queryByText("No unread chats"),
+  ).not.toBeInTheDocument();
+  expect(
+    within(sidebar).queryByTestId("sidebar-chat-threads-virtual-list"),
+  ).not.toBeInTheDocument();
+});
+
 test("Coalesce sidebar resize bursts and cancel pending measurements when hidden", async () => {
   mockThreads(120);
   let viewportHeight = 612;

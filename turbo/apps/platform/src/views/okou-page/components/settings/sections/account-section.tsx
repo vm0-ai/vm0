@@ -2,12 +2,7 @@ import { useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@okouai/ui/components/ui/button";
-import {
-  clerk$,
-  currentUserInfo$,
-  resolvePrimaryClerkUserProfileUrl,
-  resolveClerkSatelliteConfig,
-} from "../../../../../signals/auth.ts";
+import { clerk$, currentUserInfo$ } from "../../../../../signals/auth.ts";
 import { UserAvatar } from "../../../../components/avatar.tsx";
 
 export function AccountSection() {
@@ -17,9 +12,7 @@ export function AccountSection() {
     clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
   const userLoadable = useLoadable(currentUserInfo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const userProfileUrl = resolveClerkSatelliteConfig()
-    ? resolvePrimaryClerkUserProfileUrl()
-    : clerk?.buildUrlWithAuth(clerk.buildUserProfileUrl());
+  const userProfileUrl = clerk?.buildUrlWithAuth(clerk.buildUserProfileUrl());
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";

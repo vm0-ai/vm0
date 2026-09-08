@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { CAPABILITIES, CAPABILITY_META } from "../capabilities";
 
 describe("CAPABILITIES", () => {
-  it("should have exactly 42 capabilities", () => {
-    expect(CAPABILITIES).toHaveLength(42);
+  it("should have exactly 43 capabilities", () => {
+    expect(CAPABILITIES).toHaveLength(43);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -17,7 +17,8 @@ describe("CAPABILITIES", () => {
     expect(CAPABILITIES).not.toContain("artifact:write");
   });
 
-  it("should use slack:write not integration-slack:write", () => {
+  it("should include Slack read and write capabilities", () => {
+    expect(CAPABILITIES).toContain("slack:read");
     expect(CAPABILITIES).toContain("slack:write");
     expect(CAPABILITIES).not.toContain("integration-slack:write");
   });

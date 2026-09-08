@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.188.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.11...runner-rs-v0.188.12) (2026-09-08)
+
+
+### Refactoring
+
+* **mitm-addon:** initialize policy reduction with the selected base ([#32562](https://github.com/vm0-ai/vm0/issues/32562)) ([c7ee676](https://github.com/vm0-ai/vm0/commit/c7ee67610e856cbbed07f1e8d6fc2d66b4e0c076))
+
+
+### Performance Improvements
+
+* **runner:** batch required connector context with agent private files ([#32545](https://github.com/vm0-ai/vm0/issues/32545)) ([a297e80](https://github.com/vm0-ai/vm0/commit/a297e80b989a3d11b3b26a5bc93939d69a996318))
+
+## [0.188.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.10...runner-rs-v0.188.11) (2026-09-08)
+
+## [0.188.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.9...runner-rs-v0.188.10) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** allow api cold starts in http timeout budgets ([#32517](https://github.com/vm0-ai/vm0/issues/32517)) ([041a420](https://github.com/vm0-ai/vm0/commit/041a420f4e44a8d648945c6fc817cd9b571e4a88))
+
+## [0.188.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.8...runner-rs-v0.188.9) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** remove legacy model provider failure report retry ([#32521](https://github.com/vm0-ai/vm0/issues/32521)) ([dc2942a](https://github.com/vm0-ai/vm0/commit/dc2942a3bec447353e4816af373fdfba3b9bdefc)), closes [#29882](https://github.com/vm0-ai/vm0/issues/29882)
+
 ## [0.188.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.7...runner-rs-v0.188.8) (2026-09-08)
 
 

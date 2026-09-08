@@ -11,6 +11,65 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.8](https://github.com/vm0-ai/vm0/compare/app-v0.862.7...app-v0.862.8) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** converge calendar recovery after reconnect ([#32549](https://github.com/vm0-ai/vm0/issues/32549)) ([26c387f](https://github.com/vm0-ai/vm0/commit/26c387f49b2858be89eb130a859a2e3999f9cbf1))
+
+
+### Refactoring
+
+* remove googleFormsWorkflowAutomations feature switch ([#32523](https://github.com/vm0-ai/vm0/issues/32523)) ([9f498b5](https://github.com/vm0-ai/vm0/commit/9f498b557f70cf3545a784cf53108f73302c24ec))
+* remove notion workflow automation feature switch ([#32524](https://github.com/vm0-ai/vm0/issues/32524)) ([14a02ec](https://github.com/vm0-ai/vm0/commit/14a02ec10b944dc744b143c678ce2a60787e6284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.0
+    * @okouai/core bumped to 8.635.0
+
+## [0.862.7](https://github.com/vm0-ai/vm0/compare/app-v0.862.6...app-v0.862.7) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** keep browser card height stable ([#32535](https://github.com/vm0-ai/vm0/issues/32535)) ([a85c01f](https://github.com/vm0-ai/vm0/commit/a85c01feeaef9863ed8d97639e091ef22ccb1695))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.6
+
+## [0.862.6](https://github.com/vm0-ai/vm0/compare/app-v0.862.5...app-v0.862.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align legacy chat response rows ([#32497](https://github.com/vm0-ai/vm0/issues/32497)) ([dfa2458](https://github.com/vm0-ai/vm0/commit/dfa2458727ab156d3f5e7af52f621e0d35be8159))
+* **platform:** authorize visible agents on the first connector account ([#32502](https://github.com/vm0-ai/vm0/issues/32502)) ([6169424](https://github.com/vm0-ai/vm0/commit/6169424485d472e98a27a55cb9626fa27548f207))
+
+## [0.862.5](https://github.com/vm0-ai/vm0/compare/app-v0.862.4...app-v0.862.5) (2026-09-08)
+
+
+### Refactoring
+
+* **chat:** remove video model rollout fallbacks ([#32363](https://github.com/vm0-ai/vm0/issues/32363)) ([d23807b](https://github.com/vm0-ai/vm0/commit/d23807b1b0913312306777c23a7342c67b050487))
+* **platform:** separate sidebar list readiness ([#32520](https://github.com/vm0-ai/vm0/issues/32520)) ([f41aea7](https://github.com/vm0-ai/vm0/commit/f41aea7a861814d4c04f0569b023e7addb39299b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.3
+    * @okouai/core bumped to 8.634.5
+
 ## [0.862.4](https://github.com/vm0-ai/vm0/compare/app-v0.862.3...app-v0.862.4) (2026-09-08)
 
 

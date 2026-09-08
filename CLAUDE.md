@@ -94,6 +94,18 @@ See `docs/externally-managed-references.md` for the full rules and examples.
 - Address TypeScript errors properly, don't ignore them
 - Unused variables should be removed, not ignored
 
+### App Styling Boundary
+
+**Business components use Tailwind utilities as their only styling API.** Do not add first-party CSS class selectors, CSS modules, `<style>` elements, runtime stylesheet injection, or CSS-in-JS in `turbo/apps/platform` or `turbo/packages/ui`.
+
+- Add or reuse semantic design tokens in the shared Tailwind `@theme` contract; do not hardcode a parallel component-local token system
+- Global environment rules and third-party generated DOM adapters require an exact entry in `turbo/style-allowlist.json`
+- Never add a business selector or component styling gap to the allowlist or legacy baseline
+- Existing first-party CSS and class dependencies are a shrink-only baseline. When removing one, run `cd turbo && pnpm lint:style:prune`
+- Run `cd turbo && pnpm lint:style` for the complete policy and Tailwind class validation
+
+Read `docs/styles.md` before changing App styles or fixing a style lint failure. It defines the final zero-first-party-selector goal, token ownership, exception boundaries, and lint behavior.
+
 ### Testing Guidelines
 **"Write tests. Not too many. Mostly integration."** — Kent C. Dodds
 

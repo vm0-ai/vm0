@@ -3,7 +3,6 @@ import {
   MORNING_BRIEF_OFFICIAL_DEFINITION_NAME,
   MORNING_BRIEF_PREFERENCES_PATH,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import type { AgentRunOfficialWorkflowProvenance } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
@@ -220,7 +219,7 @@ export async function handleWorkflowAutomationResultEmailInternalCallback(
     run.officialWorkflowProvenance ?? null,
     signal,
   );
-  const productUrl = appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND);
+  const productUrl = env("APP_URL");
   const manageUrl = await workflowAutomationManageUrl(
     db,
     {

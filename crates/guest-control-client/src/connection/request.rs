@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use guest_control_proto::{
-    MSG_ERROR, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    FileWriteStatus, MSG_ERROR, MSG_FILE_WRITE_STATUS, MSG_FILE_WRITE_STATUS_RESULT,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
     MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
@@ -24,6 +25,25 @@ use super::{
 struct PendingRequestGuard {
     shared: Arc<Shared>,
     route_id: RouteId,
+}
+
+impl GuestControlClient {
+    /// Read the latest guest file-write stage without changing operation gates.
+    ///
+    /// This control query remains usable after normal writes become uncertain
+    /// and while quiescing. It provides no terminal proof and never re-enables
+    /// normal operations. The caller's budget covers frame write and response.
+    pub async fn file_write_status(&self, timeout: Duration) -> io::Result<FileWriteStatus> {
+        let response = request_on_shared(&self.shared, MSG_FILE_WRITE_STATUS, &[], timeout).await?;
+        if response.msg_type != MSG_FILE_WRITE_STATUS_RESULT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected file-write status response",
+            ));
+        }
+        FileWriteStatus::decode_payload(&response.payload)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    }
 }
 
 #[derive(Debug, Default)]

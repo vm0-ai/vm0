@@ -75,66 +75,75 @@ export async function handleWorkflowAutomationInternalCallback(
     return { success: true, skipped: true };
   }
 
-  const [automation] = await db
-    .select(workflowAutomationColumns())
-    .from(workflowAutomations)
-    .where(eq(workflowAutomations.id, payload.data.automationId))
-    .limit(1);
-  signal?.throwIfAborted();
+  return await db.transaction(async (tx) => {
+    // Serialize completion with schedule edits so the entire current schedule
+    // remains authoritative until its next run has been written.
+    const [automation] = await tx
+      .select(workflowAutomationColumns())
+      .from(workflowAutomations)
+      .where(eq(workflowAutomations.id, payload.data.automationId))
+      .limit(1)
+      .for("update");
+    signal?.throwIfAborted();
 
-  if (!automation || !automation.enabled) {
-    return { success: true, skipped: true };
-  }
+    if (
+      !automation ||
+      !automation.enabled ||
+      (automation.scheduleType !== "cron" && automation.scheduleType !== "loop")
+    ) {
+      // A newly configured one-time schedule keeps its own next run.
+      return { success: true, skipped: true };
+    }
 
-  const completedAt = nowDate();
-  const [failedRun] =
-    input.callback.status === "failed"
-      ? await db
-          .select({ failureReason: agentRuns.failureReason })
-          .from(agentRuns)
-          .where(
-            and(
-              eq(agentRuns.id, input.callback.runId),
-              eq(agentRuns.orgId, automation.orgId),
-            ),
-          )
-          .limit(1)
-      : [];
-  signal?.throwIfAborted();
-  const isCreditError = failedRun?.failureReason === "insufficient_credits";
-  const consecutiveFailures =
-    input.callback.status === "completed"
-      ? 0
-      : automation.consecutiveFailures + (isCreditError ? 0 : 1);
-  const shouldDisable =
-    !isCreditError && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
-  const nextRunAt = advanceTimeAutomationAfterCompletion({
-    scheduleType: payload.kind,
-    cronExpression:
-      payload.kind === "cron" ? payload.data.cronExpression : undefined,
-    intervalSeconds: automation.intervalSeconds,
-    timezone: automation.timezone,
-    completedAt,
-    shouldDisable,
+    const completedAt = nowDate();
+    const [failedRun] =
+      input.callback.status === "failed"
+        ? await tx
+            .select({ failureReason: agentRuns.failureReason })
+            .from(agentRuns)
+            .where(
+              and(
+                eq(agentRuns.id, input.callback.runId),
+                eq(agentRuns.orgId, automation.orgId),
+              ),
+            )
+            .limit(1)
+        : [];
+    signal?.throwIfAborted();
+    const isCreditError = failedRun?.failureReason === "insufficient_credits";
+    const consecutiveFailures =
+      input.callback.status === "completed"
+        ? 0
+        : automation.consecutiveFailures + (isCreditError ? 0 : 1);
+    const shouldDisable =
+      !isCreditError && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+    const nextRunAt = advanceTimeAutomationAfterCompletion({
+      scheduleType: automation.scheduleType,
+      cronExpression: automation.cronExpression,
+      intervalSeconds: automation.intervalSeconds,
+      timezone: automation.timezone,
+      completedAt,
+      shouldDisable,
+    });
+
+    await tx
+      .update(workflowAutomations)
+      .set({
+        consecutiveFailures,
+        ...(shouldDisable && { enabled: false }),
+        nextRunAt,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          eq(workflowAutomations.id, payload.data.automationId),
+          eq(workflowAutomations.enabled, true),
+        ),
+      );
+    signal?.throwIfAborted();
+
+    return { success: true };
   });
-
-  await db
-    .update(workflowAutomations)
-    .set({
-      consecutiveFailures,
-      ...(shouldDisable && { enabled: false }),
-      nextRunAt,
-      updatedAt: completedAt,
-    })
-    .where(
-      and(
-        eq(workflowAutomations.id, payload.data.automationId),
-        eq(workflowAutomations.enabled, true),
-      ),
-    );
-  signal?.throwIfAborted();
-
-  return { success: true };
 }
 
 export const handleWorkflowAutomationInternalCallback$ = command(

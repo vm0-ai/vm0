@@ -59,7 +59,7 @@ function setupSignUpPage(
 ): Promise<void> {
   const path = options.path ?? "/sign-up";
   mockSignUpResource(state);
-  const url = new URL(options.url ?? `https://app.vm0.ai${path}`);
+  const url = new URL(options.url ?? `https://app.okou.ai${path}`);
   return setupPage({
     auth: null,
     context,
@@ -152,9 +152,9 @@ test("A new sign-up reflects the current account requirements", async () => {
     },
     captchaEnabled: true,
     legalConsentEnabled: true,
-    privacyPolicyUrl: "https://vm0.ai/legal/privacy",
+    privacyPolicyUrl: "https://okou.ai/legal/privacy",
     progressive: true,
-    termsUrl: "https://vm0.ai/legal/terms",
+    termsUrl: "https://okou.ai/legal/terms",
   });
   await setupSignUpPage({
     missingFields: [],
@@ -195,11 +195,11 @@ test("A new sign-up reflects the current account requirements", async () => {
   });
   expect(roleElement("link", "Terms of Service")).toHaveAttribute(
     "href",
-    "https://vm0.ai/legal/terms",
+    "https://okou.ai/legal/terms",
   );
   expect(roleElement("link", "Privacy Policy")).toHaveAttribute(
     "href",
-    "https://vm0.ai/legal/privacy",
+    "https://okou.ai/legal/privacy",
   );
   expect(document.querySelector("#clerk-captcha")).toBeInTheDocument();
   expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
@@ -332,7 +332,7 @@ test("Social sign-up preserves safe attribution and blocks duplicate handoffs", 
     { status: null },
     {
       path,
-      url: `https://app.vm0.ai${path}`,
+      url: `https://app.okou.ai${path}`,
     },
   );
 
@@ -369,7 +369,7 @@ test("Social sign-up preserves safe attribution and blocks duplicate handoffs", 
     completionUrl.toString(),
   );
   expect(callbackUrl.hash).toBe("#/start?step=oauth");
-  expect(completionUrl.origin).toBe("https://app.vm0.ai");
+  expect(completionUrl.origin).toBe("https://app.okou.ai");
   expect(completionUrl.pathname).toBe("/onboarding");
   expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
   expect(completionUrl.searchParams.get("utm_campaign")).toBe("summer");
@@ -422,7 +422,7 @@ test("A completed social sign-up callback continues to onboarding once", async (
       externalAccountStatus: "verified",
       status: "complete",
     },
-    { path, url: `https://app.vm0.ai${path}` },
+    { path, url: `https://app.okou.ai${path}` },
   );
 
   await waitFor(() => {
@@ -466,7 +466,7 @@ test("An existing Google identity is transferred to the correct account exactly 
     },
     {
       path: "/sign-up/sso-callback",
-      url: "https://app.vm0.ai/sign-up/sso-callback",
+      url: "https://app.okou.ai/sign-up/sso-callback",
     },
   );
 
@@ -510,7 +510,7 @@ test.each([
         isTransferable: true,
         status: "missing_requirements",
       },
-      { path, url: `https://app.vm0.ai${path}` },
+      { path, url: `https://app.okou.ai${path}` },
     );
 
     await waitFor(() => {
@@ -539,7 +539,7 @@ test("A cancelled social callback leaves sign-up safe and retryable", async () =
     },
     {
       path: "/sign-up/sso-callback",
-      url: "https://app.vm0.ai/sign-up/sso-callback",
+      url: "https://app.okou.ai/sign-up/sso-callback",
     },
   );
 
@@ -683,7 +683,7 @@ test("Email verification enforces resend cooldown and preserves onboarding attri
     "/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer";
   await setupSignUpPage(readyEmailVerificationState(), {
     path,
-    url: `https://app.vm0.ai${path}`,
+    url: `https://app.okou.ai${path}`,
   });
 
   await screen.findByLabelText("Verification code");

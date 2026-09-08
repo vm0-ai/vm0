@@ -1,10 +1,9 @@
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 const PLATFORM_RUNTIME_CONFIG = resolvePlatformRuntimeConfig();
 
 export function platformPublicStaticUrl(url: string): string {
-  return staticUrlForPublicBrand(url, PLATFORM_RUNTIME_CONFIG.publicBrand);
+  return url;
 }
 
 export function platformStaticAssetUrl(path: string) {
@@ -14,17 +13,11 @@ export function platformStaticAssetUrl(path: string) {
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(
   "views/agents-page/assets/empty-private-agents-9a8d7e3750b6.png",
 );
-export const platformVm0LogoImg = platformStaticAssetUrl(
-  "assets/vm0-logo-56cf3090a186.svg",
-);
-export const platformVm0LogoDarkImg = platformStaticAssetUrl(
-  "assets/vm0-logo-dark-f3de8c7713f8.svg",
-);
 export const platformOkouWordmarkDarkImg = platformPublicStaticUrl(
-  "https://static.vm0.io/public/okou-logo-wordmark-dark-40e256bb155e.svg",
+  "https://static.okou.io/public/okou-logo-wordmark-dark-40e256bb155e.svg",
 );
 export const platformOkouWordmarkLightImg = platformPublicStaticUrl(
-  "https://static.vm0.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg",
+  "https://static.okou.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg",
 );
 export const platformFeishuAppIconImg = platformStaticAssetUrl(
   "views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",

@@ -45,7 +45,7 @@ function BrowserSessionStatus({ live }: { readonly live: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium",
+        "inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium leading-[16px]",
         live
           ? "text-emerald-700 dark:text-emerald-300"
           : "text-muted-foreground",

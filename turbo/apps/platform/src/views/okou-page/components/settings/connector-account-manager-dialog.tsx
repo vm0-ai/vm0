@@ -64,7 +64,7 @@ interface ConnectorAccountManagerDialogProps {
   readonly icon: ReactNode;
   readonly connectionActionsEnabled: boolean;
   readonly onClose: () => void;
-  readonly onAdd: () => void;
+  readonly onAdd?: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
   readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
 }
@@ -705,24 +705,26 @@ export function ConnectorAccountManagerDialog({
             </Button>
           ) : null}
         </div>
-        <DialogFooter className="shrink-0">
-          <Button
-            type="button"
-            disabled={
-              !connectionActionsEnabled ||
-              accountsLoadable.state === "hasError" ||
-              (accountsLoadable.state === "hasData" &&
-                !accountsLoadable.data.available)
-            }
-            onClick={() => {
-              return leave(onAdd);
-            }}
-          >
-            {t(($) => {
-              return $.connectors.accounts.addAccount;
-            })}
-          </Button>
-        </DialogFooter>
+        {onAdd ? (
+          <DialogFooter className="shrink-0">
+            <Button
+              type="button"
+              disabled={
+                !connectionActionsEnabled ||
+                accountsLoadable.state === "hasError" ||
+                (accountsLoadable.state === "hasData" &&
+                  !accountsLoadable.data.available)
+              }
+              onClick={() => {
+                return leave(onAdd);
+              }}
+            >
+              {t(($) => {
+                return $.connectors.accounts.addAccount;
+              })}
+            </Button>
+          </DialogFooter>
+        ) : null}
         <DeleteAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>

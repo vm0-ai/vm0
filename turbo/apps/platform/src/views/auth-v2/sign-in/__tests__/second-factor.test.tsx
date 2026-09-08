@@ -1,4 +1,4 @@
-// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
 
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -71,8 +71,8 @@ function setupSignIn(state: MockedSignInResourceState): Promise<void> {
   mockSignInResource(state);
   return setupPage({
     context,
-    host: "app.vm0.ai",
-    path: `/sign-in/factor-two?redirect_url=${encodeURIComponent("https://app.vm0.ai/onboarding?source=mfa")}`,
+    host: "app.okou.ai",
+    path: `/sign-in/factor-two?redirect_url=${encodeURIComponent("https://app.okou.ai/onboarding?source=mfa")}`,
     auth: null,
     env: { VITE_POSTHOG_KEY: "phc_platform_test" },
   });

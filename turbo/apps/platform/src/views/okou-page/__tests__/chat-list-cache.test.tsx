@@ -175,7 +175,7 @@ test("Signed-out pages do not sync private conversations", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByRole("heading", { name: "Sign in to VM0" }),
+      screen.getByRole("heading", { name: "Sign in to Okou" }),
     ).toBeVisible();
     expect(window.location.pathname).toBe("/sign-in");
   });

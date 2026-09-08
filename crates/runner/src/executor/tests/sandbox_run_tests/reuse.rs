@@ -25,12 +25,38 @@ fn context_with_remote_storage(archive_url: &str, archive_size: usize) -> Execut
 
 #[tokio::test]
 async fn execute_job_reuse_succeeds() {
+    for clear_accounts in [false, true] {
+        assert_reused_connector_projection(clear_accounts).await;
+    }
+}
+
+async fn assert_reused_connector_projection(clear_accounts: bool) {
+    use crate::types::ConnectorRuntimeTargetRegistration;
+    use guest_contracts::connector_account_context::{
+        RunConnectorAccountContext, RunConnectorAccountTarget,
+    };
+
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut first_context = minimal_context();
     first_context.run_id = RunId::new_v4();
+    let targets = vec![
+        ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "github".into(),
+            base_url_vars: None,
+            source_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
+        },
+        ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "github".into(),
+            base_url_vars: None,
+            source_id: Some("550e8400-e29b-41d4-a716-446655440001".into()),
+        },
+    ];
+    if clear_accounts {
+        first_context.connector_runtime_targets = targets.clone();
+    }
 
     // First: create a sandbox via normal execute_job
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -55,6 +81,9 @@ async fn execute_job_reuse_succeeds() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut reused_context = minimal_context();
     reused_context.run_id = RunId::new_v4();
+    if !clear_accounts {
+        reused_context.connector_runtime_targets = targets;
+    }
     let reused_context_path =
         guest_connector_account_context_file_path(reused_context.run_id).unwrap();
     let (reuse_outcome, _telemetry) = execute_job_reuse(
@@ -69,12 +98,17 @@ async fn execute_job_reuse_succeeds() {
     assert!(reuse_outcome.error().is_none());
     assert!(reuse_outcome.sandbox.is_some());
     let connector_account_context_writes = overrides
-        .private_write_file_calls()
+        .private_write_files_calls()
         .into_iter()
-        .filter(|write| {
-            write
-                .path
-                .ends_with("/connector-account-context/context.json")
+        .map(|batch| {
+            assert_eq!(batch.files.len(), 3);
+            let user_env: HashMap<String, String> =
+                serde_json::from_slice(&batch.files[1].content).unwrap();
+            assert_eq!(
+                user_env[guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV],
+                batch.files[0].path,
+            );
+            batch.files[0].clone()
         })
         .collect::<Vec<_>>();
     assert_eq!(connector_account_context_writes.len(), 2);
@@ -82,6 +116,33 @@ async fn execute_job_reuse_succeeds() {
         connector_account_context_writes[1].path,
         reused_context_path
     );
+    assert!(overrides.private_write_file_calls().is_empty());
+    let selected = vec![
+        RunConnectorAccountTarget::Builtin {
+            connector_slug: "github".into(),
+            connection_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
+        },
+        RunConnectorAccountTarget::Builtin {
+            connector_slug: "github".into(),
+            connection_id: Some("550e8400-e29b-41d4-a716-446655440001".into()),
+        },
+    ];
+    let expected = if clear_accounts {
+        [selected, Vec::new()]
+    } else {
+        [Vec::new(), selected]
+    };
+    for (write, targets) in connector_account_context_writes.iter().zip(expected) {
+        let projection: RunConnectorAccountContext =
+            serde_json::from_slice(&write.content).unwrap();
+        assert_eq!(
+            projection,
+            RunConnectorAccountContext {
+                schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
+                targets,
+            }
+        );
+    }
 }
 
 #[tokio::test]

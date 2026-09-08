@@ -34,7 +34,6 @@ export function AuthV2SignUpCard({
   return (
     <AuthV2Shell
       announcement={description}
-      authBrand={authBrand}
       cardFooter={
         flowState.status === "incomplete" && flowState.step === "details" ? (
           <SignUpSwitch copy={copy} signInHref={signInHref} />

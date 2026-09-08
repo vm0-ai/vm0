@@ -1,8 +1,8 @@
 import { command, computed, type Computed } from "ccstate";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
 } from "@okouai/core/public-brand";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
@@ -42,7 +42,7 @@ import {
   buildWelcomeMessage,
 } from "../../lib/slack-webhook-blocks";
 import type { SlackFile } from "../../lib/slack-webhook-context";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import type { SlackAnyBlock } from "../external/slack-block-kit";
 import {
@@ -365,7 +365,6 @@ function buildOrgConnectUrl(
   slackUserId: string,
   channelId: string,
   threadTs: string | undefined,
-  publicBrand: PublicBrand,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   if (channelId) {
@@ -374,14 +373,14 @@ function buildOrgConnectUrl(
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/settings/slack?${params.toString()}`;
+  return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
 
 function buildNotInstalledMessage(
   publicBrand: PublicBrand,
   detail?: string,
 ): unknown[] {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "section",
@@ -398,7 +397,7 @@ function buildNotInstalledMessage(
         {
           type: "button",
           text: { type: "plain_text", text: "Set up on Platform" },
-          url: `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works`,
+          url: `${env("APP_URL")}/works`,
           action_id: "open_platform_setup",
         },
       ],
@@ -730,7 +729,6 @@ const postSlackAgentAdmissionNotice$ = command(
         args.slackUserId,
         args.channelId,
         args.channelType === "dm" ? threadTs : undefined,
-        args.installation.publicBrand,
       );
       await postSlackUserNotice({
         client,
@@ -739,10 +737,7 @@ const postSlackAgentAdmissionNotice$ = command(
         slackUserId: args.slackUserId,
         threadTs,
         text: "Please connect your account first",
-        blocks: buildLoginPromptMessage(
-          connectUrl,
-          args.installation.publicBrand,
-        ),
+        blocks: buildLoginPromptMessage(connectUrl),
       });
       return;
     }
@@ -1106,13 +1101,7 @@ const refreshOrgAppHome$ = command(
           publicBrand: installation.publicBrand,
           botUserId: installation.botUserId,
           isLinked: false,
-          loginUrl: buildOrgConnectUrl(
-            workspaceId,
-            slackUserId,
-            "",
-            undefined,
-            installation.publicBrand,
-          ),
+          loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, "", undefined),
         }),
       );
       return;
@@ -1347,7 +1336,7 @@ const commandModelResponse$ = command(
 export const handleSlackCommands$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const verified = await verifiedSlackBody(request.raw);
     signal.throwIfAborted();
     if (!verified.ok) {
@@ -1396,9 +1385,7 @@ export const handleSlackCommands$ = command(
         );
       }
       if (connection) {
-        const { assistantName } = publicBrandPresentation(
-          installation.publicBrand,
-        );
+        const { assistantName } = PUBLIC_BRAND_PRESENTATION;
         return ephemeral(
           buildSuccessMessage(
             `You are already connected to ${assistantName}.\nMention ${officialSlackBotMention(installation.botUserId)} in any channel or send a DM to start chatting with your agent.`,
@@ -1412,9 +1399,7 @@ export const handleSlackCommands$ = command(
             payload.user_id,
             payload.channel_id,
             undefined,
-            installation.publicBrand,
           ),
-          installation.publicBrand,
         ),
       );
     }
@@ -1452,9 +1437,7 @@ export const handleSlackCommands$ = command(
             payload.user_id,
             payload.channel_id,
             undefined,
-            installation.publicBrand,
           ),
-          installation.publicBrand,
         ),
       );
     }
@@ -1744,7 +1727,7 @@ const handleEventCallback$ = command(
 export const handleSlackEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const verified = await verifiedSlackBody(request.raw);
     signal.throwIfAborted();
     if (!verified.ok) {
@@ -2182,7 +2165,7 @@ const handleHomeDisconnect$ = command(
 export const handleSlackInteractive$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const verified = await verifiedSlackBody(request.raw);
     signal.throwIfAborted();
     if (!verified.ok) {

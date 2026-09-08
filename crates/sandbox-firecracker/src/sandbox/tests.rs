@@ -16,6 +16,7 @@ use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 
 mod guest_rpc;
+mod private_write_diagnostics;
 mod process_write;
 
 struct TestNormalOperationFence;

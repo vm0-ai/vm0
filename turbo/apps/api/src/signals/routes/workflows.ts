@@ -21,7 +21,6 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
@@ -92,6 +91,7 @@ import {
   readAcceptedOfficialWorkflowRevision,
 } from "../services/official-workflow-catalog-read.service";
 import { resolveOfficialWorkflowBlueprintForReconciliation } from "../services/official-workflow-installation.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   commitPreparedVolumeServerSide,
   ensureVolumeStorage$,
@@ -1520,7 +1520,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       orgId: auth.orgId,
       apiStartTime,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
       preloadedAgent: agent,
       timing,
       agentRunPreCreateSource: "workflow_slash_command",

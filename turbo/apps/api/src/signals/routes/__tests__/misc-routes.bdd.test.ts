@@ -170,13 +170,13 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     });
 
     const validToken = unsubscribeToken(`user_${randomUUID()}`);
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const unsubscribePage = await api.requestEmailUnsubscribePage(
       validToken,
       [302],
     );
     expect(unsubscribePage.headers.get("Location")).toBe(
-      `https://app.vm0.ai/email/unsubscribe?token=${validToken}`,
+      `https://app.okou.ai/email/unsubscribe?token=${validToken}`,
     );
     const okouUnsubscribePage = await api.requestEmailUnsubscribePage(
       validToken,

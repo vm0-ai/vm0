@@ -1390,12 +1390,18 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     ctx.connector_runtime_targets = vec![
         ConnectorRuntimeTargetRegistration::Builtin {
             connector_slug: "github".into(),
-            base_url_vars: None,
+            base_url_vars: Some(HashMap::from([(
+                "API_ORIGIN".into(),
+                "https://api.github.com".into(),
+            )])),
             source_id: Some("550e8400-e29b-41d4-a716-446655440000".into()),
         },
         ConnectorRuntimeTargetRegistration::Custom {
             custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".into(),
-            base_url_vars: HashMap::new(),
+            base_url_vars: HashMap::from([(
+                "CUSTOM_ORIGIN".into(),
+                "https://custom.example.test".into(),
+            )]),
             source_id: None,
         },
     ];
@@ -1472,18 +1478,18 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .all(|call| !call.cmd.contains(&expected_user_env_file)),
         "user env file should not be written through shell exec"
     );
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    let connector_account_context_write = private_writes
-        .iter()
-        .find(|write| write.path == expected_connector_account_context_file)
-        .unwrap();
+    assert!(overrides.private_write_file_calls().is_empty());
     let private_batches = overrides.private_write_files_calls();
     assert_eq!(private_batches.len(), 1);
-    assert_eq!(private_batches[0].files.len(), 2);
-    let user_env_write = &private_batches[0].files[0];
+    assert_eq!(private_batches[0].files.len(), 3);
+    let connector_account_context_write = &private_batches[0].files[0];
+    assert_eq!(
+        connector_account_context_write.path,
+        expected_connector_account_context_file
+    );
+    let user_env_write = &private_batches[0].files[1];
     assert_eq!(user_env_write.path, expected_user_env_file);
-    let run_payload_write = &private_batches[0].files[1];
+    let run_payload_write = &private_batches[0].files[2];
     assert_eq!(run_payload_write.path, expected_run_payload_file);
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
@@ -1549,11 +1555,11 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
-async fn execute_inner_stops_when_connector_account_context_write_fails() {
+async fn execute_inner_stops_when_required_private_batch_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+    overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "connector account context write failed",
     )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -1570,13 +1576,34 @@ async fn execute_inner_stops_when_connector_account_context_write_fails() {
             .expect("connector account context write failure should fail the run")
             .contains("connector account context write failed")
     );
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    assert!(overrides.private_write_files_calls().is_empty());
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
     assert_eq!(
-        private_writes[0].path,
+        private_batches[0].files[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
     );
+    assert!(overrides.start_agent_process_calls().is_empty());
+}
+
+#[tokio::test]
+async fn execute_inner_rejects_invalid_run_payload_before_private_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut context = minimal_context();
+    context.prompt = "invalid\0prompt".into();
+
+    let error = run_new_sandbox_outcome(&factory, &context, &config, &default_params())
+        .await
+        .err()
+        .expect("invalid payload must fail before execution");
+
+    assert!(error.to_string().contains("run payload contains NUL byte"));
+    assert!(overrides.private_write_file_calls().is_empty());
+    assert!(overrides.private_write_files_calls().is_empty());
     assert!(overrides.start_agent_process_calls().is_empty());
 }
 
@@ -1585,7 +1612,6 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_files_result(Err(sandbox_write_file_error(
         "No space left on device (os error 28)",
     )));
@@ -1616,24 +1642,23 @@ async fn execute_inner_run_payload_enospc_collects_resources_without_starting_ag
             .failure_kind,
         Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
     assert!(
-        private_writes[0]
+        private_batches[0].files[0]
             .path
             .ends_with("/connector-account-context/context.json"),
         "got: {}",
-        private_writes[0].path
+        private_batches[0].files[0].path
     );
-    let private_batches = overrides.private_write_files_calls();
-    assert_eq!(private_batches.len(), 1);
-    assert_eq!(private_batches[0].files.len(), 2);
     assert!(
-        private_batches[0].files[1]
+        private_batches[0].files[2]
             .path
             .ends_with("/run-payload/payload.json"),
         "got: {}",
-        private_batches[0].files[1].path
+        private_batches[0].files[2].path
     );
     assert!(
         overrides.start_agent_process_calls().is_empty(),
