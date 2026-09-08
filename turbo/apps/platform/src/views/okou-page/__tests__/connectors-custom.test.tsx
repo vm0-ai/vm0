@@ -138,6 +138,35 @@ function accountAction(container: ParentNode): HTMLElement {
   return action;
 }
 
+function mockCustomAgentAccess(): void {
+  const grantsByAgent = new Map<string, AgentCustomConnectorGrant[]>();
+  context.mocks.api(
+    agentCustomConnectorsContract.get,
+    ({ params, respond }) => {
+      return respond(200, { grants: grantsByAgent.get(params.id) ?? [] });
+    },
+  );
+  context.mocks.api(
+    agentCustomConnectorsContract.update,
+    ({ params, body, respond }) => {
+      const previous = grantsByAgent.get(params.id) ?? [];
+      const retained = previous.filter((grant) => {
+        return !body.grants.some((updated) => {
+          return updated.customConnectorId === grant.customConnectorId;
+        });
+      });
+      const grants =
+        body.operation === "remove"
+          ? retained
+          : body.operation === "add"
+            ? [...retained, ...body.grants]
+            : body.grants;
+      grantsByAgent.set(params.id, grants);
+      return respond(200, { grants });
+    },
+  );
+}
+
 test("Create a custom connector without authentication", async () => {
   mockCustomConnectorStory(context);
 
@@ -170,21 +199,11 @@ test("Add and optionally name a custom connector account", async () => {
     }),
   ];
   const accounts = new Map<string, ConnectorAccountConnection>();
-  let grantMutations = 0;
   context.mocks.data.agents([listAgent(RESEARCH_ID, "Research")]);
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors });
   });
-  context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
-    return respond(200, {
-      grants: connectors.map((connector) => {
-        return {
-          customConnectorId: connector.id,
-          permissionNames: [],
-        };
-      }),
-    });
-  });
+  mockCustomAgentAccess();
   context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
     return respond(200, {
       summaries: [...accounts.values()].map((account) => {
@@ -241,10 +260,6 @@ test("Add and optionally name a custom connector account", async () => {
       );
     },
   );
-  context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
-    grantMutations += 1;
-    return respond(200, { grants: [] });
-  });
   await setupCustomPage({ mcp: true });
 
   for (const name of ["Acme Search", "Acme MCP"]) {
@@ -277,7 +292,9 @@ test("Add and optionally name a custom connector account", async () => {
       ),
     ).toHaveTextContent("Used by Research");
   }
-  expect(grantMutations).toBe(0);
+  expect(
+    getConnectorAction("button", "Manage Acme Search access"),
+  ).toHaveTextContent("Used by Research");
 });
 
 test("Enable custom connector access when an account becomes available", async () => {
@@ -658,7 +675,7 @@ test("Manage a custom HTTP connector through its lifecycle", async () => {
         "Manage Acme API access",
         getConnectorCard("Acme API"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
 
   click(
@@ -913,7 +930,7 @@ test("Configure and maintain OAuth for a custom HTTP connector", async () => {
         "Manage Acme API access",
         getConnectorCard("Acme API"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by Research");
   });
 });
 
@@ -959,11 +976,6 @@ test("Manage a manual MCP connector through its lifecycle", async () => {
         return value.key;
       }),
     };
-    for (const agentId of grants.keys()) {
-      grants.set(agentId, [
-        { customConnectorId: connector.id, permissionNames: [] },
-      ]);
-    }
     return respond(200, connector);
   });
   context.mocks.api(
@@ -1114,7 +1126,11 @@ test("Create and connect an MCP server with automatic authentication", async () 
   let created: CreateCustomConnectorBody | null = null;
   const authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
-  context.mocks.data.agents([]);
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent(RESEARCH_ID, "Research"),
+  ]);
+  mockCustomAgentAccess();
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: connector ? [connector] : [] });
   });
@@ -1204,7 +1220,134 @@ test("Create and connect an MCP server with automatic authentication", async () 
       "Unnamed account",
     );
     expect(authWindow.closed).toBeTruthy();
+    expect(
+      getConnectorAction("button", "Manage Discovery MCP access"),
+    ).toHaveTextContent("Used by 2 agents");
   });
+});
+
+test("Authorize MCP access only after the selected account reconnects", async () => {
+  const connector = mcpCustomConnector({
+    authMode: "automatic",
+    fields: [],
+    headerInjections: [],
+    configuredFieldKeys: [],
+  });
+  const work = customAccount(connector.id, crypto.randomUUID(), {
+    displayName: "Work",
+  });
+  let personal = customAccount(connector.id, crypto.randomUUID(), {
+    displayName: "Personal",
+    isDefault: false,
+    authMethod: "oauth",
+    connectionStatus: "reconnect-required",
+    reconnectReason: "authorization_expired_or_revoked",
+  });
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent(RESEARCH_ID, "Research"),
+  ]);
+  mockCustomAgentAccess();
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [connector] });
+  });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: work.target,
+          accountCount: 2,
+          attentionCount:
+            personal.connectionStatus === "reconnect-required" ? 1 : 0,
+          defaultConnection: work,
+        },
+      ],
+    });
+  });
+  context.mocks.api(
+    connectorAccountsContract.connection,
+    ({ params, respond }) => {
+      return params.connectionId === personal.id
+        ? respond(200, personal)
+        : respond(404, {
+            error: { code: "NOT_FOUND", message: "Account not found" },
+          });
+    },
+  );
+  context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+    return respond(200, { connections: [work, personal], nextCursor: null });
+  });
+  context.mocks.api(
+    customConnectorOAuth2Contract.start,
+    ({ body, respond }) => {
+      expect(body.account).toStrictEqual({
+        intent: "reconnect",
+        connectionId: personal.id,
+      });
+      return respond(200, {
+        result: "authorization",
+        connectionId: personal.id,
+        authorizationUrl: "https://oauth.acme.test/reconnect",
+      });
+    },
+  );
+  await setupCustomPage({ mcp: true });
+  const manageAccounts = await waitFor(() => {
+    return getConnectorAction("button", "Manage Acme MCP accounts");
+  });
+  click(manageAccounts);
+  const manager = await screen.findByRole("dialog", {
+    name: "Manage Acme MCP accounts",
+  });
+  const personalRow = await within(manager).findByRole("group", {
+    name: "Personal",
+  });
+  click(getConnectorAction("button", "Reconnect", personalRow));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Connect Acme MCP",
+  });
+
+  const cancelledWindow = createAuthWindow();
+  context.mocks.browser.open(cancelledWindow);
+  click(getConnectorAction("button", "Continue", dialog));
+  await waitFor(() => {
+    expect(cancelledWindow.location.href).toBe(
+      "https://oauth.acme.test/reconnect",
+    );
+  });
+  cancelledWindow.close();
+  await waitFor(() => {
+    expect(getConnectorAction("button", "Continue", dialog)).toBeEnabled();
+  });
+  expect(dialog).toBeInTheDocument();
+  await waitFor(() => {
+    expect(getConnectorCard("Acme MCP")).toHaveTextContent("Add access");
+  });
+
+  const completedWindow = createAuthWindow();
+  context.mocks.browser.open(completedWindow);
+  click(getConnectorAction("button", "Continue", dialog));
+  await waitFor(() => {
+    expect(completedWindow.location.href).toBe(
+      "https://oauth.acme.test/reconnect",
+    );
+  });
+  personal = {
+    ...personal,
+    connectionStatus: "connected",
+    reconnectReason: null,
+    updatedAt: "2026-01-01T00:00:01.000Z",
+  };
+  completedWindow.close();
+  await waitFor(() => {
+    expect(
+      getConnectorAction("button", "Manage Acme MCP access"),
+    ).toHaveTextContent("Used by 2 agents");
+    expect(dialog).not.toBeInTheDocument();
+  });
+  expect(
+    screen.queryByRole("dialog", { name: "Name your Acme MCP account" }),
+  ).not.toBeInTheDocument();
 });
 
 test("Create, edit, and connect an OAuth MCP connector", async () => {
@@ -1363,18 +1506,13 @@ test("Add and optionally name a custom OAuth account", async () => {
   const connectionId = crypto.randomUUID();
   let account: ConnectorAccountConnection | null = null;
   let submitted: unknown;
-  let grantMutations = 0;
   const authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
   context.mocks.data.agents([listAgent(RESEARCH_ID, "Research")]);
   context.mocks.api(customConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [connector] });
   });
-  context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
-    return respond(200, {
-      grants: [{ customConnectorId: connector.id, permissionNames: [] }],
-    });
-  });
+  mockCustomAgentAccess();
   context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
     return respond(200, {
       summaries: account
@@ -1416,10 +1554,6 @@ test("Add and optionally name a custom OAuth account", async () => {
           });
     },
   );
-  context.mocks.api(agentCustomConnectorsContract.update, ({ respond }) => {
-    grantMutations += 1;
-    return respond(200, { grants: [] });
-  });
   await setupCustomPage();
 
   click(
@@ -1447,7 +1581,6 @@ test("Add and optionally name a custom OAuth account", async () => {
     ),
   ).toHaveTextContent("Used by Research");
   expect(submitted).toStrictEqual({ intent: "add" });
-  expect(grantMutations).toBe(0);
 });
 
 test("Edit a custom HTTP connector without losing advanced configuration", async () => {

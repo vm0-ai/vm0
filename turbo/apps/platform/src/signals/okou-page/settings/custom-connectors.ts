@@ -383,7 +383,6 @@ const setCustomConnectorValuesForTarget$ = command(
       readonly values: readonly CustomConnectorValueInput[];
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
       readonly account: PlatformConnectorAccountMutationIntent;
-      readonly authorizeTarget?: boolean;
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
@@ -408,13 +407,6 @@ const setCustomConnectorValuesForTarget$ = command(
         connected: false,
         targetAuthorized: false,
         connectionId: null,
-      };
-    }
-    if (args.authorizeTarget === false) {
-      return {
-        connected: true,
-        targetAuthorized: false,
-        connectionId: result.body.connectedAccountId ?? null,
       };
     }
     let targetAuthorized: boolean;
@@ -494,28 +486,6 @@ export const setCustomConnectorValuesForAgent$ = command(
   },
 );
 
-export const setCustomConnectorAccountValues$ = command(
-  async (
-    { set },
-    args: {
-      readonly id: string;
-      readonly values: readonly CustomConnectorValueInput[];
-      readonly account: PlatformConnectorAccountMutationIntent;
-    },
-    signal: AbortSignal,
-  ): Promise<CustomConnectorConnectionResult> => {
-    return await set(
-      setCustomConnectorValuesForTarget$,
-      {
-        ...args,
-        authorizationTarget: { kind: "visible-agents" },
-        authorizeTarget: false,
-      },
-      signal,
-    );
-  },
-);
-
 async function customConnectorAccountMutationCompleted(
   createClient: ApiClientFactory,
   connectorId: string,
@@ -539,7 +509,6 @@ interface CustomConnectorAuthorizationTargetArgs {
   readonly id: string;
   readonly authorizationTarget: CustomConnectorAuthorizationTarget;
   readonly account: PlatformConnectorAccountMutationIntent;
-  readonly authorizeTarget?: boolean;
   readonly useDefaultConnectorProjection?: boolean;
 }
 
@@ -596,19 +565,21 @@ async function customConnectorOAuthCompletion(
       initialUpdatedAt: args.initialDefaultUpdatedAt,
     });
   }
-  const exactAccountCompleted = args.expectedConnectionId
-    ? await connectorAccountConnectionExists(
-        args.createClient,
-        { kind: "custom", customConnectorId: args.target.id },
-        args.expectedConnectionId,
-        signal,
-      )
-    : false;
-  if (exactAccountCompleted) {
-    return { completed: true, connectionId: args.expectedConnectionId };
+  if (args.target.account.intent === "add" && args.expectedConnectionId) {
+    const completed = await connectorAccountConnectionExists(
+      args.createClient,
+      { kind: "custom", customConnectorId: args.target.id },
+      args.expectedConnectionId,
+      signal,
+    );
+    return {
+      completed,
+      connectionId: completed ? args.expectedConnectionId : null,
+    };
   }
-  // Older API responses omit the exact ID. Remove this bounded account
-  // mutation fallback with the final rollout contraction in #28571.
+  // Reconnect must update the selected account; its existence alone is not
+  // completion. Adds without an exact ID retain the bounded older-API fallback
+  // until the final rollout contraction in #28571.
   const completed = await customConnectorAccountMutationCompleted(
     args.createClient,
     args.target.id,
@@ -631,11 +602,10 @@ const authorizeCompletedCustomConnectorTarget$ = command(
     args: {
       readonly connector: CustomConnectorResponse | undefined;
       readonly target: CustomConnectorAuthorizationTarget;
-      readonly authorizeTarget: boolean;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    if (!args.connector?.connected || !args.authorizeTarget) {
+    if (!args.connector?.connected) {
       return false;
     }
     if (!args.connector.permissionBundleRef) {
@@ -728,7 +698,6 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
         {
           connector: startResult.connector,
           target: args.authorizationTarget,
-          authorizeTarget: args.authorizeTarget !== false,
         },
         signal,
       );
@@ -775,7 +744,6 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
       {
         connector,
         target: args.authorizationTarget,
-        authorizeTarget: args.authorizeTarget !== false,
       },
       signal,
     );
@@ -828,27 +796,6 @@ export const connectCustomConnectorAuthorizationForAgent$ = command(
           ? { useDefaultConnectorProjection: true as const }
           : {}),
         authorizationTarget: { kind: "agent", agentId: args.agentId },
-      },
-      signal,
-    );
-  },
-);
-
-export const connectCustomConnectorAccountAuthorization$ = command(
-  async (
-    { set },
-    args: {
-      readonly id: string;
-      readonly account: PlatformConnectorAccountMutationIntent;
-    },
-    signal: AbortSignal,
-  ): Promise<CustomConnectorConnectionResult> => {
-    return await set(
-      connectCustomConnectorAuthorizationForTarget$,
-      {
-        ...args,
-        authorizationTarget: { kind: "visible-agents" },
-        authorizeTarget: false,
       },
       signal,
     );

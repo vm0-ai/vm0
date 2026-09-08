@@ -56,7 +56,7 @@ import {
 } from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
-import { subagents$ } from "../../agent.ts";
+import { agents$ } from "../../agent.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { reloadConnectorAccountSummaries$ } from "../connector-accounts.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
@@ -835,12 +835,12 @@ const authorizeConnectorForVisibleAgents$ = command(
     connectorSlug: ConnectorSlug,
     signal: AbortSignal,
   ): Promise<void> => {
-    const visibleSubagents = await get(subagents$);
+    const visibleAgents = await get(agents$);
     signal.throwIfAborted();
     const client = get(apiClient$)(userConnectorsContract);
     await withCleanup(
       Promise.all(
-        visibleSubagents.map(async (agent) => {
+        visibleAgents.map(async (agent) => {
           await accept(
             client.update({
               params: { id: agent.agentId },
@@ -2180,14 +2180,14 @@ function getDefaultConnectorProjectionConnectionId(
 function createExpectedConnectorConnectionAvailableCommand(
   connectorSlug: ConnectorSlug,
   expectedConnectionId: string | null,
-  useDefaultConnectorProjection: boolean,
+  requiresAccountMutation: boolean,
   onConnectorChanged$: ReturnType<
     typeof createConnectorOAuthAuthCodeChangedCommand
   >,
 ) {
   return command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
-      if (useDefaultConnectorProjection) {
+      if (requiresAccountMutation) {
         return await set(onConnectorChanged$, signal);
       }
       return expectedConnectionId
@@ -2366,7 +2366,8 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       createExpectedConnectorConnectionAvailableCommand(
         connectorSlug,
         expectedConnectionId,
-        options.useDefaultConnectorProjection ?? false,
+        account.intent === "reconnect" ||
+          (options.useDefaultConnectorProjection ?? false),
         onConnectorChanged$,
       );
     const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
@@ -2410,20 +2411,14 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
 
     let completedConnectionId = expectedConnectionId;
     if (waitResult === "popupClosed") {
-      const expectedConnected = expectedConnectionId
+      const connectedAfterClose = expectedConnectionId
         ? await set(expectedConnectionAvailable$, signal)
-        : false;
-      const connectedAfterClose = expectedConnected
-        ? true
         : // Older API responses omit the exact ID. Remove this bounded account
           // mutation fallback with the final rollout contraction in #28571.
           await set(onConnectorChanged$, signal);
       signal.throwIfAborted();
       if (!connectedAfterClose) {
         return false;
-      }
-      if (!expectedConnected && !expectedConnectionId) {
-        completedConnectionId = null;
       }
     } else if (!expectedConnectionId) {
       completedConnectionId =

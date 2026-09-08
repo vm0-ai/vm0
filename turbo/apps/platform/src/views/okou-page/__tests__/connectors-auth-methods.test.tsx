@@ -197,9 +197,7 @@ test("Add an AWS account with an external code", async () => {
   context.mocks.data.agents([
     listAgent("c0000000-0000-4000-a000-000000000002", "Research Agent"),
   ]);
-  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledConnectorSlugs: [] });
-  });
+  mockAgentConnectorAccess("aws");
   const authWindow = createAuthWindow();
   const browserOpen = context.mocks.browser.open(authWindow);
   context.mocks.api(
@@ -262,7 +260,7 @@ test("Add an AWS account with an external code", async () => {
   ).resolves.toBeInTheDocument();
   expect(
     getConnectorAction("button", "Manage AWS access", awsCard),
-  ).toHaveTextContent("Add access");
+  ).toHaveTextContent("Used by Research Agent");
   expect(
     screen.queryByText("You've successfully connected with AWS!"),
   ).toBeNull();
@@ -271,6 +269,11 @@ test("Add an AWS account with an external code", async () => {
 test("Add an account through OpenID", async () => {
   const slug = "server-authored-steam";
   mockConnectors(context, []);
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent("c0000000-0000-4000-a000-000000000002", "Research"),
+  ]);
+  mockAgentConnectorAccess(slug);
   mockPublicConnectorStatus(context, [
     publicStatusItem({
       connectorSlug: slug,
@@ -319,6 +322,13 @@ test("Add an account through OpenID", async () => {
       "https://openid.test/partner-steam/authorize",
     );
   });
+  storeConnectedConnector(slug, "partner-openid");
+  context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  await waitFor(() => {
+    expect(
+      getConnectorAction("button", "Manage Partner Steam access"),
+    ).toHaveTextContent("Used by 2 agents");
+  });
 });
 
 test("Choose a credential-free method among multiple connection methods", async () => {
@@ -364,7 +374,7 @@ test("Choose a credential-free method among multiple connection methods", async 
   });
 });
 
-test("Keep agent access independent after a manual connection", async () => {
+test("Authorize all visible agents after a manual connection", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
@@ -424,13 +434,18 @@ test("Keep agent access independent after a manual connection", async () => {
         "Manage Public Axiom access",
         getConnectorCard("Public Axiom"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("Connect through device authorization", async () => {
   mockConnectors(context, []);
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent("c0000000-0000-4000-a000-000000000002", "Research"),
+  ]);
+  mockAgentConnectorAccess("base44");
   mockPublicConnectorStatus(context, [
     publicStatusItem({
       connectorSlug: "base44",
@@ -478,6 +493,9 @@ test("Connect through device authorization", async () => {
     expect(
       within(getConnectorCard("Base44")).getByText("mock-base44"),
     ).toBeInTheDocument();
+    expect(
+      getConnectorAction("button", "Manage Base44 access"),
+    ).toHaveTextContent("Used by 2 agents");
   });
 });
 
@@ -552,7 +570,7 @@ test("Enable a connector that needs no credentials", async () => {
   context.mocks.api(
     connectorNoAuthGrantContract.connect,
     ({ body, respond }) => {
-      expect(body.authorizeAgent).toBeFalsy();
+      expect(body.authorizeAgent).toBeTruthy();
       return respond(200, storeConnectedConnector("stripe", body.authMethod));
     },
   );
@@ -585,7 +603,7 @@ test("Enable a connector that needs no credentials", async () => {
         "Manage Public Stripe access",
         getConnectorCard("Public Stripe"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
   expect(browserOpen.calls).toHaveLength(0);
   expect(screen.queryByText(/You've successfully connected with/u)).toBeNull();
@@ -741,7 +759,7 @@ test("Complete OAuth only after the selected connector changes", async () => {
         "Manage Public Stripe access",
         getConnectorCard("Public Stripe"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
 });
 
@@ -862,7 +880,7 @@ test("Optionally name a newly added credential-free account", async () => {
     expect(getConnectorCard("Public Stripe")).toHaveTextContent("API key");
   });
   expect(submittedAccount).toStrictEqual({ intent: "add" });
-  expect(submittedAuthorizeAgent).toBeUndefined();
+  expect(submittedAuthorizeAgent).toBeTruthy();
 });
 
 test("Retry device authorization after a provider error", async () => {
