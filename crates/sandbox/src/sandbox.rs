@@ -367,6 +367,14 @@ pub trait SandboxStartObserver: Send {
     /// start. A provider invokes this callback at most once per applicable
     /// stage.
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool);
+
+    /// Records a child attempt inside the guest DNS readiness stage.
+    ///
+    /// Providers may buffer these callbacks until the invocation ends to avoid
+    /// observer work between retries. Children overlap their parent, and must
+    /// not be added to it. Cancellation may report an incomplete child without
+    /// a completed parent; this callback never owns cancellation or cleanup.
+    fn record_dns_readiness_attempt(&mut self, _attempt: crate::SandboxDnsReadinessAttempt) {}
 }
 
 /// Fixed low-cardinality stages of the final reuse preparation and park path.

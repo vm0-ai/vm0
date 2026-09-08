@@ -382,6 +382,30 @@ impl Sandbox for ObservedStartSandbox {
                 continue;
             }
             let success = self.failed_stage != Some(stage);
+            if stage == SandboxStartStage::GuestDnsReadiness {
+                for (attempt, duration, guest_duration_ms, outcome) in [
+                    (1, 4, 0, sandbox::SandboxDnsReadinessOutcome::ProcessTimeout),
+                    (
+                        2,
+                        9,
+                        6,
+                        if success {
+                            sandbox::SandboxDnsReadinessOutcome::Success
+                        } else {
+                            sandbox::SandboxDnsReadinessOutcome::WaitFailed
+                        },
+                    ),
+                ] {
+                    observer.record_dns_readiness_attempt(sandbox::SandboxDnsReadinessAttempt {
+                        attempt,
+                        final_attempt: attempt == 2,
+                        duration: Duration::from_millis(duration),
+                        guest_duration_ms: Some(guest_duration_ms),
+                        outcome,
+                        completed_at: std::time::SystemTime::now(),
+                    });
+                }
+            }
             observer.record_stage(stage, Duration::from_millis(index as u64 + 30), success);
             if !success {
                 return Err(SandboxError::Start {
@@ -1594,6 +1618,48 @@ async fn execute_job_records_exact_reuse_speculation_timing() {
 }
 
 #[tokio::test]
+async fn execute_job_keeps_dns_attempt_failures_inside_the_successful_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+    let attempts: Vec<_> = telemetry
+        .pending_ops_with_duration_snapshot()
+        .into_iter()
+        .filter(|(action, _, _, _)| {
+            action == "runner_fresh_sandbox_start_guest_dns_readiness_attempt"
+        })
+        .map(|(_, duration, success, error)| (duration, success, error))
+        .collect();
+    assert_eq!(
+        attempts,
+        vec![(4, false, Some("process_timeout".into())), (9, true, None)]
+    );
+    assert_action_duration(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        33,
+    );
+    assert_action_success(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness",
+        true,
+    );
+    assert_action_success(&telemetry, "runner_agent_start_process", true);
+}
+
+#[tokio::test]
 async fn execute_job_omits_inapplicable_sandbox_start_stages() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -1625,6 +1691,10 @@ async fn execute_job_omits_inapplicable_sandbox_start_stages() {
         "runner_fresh_sandbox_start_snapshot_load_resume",
     );
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start_guest_dns_readiness");
+    assert_lacks_action(
+        &telemetry,
+        "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+    );
     assert_action_success(&telemetry, "runner_fresh_sandbox_start", true);
 }
 

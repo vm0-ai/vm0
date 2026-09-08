@@ -191,6 +191,20 @@ impl<'a> SandboxStartTiming<'a> {
     }
 }
 
+impl SandboxStartObserver for SandboxStartTiming<'_> {
+    fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record_stage(stage, duration, success);
+        }
+    }
+
+    fn record_dns_readiness_attempt(&mut self, attempt: sandbox::SandboxDnsReadinessAttempt) {
+        if let Some(observer) = self.observer.as_deref_mut() {
+            observer.record_dns_readiness_attempt(attempt);
+        }
+    }
+}
+
 struct SandboxFinalExecParkTiming<'a> {
     observer: Option<&'a mut dyn SandboxFinalExecParkObserver>,
 }
@@ -1540,7 +1554,7 @@ impl FirecrackerSandbox {
 
         if let Some(dns_port) = self.factory_config.dns_port {
             let dns_started = Instant::now();
-            match wait_for_guest_dns_readiness(&guest_control_client).await {
+            match wait_for_guest_dns_readiness(&guest_control_client, &mut timing).await {
                 Ok(()) => {
                     timing.record(SandboxStartStage::GuestDnsReadiness, dns_started, true);
                 }

@@ -200,6 +200,10 @@ struct FreshSandboxStartObserver<'a> {
 }
 
 impl SandboxStartObserver for FreshSandboxStartObserver<'_> {
+    fn record_dns_readiness_attempt(&mut self, attempt: sandbox::SandboxDnsReadinessAttempt) {
+        self.telemetry.record_dns_readiness_attempt(attempt);
+    }
+
     fn record_stage(&mut self, stage: SandboxStartStage, duration: Duration, success: bool) {
         let error = (!success).then_some(SANDBOX_START_STAGE_FAILED);
         self.telemetry.record(
