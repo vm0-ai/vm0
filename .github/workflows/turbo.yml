@@ -2954,6 +2954,8 @@ jobs:
           report_type: test_results
       - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
+        # JUnit artifacts are diagnostic; the BATS step determines test success.
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: e2e-runner-junit-${{ matrix.index }}
