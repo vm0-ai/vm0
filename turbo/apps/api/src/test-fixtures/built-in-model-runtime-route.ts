@@ -23,6 +23,7 @@ interface HeldBuiltInModelRouteBoundary {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly blockedWaiterCount: () => Promise<number>;
+  readonly cancelBlockedQueries: () => Promise<number>;
 }
 
 /**
@@ -121,6 +122,22 @@ export async function holdBuiltInModelRouteLockFixture(args: {
     done,
     blockedWaiterCount: async () => {
       return await blockedWaiterCount(pid);
+    },
+    // A real query failure cannot be requested through the report API. Only
+    // cancel queries waiting on this fixture's owned row lock.
+    cancelBlockedQueries: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT pg_cancel_backend(activity.pid) AS cancelled
+          FROM pg_stat_activity AS activity
+          WHERE ${pid} = ANY(pg_blocking_pids(activity.pid))
+        `,
+        z.object({ cancelled: z.boolean() }),
+      );
+      return rows.filter((row) => {
+        return row.cancelled;
+      }).length;
     },
   };
 }
