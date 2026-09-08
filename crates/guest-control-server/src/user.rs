@@ -1,5 +1,4 @@
 use std::io;
-#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 use std::path::PathBuf;
 use std::process::Command;
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
@@ -29,20 +28,13 @@ const TRUSTED_ROOTFS_ENVIRONMENT: [(&str, &str); 6] = [
     ("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt"),
 ];
 
-#[cfg(any(test, not(any(debug_assertions, feature = "test-support"))))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct UserCredentials {
-    username: String,
-    uid: u32,
-    gid: u32,
-    home: PathBuf,
-    groups: Vec<u32>,
-}
-
-enum TargetIdentity {
-    Current,
-    #[cfg(not(any(debug_assertions, feature = "test-support")))]
-    User(UserCredentials),
+    pub(crate) username: String,
+    pub(crate) uid: u32,
+    pub(crate) gid: u32,
+    pub(crate) home: PathBuf,
+    pub(crate) groups: Vec<u32>,
 }
 
 #[cfg(not(any(debug_assertions, feature = "test-support")))]
@@ -83,18 +75,17 @@ pub(crate) fn shell_command_uid(sudo: bool) -> io::Result<libc::uid_t> {
 }
 
 pub(crate) fn apply_command_identity(command: &mut Command, sudo: bool) -> io::Result<()> {
-    #[cfg(any(debug_assertions, feature = "test-support"))]
-    let _ = command;
-    match target_identity(sudo)? {
-        TargetIdentity::Current => Ok(()),
-        #[cfg(not(any(debug_assertions, feature = "test-support")))]
-        TargetIdentity::User(credentials) => apply_credentials(command, credentials),
+    if let Some(credentials) = command_credentials(sudo)? {
+        apply_credentials(command, credentials)?;
     }
+    Ok(())
 }
 
 /// Install the trusted Guest Agent environment without sourcing sandbox-owned
 /// shell state during fixed launch.
-pub(crate) fn configure_guest_agent_command_environment(command: &mut Command) -> io::Result<()> {
+pub(crate) fn configure_guest_agent_command_environment(
+    command: &mut crate::contained_command::ContainedCommand,
+) -> io::Result<()> {
     command
         .envs(TRUSTED_ROOTFS_ENVIRONMENT)
         .env("SHELL", AGENT_SHELL);
@@ -122,27 +113,28 @@ fn sandbox_user_path(home: &std::path::Path) -> String {
     )
 }
 
-fn target_identity(sudo: bool) -> io::Result<TargetIdentity> {
+pub(crate) fn command_credentials(sudo: bool) -> io::Result<Option<&'static UserCredentials>> {
     if sudo {
-        return Ok(TargetIdentity::Current);
+        return Ok(None);
     }
 
     #[cfg(any(debug_assertions, feature = "test-support"))]
     {
         // Local guest-control tests run without the production rootfs user account.
         // Production release builds below resolve and drop to the sandbox user.
-        Ok(TargetIdentity::Current)
+        Ok(None)
     }
 
     #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
-        cached_system_user_credentials()
-            .map(|credentials| TargetIdentity::User(credentials.clone()))
+        cached_system_user_credentials().map(Some)
     }
 }
 
-#[cfg(not(any(debug_assertions, feature = "test-support")))]
-fn apply_credentials(command: &mut Command, credentials: UserCredentials) -> io::Result<()> {
+pub(crate) fn apply_credentials(
+    command: &mut Command,
+    credentials: &'static UserCredentials,
+) -> io::Result<()> {
     command
         .current_dir(&credentials.home)
         .env("HOME", &credentials.home)
@@ -155,11 +147,7 @@ fn apply_credentials(command: &mut Command, credentials: UserCredentials) -> io:
 
         let uid = credentials.uid as libc::uid_t;
         let gid = credentials.gid as libc::gid_t;
-        let groups: Vec<libc::gid_t> = credentials
-            .groups
-            .into_iter()
-            .map(|group| group as libc::gid_t)
-            .collect();
+        let groups = &credentials.groups;
 
         // SAFETY: The closure only calls async-signal-safe credential syscalls
         // in the child immediately before exec. It does not allocate or touch
@@ -332,21 +320,21 @@ mod tests {
 
     #[test]
     fn guest_agent_environment_preserves_trusted_defaults() {
-        let mut command = Command::new("true");
+        let mut command = crate::contained_command::ContainedCommand::new("true");
         configure_guest_agent_command_environment(&mut command).unwrap();
 
         for (key, expected) in TRUSTED_ROOTFS_ENVIRONMENT {
-            let actual = command
-                .get_envs()
-                .find_map(|(candidate, value)| (candidate == key).then_some(value))
-                .flatten();
-            assert_eq!(actual, Some(std::ffi::OsStr::new(expected)));
+            let actual = command.environment.get(std::ffi::OsStr::new(key));
+            assert_eq!(
+                actual.map(|value| value.as_os_str()),
+                Some(std::ffi::OsStr::new(expected))
+            );
         }
-        let shell = command
-            .get_envs()
-            .find_map(|(candidate, value)| (candidate == "SHELL").then_some(value))
-            .flatten();
-        assert_eq!(shell, Some(std::ffi::OsStr::new(AGENT_SHELL)));
+        let shell = command.environment.get(std::ffi::OsStr::new("SHELL"));
+        assert_eq!(
+            shell.map(|value| value.as_os_str()),
+            Some(std::ffi::OsStr::new(AGENT_SHELL))
+        );
     }
 
     #[test]
