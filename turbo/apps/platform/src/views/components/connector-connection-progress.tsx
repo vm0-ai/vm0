@@ -10,7 +10,7 @@ export function ConnectorConnectionProgress() {
 
   return createPortal(
     <div
-      role="status"
+      role={pending ? "status" : undefined}
       aria-live="polite"
       aria-atomic="true"
       className="pointer-events-none fixed inset-x-4 bottom-[calc(var(--sab,0px)+16px)] z-[2147483646] flex justify-center"
