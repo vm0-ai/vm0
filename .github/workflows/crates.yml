@@ -640,6 +640,81 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/report-memory-peak
 
+  runner-rootfs-process-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
+    needs: [detect, runner-host-groups]
+    if: |
+      needs.detect.outputs.metal-job-ref != '' && (
+        needs.detect.outputs.ci-changed == 'true' ||
+        needs.detect.outputs.runner-changed == 'true'
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.runner-host-groups.outputs.matrix || '[]') }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_TRIPLE: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: crates -> target
+          shared-key: ${{ matrix.cacheSuffix }}-rootfs-process
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile rootfs process tests for ${{ matrix.label }}
+        working-directory: crates
+        run: |
+          TEST_BIN=$(cargo test --no-run --profile ci --target "$TARGET_TRIPLE" \
+            -p runner --bin runner --message-format=json | \
+            jq -r 'select(.reason == "compiler-artifact" and .target.name == "runner" and .profile.test) | .executable // empty')
+          test -n "$TEST_BIN"
+          cp "$TEST_BIN" target/runner-rootfs-process-test
+          echo "TEST_BIN=crates/target/runner-rootfs-process-test" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run rootfs process ownership tests on metal
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
+          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$JOB_REF" "$HOSTS")
+          REMOTE="${METAL_USER}@${HOST}"
+          REMOTE_BIN="/tmp/runner-rootfs-process-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RUNNER_HOST_GROUP_ID}"
+          scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
+          ssh "$REMOTE" sh -s -- "$REMOTE_BIN" <<'REMOTE_TEST'
+          set -eu
+          trap 'rm -f -- "$1"' EXIT
+          # An outer PID namespace also contains the test's deliberately stopped
+          # workers if its controller is killed before the RAII guard can resume them.
+          sudo unshare --mount --pid --fork --kill-child --mount-proc \
+            --propagation private -- "$1" --ignored --exact \
+            cmd::build::scripts::process_tests::rootfs_process_ownership --nocapture
+          REMOTE_TEST
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
+
   runner-build:
     runs-on: ubuntu-latest
     permissions:
@@ -992,6 +1067,7 @@ jobs:
       - runner-behavior-lane-d
       - host-cpu-fairness-test
       - nbd-cow-test
+      - runner-rootfs-process-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
     steps:
@@ -1043,6 +1119,7 @@ jobs:
           check_result "runner-behavior-lane-d" "${{ needs.runner-behavior-lane-d.result }}" "true"
           check_result "host-cpu-fairness-test" "${{ needs.host-cpu-fairness-test.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
+          check_result "runner-rootfs-process-test" "${{ needs.runner-rootfs-process-test.result }}" "true"
 
           echo "::endgroup::"
           exit $FAILED

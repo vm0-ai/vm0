@@ -58,7 +58,7 @@ export class DesktopComputerUseDriverSelection {
   async setExperiment(enabled: boolean): Promise<void> {
     if (enabled) this.requireDeveloper();
     await this.save(() => this.options.preferences.setExperiment(enabled));
-    // An opt-in is presentation only, including while a driver is running.
+    // The experiment IPC alone never switches to CUA; selection is explicit.
     if (!enabled) await this.apply();
   }
 

@@ -75,7 +75,7 @@ pub(super) fn mock_r2_cache(rules: &[&Rule]) -> R2ImageCache {
     R2ImageCache::with_client(client, "test-bucket".to_string())
 }
 
-pub(super) async fn fake_rootfs_scripts() -> (RootfsScripts, PathBuf) {
+pub(super) async fn fake_rootfs_scripts() -> (RootfsScripts, RootfsScriptDir) {
     let temp_dir = tempfile::tempdir().unwrap();
     let work_dir = temp_dir.path().to_path_buf();
     tokio::fs::write(
@@ -146,7 +146,31 @@ printf called >> "$script_dir/verify-rootfs-called"
     .await
     .unwrap();
 
-    (RootfsScripts::from_temp_dir(temp_dir), work_dir)
+    // Cache tests replace the external namespace/build tools. Privileged process
+    // regressions exercise the actual unshare supervisor on metal.
+    let launcher = work_dir.join("unshare-fixture.sh");
+    tokio::fs::write(
+        &launcher,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+while [[ "$1" != -- ]]; do shift; done
+shift
+# bash -c <namespace init script> <argv0>
+shift 4
+while [[ "$1" != -- ]]; do shift; done
+shift
+exec bash "$@"
+"#,
+    )
+    .await
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    tokio::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700))
+        .await
+        .unwrap();
+    let mut scripts = RootfsScripts::from_temp_dir(temp_dir);
+    let work_dir = scripts.path().await.unwrap();
+    (scripts, work_dir)
 }
 
 pub(super) async fn template_archive_bytes(content: &[u8]) -> Vec<u8> {

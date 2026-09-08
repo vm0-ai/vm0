@@ -51,15 +51,18 @@ export class DesktopComputerUseDriverPreferences {
   setExperiment(enabled: boolean): void {
     this.save({
       experimentalCuaEnabled: enabled,
-      // Opting in only reveals the selector. Opting out requests Okou.
+      // The explicit experiment IPC does not activate CUA. Opting out requests Okou.
       selectedDriver: enabled ? this.preference.selectedDriver : "okou",
     });
   }
 
   select(selectedDriver: ComputerUseDriverId): void {
-    if (selectedDriver === "cua" && !this.preference.experimentalCuaEnabled)
-      throw new Error("Enable experimental CUA first");
-    this.save({ ...this.preference, selectedDriver });
+    // The authorized explicit choice commits opt-in and selection together.
+    this.save({
+      experimentalCuaEnabled:
+        selectedDriver === "cua" || this.preference.experimentalCuaEnabled,
+      selectedDriver,
+    });
   }
 
   private save(preference: ComputerUseDriverPreference): void {

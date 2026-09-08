@@ -916,6 +916,15 @@ fn open_existing_private_file(path: &Path, max_bytes: u64) -> io::Result<Option<
 /// final file are opened without following symlinks. The final file must be a
 /// regular file owned by the effective user with no group or other permission
 /// bits. The size is checked both before and while reading.
+///
+/// **Side effects.** On Unix, the read first prepares the parent directory with
+/// the same semantics as [`ensure_dir`]. Missing parent components are created
+/// with `0700`, and an existing final parent directory is tightened to `0700`,
+/// before the final file lookup and validation. These changes may remain after
+/// `Ok(None)` or an error, so callers need permission to create missing
+/// directory components and `chmod` the final parent. On non-Unix targets, the
+/// function uses `File::open` directly and does not perform this parent
+/// preparation.
 pub fn read_private_bounded(
     path: impl AsRef<Path>,
     max_bytes: usize,

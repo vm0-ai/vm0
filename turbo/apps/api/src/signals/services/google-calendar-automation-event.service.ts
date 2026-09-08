@@ -323,6 +323,16 @@ function tokenNeedsRefresh(
   );
 }
 
+function normalizeGoogleCalendarId(
+  calendarId: string,
+  emailAddress: string | null,
+): string {
+  return emailAddress !== null &&
+    emailAddress.toLowerCase() === calendarId.toLowerCase()
+    ? GOOGLE_CALENDAR_PRIMARY_ID
+    : calendarId;
+}
+
 export async function normalizeGoogleCalendarIdForConnector(
   db: Db,
   args: {
@@ -350,11 +360,10 @@ export async function normalizeGoogleCalendarIdForConnector(
   if (loaded.kind === "missing" || loaded.kind === "unavailable") {
     return args.calendarId;
   }
-  const emailAddress = loaded.connection.externalEmail;
-  return emailAddress !== null &&
-    emailAddress.toLowerCase() === args.calendarId.toLowerCase()
-    ? GOOGLE_CALENDAR_PRIMARY_ID
-    : args.calendarId;
+  return normalizeGoogleCalendarId(
+    args.calendarId,
+    loaded.connection.externalEmail,
+  );
 }
 
 async function resolveGoogleCalendarAccess(
@@ -464,6 +473,59 @@ async function resolveGoogleCalendarAccess(
       accessToken: refreshed.accessToken,
     },
   };
+}
+
+export async function googleCalendarAutomationTargetMatchesConnector(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly requestedCalendarId: string;
+    readonly normalizedCalendarId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const access = await resolveGoogleCalendarAccess(
+    { ...args, refreshExpiredToken: false },
+    signal,
+  );
+  signal.throwIfAborted();
+  return (
+    access.kind === "ok" &&
+    normalizeGoogleCalendarId(
+      args.requestedCalendarId,
+      access.access.emailAddress,
+    ) === args.normalizedCalendarId
+  );
+}
+
+/**
+ * Lock a staged target through the caller's transaction and prove that the
+ * provider watch and baseline are still ready. Callers must already hold the
+ * connector-account lock so the shared account -> lifecycle lock order is
+ * preserved.
+ */
+export async function lockReadyGoogleCalendarWatchTarget(
+  args: {
+    readonly db: Tx;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly calendarId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  await lockGoogleCalendarLifecycle(args.db, args.connectorId, args.calendarId);
+  signal.throwIfAborted();
+  const state = await loadCalendarWatchState(args, signal);
+  return (
+    state !== null &&
+    state.orgId === args.orgId &&
+    state.userId === args.userId &&
+    state.resourceId.length > 0 &&
+    !watchNeedsRefresh(state, nowDate())
+  );
 }
 
 function calendarApiUrl(path: string): string {
@@ -1767,14 +1829,17 @@ async function finalizePreparedCalendarWatch(args: {
   readonly calendarId: string;
   readonly prepared: PreparedGoogleCalendarWatch;
   readonly watch: z.infer<typeof calendarWatchResponseSchema>;
-  readonly allowStagedOfficialTarget?: boolean;
+  readonly allowStagedTarget?: boolean;
 }): Promise<
   | {
       readonly kind: "active";
       readonly state: GoogleCalendarWatchStateRow;
       readonly recoveredEpisode: GoogleCalendarWatchActionRequiredEpisode | null;
     }
-  | { readonly kind: "inactive" }
+  | {
+      readonly kind: "inactive";
+      readonly reason: "no_consumer" | "staged_target_lost";
+    }
 > {
   const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
   const currentTime = nowDate();
@@ -1797,6 +1862,9 @@ async function finalizePreparedCalendarWatch(args: {
       current.id !== args.prepared.stateId ||
       current.channelId !== args.prepared.channelId
     ) {
+      if (args.allowStagedTarget === true) {
+        return { kind: "inactive", reason: "staged_target_lost" };
+      }
       throw new Error("Failed to load pending Google Calendar watch state");
     }
     const recoveredEpisode = calendarWatchActionRequiredEpisode(current);
@@ -1810,8 +1878,8 @@ async function finalizePreparedCalendarWatch(args: {
       },
       lifecycleSignal,
     );
-    if (!hasConsumer && args.allowStagedOfficialTarget !== true) {
-      return { kind: "inactive" };
+    if (!hasConsumer && args.allowStagedTarget !== true) {
+      return { kind: "inactive", reason: "no_consumer" };
     }
     const [updated] = await tx
       .update(googleCalendarWatchStates)
@@ -1858,7 +1926,7 @@ async function activatePreparedCalendarWatch(args: {
   readonly access: GoogleCalendarAccess;
   readonly calendarId: string;
   readonly prepared: PreparedGoogleCalendarWatch;
-  readonly allowStagedOfficialTarget?: boolean;
+  readonly allowStagedTarget?: boolean;
 }): Promise<
   | { readonly kind: "ok"; readonly state: GoogleCalendarWatchStateRow }
   | {
@@ -1914,7 +1982,10 @@ async function activatePreparedCalendarWatch(args: {
     });
     return {
       kind: "bad_request",
-      message: "Google Calendar watch no longer has an enabled automation",
+      message:
+        finalization.reason === "staged_target_lost"
+          ? "Google Calendar watch target changed during setup"
+          : "Google Calendar watch no longer has an enabled automation",
     };
   }
 
@@ -1947,17 +2018,34 @@ async function activatePreparedCalendarWatch(args: {
   return { kind: "ok", state };
 }
 
-export async function ensureGoogleCalendarWatchForUser(
-  args: {
-    readonly db: Db;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorId: string;
-    readonly calendarId?: string;
-    readonly forceRefresh?: boolean;
-    readonly allowStagedOfficialTarget?: boolean;
-    readonly reportProviderFailure?: boolean;
-  },
+interface EnsureGoogleCalendarWatchArgs {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+  readonly calendarId?: string;
+  readonly forceRefresh?: boolean;
+  readonly reportProviderFailure?: boolean;
+}
+
+interface EnsureGoogleCalendarWatchInternalArgs extends EnsureGoogleCalendarWatchArgs {
+  readonly allowStagedTarget?: boolean;
+}
+
+export interface StagedGoogleCalendarWatchTarget {
+  readonly connectorId: string;
+  readonly calendarId: string;
+}
+
+type StageGoogleCalendarWatchTargetResult =
+  | {
+      readonly kind: "ok";
+      readonly stagedTarget: StagedGoogleCalendarWatchTarget;
+    }
+  | Exclude<EnsureGoogleCalendarWatchResult, { readonly kind: "ok" }>;
+
+async function ensureGoogleCalendarWatchForUserInternal(
+  args: EnsureGoogleCalendarWatchInternalArgs,
   signal: AbortSignal,
 ): Promise<EnsureGoogleCalendarWatchResult> {
   const calendarId = args.calendarId ?? GOOGLE_CALENDAR_PRIMARY_ID;
@@ -1999,7 +2087,7 @@ export async function ensureGoogleCalendarWatchForUser(
       },
       signal,
     );
-    if (!hasConsumer && args.allowStagedOfficialTarget !== true) {
+    if (!hasConsumer && args.allowStagedTarget !== true) {
       return { kind: "unchanged" } as const;
     }
 
@@ -2052,7 +2140,7 @@ export async function ensureGoogleCalendarWatchForUser(
     access: prepared.access,
     calendarId,
     prepared: prepared.prepared,
-    allowStagedOfficialTarget: args.allowStagedOfficialTarget,
+    allowStagedTarget: args.allowStagedTarget,
   });
   if (registered.kind === "ok") {
     log.debug("Workflow watch lifecycle reconciled", {
@@ -2075,6 +2163,37 @@ export async function ensureGoogleCalendarWatchForUser(
           ? { providerFailure: registered.providerFailure }
           : {}),
       };
+}
+
+export async function ensureGoogleCalendarWatchForUser(
+  args: EnsureGoogleCalendarWatchArgs,
+  signal: AbortSignal,
+): Promise<EnsureGoogleCalendarWatchResult> {
+  return await ensureGoogleCalendarWatchForUserInternal(args, signal);
+}
+
+/**
+ * Establish a provider-ready watch before an automation starts consuming it.
+ * The returned target remains owned by the caller until the automation switch
+ * commits; callers must release it on every failed persistence path.
+ */
+export async function stageGoogleCalendarWatchTargetForReconfiguration(
+  args: EnsureGoogleCalendarWatchArgs & { readonly calendarId: string },
+  signal: AbortSignal,
+): Promise<StageGoogleCalendarWatchTargetResult> {
+  const result = await ensureGoogleCalendarWatchForUserInternal(
+    { ...args, allowStagedTarget: true },
+    signal,
+  );
+  return result.kind === "ok"
+    ? {
+        kind: "ok",
+        stagedTarget: {
+          connectorId: args.connectorId,
+          calendarId: args.calendarId,
+        },
+      }
+    : result;
 }
 
 interface LegacyPrimaryCalendarMigrationArgs {
@@ -2204,7 +2323,7 @@ async function migrateLegacyPrimaryCalendarWatch(
   args: LegacyPrimaryCalendarMigrationArgs,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const ensured = await ensureGoogleCalendarWatchForUser(
+  const ensured = await stageGoogleCalendarWatchTargetForReconfiguration(
     {
       db: args.db,
       orgId: args.orgId,
@@ -2212,7 +2331,6 @@ async function migrateLegacyPrimaryCalendarWatch(
       connectorId: args.access.connectorId,
       calendarId: GOOGLE_CALENDAR_PRIMARY_ID,
       forceRefresh: true,
-      allowStagedOfficialTarget: true,
       reportProviderFailure: false,
     },
     signal,
@@ -2784,6 +2902,31 @@ async function reconcileGoogleCalendarWatchState(
     result: "ok",
   });
   return { kind: "renewed" };
+}
+
+export async function reconcileGoogleCalendarWatchTarget(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly calendarId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const result = await reconcileGoogleCalendarWatchState(args, signal);
+  return result.kind !== "failed";
+}
+
+export async function releaseStagedGoogleCalendarWatchTarget(
+  args: {
+    readonly db: Db;
+    readonly stagedTarget: StagedGoogleCalendarWatchTarget;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  return await reconcileGoogleCalendarWatchTarget(
+    { db: args.db, ...args.stagedTarget },
+    signal,
+  );
 }
 
 export async function reconcileGoogleCalendarWatchesForUser(

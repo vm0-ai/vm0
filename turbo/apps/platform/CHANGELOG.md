@@ -11,6 +11,42 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.2](https://github.com/vm0-ai/vm0/compare/app-v0.862.1...app-v0.862.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **calendar:** support safe target reconfiguration ([#32441](https://github.com/vm0-ai/vm0/issues/32441)) ([f6f48c8](https://github.com/vm0-ai/vm0/commit/f6f48c8dff8c9a4a33e4312f77da9f8e1a36dc79))
+* **platform:** bypass opaque cache for annotated images ([#32478](https://github.com/vm0-ai/vm0/issues/32478)) ([3d3f761](https://github.com/vm0-ai/vm0/commit/3d3f7612e6ee11480caf558c8ef3159cc09e2ff9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.1
+    * @okouai/core bumped to 8.634.2
+
+## [0.862.1](https://github.com/vm0-ai/vm0/compare/app-v0.862.0...app-v0.862.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align chat response icon rails ([#32412](https://github.com/vm0-ai/vm0/issues/32412)) ([9e30d72](https://github.com/vm0-ai/vm0/commit/9e30d72ee785027123dcf1694c6a6ad2d0fca004))
+* **platform:** align sidebar scrollbar with workspace edge ([#32400](https://github.com/vm0-ai/vm0/issues/32400)) ([03a305e](https://github.com/vm0-ai/vm0/commit/03a305e4cd2986d94634ad031db679d94418478b))
+
+
+### Refactoring
+
+* remove artifact link kind icon feature switch ([#32423](https://github.com/vm0-ai/vm0/issues/32423)) ([ceb9ffe](https://github.com/vm0-ai/vm0/commit/ceb9ffee01c289ece4cc0e2c08bb281cc78e6dba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.1
+
 ## [0.862.0](https://github.com/vm0-ai/vm0/compare/app-v0.861.0...app-v0.862.0) (2026-09-07)
 
 

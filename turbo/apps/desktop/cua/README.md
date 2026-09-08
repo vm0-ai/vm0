@@ -2,8 +2,8 @@
 
 Okou is the default Computer Use driver. The pinned official macOS arm64
 embedded runtime and [command adapter](ADAPTER.md) are available only through an
-explicit local Developer opt-in and selection. Ordinary startup does not load
-CUA. This adds no agent-facing driver parameter, runtime download or release.
+explicit local CUA selection by a current Developer. Ordinary startup does not
+load CUA. This adds no agent-facing driver parameter, runtime download or release.
 
 ## Distribution and integrity
 
@@ -158,16 +158,23 @@ authorize signing promotion, release or Epic acceptance.
 
 ## Developer selection and recovery
 
-In the native **Developer** menu, **Enable experimental CUA driver** is separate
-from the diagnostic-panel **Developer Tools** checkbox. Enabling it only reveals
-**Computer Use driver** on the main page. Okou remains requested until CUA is
-explicitly selected. CUA is experimental; the [0.23.2 adapter contract](ADAPTER.md)
-is unchanged. There is no implicit browser/Okou fallback or action replay.
+Check **Developer Tools** in the app menu to reveal **Computer Use driver** at
+the bottom of the main page, after the hero/setup and existing developer panels.
+The fresh/default installation offers **Okou** and **CUA (Experimental)** directly.
+Selecting CUA is the experimental opt-in; showing the panel alone does not save
+an opt-in, switch drivers, start a stopped host or request OS permissions.
+Unchecking Developer Tools hides the full panel without changing the preference,
+current generation or admitted command. CUA is experimental; the
+[0.23.2 adapter contract](ADAPTER.md) is unchanged. There is no implicit
+browser/Okou fallback or action replay.
 
 The local `computerUseDriver` preference contains only `experimentalCuaEnabled`
-and `selectedDriver` (`okou` or `cua`). Missing/invalid fields use off/Okou; a CUA
-selection requires exact opt-in. Writes preserve installation, keep-awake and
-plugin data. Corrupt/unreadable settings are reported without overwriting them.
+and `selectedDriver` (`okou` or `cua`). Missing/invalid fields use off/Okou.
+An authorized explicit CUA choice saves true/CUA in one atomic transaction before
+requesting a runtime transition. A failed save retains the prior choice and
+cannot authorize CUA. Existing valid saved choices remain readable, without a
+format migration. Writes preserve installation, keep-awake and plugin data.
+Corrupt/unreadable settings are reported without overwriting them.
 Authorization, native processes and readiness are never persisted.
 
 CUA requires a currently authenticated user/workspace/session, newly resolved
@@ -178,14 +185,17 @@ status without loading either actuator. Explicit Accessibility requests prompt
 the signed host; Screen Recording requests open its macOS Privacy settings.
 Ready CUA command/heartbeat checks still withdraw admission on revocation.
 
-The shared main-page controls remain available during setup, Stop and errors.
+With Developer Tools enabled, the lower panel remains available during setup,
+Stop, starting, switching and errors. When tools are hidden or Developer access
+is unavailable, blocked/error states retain only compact explicit recovery in
+the normal page, without a selector or full diagnostics.
 Selecting while stopped persists the choice without starting it. A running
 switch drains the entire claim/action/post-state/completion, retires the old
 generation, and resumes the same cloud host and plugin processes. Rapid choices
 retain only the latest activation intent, including a repeated CUA choice after
 an intervening Okou choice. Stop, auth changes and update/quit supersede startup.
-Disabling persists off/Okou and hides the selector immediately, while actual CUA
-and cleanup remain visible until retirement is proven.
+Click **Use Okou** or select **Okou** to request a driver change. Collapsing
+Developer Tools never requests a change; reopening it restores current diagnostics.
 
 **Retry** is an explicit Start. **Use Okou** changes the request only; neither
 bypasses retained cleanup or a manual Stop. A native failure can retain the real

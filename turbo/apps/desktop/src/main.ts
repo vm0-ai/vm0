@@ -63,6 +63,7 @@ import { createCuaComputerUseDriver } from "./computer-use-cua";
 import { createComputerUseHostPermissions } from "./computer-use-host-permissions";
 import { DesktopComputerUseDriverPreferences } from "./desktop-computer-use-driver-preferences";
 import { DesktopComputerUseDriverSelection } from "./desktop-computer-use-driver-selection";
+import { desktopDeveloperToolsMenu } from "./desktop-developer-tools-menu";
 import { CuaEmbeddedRuntime } from "./cua-runtime";
 import { assertCuaDormant } from "./cua-runtime-files";
 import { runCuaHostProbe } from "./cua-host-probe";
@@ -1197,30 +1198,7 @@ function applyApplicationMenu(): void {
     },
     { type: "separator" },
   ];
-  const developerToolsState = developerTools.getState();
-  if (developerToolsState.available) {
-    appSubmenu.push({
-      label: "Enable experimental CUA driver",
-      type: "checkbox",
-      checked: driverPreferences.getState().experimentalCuaEnabled,
-      click: () => {
-        void setExperimentalCuaEnabled(
-          !driverPreferences.getState().experimentalCuaEnabled,
-        ).catch(() => {
-          console.warn("Computer Use driver preference was not saved");
-        });
-      },
-    });
-    appSubmenu.push({
-      label: "Developer Tools",
-      type: "checkbox",
-      checked: developerToolsState.enabled,
-      click: () => {
-        developerTools.setEnabled(!developerToolsState.enabled);
-      },
-    });
-    appSubmenu.push({ type: "separator" });
-  }
+  appSubmenu.push(...desktopDeveloperToolsMenu(developerTools));
   appSubmenu.push({
     label: `Quit ${config.identity.displayName}`,
     accelerator: "CommandOrControl+Q",

@@ -1,33 +1,96 @@
+use std::fs::File;
+use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use nix::fcntl::Flock;
 
 use crate::error::{RunnerError, RunnerResult};
+
+#[cfg(test)]
+mod process_tests;
 
 pub(super) const TEMPLATE_BUILD_SCRIPT: &str = include_str!("../../../scripts/build-template.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../../scripts/verify-rootfs.sh");
 pub(super) const CUSTOMIZE_SCRIPT: &str = include_str!("../../../scripts/customize-rootfs.sh");
 
 pub(super) struct RootfsScripts {
-    temp_dir: Option<tempfile::TempDir>,
+    temp_dir: Option<Arc<tempfile::TempDir>>,
+    primary_lock: Arc<Flock<File>>,
+    template_lock: Option<Arc<Flock<File>>>,
+    launcher: PathBuf,
+}
+
+/// The extracted scripts and locks must outlive an in-flight process, including cancellation.
+#[derive(Clone)]
+pub(super) struct RootfsScriptDir {
+    directory: Arc<tempfile::TempDir>,
+    locks: Vec<Arc<Flock<File>>>,
+    launcher: PathBuf,
+}
+
+impl std::ops::Deref for RootfsScriptDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        self.directory.path()
+    }
+}
+
+pub(super) struct RootfsScriptCommand {
+    pub(super) command: std::process::Command,
+    directory: RootfsScriptDir,
+    inherited_locks: Vec<OwnedFd>,
 }
 
 impl RootfsScripts {
-    pub(super) fn new() -> Self {
-        Self { temp_dir: None }
+    pub(super) fn new(
+        primary_lock: Arc<Flock<File>>,
+        template_lock: Option<Arc<Flock<File>>>,
+    ) -> Self {
+        Self {
+            temp_dir: None,
+            primary_lock,
+            template_lock,
+            launcher: PathBuf::from("unshare"),
+        }
     }
 
     #[cfg(test)]
     pub(super) fn from_temp_dir(temp_dir: tempfile::TempDir) -> Self {
+        let primary_lock = Arc::new(
+            Flock::lock(
+                tempfile::tempfile().unwrap(),
+                nix::fcntl::FlockArg::LockExclusive,
+            )
+            .unwrap(),
+        );
         Self {
-            temp_dir: Some(temp_dir),
+            launcher: temp_dir.path().join("unshare-fixture.sh"),
+            temp_dir: Some(Arc::new(temp_dir)),
+            primary_lock,
+            template_lock: None,
         }
     }
 
-    pub(super) async fn path(&mut self) -> RunnerResult<PathBuf> {
+    pub(super) fn release_template_lock(&mut self) {
+        self.template_lock = None;
+    }
+
+    pub(super) async fn path(&mut self) -> RunnerResult<RootfsScriptDir> {
         if self.temp_dir.is_none() {
-            self.temp_dir = Some(create_rootfs_scripts_dir().await?);
+            self.temp_dir = Some(Arc::new(create_rootfs_scripts_dir().await?));
         }
         match self.temp_dir.as_ref() {
-            Some(dir) => Ok(dir.path().to_path_buf()),
+            Some(directory) => Ok(RootfsScriptDir {
+                directory: Arc::clone(directory),
+                locks: std::iter::once(Arc::clone(&self.primary_lock))
+                    .chain(self.template_lock.iter().cloned())
+                    .collect(),
+                launcher: self.launcher.clone(),
+            }),
             None => Err(RunnerError::Internal(
                 "rootfs scripts dir was not initialized".into(),
             )),
@@ -50,54 +113,121 @@ async fn create_rootfs_scripts_dir() -> RunnerResult<tempfile::TempDir> {
     Ok(dir)
 }
 
-pub(super) fn rootfs_script_command(script: &Path) -> tokio::process::Command {
-    let mut cmd = tokio::process::Command::new("bash");
-    cmd.arg(script).stdin(std::process::Stdio::null());
-    cmd.process_group(0);
-    cmd.kill_on_drop(true);
+// Only the external unshare waiter retains the inherited flock descriptors.
+// Namespace-init exit kills all descendants, even across sudo/process groups;
+// unshare waits for that teardown before exiting and closing the locks.
+const ROOTFS_SUPERVISOR: &str = r#"
+set -euo pipefail
+[[ "$$" -eq 1 ]]
+while [[ "$1" != -- ]]; do
+  lock_fd="$1"
+  exec {lock_fd}>&-
+  shift
+done
+shift
+trap 'exit 125' TERM
+(
+  IFS= read -r message || kill -TERM "$$"
+) <&0 &
+bash "$@" </dev/null &
+wait "$!"
+"#;
 
-    // Prevent scripts from continuing to mutate staging files after a runner
-    // crash releases the associated locks.
-    crate::parent_death::configure_parent_death_signal(&mut cmd);
-
-    cmd
-}
-
-struct RootfsScriptProcess {
-    child: Option<tokio::process::Child>,
-}
-
-impl Drop for RootfsScriptProcess {
-    fn drop(&mut self) {
-        // Rootfs scripts are synchronous and must finish descendant work before
-        // returning. Process-group cleanup is only an abnormal-drop fallback
-        // while the owned child still pins the process-group identity.
-        if let Some(child) = self.child.as_ref()
-            && let Some(pid) = child.id()
-            && let Ok(pid) = i32::try_from(pid)
-        {
-            let pgid = nix::unistd::Pid::from_raw(pid);
-            let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
-        }
-        crate::child_cleanup::kill_and_reap_child_on_drop("rootfs script", &mut self.child);
+pub(super) fn rootfs_script_command(
+    directory: &RootfsScriptDir,
+    script: &str,
+) -> RunnerResult<RootfsScriptCommand> {
+    // Reserve descriptors above stdio: replacing stdin must not overwrite a
+    // lock originally opened as fd 0 by a runner launched with closed stdin.
+    let inherited_locks = directory
+        .locks
+        .iter()
+        .map(|lock| rustix::io::fcntl_dupfd_cloexec(&***lock, 3))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| RunnerError::Internal(format!("duplicate {script} build locks: {e}")))?;
+    let mut command = std::process::Command::new(&directory.launcher);
+    command.args([
+        "--mount",
+        "--pid",
+        "--fork",
+        "--kill-child",
+        "--mount-proc",
+        "--propagation",
+        "private",
+        "--",
+        "bash",
+        "-c",
+        ROOTFS_SUPERVISOR,
+        "rootfs-supervisor",
+    ]);
+    for lock in &inherited_locks {
+        command.arg(lock.as_raw_fd().to_string());
     }
+    command.arg("--").arg(directory.join(script));
+    Ok(RootfsScriptCommand {
+        command,
+        directory: directory.clone(),
+        inherited_locks,
+    })
 }
 
 pub(super) async fn run_rootfs_script(
-    mut cmd: tokio::process::Command,
+    command: RootfsScriptCommand,
     label: &str,
 ) -> RunnerResult<std::process::ExitStatus> {
-    let child = cmd
-        .spawn()
-        .map_err(|e| RunnerError::Internal(format!("spawn {label}: {e}")))?;
-    let mut process = RootfsScriptProcess { child: None };
-    let child = process.child.insert(child);
-    let status = child
-        .wait()
+    let (owner, child_control) = UnixStream::pair()
+        .map_err(|e| RunnerError::Internal(format!("create {label} ownership channel: {e}")))?;
+    let label = label.to_owned();
+    // Spawn and wait belong to the same non-cancellable task. Its Arc guards
+    // prevent Flock::drop from explicitly unlocking during async cancellation.
+    // If the runner dies instead, the external unshare waiter still owns the
+    // same open file descriptions. Never kill that waiter on future drop.
+    let task = tokio::task::spawn_blocking(move || {
+        let RootfsScriptCommand {
+            mut command,
+            directory,
+            inherited_locks,
+        } = command;
+        let descriptors: Vec<_> = inherited_locks
+            .iter()
+            .map(|lock| lock.as_raw_fd())
+            .collect();
+        command.stdin(std::process::Stdio::from(OwnedFd::from(child_control)));
+        // SAFETY: setsid and fcntl are async-signal-safe. inherited_locks owns
+        // these descriptors through spawn; only the forked child is changed.
+        unsafe {
+            command.pre_exec(move || {
+                // An orphaned process group containing a stopped worker gets
+                // SIGHUP/SIGCONT when its owner dies. A separate session keeps
+                // that job-control signal from killing the lock-holding waiter.
+                if nix::libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                for descriptor in &descriptors {
+                    if nix::libc::fcntl(*descriptor, nix::libc::F_SETFD, 0) < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+                Ok(())
+            });
+        }
+        let mut child = command
+            .spawn()
+            .map_err(|e| RunnerError::Internal(format!("spawn {label}: {e}")))?;
+        drop(inherited_locks);
+        let status = child
+            .wait()
+            .map_err(|e| RunnerError::Internal(format!("wait for {label}: {e}")));
+        drop(directory);
+        status
+    });
+    // Abort prevents a queued blocking task from starting after cancellation;
+    // it cannot interrupt a running blocking task's owned-child wait.
+    let result = tokio_util::task::AbortOnDropHandle::new(task)
         .await
-        .map_err(|e| RunnerError::Internal(format!("wait for {label}: {e}")))?;
-    process.child = None;
-    Ok(status)
+        .map_err(|e| RunnerError::Internal(format!("rootfs script task: {e}")))?;
+    drop(owner);
+    result
 }
 
 #[cfg(test)]
@@ -164,47 +294,9 @@ mod tests {
         false
     }
 
-    async fn write_process_group_test_script(dir: &Path) -> PathBuf {
-        let script = dir.join("process-group-test.sh");
-        tokio::fs::write(
-            &script,
-            r#"#!/usr/bin/env bash
-set -euo pipefail
-
-pgid_file="$1"
-started_file="$2"
-survived_file="$3"
-release_file="$4"
-mode="${5:-fail}"
-
-printf '%s' "$$" > "$pgid_file"
-if [[ "$mode" == "fail" ]]; then
-  exit 17
-fi
-
-(
-  trap '' HUP TERM INT
-  printf started > "$started_file"
-  while [[ ! -f "$release_file" ]]; do
-    sleep 0.01
-  done
-  printf survived > "$survived_file"
-) &
-
-wait
-"#,
-        )
-        .await
-        .unwrap();
-        script
-    }
-
     async fn wait_for_file(path: &Path) {
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                if tokio::fs::try_exists(path).await.unwrap_or(false) {
-                    break;
-                }
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !path.exists() {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
         })
@@ -212,123 +304,168 @@ wait
         .unwrap_or_else(|_| panic!("timed out waiting for {}", path.display()));
     }
 
-    #[cfg(target_os = "linux")]
-    fn process_group_has_live_members(pgid_file: &Path) -> bool {
-        let raw_pgid = std::fs::read_to_string(pgid_file).expect("read test pgid");
-        let pgid: i32 = raw_pgid.parse().expect("parse test pgid");
-        let entries = std::fs::read_dir("/proc").expect("read /proc");
-        for entry in entries.flatten() {
-            let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else {
-                continue;
-            };
-            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
-                continue;
-            };
-            let Some((_, fields)) = stat.rsplit_once(") ") else {
-                continue;
-            };
-            let mut fields = fields.split_whitespace();
-            let state = fields.next().and_then(|value| value.chars().next());
-            let _ppid = fields.next();
-            let pgrp = fields.next().and_then(|value| value.parse::<i32>().ok());
-            if pgrp == Some(pgid) && state != Some('Z') {
-                return true;
-            }
+    fn test_directory(primary_lock: Arc<Flock<File>>) -> RootfsScriptDir {
+        RootfsScriptDir {
+            directory: Arc::new(tempfile::tempdir().unwrap()),
+            locks: vec![primary_lock],
+            launcher: PathBuf::from("unshare"),
         }
-        false
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    fn process_group_has_live_members(pgid_file: &Path) -> bool {
-        let raw_pgid = std::fs::read_to_string(pgid_file).expect("read test pgid");
-        let pgid = nix::unistd::Pid::from_raw(raw_pgid.parse().expect("parse test pgid"));
-        match nix::sys::signal::killpg(pgid, None) {
-            Ok(()) => true,
-            Err(nix::errno::Errno::ESRCH) => false,
-            Err(_) => true,
-        }
-    }
-
-    async fn assert_process_group_stopped_without_survival_marker(
-        pgid_file: &Path,
-        survived_file: &Path,
-    ) {
-        wait_for_file(pgid_file).await;
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                if !process_group_has_live_members(pgid_file) {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .unwrap_or_else(|_| panic!("timed out waiting for process group in {pgid_file:?} to exit"));
-        assert!(
-            !tokio::fs::try_exists(survived_file).await.unwrap_or(false),
-            "rootfs script process group was not killed; child wrote {}",
-            survived_file.display()
-        );
     }
 
     #[tokio::test]
     async fn run_rootfs_script_returns_nonzero_status() {
-        let dir = tempfile::tempdir().unwrap();
-        let pgid = dir.path().join("pgid");
-        let started = dir.path().join("started");
-        let survived = dir.path().join("survived");
-        let release = dir.path().join("release");
-        let script = write_process_group_test_script(dir.path()).await;
+        let guard = Arc::new(
+            Flock::lock(
+                tempfile::tempfile().unwrap(),
+                nix::fcntl::FlockArg::LockExclusive,
+            )
+            .unwrap(),
+        );
+        let mut command = std::process::Command::new("bash");
+        command.args(["-c", "exit 17"]);
+        let command = RootfsScriptCommand {
+            command,
+            directory: test_directory(guard),
+            inherited_locks: Vec::new(),
+        };
 
-        let mut cmd = rootfs_script_command(&script);
-        cmd.arg(&pgid)
-            .arg(&started)
-            .arg(&survived)
-            .arg(&release)
-            .arg("fail");
-
-        let status = run_rootfs_script(cmd, "process-group-test.sh")
+        let status = run_rootfs_script(command, "nonzero-status-fixture")
             .await
             .unwrap();
 
         assert_eq!(status.code(), Some(17));
-        assert!(!started.exists(), "failed script must not background work");
+    }
+
+    #[test]
+    fn cancellation_does_not_start_a_queued_script() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let lock_path = home.path().join("rootfs.lock");
+        let guard = runtime
+            .block_on(crate::lock::acquire(lock_path.clone()))
+            .unwrap();
+        let directory = test_directory(Arc::new(guard));
+        let mut command = std::process::Command::new("bash");
+        command.args(["-c", "touch \"$1/started\"", "queued-script"]);
+        command.arg(home.path());
+        let command = RootfsScriptCommand {
+            command,
+            directory,
+            inherited_locks: Vec::new(),
+        };
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let blocker = runtime.spawn_blocking(move || {
+            started_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap();
+        });
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        runtime.block_on(async {
+            let task = tokio::spawn(run_rootfs_script(command, "queued-script"));
+            tokio::task::yield_now().await;
+            task.abort();
+            assert!(task.await.unwrap_err().is_cancelled());
+        });
+        release_tx.send(()).unwrap();
+        runtime.block_on(blocker).unwrap();
+        // Drain the blocking queue before checking that no child was started.
+        runtime.block_on(runtime.spawn_blocking(|| {})).unwrap();
+        assert!(!home.path().join("started").exists());
+        assert!(
+            runtime
+                .block_on(crate::lock::try_acquire(lock_path))
+                .is_ok()
+        );
     }
 
     #[tokio::test]
-    async fn run_rootfs_script_kills_process_group_when_future_is_cancelled() {
-        let dir = tempfile::tempdir().unwrap();
-        let pgid = dir.path().join("pgid");
-        let started = dir.path().join("started");
-        let survived = dir.path().join("survived");
-        let release = dir.path().join("release");
-        let script = write_process_group_test_script(dir.path()).await;
+    async fn cancellation_retains_lock_and_scripts_until_process_cleanup_finishes() {
+        let home = tempfile::tempdir().unwrap();
+        let lock_path = home.path().join("rootfs.lock");
+        let guard = Arc::new(crate::lock::acquire(lock_path.clone()).await.unwrap());
+        let directory = test_directory(guard);
+        let scripts_path = directory.directory.path().to_path_buf();
+        let mut command = std::process::Command::new("bash");
+        command
+            .arg("-c")
+            .arg(
+                r#"
+set -euo pipefail
+printf ready > "$1/ready"
+IFS= read -r message || true
+printf cleanup > "$1/cleanup"
+for ((attempt = 0; attempt < 500; attempt++)); do
+  if [[ -f "$1/release" ]]; then
+    exit 0
+  fi
+  sleep 0.01
+done
+exit 18
+"#,
+            )
+            .arg("cleanup-fixture")
+            .arg(home.path());
+        let command = RootfsScriptCommand {
+            command,
+            directory,
+            inherited_locks: Vec::new(),
+        };
+        let task =
+            tokio::spawn(async move { run_rootfs_script(command, "ownership-fixture").await });
+        wait_for_file(&home.path().join("ready")).await;
 
-        let mut cmd = rootfs_script_command(&script);
-        cmd.arg(&pgid)
-            .arg(&started)
-            .arg(&survived)
-            .arg(&release)
-            .arg("wait");
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        wait_for_file(&home.path().join("cleanup")).await;
+        assert!(
+            scripts_path.exists(),
+            "script directory must survive cancellation"
+        );
+        assert!(matches!(
+            crate::lock::try_acquire_or_busy(lock_path.clone())
+                .await
+                .unwrap(),
+            crate::lock::TryLock::Busy
+        ));
 
-        let handle =
-            tokio::spawn(async move { run_rootfs_script(cmd, "process-group-test.sh").await });
-        wait_for_file(&started).await;
-        handle.abort();
-        let _ = handle.await;
-        tokio::fs::write(&release, b"release").await.unwrap();
-
-        assert_process_group_stopped_without_survival_marker(&pgid, &survived).await;
+        std::fs::write(home.path().join("release"), b"release").unwrap();
+        let new_guard = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::lock::acquire(lock_path),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(
+            !scripts_path.exists(),
+            "script directory must be removed after cleanup"
+        );
+        drop(new_guard);
     }
 
     #[tokio::test]
     async fn rootfs_scripts_writes_embedded_scripts_once() {
-        let mut scripts = RootfsScripts::new();
+        let guard = Arc::new(
+            Flock::lock(
+                tempfile::tempfile().unwrap(),
+                nix::fcntl::FlockArg::LockExclusive,
+            )
+            .unwrap(),
+        );
+        let mut scripts = RootfsScripts::new(guard, None);
 
         let first = scripts.path().await.unwrap();
         let second = scripts.path().await.unwrap();
 
-        assert_eq!(first, second);
+        assert_eq!(&*first, &*second);
         assert!(first.join("build-template.sh").exists());
         assert!(first.join("verify-rootfs.sh").exists());
         assert!(first.join("customize-rootfs.sh").exists());
@@ -955,8 +1092,9 @@ assert_check_error \
     #[test]
     fn build_script_publishes_debootstrap_cache_atomically() {
         assert!(
-            TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar""#),
-            "build-template.sh should stage debootstrap cache writes in a process-scoped temp file"
+            TEMPLATE_BUILD_SCRIPT
+                .contains(r#"CACHE_TMP_TAR=$(mktemp "${cache_tar%.tar}.tmp.mktemp.XXXXXX.tar")"#),
+            "build-template.sh should stage shared-cache writes with namespace-independent uniqueness"
         );
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains("debootstrap validates the tarball suffix"),

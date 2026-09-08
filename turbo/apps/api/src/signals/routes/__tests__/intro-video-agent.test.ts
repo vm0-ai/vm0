@@ -336,6 +336,11 @@ function mockProvider(): ProviderState {
           : {},
       });
     }),
+    http.get(/^https:\/\/artifacts\.okou\.test\/cdn-cgi\/media\//u, () => {
+      return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
+        headers: { "content-type": "image/jpeg" },
+      });
+    }),
   );
   return state;
 }
@@ -374,7 +379,7 @@ async function credits(f: Fixture): Promise<number> {
 
 describe("Managed Intro Video Agent", () => {
   beforeEach(() => {
-    mockEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.vm0.test");
+    mockEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", "https://artifacts.okou.test");
     mockEnv("HEYGEN_API_KEY", "test-heygen-key");
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -716,11 +721,6 @@ describe("Managed Intro Video Agent", () => {
     provider.videoStatus = "completed";
     const downloadStarted = createDeferredPromise<void>(context.signal);
     const releaseDownload = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseDownload.settled()) {
-        releaseDownload.resolve(undefined);
-      }
-    });
     provider.beforeDownload = async () => {
       downloadStarted.resolve(undefined);
       await releaseDownload.promise;
@@ -731,16 +731,20 @@ describe("Managed Intro Video Agent", () => {
     }
     const callbackUrl = new URL(callback);
     const callbackPath = `${callbackUrl.pathname}${callbackUrl.search}`;
-    const completion = app(f).request(callbackPath, {
-      method: "POST",
-      body: "{}",
-    });
-    await downloadStarted.promise;
-    await expect(status(f, body.requestId)).resolves.toMatchObject({
-      status: "running",
-    });
-    releaseDownload.resolve(undefined);
-    expect((await completion).status).toBe(200);
+    const [completion] = await Promise.all([
+      app(f).request(callbackPath, {
+        method: "POST",
+        body: "{}",
+      }),
+      (async () => {
+        await downloadStarted.promise;
+        await expect(status(f, body.requestId)).resolves.toMatchObject({
+          status: "running",
+        });
+        releaseDownload.resolve(undefined);
+      })(),
+    ]);
+    expect(completion.status).toBe(200);
     await flushWaitUntilForTest();
     const completed = await status(f, body.requestId);
     expect(completed).toMatchObject({
@@ -767,6 +771,14 @@ describe("Managed Intro Video Agent", () => {
         return (
           command instanceof PutObjectCommand &&
           command.input.ContentType === "video/mp4"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      context.mocks.s3.send.mock.calls.filter(([command]) => {
+        return (
+          command instanceof PutObjectCommand &&
+          command.input.ContentType === "image/jpeg"
         );
       }),
     ).toHaveLength(1);

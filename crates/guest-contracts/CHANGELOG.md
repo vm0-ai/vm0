@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.1...guest-contracts-v0.13.2) (2026-09-08)
+
+
+### Documentation
+
+* **guest-contracts:** document read helper directory side effects ([#32476](https://github.com/vm0-ai/vm0/issues/32476)) ([1070d0e](https://github.com/vm0-ai/vm0/commit/1070d0e6e2cebebfd415d6618210fa83b1e91cd2))
+
 ## [0.13.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.13.0...guest-contracts-v0.13.1) (2026-09-07)
 
 

@@ -307,6 +307,34 @@ describe("Google Forms response-submitted workflow automation contract", () => {
   });
 });
 
+describe("Google Calendar workflow automation update contract", () => {
+  it("accepts each Calendar event configuration", () => {
+    const events = [
+      "event_created",
+      "event_updated",
+      "event_cancelled",
+    ] as const;
+
+    for (const event of events) {
+      expect(
+        workflowAutomationUpdateRequestSchema.parse({
+          eventConfig: {
+            provider: "google-calendar",
+            event,
+            calendarId: "team-calendar@example.com",
+          },
+        }),
+      ).toStrictEqual({
+        eventConfig: {
+          provider: "google-calendar",
+          event,
+          calendarId: "team-calendar@example.com",
+        },
+      });
+    }
+  });
+});
+
 describe("Google Meet transcript-generated workflow automation contract", () => {
   it("defaults to organizer-user scope", () => {
     const parsed = googleMeetTranscriptGeneratedEventConfigSchema.parse({

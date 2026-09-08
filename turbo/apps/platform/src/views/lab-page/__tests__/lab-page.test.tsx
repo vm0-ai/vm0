@@ -108,10 +108,13 @@ test("A user can filter Lab features by maintainer", async () => {
   });
   await screen.findByRole("heading", { name: "Lab" });
 
-  await user.click(buttonNamed("lancy"));
+  await user.click(buttonNamed("bingjie"));
 
   expect(
-    screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+    screen.getByText(FeatureSwitchKey.ComposerCreateCommands),
+  ).toBeVisible();
+  expect(
+    screen.getByText(FeatureSwitchKey.PresentationTemplates),
   ).toBeVisible();
   expect(
     screen.queryByText(FeatureSwitchKey.AhrefsConnector),

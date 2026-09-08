@@ -332,14 +332,33 @@ async fn load_snapshot_can_leave_vm_paused() {
 async fn wait_for_ready_detects_deferred_socket() {
     let (mut api, bind_socket) = MockFirecrackerApi::deferred_repeating(MockResponse::ok());
     let sock_path = api.socket_path().to_path_buf();
-    let waiter = tokio::spawn(async move {
-        let client = ApiClient::new(&sock_path).unwrap();
-        client.wait_for_ready(Duration::from_secs(2)).await
-    });
+    let socket_wait_started = Arc::new(Notify::new());
+    let mut client = ApiClient::new(&sock_path).unwrap();
+    client.socket_wait_started = Some(socket_wait_started.clone());
+    let waiter = client.wait_for_ready(Duration::from_secs(2));
+    tokio::pin!(waiter);
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        tokio::select! {
+            biased;
+            result = &mut waiter => panic!("readiness completed before socket creation: {result:?}"),
+            () = socket_wait_started.notified() => {}
+        }
+    })
+    .await
+    .expect("readiness should reach the post-watch socket wait");
+
+    assert!(!sock_path.try_exists().unwrap());
+    assert!(
+        futures_util::poll!(&mut waiter).is_pending(),
+        "readiness should remain pending while the watched socket is absent"
+    );
 
     bind_socket.send(()).unwrap();
-    let result = waiter.await.unwrap();
-    assert!(result.is_ok());
+    tokio::time::timeout(Duration::from_secs(2), waiter)
+        .await
+        .expect("socket creation should wake readiness")
+        .expect("the deferred socket should become ready");
 
     let request = api.next_request().await;
     assert_request(&request, "GET", "/");

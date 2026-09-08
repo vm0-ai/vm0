@@ -23,6 +23,7 @@ import { morningBriefPreferenceContract } from "@okouai/api-contracts/contracts/
 import { testOfficialWorkflowCatalogStateContract } from "@okouai/api-contracts/contracts/test-official-workflow-catalog-state";
 import { testSystemStoragePresignedUrlCacheStateContract } from "@okouai/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
+import type { UserLocale } from "@okouai/api-contracts/contracts/user-preferences";
 import {
   workflowAutomationsContract,
   workflowsCollectionContract,
@@ -2680,6 +2681,77 @@ describe.sequential("Official Workflow installations", () => {
       "Official Workflow is retired: connector-doctor",
     );
   });
+
+  it.each([
+    {
+      locale: null,
+      localeLabel: "the default locale",
+      title: "Okou Morning Brief",
+    },
+    {
+      locale: "pt-BR",
+      localeLabel: "pt-BR",
+      title: "Okou Resumo da manhã",
+    },
+  ] satisfies readonly {
+    readonly locale: UserLocale | null;
+    readonly localeLabel: string;
+    readonly title: string;
+  }[])(
+    "names a new Morning Brief thread for $localeLabel",
+    async ({ locale, title }) => {
+      installCatalogStorageFixture();
+      await syncDeployedCatalog();
+      const { actor } = await workflowBdd.setupWorkflowOrg({
+        timezone: "Asia/Shanghai",
+      });
+      if (!actor.orgId) {
+        throw new Error("Expected organization-scoped actor");
+      }
+      if (locale) {
+        await bdd.updateUserLocale(actor, locale);
+      }
+      await selectBuiltInDefaultModel(actor);
+      const { agentId } = await workflowBdd.createAgent(actor);
+      onTestFinished(async () => {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, agentId);
+        await cleanupCatalog();
+      });
+      const headers = authHeaders(actor);
+      await setOfficialWorkflowsEnabled(actor, true);
+
+      const installed = await accept(
+        officialClient().install({
+          headers,
+          params: { definitionName: "morning-brief" },
+          body: {
+            agentId,
+            blueprints: [{ blueprintKey: "daily-delivery", bindings: [] }],
+          },
+        }),
+        [201],
+      );
+      const automation = installed.body.workflow.automations[0];
+      if (!automation) {
+        throw new Error("Expected the Morning Brief Automation");
+      }
+
+      const started = await accept(
+        automationClient().run({
+          headers,
+          params: { id: automation.id },
+        }),
+        [201],
+      );
+      await expect(
+        chat.readThreadMetadata(actor, started.body.chatThreadId),
+      ).resolves.toMatchObject({ title });
+      if (started.body.runId) {
+        await runs.requestCancelRun(actor, started.body.runId, [200, 400]);
+      }
+    },
+  );
 
   it("requires a Preference timezone only when a schedule Blueprint omits one", async () => {
     installCatalogStorageFixture();

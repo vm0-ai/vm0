@@ -469,6 +469,7 @@ describe("Desktop renderer bridge integration", () => {
       };
       const { computerUse } = installDesktopBridges({
         computerUseState: state,
+        developerToolsState: { available: true, enabled: true },
       });
       const select = vi.spyOn(computerUse.api, "selectDriver");
       renderDesktopApp();
@@ -482,13 +483,22 @@ describe("Desktop renderer bridge integration", () => {
         screen.getByRole("button", { name: "Retry" }).hasAttribute("disabled"),
       ).toBe(!driver.canRetry);
       expect(screen.queryByRole("heading", { name: "Runtime" })).toBeNull();
-      fireEvent.change(selector, { target: { value: "okou" } });
+      expect(selector.hasAttribute("disabled")).toBe(phase === "switching");
+      const permissions = screen.getByText("Accessibility");
+      expect(
+        permissions.compareDocumentPosition(selector) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Use Okou" }));
       await waitFor(() => expect(select).toHaveBeenCalledWith("okou"));
+      await waitFor(() =>
+        expect(screen.getByText("Requested: Okou")).toBeTruthy(),
+      );
       expect(computerUse.start).not.toHaveBeenCalled();
     },
   );
 
-  it("hides a disabled selector while retaining actual CUA cleanup and explicit recovery", async () => {
+  it("keeps compact recovery after authorization loss while CUA cleanup is pending", async () => {
     const state: DesktopComputerUseState = {
       ...createComputerUseState(),
       driver: {
@@ -507,9 +517,12 @@ describe("Desktop renderer bridge integration", () => {
     const { computerUse } = installDesktopBridges({ computerUseState: state });
     const select = vi.spyOn(computerUse.api, "selectDriver");
     renderDesktopApp();
-    expect(await screen.findByText(/Actual: CUA/)).toBeTruthy();
+    expect(await screen.findByText(/Cleanup is still pending/)).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Computer Use driver" }),
+    ).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.getByText(/Cleanup is still pending/)).toBeTruthy();
+    expect(screen.queryByText(/Actual: CUA/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Use Okou" }));
     await waitFor(() => expect(select).toHaveBeenCalledWith("okou"));
     expect(computerUse.start).not.toHaveBeenCalled();
@@ -531,7 +544,10 @@ describe("Desktop renderer bridge integration", () => {
         canRetry: true,
       },
     };
-    const { computerUse } = installDesktopBridges({ computerUseState: state });
+    const { computerUse } = installDesktopBridges({
+      computerUseState: state,
+      developerToolsState: { available: true, enabled: true },
+    });
     computerUse.start.mockResolvedValue(state);
     let complete!: (state: DesktopComputerUseState) => void;
     vi.spyOn(computerUse.api, "selectDriver").mockImplementation(
@@ -697,26 +713,160 @@ describe("Desktop renderer bridge integration", () => {
     expect(computerUse.subscribe).toHaveBeenCalled();
   });
 
-  it("shows runtime details only after developer tools are enabled", async () => {
-    const { developerTools } = installDesktopBridges({
-      computerUseState: createComputerUseState({
+  it("shows the default driver choice below the hero and all developer panels, and only selects explicitly", async () => {
+    const state: DesktopComputerUseState = {
+      ...createComputerUseState({
         plugins: createComputerUsePluginsState(),
         status: "online",
       }),
+      driver: { ...stoppedOkouDriverState, developerAvailability: "available" },
+    };
+    const { developerTools, computerUse } = installDesktopBridges({
+      computerUseState: state,
+      developerToolsState: { available: true, enabled: false },
     });
+    const select = vi.spyOn(computerUse.api, "selectDriver");
+    const stop = vi.spyOn(computerUse.api, "stop");
     renderDesktopApp();
 
-    expect(await screen.findByText("Online")).toBeTruthy();
-    expect(screen.queryByText("Filesystem plugin")).toBeNull();
-    expect(screen.queryByText("Runtime")).toBeNull();
-    expect(screen.queryByText("Command Log")).toBeNull();
-
+    const hero = await screen.findByText("Online");
+    expect(screen.queryByRole("combobox")).toBeNull();
     developerTools.emitState({ available: true, enabled: true });
+    const selector = await screen.findByRole("combobox", {
+      name: "Computer Use driver",
+    });
+    expect(
+      screen
+        .getAllByRole("heading", { level: 2 })
+        .map((heading) => heading.textContent),
+    ).toEqual([
+      "Filesystem plugin",
+      "MCP servers",
+      "Runtime",
+      "Command Log",
+      "Computer Use driver",
+    ]);
+    expect(
+      hero.compareDocumentPosition(selector) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Okou", "CUA (Experimental)"]);
+    expect(selector).toHaveProperty("value", "okou");
+    expect(await computerUse.api.getState()).toEqual(state);
+    expect(select).not.toHaveBeenCalled();
+    expect(computerUse.start).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
 
-    expect(await screen.findByText("Filesystem plugin")).toBeTruthy();
-    expect(await screen.findByText("Runtime")).toBeTruthy();
-    expect(await screen.findByText("Command Log")).toBeTruthy();
-    expect(developerTools.subscribe).toHaveBeenCalled();
+    fireEvent.change(selector, { target: { value: "cua" } });
+    await screen.findByText("Requested: CUA (Experimental)");
+    developerTools.emitState({ available: true, enabled: false });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "Computer Use driver" }),
+      ).toBeNull(),
+    );
+    developerTools.emitState({ available: true, enabled: true });
+    expect(await screen.findByRole("combobox")).toHaveProperty("value", "cua");
+    expect(select).toHaveBeenCalledExactlyOnceWith("cua");
+    expect(computerUse.start).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("hides and restores a ready CUA panel without changing its generation or invoking execution", async () => {
+    const state: DesktopComputerUseState = {
+      ...createComputerUseState({ status: "online" }),
+      driver: {
+        ...stoppedOkouDriverState,
+        experimentalCuaEnabled: true,
+        selectedDriver: "cua",
+        developerAvailability: "available",
+        phase: "ready",
+        actual: { id: "cua", version: "0.23.2", generation: 7 },
+      },
+    };
+    const { computerUse, developerTools } = installDesktopBridges({
+      computerUseState: state,
+      developerToolsState: { available: true, enabled: true },
+    });
+    const select = vi.spyOn(computerUse.api, "selectDriver");
+    const stop = vi.spyOn(computerUse.api, "stop");
+    renderDesktopApp();
+    await screen.findByText(/Actual: CUA · generation 7/);
+    developerTools.emitState({ available: true, enabled: false });
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    expect(screen.queryByText(/Actual:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use Okou" })).toBeNull();
+    developerTools.emitState({ available: true, enabled: true });
+    await screen.findByText(/Actual: CUA · generation 7/);
+    expect(await computerUse.api.getState()).toEqual(state);
+    expect(select).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(computerUse.start).not.toHaveBeenCalled();
+  });
+
+  it.each(["blocked", "error"] as const)(
+    "keeps compact %s recovery below setup even when Developer access is unavailable",
+    async (phase) => {
+      const state: DesktopComputerUseState = {
+        ...createComputerUseState({
+          permissions: { accessibility: false, screenRecording: false },
+        }),
+        driver: {
+          ...stoppedOkouDriverState,
+          experimentalCuaEnabled: true,
+          selectedDriver: "cua",
+          developerAvailability: "unavailable",
+          phase,
+          error: "CUA requires current Developer access. Sign in or use Okou.",
+        },
+      };
+      const { computerUse } = installDesktopBridges({
+        computerUseState: state,
+        developerToolsState: { available: true, enabled: true },
+      });
+      renderDesktopApp();
+      const recovery = await screen.findByRole("button", { name: "Use Okou" });
+      expect(
+        screen.getByText("Accessibility").compareDocumentPosition(recovery) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("heading", { name: "Computer Use driver" }),
+      ).toBeNull();
+      expect(screen.queryByRole("combobox")).toBeNull();
+      expect(screen.queryByText(/Ready version:/)).toBeNull();
+      fireEvent.click(recovery);
+      await waitFor(async () =>
+        expect((await computerUse.api.getState()).driver.selectedDriver).toBe(
+          "okou",
+        ),
+      );
+      expect(computerUse.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports a failed explicit selection and retains the previous request", async () => {
+    const state: DesktopComputerUseState = {
+      ...createComputerUseState(),
+      driver: { ...stoppedOkouDriverState, developerAvailability: "available" },
+    };
+    const { computerUse } = installDesktopBridges({
+      computerUseState: state,
+      developerToolsState: { available: true, enabled: true },
+    });
+    vi.spyOn(computerUse.api, "selectDriver").mockRejectedValue(
+      new Error("Could not save"),
+    );
+    renderDesktopApp();
+    const selector = await screen.findByRole("combobox");
+    fireEvent.change(selector, { target: { value: "cua" } });
+    await screen.findByText(
+      "The selection could not be saved. Check the driver status.",
+    );
+    expect(selector).toHaveProperty("value", "okou");
+    expect(await computerUse.api.getState()).toEqual(state);
+    expect(computerUse.start).not.toHaveBeenCalled();
   });
 
   it("opens runtime error details from the first captured error", async () => {
