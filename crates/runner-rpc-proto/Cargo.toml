@@ -4,12 +4,12 @@ version = "0.2.1"
 edition.workspace = true
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["raw_value"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["raw_value", "std"] }
 tokio = { workspace = true, features = ["io-util"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "net", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }
 
 [lints]
 workspace = true

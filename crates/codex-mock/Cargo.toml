@@ -5,14 +5,14 @@ edition.workspace = true
 
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
 guest-contracts.workspace = true
-libc.workspace = true
-serde_json.workspace = true
-uuid = { workspace = true, features = ["v7"] }
+libc = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
+uuid = { workspace = true, features = ["std", "v7"] }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = { workspace = true, features = ["getrandom"] }
 
 [lints]
 workspace = true

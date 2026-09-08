@@ -5,37 +5,37 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-futures-util.workspace = true
+futures-util = { workspace = true, features = ["async-await", "async-await-macro", "std"] }
 guest-contracts.workspace = true
 nbd-cow.workspace = true
-libc.workspace = true
-nix = { workspace = true, features = ["user", "inotify", "fs", "signal", "sched"] }
-reqwest.workspace = true
+libc = { workspace = true, features = ["std"] }
+nix = { workspace = true, features = ["fs", "inotify", "sched", "signal", "user"] }
+reqwest = { workspace = true, features = ["json", "rustls"] }
 sandbox.workspace = true
 runner-rpc-proto.workspace = true
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
-hex.workspace = true
-sha2.workspace = true
-thiserror.workspace = true
-tempfile.workspace = true
-tokio = { workspace = true, features = ["process", "fs", "rt", "rt-multi-thread", "macros", "sync", "io-util", "net", "time"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+hex = { workspace = true, features = ["std"] }
+sha2 = { workspace = true, features = ["alloc", "oid"] }
+thiserror = { workspace = true, features = ["std"] }
+tempfile = { workspace = true, features = ["getrandom"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
-tracing.workspace = true
-uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
+uuid = { workspace = true, features = ["std", "v4"] }
 guest-control-client.workspace = true
 guest-control-proto.workspace = true
-which.workspace = true
+which = { workspace = true, features = ["real-sys"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { workspace = true, features = ["process"] }
+rustix = { workspace = true, features = ["fs", "linux_4_11", "process", "std"] }
 
 [dev-dependencies]
-clap = { workspace = true, features = ["derive"] }
-proptest.workspace = true
+clap = { workspace = true, features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage"] }
+proptest = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-test-support.workspace = true
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, features = ["ansi", "fmt", "smallvec", "std", "tracing-log"] }
 
 [lints]
 workspace = true

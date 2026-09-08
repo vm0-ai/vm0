@@ -4,14 +4,14 @@ version = "0.3.64"
 edition.workspace = true
 
 [dependencies]
-chrono = { workspace = true, features = ["std", "clock"] }
+chrono = { workspace = true, features = ["clock", "std"] }
 guest-contracts.workspace = true
-libc.workspace = true
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
+libc = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = { workspace = true, features = ["getrandom"] }
 
 [lints]
 workspace = true

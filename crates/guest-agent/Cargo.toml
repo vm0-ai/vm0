@@ -4,36 +4,36 @@ version = "0.86.17"
 edition.workspace = true
 
 [dependencies]
-aho-corasick.workspace = true
+aho-corasick = { workspace = true, features = ["perf-literal", "std"] }
 api-contracts.workspace = true
-base64.workspace = true
-bytes.workspace = true
+base64 = { workspace = true, features = ["simd-unsafe", "std"] }
+bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true, features = ["clock"] }
-flate2.workspace = true
-futures-util.workspace = true
+flate2 = { workspace = true, features = ["runtime_detection", "rust_backend"] }
+futures-util = { workspace = true, features = ["async-await", "async-await-macro", "std"] }
 process-control-ipc.workspace = true
 guest-contracts.workspace = true
 guest-telemetry.workspace = true
 session-history-selector.workspace = true
-http-body = "1"
-libc.workspace = true
-pin-project-lite = "0.2"
-reqwest = { workspace = true }
-rustix = { workspace = true, features = ["process"] }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["raw_value"] }
-hex.workspace = true
-sha2.workspace = true
-tempfile.workspace = true
-thiserror.workspace = true
-tar.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "process", "io-util", "fs", "sync", "net"] }
+http-body = { workspace = true }
+libc = { workspace = true, features = ["std"] }
+pin-project-lite = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls"] }
+rustix = { workspace = true, features = ["fs", "linux_4_11", "process", "std"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["raw_value", "std"] }
+hex = { workspace = true, features = ["std"] }
+sha2 = { workspace = true, features = ["alloc", "oid"] }
+tempfile = { workspace = true, features = ["getrandom"] }
+thiserror = { workspace = true, features = ["std"] }
+tar = { workspace = true, features = ["xattr"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tokio-util.workspace = true
-uuid = { workspace = true, features = ["v4", "v5"] }
+uuid = { workspace = true, features = ["std", "v4", "v5"] }
 zstd.workspace = true
 
 [dev-dependencies]
-httpmock.workspace = true
+httpmock = { workspace = true, features = ["cookies"] }
 nix = { workspace = true, features = ["inotify", "process"] }
 shell-quote.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
