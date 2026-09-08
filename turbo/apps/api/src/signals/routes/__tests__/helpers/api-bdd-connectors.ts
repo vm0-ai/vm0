@@ -1038,6 +1038,7 @@ export function mockGoogleDriveFilesList(
 }
 
 interface GoogleDriveArtifactUploadRecorder {
+  readonly bodies: Uint8Array[];
   readonly authorizationHeaders: (string | null)[];
   readonly contentLengthHeaders: (string | null)[];
   readonly contentTypeHeaders: (string | null)[];
@@ -1054,6 +1055,7 @@ export function mockGoogleDriveArtifactUpload(
   file: GoogleDriveFileFixture,
 ): GoogleDriveArtifactUploadRecorder {
   const recorded: GoogleDriveArtifactUploadRecorder = {
+    bodies: [],
     authorizationHeaders: [],
     contentLengthHeaders: [],
     contentTypeHeaders: [],
@@ -1084,7 +1086,7 @@ export function mockGoogleDriveArtifactUpload(
       recorded.authorizationHeaders.push(request.headers.get("authorization"));
       recorded.contentLengthHeaders.push(request.headers.get("content-length"));
       recorded.contentTypeHeaders.push(request.headers.get("content-type"));
-      await request.arrayBuffer();
+      recorded.bodies.push(new Uint8Array(await request.arrayBuffer()));
       return HttpResponse.json(file);
     }),
   );

@@ -242,6 +242,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Publish",
     "The hosted URL is the preview and user-accessible view for this static HTML artifact.",
+    "Return the exact URL from the host command. Private artifacts use an authenticated preview URL; hosting does not make them public.",
     `When everything is OK, publish it with:`,
     "",
     "```bash",

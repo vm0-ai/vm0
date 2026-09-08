@@ -40,6 +40,7 @@ interface ManifestFile {
 
 interface HostedSiteManifest {
   readonly version: 1;
+  readonly access?: "owner-private-v1";
   readonly publicBrand?: PublicBrand;
   readonly deploymentId: string;
   readonly siteId: string;
@@ -322,7 +323,7 @@ async function readJson<T>(bucket: R2Bucket, key: string): Promise<T | null> {
 function resolveFilePath(
   request: Request,
   pathname: string,
-  pointer: ActiveSitePointer,
+  pointer: Pick<ActiveSitePointer, "spaFallback">,
   manifest: HostedSiteManifest,
 ): string | null {
   const requestedPath = pathname === "/" ? "/index.html" : pathname;
@@ -369,6 +370,20 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
     return new Response("Bad path", { status: 400 });
   }
 
+  const previewToken = /^pv-([a-f0-9]{48})$/u.exec(target.publicSlug)?.[1];
+  if (previewToken) {
+    const preview = await servePrivatePreview(
+      request,
+      env,
+      target,
+      pathname,
+      previewToken,
+    );
+    if (preview) {
+      return preview;
+    }
+  }
+
   const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(
     target.publicSlug,
   )?.[1];
@@ -396,12 +411,24 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   );
   if (
     !manifest ||
+    manifest.access !== undefined ||
+    pointer.prefix.startsWith("private-sites/") ||
     manifest.deploymentId !== pointer.deploymentId ||
     storedPublicBrand(manifest) !== publicBrand
   ) {
     return notFoundResponse();
   }
 
+  return serveManifestFile(request, env, pathname, pointer, manifest);
+}
+
+async function serveManifestFile(
+  request: Request,
+  env: Env,
+  pathname: string,
+  pointer: Pick<ActiveSitePointer, "prefix" | "spaFallback">,
+  manifest: HostedSiteManifest,
+): Promise<Response> {
   if (pathname === "/robots.txt" && !manifest.files["/robots.txt"]) {
     return defaultRobotsResponse(request);
   }
@@ -434,6 +461,113 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
     status: 200,
     headers,
   });
+}
+
+interface PrivatePreviewGrant {
+  readonly version: 1;
+  readonly publicBrand: PublicBrand;
+  readonly deploymentId: string;
+  readonly expiresAt: string;
+}
+
+function privateResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("Referrer-Policy", "no-referrer");
+  // Generated code receives only its own short-lived origin, never app cookies.
+  // Prevent service workers from bypassing the network authorization expiry.
+  headers.set(
+    "Content-Security-Policy",
+    "sandbox allow-scripts allow-same-origin allow-forms allow-popups allow-downloads; worker-src 'none'",
+  );
+  return new Response(response.body, { status: response.status, headers });
+}
+
+async function servePrivatePreview(
+  request: Request,
+  env: Env,
+  target: HostedSiteRequestTarget,
+  pathname: string,
+  token: string,
+): Promise<Response | null> {
+  const grants = (
+    await Promise.all(
+      target.publicBrands.map(async (publicBrand) => {
+        const object = await env.HOSTED_SITES_BUCKET.get(
+          `private-previews/${publicBrand}/${token}.json`,
+        );
+        if (!object) {
+          return null;
+        }
+        const text = await new Response(object.body).text();
+        let grant: Partial<PrivatePreviewGrant> | null;
+        try {
+          grant = JSON.parse(text) as Partial<PrivatePreviewGrant> | null;
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) {
+            throw error;
+          }
+          grant = null;
+        }
+        return { grant, publicBrand };
+      }),
+    )
+  ).filter((entry) => {
+    return entry !== null;
+  });
+  // Keep any historical public alias with this shape reachable. No private
+  // manifest is ever served by the legacy public-pointer path below.
+  if (grants.length === 0) {
+    return null;
+  }
+  const entry = grants[0];
+  if (grants.length !== 1 || !entry) {
+    return privateResponse(notFoundResponse());
+  }
+  const { grant, publicBrand } = entry;
+  if (
+    !grant ||
+    typeof grant !== "object" ||
+    typeof grant.expiresAt !== "string"
+  ) {
+    return privateResponse(notFoundResponse());
+  }
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (
+    grant.version !== 1 ||
+    grant.publicBrand !== publicBrand ||
+    typeof grant.deploymentId !== "string" ||
+    !IMMUTABLE_DEPLOYMENT_HOST_PATTERN.test(`dpl-${grant.deploymentId}`) ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
+    return privateResponse(notFoundResponse());
+  }
+  const prefix = `private-sites/${publicBrand}/${grant.deploymentId}`;
+  const manifest = await readJson<HostedSiteManifest>(
+    env.HOSTED_SITES_BUCKET,
+    `${prefix}/manifest.json`,
+  );
+  if (
+    !manifest ||
+    manifest.access !== "owner-private-v1" ||
+    manifest.deploymentId !== grant.deploymentId ||
+    manifest.publicBrand !== publicBrand
+  ) {
+    return privateResponse(notFoundResponse());
+  }
+  // Authorize every request before reading content; no shared content cache.
+  const response = await serveManifestFile(
+    request,
+    env,
+    pathname,
+    { prefix, spaFallback: manifest.spaFallback },
+    manifest,
+  );
+  if (expiresAt <= Date.now()) {
+    return privateResponse(notFoundResponse());
+  }
+  return privateResponse(response);
 }
 
 export default {

@@ -10,6 +10,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   hostedDeployments,
+  privateHostedDeployments,
   hostedSites,
   type HostedSiteManifest,
   type HostedSiteManifestFile,
@@ -24,6 +25,8 @@ import {
   putHostedSitesS3Object,
 } from "../external/s3";
 import { nowDate } from "../../lib/time";
+import { privateArtifactCreationEnabled } from "./private-artifact-storage.service";
+import { privateHostedArtifactUrl } from "./private-hosted-preview.service";
 import {
   scheduleArtifactPreviewRender$,
   type RenderArtifactPreviewArgs,
@@ -51,22 +54,26 @@ interface PrepareDeploymentArgs {
 
 interface ScopedPrepareDeploymentArgs extends PrepareDeploymentArgs {
   readonly chatThreadId: string | null;
+  readonly privateArtifacts: boolean;
 }
 
 interface CompleteDeploymentArgs {
   readonly orgId: string;
+  readonly userId: string;
   readonly runId?: string;
   readonly deploymentId: string;
 }
 
 interface GetHostedSiteFilesArgs {
   readonly orgId: string;
+  readonly userId: string;
   readonly publicSlug: string;
   readonly version?: number;
 }
 
 interface GetHostedSiteDeploymentsArgs {
   readonly orgId: string;
+  readonly userId: string;
   readonly runId?: string;
   readonly site: string;
 }
@@ -338,6 +345,41 @@ async function resolveHostedDeploymentForCompletion(
   db: Db,
   args: CompleteDeploymentArgs,
 ): Promise<CompleteDeploymentLookupResult> {
+  const [privateDeployment] = await db
+    .select()
+    .from(privateHostedDeployments)
+    .where(
+      and(
+        eq(privateHostedDeployments.id, args.deploymentId),
+        eq(privateHostedDeployments.orgId, args.orgId),
+        eq(privateHostedDeployments.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (privateDeployment) {
+    if (privateDeployment.manifest.access !== "owner-private-v1") {
+      throw new Error("Private hosted deployment has an invalid access policy");
+    }
+    const [site] = await db
+      .select()
+      .from(hostedSites)
+      .where(
+        and(
+          eq(hostedSites.id, privateDeployment.siteId),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!site) {
+      return { status: "not_found", message: "Hosted deployment not found" };
+    }
+    const scopeError = await hostedDeploymentScopeError(
+      db,
+      args.runId,
+      site.chatThreadId,
+    );
+    return scopeError ?? { status: "ok", deployment: privateDeployment };
+  }
   const [ownedDeployment] = await db
     .select({
       deployment: hostedDeployments,
@@ -440,7 +482,7 @@ function deploymentVersionResponseFields(deployment: HostedDeploymentRow): {
   return {
     deploymentVersion: deployment.deploymentVersion,
     artifactUrl: deployment.artifactUrl,
-    aliasUrl: deployment.url,
+    ...(deployment.manifest.access ? {} : { aliasUrl: deployment.url }),
   };
 }
 
@@ -555,7 +597,12 @@ function artifactPreviewArgs(
     readonly previewImageUrl: string | null;
   } | null,
 ): RenderArtifactPreviewArgs | null {
-  if (!artifactRow || artifactRow.previewImageUrl || !deployment.runId) {
+  if (
+    deployment.manifest.access ||
+    !artifactRow ||
+    artifactRow.previewImageUrl ||
+    !deployment.runId
+  ) {
     return null;
   }
   return {
@@ -582,7 +629,8 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
     deploymentVersion: deployment.deploymentVersion,
     site: deployment.manifest.site ?? deployment.manifest.publicSlug,
     publicSlug: deployment.manifest.publicSlug,
-    aliasUrl: deployment.url,
+    aliasUrl: deployment.manifest.access ? undefined : deployment.url,
+    access: deployment.manifest.access,
     url: deployment.artifactUrl ?? deployment.url,
     fileCount: deployment.fileCount,
     sizeBytes: deployment.sizeBytes,
@@ -599,7 +647,9 @@ async function findOrCreateHostedSite(
 ): Promise<HostedSiteRow | null> {
   const existingSite = await findScopedHostedSite(db, args, true);
   if (existingSite) {
-    return existingSite;
+    return args.privateArtifacts && existingSite.userId !== args.userId
+      ? null
+      : existingSite;
   }
 
   const scopeKey = hostedSiteScopeKey(args);
@@ -631,7 +681,9 @@ async function findOrCreateHostedSite(
 
     const concurrentSite = await findScopedHostedSite(db, args, true);
     if (concurrentSite) {
-      return concurrentSite;
+      return args.privateArtifacts && concurrentSite.userId !== args.userId
+        ? null
+        : concurrentSite;
     }
   }
   return null;
@@ -669,24 +721,35 @@ async function insertHostedDeployment(
 ): Promise<HostedDeploymentRow> {
   const { deploymentVersion, site } = allocation;
   const deploymentId = crypto.randomUUID();
-  const aliasUrl = publicUrl(site.publicBrand, site.publicSlug);
-  const artifactUrl = deploymentUrl(site.publicBrand, deploymentId);
-  const prefix = deploymentPrefix(args.orgId, site.slug, deploymentVersion);
-  const manifest = buildManifest({
-    deploymentId,
-    siteId: site.id,
-    site: args.body.site,
-    publicSlug: site.publicSlug,
-    deploymentVersion,
-    artifactKind: args.body.artifactKind,
-    spaFallback: args.body.spaFallback,
-    files: args.body.files,
-    createdAt: context.now,
-    publicBrand: site.publicBrand,
-  });
+  const artifactUrl = args.privateArtifacts
+    ? privateHostedArtifactUrl(deploymentId)
+    : deploymentUrl(site.publicBrand, deploymentId);
+  const aliasUrl = args.privateArtifacts
+    ? artifactUrl
+    : publicUrl(site.publicBrand, site.publicSlug);
+  const prefix = args.privateArtifacts
+    ? `private-sites/${site.publicBrand}/${deploymentId}`
+    : deploymentPrefix(args.orgId, site.slug, deploymentVersion);
+  const manifest: HostedSiteManifest = {
+    ...buildManifest({
+      deploymentId,
+      siteId: site.id,
+      site: args.body.site,
+      publicSlug: site.publicSlug,
+      deploymentVersion,
+      artifactKind: args.body.artifactKind,
+      spaFallback: args.body.spaFallback,
+      files: args.body.files,
+      createdAt: context.now,
+      publicBrand: site.publicBrand,
+    }),
+    ...(args.privateArtifacts ? { access: "owner-private-v1" as const } : {}),
+  };
   const files = Object.values(manifest.files);
   const [deployment] = await db
-    .insert(hostedDeployments)
+    .insert(
+      args.privateArtifacts ? privateHostedDeployments : hostedDeployments,
+    )
     .values({
       id: deploymentId,
       siteId: site.id,
@@ -759,7 +822,11 @@ export const prepareHostedSiteDeployment$ = command(
     const scopedArgs: ScopedPrepareDeploymentArgs = {
       ...args,
       chatThreadId,
+      privateArtifacts: await get(
+        privateArtifactCreationEnabled(args.orgId, args.userId),
+      ),
     };
+    signal.throwIfAborted();
     if (await hasUnscopedHostedSiteConflict(writeDb, scopedArgs)) {
       return {
         status: "conflict",
@@ -894,10 +961,11 @@ const promoteHostedSiteDeployment$ = command(
       }
 
       const shouldPromote =
-        args.deployment.deploymentVersion === null
+        !args.deployment.manifest.access &&
+        (args.deployment.deploymentVersion === null
           ? site.activeDeploymentVersion === null
           : site.activeDeploymentVersion === null ||
-            args.deployment.deploymentVersion >= site.activeDeploymentVersion;
+            args.deployment.deploymentVersion >= site.activeDeploymentVersion);
       if (shouldPromote) {
         await get(
           putHostedSitesS3Object(
@@ -913,15 +981,18 @@ const promoteHostedSiteDeployment$ = command(
         signal.throwIfAborted();
       }
 
+      const deploymentTable = args.deployment.manifest.access
+        ? privateHostedDeployments
+        : hostedDeployments;
       await tx
-        .update(hostedDeployments)
+        .update(deploymentTable)
         .set({
           status: "ready",
           readyAt: args.readyAt,
           updatedAt: args.readyAt,
           error: null,
         })
-        .where(eq(hostedDeployments.id, args.deployment.id));
+        .where(eq(deploymentTable.id, args.deployment.id));
       if (shouldPromote) {
         await tx
           .update(hostedSites)
@@ -1008,7 +1079,7 @@ export const completeHostedSiteDeployment$ = command(
       readyAt,
     );
 
-    if (deployment.deploymentVersion !== null) {
+    if (deployment.deploymentVersion !== null && !deployment.manifest.access) {
       await get(
         putHostedSitesS3Object(
           hostedR2.config.bucket,
@@ -1142,6 +1213,15 @@ async function loadAliasedHostedSiteFilesTarget(
   let deployment: HostedDeploymentRow | undefined;
   if (args.version === undefined) {
     if (!site.activeDeploymentId) {
+      const [publicDeployment] = await db
+        .select({ id: hostedDeployments.id })
+        .from(hostedDeployments)
+        .where(eq(hostedDeployments.siteId, site.id))
+        .limit(1);
+      signal.throwIfAborted();
+      if (!publicDeployment && site.userId !== args.userId) {
+        return { status: "not_found", message: "Hosted site not found" };
+      }
       return {
         status: "conflict",
         message: "Hosted site has no active deployment",
@@ -1184,7 +1264,48 @@ async function loadAliasedHostedSiteFilesTarget(
   return { status: "ok", site, deployment };
 }
 
-function loadHostedSiteFilesTarget(
+async function loadPrivateHostedSiteFilesTarget(
+  db: Db,
+  args: GetHostedSiteFilesArgs,
+  deploymentId: string | undefined,
+  signal: AbortSignal,
+): Promise<HostedSiteFilesTargetResult | null> {
+  const [target] = await db
+    .select({ site: hostedSites, deployment: privateHostedDeployments })
+    .from(privateHostedDeployments)
+    .innerJoin(hostedSites, eq(hostedSites.id, privateHostedDeployments.siteId))
+    .where(
+      and(
+        eq(privateHostedDeployments.orgId, args.orgId),
+        eq(privateHostedDeployments.userId, args.userId),
+        isNull(hostedSites.deletedAt),
+        deploymentId
+          ? eq(privateHostedDeployments.id, deploymentId)
+          : eq(hostedSites.publicSlug, args.publicSlug),
+        args.version === undefined
+          ? undefined
+          : eq(privateHostedDeployments.deploymentVersion, args.version),
+      ),
+    )
+    .orderBy(desc(privateHostedDeployments.deploymentVersion))
+    .limit(1);
+  signal.throwIfAborted();
+  if (target && target.deployment.manifest.access !== "owner-private-v1") {
+    throw new Error("Private hosted deployment has an invalid access policy");
+  }
+  if (
+    target &&
+    !deploymentId &&
+    args.version === undefined &&
+    target.deployment.deploymentVersion <=
+      (target.site.activeDeploymentVersion ?? 0)
+  ) {
+    return null;
+  }
+  return target ? { status: "ok", ...target } : null;
+}
+
+async function loadHostedSiteFilesTarget(
   db: Db,
   args: GetHostedSiteFilesArgs,
   signal: AbortSignal,
@@ -1192,9 +1313,18 @@ function loadHostedSiteFilesTarget(
   const deploymentId = IMMUTABLE_DEPLOYMENT_HOST_PATTERN.exec(
     args.publicSlug,
   )?.[1];
-  return deploymentId
-    ? loadImmutableHostedSiteFilesTarget(db, args, deploymentId, signal)
-    : loadAliasedHostedSiteFilesTarget(db, args, signal);
+  const privateTarget = await loadPrivateHostedSiteFilesTarget(
+    db,
+    args,
+    deploymentId,
+    signal,
+  );
+  return (
+    privateTarget ??
+    (deploymentId
+      ? await loadImmutableHostedSiteFilesTarget(db, args, deploymentId, signal)
+      : await loadAliasedHostedSiteFilesTarget(db, args, signal))
+  );
 }
 
 export const getHostedSiteFiles$ = command(
@@ -1235,7 +1365,7 @@ export const getHostedSiteFiles$ = command(
           generateHostedSitesPresignedGetUrl(
             hostedR2.config.bucket,
             fileKey(deployment.r2Prefix, file.path),
-            GET_URL_TTL_SECONDS,
+            deployment.manifest.access ? 15 * 60 : GET_URL_TTL_SECONDS,
             true,
           ),
         );
@@ -1291,6 +1421,18 @@ export const getHostedSiteDeployments$ = command(
       return { status: "not_found", message: "Hosted site not found" };
     }
 
+    const privateVersions = await writeDb
+      .select()
+      .from(privateHostedDeployments)
+      .where(
+        and(
+          eq(privateHostedDeployments.siteId, site.id),
+          eq(privateHostedDeployments.orgId, args.orgId),
+          eq(privateHostedDeployments.userId, args.userId),
+        ),
+      )
+      .orderBy(desc(privateHostedDeployments.createdAt));
+    signal.throwIfAborted();
     const deployments = await writeDb
       .select()
       .from(hostedDeployments)
@@ -1302,6 +1444,13 @@ export const getHostedSiteDeployments$ = command(
       )
       .orderBy(desc(hostedDeployments.createdAt));
     signal.throwIfAborted();
+    if (
+      !site.activeDeploymentId &&
+      deployments.length === 0 &&
+      site.userId !== args.userId
+    ) {
+      return { status: "not_found", message: "Hosted site not found" };
+    }
 
     return {
       status: "ok",
@@ -1309,20 +1458,27 @@ export const getHostedSiteDeployments$ = command(
         siteId: site.id,
         site: hostedSiteRequestedSlug(site),
         publicSlug: site.publicSlug,
-        aliasUrl: publicUrl(site.publicBrand, site.publicSlug),
+        aliasUrl:
+          site.activeDeploymentId || deployments.length > 0
+            ? publicUrl(site.publicBrand, site.publicSlug)
+            : null,
         activeDeploymentId: site.activeDeploymentId,
         activeDeploymentVersion: site.activeDeploymentVersion,
-        deployments: deployments.map((deployment) => {
-          return {
-            deploymentId: deployment.id,
-            deploymentVersion: deployment.deploymentVersion,
-            artifactUrl: deployment.artifactUrl,
-            status: deployment.status,
-            isActive: deployment.id === site.activeDeploymentId,
-            createdAt: deployment.createdAt.toISOString(),
-            readyAt: deployment.readyAt?.toISOString() ?? null,
-          };
-        }),
+        deployments: [...privateVersions, ...deployments]
+          .sort((a, b) => {
+            return b.createdAt.getTime() - a.createdAt.getTime();
+          })
+          .map((deployment) => {
+            return {
+              deploymentId: deployment.id,
+              deploymentVersion: deployment.deploymentVersion,
+              artifactUrl: deployment.artifactUrl,
+              status: deployment.status,
+              isActive: deployment.id === site.activeDeploymentId,
+              createdAt: deployment.createdAt.toISOString(),
+              readyAt: deployment.readyAt?.toISOString() ?? null,
+            };
+          }),
       },
     };
   },
