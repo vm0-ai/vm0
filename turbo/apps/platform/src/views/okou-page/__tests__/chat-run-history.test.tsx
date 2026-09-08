@@ -727,7 +727,7 @@ test.each([false, true])(
     }).toStrictEqual(
       runWorkFoldingEnabled
         ? { paddingTop: "5.25px", paddingBottom: "5.25px", minHeight: "36px" }
-        : { paddingTop: "10px", paddingBottom: "0px", minHeight: "" },
+        : { paddingTop: "10px", paddingBottom: "5.25px", minHeight: "36px" },
     );
   },
 );
