@@ -7,6 +7,7 @@ import {
   listCustomConnectors,
 } from "../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { getPlatformOrigin } from "../doctor/platform-url";
 import { resolveConnectorDiscoveryAgentContext } from "./agent-context";
 import { padEndAnsi, stripAnsi } from "./connected-as";
 import {
@@ -19,6 +20,12 @@ import {
   type ConnectorDiscoveryItem,
 } from "./discovery";
 import { searchConnectorCatalog } from "./public-catalog";
+import {
+  currentConnectorSearchAction,
+  printConnectorSearchGuidance,
+  runConnectorSearchAction,
+  type ConnectorSearchAction,
+} from "./search-guidance";
 import {
   isRunBoundConnectorContext,
   resolveRunConnectorAccountLookups,
@@ -97,6 +104,10 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
   readonly renderAvailability: (connector: T) => string;
   readonly accountHeader: string;
   readonly renderAccount: (connector: T) => string;
+  readonly connectionAction: (connector: T) => ConnectorSearchAction | null;
+  readonly origin: string;
+  readonly runBound: boolean;
+  readonly callbackPrompt: string | undefined;
   readonly agentContext: Awaited<
     ReturnType<typeof resolveConnectorDiscoveryAgentContext>
   >;
@@ -107,6 +118,12 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
     args.keyword,
     effectiveLimit,
   );
+
+  if (args.callbackPrompt !== undefined && results.length !== 1) {
+    throw new Error(
+      "--callback-prompt requires a single connector match. Narrow the search to the intended connector with --limit 1.",
+    );
+  }
 
   if (results.length === 0) {
     console.log("No matches found.");
@@ -175,15 +192,30 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
     }
     console.log(parts.join("  "));
   }
+
+  printConnectorSearchGuidance({
+    actions: results.flatMap((result) => {
+      const action = args.connectionAction(result.connector);
+      return action ? [action] : [];
+    }),
+    origin: args.origin,
+    agentId: args.agentContext?.agentId,
+    runBound: args.runBound,
+    callbackPrompt: args.callbackPrompt,
+  });
 }
 
 export const searchCommand = new Command()
   .name("search")
   .description(
-    "Search supported connectors by slug, label, category, generation type, or tag and show availability",
+    "Search supported connectors by slug, label, category, generation type, or tag and show availability and connection links",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
   .option("--agent <id>", "Show per-agent authorization column")
+  .option(
+    "--callback-prompt <prompt>",
+    "Continue the current web chat after one connector action (use --limit 1)",
+  )
   .option(
     "--limit <n>",
     "Maximum number of results to display (default: all matches)",
@@ -191,18 +223,22 @@ export const searchCommand = new Command()
   )
   .action(
     withErrorHandler(
-      async (keyword: string, options: { agent?: string; limit?: number }) => {
+      async (
+        keyword: string,
+        options: { agent?: string; limit?: number; callbackPrompt?: string },
+      ) => {
         const trimmed = keyword.trim();
         if (!trimmed) {
           throw new Error("Keyword cannot be empty.");
         }
 
         if (isRunBoundConnectorContext()) {
-          const [{ connectors }, customConnectors, agentContext] =
+          const [{ connectors }, customConnectors, agentContext, origin] =
             await Promise.all([
               listConnectorCatalog(),
               listCustomConnectors(),
               resolveConnectorDiscoveryAgentContext(options.agent),
+              getPlatformOrigin(),
             ]);
           const definitions = connectorDiscoveryDefinitions(
             connectors,
@@ -243,16 +279,26 @@ export const searchCommand = new Command()
             renderAccount: (connector) => {
               return renderRunAccountCell(runAccountForConnector(connector));
             },
+            connectionAction: (connector) => {
+              return runConnectorSearchAction(
+                connector,
+                runAccountForConnector(connector),
+              );
+            },
+            origin,
+            runBound: true,
+            callbackPrompt: options.callbackPrompt,
             agentContext,
           });
           return;
         }
 
-        const [{ connectors }, customConnectors, agentContext] =
+        const [{ connectors }, customConnectors, agentContext, origin] =
           await Promise.all([
             listConnectorCatalogStatus(),
             listCustomConnectors(),
             resolveConnectorDiscoveryAgentContext(options.agent),
+            getPlatformOrigin(),
           ]);
         const discoveredConnectors = connectorDiscoveryItems(
           connectors,
@@ -268,6 +314,12 @@ export const searchCommand = new Command()
           },
           accountHeader: "CONNECTED AS",
           renderAccount: renderConnectorDiscoveryConnectedAsCell,
+          connectionAction: (connector) => {
+            return currentConnectorSearchAction(connector, agentContext);
+          },
+          origin,
+          runBound: false,
+          callbackPrompt: options.callbackPrompt,
           agentContext,
         });
       },

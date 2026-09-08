@@ -36,6 +36,7 @@ import {
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 const RUN_CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
+const THREAD_UUID = "22222222-2222-4222-8222-222222222222";
 
 const connectedGithub = {
   id: "1",
@@ -138,7 +139,9 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
 }
 
 function findDataRows(lines: readonly string[]): string[] {
-  return lines.filter((line) => {
+  const contextIndex = lines.indexOf("Connection context:");
+  const tableLines = contextIndex === -1 ? lines : lines.slice(0, contextIndex);
+  return tableLines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return false;
     if (trimmed.startsWith("SLUG")) return false;
@@ -169,6 +172,7 @@ describe("okou connector search command", () => {
     vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
     searchCommand.setOptionValue("agent", undefined);
     searchCommand.setOptionValue("limit", undefined);
+    searchCommand.setOptionValue("callbackPrompt", undefined);
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -521,6 +525,9 @@ describe("okou connector search command", () => {
 
       const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
       expect(output).toContain("(not connected)");
+      expect(output).toContain(
+        "http://localhost:3000/connectors/github/connect",
+      );
     });
 
     it("renders reconnect-needed state", async () => {
@@ -611,6 +618,9 @@ describe("okou connector search command", () => {
       expect(text).toContain("ACCOUNT USED BY THIS RUN");
       expect(text).toContain("Run account B");
       expect(text).toContain("no (reconnect needed)");
+      expect(text).toContain(
+        `http://localhost:3000/connectors/github/reconnect/${RUN_CONNECTION_ID}?agentId=${AGENT_UUID}`,
+      );
       expect(text).not.toContain("default-account-a");
       expect(defaultStatusRequests).toBe(0);
     });
@@ -729,6 +739,12 @@ describe("okou connector search command", () => {
       expect(metadataUnavailableOutput).toContain(
         "no (metadata unavailable or deleted)",
       );
+      expect(metadataUnavailableOutput).toContain(
+        `[Review GitHub accounts and agent access](http://localhost:3000/connectors?agentId=${AGENT_UUID})`,
+      );
+      expect(metadataUnavailableOutput).not.toContain(
+        "/connectors/github/connect",
+      );
 
       mockConsoleLog.mockClear();
       vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
@@ -736,6 +752,148 @@ describe("okou connector search command", () => {
       expect(
         (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
       ).toContain("unknown (run context unavailable)");
+    });
+  });
+
+  describe("connection guidance", () => {
+    beforeEach(() => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_UUID);
+      writeRunConnectorAccountContext(contextPath, []);
+      server.use(
+        stubConnectorCatalog([
+          catalogItem({
+            connectorSlug: "google-sheets",
+            label: "Google Sheets",
+          }),
+          catalogItem({ connectorSlug: "sheetdb", label: "SheetDB" }),
+        ]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+    });
+
+    it("offers connection links for supported services that are not admitted to the run", async () => {
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(
+        `[Connect or authorize Google Sheets](http://localhost:3000/connectors/google-sheets/connect?agentId=${AGENT_UUID})`,
+      );
+      expect(output).toContain(
+        `[Connect or authorize SheetDB](http://localhost:3000/connectors/sheetdb/connect?agentId=${AGENT_UUID})`,
+      );
+      expect(output).toContain("--callback-prompt");
+      expect(output).not.toContain("callbackPrompt=");
+    });
+
+    it("preserves the task in a callback link scoped to the current chat and configured app origin", async () => {
+      vi.stubEnv("OKOU_APP_URL", "https://app.example.com");
+      const callbackPrompt =
+        "Check Google Sheets access, then review the user's Q3 budget & summarize it.";
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "google-sheets",
+        "--limit",
+        "1",
+        "--callback-prompt",
+        callbackPrompt,
+      ]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      const link = output.match(
+        /\[Connect or authorize Google Sheets\]\(([^)]+)\)/u,
+      );
+      expect(link).not.toBeNull();
+      const url = new URL(link![1]!);
+      expect(url.origin).toBe("https://app.example.com");
+      expect(url.pathname).toBe("/connectors/google-sheets/connect");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        agentId: AGENT_UUID,
+        threadId: THREAD_UUID,
+        callbackPrompt,
+      });
+      expect(output).not.toContain("/connectors/sheetdb/");
+    });
+
+    it("rejects a callback when the search matches multiple connectors", async () => {
+      await expect(
+        searchCommand.parseAsync([
+          "node",
+          "cli",
+          "sheet",
+          "--callback-prompt",
+          "Continue reviewing the spreadsheet",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "--callback-prompt requires a single connector match",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "callbackPrompt=",
+      );
+    });
+
+    it("rejects callback links for another agent", async () => {
+      server.use(
+        stubAgent(ALT_AGENT_UUID, "other-agent"),
+        stubUserConnectors(ALT_AGENT_UUID, []),
+      );
+      await expect(
+        searchCommand.parseAsync([
+          "node",
+          "cli",
+          "google-sheets",
+          "--limit",
+          "1",
+          "--agent",
+          ALT_AGENT_UUID,
+          "--callback-prompt",
+          "Continue reviewing the spreadsheet",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "--callback-prompt can only target the current web chat thread and agent",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).not.toContain(
+        "callbackPrompt=",
+      );
+    });
+
+    it("uses connector settings for custom connector setup", async () => {
+      const connector = customConnector();
+      server.use(stubConnectorCatalog([]), stubCustomConnectors([connector]));
+
+      await searchCommand.parseAsync(["node", "cli", connector.slug]);
+
+      const output = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain(
+        `[Review ${connector.displayName} accounts and agent access](http://localhost:3000/connectors?agentId=${AGENT_UUID})`,
+      );
+      expect(output).not.toContain(`/connectors/${connector.slug}/authorize`);
+    });
+
+    it("offers authorization for a connected service when inspecting an agent outside a run", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "");
+      server.use(stubConnectors([connectedGithub]));
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+        "--limit",
+        "1",
+      ]);
+
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `http://localhost:3000/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
     });
   });
 
