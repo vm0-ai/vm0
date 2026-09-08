@@ -2058,7 +2058,6 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       events: readonly ChatEvent[],
       signal: AbortSignal,
     ): Promise<void> => {
-      await get(initialFeatureSwitchHydration$);
       signal.throwIfAborted();
       const current = get(internalEventTrees$);
       const { next, richPlans } = planEventTreeUpdates(
@@ -2428,6 +2427,13 @@ function createChatEventPresentationLifecycle({
   readonly enableSidebarEntryAnimations$: Command<void, []>;
   readonly initialEventsReady$: State<boolean>;
 }) {
+  const syncHydratedEventTrees$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await get(initialFeatureSwitchHydration$);
+      signal.throwIfAborted();
+      await set(syncVisibleEventTrees$, false, signal);
+    },
+  );
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       set(
@@ -2454,7 +2460,7 @@ function createChatEventPresentationLifecycle({
       }
     },
   );
-  return { setup$, catchUp$ };
+  return { setup$, catchUp$, syncHydratedEventTrees$ };
 }
 
 function createReadyScrollAfterRenderRequest(
@@ -2669,6 +2675,7 @@ interface RunTrackingDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
   catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
+  syncHydratedEventTrees$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
@@ -3022,6 +3029,7 @@ function createRunTracking({
   threadId,
   setupChatEvents$,
   catchUpChatEvents$,
+  syncHydratedEventTrees$,
   reloadArtifacts$,
   subscribeBrowserSessions$,
   automationSignals,
@@ -3069,6 +3077,7 @@ function createRunTracking({
     );
 
     await Promise.all([
+      set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
       set(
         subscribeChatThreadRealtime$,
@@ -4363,6 +4372,7 @@ function createChatPanelSignalsWithDraft(
     threadId,
     setupChatEvents$: messages.setup$,
     catchUpChatEvents$: messages.catchUp$,
+    syncHydratedEventTrees$: messagePipeline.syncHydratedEventTrees$,
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,
