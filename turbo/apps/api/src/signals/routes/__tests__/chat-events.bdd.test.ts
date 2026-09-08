@@ -8810,7 +8810,7 @@ describe("CHAT-02: model-first provider policies", () => {
         },
         [503],
       );
-      expect(await gate.arrival).toMatchObject({ piExecution: true });
+      await expect(gate.arrival).resolves.toMatchObject({ piExecution: true });
       const connection = setupApp({
         context,
         routes: modelProviderGatewayRoutes,
