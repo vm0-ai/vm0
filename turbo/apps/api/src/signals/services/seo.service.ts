@@ -76,8 +76,14 @@ interface SeoErrorResult {
   readonly error: SeoErrorResponse;
 }
 
+interface SeoRetryableErrorResult {
+  readonly kind: "retryable-error";
+  readonly error: SeoErrorResponse;
+}
+
 type DataForSeoFetchResult =
   | SeoErrorResult
+  | SeoRetryableErrorResult
   | { readonly kind: "body"; readonly body: unknown };
 
 type DataForSeoBodyResult =
@@ -91,6 +97,7 @@ type DataForSeoBodyResult =
 
 type DataForSeoAttemptResult =
   | DataForSeoBodyResult
+  | SeoRetryableErrorResult
   | { readonly kind: "empty" };
 
 type SeoCommandResponse =
@@ -163,13 +170,24 @@ function parseResponseText(text: string): unknown {
   return parsed === undefined ? text : parsed;
 }
 
-function dataForSeoProviderStatus(body: unknown): {
+function dataForSeoDiagnostics(body: unknown): {
   readonly providerStatusCode?: number;
   readonly providerStatusMessage?: string;
+  readonly providerCostUsd?: number;
+  readonly tasksCount?: number;
+  readonly tasksError?: number;
+  readonly taskId?: string;
+  readonly taskStatusCode?: number;
+  readonly taskStatusMessage?: string;
+  readonly taskCostUsd?: number;
 } {
   if (!isRecord(body)) {
     return {};
   }
+  const task =
+    Array.isArray(body.tasks) && isRecord(body.tasks[0])
+      ? body.tasks[0]
+      : undefined;
   return {
     ...(typeof body.status_code === "number"
       ? { providerStatusCode: body.status_code }
@@ -177,7 +195,39 @@ function dataForSeoProviderStatus(body: unknown): {
     ...(typeof body.status_message === "string"
       ? { providerStatusMessage: sanitizedErrorMessage(body.status_message) }
       : {}),
+    ...(typeof body.cost === "number" && Number.isFinite(body.cost)
+      ? { providerCostUsd: body.cost }
+      : {}),
+    ...(typeof body.tasks_count === "number"
+      ? { tasksCount: body.tasks_count }
+      : {}),
+    ...(typeof body.tasks_error === "number"
+      ? { tasksError: body.tasks_error }
+      : {}),
+    ...(typeof task?.id === "string"
+      ? { taskId: sanitizedErrorMessage(task.id) }
+      : {}),
+    ...(typeof task?.status_code === "number"
+      ? { taskStatusCode: task.status_code }
+      : {}),
+    ...(typeof task?.status_message === "string"
+      ? { taskStatusMessage: sanitizedErrorMessage(task.status_message) }
+      : {}),
+    ...(typeof task?.cost === "number" && Number.isFinite(task.cost)
+      ? { taskCostUsd: task.cost }
+      : {}),
   };
+}
+
+function canRetryDataForSeoStatus(statusCode: number | undefined): boolean {
+  // Only absent, successful, or documented transient Live API statuses qualify.
+  // Explicit account, parameter, and other task failures must not be retried.
+  return (
+    statusCode === undefined ||
+    statusCode === 20_000 ||
+    statusCode === 50_000 ||
+    statusCode === 50_401
+  );
 }
 
 function dataForSeoFailure(
@@ -237,6 +287,7 @@ async function fetchDataForSeoJson(
   url: URL,
   init: RequestInit,
   operation: SeoRequest["operation"],
+  attempt: number,
   signal: AbortSignal,
 ): Promise<DataForSeoFetchResult> {
   const result = await settle(
@@ -256,6 +307,8 @@ async function fetchDataForSeoJson(
         L.warn("DataForSEO API response exceeded the size limit", {
           operation,
           endpoint: url.pathname,
+          attempt,
+          httpStatus: response.status,
           maxResponseBytes: MAX_PROVIDER_RESPONSE_BYTES,
         });
         return errorResult(
@@ -267,27 +320,38 @@ async function fetchDataForSeoJson(
       }
 
       const body = parseResponseText(textResult.text);
+      const diagnostics = dataForSeoDiagnostics(body);
+      const requestDiagnostics = {
+        operation,
+        endpoint: url.pathname,
+        attempt,
+        httpStatus: response.status,
+        httpStatusText: response.statusText,
+        ...diagnostics,
+      };
       if (!response.ok) {
-        L.warn("DataForSEO API request failed", {
-          operation,
-          endpoint: url.pathname,
-          httpStatus: response.status,
-          httpStatusText: response.statusText,
-          ...dataForSeoProviderStatus(body),
-        });
+        L.warn("DataForSEO API request failed", requestDiagnostics);
+      } else if (operation === "backlinks-summary") {
+        L.debug("DataForSEO API request completed", requestDiagnostics);
       }
       if (response.status === 429) {
         return errorResult(dataForSeoFailure(undefined, undefined, 429));
       }
       if (!response.ok) {
-        const providerStatus = dataForSeoProviderStatus(body);
-        return errorResult(
-          dataForSeoFailure(
-            providerStatus.providerStatusCode,
-            providerStatus.providerStatusMessage,
-            response.status,
-          ),
+        const error = dataForSeoFailure(
+          diagnostics.providerStatusCode,
+          diagnostics.providerStatusMessage,
+          response.status,
         );
+        if (
+          operation === "backlinks-summary" &&
+          (response.status === 500 || response.status === 504) &&
+          canRetryDataForSeoStatus(diagnostics.providerStatusCode) &&
+          canRetryDataForSeoStatus(diagnostics.taskStatusCode)
+        ) {
+          return { kind: "retryable-error" as const, error };
+        }
+        return errorResult(error);
       }
       return { kind: "body" as const, body };
     })(),
@@ -301,6 +365,7 @@ async function fetchDataForSeoJson(
     L.warn("DataForSEO API request failed", {
       operation,
       endpoint: url.pathname,
+      attempt,
       failureKind: timedOut ? "timeout" : "network",
       ...(result.error instanceof Error
         ? {
@@ -408,6 +473,7 @@ async function fetchDataForSeoOnce(
   login: string,
   password: string,
   request: DataForSeoRequest,
+  attempt: number,
   signal: AbortSignal,
 ): Promise<DataForSeoAttemptResult> {
   const endpoint = dataForSeoPath(request);
@@ -422,13 +488,14 @@ async function fetchDataForSeoOnce(
       body: JSON.stringify([dataForSeoTask(request)]),
     },
     request.operation,
+    attempt,
     signal,
   );
-  if (result.kind === "error") {
+  if (result.kind !== "body") {
     return result;
   }
 
-  const providerStatus = dataForSeoProviderStatus(result.body);
+  const providerStatus = dataForSeoDiagnostics(result.body);
   if (
     providerStatus.providerStatusCode !== undefined &&
     providerStatus.providerStatusCode !== 20_000
@@ -436,6 +503,7 @@ async function fetchDataForSeoOnce(
     L.warn("DataForSEO request failed", {
       operation: request.operation,
       endpoint,
+      attempt,
       ...providerStatus,
     });
     return errorResult(
@@ -451,6 +519,7 @@ async function fetchDataForSeoOnce(
     L.warn("DataForSEO API returned an invalid response", {
       operation: request.operation,
       endpoint,
+      attempt,
       validationIssues: parsed.error.issues.slice(0, 10).map((issue) => {
         return {
           path: issue.path.join("."),
@@ -479,6 +548,7 @@ async function fetchDataForSeoOnce(
     L.warn("DataForSEO API returned an invalid task response", {
       operation: request.operation,
       endpoint,
+      attempt,
       tasksCount: parsed.data.tasks_count,
       tasksError: parsed.data.tasks_error,
       returnedTasks: parsed.data.tasks.length,
@@ -494,11 +564,8 @@ async function fetchDataForSeoOnce(
     L.warn("DataForSEO task failed", {
       operation: request.operation,
       endpoint,
-      providerStatusCode: parsed.data.status_code,
-      providerStatusMessage: sanitizedErrorMessage(parsed.data.status_message),
-      tasksError: parsed.data.tasks_error,
-      taskStatusCode: task.status_code,
-      taskStatusMessage: sanitizedErrorMessage(task.status_message),
+      attempt,
+      ...providerStatus,
     });
     return errorResult(
       dataForSeoFailure(
@@ -512,6 +579,7 @@ async function fetchDataForSeoOnce(
     L.warn("DataForSEO API returned an invalid cost", {
       operation: request.operation,
       endpoint,
+      attempt,
       providerCostUsd: parsed.data.cost,
     });
     return errorResult(
@@ -539,23 +607,31 @@ async function fetchDataForSeo(
     login,
     password,
     request,
+    1,
     signal,
   );
-  if (firstResult.kind !== "empty") {
+  if (firstResult.kind !== "empty" && firstResult.kind !== "retryable-error") {
     return firstResult;
   }
 
-  L.warn("DataForSEO returned an empty task list; retrying", {
-    operation: request.operation,
-    endpoint: dataForSeoPath(request),
-  });
+  if (firstResult.kind === "empty") {
+    L.warn("DataForSEO returned an empty task list; retrying", {
+      operation: request.operation,
+      endpoint: dataForSeoPath(request),
+    });
+  }
+  // Empty-task and transient HTTP failures share one retry, even when mixed.
   signal.throwIfAborted();
   const retryResult = await fetchDataForSeoOnce(
     login,
     password,
     request,
+    2,
     signal,
   );
+  if (retryResult.kind === "retryable-error") {
+    return errorResult(retryResult.error);
+  }
   if (retryResult.kind !== "empty") {
     return retryResult;
   }
