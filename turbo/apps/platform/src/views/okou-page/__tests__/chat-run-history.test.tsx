@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -94,6 +95,55 @@ function viewAgentProfileLinks(): HTMLElement[] {
   return queryAllByRoleFast("link").filter((link) => {
     return link.getAttribute("aria-label") === "View agent profile";
   });
+}
+
+async function desktopRenderedStyle(
+  element: HTMLElement,
+  signal: AbortSignal,
+): Promise<CSSStyleDeclaration> {
+  const chatContainer = element.closest<HTMLElement>("main");
+  if (!chatContainer) {
+    throw new Error("Expected the response inside the chat container");
+  }
+
+  const compiler = await compile(
+    "@theme inline { --spacing: 4px; } @tailwind utilities;",
+  );
+  let renderedCss = compiler.build([
+    ...chatContainer.classList,
+    ...element.classList,
+  ]);
+
+  // happy-dom does not evaluate container queries, group :is/:where selectors,
+  // logical padding, or CSS length arithmetic. Lower those browser semantics
+  // after compiling the production classes so assertions observe desktop layout.
+  renderedCss = renderedCss
+    .replace(/@container \(width >= 900px\) \{\n([\s\S]*?)\n\}/gu, "$1")
+    .replace(
+      /(\.[^\s,{]+):is\(:where\((\.[^)]+)\)(\[[^\]]+\]) \*\)/gu,
+      "$2$3 $1",
+    )
+    .replace(
+      /padding-block: ([^;]+);/gu,
+      "padding-top: $1; padding-bottom: $1;",
+    )
+    .replace(/calc\(4px \* ([\d.]+)\)/gu, (_, multiplier: string) => {
+      return `${String(Number(multiplier) * 4)}px`;
+    })
+    .replaceAll("calc((2.25rem - 1lh) / 2)", "5.25px");
+
+  const styleElement = document.createElement("style");
+  styleElement.textContent = renderedCss;
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
+
+  return getComputedStyle(element);
 }
 
 test("Browse completed work by conversation phase", async () => {
@@ -617,13 +667,14 @@ test.each([false, true])(
     if (!body) {
       throw new Error("Expected the waiting response body");
     }
-    expect(
-      body.classList.contains(
-        "group-data-[run-work-folding-disabled]/chat:py-4",
-      ),
-    ).toBeTruthy();
-    expect(body.closest("[data-run-work-folding-disabled]") !== null).toBe(
-      !runWorkFoldingEnabled,
+    const style = await desktopRenderedStyle(body, context.signal);
+    expect({
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+    }).toStrictEqual(
+      runWorkFoldingEnabled
+        ? { paddingTop: "0px", paddingBottom: "0px" }
+        : { paddingTop: "16px", paddingBottom: "16px" },
     );
   },
 );
@@ -668,13 +719,15 @@ test.each([false, true])(
     if (!body) {
       throw new Error("Expected the assistant response body");
     }
-    expect(
-      body.classList.contains(
-        "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
-      ),
-    ).toBeTruthy();
-    expect(body.closest("[data-run-work-folding-disabled]") !== null).toBe(
-      !runWorkFoldingEnabled,
+    const style = await desktopRenderedStyle(body, context.signal);
+    expect({
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+      minHeight: style.minHeight,
+    }).toStrictEqual(
+      runWorkFoldingEnabled
+        ? { paddingTop: "5.25px", paddingBottom: "5.25px", minHeight: "36px" }
+        : { paddingTop: "10px", paddingBottom: "0px", minHeight: "" },
     );
   },
 );
