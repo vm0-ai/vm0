@@ -12,6 +12,7 @@ import {
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
@@ -528,11 +529,17 @@ test("Connect through device authorization", async () => {
   await expect(
     screen.findByTestId("connector-oauth-device-code"),
   ).resolves.toHaveTextContent("OKOU-DEVICE");
-  click(within(dialog).getByTestId("connector-oauth-device-open"));
+  const approvalDialog = await screen.findByRole("dialog", { name: "Base44" });
+  expect(
+    screen.queryByRole("dialog", { name: "Connecting your account" }),
+  ).toBeNull();
+  await userEvent
+    .setup()
+    .click(within(approvalDialog).getByTestId("connector-oauth-device-open"));
   await permissionsStarted.promise;
-  await waitFor(() => {
-    expect(screen.getByText("Connecting your account")).toBeVisible();
-  });
+  expect(within(approvalDialog).getByRole("status")).toHaveTextContent(
+    "Checking for approval...",
+  );
   expect(
     browserOpen.calls.some((call) => {
       return call.url?.includes("oauth.test/base44/device") ?? false;

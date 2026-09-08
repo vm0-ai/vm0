@@ -16,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -27,6 +28,7 @@ import {
   mockConnectors,
   mockPublicConnectorStatus,
   publicStatusItem,
+  queryConnectorAction,
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
@@ -62,6 +64,25 @@ function authorizationWindow(): Window {
   });
   context.mocks.browser.open(popup);
   return popup;
+}
+
+async function expectNonDismissibleProgress(): Promise<void> {
+  const dialog = await screen.findByRole("dialog", { name: PROGRESS });
+  await waitFor(() => {
+    expect(dialog).toHaveFocus();
+  });
+  expect(within(dialog).queryByLabelText("Close")).toBeNull();
+  const user = userEvent.setup();
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
+  const overlay = dialog.parentElement?.querySelector(
+    '[data-slot="dialog-overlay"]',
+  );
+  if (!(overlay instanceof HTMLElement)) {
+    throw new Error("Expected the connection dialog backdrop");
+  }
+  await user.click(overlay);
+  expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
 }
 
 test.each(["auth-code", "openid-auth"] as const)(
@@ -138,7 +159,7 @@ test.each(["auth-code", "openid-auth"] as const)(
       return getConnectorAction("button", "Connect Stripe");
     });
     click(connect);
-    await expect(screen.findByText(PROGRESS)).resolves.toBeVisible();
+    await expectNonDismissibleProgress();
     expect(connect).toBeDisabled();
     await waitFor(() => {
       return expect(popup.location.href).toBe(start.authorizationUrl);
@@ -148,18 +169,14 @@ test.each(["auth-code", "openid-auth"] as const)(
     context.mocks.data.connectors([{ ...account, slug: "stripe" }]);
     popup.close();
     await permissionRequest.promise;
-    expect(screen.getByText(PROGRESS)).toBeVisible();
+    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
     expect(
       screen.queryByRole("dialog", { name: "Name your Stripe account" }),
     ).toBeNull();
     permissions.resolve();
     await detailRequest.promise;
-    expect(screen.getByText(PROGRESS)).toBeVisible();
-    await waitFor(() => {
-      return expect(
-        getConnectorAction("button", "Manage Stripe accounts"),
-      ).toBeDisabled();
-    });
+    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
+    expect(queryConnectorAction("button", "Manage Stripe accounts")).toBeNull();
     details.resolve();
     const naming = await screen.findByRole("dialog", {
       name: "Name your Stripe account",
@@ -169,7 +186,8 @@ test.each(["auth-code", "openid-auth"] as const)(
       "alice",
     );
     await waitFor(() => {
-      return expect(screen.queryByText(PROGRESS)).toBeNull();
+      expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
+      expect(within(naming).getByLabelText("Account name")).toHaveFocus();
     });
     click(getConnectorAction("button", "Skip", naming));
     await waitFor(() => {
@@ -284,7 +302,7 @@ test.each(["http", "mcp", "automatic"] as const)(
       return getConnectorAction("button", `Connect ${connector.displayName}`);
     });
     click(connect);
-    await expect(screen.findByText(PROGRESS)).resolves.toBeVisible();
+    await expectNonDismissibleProgress();
     expect(connect).toBeDisabled();
     await waitFor(() => {
       return expect(popup.location.href).toBe(start.authorizationUrl);
@@ -298,10 +316,10 @@ test.each(["http", "mcp", "automatic"] as const)(
     };
     popup.close();
     await confirmRequest.promise;
-    expect(screen.getByText(PROGRESS)).toBeVisible();
+    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
     confirmation.resolve();
     await detailRequest.promise;
-    expect(screen.getByText(PROGRESS)).toBeVisible();
+    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
     expect(
       screen.queryByRole("dialog", {
         name: `Name your ${connector.displayName} account`,
@@ -316,7 +334,8 @@ test.each(["http", "mcp", "automatic"] as const)(
       "alice",
     );
     await waitFor(() => {
-      return expect(screen.queryByText(PROGRESS)).toBeNull();
+      expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
+      expect(within(naming).getByLabelText("Account name")).toHaveFocus();
     });
   },
 );
