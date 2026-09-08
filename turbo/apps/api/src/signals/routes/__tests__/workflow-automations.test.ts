@@ -1412,7 +1412,7 @@ describe("okou workflow automations", () => {
     });
   });
 
-  it("projects webhook URLs by request and run brand without rotating credentials", async () => {
+  it("uses configured webhook URLs for tokens with or without legacy brand claims", async () => {
     mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
@@ -1437,45 +1437,27 @@ describe("okou workflow automations", () => {
 
     const sourceRun = await runs.createRun(actor, {
       agentId,
-      prompt: "project webhook credentials by run brand",
+      prompt: "read configured webhook credentials",
       modelProvider: "anthropic-api-key",
     });
-    const brandCases = [
-      {
-        publicBrand: "okou" as const,
-        origin: "https://app.okou.ai",
-        hostname: "api.okou.ai",
-      },
-      {
-        publicBrand: "vm0" as const,
-        origin: "https://app.okou.ai",
-        hostname: "api.okou.ai",
-      },
-      {
-        publicBrand: undefined,
-        origin: "https://app.okou.ai",
-        hostname: "api.okou.ai",
-      },
-    ];
 
-    for (const brandCase of brandCases) {
+    for (const legacyBrand of [undefined, "vm0", "okou"] as const) {
       const token = runs.okouTokenForRunWithCapabilities(
         actor,
         sourceRun.runId,
         ["agent:write"],
-        brandCase.publicBrand,
+        legacyBrand,
       );
       const revealed = await accept(
         automationsClient().revealWebhookSecret({
           headers: { authorization: `Bearer ${token}` },
-          extraHeaders: { origin: brandCase.origin },
           params: { id: created.body.id },
           body: undefined,
         }),
         [200],
       );
       const revealedUrl = new URL(revealed.body.webhookUrl);
-      expect(revealedUrl.hostname).toBe(brandCase.hostname);
+      expect(revealedUrl.hostname).toBe("api.okou.ai");
       expect(revealedUrl.pathname).toBe(createdUrl.pathname);
       expect(revealed.body.webhookSecret).toBe(created.body.webhookSecret);
     }
@@ -2482,7 +2464,7 @@ describe("okou workflow automations", () => {
     );
   });
 
-  it("projects inaccessible Notion page errors by request brand", async () => {
+  it("reports an inaccessible Notion page with Okou branding", async () => {
     const scenario = await setupFixture();
     await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
@@ -2492,34 +2474,28 @@ describe("okou workflow automations", () => {
       }),
     );
 
-    for (const [origin, assistantName] of [
-      [undefined, "Zero"],
-      ["https://app.okou.ai", "Okou"],
-    ] as const) {
-      const rejected = await accept(
-        automationsClient().create({
-          headers: authHeaders(),
-          ...(origin ? { extraHeaders: { origin } } : {}),
-          params: { workflowId: scenario.workflowId },
-          body: {
-            kind: "event",
-            eventType: "notion-child-page-created",
-            eventConfig: {
-              provider: "notion",
-              event: "child_page_created",
-              parentPageUrl: NOTION_PARENT_PAGE_URL,
-            },
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: NOTION_PARENT_PAGE_URL,
           },
-        }),
-        [400],
-      );
-      expect(rejected.body.error.message).toBe(
-        `${assistantName} cannot access this Notion page`,
-      );
-    }
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Okou cannot access this Notion page",
+    );
   });
 
-  it("projects inaccessible Notion database errors by request brand", async () => {
+  it("reports an inaccessible Notion database with Okou branding", async () => {
     const scenario = await setupFixture();
     await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
@@ -2532,31 +2508,25 @@ describe("okou workflow automations", () => {
       }),
     );
 
-    for (const [origin, assistantName] of [
-      [undefined, "Zero"],
-      ["https://app.okou.ai", "Okou"],
-    ] as const) {
-      const rejected = await accept(
-        automationsClient().create({
-          headers: authHeaders(),
-          ...(origin ? { extraHeaders: { origin } } : {}),
-          params: { workflowId: scenario.workflowId },
-          body: {
-            kind: "event",
-            eventType: "notion-database-item-created",
-            eventConfig: {
-              provider: "notion",
-              event: "database_item_created",
-              databaseUrl: NOTION_DATABASE_URL,
-            },
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-database-item-created",
+          eventConfig: {
+            provider: "notion",
+            event: "database_item_created",
+            databaseUrl: NOTION_DATABASE_URL,
           },
-        }),
-        [400],
-      );
-      expect(rejected.body.error.message).toBe(
-        `${assistantName} cannot access this Notion database`,
-      );
-    }
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Okou cannot access this Notion database",
+    );
   });
 
   it("creates Notion child page automations by validating and storing the parent page", async () => {

@@ -572,7 +572,7 @@ describe("Slack OAuth API routes", () => {
       const slackMessages = JSON.stringify(
         context.mocks.slack.chat.postMessage.mock.calls,
       );
-      expect(slackMessages).toContain("connected to Zero");
+      expect(slackMessages).toContain("connected to Okou");
       expect(slackMessages).toContain("<@B_TEST>");
     });
 

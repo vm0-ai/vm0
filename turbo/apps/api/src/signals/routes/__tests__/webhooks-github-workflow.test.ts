@@ -786,7 +786,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected the drained Okou run failure callback");
     }
     expect(failed.error).toContain("https://app.okou.ai/?settings=model");
-    expect(failed.error).not.toContain("https://app.okou.ai/?settings=model");
+    expect(failed.error).not.toContain("https://app.vm0.ai/?settings=model");
   });
 
   it.each([
@@ -974,7 +974,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     expect(postedComments[0]).toMatch(
       /https:\/\/app\.okou\.ai\/activities\/[0-9a-f-]+/u,
     );
-    expect(postedComments[0]).not.toContain("https://app.okou.ai/activities/");
+    expect(postedComments[0]).not.toContain("https://app.vm0.ai/activities/");
   });
 
   it("validates pull request review actions before dispatching", async () => {

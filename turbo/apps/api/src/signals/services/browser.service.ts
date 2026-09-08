@@ -244,7 +244,7 @@ function chatRunRequired(
   return serviceError(
     400,
     code,
-    `Managed browsers can only be started from a ${PUBLIC_BRAND_PRESENTATION.assistantName} chat run`,
+    `Managed browsers can only be started from an ${PUBLIC_BRAND_PRESENTATION.assistantName} chat run`,
   );
 }
 

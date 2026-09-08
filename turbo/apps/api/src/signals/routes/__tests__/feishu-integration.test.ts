@@ -101,7 +101,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const runsApi = createRunsApi(context);
 const storagesApi = createStoragesBddApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
-const APP_ORIGIN = "https://app.vm0.test";
+const APP_ORIGIN = "https://app.okou.ai";
 const FEISHU_CALLBACK_ORIGIN = "https://api.okou.ai";
 const ENCRYPT_KEY = "feishu-test-encrypt-key";
 const VERIFICATION_TOKEN = "feishu-test-verification-token";
@@ -914,7 +914,6 @@ describe("Feishu integration", () => {
       readonly useSystemDefaultIdentity?: boolean;
     } = {},
   ): Promise<FeishuRunFixture> {
-    mockEnv("APP_URL", "https://app.okou.ai");
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -2749,7 +2748,7 @@ describe("Feishu integration", () => {
       "https://app.okou.ai/connectors/feishu/callback",
     );
     expect(authorizationUrl.searchParams.get("state")).toMatch(
-      /^okou\.[0-9a-f]{64}$/u,
+      /^[0-9a-f]{64}$/u,
     );
     const completionUrl = await completeFeishuAuthorization(
       authorizationUrl,
@@ -3429,7 +3428,7 @@ describe("Feishu integration", () => {
     const firstReplyContent = firstReply ? messageContent(firstReply) : "";
     expect(firstReplyContent).toContain("Connect your account");
     expect(firstReplyContent).toContain(
-      "To use Zero in Feishu, please connect your account first.",
+      "To use Okou in Feishu, please connect your account first.",
     );
     const connectUrl = requireValue(
       firstReplyContent.match(/https:\/\/[^"]+/u)?.[0],

@@ -198,7 +198,7 @@ describe("Steam OpenID connector", () => {
       "https://api.okou.ai/",
     );
     expect(authorizationUrl.searchParams.get("openid.return_to")).toMatch(
-      /^https:\/\/api\.vm0\.ai\/api\/connectors\/steam\/callback\?state=[0-9a-f]{64}$/u,
+      /^https:\/\/api\.okou\.ai\/api\/connectors\/steam\/callback\?state=[0-9a-f]{64}$/u,
     );
 
     await completeSteamOpenIdCallback(authorizationUrl);

@@ -491,7 +491,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       }),
     ).resolves.toStrictEqual({ items: [], claim: null });
 
-    mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
+    mockEnv("RESEND_FROM_DOMAIN", "okou.io");
     const redrive = await accept(
       executionClient().dispatchCallbacks({
         body: { run_id: runId, status: "completed", dispatch_count: 8 },

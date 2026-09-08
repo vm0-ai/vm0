@@ -6779,47 +6779,17 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       account_mutation: { intent: "add" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    const vm0Callback = await connectors.completeOauthCallback(
+    const callback = await connectors.completeOauthCallback(
       "github",
-      { code: "bdd-vm0-github-code", state },
+      { code: "bdd-github-code", state },
       { baseUrl: "https://api.okou.ai" },
     );
-    const vm0CallbackLocation = new URL(
-      vm0Callback.headers.get("location") ?? "",
-    );
-    expect(vm0CallbackLocation.origin).toBe("https://app.okou.ai");
-    expect(vm0CallbackLocation.searchParams.get("message")).toBeNull();
-    expect(vm0CallbackLocation.pathname).toBe("/connector/success");
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.searchParams.get("message")).toBeNull();
+    expect(callbackLocation.pathname).toBe("/connector/success");
 
-    const okouResponse = await integrations.requestGithubOauthConnect(
-      actor,
-      {},
-      [307],
-      "okou",
-    );
-    const okouAuthorizationUrl = new URL(
-      okouResponse.headers.get("location") ?? "",
-    );
-    expect(okouAuthorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.okou.ai/api/connectors/github/callback",
-    );
-    const okouState = okouAuthorizationUrl.searchParams.get("state");
-    expect(okouState).toMatch(/^okou\.[0-9a-f]{64}$/u);
-    if (!okouState) {
-      throw new Error("Expected Okou GitHub authorization state");
-    }
-    const okouCallback = await connectors.completeOauthCallback(
-      "github",
-      { code: "bdd-okou-github-code", state: okouState },
-      { baseUrl: "https://api.okou.ai" },
-    );
-    const okouCallbackLocation = new URL(
-      okouCallback.headers.get("location") ?? "",
-    );
-    expect(okouCallbackLocation.origin).toBe("https://app.okou.ai");
-    expect(okouCallbackLocation.pathname).toBe("/connector/success");
     expect(tokenRedirectUris).toStrictEqual([
-      "https://api.okou.ai/api/connectors/github/callback",
       "https://api.okou.ai/api/connectors/github/callback",
     ]);
   });

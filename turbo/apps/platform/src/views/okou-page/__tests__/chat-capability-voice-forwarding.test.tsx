@@ -27,7 +27,7 @@ import {
 const refreshedContext = testContext();
 const flags = { [FeatureSwitchKey.VoiceInputV2]: true } as const;
 const targets = [
-  { target: "agent", name: "Zero", path: NEW_CHAT_PATH },
+  { target: "agent", name: "Okou", path: NEW_CHAT_PATH },
   { target: "thread", name: "Capability conversation", path: RUN_PATH },
 ] as const;
 

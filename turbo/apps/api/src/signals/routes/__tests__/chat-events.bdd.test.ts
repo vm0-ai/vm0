@@ -4924,7 +4924,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     }
     expect(guidance.content).toContain("Buy more credits");
     expect(guidance.content).toContain("https://app.okou.ai/?settings=usage");
-    expect(guidance.content).not.toContain("https://app.okou.ai");
+    expect(guidance.content).not.toContain("https://app.vm0.ai");
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadEvents(actor, sent.body.threadId, {
@@ -4956,36 +4956,6 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadEvents(actor, sent.body.threadId);
     expect(afterRetry.events).toHaveLength(3);
-
-    const vm0Sent = await chat.requestSendEvent(
-      actor,
-      {
-        ...sendBody,
-        prompt: "blocked from the VM0 domain",
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    if (vm0Sent.status !== 201) {
-      throw new Error("Expected the VM0 blocked send to return 201");
-    }
-    expect(vm0Sent.body.runId).toBeNull();
-    const vm0Messages = await chat.listThreadEvents(
-      actor,
-      vm0Sent.body.threadId,
-    );
-    const vm0Guidance = assistantMessages(vm0Messages.events).find(
-      (message) => {
-        return message.eventType === "output.error";
-      },
-    );
-    if (!vm0Guidance) {
-      throw new Error("Expected VM0 insufficient-credits guidance");
-    }
-    expect(vm0Guidance.content).toContain(
-      "https://app.okou.ai/?settings=usage",
-    );
-    expect(vm0Guidance.content).not.toContain("https://app.okou.ai");
   }, 60_000);
 });
 
