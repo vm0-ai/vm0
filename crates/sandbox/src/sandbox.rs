@@ -375,6 +375,57 @@ pub trait SandboxStartObserver: Send {
     /// not be added to it. Cancellation may report an incomplete child without
     /// a completed parent; this callback never owns cancellation or cleanup.
     fn record_dns_readiness_attempt(&mut self, _attempt: crate::SandboxDnsReadinessAttempt) {}
+
+    /// Records optional guest-connection detail, separately from critical-path stages.
+    ///
+    /// `duration` covers the full host-observed phase, including work overlapping
+    /// backend startup. `remaining` is its intersection with this same start's
+    /// residual guest-connection wait. Never add full durations to start stages.
+    /// A phase is emitted at most once; missing detail after cancellation, panic,
+    /// or an earlier startup failure is not a zero-duration observation.
+    fn record_guest_connection_phase(
+        &mut self,
+        _phase: SandboxGuestConnectionPhase,
+        _duration: Duration,
+        _remaining: Duration,
+        _success: bool,
+    ) {
+    }
+}
+
+/// Fixed host-side guest connection phases, not guest-internal execution times.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxGuestConnectionPhase {
+    /// Task submission through the connection operation's first poll.
+    TaskSchedule,
+    /// Deadline/path preparation, stale socket removal and listener bind.
+    ListenerSetup,
+    /// Bound listener through successful accept, or the accept error.
+    Accept,
+    /// Accept through READY decode, including listener unlinking and decoder setup.
+    Ready,
+    /// READY decode through complete PING frame write.
+    Ping,
+    /// PING write through decode of the matching PONG.
+    Pong,
+    /// PONG decode through client initialization and reader task submission.
+    ClientSetup,
+    /// Connection operation completion through the startup caller's observation.
+    TaskHandoff,
+}
+
+impl SandboxGuestConnectionPhase {
+    /// Stable phase order; errors may produce only a completed prefix and failed phase.
+    pub const ALL: [Self; 8] = [
+        Self::TaskSchedule,
+        Self::ListenerSetup,
+        Self::Accept,
+        Self::Ready,
+        Self::Ping,
+        Self::Pong,
+        Self::ClientSetup,
+        Self::TaskHandoff,
+    ];
 }
 
 /// Fixed low-cardinality stages of the final reuse preparation and park path.

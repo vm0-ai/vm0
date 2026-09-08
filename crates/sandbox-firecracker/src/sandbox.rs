@@ -73,6 +73,7 @@ use crate::process_log::{
 use crate::runtime_dirs::{prepare_private_runtime_vsock_dir, set_private_runtime_socket_mode};
 use crate::snapshot_mount_namespace::{BindMount, SnapshotMountMode, build_command};
 
+mod guest_connection_timing;
 mod snapshot_restore;
 mod state;
 
@@ -1441,11 +1442,26 @@ impl FirecrackerSandbox {
                     message: format!("bind guest RPC transport: {error}"),
                 })?;
 
-        // Start the vsock listener BEFORE launching Firecracker.
-        // The UDS must be bound before the guest tries to connect.
+        // Submit the vsock listener before launching Firecracker. The task
+        // overlaps backend startup; submission is not a listener-bind barrier.
         let vsock_path = self.sock_paths.vsock().display().to_string();
+        let observe_connection = timing.observer.is_some();
+        let connection_submitted = Instant::now();
         let mut vsock_task = tokio::spawn(async move {
-            GuestControlClient::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT).await
+            if observe_connection {
+                let (result, timing) = GuestControlClient::wait_for_connection_with_timing(
+                    &vsock_path,
+                    VSOCK_CONNECT_TIMEOUT,
+                )
+                .await;
+                (result, Some(timing))
+            } else {
+                (
+                    GuestControlClient::wait_for_connection(&vsock_path, VSOCK_CONNECT_TIMEOUT)
+                        .await,
+                    None,
+                )
+            }
         });
 
         let launch_result = if self.factory_config.snapshot.is_some() {
@@ -1505,13 +1521,16 @@ impl FirecrackerSandbox {
         // The listener overlaps backend startup. Measure only the remaining
         // critical-path wait after launch and optional snapshot restore.
         let guest_connection_started = Instant::now();
+        let mut connection_timing = None;
         let (guest_connection_result, abort_vsock_on_failure) = tokio::select! {
             result = &mut vsock_task => {
                 let result = match result {
-                    Ok(Ok(guest)) => Ok(guest),
-                    Ok(Err(error)) => Err(SandboxError::Start {
-                        message: format!("vsock connection: {error}"),
-                    }),
+                    Ok((result, observed_timing)) => {
+                        connection_timing = observed_timing;
+                        result.map_err(|error| SandboxError::Start {
+                            message: format!("vsock connection: {error}"),
+                        })
+                    },
                     Err(error) => Err(SandboxError::Start {
                         message: format!("vsock task: {error}"),
                     }),
@@ -1527,21 +1546,26 @@ impl FirecrackerSandbox {
                 )
             }
         };
+        let connection_observed = Instant::now();
+        timing.record(
+            SandboxStartStage::GuestConnectionWait,
+            guest_connection_started,
+            guest_connection_result.is_ok(),
+        );
+        if let Some(connection_timing) = connection_timing
+            && let Some(observer) = timing.observer.as_deref_mut()
+        {
+            guest_connection_timing::record_guest_connection_timing(
+                observer,
+                connection_timing,
+                connection_submitted,
+                guest_connection_started,
+                connection_observed,
+            );
+        }
         let guest_control_client = match guest_connection_result {
-            Ok(guest) => {
-                timing.record(
-                    SandboxStartStage::GuestConnectionWait,
-                    guest_connection_started,
-                    true,
-                );
-                guest
-            }
+            Ok(guest) => guest,
             Err(error) => {
-                timing.record(
-                    SandboxStartStage::GuestConnectionWait,
-                    guest_connection_started,
-                    false,
-                );
                 if abort_vsock_on_failure {
                     abort_and_join(vsock_task).await;
                 }

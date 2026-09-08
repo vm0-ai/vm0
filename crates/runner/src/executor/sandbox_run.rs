@@ -8,9 +8,9 @@ use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
-    SandboxFactory, SandboxGuestDnsReadinessReason, SandboxId, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage, SandboxStartObserver,
-    SandboxStartStage,
+    SandboxFactory, SandboxGuestConnectionPhase, SandboxGuestDnsReadinessReason, SandboxId,
+    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
+    SandboxStartObserver, SandboxStartStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -212,6 +212,59 @@ impl SandboxStartObserver for FreshSandboxStartObserver<'_> {
             success,
             error,
         );
+    }
+
+    fn record_guest_connection_phase(
+        &mut self,
+        phase: SandboxGuestConnectionPhase,
+        duration: Duration,
+        remaining: Duration,
+        success: bool,
+    ) {
+        let (full_action, remaining_action) = guest_connection_phase_actions(phase);
+        let error = (!success).then_some(SANDBOX_START_STAGE_FAILED);
+        self.telemetry.record(full_action, duration, success, error);
+        self.telemetry
+            .record(remaining_action, remaining, success, error);
+    }
+}
+
+fn guest_connection_phase_actions(
+    phase: SandboxGuestConnectionPhase,
+) -> (&'static str, &'static str) {
+    match phase {
+        SandboxGuestConnectionPhase::TaskSchedule => (
+            "runner_fresh_sandbox_start_guest_connection_task_schedule_full",
+            "runner_fresh_sandbox_start_guest_connection_task_schedule_remaining",
+        ),
+        SandboxGuestConnectionPhase::ListenerSetup => (
+            "runner_fresh_sandbox_start_guest_connection_listener_setup_full",
+            "runner_fresh_sandbox_start_guest_connection_listener_setup_remaining",
+        ),
+        SandboxGuestConnectionPhase::Accept => (
+            "runner_fresh_sandbox_start_guest_connection_accept_full",
+            "runner_fresh_sandbox_start_guest_connection_accept_remaining",
+        ),
+        SandboxGuestConnectionPhase::Ready => (
+            "runner_fresh_sandbox_start_guest_connection_ready_full",
+            "runner_fresh_sandbox_start_guest_connection_ready_remaining",
+        ),
+        SandboxGuestConnectionPhase::Ping => (
+            "runner_fresh_sandbox_start_guest_connection_ping_full",
+            "runner_fresh_sandbox_start_guest_connection_ping_remaining",
+        ),
+        SandboxGuestConnectionPhase::Pong => (
+            "runner_fresh_sandbox_start_guest_connection_pong_full",
+            "runner_fresh_sandbox_start_guest_connection_pong_remaining",
+        ),
+        SandboxGuestConnectionPhase::ClientSetup => (
+            "runner_fresh_sandbox_start_guest_connection_client_setup_full",
+            "runner_fresh_sandbox_start_guest_connection_client_setup_remaining",
+        ),
+        SandboxGuestConnectionPhase::TaskHandoff => (
+            "runner_fresh_sandbox_start_guest_connection_task_handoff_full",
+            "runner_fresh_sandbox_start_guest_connection_task_handoff_remaining",
+        ),
     }
 }
 
