@@ -64,7 +64,7 @@ export function privateArtifactUrl(id: string, filename: string): string {
   return artifactReferencePath(id, filename);
 }
 
-function privateArtifactsBucket(): string {
+export function privateArtifactsBucket(): string {
   const bucket = env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME");
   if (!bucket || bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {
     throw new Error("A separate R2_PRIVATE_ARTIFACTS_BUCKET_NAME is required");

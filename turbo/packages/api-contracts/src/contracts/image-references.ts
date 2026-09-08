@@ -1,0 +1,189 @@
+import { z } from "zod";
+
+import { authHeadersSchema, initContract } from "./base";
+import { apiErrorSchema } from "./errors";
+
+const c = initContract();
+
+export const IMAGE_REFERENCE_CONTENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+export const MAX_IMAGE_REFERENCE_SOURCE_BYTES = 20 * 1024 * 1024;
+export const MAX_IMAGE_REFERENCE_DIMENSION = 16_384;
+export const MAX_IMAGE_REFERENCE_PIXELS = 67_108_864;
+export const IMAGE_REFERENCE_PREVIEW_URL_TTL_SECONDS = 15 * 60;
+export const MAX_IMAGE_REFERENCE_PREVIEW_ASSETS = 100;
+
+const imageReferenceVisibilitySchema = z.enum(["private", "public"]);
+const imageReferenceContentTypeSchema = z.enum(IMAGE_REFERENCE_CONTENT_TYPES);
+const imageReferencePreviewAssetIdSchema = z.string().min(1).max(128);
+const imageReferencePreviewAssetSchema = z
+  .object({
+    previewAssetId: imageReferencePreviewAssetIdSchema,
+    url: z.url(),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict();
+
+const imageReferenceSchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string().min(1).max(80),
+    visibility: imageReferenceVisibilitySchema,
+    ownerUserId: z.string().min(1),
+    sourceFilename: z.string().min(1),
+    contentType: imageReferenceContentTypeSchema,
+    width: z.number().int().positive().max(MAX_IMAGE_REFERENCE_DIMENSION),
+    height: z.number().int().positive().max(MAX_IMAGE_REFERENCE_DIMENSION),
+    previewAsset: imageReferencePreviewAssetSchema,
+    canManage: z.boolean(),
+    canModerate: z.boolean(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+const imageReferenceIdParamsSchema = z
+  .object({ referenceId: z.uuid() })
+  .strict();
+
+const createImageReferenceBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(80),
+    sourceFileId: z.uuid(),
+    visibility: imageReferenceVisibilitySchema.default("private"),
+  })
+  .strict();
+
+const updateImageReferenceBodySchema = z
+  .object({
+    title: z.string().trim().min(1).max(80).optional(),
+    visibility: imageReferenceVisibilitySchema.optional(),
+  })
+  .strict()
+  .refine((body) => {
+    return body.title !== undefined || body.visibility !== undefined;
+  }, "A title or visibility change is required");
+
+const resolveImageReferencePreviewUrlsBodySchema = z
+  .object({
+    previewAssetIds: z
+      .array(imageReferencePreviewAssetIdSchema)
+      .min(1)
+      .max(MAX_IMAGE_REFERENCE_PREVIEW_ASSETS),
+  })
+  .strict();
+
+const resolveImageReferencePreviewUrlsResponseSchema = z
+  .object({ assets: z.array(imageReferencePreviewAssetSchema) })
+  .strict();
+
+export const imageReferencesContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/image-references",
+    headers: authHeadersSchema,
+    body: createImageReferenceBodySchema,
+    responses: {
+      201: imageReferenceSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create a reusable image reference from a private upload",
+  },
+  list: {
+    method: "GET",
+    path: "/api/image-references",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.array(imageReferenceSchema),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List image references accessible in the active organization",
+  },
+  resolvePreviewUrls: {
+    method: "POST",
+    path: "/api/image-references/preview-urls",
+    headers: authHeadersSchema,
+    body: resolveImageReferencePreviewUrlsBodySchema,
+    responses: {
+      200: resolveImageReferencePreviewUrlsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Resolve short-lived previews for accessible image references",
+  },
+  get: {
+    method: "GET",
+    path: "/api/image-references/:referenceId",
+    pathParams: imageReferenceIdParamsSchema,
+    headers: authHeadersSchema,
+    responses: {
+      200: imageReferenceSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get an accessible image reference",
+  },
+  update: {
+    method: "PATCH",
+    path: "/api/image-references/:referenceId",
+    pathParams: imageReferenceIdParamsSchema,
+    headers: authHeadersSchema,
+    body: updateImageReferenceBodySchema,
+    responses: {
+      200: imageReferenceSchema,
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update or moderate an image reference",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/image-references/:referenceId",
+    pathParams: imageReferenceIdParamsSchema,
+    headers: authHeadersSchema,
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete an owned image reference",
+  },
+});
+
+export type ImageReferencesContract = typeof imageReferencesContract;
+export type ImageReference = z.infer<typeof imageReferenceSchema>;
+export type ImageReferencePreviewAsset = z.infer<
+  typeof imageReferencePreviewAssetSchema
+>;
+export type ImageReferenceVisibility = z.infer<
+  typeof imageReferenceVisibilitySchema
+>;
+export type ImageReferenceContentType = z.infer<
+  typeof imageReferenceContentTypeSchema
+>;
+export type CreateImageReferenceBody = z.infer<
+  typeof createImageReferenceBodySchema
+>;
+export type UpdateImageReferenceBody = z.infer<
+  typeof updateImageReferenceBodySchema
+>;

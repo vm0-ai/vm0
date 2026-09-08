@@ -27,10 +27,20 @@ export const allocateUploadedArtifact$ = command(
       readonly contentType: string;
       readonly size: number;
       readonly publicBrand: PublicBrand;
-      readonly purpose: "artifact" | undefined;
+      readonly purpose: "artifact" | "image-reference" | undefined;
     },
     signal: AbortSignal,
   ) => {
+    if (args.purpose === "image-reference") {
+      if (!args.orgId) {
+        throw new Error("Image reference uploads require an organization");
+      }
+      return await set(
+        allocatePrivateArtifact$,
+        { ...args, orgId: args.orgId },
+        signal,
+      );
+    }
     if (args.purpose === "artifact" && args.orgId) {
       const context = await get(
         userFeatureSwitchContext(args.orgId, args.userId),
