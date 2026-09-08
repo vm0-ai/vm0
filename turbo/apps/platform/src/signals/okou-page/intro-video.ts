@@ -192,6 +192,21 @@ function buildIntroVideoPrompt(args: {
           `- HeyGen avatar look ID: ${args.avatar.avatar.id}`,
           `- HeyGen avatar group ID: ${args.avatar.avatar.groupId}`,
           `- HeyGen avatar default voice ID: ${args.avatar.avatar.defaultVoiceId}`,
+          // The skill branches on these lines: HeyGen composes a photo avatar
+          // together with its environment, while a studio look is a cutout.
+          ...(args.avatar.avatar.avatarType
+            ? [`- HeyGen avatar type: ${args.avatar.avatar.avatarType}`]
+            : []),
+          ...(args.avatar.avatar.imageWidth && args.avatar.avatar.imageHeight
+            ? [
+                `- HeyGen avatar preview size: ${args.avatar.avatar.imageWidth}x${args.avatar.avatar.imageHeight}`,
+              ]
+            : []),
+          ...(args.avatar.avatar.preferredOrientation
+            ? [
+                `- HeyGen avatar preferred orientation: ${args.avatar.avatar.preferredOrientation}`,
+              ]
+            : []),
           ...(args.avatar.avatar.previewImageUrl
             ? [
                 `- HeyGen avatar preview image: ${args.avatar.avatar.previewImageUrl}`,

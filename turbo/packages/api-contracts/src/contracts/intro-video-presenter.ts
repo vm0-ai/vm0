@@ -34,6 +34,17 @@ export const introVideoStyleIdSchema = z
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+/**
+ * HeyGen composes each look type differently: a `photo_avatar` is generated
+ * together with its environment, while a `studio_avatar` is a preset cutout the
+ * provider places on the style's own stage.
+ */
+export const introVideoAvatarTypeSchema = z.enum([
+  "photo_avatar",
+  "digital_twin",
+  "studio_avatar",
+]);
+
 export const introVideoAvatarSchema = z.object({
   id: introVideoPresenterAvatarIdSchema,
   groupId: introVideoAvatarGroupIdSchema,
@@ -45,11 +56,16 @@ export const introVideoAvatarSchema = z.object({
   imageWidth: z.number().int().positive().optional(),
   imageHeight: z.number().int().positive().optional(),
   preferredOrientation: z.enum(["landscape", "portrait", "square"]).optional(),
+  // Optional so an app build released before the catalog change keeps parsing
+  // responses from an API that already returns the look type and engines.
+  avatarType: introVideoAvatarTypeSchema.optional(),
+  supportedApiEngines: z.array(z.string().trim().min(1)).optional(),
 });
 
 export const introVideoAvatarsQuerySchema = z.object({
   token: z.string().trim().min(1).max(2_000).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  avatarType: introVideoAvatarTypeSchema.optional(),
 });
 
 export const introVideoAvatarsResponseSchema = z.object({
@@ -148,6 +164,7 @@ export type IntroVideoPresenterGenerateRequest = z.infer<
 export type IntroVideoPresenterGenerateResponse = z.infer<
   typeof introVideoPresenterGenerateResponseSchema
 >;
+export type IntroVideoAvatarType = z.infer<typeof introVideoAvatarTypeSchema>;
 export type IntroVideoAvatar = z.infer<typeof introVideoAvatarSchema>;
 export type IntroVideoAvatarsQuery = z.infer<
   typeof introVideoAvatarsQuerySchema
@@ -186,7 +203,7 @@ export const introVideoPresenterContract = c.router({
       502: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "List public HeyGen avatars supported by Intro Video",
+    summary: "List public HeyGen avatar looks of every type for Intro Video",
   },
   styles: {
     method: "GET",

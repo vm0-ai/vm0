@@ -1,4 +1,8 @@
 import { Command, InvalidArgumentError } from "commander";
+import {
+  introVideoAvatarTypeSchema,
+  type IntroVideoAvatarType,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 
 import {
   listWebIntroVideoAvatars,
@@ -11,6 +15,7 @@ type IntroVideoCatalog = "avatars" | "styles" | "voices";
 type IntroVideoVoiceGender = "female" | "male";
 
 interface IntroVideoCatalogCommandOptions {
+  readonly avatarType?: IntroVideoAvatarType;
   readonly gender?: IntroVideoVoiceGender;
   readonly json?: boolean;
   readonly language?: string;
@@ -37,6 +42,16 @@ function parsePageSize(value: string): number {
   return parsed;
 }
 
+function parseAvatarType(value: string): IntroVideoAvatarType {
+  const parsed = introVideoAvatarTypeSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new InvalidArgumentError(
+      "avatar type must be one of: photo_avatar, digital_twin, studio_avatar",
+    );
+  }
+  return parsed.data;
+}
+
 function parseGender(value: string): IntroVideoVoiceGender {
   if (value === "female" || value === "male") {
     return value;
@@ -54,7 +69,10 @@ async function runIntroVideoCatalogCommand(
   };
   const result =
     catalog === "avatars"
-      ? await listWebIntroVideoAvatars(common)
+      ? await listWebIntroVideoAvatars({
+          ...common,
+          ...(options.avatarType ? { avatarType: options.avatarType } : {}),
+        })
       : catalog === "styles"
         ? await listWebIntroVideoStyles(common)
         : await listWebIntroVideoVoices({
@@ -71,6 +89,11 @@ export const introVideoCatalogCommand = new Command()
   .argument("<catalog>", "avatars, styles, or voices", parseCatalog)
   .option("--page-size <count>", "Catalog page size", parsePageSize, 100)
   .option("--token <token>", "HeyGen pagination token")
+  .option(
+    "--avatar-type <type>",
+    "Avatar look type: photo_avatar, digital_twin, or studio_avatar",
+    parseAvatarType,
+  )
   .option("--language <language>", "Voice language filter")
   .option("--gender <gender>", "Voice gender filter", parseGender)
   .option("--json", "Print compact JSON")

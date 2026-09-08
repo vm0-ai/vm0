@@ -218,6 +218,7 @@ const getAvatarsInner$ = command(async ({ get }, signal: AbortSignal) => {
     {
       token: query.token,
       pageSize: query.pageSize ?? 24,
+      ...(query.avatarType ? { avatarType: query.avatarType } : {}),
     },
     apiKey,
     signal,

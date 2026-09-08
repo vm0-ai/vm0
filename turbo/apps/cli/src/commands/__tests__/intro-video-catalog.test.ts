@@ -55,6 +55,59 @@ describe("internal Intro Video catalog command", () => {
     expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(result)]]);
   });
 
+  it("narrows the avatar catalog to one look type", async () => {
+    const result = {
+      avatars: [
+        {
+          id: "Monica_public_1",
+          groupId: "monica-group",
+          name: "Monica in Business casual",
+          defaultVoiceId: "monica-voice",
+          imageWidth: 1920,
+          imageHeight: 1080,
+          preferredOrientation: "landscape",
+          avatarType: "photo_avatar",
+          supportedApiEngines: ["avatar_iv", "avatar_v"],
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    } as const;
+    server.use(
+      http.get(`${API_BASE}/avatars`, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("avatarType")).toBe("photo_avatar");
+        expect(url.searchParams.get("token")).toBe("avatar-page");
+        return HttpResponse.json(result);
+      }),
+    );
+
+    await introVideoCatalogCommand.parseAsync([
+      "node",
+      "cli",
+      "avatars",
+      "--avatar-type",
+      "photo_avatar",
+      "--token",
+      "avatar-page",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(result)]]);
+  });
+
+  it("rejects an unknown avatar look type", async () => {
+    await expect(
+      introVideoCatalogCommand.parseAsync([
+        "node",
+        "cli",
+        "avatars",
+        "--avatar-type",
+        "prompt_avatar",
+      ]),
+    ).rejects.toThrow("process.exit called");
+  });
+
   it("passes voice filters and pagination to the public catalog", async () => {
     const result = {
       voices: [],

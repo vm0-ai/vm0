@@ -221,6 +221,7 @@ function mockProvider(): ProviderState {
               id: AVATAR_ID,
               group_id: AVATAR_GROUP_ID,
               default_voice_id: DEFAULT_VOICE_ID,
+              avatar_type: "photo_avatar",
               status: state.avatarStatus,
             },
           })
@@ -243,6 +244,7 @@ function mockProvider(): ProviderState {
               {
                 id: AVATAR_ID,
                 group_id: AVATAR_GROUP_ID,
+                avatar_type: "photo_avatar",
                 status: state.avatarStatus,
                 supported_api_engines: ["avatar_iv"],
               },
@@ -508,6 +510,24 @@ describe("Managed Intro Video Agent", () => {
       ]);
     },
   );
+
+  it("accepts a public photo avatar look and its default voice", async () => {
+    const f = await fixture();
+    const provider = mockProvider();
+    const body = request({
+      avatarId: AVATAR_ID,
+      avatarGroupId: AVATAR_GROUP_ID,
+    });
+
+    expect((await submit(f, body)).status).toBe(202);
+
+    // A photo avatar is an Avatar IV/V look: Video Agent composes it together
+    // with its environment, so the route must not require Avatar III support.
+    expect(provider.submissions[0]).toMatchObject({
+      avatar_id: AVATAR_ID,
+      voice_id: DEFAULT_VOICE_ID,
+    });
+  });
 
   it("leaves unspecified avatar and voice to Video Agent without inventing disable switches", async () => {
     const f = await fixture();

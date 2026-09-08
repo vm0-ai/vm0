@@ -4,7 +4,9 @@ import { delay } from "signal-timers";
 import { z } from "zod";
 import {
   introVideoAvatarSchema,
+  introVideoAvatarTypeSchema,
   introVideoStyleSchema,
+  type IntroVideoAvatarType,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 
 import { logger } from "../../lib/log";
@@ -154,6 +156,7 @@ interface HeyGenAvatarCatalogOptions {
   readonly token: string | undefined;
   readonly pageSize: number;
   readonly groupId?: string;
+  readonly avatarType?: IntroVideoAvatarType;
 }
 
 interface HeyGenPublicAvatar {
@@ -167,6 +170,8 @@ interface HeyGenPublicAvatar {
   readonly imageWidth?: number;
   readonly imageHeight?: number;
   readonly preferredOrientation?: "landscape" | "portrait" | "square";
+  readonly avatarType?: IntroVideoAvatarType;
+  readonly supportedApiEngines?: readonly string[];
 }
 
 interface HeyGenPublicAvatarPage {
@@ -438,25 +443,57 @@ function parsePositiveInteger(value: unknown): number | undefined {
   return parsed && Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
-  if (!isRecord(value)) {
-    return null;
-  }
+function parseHeyGenAvatarType(
+  value: unknown,
+): IntroVideoAvatarType | undefined {
+  const parsed = introVideoAvatarTypeSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseHeyGenApiEngines(value: unknown): readonly string[] {
+  return Array.isArray(value)
+    ? value.flatMap((engine) => {
+        const parsed = optionalString(engine)?.trim();
+        return parsed ? [parsed] : [];
+      })
+    : [];
+}
+
+interface HeyGenAvatarIdentity {
+  readonly id: string;
+  readonly groupId: string;
+  readonly name: string;
+  readonly defaultVoiceId: string;
+}
+
+function parseHeyGenAvatarIdentity(
+  value: Record<string, unknown>,
+): HeyGenAvatarIdentity | null {
   const id = optionalString(value.id)?.trim();
   const groupId = optionalString(value.group_id)?.trim();
   const name = optionalString(value.name)?.trim();
   const defaultVoiceId = optionalString(value.default_voice_id)?.trim();
-  const engines = Array.isArray(value.supported_api_engines)
-    ? value.supported_api_engines
-    : [];
+  // HeyGen documents `status` as present only for private looks, so an absent
+  // status on a public look is readiness information the catalog does not have.
+  const status = optionalString(value.status);
   if (
     !id ||
     !groupId ||
     !name ||
     !defaultVoiceId ||
-    value.status !== "completed" ||
-    !engines.includes("avatar_iii")
+    (status && status !== "completed")
   ) {
+    return null;
+  }
+  return { id, groupId, name, defaultVoiceId };
+}
+
+function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const identity = parseHeyGenAvatarIdentity(value);
+  if (!identity) {
     return null;
   }
   const previewImageUrl = optionalUrl(value.preview_image_url);
@@ -467,17 +504,20 @@ function parseHeyGenAvatar(value: unknown): HeyGenPublicAvatar | null {
   const preferredOrientation = parseHeyGenOrientation(
     value.preferred_orientation,
   );
+  const avatarType = parseHeyGenAvatarType(value.avatar_type);
+  const supportedApiEngines = parseHeyGenApiEngines(
+    value.supported_api_engines,
+  );
   const parsed = introVideoAvatarSchema.safeParse({
-    id,
-    groupId,
-    name,
-    defaultVoiceId,
+    ...identity,
     ...(previewImageUrl ? { previewImageUrl } : {}),
     ...(previewVideoUrl ? { previewVideoUrl } : {}),
     ...(gender ? { gender } : {}),
     ...(imageWidth ? { imageWidth } : {}),
     ...(imageHeight ? { imageHeight } : {}),
     ...(preferredOrientation ? { preferredOrientation } : {}),
+    ...(avatarType ? { avatarType } : {}),
+    ...(supportedApiEngines.length > 0 ? { supportedApiEngines } : {}),
   });
   return parsed.success ? parsed.data : null;
 }
@@ -544,6 +584,25 @@ function parseHeyGenPage(value: unknown):
   return { data: value.data, hasMore: value.has_more, nextToken };
 }
 
+/**
+ * Presentation order inside one catalog page. HeyGen generates a photo avatar
+ * together with its environment, a digital twin is recorded in a real one, and
+ * a studio avatar is a transparent cutout, so the types that can carry a scene
+ * come first. Paging is provider-driven, so this cannot order across pages.
+ */
+const HEYGEN_AVATAR_TYPE_ORDER: readonly IntroVideoAvatarType[] = [
+  "photo_avatar",
+  "digital_twin",
+  "studio_avatar",
+];
+
+function heyGenAvatarTypeRank(avatar: HeyGenPublicAvatar): number {
+  const rank = avatar.avatarType
+    ? HEYGEN_AVATAR_TYPE_ORDER.indexOf(avatar.avatarType)
+    : -1;
+  return rank === -1 ? HEYGEN_AVATAR_TYPE_ORDER.length : rank;
+}
+
 export async function listHeyGenPublicAvatars(
   options: HeyGenAvatarCatalogOptions,
   apiKey: string,
@@ -551,11 +610,13 @@ export async function listHeyGenPublicAvatars(
 ): Promise<HeyGenPublicAvatarPage | HeyGenErrorResponse> {
   const url = new URL(HEYGEN_AVATAR_LOOKS_URL);
   url.searchParams.set("ownership", "public");
-  url.searchParams.set("avatar_type", "studio_avatar");
   url.searchParams.set(
     "limit",
     String(Math.min(options.pageSize, HEYGEN_AVATAR_PAGE_SIZE)),
   );
+  if (options.avatarType) {
+    url.searchParams.set("avatar_type", options.avatarType);
+  }
   if (options.token) {
     url.searchParams.set("token", options.token);
   }
@@ -576,10 +637,14 @@ export async function listHeyGenPublicAvatars(
     return page;
   }
   return {
-    avatars: page.data.flatMap((value) => {
-      const avatar = parseHeyGenAvatar(value);
-      return avatar ? [avatar] : [];
-    }),
+    avatars: page.data
+      .flatMap((value) => {
+        const avatar = parseHeyGenAvatar(value);
+        return avatar ? [avatar] : [];
+      })
+      .sort((left, right) => {
+        return heyGenAvatarTypeRank(left) - heyGenAvatarTypeRank(right);
+      }),
     hasMore: page.hasMore,
     nextToken: page.nextToken,
   };
@@ -637,7 +702,13 @@ export async function verifyHeyGenPublicAvatar(
     }
     if (
       page.avatars.some((avatar) => {
-        return avatar.id === avatarId && avatar.groupId === groupId;
+        // The transparent presenter take is submitted on Avatar III, so a look
+        // that only supports newer engines is not usable on this route.
+        return (
+          avatar.id === avatarId &&
+          avatar.groupId === groupId &&
+          avatar.supportedApiEngines?.includes("avatar_iii") === true
+        );
       })
     ) {
       return true;

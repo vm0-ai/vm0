@@ -2020,7 +2020,14 @@
         "label": "Avatar",
         "none": "No avatar",
         "noneDescription": "Create the video without a presenter",
-        "previewLook": "Preview look {{name}}"
+        "previewLook": "Preview look {{name}}",
+        "studioCutout": "Transparent cutouts. HeyGen places the presenter on the style's own stage instead of a real environment.",
+        "types": {
+          "digitalTwin": "Digital twins",
+          "other": "Other avatars",
+          "photoAvatar": "Photo avatars",
+          "studioAvatar": "Studio avatars"
+        }
       },
       "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {

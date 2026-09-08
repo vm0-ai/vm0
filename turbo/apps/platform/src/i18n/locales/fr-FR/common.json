@@ -2052,7 +2052,14 @@
         "label": "Avatar",
         "none": "Aucun avatar",
         "noneDescription": "Créer la vidéo sans présentateur",
-        "previewLook": "Aperçu de l’apparence {{name}}"
+        "previewLook": "Aperçu de l’apparence {{name}}",
+        "studioCutout": "Détourages transparents. HeyGen place le présentateur sur le décor du style plutôt que dans un environnement réel.",
+        "types": {
+          "digitalTwin": "Jumeaux numériques",
+          "other": "Autres avatars",
+          "photoAvatar": "Avatars photo",
+          "studioAvatar": "Avatars studio"
+        }
       },
       "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
       "catalog": {

@@ -113,6 +113,8 @@ function installIntroVideoFixture(
             imageWidth: 1080,
             imageHeight: 1080,
             preferredOrientation: "portrait",
+            avatarType: "studio_avatar",
+            supportedApiEngines: ["avatar_iii"],
           },
         ],
         hasMore: false,
@@ -1323,9 +1325,71 @@ test("A selected public avatar uses its HeyGen default voice", async () => {
   expect(submittedPrompt).toContain(
     "- HeyGen avatar default voice ID: 812d4eea4a8442a382dcaf2dbaddbd93",
   );
+  // The skill branches on the look type, preview size, and preferred orientation.
+  expect(submittedPrompt).toContain("- HeyGen avatar type: studio_avatar");
+  expect(submittedPrompt).toContain("- HeyGen avatar preview size: 1080x1080");
+  expect(submittedPrompt).toContain(
+    "- HeyGen avatar preferred orientation: portrait",
+  );
   expect(submittedPrompt).toContain(
     "- Voice: Default — follow Daphne in Grey blazer (812d4eea4a8442a382dcaf2dbaddbd93)",
   );
+});
+
+test("The avatar picker offers photo avatars before studio cutouts", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+  const studioLook: IntroVideoAvatar = {
+    id: "Daphne_public_1",
+    groupId: "daphne-group",
+    name: "Daphne in Grey blazer",
+    defaultVoiceId: "daphne-default-voice",
+    avatarType: "studio_avatar",
+  };
+  const photoLook: IntroVideoAvatar = {
+    id: "Monica_public_1",
+    groupId: "monica-group",
+    name: "Monica in Business casual",
+    defaultVoiceId: "monica-default-voice",
+    avatarType: "photo_avatar",
+  };
+  const untypedLook: IntroVideoAvatar = {
+    id: "Legacy_public_1",
+    groupId: "legacy-group",
+    name: "Legacy presenter",
+    defaultVoiceId: "legacy-default-voice",
+  };
+  context.mocks.api(introVideoPresenterContract.avatars, ({ respond }) => {
+    return respond(200, {
+      avatars: [studioLook, untypedLook, photoLook],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+  await setupIntroVideoPage();
+  const dialog = await openIntroVideoDialog();
+  await user.click(requiredButtonNamed("Avatar: Auto · Okou decides", dialog));
+  const picker = await screen.findByRole("dialog", {
+    name: "Choose an avatar",
+  });
+  await within(picker).findByLabelText(
+    "Choose an avatar: Monica in Business casual",
+  );
+
+  expect(
+    [...picker.querySelectorAll("h4")].map((heading) => {
+      return heading.textContent;
+    }),
+  ).toStrictEqual(["Photo avatars", "Studio avatars", "Other avatars"]);
+  // A look released by an older API carries no type and stays selectable.
+  expect(
+    within(picker).getByText(
+      "Transparent cutouts. HeyGen places the presenter on the style's own stage instead of a real environment.",
+    ),
+  ).toBeVisible();
+  expect(
+    picker.querySelectorAll("[data-intro-video-avatar-group]"),
+  ).toHaveLength(3);
 });
 
 test("Avatar looks share a person card across pages and only Use commits a look", async () => {

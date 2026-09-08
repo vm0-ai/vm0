@@ -425,7 +425,7 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
-  it("lists public HeyGen styles and Avatar III looks for the simple form", async () => {
+  it("lists public HeyGen looks of every type, scene types first", async () => {
     const fixture = await seedFixture();
     await enableIntroVideo(fixture);
     server.use(
@@ -454,9 +454,9 @@ describe("Intro Video HeyGen presenter route", () => {
       http.get(HEYGEN_AVATARS_URL, ({ request }) => {
         const url = new URL(request.url);
         expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        // No avatar_type filter: the catalog offers every public look type.
         expect(Object.fromEntries(url.searchParams)).toStrictEqual({
           ownership: "public",
-          avatar_type: "studio_avatar",
           limit: "50",
         });
         return HttpResponse.json({
@@ -472,24 +472,40 @@ describe("Intro Video HeyGen presenter route", () => {
               image_width: 1080,
               image_height: 1080,
               preferred_orientation: "portrait",
+              avatar_type: "studio_avatar",
               status: "completed",
               supported_api_engines: ["avatar_iii"],
             },
             {
-              id: "Legacy_public_1",
-              group_id: "legacy-group",
-              name: "Legacy",
-              default_voice_id: "legacy-voice",
+              id: "Twin_public_1",
+              group_id: "twin-group",
+              name: "Nadia in her office",
+              default_voice_id: "twin-voice",
+              avatar_type: "digital_twin",
               status: "completed",
-              supported_api_engines: ["avatar_iv"],
+              supported_api_engines: ["avatar_iii", "avatar_iv"],
+            },
+            {
+              // A public look carries no status; only private looks do.
+              id: "Monica_public_1",
+              group_id: "monica-group",
+              name: "Monica in Business casual",
+              default_voice_id: "monica-voice",
+              preview_image_url: "https://files.heygen.test/monica.webp",
+              image_width: 1920,
+              image_height: 1080,
+              preferred_orientation: "landscape",
+              avatar_type: "photo_avatar",
+              supported_api_engines: ["avatar_iv", "avatar_v"],
             },
             {
               id: "invalid/avatar",
               group_id: "malformed-group",
               name: "Malformed avatar",
               default_voice_id: "malformed-voice",
+              avatar_type: "photo_avatar",
               status: "completed",
-              supported_api_engines: ["avatar_iii"],
+              supported_api_engines: ["avatar_iv"],
             },
           ],
           has_more: false,
@@ -530,6 +546,26 @@ describe("Intro Video HeyGen presenter route", () => {
     await expect(avatarsResponse.json()).resolves.toStrictEqual({
       avatars: [
         {
+          id: "Monica_public_1",
+          groupId: "monica-group",
+          name: "Monica in Business casual",
+          defaultVoiceId: "monica-voice",
+          previewImageUrl: "https://files.heygen.test/monica.webp",
+          imageWidth: 1920,
+          imageHeight: 1080,
+          preferredOrientation: "landscape",
+          avatarType: "photo_avatar",
+          supportedApiEngines: ["avatar_iv", "avatar_v"],
+        },
+        {
+          id: "Twin_public_1",
+          groupId: "twin-group",
+          name: "Nadia in her office",
+          defaultVoiceId: "twin-voice",
+          avatarType: "digital_twin",
+          supportedApiEngines: ["avatar_iii", "avatar_iv"],
+        },
+        {
           id: "Daphne_public_1",
           groupId: "c1926d821b4d43d6a5f07f2985bb5cd1",
           name: "Daphne in Grey blazer",
@@ -540,6 +576,60 @@ describe("Intro Video HeyGen presenter route", () => {
           imageWidth: 1080,
           imageHeight: 1080,
           preferredOrientation: "portrait",
+          avatarType: "studio_avatar",
+          supportedApiEngines: ["avatar_iii"],
+        },
+      ],
+      hasMore: false,
+      nextToken: null,
+    });
+  });
+
+  it("narrows the catalog to one requested avatar type", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    server.use(
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        expect(
+          Object.fromEntries(new URL(request.url).searchParams),
+        ).toStrictEqual({
+          ownership: "public",
+          avatar_type: "photo_avatar",
+          limit: "24",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              id: "Monica_public_1",
+              group_id: "monica-group",
+              name: "Monica in Business casual",
+              default_voice_id: "monica-voice",
+              avatar_type: "photo_avatar",
+              supported_api_engines: ["avatar_iv"],
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/avatars?avatarType=photo_avatar", {
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      avatars: [
+        {
+          id: "Monica_public_1",
+          groupId: "monica-group",
+          name: "Monica in Business casual",
+          defaultVoiceId: "monica-voice",
+          avatarType: "photo_avatar",
+          supportedApiEngines: ["avatar_iv"],
         },
       ],
       hasMore: false,
@@ -604,7 +694,6 @@ describe("Intro Video HeyGen presenter route", () => {
         const url = new URL(request.url);
         expect(Object.fromEntries(url.searchParams)).toStrictEqual({
           ownership: "public",
-          avatar_type: "studio_avatar",
           limit: "50",
           group_id: "private-group",
         });
@@ -625,6 +714,65 @@ describe("Intro Video HeyGen presenter route", () => {
       body: JSON.stringify({
         avatarId: "Private_avatar_1",
         avatarGroupId: "private-group",
+        audioUrl: "https://example.com/narration.mp3",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "HeyGen avatar is not available in Intro Video",
+      },
+    });
+  });
+
+  it("rejects a group look that the Avatar III presenter engine cannot render", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    server.use(
+      http.get(HEYGEN_AVATARS_URL, () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: "Monica_public_1",
+              group_id: "monica-group",
+              name: "Monica in Business casual",
+              default_voice_id: "monica-voice",
+              avatar_type: "photo_avatar",
+              supported_api_engines: ["avatar_iv", "avatar_v"],
+            },
+          ],
+          has_more: false,
+          next_token: null,
+        });
+      }),
+    );
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/presenter/generate", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${okouToken({ ...fixture, runId })}`,
+      },
+      body: JSON.stringify({
+        avatarId: "Monica_public_1",
+        avatarGroupId: "monica-group",
         audioUrl: "https://example.com/narration.mp3",
       }),
     });
@@ -809,7 +957,6 @@ describe("Intro Video HeyGen presenter route", () => {
             Object.fromEntries(new URL(request.url).searchParams),
           ).toStrictEqual({
             ownership: "public",
-            avatar_type: "studio_avatar",
             limit: "50",
             group_id: avatarGroupId,
             ...(token ? { token: "next-public-look" } : {}),

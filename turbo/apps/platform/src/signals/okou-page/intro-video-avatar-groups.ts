@@ -1,13 +1,33 @@
-import type { IntroVideoAvatar } from "@okouai/api-contracts/contracts/intro-video-presenter";
+import type {
+  IntroVideoAvatar,
+  IntroVideoAvatarType,
+} from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { command, computed, state } from "ccstate";
 
 export interface IntroVideoAvatarGroup {
   readonly id: string;
   readonly name: string;
+  readonly avatarType: IntroVideoAvatarType | undefined;
   readonly looks: readonly [IntroVideoAvatar, ...IntroVideoAvatar[]];
 }
 
-export function groupIntroVideoAvatars(
+interface IntroVideoAvatarSection {
+  readonly avatarType: IntroVideoAvatarType | undefined;
+  readonly groups: readonly [IntroVideoAvatarGroup, ...IntroVideoAvatarGroup[]];
+}
+
+/**
+ * HeyGen generates a photo avatar together with its environment and records a
+ * digital twin in a real one, while a studio avatar is a transparent cutout the
+ * provider places on the style's stage. Offer the scene-carrying types first.
+ */
+const AVATAR_TYPE_ORDER: readonly IntroVideoAvatarType[] = [
+  "photo_avatar",
+  "digital_twin",
+  "studio_avatar",
+];
+
+function groupIntroVideoAvatars(
   avatars: readonly IntroVideoAvatar[],
 ): readonly IntroVideoAvatarGroup[] {
   const groups = new Map<string, [IntroVideoAvatar, ...IntroVideoAvatar[]]>();
@@ -30,7 +50,30 @@ export function groupIntroVideoAvatars(
     const separator = first.name.indexOf(" in ");
     const name =
       separator === -1 ? first.name : first.name.slice(0, separator).trim();
-    return { id, name, looks };
+    return { id, name, avatarType: first.avatarType, looks };
+  });
+}
+
+export function groupIntroVideoAvatarsByType(
+  avatars: readonly IntroVideoAvatar[],
+): readonly IntroVideoAvatarSection[] {
+  const sections = new Map<
+    IntroVideoAvatarType | undefined,
+    [IntroVideoAvatarGroup, ...IntroVideoAvatarGroup[]]
+  >();
+  for (const group of groupIntroVideoAvatars(avatars)) {
+    const existing = sections.get(group.avatarType);
+    if (existing) {
+      existing.push(group);
+    } else {
+      sections.set(group.avatarType, [group]);
+    }
+  }
+  // An API released before the catalog change reports no look type; keep those
+  // looks visible after the typed sections instead of hiding them.
+  return [...AVATAR_TYPE_ORDER, undefined].flatMap((avatarType) => {
+    const groups = sections.get(avatarType);
+    return groups ? [{ avatarType, groups }] : [];
   });
 }
 

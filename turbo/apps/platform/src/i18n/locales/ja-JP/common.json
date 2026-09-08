@@ -2017,7 +2017,14 @@
         "label": "アバター",
         "none": "アバターなし",
         "noneDescription": "プレゼンターなしで動画を作成",
-        "previewLook": "{{name}} の外見をプレビュー"
+        "previewLook": "{{name}} の外見をプレビュー",
+        "studioCutout": "背景が透過した切り抜きです。HeyGen は実際の環境ではなくスタイルのステージ上にプレゼンターを配置します。",
+        "types": {
+          "digitalTwin": "デジタルツイン",
+          "other": "その他のアバター",
+          "photoAvatar": "フォトアバター",
+          "studioAvatar": "スタジオアバター"
+        }
       },
       "cardDescription": "アイデアや資料を完成した動画に変換",
       "catalog": {

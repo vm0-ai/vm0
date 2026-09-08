@@ -2017,7 +2017,14 @@
         "label": "아바타",
         "none": "아바타 없음",
         "noneDescription": "발표자 없이 영상 만들기",
-        "previewLook": "{{name}} 모습 미리보기"
+        "previewLook": "{{name}} 모습 미리보기",
+        "studioCutout": "배경이 투명한 컷아웃입니다. HeyGen이 실제 환경 대신 스타일의 무대 위에 발표자를 배치합니다.",
+        "types": {
+          "digitalTwin": "디지털 트윈",
+          "other": "기타 아바타",
+          "photoAvatar": "포토 아바타",
+          "studioAvatar": "스튜디오 아바타"
+        }
       },
       "cardDescription": "아이디어나 자료를 완성된 영상으로 변환",
       "catalog": {

@@ -2017,7 +2017,14 @@
         "label": "Avatar",
         "none": "Tanpa avatar",
         "noneDescription": "Buat video tanpa presenter",
-        "previewLook": "Pratinjau tampilan {{name}}"
+        "previewLook": "Pratinjau tampilan {{name}}",
+        "studioCutout": "Potongan transparan. HeyGen menempatkan presenter di panggung gaya tersebut, bukan di lingkungan nyata.",
+        "types": {
+          "digitalTwin": "Kembaran digital",
+          "other": "Avatar lainnya",
+          "photoAvatar": "Avatar foto",
+          "studioAvatar": "Avatar studio"
+        }
       },
       "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
       "catalog": {

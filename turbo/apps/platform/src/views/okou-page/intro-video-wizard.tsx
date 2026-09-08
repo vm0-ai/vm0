@@ -3,6 +3,7 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
+import type { IntroVideoAvatarType } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import {
   Ban,
   Check,
@@ -42,7 +43,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { introVideoAvatarPickerSignals } from "../../signals/okou-page/intro-video-catalog-picker.ts";
 import { introVideoStyleGallerySignals } from "../../signals/okou-page/intro-video-style-gallery.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
-import { groupIntroVideoAvatars } from "../../signals/okou-page/intro-video-avatar-groups.ts";
+import { groupIntroVideoAvatarsByType } from "../../signals/okou-page/intro-video-avatar-groups.ts";
 import {
   introVideoWizardSignals,
   type IntroVideoAvatarSelection,
@@ -232,6 +233,34 @@ function avatarSelectionLabel(
     }
     case "catalog": {
       return selection.avatar.name;
+    }
+  }
+}
+
+function avatarTypeLabel(
+  t: TFunction<"common">,
+  avatarType: IntroVideoAvatarType | undefined,
+): string {
+  switch (avatarType) {
+    case "photo_avatar": {
+      return t(($) => {
+        return $.chat.introVideo.avatar.types.photoAvatar;
+      });
+    }
+    case "digital_twin": {
+      return t(($) => {
+        return $.chat.introVideo.avatar.types.digitalTwin;
+      });
+    }
+    case "studio_avatar": {
+      return t(($) => {
+        return $.chat.introVideo.avatar.types.studioAvatar;
+      });
+    }
+    case undefined: {
+      return t(($) => {
+        return $.chat.introVideo.avatar.types.other;
+      });
     }
   }
 }
@@ -545,22 +574,42 @@ function AvatarPicker() {
           })}
         </CatalogMessage>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-          {groupIntroVideoAvatars(visible.items).map((group) => {
-            return (
-              <IntroVideoAvatarGroupCard
-                key={group.id}
-                group={group}
-                selected={
-                  selection.kind === "catalog" ? selection.avatar : undefined
-                }
-                onSelect={(avatar) => {
-                  choose({ kind: "catalog", avatar });
-                }}
-              />
-            );
-          })}
-        </div>
+        groupIntroVideoAvatarsByType(visible.items).map((section) => {
+          return (
+            <section key={section.avatarType ?? "other"} className="grid gap-2">
+              <div>
+                <h4 className="text-sm font-medium text-foreground">
+                  {avatarTypeLabel(t, section.avatarType)}
+                </h4>
+                {section.avatarType === "studio_avatar" ? (
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                    {t(($) => {
+                      return $.chat.introVideo.avatar.studioCutout;
+                    })}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+                {section.groups.map((group) => {
+                  return (
+                    <IntroVideoAvatarGroupCard
+                      key={group.id}
+                      group={group}
+                      selected={
+                        selection.kind === "catalog"
+                          ? selection.avatar
+                          : undefined
+                      }
+                      onSelect={(avatar) => {
+                        choose({ kind: "catalog", avatar });
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })
       )}
       <IntroVideoCatalogPagination
         hasNext={visible?.hasNext ?? false}

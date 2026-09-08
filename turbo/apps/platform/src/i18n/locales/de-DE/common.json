@@ -2020,7 +2020,14 @@
         "label": "Avatar",
         "none": "Kein Avatar",
         "noneDescription": "Das Video ohne Präsentator erstellen",
-        "previewLook": "Look {{name}} ansehen"
+        "previewLook": "Look {{name}} ansehen",
+        "studioCutout": "Transparente Freisteller. HeyGen setzt den Präsentator auf die Bühne des Stils statt in eine echte Umgebung.",
+        "types": {
+          "digitalTwin": "Digitale Zwillinge",
+          "other": "Weitere Avatare",
+          "photoAvatar": "Foto-Avatare",
+          "studioAvatar": "Studio-Avatare"
+        }
       },
       "cardDescription": "Eine Idee oder Materialien in ein fertiges Video verwandeln",
       "catalog": {

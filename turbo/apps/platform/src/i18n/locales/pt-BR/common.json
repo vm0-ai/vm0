@@ -2052,7 +2052,14 @@
         "label": "Avatar",
         "none": "Sem avatar",
         "noneDescription": "Crie o vídeo sem apresentador",
-        "previewLook": "Prévia da aparência {{name}}"
+        "previewLook": "Prévia da aparência {{name}}",
+        "studioCutout": "Recortes transparentes. A HeyGen coloca o apresentador no próprio cenário do estilo, sem ambiente real.",
+        "types": {
+          "digitalTwin": "Gêmeos digitais",
+          "other": "Outros avatares",
+          "photoAvatar": "Avatares de foto",
+          "studioAvatar": "Avatares de estúdio"
+        }
       },
       "cardDescription": "Transforme uma ideia ou seus materiais em um vídeo finalizado",
       "catalog": {
