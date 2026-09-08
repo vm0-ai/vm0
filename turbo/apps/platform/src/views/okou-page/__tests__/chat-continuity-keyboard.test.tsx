@@ -178,7 +178,7 @@ test("Add, replace, or remove the focused chat icon", async () => {
   if (!doneEmoji) {
     throw new Error("Expected Done emoji option");
   }
-  await userEvent.click(doneEmoji);
+  click(doneEmoji);
 
   await waitFor(() => {
     expect(renameRequests.at(-1)).toStrictEqual({
