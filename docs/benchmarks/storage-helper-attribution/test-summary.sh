@@ -55,6 +55,7 @@ reject '.[0].diagnostic = "{\"spawn_us\":null}"'
 reject '.[0].diagnostic = "{}"'
 reject '.[0].diagnostic = "[]"'
 reject '.[0].diagnostic = ({cleanup_us: 10, containment_us: 20, io_setup_us: 30, join_us: 40, prepare_spawn_us: 50, wait_us: "60"} | tojson)'
+reject '.[0].diagnostic = ({cleanup_us: 10, containment_us: 20, io_setup_us: 30, join_us: 40, prepare_spawn_us: 50, wait_us: 60} | tojson) | .[1].diagnostic = (.[0].diagnostic | fromjson | . + {prepare_us: 10, spawn_us: 40} | tojson)'
 reject '.[0:647]'
 
 echo 'PASS: complete-pair quantiles and invalid-evidence rejection'

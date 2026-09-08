@@ -61,6 +61,9 @@ map(select(.kind == "storage_probe")) as $outer
           outer_minus_inner_ms: (.outer_us / 1000 - .inner_ms),
           outer_minus_guest_ms: (.outer_us / 1000 - .guest_ms),
           guest_minus_inner_ms: (.guest_ms - .inner_ms)}] as $pairs
+| if ($pairs | map(.phase_timings | select(. != null) | keys) | unique | length) > 1 then
+    error("mixed diagnostic builds in one execution")
+  else . end
 | {attempts: 324, complete_inner_pairs: 324, failures: 0,
    groups: ($pairs | group_by([.shape, .phase, .batch]) | map(summarize_group)),
    by_shape_phase: ($pairs | group_by([.shape, .phase]) | map(summarize_group))}
