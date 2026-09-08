@@ -1326,7 +1326,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       size: 123,
     });
     expect(init.body.uploadUrl).toMatch(/^https?:\/\//u);
-    expect(init.body.fileUrl).toContain("/artifacts/");
+    expect(init.body.fileUrl).toMatch(/^https:\/\/a\.okou\.io\/[^/]+\.png$/u);
 
     storage.addArtifactObject({
       userId: actor.userId,

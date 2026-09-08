@@ -155,7 +155,7 @@ describe("GET /api/integrations/slack", () => {
     expect(connectUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
-  it("returns VM0 install URLs on the API origin when Slack is not installed", async () => {
+  it("returns Okou install URLs on the API origin when Slack is not installed", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -203,7 +203,7 @@ describe("GET /api/integrations/slack", () => {
     expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
       "https://api.okou.ai/api/slack/oauth/install",
     );
-    expect(installUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(installUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns Okou connect URLs on the Okou API origin", async () => {
@@ -238,7 +238,7 @@ describe("GET /api/integrations/slack", () => {
     expect(`${connectUrl.origin}${connectUrl.pathname}`).toBe(
       "https://api.okou.ai/api/slack/oauth/connect",
     );
-    expect(connectUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(connectUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns workspace info for connected user", async () => {
@@ -509,7 +509,7 @@ describe("GET /api/integrations/slack", () => {
       "https://api.okou.ai/api/slack/oauth/install",
     );
     expect(reinstallUrl.searchParams.get("reinstall")).toBe("1");
-    expect(reinstallUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(reinstallUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("treats null bot_scopes as mismatch (requires reinstall)", async () => {

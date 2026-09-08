@@ -1115,6 +1115,7 @@ describe("POST /api/image-io/generate", () => {
       "image",
       fixture.userId,
     );
+    // A persisted job without brand metadata retains its historical CDN identity.
     await removeBuiltInGenerationPublicBrandFixture(generationId);
     await postFalWebhook(app, observedRequestUrl, {
       images: [
@@ -1139,10 +1140,10 @@ describe("POST /api/image-io/generate", () => {
       creditsCharged: 50,
       billingCategory: "output_image.medium.standard",
       billingQuantity: 1,
-      url: expect.stringMatching(/^https:\/\/a\.okou\.io\//u),
+      url: expect.stringMatching(/^https:\/\/cdn\.vm7\.io\/artifacts\//u),
     });
     expect(putObjectInput().Metadata).toMatchObject({
-      "public-brand": "okou",
+      "public-brand": "vm0",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const billingStatus = await accept(
