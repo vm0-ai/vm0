@@ -1,9 +1,11 @@
-# Pi 0.84.1 pending-tool integration
+# Pi 0.85.1 pending-tool integration
 
 `AgentSession.continuePendingTools()` is a local additive API, paired with
 `Agent.continuePendingTools()` and their declarations. Upstream `continue()`
 and both low-level continuation APIs reject a trailing assistant; consuming
-queued input is not an equivalent handoff. Keep the version pinned at 0.84.1.
+queued input is not an equivalent handoff. Keep the version pinned at exactly
+0.85.1; the three patches are based on the official npm distribution for that
+version, not a replacement copy of the 0.84.1 loop.
 
 The entrypoint validates the current assistant and its unresolved calls, then
 claims native Agent ownership before session startup acknowledgement or any
@@ -66,3 +68,52 @@ When editing the integration, change the matching compiled JS and `.d.ts`
 patch hunks together, regenerate the pnpm patch hashes, and verify a frozen
 install plus the runtime/CLI type, build and focused test checks. Preserve the
 independent photon and provider account-binding patches.
+
+## 0.85.1 next-response preparation
+
+Retain upstream `lastCompletedTurn`: prepare only before an actual next model
+response, including after a pending-tool handoff. The SDK's new pre-response
+compaction estimates context after tool results. Its native signal now reaches
+auto-compaction, summary authentication checks, the shared
+`_runDefaultCompaction` helper, summary retry, and extension preparation. Keep
+upstream compaction-failure events and their cancellation outcome consistent.
+Do not move preparation back to the end of every completed turn.
+
+The pending owner peeks its native steering/follow-up queues until `message_end`
+commits each selected message. This preserves already-polled input if the new
+preparation await is cancelled. Cancellation settlement still closes admission
+and drains those same queues; there is no new journal or restoration queue.
+Upstream's second steering poll remains conditional on an empty first poll, so
+one-at-a-time admission does not deliver two messages in one response.
+
+API first-turn preflight still compares a settled checkpoint against the public
+pre-prompt compaction semantics and delegates unproven cases to the sandbox.
+The API transport issues one response only; next-response compaction belongs
+to the sandbox's native continuation. `MemoryPiSession` remains byte-backed.
+The restricted Phase 2 system-prompt equality check includes the exact trailing
+newline added by 0.85.1; its tools, model, ownership and prompt body are unchanged.
+
+## Session compatibility
+
+`src/test/fixtures/pi-0.84.1-session.jsonl` in `pi-agent-runtime` was generated
+with official npm `pi-coding-agent@0.84.1` and `pi-ai@0.84.1`. It contains session
+v3, model/thinking entries, an abandoned branch, a branch summary, a compaction
+boundary, and one resolved plus one unresolved tool call. Its missing trailing
+newline is deliberate. `session-version-compatibility.test.ts` opens it using
+0.85.1, runs only the unresolved call, follows up, and checks the original byte
+prefix, session identity, branch entries, and settled memory projection.
+The upstream reader repairs only the missing final newline before appending.
+
+A separate official 0.84.1 installation also reads a 0.85.1-written continuation
+with a new branch summary and usage-bearing compaction. Old/new readers produce
+identical entries, active branch and projected context (18 entries, 16 active
+branch entries, 5 context messages). This is representative fixture evidence,
+not a production-history replay. Session format remains v3, with no migration
+or rewrite of existing records.
+
+The dependency graph introduces upstream `chord@0.85.1`, upgrades the Pi
+telemetry/TUI and provider SDK dependencies, and removes the former runtime
+client/protocol dependency edges. Okou still imports the root modular SDK;
+`./rpc-entry`, the experimental client/harness, model admission, defaults,
+provider routes, tiers and billing policy are not changed. Verify the actual
+packed CLI, including Photon worker and fallback, after every bundle change.
