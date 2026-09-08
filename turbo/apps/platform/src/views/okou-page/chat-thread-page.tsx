@@ -321,6 +321,7 @@ import {
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
   CHAT_THREAD_RESPONSE_LINE_CLASS,
+  CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
   CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS,
   CHAT_THREAD_RESPONSE_STACK_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
@@ -3804,15 +3805,17 @@ function CompletedWorkFoldRow({
               })
         }
         onClick={onToggle}
-        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
+        className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover group-data-[run-work-folding]/chat:gap-0"
       >
-        <Hourglass aria-hidden size={14} className="shrink-0" />
+        <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
+          <Hourglass aria-hidden size={14} />
+        </span>
         <span className="text-[13px]">{label}</span>
         <ChevronRight
           aria-hidden
           size={14}
           className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform",
+            "shrink-0 text-muted-foreground/70 transition-transform group-data-[run-work-folding]/chat:ml-2",
             expanded && "rotate-90",
           )}
         />
@@ -3839,7 +3842,7 @@ function RunWorkSectionRow({
   const { t } = useTranslation();
   const content = (
     <>
-      <span className="flex w-7 shrink-0 items-center justify-center">
+      <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
         <Hourglass aria-hidden />
       </span>
       <span className="inline-flex min-w-0 items-center gap-1">
@@ -4101,9 +4104,11 @@ function RunGroupFoldRow({ control }: { control: RunGroupFoldControl }) {
               })
         }
         onClick={onToggle}
-        className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
+        className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover group-data-[run-work-folding]/chat:gap-0"
       >
-        <Icon aria-hidden size={14} className="shrink-0" />
+        <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
+          <Icon aria-hidden size={14} />
+        </span>
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
@@ -4111,7 +4116,7 @@ function RunGroupFoldRow({ control }: { control: RunGroupFoldControl }) {
           aria-hidden
           size={14}
           className={cn(
-            "shrink-0 text-muted-foreground/70 transition-transform",
+            "shrink-0 text-muted-foreground/70 transition-transform group-data-[run-work-folding]/chat:ml-2",
             expanded && "rotate-90",
           )}
         />
@@ -4500,7 +4505,7 @@ function RecommendedFollowupList({
               "group flex text-left transition-colors",
               showFollowupCards
                 ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--okou-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover group-data-[run-work-folding]/chat:min-h-8 group-data-[run-work-folding]/chat:py-1",
+                : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover group-data-[run-work-folding]/chat:min-h-8 group-data-[run-work-folding]/chat:gap-0 group-data-[run-work-folding]/chat:py-1",
             )}
             onClick={() => {
               handleSelect(followup, followupIndex);
@@ -4508,7 +4513,8 @@ function RecommendedFollowupList({
           >
             <span
               className={cn(
-                "shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground",
+                CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
+                "text-muted-foreground/70 transition-colors group-hover:text-foreground",
                 showFollowupCards && "hidden",
               )}
             >
@@ -4525,7 +4531,7 @@ function RecommendedFollowupList({
             <ArrowUpRight
               size={14}
               className={cn(
-                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100",
+                "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100 group-data-[run-work-folding]/chat:ml-2",
                 showFollowupCards && "hidden",
               )}
             />
@@ -4883,11 +4889,11 @@ function InlineThinkingRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 h-5",
+        "flex items-center gap-2 h-5 group-data-[run-work-folding]/chat:gap-0",
         CHAT_THREAD_RESPONSE_LINE_CLASS,
       )}
     >
-      <span className="inline-flex shrink-0 items-center justify-center group-data-[run-work-folding]/chat:w-3.5">
+      <span className={CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS}>
         <ThinkingLoader
           blockStyle={blockStyle}
           spinnerEnabled={spinnerEnabled}
@@ -5771,6 +5777,20 @@ function AssistantErrorRecoveryCard({
   );
 }
 
+function AssistantErrorLeadingIcon({ warning = false }: { warning?: boolean }) {
+  return (
+    <span
+      className={cn(
+        CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
+        "mt-[3px]",
+        warning && "text-amber-500",
+      )}
+    >
+      <AlertCircle size={16} />
+    </span>
+  );
+}
+
 function AssistantErrorFallback({ error }: { error: string }) {
   const { t } = useTranslation();
   const openSettings = useSet(openSettingsDialogAt$);
@@ -5806,8 +5826,8 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isNoModelProvider) {
     return (
-      <div className="flex items-start gap-2 text-foreground">
-        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
+      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+        <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
             return $.chat.errors.noModelProviderPrefix;
@@ -5840,8 +5860,8 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isProviderIncompatible) {
     return (
-      <div className="flex items-start gap-2 text-foreground">
-        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
+      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+        <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
             return $.chat.errors.providerIncompatiblePrefix;
@@ -5867,8 +5887,8 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (isProviderDeleted) {
     return (
-      <div className="flex items-start gap-2 text-foreground">
-        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
+      <div className="flex items-start gap-2 text-foreground group-data-[run-work-folding]/chat:gap-0">
+        <AssistantErrorLeadingIcon warning />
         <span>
           {t(($) => {
             return $.chat.errors.providerDeletedPrefix;
@@ -5890,8 +5910,8 @@ function AssistantErrorFallback({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex items-start gap-2 text-destructive">
-      <AlertCircle size={16} className="shrink-0 mt-[3px]" />
+    <div className="flex items-start gap-2 text-destructive group-data-[run-work-folding]/chat:gap-0">
+      <AssistantErrorLeadingIcon />
       <Markdown
         source={error}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
@@ -6437,16 +6457,20 @@ function UserMessageActions({
   }
   return (
     <div className={CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS}>
-      <IconTooltipButton
+      <Button
         type="button"
+        variant="quiet"
+        size="icon-xs"
+        iconSize="md"
+        showTooltip
         onClick={onCopy}
-        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-state-hover transition-colors duration-150"
+        className="text-muted-foreground/60"
         aria-label={t(($) => {
           return $.chat.actions.copyMessage;
         })}
       >
-        {copied ? <Check size={18} /> : <Copy size={18} />}
-      </IconTooltipButton>
+        {copied ? <Check /> : <Copy />}
+      </Button>
     </div>
   );
 }
