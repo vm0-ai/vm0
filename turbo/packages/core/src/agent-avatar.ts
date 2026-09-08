@@ -140,11 +140,6 @@ export function agentAvatarUrlForDefaultAgent(args: {
 /** Number of legacy built-in preset avatars kept for existing agent data. */
 export const AVATAR_PRESET_COUNT = 5;
 
-/** Return a random legacy preset for the avatar-composer kill switch. */
-export function randomPresetAvatar(): string {
-  return `${AVATAR_PRESET_PREFIX}${Math.floor(Math.random() * AVATAR_PRESET_COUNT)}`;
-}
-
 function oneOf<const Item>(items: readonly Item[]): Item {
   const item = items[Math.floor(Math.random() * items.length)];
   if (item === undefined) {
@@ -236,10 +231,10 @@ export function randomAvatarComposerConfig(): AvatarComposerConfig {
  * population instead of dressing everybody in the same sweater.
  *
  * Fallback declaration, per `docs/fallback.md` §6.4 and §7:
- * - Surface: persisted `agents.avatarUrl` values written by `avatarComposerV2`,
- *   which is already GA. This is permanent legacy data, so none of the rollout
- *   gates apply — not DB/API skew, not the runner drain, not the old-client
- *   window.
+ * - Surface: persisted `agents.avatarUrl` values written by the avatar composer
+ *   before the sweater layer shipped. This is permanent legacy data, so none
+ *   of the rollout gates apply — not DB/API skew, not the runner drain, not
+ *   the old-client window.
  * - Removal gate: a backfill that writes an explicit `sweater` into every
  *   pre-existing composer URL. None is planned, so this branch is expected to
  *   stay.

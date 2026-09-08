@@ -73,6 +73,5 @@ export enum FeatureSwitchKey {
   ComposerCreateCommands = "composerCreateCommands",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
-  AvatarComposerV2 = "avatarComposerV2",
   AvatarNeckSweater = "avatarNeckSweater",
 }

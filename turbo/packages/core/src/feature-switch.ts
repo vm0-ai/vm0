@@ -325,12 +325,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.AvatarComposerV2]: {
-    maintainer: "yuma@okou.ai",
-    description:
-      "Use the background-free avatar composer for new agents and avatar customization.",
-    enabled: true,
-  },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
     description:
