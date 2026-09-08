@@ -70,6 +70,10 @@ def run_case(electron, build, sdk, output, mode, iteration):
                     exits[event.ident] = (time.monotonic() - started) * 1000
         queue.close()
         child.wait(timeout=10)
+        (directory / "observation.json").write_text(json.dumps({
+            "identity": info, "helper": helper, "daemon": daemon,
+            "group": group, "kernelExitObservedMs": exits,
+        }, indent=2) + "\n")
         assert set(exits) == observed_pids, (mode, exits, observed_pids)
         if mode == "main-dies":
             assert max(exits.values()) < 5000, exits

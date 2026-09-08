@@ -41,11 +41,12 @@ static int members(void) {
 #ifdef __APPLE__
   pid_t pids[4096];
   errno = 0;
-  int bytes = proc_listpgrppids((uint32_t)child, pids, sizeof(pids));
-  if (bytes < 0 || (bytes == 0 && errno != 0)) return -1;
-  if (bytes >= (int)sizeof(pids) || bytes % sizeof(pid_t) != 0) return -1;
+  /* This convenience API returns a PID count, unlike proc_listpids (bytes). */
+  int length = proc_listpgrppids(child, pids, sizeof(pids));
+  if (length < 0 || (length == 0 && errno != 0)) return -1;
+  if (length >= (int)(sizeof(pids) / sizeof(pids[0]))) return -1;
   int count = 0;
-  for (int i = 0; i < bytes / (int)sizeof(pid_t); ++i) {
+  for (int i = 0; i < length; ++i) {
     if (pids[i] != 0 && pids[i] != child) ++count;
   }
   return count;
