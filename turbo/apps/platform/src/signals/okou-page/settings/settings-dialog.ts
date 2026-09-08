@@ -177,7 +177,7 @@ const openSettingsUsagePackPlan$ = command(
   },
 );
 
-export const openSettingsMemberUsagePacks$ = command(
+const openSettingsMemberUsagePacks$ = command(
   ({ set }, management: UsagePackManagementResponse) => {
     set(openSettingsUsagePackPlan$, management, management.tier);
   },
