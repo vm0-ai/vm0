@@ -694,6 +694,7 @@ describe("Intro Video HeyGen presenter route", () => {
         const url = new URL(request.url);
         expect(Object.fromEntries(url.searchParams)).toStrictEqual({
           ownership: "public",
+          avatar_type: "studio_avatar",
           limit: "50",
           group_id: "private-group",
         });
@@ -727,7 +728,7 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
-  it("rejects a group look that the Avatar III presenter engine cannot render", async () => {
+  it("keeps the Avatar III presenter route on studio looks only", async () => {
     const fixture = await seedFixture();
     await enableIntroVideo(fixture);
     const { composeId } = await store.set(
@@ -745,16 +746,23 @@ describe("Intro Video HeyGen presenter route", () => {
       },
       context.signal,
     );
+    const observedQueries: Record<string, string>[] = [];
     server.use(
-      http.get(HEYGEN_AVATARS_URL, () => {
+      http.get(HEYGEN_AVATARS_URL, ({ request }) => {
+        observedQueries.push(
+          Object.fromEntries(new URL(request.url).searchParams),
+        );
         return HttpResponse.json({
           data: [
             {
-              id: "Monica_public_1",
+              // A studio look that only newer engines can render is still not
+              // usable for the transparent Avatar III take.
+              id: "Modern_public_1",
               group_id: "monica-group",
-              name: "Monica in Business casual",
-              default_voice_id: "monica-voice",
-              avatar_type: "photo_avatar",
+              name: "Modern presenter in studio",
+              default_voice_id: "modern-voice",
+              avatar_type: "studio_avatar",
+              status: "completed",
               supported_api_engines: ["avatar_iv", "avatar_v"],
             },
           ],
@@ -771,7 +779,7 @@ describe("Intro Video HeyGen presenter route", () => {
         authorization: `Bearer ${okouToken({ ...fixture, runId })}`,
       },
       body: JSON.stringify({
-        avatarId: "Monica_public_1",
+        avatarId: "Modern_public_1",
         avatarGroupId: "monica-group",
         audioUrl: "https://example.com/narration.mp3",
       }),
@@ -784,6 +792,16 @@ describe("Intro Video HeyGen presenter route", () => {
         message: "HeyGen avatar is not available in Intro Video",
       },
     });
+    // HeyGen prices a photo avatar on Avatar III at 0.0433 credits/second
+    // against 0.0167 for a studio look, so this route must not widen.
+    expect(observedQueries).toStrictEqual([
+      {
+        ownership: "public",
+        avatar_type: "studio_avatar",
+        limit: "50",
+        group_id: "monica-group",
+      },
+    ]);
   });
 
   it("generates the selected HeyGen voice once for presenter and mix", async () => {
@@ -957,6 +975,7 @@ describe("Intro Video HeyGen presenter route", () => {
             Object.fromEntries(new URL(request.url).searchParams),
           ).toStrictEqual({
             ownership: "public",
+            avatar_type: "studio_avatar",
             limit: "50",
             group_id: avatarGroupId,
             ...(token ? { token: "next-public-look" } : {}),

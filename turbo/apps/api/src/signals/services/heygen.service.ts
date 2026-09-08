@@ -693,7 +693,15 @@ export async function verifyHeyGenPublicAvatar(
   const seenTokens = new Set<string>();
   do {
     const page = await listHeyGenPublicAvatars(
-      { groupId, token, pageSize: HEYGEN_AVATAR_PAGE_SIZE },
+      // This route buys a transparent take on Avatar III, where HeyGen prices a
+      // photo avatar at 0.0433 credits/second against 0.0167 for a studio look,
+      // and a photo avatar carries its own background anyway.
+      {
+        groupId,
+        token,
+        pageSize: HEYGEN_AVATAR_PAGE_SIZE,
+        avatarType: "studio_avatar",
+      },
       apiKey,
       signal,
     );
