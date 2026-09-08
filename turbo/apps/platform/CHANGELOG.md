@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.7](https://github.com/vm0-ai/vm0/compare/app-v0.862.6...app-v0.862.7) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** keep browser card height stable ([#32535](https://github.com/vm0-ai/vm0/issues/32535)) ([a85c01f](https://github.com/vm0-ai/vm0/commit/a85c01feeaef9863ed8d97639e091ef22ccb1695))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.6
+
 ## [0.862.6](https://github.com/vm0-ai/vm0/compare/app-v0.862.5...app-v0.862.6) (2026-09-08)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.6...sandbox-firecracker-v0.40.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** diagnose private-write terminal response timeouts ([#32539](https://github.com/vm0-ai/vm0/issues/32539)) ([d4af301](https://github.com/vm0-ai/vm0/commit/d4af3011d8636ffc06a5d0bf21c1a12608795e94))
+
 ## [0.39.6](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.5...sandbox-firecracker-v0.39.6) (2026-09-08)
 
 ## [0.39.5](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.4...sandbox-firecracker-v0.39.5) (2026-09-07)

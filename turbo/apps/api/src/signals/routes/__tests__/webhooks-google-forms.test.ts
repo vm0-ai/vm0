@@ -4,7 +4,6 @@ import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,7 +20,6 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
@@ -333,13 +331,6 @@ async function setupGoogleFormsAutomation() {
     name: "google-forms-response-workflow",
   });
   mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-  await updateFeatureSwitchesForUser(
-    context,
-    { orgId: actor.orgId, userId: actor.userId },
-    {
-      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-    },
-  );
   mockGoogleFormsConnectorOAuth();
   await workflows.connectConnector(actor, "google-forms");
   const connector = await connectors.readConnectorBySlug(actor, "google-forms");
@@ -575,11 +566,6 @@ describe("Google Forms Pub/Sub webhook", () => {
         name: `google-forms-${suffix}-workflow`,
       });
       mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-      await updateFeatureSwitchesForUser(
-        context,
-        { orgId: actor.orgId, userId: actor.userId },
-        { [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true },
-      );
       mockGoogleFormsConnectorOAuth();
       await workflows.connectConnector(actor, "google-forms");
       mocks.clerk.session(actor.userId, actor.orgId, "org:member");
@@ -689,13 +675,6 @@ describe("Google Forms Pub/Sub webhook", () => {
       name: "google-forms-second-account-workflow",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:member");
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      },
-    );
     mockGoogleFormsConnectorOAuth();
     await workflows.connectConnector(actor, "google-forms");
     const firstConnector = await connectors.readConnectorBySlug(

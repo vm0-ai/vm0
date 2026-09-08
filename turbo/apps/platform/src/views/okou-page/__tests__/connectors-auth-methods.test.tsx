@@ -44,32 +44,6 @@ function createAuthWindow(): Window {
   return authWindow;
 }
 
-function createReusableAuthWindow(): {
-  readonly authWindow: Window;
-  readonly reopen: () => void;
-} {
-  const authWindow = createAuthWindow();
-  let closed = false;
-  Object.defineProperty(authWindow, "closed", {
-    configurable: true,
-    get: () => {
-      return closed;
-    },
-  });
-  Object.defineProperty(authWindow, "close", {
-    configurable: true,
-    value: () => {
-      closed = true;
-    },
-  });
-  return {
-    authWindow,
-    reopen: () => {
-      closed = false;
-    },
-  };
-}
-
 function storeConnectedConnector(
   slug: ConnectorSlug,
   authMethod: string,
@@ -218,9 +192,8 @@ test("Add an AWS account with an external code", async () => {
   );
   await setupPage({
     context,
-    path: "/connectors",
+    path: "/connectors?keywords=aws",
   });
-  await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect AWS");
@@ -1037,7 +1010,7 @@ test("Retry device authorization after a provider error", async () => {
 
 test("Return Slack authorization directly to the application", async () => {
   mockConnectors(context, []);
-  const { authWindow } = createReusableAuthWindow();
+  const authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
   let callbackTarget: string | undefined;
   context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
@@ -1060,41 +1033,37 @@ test("Return Slack authorization directly to the application", async () => {
   expect(callbackTarget).toBe("app");
 });
 
-test("Start provider sign-in for an OAuth connector", async () => {
-  const providers = [
-    ["airtable", "Airtable"],
-    ["asana", "Asana"],
-    ["cloudflare", "Cloudflare"],
-    ["gumroad", "Gumroad"],
-    ["hubspot", "HubSpot"],
-    ["intervals-icu", "Intervals.icu"],
-    ["linear", "Linear"],
-    ["mercury", "Mercury"],
-    ["microsoft-365", "Microsoft 365"],
-    ["monday", "monday.com"],
-    ["notion", "Notion"],
-    ["outlook-mail", "Outlook"],
-    ["sentry", "Sentry"],
-    ["strava", "Strava"],
-    ["todoist", "Todoist"],
-    ["vercel", "Vercel"],
-    ["xero", "Xero"],
-    ["google-maps", "Google Maps"],
-    ["meta-ads", "Meta Ads"],
-  ] as const;
+test.each([
+  ["airtable", "Airtable"],
+  ["asana", "Asana"],
+  ["cloudflare", "Cloudflare"],
+  ["gumroad", "Gumroad"],
+  ["hubspot", "HubSpot"],
+  ["intervals-icu", "Intervals.icu"],
+  ["linear", "Linear"],
+  ["mercury", "Mercury"],
+  ["microsoft-365", "Microsoft 365"],
+  ["monday", "monday.com"],
+  ["notion", "Notion"],
+  ["outlook-mail", "Outlook"],
+  ["sentry", "Sentry"],
+  ["strava", "Strava"],
+  ["todoist", "Todoist"],
+  ["vercel", "Vercel"],
+  ["xero", "Xero"],
+  ["google-maps", "Google Maps"],
+  ["meta-ads", "Meta Ads"],
+] as const)("Start provider sign-in for %s", async (slug, label) => {
   mockConnectors(context, []);
-  mockPublicConnectorStatus(
-    context,
-    providers.map(([connectorSlug, label]) => {
-      return publicStatusItem({
-        connectorSlug,
-        label,
-        authMethods: [oauthMethod()],
-        singleAuthCodeAuthMethodId: "oauth",
-      });
+  mockPublicConnectorStatus(context, [
+    publicStatusItem({
+      connectorSlug: slug,
+      label,
+      authMethods: [oauthMethod()],
+      singleAuthCodeAuthMethodId: "oauth",
     }),
-  );
-  const { authWindow, reopen } = createReusableAuthWindow();
+  ]);
+  const authWindow = createAuthWindow();
   const browserOpen = context.mocks.browser.open(authWindow);
   const starts: {
     readonly slug: string;
@@ -1114,35 +1083,25 @@ test("Start provider sign-in for an OAuth connector", async () => {
     },
   );
   await setupPage({ context, path: "/connectors" });
-  const search = await screen.findByPlaceholderText("Find connectors");
+  const connect = await waitFor(() => {
+    return getConnectorAction("button", `Connect ${label}`);
+  });
+  await waitFor(() => {
+    expect(connect).toBeEnabled();
+  });
+  click(connect);
+  await waitFor(() => {
+    expect(authWindow.location.href).toBe(
+      `https://oauth.test/${slug}/authorize`,
+    );
+  });
+  expect(screen.queryByRole("dialog", { name: label })).toBeNull();
+  await waitFor(() => {
+    expect(getConnectorAction("button", `Connect ${label}`)).toBeEnabled();
+  });
 
-  for (const [slug, label] of providers) {
-    reopen();
-    await fill(search, label);
-    const connect = await waitFor(() => {
-      return getConnectorAction("button", `Connect ${label}`);
-    });
-    await waitFor(() => {
-      return expect(connect).toBeEnabled();
-    });
-    click(connect);
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(
-        `https://oauth.test/${slug}/authorize`,
-      );
-    });
-    expect(screen.queryByRole("dialog", { name: label })).toBeNull();
-    await waitFor(() => {
-      expect(getConnectorAction("button", `Connect ${label}`)).toBeEnabled();
-    });
-  }
-
-  expect(starts).toStrictEqual(
-    providers.map(([slug]) => {
-      return { slug, callbackTarget: "app" };
-    }),
-  );
-  expect(browserOpen.calls).toHaveLength(providers.length);
+  expect(starts).toStrictEqual([{ slug, callbackTarget: "app" }]);
+  expect(browserOpen.calls).toHaveLength(1);
   expect(
     screen.queryByText(/Meta Ads is currently in Meta's app review period/u),
   ).toBeNull();

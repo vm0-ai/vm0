@@ -4811,7 +4811,6 @@ describe.sequential("Official Workflow installations", () => {
       context,
       { orgId: actor.orgId, userId: actor.userId },
       {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
         [FeatureSwitchKey.OfficialWorkflows]: true,
       },
     );

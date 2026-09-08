@@ -39,9 +39,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.NotionWorkflowAutomations, {}),
     ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
-    ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
       true,
     );

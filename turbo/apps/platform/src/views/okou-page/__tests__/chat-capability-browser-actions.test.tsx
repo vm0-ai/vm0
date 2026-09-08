@@ -211,6 +211,9 @@ test("Follow a managed browser session from its chat card", async () => {
   );
   expect(card).toHaveTextContent("Cloud browser");
   expect(card).toHaveTextContent("Live");
+  const status = within(card).getByText("Live");
+  renderAppStyles(status);
+  expect(getComputedStyle(status).lineHeight).toBe("16px");
   expect(screen.getByTestId("browser-session-thumbnail")).toHaveAttribute(
     "src",
     INITIAL_SCREENSHOT_URL,

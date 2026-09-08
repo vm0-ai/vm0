@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.634.6](https://github.com/vm0-ai/vm0/compare/core-v8.634.5...core-v8.634.6) (2026-09-08)
+
+
+### Refactoring
+
+* remove followUpOptimize feature switch ([#32522](https://github.com/vm0-ai/vm0/issues/32522)) ([cd4d62b](https://github.com/vm0-ai/vm0/commit/cd4d62b5e072e6c9e32c9431338fb37ee4eeedef))
+
 ## [8.634.5](https://github.com/vm0-ai/vm0/compare/core-v8.634.4...core-v8.634.5) (2026-09-08)
 
 
