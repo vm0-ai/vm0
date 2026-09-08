@@ -1991,6 +1991,124 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
 });
 
 describe("WHCB-05: sandbox agent webhook boundaries", () => {
+  it("preserves same-attempt DNS timing, zero values, and legacy operations", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "DNS attempt attribution",
+    );
+    const timestamp = nowDate().toISOString();
+    const operations = [
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness",
+        duration_ms: 10,
+        success: true,
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 0,
+        success: false,
+        outcome: "process_timeout",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: false,
+        dns_readiness_guest_duration_ms: 0,
+        dns_readiness_host_residual_ms: 0,
+        dns_readiness_timing: "paired",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 10,
+        success: true,
+        outcome: "success",
+        dns_readiness_attempt: 2,
+        dns_readiness_final_attempt: true,
+        dns_readiness_guest_duration_ms: 7,
+        dns_readiness_host_residual_ms: 3,
+        dns_readiness_timing: "paired",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 4,
+        success: false,
+        outcome: "host_cancelled",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: true,
+        dns_readiness_timing: "unavailable",
+      },
+      {
+        ts: timestamp,
+        action_type: "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+        duration_ms: 2,
+        success: true,
+        outcome: "success",
+        dns_readiness_attempt: 1,
+        dns_readiness_final_attempt: true,
+        dns_readiness_guest_duration_ms: 10,
+        dns_readiness_timing: "inconsistent",
+      },
+    ] as const;
+    context.mocks.axiom.sdkIngest.mockClear();
+    await api.requestAgentTelemetry(
+      { runId, sandboxOperations: [...operations] },
+      headers,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledTimes(
+      operations.length,
+    );
+    for (const { ts, action_type: actionType, ...fields } of operations) {
+      expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+        "vm0-sandbox-op-log-dev",
+        [
+          {
+            _time: ts,
+            op_type: actionType,
+            source: "sandbox",
+            sandbox_type: "runner",
+            run_id: runId,
+            ...fields,
+          },
+        ],
+      );
+    }
+  });
+
+  it("rejects unbounded DNS attempt dimensions at the telemetry boundary", async () => {
+    const runId = randomUUID();
+    const headers = api.sandboxWebhookHeaders({ runId });
+    for (const invalid of [
+      { dns_readiness_attempt: 0 },
+      { dns_readiness_attempt: 4 },
+      { dns_readiness_guest_duration_ms: -1 },
+      { dns_readiness_host_residual_ms: -1 },
+      { dns_readiness_timing: "arbitrary-diagnostic" },
+      { dns_readiness_final_attempt: "false" },
+    ]) {
+      const response = await api.requestAgentTelemetryUnchecked(
+        {
+          runId,
+          sandboxOperations: [
+            {
+              ts: nowDate().toISOString(),
+              action_type:
+                "runner_fresh_sandbox_start_guest_dns_readiness_attempt",
+              duration_ms: 1,
+              success: true,
+              ...invalid,
+            },
+          ],
+        },
+        headers,
+        [400],
+      );
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    }
+  });
+
   it("returns 500 with structured diagnostics when telemetry ingest times out", async () => {
     const { runId, headers } = await createEventWebhookRun(
       "required Axiom telemetry deadline",

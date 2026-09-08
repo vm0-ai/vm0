@@ -1,9 +1,11 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createHash, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -452,6 +454,67 @@ function scopedOkouToken(
 }
 
 describe("GET /api/artifacts/catalog", () => {
+  it.each(["hosted-site", "presentation-html"] as const)(
+    "keeps private %s catalog and thread references authenticated",
+    async (artifactKind) => {
+      const owner = await catalogActor("Private HTML catalog owner");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      await createBillingMediaApi(context).updateFeatureSwitches(owner.actor, {
+        [FeatureSwitchKey.PrivateArtifacts]: true,
+      });
+      const capture = host.captureHostedSitesS3();
+      const site = `private-catalog-${randomUUID().slice(0, 8)}`;
+      const hosted = await publishHostedSite({
+        owner,
+        site,
+        artifactKind,
+        claimRun: false,
+      });
+      const canonical = `https://api.okou.ai/api/host/private-deployments/${hosted.deploymentId}/view`;
+      const list = await chat.listArtifactCatalog(owner.actor);
+      const entry = list.artifacts.find((item) => {
+        return item.title === site;
+      });
+      if (!entry) {
+        throw new Error("Expected private HTML catalog entry");
+      }
+      const detail = await chat.getArtifactCatalogEntry(owner.actor, entry.id);
+      expect(detail).toMatchObject({
+        kind:
+          artifactKind === "presentation-html" ? "presentation" : "hosted-site",
+        thumbnail: null,
+        site: { url: canonical, deploymentVersion: 1 },
+      });
+      const thread = await chat.listThreadArtifacts(
+        owner.actor,
+        hosted.threadId,
+      );
+      const file = thread.runs
+        .flatMap((run) => {
+          return run.files;
+        })
+        .find((file) => {
+          return file.url === canonical;
+        });
+      expect(file).toMatchObject({ artifactKind, contentType: "text/html" });
+      expect(file?.aliasUrl).toBeUndefined();
+      expect(file?.previewImageUrl).toBeUndefined();
+      expect(
+        capture.puts.filter(({ key }) => {
+          return !key.startsWith("private-sites/") && !key.startsWith("agent");
+        }),
+      ).toStrictEqual([]);
+      const colleague = bdd.user({ orgId: owner.actor.orgId });
+      await chat.requestArtifactCatalogEntry(colleague, entry.id, [404]);
+      await createBillingMediaApi(context).updateFeatureSwitches(owner.actor, {
+        [FeatureSwitchKey.PrivateArtifacts]: false,
+      });
+      await expect(
+        chat.getArtifactCatalogEntry(owner.actor, entry.id),
+      ).resolves.toMatchObject({ site: { url: canonical } });
+    },
+  );
+
   it("lists an uploaded file as one artifact and hides other callers", async () => {
     const owner = await catalogActor("Artifact catalog owner");
     const outsider = await catalogActor("Artifact catalog outsider");

@@ -84,7 +84,9 @@ pub(crate) fn drain_until_eof_or_cancelled(
 ) {
     let pipe = pipe.into();
     let raw_fd = pipe.as_raw_fd();
-    let mut chunk = [0u8; DEFAULT_DRAIN_READ_BYTES];
+    // Keep the buffer off the stack so a short-lived drain does not fault in
+    // every stack page before reading even a small amount of output.
+    let mut chunk = Box::<[u8; DEFAULT_DRAIN_READ_BYTES]>::new_uninit();
     loop {
         if cancel.is_cancelled() {
             break;
@@ -129,9 +131,10 @@ pub(crate) fn drain_until_eof_or_cancelled(
             continue;
         }
 
-        // SAFETY: raw_fd belongs to the owned `pipe`, which remains alive until the
-        // function returns. `chunk` is valid writable memory of the given len.
-        let n = unsafe { libc::read(raw_fd, chunk.as_mut_ptr().cast(), chunk.len()) };
+        // SAFETY: raw_fd belongs to the owned pipe. read initializes up to
+        // DEFAULT_DRAIN_READ_BYTES bytes in this writable allocation; it never
+        // reads the buffer.
+        let n = unsafe { libc::read(raw_fd, chunk.as_mut_ptr().cast(), DEFAULT_DRAIN_READ_BYTES) };
         if n == 0 {
             break; // EOF
         }
@@ -143,7 +146,10 @@ pub(crate) fn drain_until_eof_or_cancelled(
             break;
         }
 
-        on_chunk(chunk.get(..n as usize).unwrap_or_default());
+        // SAFETY: the successful read initialized exactly n bytes. Only that
+        // prefix is exposed, so short reads cannot reveal uninitialized data.
+        let initialized = unsafe { std::slice::from_raw_parts(chunk.as_ptr().cast(), n as usize) };
+        on_chunk(initialized);
     }
 
     drop(pipe);

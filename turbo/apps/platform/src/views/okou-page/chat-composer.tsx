@@ -216,6 +216,10 @@ import {
 import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
+import {
+  dismissConnectorConnectionProgress$,
+  registerConnectorConnectionDialog$,
+} from "../../signals/connector-connection-progress.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -7112,6 +7116,8 @@ function AddConnectorsDialog({
   const resetCustomConnectorConnectInput = useSet(
     resetCustomConnectorConnectInput$,
   );
+  const registerConnectionDialog = useSet(registerConnectorConnectionDialog$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -7125,10 +7131,14 @@ function AddConnectorsDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && onClose();
+        if (!open) {
+          dismissProgress();
+          onClose();
+        }
       }}
     >
       <DialogContent
+        ref={registerConnectionDialog}
         className="okou-app max-w-2xl flex max-h-[80vh] flex-col"
         aria-describedby={undefined}
       >
@@ -7138,11 +7148,20 @@ function AddConnectorsDialog({
               ($) => {
                 return $.chat.connectors.available;
               },
-              {
-                count: visibleConnectorCount,
-              },
+              { count: visibleConnectorCount },
             )}
           </DialogTitle>
+          {connecting && (
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              {t(($) => {
+                return $.connectors.actions.connecting;
+              })}
+            </p>
+          )}
         </DialogHeader>
         <div className="shrink-0">
           <Input
@@ -8387,20 +8406,22 @@ function ConnectorsPopoverButton({
           {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
-            onClick={() => {
-              return onOpenAddDialog();
-            }}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <Plus size={13} />
-            </span>
-            {t(($) => {
-              return $.chat.connectors.addConnectors;
-            })}
-          </button>
+          <PopoverClose asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-state-hover transition-colors"
+              onClick={() => {
+                return onOpenAddDialog();
+              }}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+                <Plus size={13} />
+              </span>
+              {t(($) => {
+                return $.chat.connectors.addConnectors;
+              })}
+            </button>
+          </PopoverClose>
         </div>
         {computerUse && (
           <ComputerUseConnectorMenuSection
@@ -10351,6 +10372,7 @@ function ComposerConnectorsSlot({
     return {
       openModal: () => {
         updateConnectorUi({
+          showAddDialog: false,
           selectedConnectorSlug: connectorSlug,
         });
       },

@@ -33,9 +33,9 @@ function formatBytes(bytes: number): string {
 
 export const hostCommand = new Command()
   .name("host")
-  .description("Publish and inspect owned static hosted sites")
+  .description("Deploy and inspect owned static hosted sites")
   .argument("<dir>", "Static build directory, for example ./dist")
-  .option("--site <slug>", "Public site slug, e.g. my-product-demo")
+  .option("--site <slug>", "Logical site slug, e.g. my-product-demo")
   .option("--slug-suffix <suffix>", "Reuse a legacy generated site URL suffix")
   .option(
     "--artifact-kind <kind>",
@@ -59,7 +59,9 @@ Examples:
 
 Notes:
   - Authenticates via OKOU_TOKEN (publish requires host:write; clone requires host:read)
-  - With hosted artifact versions enabled, reusing --site publishes behind the same alias
+  - With private artifacts enabled, the result is an authenticated preview URL
+  - Private deployments never update an existing public alias
+  - For public versioned deployments, reusing --site updates the same alias
   - Otherwise, reuse both --site and --slug-suffix to keep a legacy URL
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,

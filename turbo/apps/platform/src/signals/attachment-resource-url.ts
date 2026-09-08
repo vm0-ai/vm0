@@ -1,6 +1,8 @@
 import { command, computed, state, type Computed } from "ccstate";
 import { timeout } from "signal-timers";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { hostContract } from "@okouai/api-contracts/contracts/host";
+import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import { accept } from "../lib/accept.ts";
 import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
@@ -79,6 +81,22 @@ function createAttachmentResourceUrl$(
   url: string,
 ): Computed<Promise<AttachmentUrls>> {
   return computed(async (get) => {
+    const deploymentId = privateHostedDeploymentId(url, resolveApiBase());
+    if (deploymentId) {
+      get(resourceRevision$);
+      const signal = get(pageSignal$);
+      const response = await accept(
+        get(apiClient$)(hostContract).privatePreview({
+          params: { deploymentId },
+          fetchOptions: { signal },
+        }),
+        [200],
+        signal,
+      );
+      const resourceUrl = new URL(response.body.url);
+      resourceUrl.hash = new URL(url).hash;
+      return { resourceUrl: resourceUrl.href, shareUrl: null };
+    }
     if (!isAuthenticatedAttachmentUrl(url)) {
       // Already a public address, so it both renders and shares as-is.
       return { resourceUrl: url, shareUrl: url };

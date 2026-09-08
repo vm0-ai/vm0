@@ -7,6 +7,7 @@ import {
   ilike,
   inArray,
   isNotNull,
+  isNull,
   like,
   lt,
   lte,
@@ -32,7 +33,11 @@ import {
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { hostedDeployments, hostedSites } from "@okouai/db/schema/hosted-site";
+import {
+  hostedDeployments,
+  hostedSites,
+  privateHostedDeployments,
+} from "@okouai/db/schema/hosted-site";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
 import { z } from "zod";
@@ -981,6 +986,8 @@ async function fileDetail(
 async function hostedSiteDetail(
   db: Db,
   hostedSiteId: string,
+  owner: { readonly userId: string; readonly orgId: string },
+  projectionMetadata: Record<string, unknown> | null,
   signal: AbortSignal,
 ): Promise<{
   readonly id: string;
@@ -991,6 +998,43 @@ async function hostedSiteDetail(
   readonly entrypoint: string;
   readonly spaFallback: boolean;
 } | null> {
+  if (projectionMetadata?.access === "owner-private-v1") {
+    const deploymentId = metadataString(projectionMetadata, "deploymentId");
+    if (!deploymentId) {
+      return null;
+    }
+    const [privateRow] = await db
+      .select({
+        id: hostedSites.id,
+        slug: hostedSites.slug,
+        requestedSlug: hostedSites.requestedSlug,
+        publicSlug: hostedSites.publicSlug,
+        url: privateHostedDeployments.url,
+        deploymentVersion: privateHostedDeployments.deploymentVersion,
+        entrypoint: privateHostedDeployments.entrypoint,
+        spaFallback: privateHostedDeployments.spaFallback,
+      })
+      .from(hostedSites)
+      .innerJoin(
+        privateHostedDeployments,
+        eq(privateHostedDeployments.siteId, hostedSites.id),
+      )
+      .where(
+        and(
+          eq(hostedSites.id, hostedSiteId),
+          eq(privateHostedDeployments.id, deploymentId),
+          eq(privateHostedDeployments.userId, owner.userId),
+          eq(privateHostedDeployments.orgId, owner.orgId),
+          eq(privateHostedDeployments.status, "ready"),
+          isNull(hostedSites.deletedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    return privateRow
+      ? { ...privateRow, slug: privateRow.requestedSlug ?? privateRow.slug }
+      : null;
+  }
   const [row] = await db
     .select({
       id: hostedSites.id,
@@ -1048,6 +1092,35 @@ async function avatarDetail(
             : null,
       }
     : null;
+}
+
+async function presentationDetail(
+  db: Db,
+  summary: ArtifactSummary,
+  row: {
+    readonly entityId: string;
+    readonly projectionMetadata: Record<string, unknown> | null;
+  },
+  owner: { readonly userId: string; readonly orgId: string },
+  signal: AbortSignal,
+): Promise<ArtifactDetail | null> {
+  const [entity] = await db
+    .select({ hostedSiteId: presentationArtifacts.hostedSiteId })
+    .from(presentationArtifacts)
+    .where(eq(presentationArtifacts.id, row.entityId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!entity) {
+    return null;
+  }
+  const site = await hostedSiteDetail(
+    db,
+    entity.hostedSiteId,
+    owner,
+    row.projectionMetadata,
+    signal,
+  );
+  return site ? { ...summary, kind: "presentation", site } : null;
 }
 
 /**
@@ -1173,20 +1246,16 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     if (row.kind === "hosted-site") {
-      const site = await hostedSiteDetail(db, row.entityId, signal);
+      const site = await hostedSiteDetail(
+        db,
+        row.entityId,
+        args,
+        row.projectionMetadata,
+        signal,
+      );
       return site ? { ...summary, kind: "hosted-site", site } : null;
     }
 
-    const [entity] = await db
-      .select({ hostedSiteId: presentationArtifacts.hostedSiteId })
-      .from(presentationArtifacts)
-      .where(eq(presentationArtifacts.id, row.entityId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (!entity) {
-      return null;
-    }
-    const site = await hostedSiteDetail(db, entity.hostedSiteId, signal);
-    return site ? { ...summary, kind: "presentation", site } : null;
+    return await presentationDetail(db, summary, row, args, signal);
   },
 );

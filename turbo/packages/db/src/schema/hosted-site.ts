@@ -130,3 +130,58 @@ export const hostedDeployments = pgTable(
     ];
   },
 );
+
+// Separate rows keep older API binaries from publishing private deployments.
+export const privateHostedDeployments = pgTable(
+  "private_hosted_deployments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(
+        () => {
+          return hostedSites.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    publicBrand: text("public_brand").$type<PublicBrand>().notNull(),
+    status: varchar("status", { length: 32 })
+      .$type<HostedDeploymentStatus>()
+      .notNull()
+      .default("uploading"),
+    deploymentVersion: integer("deployment_version").notNull(),
+    artifactUrl: text("artifact_url").notNull(),
+    r2Prefix: text("r2_prefix").notNull(),
+    manifest: jsonb("manifest").$type<HostedSiteManifest>().notNull(),
+    manifestHash: varchar("manifest_hash", { length: 64 }).notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    entrypoint: text("entrypoint").notNull().default("/index.html"),
+    spaFallback: boolean("spa_fallback").notNull().default(false),
+    fileCount: integer("file_count").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    url: text("url").notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    readyAt: timestamp("ready_at"),
+  },
+  (table) => {
+    return [
+      index("idx_private_hosted_deployments_site").on(table.siteId),
+      uniqueIndex("idx_private_hosted_deployments_site_version").on(
+        table.siteId,
+        table.deploymentVersion,
+      ),
+      index("idx_private_hosted_deployments_org").on(table.orgId),
+      index("idx_private_hosted_deployments_status").on(table.status),
+      foreignKey({
+        name: "fk_private_hosted_deployments_site_public_brand",
+        columns: [table.siteId, table.publicBrand],
+        foreignColumns: [hostedSites.id, hostedSites.publicBrand],
+      }).onDelete("cascade"),
+    ];
+  },
+);

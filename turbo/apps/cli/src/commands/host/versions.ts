@@ -40,13 +40,13 @@ Notes:
         }
 
         console.log(chalk.bold(`Hosted site versions: ${result.site}`));
-        console.log(chalk.dim(`Alias: ${result.aliasUrl}`));
+        if (result.aliasUrl) {
+          console.log(chalk.dim(`Alias: ${result.aliasUrl}`));
+        }
         if (result.deployments.length === 0) {
           console.log(chalk.dim("No deployments found"));
           console.log(
-            chalk.dim(
-              `Publish one with: okou host <dir> --site ${result.site}`,
-            ),
+            chalk.dim(`Deploy one with: okou host <dir> --site ${result.site}`),
           );
           return;
         }
@@ -58,6 +58,9 @@ Notes:
               ? "legacy"
               : `v${deployment.deploymentVersion}`;
           const url = deployment.artifactUrl ?? result.aliasUrl;
+          if (!url) {
+            throw new Error("Hosted deployment has no artifact or alias URL");
+          }
           console.log(
             `${marker}${version}  ${deployment.status}  ${deployment.createdAt}  ${url}`,
           );

@@ -2513,8 +2513,8 @@
     },
     "callback": {
       "connected": "{{connector}} terhubung",
-      "connectedAs": "Terhubung sebagai {{username}}. Anda dapat menutup jendela ini.",
-      "connectedDescription": "Akun Anda telah terhubung. Anda dapat menutup jendela ini.",
+      "connectedAs": "Terhubung sebagai {{username}}. Tutup jendela ini dan kembali ke halaman semula untuk melanjutkan.",
+      "connectedDescription": "Akun Anda telah terhubung. Tutup jendela ini dan kembali ke halaman semula untuk melanjutkan.",
       "connecting": "Menghubungkan {{connector}}…",
       "connectingDescription": "Harap tunggu saat kami menyelesaikan koneksi akun Anda.",
       "customConnectorLabel": "Konektor kustom",
@@ -2680,6 +2680,10 @@
         "description": "Konektor ini memiliki metode koneksi yang tersedia, tetapi belum ada yang bisa dikonfigurasi dari dialog ini.",
         "title": "Metode koneksi tidak tersedia"
       }
+    },
+    "connectionProgress": {
+      "description": "Selesaikan otorisasi jika diminta. Tunggu sementara kami menyelesaikan pengaturan koneksi.",
+      "title": "Menghubungkan akun Anda"
     },
     "custom": {
       "connect": {

@@ -1,12 +1,14 @@
 use std::io;
-use std::process::{Child, ExitStatus};
+use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::drain::DrainCancellation;
-use crate::process::{kill_and_reap_child, kill_owned_child_process_group, process_signal_pid};
+use crate::process::{
+    ChildProcess, kill_and_reap_child, kill_owned_child_process_group, process_signal_pid,
+};
 use crate::threading::spawn_scoped_named;
 
 const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
@@ -61,7 +63,7 @@ pub(crate) fn await_drain_deadline(
 /// Wait for `child` while observing its owning connection cancellation flag
 /// and allowing direct-child-group cleanup before reap after natural exit.
 pub(crate) fn wait_with_kill_timeout_or_connection_cancelled(
-    child: Child,
+    child: impl ChildProcess,
     timeout_ms: u32,
     connection_cancel: &AtomicBool,
     pre_reap_cleanup: impl FnMut() -> bool,
@@ -79,7 +81,7 @@ pub(crate) fn wait_with_kill_timeout_or_connection_cancelled(
 /// Exec operations have both connection-level cancellation and request-level
 /// cancellation.
 pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
-    child: Child,
+    child: impl ChildProcess,
     timeout_ms: u32,
     first_cancel: &AtomicBool,
     second_cancel: &AtomicBool,
@@ -94,7 +96,7 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
 }
 
 fn wait_with_kill_timeout_or_cancelled_by(
-    mut child: Child,
+    mut child: impl ChildProcess,
     timeout_ms: u32,
     is_cancelled: impl Fn() -> bool,
     mut pre_reap_cleanup: impl FnMut() -> bool,
@@ -268,12 +270,39 @@ fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
     }
 }
 
-fn kill_child(child: &mut Child) -> bool {
+fn kill_child(child: &mut impl ChildProcess) -> bool {
     // SAFETY: this owner has not reaped child, so its PID/process group cannot
     // have been reused.
     let group_killed = unsafe { kill_owned_child_process_group(child.id()) };
     let child_killed = child.kill().is_ok();
     group_killed || child_killed
+}
+
+/// Probe readiness without releasing the identity owned by the final waiter.
+pub(crate) fn child_has_exited_without_reap(child_id: u32) -> io::Result<bool> {
+    let child_id = process_signal_pid(child_id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid child pid"))?;
+    // SAFETY: zero initialization also distinguishes the WNOHANG no-exit case.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    loop {
+        // SAFETY: this is an owned direct child. WNOWAIT leaves it unreaped.
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                child_id as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+            )
+        };
+        if result == 0 {
+            // SAFETY: waitid initialized the SIGCHLD siginfo payload.
+            return Ok(unsafe { info.si_pid() } != 0);
+        }
+        let error = io::Error::last_os_error();
+        if error.kind() != io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -460,5 +489,37 @@ mod tests {
 
         assert!(cleanup_called);
         assert!(matches!(outcome, WaitOutcome::Exited(status) if status.success()));
+    }
+
+    #[test]
+    fn readiness_exit_probe_keeps_child_owned_until_terminal_cleanup() {
+        let mut command = Command::new("sh");
+        command.arg("-c").arg("exit 23").process_group(0);
+        let child = crate::contained_command::ContainedChild::from(command.spawn().unwrap());
+        let pid = child.id();
+        wait_for_child_exit_without_reap(pid).unwrap();
+
+        // Repeated readiness probes must not consume the waitable child.
+        assert!(child_has_exited_without_reap(pid).unwrap());
+        assert!(child_has_exited_without_reap(pid).unwrap());
+        let mut cleaned = false;
+        let outcome = wait_with_kill_timeout_or_connection_cancelled(
+            child,
+            5_000,
+            &AtomicBool::new(false),
+            || {
+                cleaned = true;
+                assert!(child_has_exited_without_reap(pid).unwrap());
+                true
+            },
+        );
+        assert!(cleaned);
+        assert!(matches!(outcome, WaitOutcome::Exited(status) if status.code() == Some(23)));
+        assert_eq!(
+            child_has_exited_without_reap(pid)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::ECHILD)
+        );
     }
 }

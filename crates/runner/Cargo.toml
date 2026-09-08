@@ -80,6 +80,7 @@ guest-state-restore = { workspace = true }
 guest-tool-exec = { workspace = true }
 runner-rpc-client = { workspace = true }
 guest-write-file = { workspace = true }
+guest-workspace-mount = { workspace = true }
 httpmock = { workspace = true, features = ["cookies"] }
 http-body = { workspace = true }
 sandbox-mock = { workspace = true }

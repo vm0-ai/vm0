@@ -43,7 +43,10 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout};
+use std::process::{ChildStderr, ChildStdin, ChildStdout};
+
+use crate::contained_command::ContainedChild as Child;
+use crate::process::ChildProcess;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -966,9 +969,9 @@ impl RunningExec {
                 };
             }
 
-            match self.child.try_wait() {
-                Ok(Some(_)) => return AgentReadyWaitOutcome::Terminal,
-                Ok(None) => {}
+            match crate::wait::child_has_exited_without_reap(self.child.id()) {
+                Ok(true) => return AgentReadyWaitOutcome::Terminal,
+                Ok(false) => {}
                 Err(error) => {
                     return AgentReadyWaitOutcome::Failed(format!(
                         "failed to observe Agent before readiness: {error}"

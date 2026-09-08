@@ -2521,8 +2521,8 @@
     },
     "callback": {
       "connected": "{{connector}} verbunden",
-      "connectedAs": "Verbunden als {{username}}. Sie können dieses Fenster schließen.",
-      "connectedDescription": "Ihr Konto wurde verbunden. Sie können dieses Fenster schließen.",
+      "connectedAs": "Verbunden als {{username}}. Schließen Sie dieses Fenster und kehren Sie zur ursprünglichen Seite zurück, um fortzufahren.",
+      "connectedDescription": "Ihr Konto wurde verbunden. Schließen Sie dieses Fenster und kehren Sie zur ursprünglichen Seite zurück, um fortzufahren.",
       "connecting": "Verbinden von {{connector}}…",
       "connectingDescription": "Bitte warten Sie, während wir die Verbindung Ihres Kontos abgeschlossen haben.",
       "customConnectorLabel": "Benutzerdefinierte Integration",
@@ -2688,6 +2688,10 @@
         "description": "Für diese Integration sind Verbindungsmethoden verfügbar, die in diesem Dialog noch nicht konfiguriert werden können.",
         "title": "Verbindungsmethoden nicht verfügbar"
       }
+    },
+    "connectionProgress": {
+      "description": "Schließen Sie die Autorisierung ab, falls Sie dazu aufgefordert werden. Bitte warten Sie, während wir die Verbindung einrichten.",
+      "title": "Ihr Konto wird verbunden"
     },
     "custom": {
       "connect": {

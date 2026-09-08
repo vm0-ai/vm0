@@ -2513,8 +2513,8 @@
     },
     "callback": {
       "connected": "{{connector}} connected",
-      "connectedAs": "Connected as {{username}}. You can close this window.",
-      "connectedDescription": "Your account has been connected. You can close this window.",
+      "connectedAs": "Connected as {{username}}. Close this window and return to the original page to continue.",
+      "connectedDescription": "Your account has been connected. Close this window and return to the original page to continue.",
       "connecting": "Connecting {{connector}}…",
       "connectingDescription": "Please wait while we finish connecting your account.",
       "customConnectorLabel": "Custom connector",
@@ -2680,6 +2680,10 @@
         "description": "This connector has available connection methods, but none of them can be configured from this dialog yet.",
         "title": "Connection methods unavailable"
       }
+    },
+    "connectionProgress": {
+      "description": "Complete authorization if prompted. Please wait while we finish setting up your connection.",
+      "title": "Connecting your account"
     },
     "custom": {
       "connect": {

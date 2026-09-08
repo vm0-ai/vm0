@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { now } from "../../lib/time.ts";
+import { dismissConnectorConnectionProgress$ } from "../connector-connection-progress.ts";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import {
   builtinAccountConnectDialog$,
@@ -178,6 +179,8 @@ export const checkGoogleCalendarRecovery$ = command(
       signal.throwIfAborted();
       attemptSignal.throwIfAborted();
       set(internalRecoveryTarget$, { ...target, phase: "confirm" });
+      // The inline recovery status now owns progress and cancellation.
+      set(dismissConnectorConnectionProgress$);
       set(closeBuiltinAccountConnectDialog$);
     }
     const recovered = await set(confirmRecovery$, target, attemptSignal);

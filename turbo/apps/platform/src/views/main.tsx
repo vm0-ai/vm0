@@ -18,6 +18,7 @@ import {
   setupKeyboardDismissGesture,
 } from "../lib/keyboard-dismiss-gesture.ts";
 import { InstatusStatusNotice } from "./components/instatus-status-notice.tsx";
+import { ConnectorConnectionProgress } from "./components/connector-connection-progress.tsx";
 import { setupViewportPinchPrevention } from "../lib/viewport-pinch.ts";
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
@@ -82,6 +83,7 @@ export const setupRouter = (
           <InspectLogFileInput />
           <ForceUpgradeDialog />
           <InstatusStatusNotice />
+          <ConnectorConnectionProgress />
         </ErrorBoundary>
         <AppToaster />
       </StoreProvider>

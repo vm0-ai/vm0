@@ -1,0 +1,215 @@
+import { randomUUID } from "node:crypto";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
+import { createBddApi } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
+import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+
+const context = testContext();
+const bdd = createBddApi(context);
+const api = createHostMapsBddApi(context);
+const billing = createBillingMediaApi(context);
+
+async function fixture(enabled = true) {
+  const actor = bdd.user();
+  await createRunsApi(context).grantProEntitlement(actor);
+  await billing.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PrivateArtifacts]: enabled,
+  });
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+  mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
+  mockEnv("OKOU_HOST_SCHEME", "https");
+  const capture = api.captureHostedSitesS3();
+  const body = {
+    site: `private-${randomUUID().slice(0, 8)}`,
+    artifactKind: "hosted-site" as const,
+    spaFallback: true,
+    files: [
+      hostedTextFile(
+        "/index.html",
+        '<link rel="stylesheet" href="/assets/site.css"><main>Private report</main>',
+      ),
+      hostedTextFile("/assets/site.css", "main { color: green }"),
+    ],
+  };
+  return { actor, capture, body };
+}
+
+test("keeps runless deployments private across switch rollback and only issues owner previews", async () => {
+  const { actor, capture, body } = await fixture();
+  const draft = await api.prepareHostedSite(actor, body);
+  const canonical = `https://api.okou.ai/api/host/private-deployments/${draft.deploymentId}/view`;
+  expect(draft).toMatchObject({ url: canonical, artifactUrl: canonical });
+  expect(draft.aliasUrl).toBeUndefined();
+  await billing.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PrivateArtifacts]: false,
+  });
+  const completed = await api.completeHostedSite(actor, draft.deploymentId);
+  expect(completed).toMatchObject({
+    status: "ready",
+    url: canonical,
+    isActive: false,
+  });
+  expect(completed.aliasUrl).toBeUndefined();
+  expect(
+    capture.puts.map(({ key }) => {
+      return key;
+    }),
+  ).toStrictEqual([`private-sites/okou/${draft.deploymentId}/manifest.json`]);
+  const manifest = JSON.parse(capture.puts[0]!.body) as Record<string, unknown>;
+  expect(manifest.access).toBe("owner-private-v1");
+  const files = await api.readHostedSiteFiles(
+    actor,
+    `dpl-${draft.deploymentId}`,
+  );
+  expect(files).toMatchObject({ url: canonical, fileCount: 2 });
+  expect(files.aliasUrl).toBeUndefined();
+  const history = await api.readHostedSiteDeployments(actor, body.site);
+  expect(history).toMatchObject({ aliasUrl: null, activeDeploymentId: null });
+  expect(history.deployments).toStrictEqual([
+    expect.objectContaining({ artifactUrl: canonical, isActive: false }),
+  ]);
+  const preview = await api.requestPrivateHostedPreview(
+    actor,
+    draft.deploymentId,
+    [200],
+  );
+  expect(preview.status).toBe(200);
+  expect(preview.headers.get("cache-control")).toBe("private, no-store");
+  if (preview.status !== 200) {
+    throw new Error("Expected preview");
+  }
+  expect(preview.body.url).toMatch(/^https:\/\/pv-[a-f0-9]{48}\.okou\.app\/$/);
+  const token = new URL(preview.body.url).hostname.slice(3).split(".")[0];
+  expect(capture.puts.at(-1)).toStrictEqual({
+    key: `private-previews/okou/${token}.json`,
+    body: JSON.stringify({
+      version: 1,
+      publicBrand: "okou",
+      deploymentId: draft.deploymentId,
+      expiresAt: preview.body.expiresAt,
+    }),
+  });
+  const view = await api.requestPrivateHostedView(
+    actor,
+    draft.deploymentId,
+    [302],
+  );
+  expect(view.headers.get("location")).toMatch(
+    /^https:\/\/pv-[a-f0-9]{48}\.okou\.app\/$/,
+  );
+  expect(view.headers.get("cache-control")).toBe("private, no-store");
+  expect(view.headers.get("referrer-policy")).toBe("no-referrer");
+  const renewed = await api.requestPrivateHostedPreview(
+    actor,
+    draft.deploymentId,
+    [200],
+  );
+  if (renewed.status !== 200) {
+    throw new Error("Expected renewed preview");
+  }
+  expect(renewed.body.url).not.toBe(preview.body.url);
+  expect(
+    (await api.readHostedSiteFiles(actor, `dpl-${draft.deploymentId}`)).url,
+  ).toBe(canonical);
+});
+
+test("denies anonymous, other-owner and other-org preview, completion and cloning", async () => {
+  const { actor, body, capture } = await fixture();
+  const draft = await api.prepareHostedSite(actor, body);
+  const sameOrg = bdd.user({ orgId: actor.orgId });
+  const otherOrg = bdd.user({ userId: actor.userId });
+  await api.requestCompleteHostedSite(sameOrg, draft.deploymentId, [404]);
+  await api.requestCompleteHostedSite(otherOrg, draft.deploymentId, [404]);
+  await api.completeHostedSite(actor, draft.deploymentId);
+  const signedWrites = capture.puts.length;
+  for (const unauthorized of [null, sameOrg, otherOrg]) {
+    const status = unauthorized === null ? 401 : 404;
+    await api.requestPrivateHostedPreview(unauthorized, draft.deploymentId, [
+      status,
+    ]);
+    await api.requestPrivateHostedView(unauthorized, draft.deploymentId, [
+      status,
+    ]);
+    await api.requestHostedSiteFiles(
+      unauthorized,
+      `dpl-${draft.deploymentId}`,
+      [status],
+    );
+    await api.requestHostedSiteFiles(unauthorized, body.site, [status]);
+    await api.requestHostedSiteDeployments(unauthorized, body.site, [status]);
+  }
+  expect(capture.puts).toHaveLength(signedWrites);
+});
+
+test("does not move the existing public version when the same site gets a private draft", async () => {
+  const { actor, body, capture } = await fixture(false);
+  const published = await api.prepareHostedSite(actor, body);
+  await api.completeHostedSite(actor, published.deploymentId);
+  const publicWrites = capture.puts
+    .filter(({ key }) => {
+      return key.startsWith("sites/");
+    })
+    .map(({ key, body }) => {
+      return { key, body };
+    });
+  await billing.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PrivateArtifacts]: true,
+  });
+  const draft = await api.prepareHostedSite(actor, body);
+  expect(draft.siteId).toBe(published.siteId);
+  expect(draft.deploymentVersion).toBe(2);
+  await api.completeHostedSite(actor, draft.deploymentId);
+  expect(
+    capture.puts.filter(({ key }) => {
+      return key.startsWith("sites/");
+    }),
+  ).toStrictEqual(publicWrites);
+  const history = await api.readHostedSiteDeployments(actor, body.site);
+  expect(history).toMatchObject({
+    aliasUrl: published.url,
+    activeDeploymentId: published.deploymentId,
+    activeDeploymentVersion: 1,
+  });
+  expect((await api.readHostedSiteFiles(actor, body.site)).deploymentId).toBe(
+    draft.deploymentId,
+  );
+  expect(
+    (await api.readHostedSiteFiles(actor, body.site, 1)).deploymentId,
+  ).toBe(published.deploymentId);
+  const colleague = bdd.user({ orgId: actor.orgId });
+  expect(
+    (await api.readHostedSiteFiles(colleague, body.site)).deploymentId,
+  ).toBe(published.deploymentId);
+  await api.requestHostedSiteFiles(colleague, body.site, [404], 2);
+  const colleagueHistory = await api.readHostedSiteDeployments(
+    colleague,
+    body.site,
+  );
+  expect(
+    colleagueHistory.deployments.map(({ deploymentId }) => {
+      return deploymentId;
+    }),
+  ).toStrictEqual([published.deploymentId]);
+  await billing.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PrivateArtifacts]: false,
+  });
+  const laterPublic = await api.prepareHostedSite(actor, body);
+  await api.completeHostedSite(actor, laterPublic.deploymentId);
+  expect((await api.readHostedSiteFiles(actor, body.site)).deploymentId).toBe(
+    laterPublic.deploymentId,
+  );
+  expect(
+    (await api.readHostedSiteFiles(actor, body.site, 2)).deploymentId,
+  ).toBe(draft.deploymentId);
+});
+
+test("requires private delivery configuration without publishing a fallback", async () => {
+  const { actor, body, capture } = await fixture();
+  mockEnv("OKOU_API_BACKEND_URL", undefined);
+  await api.requestPrepareHostedSite(actor, body, [500]);
+  expect(capture.puts).toStrictEqual([]);
+});

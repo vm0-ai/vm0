@@ -2513,8 +2513,8 @@
     },
     "callback": {
       "connected": "{{connector}} が接続されました",
-      "connectedAs": "{{username}} として接続されています。このウィンドウは閉じても構いません。",
-      "connectedDescription": "あなたのアカウントは接続されました。このウィンドウは閉じても構いません。",
+      "connectedAs": "{{username}} として接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
+      "connectedDescription": "アカウントが接続されました。このウィンドウを閉じて元のページに戻り、続行してください。",
       "connecting": "{{connector}} を接続中…",
       "connectingDescription": "アカウントの接続が完了するまでお待ちください。",
       "customConnectorLabel": "カスタムコネクタ",
@@ -2680,6 +2680,10 @@
         "description": "このコネクタには利用可能な接続方法がありますが、このダイアログからはまだ設定できません。",
         "title": "利用できない接続方法"
       }
+    },
+    "connectionProgress": {
+      "description": "認証を求められた場合は完了してください。接続の設定が完了するまでお待ちください。",
+      "title": "アカウントを接続中"
     },
     "custom": {
       "connect": {

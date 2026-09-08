@@ -1840,6 +1840,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-workspace-mount"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "nix",
+ "rustix",
+]
+
+[[package]]
 name = "guest-write-file"
 version = "0.1.144"
 dependencies = [
@@ -3377,6 +3386,7 @@ dependencies = [
  "guest-state-restore",
  "guest-storage-apply",
  "guest-tool-exec",
+ "guest-workspace-mount",
  "guest-write-file",
  "hex",
  "http-body 1.1.0",

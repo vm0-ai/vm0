@@ -37,13 +37,14 @@ import {
   connectors$,
 } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { connectorConnectionPending$ } from "../../signals/connector-connection-progress.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   authorizeGoogleDriveForAgent,
   syncArtifactFileToGoogleDrive,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import {
-  connectConnectorOAuthAuthCodeAndSettle$,
+  connectConnectorOAuthAuthCodeWithDialogAndSettle$,
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
@@ -329,7 +330,9 @@ function useGoogleDriveMenuAction(
 ): () => void {
   const createClient = useGet(apiClient$);
   const pageSignal = useGet(pageSignal$);
-  const connectGoogleDrive = useSet(connectConnectorOAuthAuthCodeAndSettle$);
+  const connectGoogleDrive = useSet(
+    connectConnectorOAuthAuthCodeWithDialogAndSettle$,
+  );
 
   return () => {
     if (!syncTarget) {
@@ -424,6 +427,7 @@ function GoogleDriveMenuItem({
 }) {
   const { t } = useTranslation();
   const availability = useGoogleDriveAvailability(syncTarget);
+  const connectionPending = useGet(connectorConnectionPending$);
   const syncOrConnect = useGoogleDriveMenuAction(syncTarget, availability);
   const {
     connectorListLoaded,
@@ -441,7 +445,7 @@ function GoogleDriveMenuItem({
     return <GoogleDriveDisabledMenuItem kind="synced" />;
   }
 
-  if (!connectorListLoaded) {
+  if (!connectorListLoaded || connectionPending) {
     return (
       <GoogleDriveDisabledMenuItem
         kind={syncTarget.disconnected ? "connect" : "upload"}

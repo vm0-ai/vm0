@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { LoadableState } from "ccstate-react";
+import { useGet, type LoadableState } from "ccstate-react";
+import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -455,6 +456,33 @@ export function ConnectorAccountSummaryText({
   );
 }
 
+function AccountConnectionIndicator({ busy }: { readonly busy: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+        !busy && "border border-border/60",
+      )}
+      role={busy ? "status" : undefined}
+      aria-label={
+        busy
+          ? t(($) => {
+              return $.connectors.actions.connecting;
+            })
+          : undefined
+      }
+      aria-hidden={busy ? undefined : true}
+    >
+      {busy ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <Plus size={14} />
+      )}
+    </span>
+  );
+}
+
 function AccountsConnectorCard({
   connector,
   summary,
@@ -465,11 +493,13 @@ function AccountsConnectorCard({
   onManage,
 }: AccountsConnectorCardProps) {
   const { t } = useTranslation();
+  const pending = useGet(connectorConnectionPending$);
+  const blocked = busy || pending;
   const accountCount = summary?.accountCount ?? 0;
   const showDescription = summaryStatus === "ready" && accountCount === 0;
   const canManage = summaryStatus === "ready" && accountCount > 0;
   const canConnect = summaryStatus === "ready" && accountCount === 0;
-  const canActivate = !busy && (canManage || canConnect);
+  const canActivate = !blocked && summaryStatus === "ready";
   const activate = () => {
     if (!canActivate) {
       return;
@@ -510,9 +540,9 @@ function AccountsConnectorCard({
           }
           className={cn(
             "absolute inset-0 z-10 rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            busy ? "cursor-default" : "cursor-pointer",
+            blocked ? "cursor-default" : "cursor-pointer",
           )}
-          disabled={busy}
+          disabled={blocked}
           onClick={activate}
         />
       ) : null}
@@ -531,20 +561,8 @@ function AccountsConnectorCard({
         >
           {connector.label}
         </span>
-        {accountCount === 0 && summaryStatus === "ready" ? (
-          <span
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-              !busy && "border border-border/60",
-            )}
-            aria-hidden="true"
-          >
-            {busy ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Plus size={14} />
-            )}
-          </span>
+        {busy || (accountCount === 0 && summaryStatus === "ready") ? (
+          <AccountConnectionIndicator busy={busy} />
         ) : null}
       </div>
       {showDescription ? (

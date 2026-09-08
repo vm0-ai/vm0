@@ -2,11 +2,10 @@ use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::net::Shutdown;
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -86,23 +85,9 @@ struct CgroupGuard {
     create_elapsed: Duration,
 }
 
-pub(crate) struct PreparedProcessContainmentCommand {
-    outer_placement: Option<OwnedFd>,
-    deny_process_inspection: bool,
-}
-
-impl PreparedProcessContainmentCommand {
-    pub(crate) fn configure_placement(&mut self, command: &mut Command) {
-        if let Some(outer_placement) = self.outer_placement.take() {
-            install_child_placement(command, outer_placement);
-        }
-    }
-
-    pub(crate) fn configure_process_inspection(self, command: &mut Command) {
-        if self.deny_process_inspection {
-            install_process_inspection_denial(command);
-        }
-    }
+pub(crate) struct PreparedProcessContainmentCommand<'a> {
+    pub(crate) directory: Option<BorrowedFd<'a>>,
+    pub(crate) deny_process_inspection: bool,
 }
 
 pub(crate) struct WorkloadPlacementBootstrap {
@@ -283,22 +268,20 @@ impl ExecProcessContainment {
         })
     }
 
-    pub(crate) fn prepare_command(
-        &self,
-    ) -> Result<PreparedProcessContainmentCommand, ProcessContainmentError> {
+    pub(crate) fn prepare_command(&self) -> PreparedProcessContainmentCommand<'_> {
         match &self.backend {
             ContainmentBackend::Cgroup(guard) => guard.prepare_command(),
             ContainmentBackend::ProcessGroup | ContainmentBackend::TestNoop => {
-                Ok(PreparedProcessContainmentCommand {
-                    outer_placement: None,
+                PreparedProcessContainmentCommand {
+                    directory: None,
                     deny_process_inspection: false,
-                })
+                }
             }
             #[cfg(test)]
-            ContainmentBackend::TestDirectory(_) => Ok(PreparedProcessContainmentCommand {
-                outer_placement: None,
+            ContainmentBackend::TestDirectory(_) => PreparedProcessContainmentCommand {
+                directory: None,
                 deny_process_inspection: false,
-            }),
+            },
         }
     }
 
@@ -471,7 +454,17 @@ impl CgroupGuard {
                 } else {
                     &workload_path
                 };
-                let outer_placement = open_placement(outer_path, "open outer cgroup.procs")?;
+                // Direct creation needs the cgroup directory, not cgroup.procs.
+                // It stays private to this owner; runtime/tool brokers retain
+                // their separate, write-only placement descriptors.
+                let outer_placement = OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+                    .open(outer_path)
+                    .and_then(|file| crate::process::private_descriptor(file.into()))
+                    .map_err(|error| {
+                        ProcessContainmentError::new("open outer cgroup directory", error)
+                    })?;
                 let workload_placement = if trusted_control {
                     Some(open_placement(
                         &workload_placement_path,
@@ -509,18 +502,12 @@ impl CgroupGuard {
         })
     }
 
-    fn prepare_command(
-        &self,
-    ) -> Result<PreparedProcessContainmentCommand, ProcessContainmentError> {
-        let outer_placement = self
-            .outer_placement
-            .try_clone()
-            .map_err(|error| ProcessContainmentError::new("clone outer cgroup.procs", error))?;
+    fn prepare_command(&self) -> PreparedProcessContainmentCommand<'_> {
         let trusted_control = self.workload_placement.is_some();
-        Ok(PreparedProcessContainmentCommand {
-            outer_placement: Some(outer_placement),
+        PreparedProcessContainmentCommand {
+            directory: Some(self.outer_placement.as_fd()),
             deny_process_inspection: trusted_control,
-        })
+        }
     }
 
     fn start_workload_placement_bootstrap(
@@ -969,26 +956,6 @@ fn cleanup_cgroup(
     })
 }
 
-fn install_child_placement(command: &mut Command, placement: OwnedFd) {
-    // SAFETY: the closure performs only raw writes and fcntl calls on already
-    // open descriptors. These operations are async-signal-safe between fork
-    // and exec.
-    unsafe {
-        command.pre_exec(move || {
-            write_self_to_cgroup(placement.as_raw_fd())?;
-            Ok(())
-        });
-    }
-}
-
-fn install_process_inspection_denial(command: &mut Command) {
-    // SAFETY: the closure performs one async-signal-safe prctl call in the
-    // child after its credential transition and before exec.
-    unsafe {
-        command.pre_exec(deny_unprivileged_process_inspection);
-    }
-}
-
 fn placement_cancel_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     let mut fds = [0; 2];
     // SAFETY: `pipe2` initializes two file descriptors in `fds` on success.
@@ -1434,34 +1401,6 @@ fn peer_matches(
     Ok(Path::new(CGROUP_V2_MOUNT_PATH).join(relative) == expected_cgroup)
 }
 
-fn deny_unprivileged_process_inspection() -> io::Result<()> {
-    // SAFETY: PR_SET_DUMPABLE changes only the calling child between fork and
-    // exec and does not access shared userspace state.
-    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
-
-fn write_self_to_cgroup(fd: RawFd) -> io::Result<()> {
-    loop {
-        // SAFETY: `fd` is open for writing and the one-byte buffer is valid for
-        // the duration of the call.
-        let written = unsafe { libc::write(fd, b"0".as_ptr().cast(), 1) };
-        if written == 1 {
-            return Ok(());
-        }
-        if written < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() == io::ErrorKind::Interrupted {
-                continue;
-            }
-            return Err(error);
-        }
-        return Err(io::Error::from_raw_os_error(libc::EIO));
-    }
-}
-
 fn read_populated(group_path: &Path) -> Result<bool, ProcessContainmentError> {
     let content = fs::read_to_string(group_path.join(CGROUP_EVENTS_FILE))
         .map_err(|error| ProcessContainmentError::new("read cgroup.events", error))?;
@@ -1703,8 +1642,8 @@ fn remove_cgroup_descendants(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-    use std::process::{Child, Stdio};
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, Command, Stdio};
     use std::sync::mpsc;
 
     struct ChildGuard(Child);
@@ -1829,23 +1768,6 @@ mod tests {
 
         assert_eq!(error.stage, "read cgroup.events");
         assert_eq!(fs::read(&kill_path).unwrap(), b"1");
-    }
-
-    #[test]
-    fn pre_exec_writes_child_into_open_placement_file() {
-        let mut placement = tempfile::tempfile().unwrap();
-        let child_fd: OwnedFd = placement.try_clone().unwrap().into();
-        let mut command = Command::new("/bin/true");
-        command.stdout(Stdio::null()).stderr(Stdio::null());
-        install_child_placement(&mut command, child_fd);
-
-        let status = command.status().unwrap();
-
-        assert!(status.success());
-        placement.seek(SeekFrom::Start(0)).unwrap();
-        let mut content = String::new();
-        placement.read_to_string(&mut content).unwrap();
-        assert_eq!(content, "0");
     }
 
     #[test]
@@ -2314,12 +2236,14 @@ mod tests {
         let policy =
             WorkloadResourcePolicy::for_guest_capacity(2, u64::from(4096_u32) * 1024 * 1024)
                 .unwrap();
-        let result = CgroupGuard::create_in(base.path(), 17, ExecProcessRole::Workload, policy);
+        // A plain directory can supply the outer directory capability, but
+        // cannot supply the Agent's kernel-created runtime cgroup.procs file.
+        let result = CgroupGuard::create_in(base.path(), 17, ExecProcessRole::Agent, policy);
         let Err(error) = result else {
             panic!("placement-file open unexpectedly succeeded");
         };
 
-        assert_eq!(error.stage, "open outer cgroup.procs");
+        assert_eq!(error.stage, "open workload cgroup.procs");
         assert_eq!(error.source.kind(), io::ErrorKind::NotFound);
         assert!(fs::read_dir(base.path()).unwrap().next().is_none());
     }

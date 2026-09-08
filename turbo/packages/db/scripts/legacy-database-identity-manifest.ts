@@ -175,6 +175,7 @@ const publicBrandMembers = [
   "public.github_installations.public_brand = 'vm0'",
   "public.hosted_deployments.public_brand = 'vm0'",
   "public.hosted_sites.public_brand = 'vm0'",
+  "public.private_hosted_deployments.public_brand = 'vm0'",
   "public.push_subscriptions.public_brand = 'vm0'",
   "public.shared_threads.public_brand = 'vm0'",
   "public.slack_chat_ingress.public_brand = 'vm0'",

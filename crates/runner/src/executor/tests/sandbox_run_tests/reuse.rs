@@ -750,10 +750,9 @@ async fn execute_job_reuse_skips_workspace_mount_validation() {
     assert!(outcome.error().is_none());
     assert!(outcome.sandbox.is_some());
     assert!(
-        overrides
-            .exec_calls()
-            .iter()
-            .all(|call| !call.cmd.contains("workspace_device=")),
+        overrides.exec_calls().iter().all(|call| !call
+            .cmd
+            .contains(guest_contracts::guest_binary::WORKSPACE_MOUNT_PATH)),
         "reused execution must rely on the idle-admission mount proof"
     );
 }

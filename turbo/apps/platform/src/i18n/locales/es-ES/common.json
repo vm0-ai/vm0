@@ -2569,8 +2569,8 @@
     },
     "callback": {
       "connected": "{{connector}} conectado",
-      "connectedAs": "Conectado como {{username}}. Puedes cerrar esta ventana.",
-      "connectedDescription": "Tu cuenta ha sido conectada. Puedes cerrar esta ventana.",
+      "connectedAs": "Conectado como {{username}}. Cierra esta ventana y vuelve a la página original para continuar.",
+      "connectedDescription": "Tu cuenta se ha conectado. Cierra esta ventana y vuelve a la página original para continuar.",
       "connecting": "Conectando {{connector}}...",
       "connectingDescription": "Espera mientras terminamos de conectar tu cuenta.",
       "customConnectorLabel": "Conector personalizado",
@@ -2736,6 +2736,10 @@
         "description": "Este conector tiene métodos de conexión disponibles, pero ninguno de ellos puede configurarse aún desde este diálogo.",
         "title": "Métodos de conexión no disponibles"
       }
+    },
+    "connectionProgress": {
+      "description": "Completa la autorización si se solicita. Espera mientras terminamos de configurar la conexión.",
+      "title": "Conectando tu cuenta"
     },
     "custom": {
       "connect": {
