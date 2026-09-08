@@ -1051,6 +1051,7 @@ class ComputerUseNativeRuntimeClient {
 export function createComputerUseNativeBackend(
   options: RunComputerUseHelperOptions = {},
 ): ComputerUseNativeBackend {
+  let commandBudget: ComputerUseCommandBudget | null = null;
   const helperPath = options.helperPath ?? resolveComputerUseHelperPath();
   const runtime =
     options.mode === "oneshot"
@@ -1064,12 +1065,23 @@ export function createComputerUseNativeBackend(
   const run = async (
     request: ComputerUseNativeRequest,
   ): Promise<Record<string, unknown>> => {
+    // I/O continuations can run before the host's expiry timer. Check the same
+    // grant at every helper dispatch, including post-action observation.
+    if (commandBudget && commandBudget.remaining() <= 0) {
+      throw new ComputerUseNativeHelperError(
+        "command_timeout",
+        "Computer Use total command budget expired before native dispatch; prior action completion may be unknown, do not replay",
+      );
+    }
     return runtime
       ? await runtime.request(request)
       : await runComputerUseHelper(request, { ...options, helperPath });
   };
 
   return {
+    setCommandBudget: (budget) => {
+      commandBudget = budget;
+    },
     dispose: async (reason) => {
       await runtime?.dispose(reason);
     },

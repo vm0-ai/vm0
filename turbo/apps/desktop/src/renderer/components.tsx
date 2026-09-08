@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import type { DesktopComputerUseState } from "../computer-use-types";
 import { previewValue } from "./format";
-import { currentDesktopIdentity } from "./desktop-identity";
 import okouSymbolUrl from "./assets/okou-symbol-light.svg";
-import { zeroAvatarDataUrl } from "./zero-avatar";
 
 export type HostStatus = DesktopComputerUseState["host"]["status"];
 
@@ -147,20 +145,15 @@ export function DesktopBrandMark({
   readonly className?: string;
   readonly size: number;
 }) {
-  const product = currentDesktopIdentity().product;
   return (
     <span
-      className={`desktop-brand-mark desktop-brand-mark-${product}${
+      className={`desktop-brand-mark desktop-brand-mark-okou${
         className ? ` ${className}` : ""
       }`}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img
-        src={product === "okou" ? okouSymbolUrl : zeroAvatarDataUrl}
-        alt=""
-        draggable={false}
-      />
+      <img src={okouSymbolUrl} alt="" draggable={false} />
     </span>
   );
 }

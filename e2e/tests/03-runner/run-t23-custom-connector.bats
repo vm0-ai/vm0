@@ -105,7 +105,8 @@ teardown() {
     local prompt
     prompt=$(cat <<'EOF'
 set -euo pipefail
-curl --silent --show-error --max-time 10 \
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \
     --output /dev/null \
     'https://www.google.com/robots.txt' || true
 printf 'CUSTOM_CONNECTOR_REQUEST_SENT\n'
@@ -309,7 +310,8 @@ EOF
     local default_prompt
     default_prompt=$(cat <<EOF
 set -euo pipefail
-curl --silent --show-error --max-time 10 \\
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \\
     --output /dev/null \\
     'https://example.com/'
 printf '${default_marker}\\n'
@@ -446,7 +448,8 @@ EOF
     local selected_prompt
     selected_prompt=$(cat <<EOF
 set -euo pipefail
-curl --silent --show-error --max-time 10 \\
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \\
     --output /dev/null \\
     'https://www.google.com/robots.txt'
 printf '${selected_marker}\\n'

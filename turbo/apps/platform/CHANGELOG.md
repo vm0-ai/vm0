@@ -11,6 +11,39 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.5](https://github.com/vm0-ai/vm0/compare/app-v0.862.4...app-v0.862.5) (2026-09-08)
+
+
+### Refactoring
+
+* **chat:** remove video model rollout fallbacks ([#32363](https://github.com/vm0-ai/vm0/issues/32363)) ([d23807b](https://github.com/vm0-ai/vm0/commit/d23807b1b0913312306777c23a7342c67b050487))
+* **platform:** separate sidebar list readiness ([#32520](https://github.com/vm0-ai/vm0/issues/32520)) ([f41aea7](https://github.com/vm0-ai/vm0/commit/f41aea7a861814d4c04f0569b023e7addb39299b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.3
+    * @okouai/core bumped to 8.634.5
+
+## [0.862.4](https://github.com/vm0-ai/vm0/compare/app-v0.862.3...app-v0.862.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align chat avatars without work folding ([#32487](https://github.com/vm0-ai/vm0/issues/32487)) ([7a19f0a](https://github.com/vm0-ai/vm0/commit/7a19f0ae376461b990b6fe3351a6fb52e4c72bc8))
+* **platform:** remove optimistic directed authorization state ([#32493](https://github.com/vm0-ai/vm0/issues/32493)) ([45e1053](https://github.com/vm0-ai/vm0/commit/45e10539dffbd49c47e49c115e28dc78d10d5bb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.2
+    * @okouai/connectors bumped to 3.8.2
+    * @okouai/core bumped to 8.634.4
+
 ## [0.862.3](https://github.com/vm0-ai/vm0/compare/app-v0.862.2...app-v0.862.3) (2026-09-08)
 
 

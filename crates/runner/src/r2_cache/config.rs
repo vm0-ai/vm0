@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use aws_sdk_s3::config::{
     BehaviorVersion, Credentials, Region, ResponseChecksumValidation, SharedCredentialsProvider,
+    timeout::TimeoutConfig,
 };
 
 use super::{R2Error, R2ImageCache, io_other};
@@ -59,6 +62,15 @@ impl R2ImageCache {
             .region(Region::new("auto"))
             .endpoint_url(endpoint)
             .credentials_provider(SharedCredentialsProvider::new(creds))
+            // Bound connection and first-response waits. Upload parts use a
+            // separate response budget; downloaded bodies retain SDK stalled-stream
+            // protection without a short whole-transfer deadline.
+            .timeout_config(
+                TimeoutConfig::builder()
+                    .connect_timeout(Duration::from_secs(10))
+                    .read_timeout(Duration::from_secs(60))
+                    .build(),
+            )
             // The SDK default enables GetObject checksum validation when supported.
             // R2/S3 multipart objects may return part-level checksums that the Rust
             // SDK cannot validate, which only produces noisy warnings. We do not

@@ -143,12 +143,10 @@ describe("ComputerUseHostRuntime", () => {
       .spyOn(os, "hostname")
       .mockReturnValue(" lancy-macbook-pro.local ");
 
-    expect(readSystemHostName("Zero Computer Use")).toBe(
-      "lancy-macbook-pro.local",
-    );
+    expect(readSystemHostName("Okou")).toBe("lancy-macbook-pro.local");
 
     hostname.mockReturnValue(" ");
-    expect(readSystemHostName("Zero Computer Use")).toBe("Zero Computer Use");
+    expect(readSystemHostName("Okou")).toBe("Okou");
   });
 
   it("does not register a host until manually started", async () => {
@@ -408,7 +406,7 @@ describe("ComputerUseHostRuntime", () => {
           command: {
             timeoutMs: 60_000,
             createdAt: new Date().toISOString(),
-            claimedAt: null,
+            claimedAt: new Date().toISOString(),
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Safari" },
@@ -456,7 +454,7 @@ describe("ComputerUseHostRuntime", () => {
           command: {
             timeoutMs: 60_000,
             createdAt: new Date().toISOString(),
-            claimedAt: null,
+            claimedAt: new Date().toISOString(),
             id: "cmd-1",
             kind: "app.state",
             payload: { app: "Things" },
@@ -524,7 +522,7 @@ describe("ComputerUseHostRuntime", () => {
       {
         timeoutMs: 60_000,
         createdAt: expect.any(String),
-        claimedAt: null,
+        claimedAt: expect.any(String),
         id: "cmd-1",
         kind: "app.state",
         payload: { app: "Things" },
@@ -574,7 +572,7 @@ describe("ComputerUseHostRuntime", () => {
           command: {
             timeoutMs: 60_000,
             createdAt: new Date().toISOString(),
-            claimedAt: null,
+            claimedAt: new Date().toISOString(),
             id: `cmd-${nextCommandId.toString()}`,
             kind: "keyboard.press_key",
             payload: { app: "Terminal", key: "Enter" },
@@ -607,7 +605,7 @@ describe("ComputerUseHostRuntime", () => {
     const command: ComputerUseCommand = {
       timeoutMs: 60_000,
       createdAt: new Date().toISOString(),
-      claimedAt: null,
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "element.set_value",
       payload: { app: "com.google.Chrome", value: "https://example.com" },
@@ -677,7 +675,7 @@ describe("ComputerUseHostRuntime", () => {
     const command: ComputerUseCommand = {
       timeoutMs: 60_000,
       createdAt: new Date().toISOString(),
-      claimedAt: null,
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "https://mail.google.com/" },
@@ -717,7 +715,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(executeCommand).toHaveBeenCalledOnce();
     expect(completeCalls).toBe(0);
 
-    await vi.advanceTimersByTimeAsync(90_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     const heartbeatCalls = hostFetch.mock.calls.filter(([url]) => {
       return url.endsWith("/api/computer-use/heartbeat");
@@ -738,7 +736,7 @@ describe("ComputerUseHostRuntime", () => {
     const command: ComputerUseCommand = {
       timeoutMs: 60_000,
       createdAt: new Date().toISOString(),
-      claimedAt: null,
+      claimedAt: new Date().toISOString(),
       id: "cmd-1",
       kind: "keyboard.type_text",
       payload: { app: "Chrome", text: "okou" },
@@ -812,7 +810,7 @@ describe("ComputerUseHostRuntime", () => {
               command: {
                 timeoutMs: 60_000,
                 createdAt: new Date().toISOString(),
-                claimedAt: null,
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -862,7 +860,7 @@ describe("ComputerUseHostRuntime", () => {
               command: {
                 timeoutMs: 60_000,
                 createdAt: new Date().toISOString(),
-                claimedAt: null,
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -920,7 +918,7 @@ describe("ComputerUseHostRuntime", () => {
             command: {
               timeoutMs: 60_000,
               createdAt: new Date().toISOString(),
-              claimedAt: null,
+              claimedAt: new Date().toISOString(),
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -934,7 +932,7 @@ describe("ComputerUseHostRuntime", () => {
             command: {
               timeoutMs: 60_000,
               createdAt: new Date().toISOString(),
-              claimedAt: null,
+              claimedAt: new Date().toISOString(),
               id: "cmd-2",
               kind: "app.state",
               payload: { app: "Chrome" },
@@ -1001,7 +999,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
   });
 
-  it("retries hung command completion requests with a request timeout", async () => {
+  it("bounds hung command reporting without renewing the execution grant", async () => {
     vi.useFakeTimers();
     let nextCalls = 0;
     let completeCalls = 0;
@@ -1017,7 +1015,7 @@ describe("ComputerUseHostRuntime", () => {
               command: {
                 timeoutMs: 120_000,
                 createdAt: new Date().toISOString(),
-                claimedAt: null,
+                claimedAt: new Date().toISOString(),
                 id: "cmd-1",
                 kind: "app.state",
                 payload: { app: "Chrome" },
@@ -1040,19 +1038,14 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(completeCalls).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(60_000);
-    await vi.advanceTimersByTimeAsync(1_999);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(completeCalls).toBe(1);
-
-    await vi.advanceTimersByTimeAsync(1);
-
-    expect(completeCalls).toBe(2);
     expect(runtime.getState()).toMatchObject({
-      status: "online",
-      lastError: null,
+      status: "recovering",
+      lastError: "Computer Use command reporting timed out after 5000ms",
     });
-    expect(runtime.getState().lastCommandAt).toEqual(expect.any(String));
+    expect(runtime.getState().lastCommandAt).toBeNull();
 
     await runtime.stop();
   });
@@ -1262,7 +1255,7 @@ describe("ComputerUseHostRuntime", () => {
             command: {
               timeoutMs: 60_000,
               createdAt: new Date().toISOString(),
-              claimedAt: null,
+              claimedAt: new Date().toISOString(),
               id: "cmd-1",
               kind: "app.state",
               payload: { app: "Chrome" },

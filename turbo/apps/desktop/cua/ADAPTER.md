@@ -64,20 +64,52 @@ unconditional success summary overrides these facts.
 
 ## Deadline and retirement
 
-The host preserves wire `timeoutMs`, `createdAt` and nullable `claimedAt` before
-its permission query. Explicit timeout is 1–120 seconds; CLI normally sends
-30 seconds and API creation defaults to 60 seconds. Only stored `null` uses the
-existing 120-second policy. Missing, malformed or future dates fail closed;
-`claimedAt` cannot restart the budget. Queue/transit age is subtracted once using
-wall time, then one monotonic deadline covers permission, session, discovery,
-action and post-state. Completion reserves at most one second (10% for a short
-remaining budget) and its requests/retries consume the same deadline. No network
-submission can be guaranteed after the server's command deadline has elapsed.
+The shared Okou/CUA/plugin host preserves wire `timeoutMs`, `createdAt` and
+`claimedAt` before its permission query. Explicit timeout is 1–120 seconds; CLI
+normally sends 30 seconds and API creation defaults to 60 seconds. Stored
+`timeoutMs: null` retains the existing 120-second policy. Successful claims have
+always stored a non-null `claimedAt`; the general read schema is nullable because
+it also serializes queued commands. Missing/null/invalid claim timestamps,
+invalid timeout bounds, or `claimedAt < createdAt` fail closed without native
+permission queries or actions.
+
+Execution uses only durations within one clock domain. Let `Q` be server
+`claimedAt - createdAt`, `S` the local monotonic time immediately before the claim
+request, and `R` the local monotonic time after JSON consumption/admission. The
+remaining allowance is `max(0, timeoutMs - Q - (R - S))`, anchored once at `R`.
+The existing early execution cutoff (at most one second, or 10% of the remaining
+allowance) is retained. Permission, session, discovery, action and post-state all
+consume this deadline; the Okou helper also checks it at each native dispatch.
+Mac wall time is used for diagnostic timestamps, never grant authority.
+
+The API samples `claimedAt` before its claim transaction, after the request
+started. Charging the entire local request interval conservatively covers that
+transaction and response/body delay (and may double-charge outbound delay
+already included in `Q`). It cannot extend the creation-based Desktop deadline or
+the API's independent running deadline measured from `claimedAt`. A delayed body
+remains inside the poll timeout and its late-claim owner. No claim receipt,
+retry, wall-clock adjustment or driver transition issues a new execution grant.
+
+Result/error delivery has a separate **five-second total monotonic cap**, with
+at most three attempts and two-second retry backoffs included in that cap. A hung
+attempt consumes the remaining reporting window. The cap is shorter than the
+existing 30-second driver-transition drain bound; Stop/sign-out/quit cancel it
+immediately. A reporting transport that ignores abort cannot hold the native
+lease beyond the cap; its late settlement is observed without publishing local
+success. Status 409 remains terminal and 401 withdraws authorization. The grace
+only reports the original result; it never repeats execution or overwrites a
+server-final result. Delivery cannot be guaranteed after the server deadline.
+
+This repair changes no API request/response, database, CLI timeout or deployment
+protocol: new Desktop uses the existing successful-claim shape against previous
+and current APIs, including the nullable timeout default. Previous Desktop still
+receives the identical API shape (and requires the Desktop repair for its clock
+bug); no synchronized API/Desktop release or API timing field is needed.
 
 Already-expired claims report no native action started. An in-flight timeout
-reports potentially delivered/unknown work. A network response arriving after
-poll cancellation remains leased through its failure submission, using the
-original remaining budget; its action is never dispatched. Fresh CUA permissions also have a
+reports potentially delivered/unknown work. A network response/body arriving
+after poll cancellation remains leased through bounded failure submission; its
+action is never dispatched. Fresh CUA permissions also have a
 bounded five-second readiness check within that command budget. Permission
 revocation, unexpected exit, fatal transport failure, timeout and lifecycle Stop
 withdraw native admission and invalidate targets. Public embedded `stop()` starts

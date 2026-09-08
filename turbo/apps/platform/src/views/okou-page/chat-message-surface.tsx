@@ -13,10 +13,11 @@ export const CHAT_THREAD_RESPONSE_STACK_CLASS = "flex min-w-0 flex-col gap-2";
 export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
   "flex min-w-0 flex-col gap-2 group-data-[run-work-folding]/chat:gap-1";
 
-// Standalone response lines share a 36px frame around the original 15px * 1.7
-// line. Dense history previews and follow-up items keep their own line metrics.
+// Wide response lines align with the 36px avatar regardless of work folding.
+// Folding uses the same frame on narrow layouts. Dense history previews and
+// follow-up items keep their own line metrics.
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
-  "group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
+  "@[900px]:h-auto @[900px]:min-h-9 @[900px]:py-[calc((2.25rem-1lh)/2)] @[900px]:leading-[1.59375rem] group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
 
 // Bare response icons share the 28px action-button rail when the run-work
 // information architecture is active. Their intrinsic width remains the
@@ -34,7 +35,7 @@ export const CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS =
   "flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_FRAME_CLASS =
-  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:mt-0.5 @[900px]:h-9 @[900px]:w-9 @[900px]:group-data-[run-work-folding]/chat:mt-0";
+  "h-7 w-7 shrink-0 overflow-hidden rounded-xl @[900px]:h-9 @[900px]:w-9";
 
 export const CHAT_THREAD_ASSISTANT_AVATAR_IMAGE_CLASS =
   "h-7 w-7 rounded-full object-cover object-top @[900px]:h-9 @[900px]:w-9";

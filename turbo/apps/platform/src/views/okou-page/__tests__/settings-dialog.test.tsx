@@ -570,6 +570,7 @@ test("Measure the threads inside a singleton snapshot on demand", async () => {
             selectedModel: null,
             serviceTier: null,
             computerUseHostId: null,
+            selectedVideoModel: null,
           };
         },
       ),

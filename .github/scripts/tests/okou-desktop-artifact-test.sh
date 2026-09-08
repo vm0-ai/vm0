@@ -125,25 +125,6 @@ forgeConfig.hooks
 NODE
 
 OKOU_DESKTOP_SKIP_SIGNING=true \
-OKOU_DESKTOP_PRODUCT=zero \
-node - "$repo_root" <<'NODE'
-const path = require("node:path");
-
-const repoRoot = process.argv[2];
-const forgeConfig = require(path.join(
-  repoRoot,
-  "turbo/apps/desktop/forge.config.js",
-));
-
-if (forgeConfig.packagerConfig.name !== "Zero Computer Use") {
-  throw new Error("Zero build must keep the Zero display name");
-}
-if (forgeConfig.packagerConfig.appBundleId !== "ai.vm0.zero.desktop") {
-  throw new Error("Zero build must keep the Zero bundle ID");
-}
-NODE
-
-OKOU_DESKTOP_SKIP_SIGNING=true \
 OKOU_DESKTOP_PRODUCT=okou \
 OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
 node - "$repo_root" <<'NODE'

@@ -37,31 +37,17 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function createSession(product: "okou" | "zero" = "okou") {
-  const config = resolveDesktopConfig(undefined, product);
+function createSession() {
+  const config = resolveDesktopConfig();
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
   const completed: string[] = [];
   const changes: (string | null)[] = [];
-  const cookiesRead: string[] = [];
   const session = new DesktopAuthSession({
-    product,
     apiBaseUrl: api,
-    cookieUrls: [config.webUrl, config.platformUrl],
-    cookieSource: {
-      cookies: {
-        get: async ({ url }) => {
-          cookiesRead.push(url);
-          return [
-            { name: "__session", value: "legacy-user" },
-            { name: "preview", value: "access" },
-          ];
-        },
-      },
-    },
+
     addClientHeaders: createDesktopClientHeaderInjector({
       clientVersion: "0.46.28",
-      product,
     }),
     tokenUrl: buildDesktopAuthTokenUrl(config.authUrl),
     selectOrgUrl: buildDesktopAuthSelectOrgUrl(config.authUrl, true),
@@ -78,7 +64,7 @@ function createSession(product: "okou" | "zero" = "okou") {
       completed.push("completed");
     },
   });
-  return { session, windows, replies, completed, cookiesRead, changes };
+  return { session, windows, replies, completed, changes };
 }
 
 function identityHandlers(
@@ -109,7 +95,7 @@ function identityHandlers(
 
 describe("Okou App session authority", () => {
   it("requires a fresh App token before any native request despite legacy cookie-only API success", async () => {
-    const { session, windows, cookiesRead } = createSession();
+    const { session, windows } = createSession();
     const requests: string[] = [];
     server.use(
       http.get(`${api}/*`, ({ request }) => {
@@ -132,14 +118,13 @@ describe("Okou App session authority", () => {
       ).status,
     ).toBe(401);
     expect(requests).toEqual([]);
-    expect(cookiesRead).toEqual([]);
     expect(windows.map((w) => w.url)).toEqual([
       "https://app.okou.ai/desktop-auth/token",
     ]);
   });
 
   it("restores matching user/org under one bearer and preserves native client headers", async () => {
-    const { session, replies, cookiesRead } = createSession();
+    const { session, replies } = createSession();
     const observed: string[] = [];
     identityHandlers({ observed });
     replies.push(Promise.resolve("fresh"));
@@ -171,7 +156,6 @@ describe("Okou App session authority", () => {
     );
     expect(await response.json()).toEqual({ action: "test" });
     expect(observed).toEqual(["me:Bearer fresh", "org:Bearer fresh"]);
-    expect(cookiesRead).toEqual([]);
   });
 
   it("rejects mismatching bearer user/org responses before exposing a cached token", async () => {
@@ -408,59 +392,9 @@ describe("Okou App session authority", () => {
   });
 });
 
-describe("Zero compatibility", () => {
-  it("retains cookie-only restoration and WWW auth routes", async () => {
-    const { session, windows, cookiesRead, replies } = createSession("zero");
-    server.use(
-      http.get(`${api}/api/auth/me`, ({ request }) => {
-        expect(request.headers.get("cookie")).toContain(
-          "__session=legacy-user",
-        );
-        return HttpResponse.json({
-          userId: "zero-user",
-          email: "zero@example.test",
-        });
-      }),
-      http.get(`${api}/api/org`, () =>
-        HttpResponse.json({ id: "zero-org", name: "Zero" }),
-      ),
-    );
-    expect(await session.getAuthState()).toMatchObject({
-      status: "signed_in",
-      user: { userId: "zero-user" },
-    });
-    expect(windows).toHaveLength(0);
-    expect(cookiesRead).toContain("https://www.vm0.ai/");
-    replies.push(Promise.resolve("zero-token"));
-    await session.selectOrganization();
-    expect(windows[0]?.url).toBe(
-      "https://www.vm0.ai/desktop-auth/select-org?force=true",
-    );
-    expect(session.getCachedToken()).toBe("zero-token");
-  });
-
-  it("retains Zero cookie retry after bearer rejection", async () => {
-    const { session, replies } = createSession("zero");
-    replies.push(Promise.resolve("zero-token"));
-    await session.getToken();
-    const tokens: (string | null)[] = [];
-    server.use(
-      http.get(`${api}/api/protected`, ({ request }) => {
-        tokens.push(request.headers.get("authorization"));
-        return new HttpResponse(null, {
-          status: request.headers.has("authorization") ? 401 : 200,
-        });
-      }),
-    );
-    expect(
-      (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
-        .status,
-    ).toBe(200);
-    expect(tokens).toEqual(["Bearer zero-token", null]);
-  });
-
+describe("Desktop callback lifetime", () => {
   it("clears pending callbacks on sign-out", () => {
-    const { session } = createSession("zero");
+    const { session } = createSession();
     session.queuePendingCallback({ code: "code", handoffId: null });
     expect(session.takePendingCallback()).toEqual({
       code: "code",

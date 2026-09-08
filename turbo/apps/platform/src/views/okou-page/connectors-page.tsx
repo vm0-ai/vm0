@@ -1071,6 +1071,7 @@ export function ConnectorsPage() {
           authMethod,
           {
             account: { intent: "add" },
+            authorizeVisibleAgents: true,
             connectorLabel: connector.label,
             connectorIcon: connector.icon,
           },
@@ -1088,6 +1089,7 @@ export function ConnectorsPage() {
             authMethod,
             options: {
               account: { intent: "add" },
+              authorizeVisibleAgents: true,
               connectorLabel: connector.label,
             },
           },
@@ -1209,6 +1211,7 @@ export function ConnectorsPage() {
       {accountConnect && (
         <ConnectModal
           item={accountConnect.connector}
+          authorizeVisibleAgentsOnConnect
           accountMode={accountConnect.mode}
           accountOptions={{
             account:

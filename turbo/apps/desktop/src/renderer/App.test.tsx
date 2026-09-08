@@ -428,6 +428,11 @@ function buttonForText(text: string): HTMLButtonElement {
 }
 
 function renderDesktopApp(): void {
+  window.vm0DesktopIdentity = {
+    product: "okou",
+    brandName: "Okou",
+    displayName: "Okou",
+  };
   render(
     <StoreProvider value={createStore()}>
       <App />
@@ -441,7 +446,6 @@ afterEach(async () => {
   delete window.vm0DesktopAuth;
   delete window.vm0DesktopComputerUse;
   delete window.vm0DesktopDeveloperTools;
-  delete window.vm0DesktopIdentity;
   vi.clearAllMocks();
 });
 
@@ -571,11 +575,6 @@ describe("Desktop renderer bridge integration", () => {
   });
 
   it("shows Okou identity and fresh permission guidance", async () => {
-    window.vm0DesktopIdentity = {
-      product: "okou",
-      brandName: "Okou",
-      displayName: "Okou",
-    };
     installDesktopBridges({
       authState: { status: "signed_out", user: null, organization: null },
       computerUseState: createComputerUseState({
@@ -903,7 +902,7 @@ describe("Desktop renderer bridge integration", () => {
     });
     renderDesktopApp();
 
-    expect(await screen.findByText("Sign in to Zero")).toBeTruthy();
+    expect(await screen.findByText("Sign in to Okou")).toBeTruthy();
 
     fireEvent.click(buttonForText("Sign in"));
 

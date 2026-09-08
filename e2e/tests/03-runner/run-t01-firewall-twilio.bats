@@ -40,7 +40,9 @@ printf 'TWILIO_ACCOUNT_SID=%s\n' "$TWILIO_ACCOUNT_SID"
 printf 'TWILIO_AUTH_TOKEN=%s\n' "$TWILIO_AUTH_TOKEN"
 # Raw DNS has dedicated runner coverage. Pin the public sink so this test owns
 # only firewall classification, authentication resolution, and redaction.
-curl --silent --show-error --max-time 5 \
+# Outlive the proxy's 10-second firewall-auth deadline so this request does not
+# close its connection while credentials are still resolving.
+curl --silent --show-error --max-time 15 \
     --resolve 'api.twilio.com:443:8.8.8.8' \
     --output /dev/null \
     'https://api.twilio.com/2010-04-01/Accounts.json' || true

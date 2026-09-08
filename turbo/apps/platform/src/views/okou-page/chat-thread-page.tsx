@@ -3219,6 +3219,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   return (
     <main
       data-run-work-folding={runWorkFoldingEnabled || undefined}
+      data-run-work-folding-disabled={!runWorkFoldingEnabled || undefined}
       className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
     >
       <div
@@ -5034,7 +5035,7 @@ function WaitingForAssistantResponse({
           {runGroupFolds.map((fold) => {
             return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
           })}
-          <ChatAssistantMessageBody>
+          <ChatAssistantMessageBody className="group-data-[run-work-folding-disabled]/chat:py-4">
             <InlineThinkingRow
               blockStyle={blockStyle}
               isQueued={isQueued}
@@ -7676,6 +7677,8 @@ function PagedAssistantTimeline({
   thread: ChatPanelSignals;
   mainActions?: ReactNode;
 }) {
+  let renderedAssistantItemCount = 0;
+
   return items.map((item) => {
     if (item.kind === "model-change") {
       return (
@@ -7733,6 +7736,8 @@ function PagedAssistantTimeline({
         />
       );
     }
+    const legacyTopPadding = renderedAssistantItemCount === 0;
+    renderedAssistantItemCount += 1;
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7740,7 +7745,11 @@ function PagedAssistantTimeline({
           data-chat-run-work-main
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
         >
-          <PagedAssistantEventItem event={item.event} thread={thread} />
+          <PagedAssistantEventItem
+            event={item.event}
+            thread={thread}
+            legacyTopPadding={legacyTopPadding}
+          />
           {mainActions}
         </div>
       );
@@ -7750,6 +7759,7 @@ function PagedAssistantTimeline({
         key={item.event.id}
         event={item.event}
         thread={thread}
+        legacyTopPadding={legacyTopPadding}
       />
     );
   });
@@ -7960,10 +7970,12 @@ function PagedAssistantEventItem({
   event,
   thread,
   compact = false,
+  legacyTopPadding = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
   compact?: boolean;
+  legacyTopPadding?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7971,7 +7983,11 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
-        className={compact ? "py-1 text-[13px] leading-5" : undefined}
+        className={cn(
+          compact ? "py-1 text-[13px] leading-5" : undefined,
+          legacyTopPadding &&
+            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7990,11 +8006,13 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={
+        className={cn(
           compact
             ? "py-1 text-[13px] leading-5"
-            : CHAT_THREAD_RESPONSE_LINE_CLASS
-        }
+            : CHAT_THREAD_RESPONSE_LINE_CLASS,
+          legacyTopPadding &&
+            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

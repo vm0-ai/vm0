@@ -108,7 +108,7 @@ type PiApiFirstTurnErrorCode =
   | "PI_API_MODEL_FAILED"
   | "PI_API_MODEL_OUTPUT_INCOMPLETE"
   | "PI_API_MODEL_CREDENTIAL_INVALID"
-  | "PI_API_PROMPT_UNSUPPORTED"
+  | "PI_API_NATIVE_INPUT_REQUIRED"
   | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_INVALID"
   | "PI_API_RESOURCE_PREPARATION_FAILED"
@@ -748,12 +748,6 @@ function validateApiFirstTurnLaunch(args: ApiFirstTurnContext): {
     throw piApiFirstTurnError(
       "PI_LAUNCH_CONFIG_INVALID",
       "Pi launch base session id does not match the Pi session id",
-    );
-  }
-  if (args.activation.prompt.trimStart().startsWith("/")) {
-    throw piApiFirstTurnError(
-      "PI_API_PROMPT_UNSUPPORTED",
-      "Pi slash commands are not supported by the API first-turn slot",
     );
   }
   if (now() >= launchConfig.deadlineAt) {
@@ -1425,6 +1419,7 @@ function ownershipTransferManifest(args: {
 
 type PiSandboxFallbackReason =
   | "PI_API_COMPACTION_PREFLIGHT_REQUIRED"
+  | "PI_API_NATIVE_INPUT_REQUIRED"
   | "PI_API_PREHEAT_FAILED"
   | "PI_API_RESOURCE_PREPARATION_FAILED";
 
@@ -1444,6 +1439,7 @@ function eligibleSandboxFallbackReason(
     return null;
   }
   switch (args.failure.code) {
+    case "PI_API_NATIVE_INPUT_REQUIRED":
     case "PI_API_PREHEAT_FAILED":
     case "PI_API_COMPACTION_PREFLIGHT_REQUIRED":
     case "PI_API_RESOURCE_PREPARATION_FAILED": {
@@ -1618,6 +1614,14 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     validateApiFirstTurnLaunch(args);
   const commitIdentity = apiFirstTurnCommitIdentity(args);
   signal.throwIfAborted();
+  // The direct API model turn cannot run native input/skill expansion. Choose
+  // AgentSession before API-only preparation; handoff must keep the input intact.
+  if (args.activation.prompt.trimStart().startsWith("/")) {
+    throw piApiFirstTurnError(
+      "PI_API_NATIVE_INPUT_REQUIRED",
+      "Pi slash-prefixed input requires native AgentSession processing",
+    );
+  }
   const resourceSnapshot = await set(
     loadApiFirstTurnResource$,
     args,
@@ -2032,6 +2036,12 @@ function sandboxFirstPublicationOutcome(reason: PiSandboxFirstReason): {
     }
     case "PI_API_COMPACTION_PREFLIGHT_REQUIRED": {
       return { outcome: "ownership_transfer", reason: "compaction_preflight" };
+    }
+    case "PI_API_NATIVE_INPUT_REQUIRED": {
+      return {
+        outcome: "ownership_transfer",
+        reason: "native_input_sandbox_first",
+      };
     }
     default: {
       return { outcome: "sandbox_fallback", reason };
