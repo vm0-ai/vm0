@@ -134,7 +134,7 @@ test("Expanded style tags combine with search and preserve the selected style", 
   const { dialog } = await openExplainer();
   expect(control("Use selection", dialog)).toBeDisabled();
   const tags = within(dialog).getByRole("group", { name: "Browse by style" });
-  expect(queryAllByRoleFast("button", tags)).toHaveLength(7);
+  expect(queryAllByRoleFast("button", tags)).toHaveLength(6);
   click(control("Select style Minimalism", dialog));
   click(control("Handmade and materials", tags));
   expect(control("Handmade and materials", tags)).toHaveAttribute(
@@ -149,7 +149,11 @@ test("Expanded style tags combine with search and preserve the selected style", 
     "No matches found",
   );
   await fill(within(dialog).getByLabelText("Search styles"), "");
-  click(control("All styles", tags));
+  click(control("Handmade and materials", tags));
+  expect(control("Handmade and materials", tags)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   expect(control("Select style Minimalism", dialog)).toHaveAttribute(
     "aria-pressed",
     "true",

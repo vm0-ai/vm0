@@ -1986,7 +1986,6 @@
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
     "explainerVideo": {
-      "allStyles": "すべてのスタイル",
       "autoStyleDescription": "コンテンツに合うスタイルを選びます。",
       "autoVoiceDescription": "コンテンツに合う音声を選びます。",
       "avatarVoice": "アバターの音声",

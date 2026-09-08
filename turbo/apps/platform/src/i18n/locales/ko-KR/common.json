@@ -1986,7 +1986,6 @@
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
     "explainerVideo": {
-      "allStyles": "모든 스타일",
       "autoStyleDescription": "콘텐츠에 맞는 스타일을 선택합니다.",
       "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
       "avatarVoice": "아바타 음성",

@@ -278,12 +278,6 @@ function StyleTags({
   const group = useGet(signals.group$);
   const setGroup = useSet(signals.setGroup$);
   const tags = [
-    {
-      id: "all",
-      label: t(($) => {
-        return $.chat.explainerVideo.allStyles;
-      }),
-    },
     ...INTRO_VIDEO_STYLE_TAGS.map((id) => {
       return { id, label: labels[id] };
     }),
@@ -303,15 +297,15 @@ function StyleTags({
             key={id}
             type="button"
             variant="quiet"
-            size="sm"
+            size="xs"
             aria-pressed={group === id}
             onClick={() => {
-              setGroup(id);
+              setGroup(group === id ? "all" : id);
             }}
             className={cn(
-              "h-8 border border-border text-xs hover:bg-gray-50",
+              "rounded-md border border-border bg-background hover:bg-gray-50",
               group === id &&
-                "border-foreground bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+                "border-primary bg-gray-50 text-foreground ring-1 ring-primary",
             )}
           >
             {label}
