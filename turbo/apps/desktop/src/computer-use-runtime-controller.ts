@@ -4,6 +4,11 @@ import type {
 } from "./computer-use-driver";
 import type { ComputerUseNativeShutdownReason } from "./computer-use-native";
 import {
+  ComputerUseNativePermissionTimeoutError,
+  COMPUTER_USE_NATIVE_PERMISSION_TIMEOUT_MS,
+} from "./computer-use-native";
+import type { ComputerUsePermissionQuery } from "./computer-use-permissions";
+import {
   withComputerUseDeadline,
   type ComputerUseLifecycleTimers,
 } from "./computer-use-lifecycle-deadline";
@@ -19,6 +24,24 @@ import {
 
 const DEFAULT_QUIT_STOP_TIMEOUT_MS = 1_000;
 
+export interface ComputerUsePermissionRecoveryDiagnostic {
+  readonly generation: number | null;
+  readonly outcome: "recovered" | "failed" | "superseded";
+  readonly elapsedMs: number;
+}
+
+interface PermissionRefresh {
+  readonly promise: Promise<ComputerUsePermissionState | null>;
+  readonly cancel: (mode?: "retire" | "drain") => void;
+  deadline: number;
+}
+
+interface PermissionRecovery {
+  readonly check: () => void;
+  readonly probe: () => Promise<ComputerUsePermissionState>;
+  readonly remaining: () => number;
+}
+
 /** The `ComputerUseHostRuntime` surface the controller drives. */
 interface ComputerUseRuntimeLike {
   start(): Promise<void>;
@@ -29,6 +52,9 @@ interface ComputerUseRuntimeLike {
 }
 
 interface ComputerUseRuntimeControllerOptions {
+  readonly onPermissionRecovery?: (
+    diagnostic: ComputerUsePermissionRecoveryDiagnostic,
+  ) => void;
   readonly prepareNative?: () => Promise<ComputerUsePermissionState>;
   readonly nativeBlockReason?: (driver: ComputerUseDriver) => string | null;
   /**
@@ -39,6 +65,7 @@ interface ComputerUseRuntimeControllerOptions {
   readonly createRuntime: () => ComputerUseRuntimeLike;
   readonly refreshPermissions: () => Promise<ComputerUsePermissionState>;
   readonly getAuthState: () => Promise<DesktopAuthState>;
+  readonly getAuthAuthority?: () => object | null;
   /** Propagates runtime online/offline transitions to the plugin manager. */
   readonly setHostRuntimeOnline: (online: boolean) => void;
   /** Zero-arg "something changed" signal; defaults to a no-op. */
@@ -91,6 +118,7 @@ export class ComputerUseRuntimeController {
   private readonly getPluginCapabilities: () => readonly string[];
   private readonly preparePlugins: () => Promise<void>;
   private pluginStartupIntent: number | null = null;
+  private permissionRefresh: PermissionRefresh | null = null;
 
   constructor(private readonly options: ComputerUseRuntimeControllerOptions) {
     this.getPluginCapabilities = options.getPluginCapabilities ?? (() => []);
@@ -124,6 +152,182 @@ export class ComputerUseRuntimeController {
 
   pluginsMayRun(): boolean {
     return this.isRuntimeOnline() || this.pluginStartupIntent === this.intent;
+  }
+
+  /** Read-only refreshes share one episode under this lifecycle's current intent.
+   * Claimed commands use their pinned driver's permission read directly.
+   */
+  async refreshNativePermissions(
+    query: ComputerUsePermissionQuery = {},
+  ): Promise<ComputerUsePermissionState | null> {
+    query.signal?.throwIfAborted();
+    const refresh = this.permissionRefresh ?? this.beginPermissionRefresh();
+    if (query.deadline !== undefined)
+      refresh.deadline = Math.min(refresh.deadline, query.deadline);
+    const cancel = () => refresh.cancel();
+    query.signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      if (refresh.deadline <= performance.now())
+        throw new Error("Native permission query budget expired");
+      return await withComputerUseDeadline(
+        refresh.promise,
+        refresh.deadline - performance.now(),
+        this.lifecycleTimers,
+      );
+    } catch (error) {
+      refresh.cancel();
+      throw error;
+    } finally {
+      query.signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  private beginPermissionRefresh(): PermissionRefresh {
+    const intent = this.intent;
+    const authority = this.options.getAuthAuthority?.();
+    const generation = this.driver?.generation ?? null;
+    const selected = this.driver?.selectedDriver;
+    const eligible =
+      !!selected &&
+      selected.id === "okou" &&
+      this.runningRequested &&
+      !!this.runtime &&
+      !this.manualStopRequested &&
+      !this.quitStopStarted &&
+      !this.starting &&
+      !this.transitionCount &&
+      (this.driver?.getCapabilities().length ?? 0) > 0;
+    const startedAt = performance.now();
+    let cancelled = false;
+    let rejectCancelled!: (error: Error) => void;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectCancelled = reject;
+    });
+    const check = () => {
+      if (
+        cancelled ||
+        intent !== this.intent ||
+        authority !== this.options.getAuthAuthority?.() ||
+        this.quitStopStarted ||
+        refresh.deadline <= performance.now()
+      ) {
+        refresh.cancel();
+        throw new Error("Native permission query was superseded or expired");
+      }
+    };
+    const read = () =>
+      this.driver?.withPermissionProvider((provider) =>
+        provider.getPermissions(),
+      ) ?? Promise.resolve(null);
+    const work = async () => {
+      // Capture auth before probing. A later identity is never authority for an
+      // earlier refresh, even if permission grants themselves remain unchanged.
+      const auth = eligible ? await this.getAuthState() : null;
+      check();
+      try {
+        const permissions = await read();
+        check();
+        return permissions;
+      } catch (error) {
+        if (
+          !(error instanceof ComputerUseNativePermissionTimeoutError) ||
+          !eligible ||
+          !selected ||
+          auth?.status !== "signed_in" ||
+          !auth.organization
+        )
+          throw error;
+        return this.retryPermissionProbe({
+          selected,
+          auth,
+          check,
+          read,
+          remaining: () => refresh.deadline - performance.now(),
+          report: (outcome) =>
+            this.options.onPermissionRecovery?.({
+              generation,
+              outcome: cancelled ? "superseded" : outcome,
+              elapsedMs: Math.min(
+                120_000,
+                Math.max(0, Math.round(performance.now() - startedAt)),
+              ),
+            }),
+        });
+      }
+    };
+    const refresh: PermissionRefresh = {
+      // The existing attempt bound plus the existing replacement bound is the
+      // total cap (90s by default), including drain, old-process exit and retry.
+      deadline:
+        startedAt +
+        COMPUTER_USE_NATIVE_PERMISSION_TIMEOUT_MS +
+        this.transitionTimeoutMs,
+      promise: Promise.race([Promise.resolve().then(work), aborted]),
+      cancel: (mode = "retire") => {
+        if (cancelled) return;
+        cancelled = true;
+        rejectCancelled(new Error("Native permission query was cancelled"));
+        if (
+          mode === "retire" &&
+          this.permissionRefresh === refresh &&
+          intent === this.intent
+        ) {
+          this.driver?.withdrawAdmission();
+          void this.driver?.forceRetire().catch(() => {});
+        }
+      },
+    };
+    this.permissionRefresh = refresh;
+    const finish = () => {
+      if (this.permissionRefresh === refresh) this.permissionRefresh = null;
+    };
+    void refresh.promise.then(finish, finish);
+    return refresh;
+  }
+
+  private async retryPermissionProbe(options: {
+    readonly selected: ComputerUseDriver;
+    readonly auth: Extract<DesktopAuthState, { status: "signed_in" }>;
+    readonly check: () => void;
+    readonly read: () => Promise<ComputerUsePermissionState | null>;
+    readonly remaining: () => number;
+    readonly report: (outcome: "failed" | "recovered") => void;
+  }): Promise<ComputerUsePermissionState | null> {
+    const { selected, auth, check, read, remaining, report } = options;
+    let outcome: "failed" | "recovered" = "failed";
+    try {
+      check();
+      // The failed probe has released its lease before replacement waits for
+      // retirement and any separately claimed command's completion reporting.
+      let fresh: ComputerUsePermissionState | null = null;
+      this.driver?.resetFailure();
+      await this.replaceDriver(selected, {
+        check,
+        remaining,
+        probe: async () => {
+          const currentAuth = await this.getAuthState();
+          check();
+          if (
+            currentAuth.status !== "signed_in" ||
+            currentAuth.user.userId !== auth.user.userId ||
+            currentAuth.organization?.id !== auth.organization?.id
+          )
+            throw new Error("Native permission recovery authorization changed");
+          fresh = await read();
+          check();
+          if (!fresh)
+            throw new Error("Native permission recovery was superseded");
+          return fresh;
+        },
+      });
+      check();
+      if (!fresh || !hasRequiredComputerUsePermissions(fresh))
+        throw new Error("Native permission recovery did not restore readiness");
+      outcome = "recovered";
+      return fresh;
+    } finally {
+      report(outcome);
+    }
   }
 
   private nativeBlockReason(): string | null {
@@ -397,6 +601,21 @@ export class ComputerUseRuntimeController {
 
   /** Serialized native replacement; it never changes host/plugin online state on success. */
   transitionDriver(driver: ComputerUseDriver): Promise<void> {
+    // Supersede the probe; the replacement owner still drains healthy claims.
+    this.cancelPermissionRefresh("drain");
+    return this.replaceDriver(driver);
+  }
+
+  /** The auth owner calls this synchronously when its session proof changes. */
+  cancelPermissionRefresh(mode: "retire" | "drain" = "retire"): void {
+    this.permissionRefresh?.cancel(mode);
+    this.permissionRefresh = null;
+  }
+
+  private replaceDriver(
+    driver: ComputerUseDriver,
+    recovery?: PermissionRecovery,
+  ): Promise<void> {
     if (this.lastTransition?.driver === driver)
       return this.lastTransition.promise;
     if (!this.driver || this.quitStopStarted) {
@@ -414,6 +633,7 @@ export class ComputerUseRuntimeController {
     this.driver.pausePermissions();
     let expired = false;
     const checkIntent = () => {
+      recovery?.check();
       if (
         expired ||
         intent !== this.intent ||
@@ -455,15 +675,18 @@ export class ComputerUseRuntimeController {
         return;
       }
       if (runtime && !this.manualStopRequested)
-        await this.resumeSelectedDriver(resume, checkIntent);
+        await this.resumeSelectedDriver(resume, checkIntent, recovery?.probe);
     })();
     const transition = withComputerUseDeadline(
       work,
-      this.transitionTimeoutMs,
+      Math.min(
+        this.transitionTimeoutMs,
+        recovery?.remaining() ?? this.transitionTimeoutMs,
+      ),
       this.lifecycleTimers,
     ).catch((error: unknown) => {
       expired = true;
-      this.handleDriverTransitionFailure(error, intent, selection);
+      this.handleDriverTransitionFailure(error, intent, selection, !!recovery);
     });
     this.transitionCount++;
     this.phaseStartedAt = performance.now();
@@ -491,6 +714,7 @@ export class ComputerUseRuntimeController {
     error: unknown,
     intent: number,
     selection: number,
+    recovering: boolean,
   ): void {
     // A failure withdraws the host rather than advertising empty legacy capabilities.
     if (intent === this.intent && selection === this.selectionRevision) {
@@ -504,7 +728,7 @@ export class ComputerUseRuntimeController {
         throw error;
       }
       this.manualStopRequested = true;
-      this.supersede();
+      this.supersede(!recovering);
       this.detachRuntime();
       this.blockedHostState = {
         ...OFFLINE_COMPUTER_USE_HOST_STATE,
@@ -519,6 +743,7 @@ export class ComputerUseRuntimeController {
   private async resumeSelectedDriver(
     resume: (() => void) | undefined,
     checkIntent: () => void,
+    probe?: () => Promise<ComputerUsePermissionState>,
   ): Promise<void> {
     if (
       this.nativeError ||
@@ -535,11 +760,12 @@ export class ComputerUseRuntimeController {
       await this.detachRuntime();
       return;
     }
-    let permissions = await this.refreshPermissions();
+    let permissions = await (probe ? probe() : this.refreshPermissions());
     checkIntent();
     if (
       hasRequiredComputerUsePermissions(permissions) &&
-      this.options.prepareNative
+      this.options.prepareNative &&
+      !probe
     )
       permissions = await this.options.prepareNative();
     checkIntent();
@@ -577,6 +803,7 @@ export class ComputerUseRuntimeController {
   async drainAndStop(): Promise<void> {
     this.runningRequested = false;
     this.manualStopRequested = true;
+    this.cancelPermissionRefresh("drain");
     this.supersede();
     await this.runtime?.drainAndStop();
     await this.detachRuntime();
@@ -646,7 +873,10 @@ export class ComputerUseRuntimeController {
     return this.quitPromise;
   }
 
-  private supersede(): void {
+  private supersede(cancelRefresh = true): void {
+    if (cancelRefresh) {
+      this.cancelPermissionRefresh();
+    }
     this.intent++;
     this.lastTransition = null;
     this.phaseStartedAt = performance.now();

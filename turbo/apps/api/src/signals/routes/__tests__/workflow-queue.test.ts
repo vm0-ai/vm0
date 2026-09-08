@@ -1,46 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { modelProvidersByTypeContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { aroundEach, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
 import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
-import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
-import {
-  createActiveGoalQueueEventFixture,
-  drainChatThreadQueueFixture,
-  pauseGoalQueueTargetFixture,
-  readGoalQueueStateFixture,
-  setGoalQueueEventCreatedAtFixture,
-} from "../../../test-fixtures/goal-queue";
-import {
-  admitWorkflowAutomationEventFixture,
-  readWorkflowRunTriggerSourceFixture,
-} from "../../../test-fixtures/workflow-queue";
-import { flushWaitUntilForTest } from "../../context/wait-until";
-import type { ApiTestUser } from "./helpers/api-bdd";
-import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
-import { createRunsApi } from "./helpers/api-bdd-runs";
-import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
-import {
-  chatEventAutomationPart,
-  chatEventDisplayText,
-} from "./helpers/chat-event";
-import { readThreadSessionBinding } from "./helpers/runtime-state";
-import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
-import { createRouteMocks } from "./helpers/route-test";
-import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import {
   completeRunWithoutCallbacksFixture,
   holdChatEventQueueAdmissionLockFixture,
@@ -49,12 +22,41 @@ import {
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
+import {
+  seedGoalForRunFixture,
+  setLegacyGoalRunOriginFixture,
+  createActiveGoalQueueEventFixture,
+  drainChatThreadQueueFixture,
+  pauseGoalQueueTargetFixture,
+  readGoalQueueStateFixture,
+  setGoalQueueEventCreatedAtFixture,
+} from "../../../test-fixtures/goal-queue";
+import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
+import {
+  admitWorkflowAutomationEventFixture,
+  readWorkflowRunTriggerSourceFixture,
+} from "../../../test-fixtures/workflow-queue";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { chatEventsRoutes } from "../chat-events";
 import { chatThreadRoutes } from "../chat-threads";
 import { modelProvidersRoutes } from "../model-providers";
-import { workflowAutomationsRoutes } from "../workflow-automations";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+import { workflowAutomationsRoutes } from "../workflow-automations";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
+import { readProjectedChatEvents } from "./helpers/chat-event-test-reader";
+import { createRouteMocks } from "./helpers/route-test";
+import { readThreadSessionBinding } from "./helpers/runtime-state";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...testWorkflowAutomationExecutionRoutes,
@@ -500,7 +502,7 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  it("rejects a goal continuation when every built-in route is unavailable", async () => {
+  it("revokes retired Goal input before resolving an unavailable model", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     await chatCallbacks.updateOrgModelPolicies(scenario.actor, [
@@ -537,17 +539,11 @@ describe("workflow queue", () => {
     );
 
     const events = await wf.readThreadEvents(automation.threadId);
-    const rejected = events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goal.eventId
-      );
-    });
-    if (rejected?.eventType !== "input.rejected") {
-      throw new Error("Expected the goal continuation to be rejected");
-    }
-    expect(rejected.error).toBe(BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE);
-    expect(rejected.error).not.toContain("VM0");
+    expect(
+      events.filter((event) => {
+        return event.revokesEventId === goal.eventId;
+      }),
+    ).toMatchObject([{ eventType: "control.revoke" }]);
     await expect(
       readGoalQueueStateFixture(automation.threadId),
     ).resolves.toMatchObject({ runIds: [] });
@@ -703,33 +699,20 @@ describe("workflow queue", () => {
       pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(0);
 
-    // A goal that self-continues after every run would otherwise leave no idle
-    // window for the automation event, so the deferred goal must still run once
-    // the automation ahead of it reaches a terminal state.
     await completeRunThroughSandbox(scenario, workflowRunId);
     const drainedGoal = await readGoalQueueStateFixture(automation.threadId);
-    expect(drainedGoal.runIds).toHaveLength(1);
-    expect(drainedGoal.eventIds).toContain(goal.eventId);
-
-    const [goalRunId] = drainedGoal.runIds;
-    if (!goalRunId) {
-      throw new Error("Expected the goal continuation to create a run");
-    }
-    await runsApi.requestCancelRun(scenario.actor, goalRunId, [200]);
+    expect(drainedGoal.runIds).toHaveLength(0);
+    const events = await wf.readThreadEvents(automation.threadId);
+    expect(
+      events.filter((event) => {
+        return event.revokesEventId === goal.eventId;
+      }),
+    ).toMatchObject([{ eventType: "control.revoke" }]);
   });
 
-  it("ignores a fresh automation outside the cutoff while selecting a stale goal", async () => {
+  it("leaves fresh automation queued while revoking a stale Goal input", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: scenario.orgId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
-    });
-
     const goal = await createActiveGoalQueueEventFixture({
       threadId: automation.threadId,
       orgId: scenario.orgId,
@@ -758,13 +741,7 @@ describe("workflow queue", () => {
       queueItemCreatedBefore: new Date("2020-01-01T00:00:00.000Z"),
     });
 
-    // Reaching the organization lock proves the stale goal passed selection;
-    // the unchanged final queue claim still rejects it while fresh work exists.
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
-    admissionLock.release();
     await goalDrain;
-    await admissionLock.done;
-
     await expect(
       readGoalQueueStateFixture(automation.threadId),
     ).resolves.toMatchObject({ runIds: [], eventIds: [goal.eventId] });
@@ -1198,6 +1175,54 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
+  it("settles a queued legacy Goal and continues with the next ordinary automation", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
+    );
+    const blockerRunId = await startOrgConcurrencyBlocker(scenario);
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "captured Goal admission"),
+    );
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await completeRunThroughSandbox(scenario, firstRunId);
+    const runs = await workflowRunIds(automation.threadId);
+    const goalRunId = runs[1];
+    if (!goalRunId) {
+      throw new Error("Expected the queued predecessor");
+    }
+    expect((await runsApi.readRun(scenario.actor, goalRunId)).status).toBe(
+      "queued",
+    );
+    const goal = await seedGoalForRunFixture(goalRunId, "legacy queued Goal");
+    await setLegacyGoalRunOriginFixture(goalRunId, goal.id);
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "normal follower"),
+    );
+    await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
+    await flushWaitUntilForTest();
+    const retired = await runsApi.readRun(scenario.actor, goalRunId);
+    expect(retired.status).toBe("cancelled");
+    expect(retired.error).toContain("Goals have been retired");
+    const remaining = await workflowRunIds(automation.threadId);
+    expect(remaining).toHaveLength(3);
+    const follower = remaining[2];
+    if (!follower) {
+      throw new Error("Expected the normal automation follower");
+    }
+    expect((await runsApi.readRun(scenario.actor, follower)).status).toBe(
+      "pending",
+    );
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    expect(
+      (await runsApi.requestClaimRunnerJob(true, follower, [200])).status,
+    ).toBe(200);
+    await runsApi.requestCancelRun(scenario.actor, follower, [200]);
+  });
+
   it("keeps a concurrency-queued workflow run when the completion request is aborted", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
@@ -1257,7 +1282,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
-  it("creates a queued goal successor at the org concurrency limit", async () => {
+  it("revokes Goal work without allocating an org concurrency slot", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
@@ -1280,8 +1305,7 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
 
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);
-    expect(goalQueue.runIds).toHaveLength(1);
-    await runsApi.requestCancelRun(scenario.actor, goalQueue.runIds[0]!, [200]);
+    expect(goalQueue.runIds).toHaveLength(0);
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 

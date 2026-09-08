@@ -1,28 +1,30 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createStore } from "ccstate";
-import { HttpResponse, http } from "msw";
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import {
+  chatThreadConnectorSelectionContract,
+  chatThreadsContract,
+  type ChatEvent,
+  type ChatThreadArtifactGoogleDriveSync,
+  type UserMessageInputDocument,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
 } from "@okouai/api-contracts/contracts/cron";
-import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
-import {
-  chatThreadConnectorSelectionContract,
-  chatThreadsContract,
-  type ChatThreadArtifactGoogleDriveSync,
-  type ChatEvent,
-  type UserMessageInputDocument,
-} from "@okouai/api-contracts/contracts/chat-threads";
-import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { createStore } from "ccstate";
+import { HttpResponse, http } from "msw";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import {
   clearMockNow,
@@ -30,13 +32,7 @@ import {
   now,
   withMockNowForTest,
 } from "../../../lib/time";
-import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import {
-  seedOrgMetadata,
-  seedUsagePricingRows,
-} from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
@@ -51,9 +47,19 @@ import {
   setChatThreadSnapshotBoundaryFixture,
   setChatThreadVideoModelFixture,
 } from "../../../test-fixtures/chat-thread-events";
+import { seedGoalForRunFixture } from "../../../test-fixtures/goal-queue";
 import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { chatThreadRoutes } from "../chat-threads";
+import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
+import { goalsRoutes } from "../goals";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import {
   createBddApi,
   expectApiError,
@@ -63,7 +69,6 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
@@ -71,6 +76,7 @@ import {
   mockGoogleDriveConnectorOAuth,
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
@@ -85,11 +91,6 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
-import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
-import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
-import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { chatThreadRoutes } from "../chat-threads";
-import { goalsRoutes } from "../goals";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
@@ -623,17 +624,11 @@ function goalHeaders(
 }
 
 async function createThreadGoal(
-  actor: ApiTestUser,
+  _actor: ApiTestUser,
   runId: string,
   objective: string,
 ): Promise<void> {
-  await accept(
-    goalsClient().create({
-      headers: goalHeaders(actor, runId),
-      body: { objective },
-    }),
-    [201],
-  );
+  await seedGoalForRunFixture(runId, objective);
 }
 
 async function completeThreadGoal(

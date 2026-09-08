@@ -14,6 +14,8 @@ const prepareRequestSchema = z.object({
   size: z.number().int().nonnegative(),
   /** Request multipart upload URLs for large files. */
   multipart: z.literal(true).optional(),
+  /** Artifact output; ordinary attachment and processing inputs omit this. */
+  purpose: z.literal("artifact").optional(),
 });
 
 const uploadMetadataSchema = z.object({
@@ -21,7 +23,7 @@ const uploadMetadataSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
-  /** Public CDN URL returned to the app after upload succeeds. */
+  /** Stable file reference; private artifacts require owner authentication. */
   url: z.string().url(),
 });
 
@@ -121,6 +123,7 @@ export const uploadsContract = c.router({
       401: apiErrorSchema,
       402: apiErrorSchema,
       403: apiErrorSchema,
+      404: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Complete a multipart R2 upload",
@@ -135,6 +138,7 @@ export const uploadsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      404: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Abort a multipart R2 upload",

@@ -6,6 +6,10 @@ import {
 } from "@okouai/api-contracts/contracts/host";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { publishStaticSite } from "../../lib/host/publish-static-site";
+import {
+  createArtifactMarkdownOutput,
+  formatArtifactPresentationContext,
+} from "../shared/artifact-return";
 import { cloneHostedSiteCommand } from "./clone";
 import { versionsHostedSiteCommand } from "./versions";
 
@@ -39,7 +43,7 @@ export const hostCommand = new Command()
     parseArtifactKind,
   )
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
-  .option("--json", "Output only the final result as JSON")
+  .option("--json", "Output the result and Markdown return forms as JSON")
   .addCommand(cloneHostedSiteCommand)
   .addCommand(versionsHostedSiteCommand)
   .addHelpText(
@@ -84,8 +88,12 @@ Notes:
             },
       });
 
+      const markdown = createArtifactMarkdownOutput(
+        options.site,
+        result.aliasUrl ?? result.url,
+      );
       if (options.json) {
-        console.log(JSON.stringify(result));
+        console.log(JSON.stringify({ ...result, ...markdown }));
         return;
       }
 
@@ -111,5 +119,7 @@ Notes:
       if (!result.aliasUrl) {
         console.log(`  URL: ${result.url}`);
       }
+      console.log("");
+      console.log(formatArtifactPresentationContext(markdown));
     }),
   );

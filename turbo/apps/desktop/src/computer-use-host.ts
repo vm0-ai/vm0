@@ -1,3 +1,4 @@
+import type { ComputerUsePermissionQuery } from "./computer-use-permissions";
 import { createComputerUseDrain } from "./computer-use-lifecycle-deadline";
 import {
   ComputerUseCommandBudget,
@@ -71,7 +72,9 @@ interface ComputerUseHostRuntimeOptions {
   readonly sessionFetch: ComputerUseHostFetch;
   readonly hostFetch: ComputerUseHostFetch;
   readonly addClientHeaders: DesktopClientHeaderInjector;
-  readonly getPermissions: () => MaybePromise<ComputerUsePermissionState>;
+  readonly getPermissions: (
+    query?: ComputerUsePermissionQuery,
+  ) => MaybePromise<ComputerUsePermissionState>;
   readonly getSupportedCapabilities?: () => readonly string[];
   readonly acquireCommand: () => ComputerUseCommandSession;
   readonly onCommandFailure?: (args: {
@@ -396,8 +399,10 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
-  private async runtimeBody(): Promise<Record<string, unknown>> {
-    const permissions = await this.getPermissions();
+  private async runtimeBody(
+    query?: ComputerUsePermissionQuery,
+  ): Promise<Record<string, unknown>> {
+    const permissions = await this.getPermissions(query);
     const capabilities = this.getSupportedCapabilities();
     if (capabilities.length === 0) {
       if (this.draining) throw new ComputerUseCapabilitiesPaused();
@@ -941,11 +946,12 @@ export class ComputerUseHostRuntime {
 
   private async heartbeat(): Promise<boolean> {
     const generation = this.sessionGeneration;
+    const deadline = performance.now() + HEARTBEAT_REQUEST_TIMEOUT_MS;
     const response = await this.runHostRequestWithTimeout({
       label: "heartbeat",
       timeoutMs: HEARTBEAT_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
-        const body = await this.runtimeBody();
+        const body = await this.runtimeBody({ signal, deadline });
         if (!this.running || generation !== this.sessionGeneration)
           throw new Error("Computer Use heartbeat was superseded");
         return await this.hostFetch("/api/computer-use/heartbeat", {

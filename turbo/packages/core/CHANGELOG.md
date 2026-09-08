@@ -1,5 +1,48 @@
 # Changelog
 
+## [8.637.1](https://github.com/vm0-ai/vm0/compare/core-v8.637.0...core-v8.637.1) (2026-09-08)
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
+## [8.637.0](https://github.com/vm0-ai/vm0/compare/core-v8.636.0...core-v8.637.0) (2026-09-08)
+
+
+### Features
+
+* **app:** add creative and explainer video template categories ([#32613](https://github.com/vm0-ai/vm0/issues/32613)) ([9546d35](https://github.com/vm0-ai/vm0/commit/9546d35d6075efa635925c5ce37f54b3ef351032))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.0
+
+## [8.636.0](https://github.com/vm0-ai/vm0/compare/core-v8.635.2...core-v8.636.0) (2026-09-08)
+
+
+### Features
+
+* **api:** extend pi execution and learning to automation and goals ([#32634](https://github.com/vm0-ai/vm0/issues/32634)) ([a304678](https://github.com/vm0-ai/vm0/commit/a304678ae3a93d9eb74bd465ad1d7bdc1bc170d3))
+* **core:** enable debug switch for staff ([#32640](https://github.com/vm0-ai/vm0/issues/32640)) ([ab88098](https://github.com/vm0-ai/vm0/commit/ab880988635c6fd0315293f0ffce7291075b1197))
+* **core:** promote ssh access switch to alpha ([#32620](https://github.com/vm0-ai/vm0/issues/32620)) ([0d4185c](https://github.com/vm0-ai/vm0/commit/0d4185cfdc2439774b43683d73a017355104b4a6))
+* **platform:** render agent message math ([#32362](https://github.com/vm0-ai/vm0/issues/32362)) ([e227a45](https://github.com/vm0-ai/vm0/commit/e227a458753ada578e5d51b40dc30f1fd496959f))
+
+
+### Refactoring
+
+* remove shared worker realtime feature switch ([#32616](https://github.com/vm0-ai/vm0/issues/32616)) ([38cc9cf](https://github.com/vm0-ai/vm0/commit/38cc9cf1a2d19a3290c7b9fcc3500c8b5df14680))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.416.0
+
 ## [8.635.2](https://github.com/vm0-ai/vm0/compare/core-v8.635.1...core-v8.635.2) (2026-09-08)
 
 

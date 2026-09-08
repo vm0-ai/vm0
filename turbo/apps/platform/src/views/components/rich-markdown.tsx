@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "./chat-scroll-layout.tsx";
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
@@ -356,7 +357,7 @@ function MarkdownTreeFrame({
   mediaPreview = false,
   tree,
 }: MarkdownTreeFrameProps) {
-  return (
+  return withChatScrollLayout(
     <MarkdownFrame className={className} style={style}>
       {toJsxRuntime(tree, {
         Fragment,
@@ -369,7 +370,7 @@ function MarkdownTreeFrame({
         passKeys: true,
         passNode: true,
       })}
-    </MarkdownFrame>
+    </MarkdownFrame>,
   );
 }
 

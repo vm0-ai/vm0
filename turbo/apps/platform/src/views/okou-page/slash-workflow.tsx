@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 // Slash-workflow domain helpers and the suggestion menu, shared by the chat
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
@@ -127,6 +128,7 @@ function SlashCreateGroup({
 }
 
 export function SlashWorkflowMenu({
+  anchor,
   workflows,
   createModes,
   onSelectCreate,
@@ -136,6 +138,7 @@ export function SlashWorkflowMenu({
   showWorkflowsPageLink,
   onSelect,
 }: {
+  readonly anchor?: ComponentProps<typeof PopoverContent>["anchor"];
   readonly workflows: readonly ComposerSlashWorkflow[];
   readonly createModes: readonly ComposerCreateCommand[];
   readonly onSelectCreate: (mode: ComposerCreateCommand) => void;
@@ -148,6 +151,7 @@ export function SlashWorkflowMenu({
   const { t } = useTranslation();
   return (
     <PopoverContent
+      anchor={anchor}
       side="top"
       align="start"
       sideOffset={8}
@@ -155,9 +159,7 @@ export function SlashWorkflowMenu({
       updatePositionStrategy="always"
       // Keep focus in the TipTap editor: the menu's keyboard navigation is
       // handled there, so the popover must never steal focus when it opens.
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-      }}
+      initialFocus={false}
       // The selected command owns focus, including the Create type chooser.
       finalFocus={false}
       className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"

@@ -15,10 +15,10 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 
-function setupEmojiPage(): Promise<void> {
+function setupEmojiPage(threadTitle = "Emoji planning"): Promise<void> {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
-    threadTitle: "Emoji planning",
+    threadTitle,
   });
   return setupPage({
     context,
@@ -27,9 +27,7 @@ function setupEmojiPage(): Promise<void> {
 }
 
 function buttonByLabel(label: string): HTMLButtonElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
+  const button = screen.getByLabelText(label);
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error(`Button not found: ${label}`);
   }
@@ -72,9 +70,7 @@ async function openEmojiPicker(): Promise<HTMLInputElement> {
 
   click(buttonByLabel("Change icon"));
 
-  const searchInput = await screen.findByRole("textbox", {
-    name: "Search emoji",
-  });
+  const searchInput = await screen.findByLabelText("Search emoji");
   if (!(searchInput instanceof HTMLInputElement)) {
     throw new Error("Emoji search is not an input");
   }
@@ -101,29 +97,12 @@ function nextAnimationFrame(): Promise<void> {
   return frame.promise;
 }
 
-test("Change a thread icon from the mobile header and retain it on desktop", async () => {
+test("Retain a thread icon when resizing from mobile to desktop", async () => {
   const viewport = context.mocks.browser.matchMedia(false);
-  context.mocks.api(chatThreadRenameContract.rename, ({ respond }) => {
-    return respond(204);
-  });
-
-  await setupEmojiPage();
+  await setupEmojiPage("😀 Emoji planning");
   await waitFor(() => {
-    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
-      "Emoji planning",
-    );
     expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
-  });
-  expect(screen.queryByTestId("agent-avatar")).not.toBeInTheDocument();
-
-  click(buttonByLabel("Change icon"));
-  await screen.findByRole("textbox", { name: "Search emoji" });
-  click(emojiButton("grinning face"));
-  await waitFor(() => {
     expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
-    expect(
-      screen.queryByRole("textbox", { name: "Search emoji" }),
-    ).not.toBeInTheDocument();
   });
 
   act(() => {
@@ -137,11 +116,62 @@ test("Change a thread icon from the mobile header and retain it on desktop", asy
   expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
 });
 
+test("Change a thread icon before its save finishes", async () => {
+  context.mocks.browser.matchMedia(false);
+  const renameResponse = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadRenameContract.rename, async ({ respond }) => {
+    await renameResponse.promise;
+    return respond(204);
+  });
+
+  await setupEmojiPage();
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+      "Emoji planning",
+    );
+    expect(buttonByLabel("Open menu")).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("agent-avatar")).not.toBeInTheDocument();
+  const changeIcon = buttonByLabel("Change icon");
+
+  click(changeIcon);
+  const searchInput = await screen.findByLabelText("Search emoji");
+  click(emojiButton("grinning face"));
+  await waitFor(() => {
+    expect(changeIcon).toHaveTextContent("😀");
+  });
+  expect(searchInput).toBeInTheDocument();
+  renameResponse.resolve();
+  await waitFor(() => {
+    expect(searchInput).not.toBeInTheDocument();
+  });
+});
+
+test("Restore chat focus after closing the mobile emoji picker", async () => {
+  context.mocks.browser.matchMedia(false);
+  await setupEmojiPage();
+  await waitFor(() => {
+    expect(buttonByLabel("Change icon")).toBeInTheDocument();
+  });
+  const chatThread = screen.getByRole("region", { name: "Chat thread" });
+  const changeIcon = buttonByLabel("Change icon");
+
+  click(changeIcon);
+  const searchInput = await screen.findByLabelText("Search emoji");
+  click(changeIcon);
+  await waitFor(() => {
+    expect(searchInput).not.toBeInTheDocument();
+  });
+  await waitFor(() => {
+    expect(chatThread).toHaveFocus();
+  });
+});
+
 test.each([
   { from: "mobile", to: "desktop", desktop: false },
   { from: "desktop", to: "mobile", desktop: true },
 ])(
-  "Keep one open emoji picker when resizing from $from to $to",
+  "Keep one focused emoji picker when resizing from $from to $to",
   async ({ desktop }) => {
     const viewport = context.mocks.browser.matchMedia(desktop);
     await openEmojiPicker();
@@ -154,9 +184,9 @@ test.each([
       expect(
         screen.getByLabelText(desktop ? "Open menu" : "Open browser"),
       ).toBeInTheDocument();
-      expect(
-        screen.getAllByRole("textbox", { name: "Search emoji" }),
-      ).toHaveLength(1);
+      const searchInputs = screen.getAllByLabelText("Search emoji");
+      expect(searchInputs).toHaveLength(1);
+      expect(searchInputs[0]).toHaveFocus();
     });
     expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
     expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(

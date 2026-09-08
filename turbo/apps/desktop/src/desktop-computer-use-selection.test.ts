@@ -150,6 +150,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
   };
   const driver = new ComputerUseDriverController(okou, "darwin");
   const permissions = createDesktopComputerUsePermissions({
+    refreshNative: (query) => controller.refreshNativePermissions(query),
     driver,
     requestedDriver: () => preference.getState().selectedDriver,
     transitioning: () => controller.isTransitioning(),
@@ -187,6 +188,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     prepareNative: permissions.prepareNative,
     nativeBlockReason: (driver) => selection.blockReason(driver),
     getAuthState: () => auth.getAuthState(),
+    getAuthAuthority: () => auth.getAuthority(),
     setHostRuntimeOnline: (online) => plugin.setHostRuntimeOnline(online),
     getPluginCapabilities: () => plugin.getCapabilities(),
     preparePlugins: () => plugin.prepareForHost(),
@@ -227,6 +229,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     const current = auth.getAuthority();
     if (lastAuth !== current) {
       lastAuth = current;
+      controller.cancelPermissionRefresh();
       permissions.resetComputerUsePermissionState();
       if (
         selection.requestedDriver().id === "cua" ||

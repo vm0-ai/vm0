@@ -1,20 +1,15 @@
-import type {
-  ReactNode,
-  Ref,
-  SyntheticEvent,
-  WheelEvent as ReactWheelEvent,
-} from "react";
-import { useGet, useSet } from "ccstate-react";
+import type { ReactNode, Ref, WheelEvent as ReactWheelEvent } from "react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
   type ReactZoomPanPinchContext,
   TransformComponent,
   TransformWrapper,
 } from "react-zoom-pan-pinch";
 import { cn } from "@okouai/ui";
+import { useTranslation } from "react-i18next";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
-  type ZoomableImageCanvasGeometry,
   type ZoomableImageCanvasSignals,
 } from "../../signals/zoomable-image-canvas.ts";
 
@@ -23,7 +18,6 @@ const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
 const IMAGE_TRACKPAD_ZOOM_SENSITIVITY = 0.03;
 const IMAGE_TRACKPAD_ZOOM_MAX_DELTA = 10;
 const IMAGE_WHEEL_LINE_HEIGHT = 16;
-const IMAGE_MAX_WIDTH_VIEWPORT_RATIO = 3;
 
 function isImageWheelZoomActivated(keys: string[]): boolean {
   return keys.includes("Control") || keys.includes("Meta");
@@ -96,10 +90,8 @@ type ZoomableArtifactImageCanvasProps = {
   className?: string;
   contentClassName?: string;
   imageClassName?: string;
-  imageRef?: Ref<HTMLImageElement>;
   imageTestId: string;
-  onError?: () => void;
-  onLoad?: () => void;
+  pendingContent?: ReactNode;
   signals: ZoomableImageCanvasSignals;
   src: string;
 };
@@ -110,8 +102,6 @@ type ZoomableArtifactImageElementProps = {
   imageRef?: Ref<HTMLImageElement>;
   imageTestId: string;
   imageWidth: string;
-  onError?: () => void;
-  onLoad: (event: SyntheticEvent<HTMLImageElement>) => void;
   src: string;
 };
 
@@ -149,88 +139,12 @@ function controlsFromTransformState({
   };
 }
 
-function cssPixelValue(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function imageCanvasGeometry(
-  fitWidth: number,
-  naturalWidth: number,
-  availableWidth: number,
-): ZoomableImageCanvasGeometry {
-  const maxRenderedWidth = Math.max(
-    fitWidth * IMAGE_LIGHTBOX_MAX_ZOOM,
-    naturalWidth,
-    availableWidth * IMAGE_MAX_WIDTH_VIEWPORT_RATIO,
-  );
-  return {
-    fitWidth,
-    maxZoom: maxRenderedWidth / fitWidth,
-  };
-}
-
-function calculateImageCanvasGeometry(
-  image: HTMLImageElement,
-): ZoomableImageCanvasGeometry | null {
-  const content = image.parentElement;
-  const scrollContainer = image.closest<HTMLElement>(
-    "[data-zoomable-image-canvas='true']",
-  );
-  if (!content || !scrollContainer) {
-    return image.naturalWidth > 0
-      ? imageCanvasGeometry(image.naturalWidth, image.naturalWidth, 0)
-      : null;
-  }
-
-  const contentStyle = getComputedStyle(content);
-  const paddingLeft = cssPixelValue(contentStyle.paddingLeft);
-  const paddingRight = cssPixelValue(contentStyle.paddingRight);
-  const paddingTop = cssPixelValue(contentStyle.paddingTop);
-  const paddingBottom = cssPixelValue(contentStyle.paddingBottom);
-  const horizontalPadding = paddingLeft + paddingRight;
-  const verticalPadding = paddingTop + paddingBottom;
-  const availableWidth = scrollContainer.clientWidth - horizontalPadding;
-  const availableHeight = scrollContainer.clientHeight - verticalPadding;
-  const naturalWidth = image.naturalWidth;
-  const naturalHeight = image.naturalHeight;
-
-  if (naturalWidth > 0 && naturalHeight > 0) {
-    const widthScale = availableWidth > 0 ? availableWidth / naturalWidth : 1;
-    const heightScale =
-      availableHeight > 0 ? availableHeight / naturalHeight : 1;
-    return imageCanvasGeometry(
-      naturalWidth * Math.min(1, widthScale, heightScale),
-      naturalWidth,
-      availableWidth,
-    );
-  }
-
-  if (naturalWidth > 0 && availableWidth > 0) {
-    return imageCanvasGeometry(
-      Math.min(naturalWidth, availableWidth),
-      naturalWidth,
-      availableWidth,
-    );
-  }
-
-  if (availableWidth > 0) {
-    return imageCanvasGeometry(availableWidth, naturalWidth, availableWidth);
-  }
-
-  return naturalWidth > 0
-    ? imageCanvasGeometry(naturalWidth, naturalWidth, 0)
-    : null;
-}
-
 function ZoomableArtifactImageElement({
   alt,
   imageClassName,
   imageRef,
   imageTestId,
   imageWidth,
-  onError,
-  onLoad,
   src,
 }: ZoomableArtifactImageElementProps) {
   return (
@@ -242,8 +156,6 @@ function ZoomableArtifactImageElement({
       loading="eager"
       decoding="async"
       fetchPriority="high"
-      onLoad={onLoad}
-      onError={onError}
       draggable={false}
       style={{
         WebkitTouchCallout: "default",
@@ -262,12 +174,14 @@ function ZoomableArtifactImageElement({
 function ZoomableArtifactImageFrame({
   element,
   overlay,
+  ready,
 }: {
   element: ZoomableArtifactImageElementProps;
   overlay?: ReactNode;
+  ready: boolean;
 }) {
   return (
-    <div className="relative shrink-0">
+    <div className="relative shrink-0" hidden={!ready}>
       <ZoomableArtifactImageElement {...element} />
       {overlay}
     </div>
@@ -280,12 +194,14 @@ function ZoomableArtifactImageViewport({
   element,
   instance,
   overlay,
+  ready,
 }: {
   canvasTestId: string;
   contentClassName?: string;
   element: ZoomableArtifactImageElementProps;
   instance: ReactZoomPanPinchContext;
   overlay?: ReactNode;
+  ready: boolean;
 }) {
   return (
     <div
@@ -312,8 +228,13 @@ function ZoomableArtifactImageViewport({
             contentClassName,
           )}
           data-testid={`${canvasTestId}-content`}
+          data-zoomable-image-content
         >
-          <ZoomableArtifactImageFrame element={element} overlay={overlay} />
+          <ZoomableArtifactImageFrame
+            element={element}
+            overlay={overlay}
+            ready={ready}
+          />
         </div>
       </TransformComponent>
     </div>
@@ -328,26 +249,21 @@ export function ZoomableArtifactImageCanvas({
   className,
   contentClassName,
   imageClassName,
-  imageRef,
   imageTestId,
-  onError,
-  onLoad,
+  pendingContent,
   signals,
   src,
 }: ZoomableArtifactImageCanvasProps) {
+  const { t } = useTranslation();
   const displayZoom = useGet(signals.zoom$);
-  const imageGeometry = useGet(signals.geometry$);
+  const geometryLoadable = useLoadable(signals.geometry$);
+  const imageGeometry =
+    geometryLoadable.state === "hasData" ? geometryLoadable.data : null;
   const setDisplayZoom = useSet(signals.setZoom$);
-  const imageLoaded = useSet(signals.loaded$);
-  const fitWidth = imageGeometry?.fitWidth;
+  const imageRef = useSet(signals.imageRef$);
+  const imageReady = imageGeometry !== null;
   const maxZoom = imageGeometry?.maxZoom ?? IMAGE_LIGHTBOX_MAX_ZOOM;
-  const imageWidth =
-    fitWidth !== undefined ? `${Math.round(fitWidth)}px` : "100%";
-  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
-    const geometry = calculateImageCanvasGeometry(event.currentTarget);
-    imageLoaded(geometry);
-    onLoad?.();
-  };
+  const imageWidth = imageGeometry ? `${imageGeometry.fitWidth}px` : "0px";
 
   return (
     <TransformWrapper
@@ -397,7 +313,20 @@ export function ZoomableArtifactImageCanvas({
               className,
             )}
           >
-            {children?.(controls)}
+            {imageReady ? children?.(controls) : null}
+            {!imageReady ? (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">
+                {geometryLoadable.state === "hasError" ? (
+                  <span role="alert">
+                    {t(($) => {
+                      return $.artifacts.preview.genericUnavailable;
+                    })}
+                  </span>
+                ) : (
+                  pendingContent
+                )}
+              </div>
+            ) : null}
             <ZoomableArtifactImageViewport
               canvasTestId={canvasTestId}
               contentClassName={contentClassName}
@@ -407,12 +336,11 @@ export function ZoomableArtifactImageCanvas({
                 imageRef,
                 imageTestId,
                 imageWidth,
-                onError,
-                onLoad: handleImageLoad,
                 src,
               }}
               instance={instance}
               overlay={overlay}
+              ready={imageReady}
             />
           </div>
         );

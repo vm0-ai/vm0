@@ -677,7 +677,7 @@ async function createMaintenanceSession(args: {
     customTools,
   });
   const resources = created.session.resourceLoader;
-  const expectedSystemPrompt = `${args.prompt}\nCurrent working directory: ${PI_MEMORY_PHASE2_SESSION_CWD}`;
+  const expectedSystemPrompt = `${args.prompt}\nCurrent working directory: ${PI_MEMORY_PHASE2_SESSION_CWD}\n`;
   if (created.session.systemPrompt !== expectedSystemPrompt) {
     created.session.dispose();
     throw new Error("Phase 2 session system prompt mismatch");

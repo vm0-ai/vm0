@@ -801,6 +801,332 @@ pub mod runners {
         }
     }
 
+    /// Private Runner SSH authority DTOs.
+    pub mod ssh {
+        /// Best-effort SSH authority eviction, never an authorization grant.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct InvalidateNotification {
+            /// Affected active Run UUID.
+            pub run_id: String,
+            /// Affected connection UUID, or null for every connection in the Run.
+            pub connection_id: Option<String>,
+        }
+
+        /// Immutable winning official Runner process.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PinRequestRunnerIdentity {
+            /// Runner UUID.
+            pub runner_id: String,
+            /// Winning process generation.
+            pub heartbeat_generation: i64,
+        }
+
+        /// Supported host public-key identities.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PinRequestObservedHostKeyAlgorithm {
+            /// Ed25519.
+            #[serde(rename = "ssh-ed25519")]
+            SshEd25519,
+            /// NIST P256.
+            #[serde(rename = "ecdsa-sha2-nistp256")]
+            EcdsaSha2Nistp256,
+            /// NIST P384.
+            #[serde(rename = "ecdsa-sha2-nistp384")]
+            EcdsaSha2Nistp384,
+            /// NIST P521.
+            #[serde(rename = "ecdsa-sha2-nistp521")]
+            EcdsaSha2Nistp521,
+            /// RSA public-key identity; negotiate RSA-SHA2 separately.
+            #[serde(rename = "ssh-rsa")]
+            SshRsa,
+        }
+
+        /// Learned SSH host identity, distinct from the negotiated signature algorithm.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PinRequestObservedHostKey {
+            /// Public key algorithm.
+            pub algorithm: PinRequestObservedHostKeyAlgorithm,
+            /// Canonical unpadded SHA256 fingerprint.
+            pub fingerprint: String,
+        }
+
+        /// Learn the first key only under current authority and generation.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PinRequest {
+            /// Exact SSH connection UUID.
+            pub connection_id: String,
+            /// Host-owned process identity.
+            pub runner_identity: PinRequestRunnerIdentity,
+            /// Generation delivered by JIT.
+            pub expected_generation: i64,
+            /// Identity after KEX proof verification.
+            pub observed_host_key: PinRequestObservedHostKey,
+        }
+
+        /// Atomic first-use trust outcome.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "outcome", rename_all_fields = "camelCase")]
+        pub enum PinResponse {
+            /// Current authority no longer exists.
+            #[serde(rename = "unavailable")]
+            Unavailable,
+            /// This observation won the pin.
+            #[serde(rename = "pinned")]
+            Pinned {
+                /// Must equal the JIT generation plus one.
+                generation: i64,
+            },
+            /// Same observation won concurrently at exactly generation plus one.
+            #[serde(rename = "matched")]
+            Matched {
+                /// Must equal the JIT generation plus one.
+                generation: i64,
+            },
+            /// Trust differs; never overwrite.
+            #[serde(rename = "host_key_mismatch")]
+            HostKeyMismatch,
+            /// JIT configuration is stale.
+            #[serde(rename = "configuration_changed")]
+            ConfigurationChanged,
+        }
+
+        /// Immutable winning official Runner process.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResolveRequestRunnerIdentity {
+            /// Runner UUID.
+            pub runner_id: String,
+            /// Winning process generation.
+            pub heartbeat_generation: i64,
+        }
+
+        /// Resolve current authority for one Run connection.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ResolveRequest {
+            /// Exact SSH connection UUID.
+            pub connection_id: String,
+            /// Host-owned process identity.
+            pub runner_identity: ResolveRequestRunnerIdentity,
+        }
+
+        /// Supported host public-key identities.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ResolveResponseResolvedLearnedHostKeyAlgorithm {
+            /// Ed25519.
+            #[serde(rename = "ssh-ed25519")]
+            SshEd25519,
+            /// NIST P256.
+            #[serde(rename = "ecdsa-sha2-nistp256")]
+            EcdsaSha2Nistp256,
+            /// NIST P384.
+            #[serde(rename = "ecdsa-sha2-nistp384")]
+            EcdsaSha2Nistp384,
+            /// NIST P521.
+            #[serde(rename = "ecdsa-sha2-nistp521")]
+            EcdsaSha2Nistp521,
+            /// RSA public-key identity; negotiate RSA-SHA2 separately.
+            #[serde(rename = "ssh-rsa")]
+            SshRsa,
+        }
+
+        /// Learned SSH host identity, distinct from the negotiated signature algorithm.
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        pub struct ResolveResponseResolvedLearnedHostKey {
+            /// Public key algorithm.
+            pub algorithm: ResolveResponseResolvedLearnedHostKeyAlgorithm,
+            /// Canonical unpadded SHA256 fingerprint.
+            pub fingerprint: String,
+        }
+
+        /// Private JIT response. Never Debug, clone, serialize, persist or send to guest.
+        pub enum ResolveResponse {
+            /// Current authority not available; no secrets.
+            Unavailable,
+            /// Authorized current credential handoff.
+            Resolved {
+                /// Current destination, private to Runner.
+                host: String,
+                /// Current destination port.
+                port: u64,
+                /// Current login identity.
+                username: String,
+                /// Current configuration generation.
+                generation: i64,
+                /// Existing pin, or first-use trust required.
+                learned_host_key: Option<ResolveResponseResolvedLearnedHostKey>,
+                /// Bounded zeroizing private key text.
+                private_key: crate::SecretText<65536>,
+                /// Bounded zeroizing passphrase, preserving whitespace.
+                passphrase: Option<crate::SecretText<4096>>,
+            },
+        }
+
+        impl<'de> serde::Deserialize<'de> for ResolveResponse {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                // Decode fields directly: serde's internally tagged Content buffer would copy secrets.
+                #[derive(serde::Deserialize)]
+                enum Kind {
+                    #[serde(rename = "unavailable")]
+                    Unavailable,
+                    #[serde(rename = "resolved")]
+                    Resolved,
+                }
+                #[derive(serde::Deserialize)]
+                #[serde(field_identifier)]
+                enum Field {
+                    #[serde(rename = "outcome")]
+                    Outcome,
+                    #[serde(rename = "host")]
+                    Host,
+                    #[serde(rename = "port")]
+                    Port,
+                    #[serde(rename = "username")]
+                    Username,
+                    #[serde(rename = "generation")]
+                    Generation,
+                    #[serde(rename = "learnedHostKey")]
+                    LearnedHostKey,
+                    #[serde(rename = "privateKey")]
+                    PrivateKey,
+                    #[serde(rename = "passphrase")]
+                    Passphrase,
+                }
+                struct Visitor;
+                impl<'de> serde::de::Visitor<'de> for Visitor {
+                    type Value = ResolveResponse;
+                    fn expecting(
+                        &self,
+                        formatter: &mut std::fmt::Formatter<'_>,
+                    ) -> std::fmt::Result {
+                        formatter.write_str("a private authority response object")
+                    }
+                    fn visit_map<M: serde::de::MapAccess<'de>>(
+                        self,
+                        mut map: M,
+                    ) -> Result<Self::Value, M::Error> {
+                        let mut outcome = None::<Kind>;
+                        let mut host = None::<String>;
+                        let mut port = None::<u64>;
+                        let mut username = None::<String>;
+                        let mut generation = None::<i64>;
+                        let mut learned_host_key =
+                            None::<Option<ResolveResponseResolvedLearnedHostKey>>;
+                        let mut private_key = None::<crate::SecretText<65536>>;
+                        let mut passphrase = None::<Option<crate::SecretText<4096>>>;
+                        while let Some(field) = map.next_key::<Field>()? {
+                            match field {
+                                Field::Outcome => {
+                                    if outcome.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    outcome = Some(map.next_value()?);
+                                }
+                                Field::Host => {
+                                    if host.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    host = Some(map.next_value()?);
+                                }
+                                Field::Port => {
+                                    if port.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    port = Some(map.next_value()?);
+                                }
+                                Field::Username => {
+                                    if username.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    username = Some(map.next_value()?);
+                                }
+                                Field::Generation => {
+                                    if generation.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    generation = Some(map.next_value()?);
+                                }
+                                Field::LearnedHostKey => {
+                                    if learned_host_key.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    learned_host_key = Some(map.next_value()?);
+                                }
+                                Field::PrivateKey => {
+                                    if private_key.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    private_key = Some(map.next_value()?);
+                                }
+                                Field::Passphrase => {
+                                    if passphrase.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    passphrase = Some(map.next_value()?);
+                                }
+                            }
+                        }
+                        match (
+                            outcome,
+                            host,
+                            port,
+                            username,
+                            generation,
+                            learned_host_key,
+                            private_key,
+                            passphrase,
+                        ) {
+                            (Some(Kind::Unavailable), None, None, None, None, None, None, None) => {
+                                Ok(ResolveResponse::Unavailable)
+                            }
+                            (
+                                Some(Kind::Resolved),
+                                Some(host),
+                                Some(port),
+                                Some(username),
+                                Some(generation),
+                                Some(learned_host_key),
+                                Some(private_key),
+                                Some(passphrase),
+                            ) => Ok(ResolveResponse::Resolved {
+                                host,
+                                port,
+                                username,
+                                generation,
+                                learned_host_key,
+                                private_key,
+                                passphrase,
+                            }),
+                            _ => Err(serde::de::Error::custom("invalid authority outcome fields")),
+                        }
+                    }
+                }
+                deserializer.deserialize_map(Visitor)
+            }
+        }
+    }
+
     /// Storage manifest DTOs used by runners to mount volumes and artifacts.
     pub mod storage {
         /// Policy used when an artifact mount root is missing from the uploaded manifest.

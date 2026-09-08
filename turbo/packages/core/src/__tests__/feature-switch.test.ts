@@ -36,9 +36,6 @@ describe("FeatureSwitchKey", () => {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
-      true,
-    );
     expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
   });
 
@@ -202,7 +199,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
@@ -230,7 +226,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
@@ -274,7 +269,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
-    expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
+    expect(states[FeatureSwitchKey.TestOauthConnector]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
@@ -362,9 +357,6 @@ describe("getFeatureSwitchMetadata", () => {
   it("should classify non-internal switches by rollout audience", () => {
     const metadata = getFeatureSwitchMetadata();
 
-    expect(metadata[FeatureSwitchKey.PresentationTemplates].rolloutStage).toBe(
-      "released",
-    );
     expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
       "released",
     );
@@ -395,7 +387,7 @@ describe("overrides", () => {
 
   it("should not affect keys without overrides", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.DropboxConnector, {
+      isFeatureEnabled(FeatureSwitchKey.TestOauthConnector, {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
       }),
     ).toBe(false);

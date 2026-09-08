@@ -4,11 +4,7 @@ import * as React from "react";
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
-import {
-  asChildRender,
-  type LegacyAutoFocusHandler,
-  withLegacyAutoFocus,
-} from "../../lib/base-ui-compat";
+import { asChildRender } from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
 
 function Sheet(props: SheetPrimitive.Root.Props) {
@@ -82,25 +78,13 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = "SheetOverlay";
 
 interface SheetContentProps extends SheetPrimitive.Popup.Props {
-  onCloseAutoFocus?: LegacyAutoFocusHandler;
-  onOpenAutoFocus?: LegacyAutoFocusHandler;
   overlayClassName?: string;
   side?: "top" | "bottom" | "left" | "right";
 }
 
 const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
   (
-    {
-      children,
-      className,
-      finalFocus,
-      initialFocus,
-      onCloseAutoFocus,
-      onOpenAutoFocus,
-      overlayClassName,
-      side = "right",
-      ...props
-    },
+    { children, className, overlayClassName, side = "right", ...props },
     ref,
   ) => {
     return (
@@ -119,16 +103,6 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
             side === "top" && "inset-x-0 top-0",
             side === "bottom" && "inset-x-0 bottom-0",
             className,
-          )}
-          finalFocus={withLegacyAutoFocus(
-            finalFocus,
-            onCloseAutoFocus,
-            "closeAutoFocus",
-          )}
-          initialFocus={withLegacyAutoFocus(
-            initialFocus,
-            onOpenAutoFocus,
-            "openAutoFocus",
           )}
           {...props}
         >

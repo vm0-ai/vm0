@@ -1,3 +1,4 @@
+import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
 import { PLAN_UPGRADE_CLI_HINT } from "@okouai/api-contracts/contracts/errors";
 import {
   AGENT_EXECUTION_TIMEOUT_SECONDS,
@@ -24,13 +25,12 @@ import { agentDisplayName } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env } from "../../lib/env";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, notFound, conflict } from "../../lib/error";
 import { now } from "../../lib/time";
 import { testOverride } from "../../lib/singleton";
 import type { AuthContext } from "../../types/auth";
@@ -433,7 +433,6 @@ function buildAgentToolsPrompt(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
   return [
@@ -445,9 +444,7 @@ function buildAgentToolsPrompt(args: {
     "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
-    ...(args.presentationTemplatesEnabled
-      ? [`- ${presentationTemplateSkillInstruction()}`]
-      : []),
+    `- ${presentationTemplateSkillInstruction()}`,
     ...(args.introVideoEnabled
       ? [
           "- Intro-video creation: read and follow the `intro-video` skill for requests from the Create an intro video flow.",
@@ -576,7 +573,6 @@ function buildAppendSystemPrompt(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
@@ -589,7 +585,6 @@ function buildAppendSystemPrompt(args: {
       bankingEnabled: args.bankingEnabled,
       slackReadEnabled: args.slackReadEnabled,
       introVideoEnabled: args.introVideoEnabled,
-      presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildProgressiveArtifactPreviewPrompt({
       triggerSource: args.triggerSource,
@@ -771,7 +766,6 @@ function createRunBody(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
@@ -784,7 +778,6 @@ function createRunBody(args: {
     bankingEnabled: args.bankingEnabled,
     slackReadEnabled: args.slackReadEnabled,
     introVideoEnabled: args.introVideoEnabled,
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     progressiveArtifactPreviewEnabled: args.progressiveArtifactPreviewEnabled,
   });
   return {
@@ -994,10 +987,6 @@ function buildCreateAgentRunArgs(args: {
         args.featureSwitchContext,
       ),
       introVideoEnabled,
-      presentationTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PresentationTemplates,
-        args.featureSwitchContext,
-      ),
       progressiveArtifactPreviewEnabled: isFeatureEnabled(
         FeatureSwitchKey.ProgressiveArtifactPreview,
         args.featureSwitchContext,
@@ -1123,40 +1112,6 @@ async function captureCodexSubscriptionAccount(
   };
 }
 
-async function resolvePausedThreadGoalPrompt(
-  db: Db,
-  args: { readonly orgId: string; readonly threadId: string },
-): Promise<string | undefined> {
-  const [goal] = await db
-    .select({ objectiveBrief: threadGoals.objectiveBrief })
-    .from(threadGoals)
-    .where(
-      and(
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.chatThreadId, args.threadId),
-        eq(threadGoals.status, "paused"),
-      ),
-    )
-    .limit(1);
-
-  if (!goal) {
-    return undefined;
-  }
-
-  return `# Thread Goal
-
-Status: paused
-Objective: ${goal.objectiveBrief}
-
-A paused goal does not continue automatically.
-
-Goal CLI:
-- Check: \`okou goal get\`
-- Resume: \`okou goal resume\`
-- Block: \`okou goal block\`
-- Complete: \`okou goal complete\``;
-}
-
 async function resolveThreadSessionForAgentRun(
   db: Db,
   input: AgentRunAfterPreCreate,
@@ -1183,16 +1138,6 @@ async function resolveThreadSessionForAgentRun(
       });
     },
   );
-  const pausedThreadGoalPrompt = await measureAgentRunPreCreate(
-    input.timing,
-    "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
-    () => {
-      return resolvePausedThreadGoalPrompt(db, {
-        orgId: input.command.auth.orgId,
-        threadId,
-      });
-    },
-  );
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
   const sessionPrompt = webChatSessionPromptContext
     ? await measureAgentRunPreCreate(
@@ -1208,16 +1153,6 @@ async function resolveThreadSessionForAgentRun(
         },
       )
     : input.command.appendSystemPrompt;
-  const appendSystemPromptParts = [
-    pausedThreadGoalPrompt,
-    sessionPrompt,
-  ].filter((part): part is string => {
-    return Boolean(part);
-  });
-  const appendSystemPrompt =
-    appendSystemPromptParts.length > 0
-      ? appendSystemPromptParts.join("\n\n")
-      : undefined;
   const body: AgentRunCreateBody = { ...input.command.body };
   if (resolution.sessionId) {
     body.sessionId = resolution.sessionId;
@@ -1226,7 +1161,7 @@ async function resolveThreadSessionForAgentRun(
   }
   return {
     ...input,
-    command: { ...input.command, body, appendSystemPrompt },
+    command: { ...input.command, body, appendSystemPrompt: sessionPrompt },
     threadSessionResolution: resolution,
     cloudBrowserEnabled: resolution.cloudBrowserEnabled,
   };
@@ -1438,6 +1373,12 @@ export const createQueueFirstAgentRun$ = command(
     args: CreateQueueFirstAgentRunCommandArgs,
     signal: AbortSignal,
   ) => {
+    if (
+      args.triggerSource === "goal" ||
+      args.queueFirstAssociation.kind === "goal_input"
+    ) {
+      return conflict(GOAL_RETIRED_MESSAGE);
+    }
     const result = await set(createAgentRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {
       const lostResult: QueueFirstRunClaimLost = result;

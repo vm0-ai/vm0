@@ -1,8 +1,6 @@
 import { command } from "ccstate";
-import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -27,7 +25,7 @@ import {
   abortPiApiFirstTurnAfterCanonicalCancellation,
   lockPiApiFirstTurnLifecycle,
 } from "./pi-api-first-turn-lifecycle.service";
-import { transitionAgentRunsToTerminal } from "./agent-run-terminal-transition.service";
+import { cancelLockedRun } from "./agent-run-cancellation-transition.service";
 import { lockPiMemoryPhase2MaintenanceCleanupProtection } from "./pi-memory-phase2-maintenance.service";
 
 const L = logger("RunCancel");
@@ -166,24 +164,11 @@ export const cancelRun$ = command(
         }
       }
 
-      const [updated] = await transitionAgentRunsToTerminal(tx, {
-        values: {
-          status: "cancelled",
-          completedAt: new Date(apiStartTime),
-        },
-        conditions: [
-          eq(agentRuns.id, args.runId),
-          eq(agentRuns.status, run.status),
-        ],
+      await cancelLockedRun(tx, {
+        runId: args.runId,
+        status: run.status,
+        completedAt: new Date(apiStartTime),
       });
-      if (!updated) {
-        throw new Error("Locked cancellable run was not updated");
-      }
-
-      await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.runId));
-      await tx
-        .delete(runnerJobQueue)
-        .where(eq(runnerJobQueue.runId, args.runId));
 
       return {
         apiStartTime,

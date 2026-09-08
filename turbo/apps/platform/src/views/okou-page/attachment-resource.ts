@@ -1,4 +1,4 @@
-import { useGet, useLastResolved } from "ccstate-react";
+import { useGet, useResolved } from "ccstate-react";
 import {
   pageAttachmentResourceUrlResolver$,
   type AttachmentUrls,
@@ -7,7 +7,7 @@ import { publicAttachmentUrl } from "./attachment-url";
 
 export function useAttachmentUrls(url: string): AttachmentUrls | undefined {
   const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
-  return useLastResolved(resolveResourceUrl(publicAttachmentUrl(url)));
+  return useResolved(resolveResourceUrl(publicAttachmentUrl(url)));
 }
 
 /**
@@ -25,8 +25,7 @@ export function useResolvedAttachmentUrl(url: string): string | null {
 /**
  * Resolves the URL that keeps working for whoever receives it, or null when
  * there is none to offer yet. A public CDN URL resolves to itself; a private
- * attachment has to ask the API, which only then reveals the public address of
- * the object it just authorized.
+ * artifact has no share URL until it has been explicitly published.
  */
 export function useAttachmentShareUrl(url: string): string | null {
   return useAttachmentUrls(url)?.shareUrl ?? null;

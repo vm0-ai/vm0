@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import {
+  click,
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
@@ -187,13 +188,13 @@ test("Project all workflow run outputs through one run-group history", async () 
   });
 
   await readyChat();
-  expect(screen.getByText("Earlier workflow evidence 1")).toBeVisible();
-  expect(screen.getByText("Earlier workflow result 1")).toBeVisible();
-  expect(screen.getByText("Earlier workflow evidence 2")).toBeVisible();
+  expect(screen.queryByText("Earlier workflow evidence 1")).toBeNull();
+  expect(screen.queryByText("Earlier workflow result 1")).toBeNull();
+  expect(screen.queryByText("Earlier workflow evidence 2")).toBeNull();
   const main = screen.getByText("Earlier workflow result 2");
   expect(main).toBeVisible();
   expect(queryButton("Expand grouped run history")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
   const currentProgress = await screen.findByLabelText(
     "Checking the latest workflow run",
   );
@@ -211,6 +212,7 @@ test("Project all workflow run outputs through one run-group history", async () 
     }),
   ).toHaveLength(1);
 
+  click(await findWorkHistoryToggle("collapsed"));
   const firstEarlierEvidence = await screen.findByText(
     "Earlier workflow evidence 1",
   );
@@ -222,6 +224,9 @@ test("Project all workflow run outputs through one run-group history", async () 
     assistantGroup,
   );
   expect(screen.queryByText("Nightly launch review")).toBeNull();
+
+  click(await findWorkHistoryToggle("expanded"));
+  await expect(findWorkHistoryToggle("collapsed")).resolves.toBeVisible();
 
   events.push(
     assistantOutput({
@@ -431,21 +436,22 @@ test("Keep the prior goal result as main while the next run has no output", asyn
   const answer = await screen.findByText(
     "The current launch evidence is ready.",
   );
-  const historyMessage = screen.getByText(
-    "The earlier launch evidence is complete.",
-  );
-  expect(historyMessage).toBeVisible();
   expect(
-    historyMessage.closest("[data-chat-run-work-history-list]"),
-  ).toBeVisible();
+    screen.queryByText("The earlier launch evidence is complete."),
+  ).toBeNull();
   expect(queryButton("The earlier launch evidence is complete.")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
   const answeringAssistant = answer.closest<HTMLElement>(
     '[data-role="assistant"]',
   );
   if (!answeringAssistant) {
     throw new Error("Expected the answer in an assistant response");
   }
+  click(await findWorkHistoryToggle("collapsed"));
+  const historyMessage = await screen.findByText(
+    "The earlier launch evidence is complete.",
+  );
+  expect(historyMessage).toBeVisible();
   expect(historyMessage.closest('[data-role="assistant"]')).toBe(
     answeringAssistant,
   );

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.21...ably-subscriber-v1.1.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [1.0.21](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.20...ably-subscriber-v1.0.21) (2026-09-08)
 
 

@@ -26,11 +26,7 @@ export const ONBOARDING_TEXTAREA_CLASS =
 function OnboardingAccount({ collapsed }: { readonly collapsed: boolean }) {
   const onAccountAction = useSet(handleAccountAction$);
   return (
-    <AccountDropdown
-      onAccountAction={onAccountAction}
-      settingsOwnerId={collapsed ? "onboarding-mobile" : "onboarding-desktop"}
-      collapsed={collapsed}
-    />
+    <AccountDropdown onAccountAction={onAccountAction} collapsed={collapsed} />
   );
 }
 

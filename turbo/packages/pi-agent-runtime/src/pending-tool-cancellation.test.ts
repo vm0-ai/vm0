@@ -9,6 +9,8 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
+  DefaultResourceLoader,
+  type InlineExtension,
   ModelRuntime,
   SessionManager,
   SettingsManager,
@@ -25,6 +27,7 @@ import {
   expect,
   it,
   onTestFinished,
+  vi,
 } from "vitest";
 
 import { runInIsolatedProcess } from "../../../scripts/run-isolated-test.mjs";
@@ -89,6 +92,8 @@ async function fixture(args: {
   length?: boolean;
   resolved?: boolean;
   compactable?: boolean;
+  preResponseCompaction?: boolean;
+  extensionFactories?: InlineExtension[];
 }) {
   const root = await mkdtemp(join(tmpdir(), "pi-pending-cancel-"));
   onTestFinished(async () => {
@@ -97,6 +102,20 @@ async function fixture(args: {
   const file = join(root, "session.jsonl");
   const effect = join(root, "effect.txt");
   const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+  if (args.preResponseCompaction) {
+    for (let index = 0; index < 3; index += 1) {
+      memory.appendMessage({
+        role: "user",
+        content: `historical question ${index}`,
+        timestamp: 0,
+      });
+      memory.appendMessage(
+        fauxAssistantMessage("historical answer ".repeat(500), {
+          timestamp: 0,
+        }),
+      );
+    }
+  }
   if (args.compactable) {
     memory.appendMessage({
       role: "user",
@@ -123,7 +142,28 @@ async function fixture(args: {
           { id: `call-${index}` },
         );
       }),
-      { stopReason: args.length ? "length" : "toolUse", timestamp: 2 },
+      {
+        stopReason: args.length ? "length" : "toolUse",
+        timestamp: 2,
+        ...(args.preResponseCompaction
+          ? {
+              usage: {
+                input: 7000,
+                output: 1,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 7001,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
+              },
+            }
+          : {}),
+      },
     ),
   );
   if (args.resolved)
@@ -139,6 +179,7 @@ async function fixture(args: {
   const model = {
     ...getBuiltinModel("openai", "gpt-5.6-terra"),
     baseUrl: "https://pending-tools.example/v1",
+    ...(args.preResponseCompaction ? { contextWindow: 10000 } : {}),
   };
   const modelRuntime = await ModelRuntime.create({
     allowModelNetwork: false,
@@ -153,13 +194,33 @@ async function fixture(args: {
     models: [model],
   });
   const reopen = async () => {
+    const settingsManager = SettingsManager.inMemory(
+      args.preResponseCompaction
+        ? {
+            compaction: {
+              enabled: true,
+              reserveTokens: 2000,
+              keepRecentTokens: 3000,
+            },
+          }
+        : {},
+      { projectTrusted: true },
+    );
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: root,
+      agentDir: join(root, "agent"),
+      settingsManager,
+      extensionFactories: args.extensionFactories,
+    });
+    await resourceLoader.reload();
     const { session } = await createAgentSession({
       cwd: root,
       agentDir: join(root, "agent"),
       sessionManager: SessionManager.open(file),
       model,
       modelRuntime,
-      settingsManager: SettingsManager.inMemory({}, { projectTrusted: true }),
+      settingsManager,
+      resourceLoader,
       tools: ["controlled"],
       customTools: [args.tool],
     });
@@ -173,7 +234,7 @@ async function fixture(args: {
   session.subscribe((event) => {
     events.push(event.type);
   });
-  return { session, file, effect, events, reopen };
+  return { session, file, effect, events, reopen, modelRuntime };
 }
 
 function tool(
@@ -923,4 +984,399 @@ describe("native pending-tool cancellation", () => {
         }),
     ).toHaveLength(1);
   }, 150_000);
+  it.each([false, true])(
+    "persists context-only custom messages across tool and settlement boundaries (cancel=%s)",
+    async (cancel) => {
+      if (await runInIsolatedProcess(import.meta.url)) return;
+      const toolStarted = barrier();
+      const finishTool = barrier();
+      const settling = barrier();
+      const finishSettlement = barrier();
+      const requests = observeRequests();
+      const executions: string[] = [];
+      const { session, file, events } = await fixture({
+        count: 2,
+        resolved: true,
+        extensionFactories: [
+          (pi) => {
+            pi.on("agent_settled", async () => {
+              settling.release();
+              await finishSettlement.promise;
+              pi.sendMessage(
+                {
+                  customType: "settlement-note",
+                  content: "accepted by the terminal extension",
+                  display: false,
+                },
+                { triggerTurn: false },
+              );
+            });
+          },
+        ],
+        tool: tool(async (id) => {
+          executions.push(id);
+          toolStarted.release();
+          await finishTool.promise;
+          return {
+            content: [{ type: "text", text: "tool done" }],
+            details: {},
+          };
+        }),
+      });
+      const customEvents: string[] = [];
+      const customEntries = () => {
+        return SessionManager.open(file)
+          .getEntries()
+          .filter((entry) => {
+            return entry.type === "custom_message";
+          })
+          .map((entry) => {
+            return entry.customType;
+          });
+      };
+      const persistedAtSettlement: string[][] = [];
+      session.subscribe((event) => {
+        if (event.type === "message_end" && event.message.role === "custom")
+          customEvents.push(event.message.customType);
+        if (event.type === "agent_settled")
+          persistedAtSettlement.push(customEntries());
+      });
+      const run = resumePiApiFirstTurn(session);
+      await toolStarted.promise;
+      await session.sendCustomMessage(
+        {
+          customType: "tool-note",
+          content: "accepted while the tool is running",
+          display: false,
+        },
+        { triggerTurn: false },
+      );
+      expect(customEntries()).toEqual([]);
+      expect(customEvents).toEqual([]);
+      finishTool.release();
+      await settling.promise;
+      expect(customEntries()).toEqual(["tool-note"]);
+      const abort = cancel ? session.abort() : undefined;
+      finishSettlement.release();
+      await Promise.all([run, abort]);
+      expect(executions).toEqual(["call-1"]);
+      expect(requests).toHaveLength(1);
+      expect(customEntries()).toEqual(["tool-note", "settlement-note"]);
+      expect(customEvents).toEqual(["tool-note", "settlement-note"]);
+      expect(persistedAtSettlement).toEqual([["tool-note", "settlement-note"]]);
+      expect(
+        session.messages
+          .filter((message) => {
+            return message.role === "custom";
+          })
+          .map((message) => {
+            return message.customType;
+          }),
+      ).toEqual(["tool-note", "settlement-note"]);
+      const entries = SessionManager.open(file).getEntries();
+      const toolResult = entries.findIndex((entry) => {
+        return (
+          entry.type === "message" &&
+          entry.message.role === "toolResult" &&
+          entry.message.toolCallId === "call-1"
+        );
+      });
+      expect(toolResult).toBeGreaterThan(-1);
+      expect(
+        entries.findIndex((entry) => {
+          return entry.type === "custom_message";
+        }),
+      ).toBeGreaterThan(toolResult);
+      expect(
+        session.messages
+          .filter((message) => {
+            return message.role === "assistant";
+          })
+          .at(-1),
+      ).toMatchObject({ stopReason: cancel ? "aborted" : "stop" });
+      expect(
+        events.filter((event) => {
+          return event === "agent_settled";
+        }),
+      ).toHaveLength(1);
+    },
+    150_000,
+  );
+
+  it.each([false, true])(
+    "compacts a large handoff tool result before responding and admits preparation steering once (already queued=%s)",
+    async (alreadyQueued) => {
+      if (await runInIsolatedProcess(import.meta.url)) return;
+      const preparing = barrier();
+      const release = barrier();
+      const requests: string[] = [];
+      const executions: string[] = [];
+      const { session, file, events } = await fixture({
+        preResponseCompaction: true,
+        count: 2,
+        resolved: true,
+        extensionFactories: [
+          (pi) => {
+            pi.on("session_before_compact", async () => {
+              preparing.release();
+              await release.promise;
+            });
+          },
+        ],
+        tool: tool(async (id) => {
+          executions.push(id);
+          return {
+            content: [{ type: "text", text: "large tool result ".repeat(500) }],
+            details: { retained: true },
+          };
+        }),
+      });
+      let compacted = false;
+      let summaryRequests = 0;
+      server.use(
+        http.post(ENDPOINT, async ({ request }) => {
+          const body = await request.text();
+          if (!compacted) {
+            summaryRequests += 1;
+          } else {
+            requests.push(body);
+          }
+          return completedResponse();
+        }),
+      );
+      session.subscribe((event) => {
+        if (event.type === "compaction_end" && event.result) compacted = true;
+      });
+      const replay: string[] = [];
+      session.agent.subscribe(async (event) => {
+        if (
+          event.type === "message_start" &&
+          event.message.role === "user" &&
+          event.message.content === "original handoff"
+        )
+          replay.push("user");
+        if (
+          event.type === "message_start" &&
+          event.message.role === "assistant" &&
+          event.message.timestamp === 2
+        )
+          replay.push("assistant");
+        if (
+          alreadyQueued &&
+          event.type === "turn_end" &&
+          event.message.timestamp === 2
+        )
+          await session.steer("steering before preparation");
+      });
+      const run = resumePiApiFirstTurn(session);
+      await preparing.promise;
+      expect(requests).toEqual([]);
+      expect(summaryRequests).toBe(0);
+      await session.steer("steering during preparation");
+      release.release();
+      await run;
+      expect(compacted).toBe(true);
+      expect(summaryRequests).toBeGreaterThan(0);
+      expect(requests).toHaveLength(alreadyQueued ? 2 : 1);
+      expect(requests[0]).toContain(
+        alreadyQueued
+          ? "steering before preparation"
+          : "steering during preparation",
+      );
+      if (alreadyQueued) {
+        expect(requests[0]).not.toContain("steering during preparation");
+        expect(requests[1]).toContain("steering during preparation");
+      }
+      expect(executions).toEqual(["call-1"]);
+      expect(replay).toEqual([]);
+      expect(
+        events.filter((event) => {
+          return event === "agent_settled";
+        }),
+      ).toHaveLength(1);
+      const reopened = SessionManager.open(file);
+      const entries = reopened.getEntries();
+      expect(
+        entries.filter((entry) => {
+          return entry.type === "compaction";
+        }),
+      ).toHaveLength(1);
+      for (const text of [
+        "original handoff",
+        "steering during preparation",
+        ...(alreadyQueued ? ["steering before preparation"] : []),
+      ]) {
+        expect(
+          entries.filter((entry) => {
+            return (
+              entry.type === "message" &&
+              entry.message.role === "user" &&
+              JSON.stringify(entry.message.content).includes(text)
+            );
+          }),
+        ).toHaveLength(1);
+      }
+      expect(
+        entries
+          .filter((entry) => {
+            return (
+              entry.type === "message" && entry.message.role === "toolResult"
+            );
+          })
+          .map((entry) => {
+            return entry.type === "message" &&
+              entry.message.role === "toolResult"
+              ? entry.message.toolCallId
+              : null;
+          }),
+      ).toEqual(["call-0", "call-1"]);
+      expect(reopened.buildSessionContext().messages.at(-1)).toMatchObject({
+        role: "assistant",
+        stopReason: "stop",
+      });
+    },
+    150_000,
+  );
+
+  it.each(["auth", "extension", "http", "retry"] as const)(
+    "cancels pre-response compaction at %s without losing polled or newly accepted input",
+    async (boundary) => {
+      if (await runInIsolatedProcess(import.meta.url)) return;
+      const entered = barrier();
+      const release = barrier();
+      const requests: string[] = [];
+      const failures: boolean[] = [];
+      let executions = 0;
+      const { session, file, events, modelRuntime } = await fixture({
+        preResponseCompaction: true,
+        extensionFactories: [
+          (pi) => {
+            pi.on("session_before_compact", async (event) => {
+              if (boundary === "extension") {
+                entered.release();
+                await release.promise;
+                expect(event.signal.aborted).toBe(true);
+              }
+            });
+            pi.on("session_compact_failed", (event) => {
+              failures.push(event.aborted);
+            });
+          },
+        ],
+        tool: tool(async () => {
+          executions += 1;
+          return {
+            content: [{ type: "text", text: "large tool result ".repeat(500) }],
+            details: {},
+          };
+        }),
+      });
+      if (boundary === "auth") {
+        const getAuth = modelRuntime.getAuth.bind(modelRuntime);
+        const spy = vi
+          .spyOn(modelRuntime, "getAuth")
+          .mockImplementation(async (model, overrides) => {
+            const result =
+              typeof model === "string"
+                ? await getAuth(model, overrides)
+                : await getAuth(model, overrides);
+            entered.release();
+            await release.promise;
+            return result;
+          });
+        onTestFinished(() => {
+          spy.mockRestore();
+        });
+      }
+      server.use(
+        http.post(ENDPOINT, async ({ request }) => {
+          requests.push(await request.text());
+          if (boundary === "http") {
+            const aborted = barrier();
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                aborted.release();
+              },
+              { once: true },
+            );
+            entered.release();
+            await aborted.promise;
+          }
+          return HttpResponse.json(
+            { error: { message: "synthetic summary overload" } },
+            { status: 503 },
+          );
+        }),
+      );
+      let abort: Promise<void> | undefined;
+      session.subscribe((event) => {
+        if (
+          boundary === "retry" &&
+          event.type === "summarization_retry_scheduled"
+        ) {
+          abort = session.abort();
+          entered.release();
+        }
+      });
+      session.agent.subscribe(async (event) => {
+        if (event.type === "turn_end" && event.message.timestamp === 2) {
+          await session.steer("accepted before preparation");
+        }
+      });
+      const run = resumePiApiFirstTurn(session);
+      await entered.promise;
+      await session.steer("accepted during preparation");
+      await session.followUp("accepted follow-up during preparation");
+      abort ??= session.abort();
+      const duplicateAbort = session.abort();
+      release.release();
+      await Promise.all([run, abort, duplicateAbort]);
+      expect(requests).toHaveLength(
+        boundary === "http" || boundary === "retry" ? 1 : 0,
+      );
+      expect(executions).toBe(1);
+      expect(
+        events.filter((event) => {
+          return event === "agent_settled";
+        }),
+      ).toHaveLength(1);
+      expect(events).not.toContain("auto_retry_start");
+      expect(session.pendingMessageCount).toBe(0);
+      expect(session.agent.signal).toBeUndefined();
+      const reopened = SessionManager.open(file);
+      const entries = reopened.getEntries();
+      expect(
+        entries.filter((entry) => {
+          return entry.type === "compaction";
+        }),
+      ).toEqual([]);
+      for (const text of [
+        "accepted before preparation",
+        "accepted during preparation",
+        "accepted follow-up during preparation",
+      ]) {
+        expect(
+          entries.filter((entry) => {
+            return (
+              entry.type === "message" &&
+              entry.message.role === "user" &&
+              JSON.stringify(entry.message.content).includes(text)
+            );
+          }),
+        ).toHaveLength(1);
+      }
+      expect(
+        entries.filter((entry) => {
+          return (
+            entry.type === "message" &&
+            entry.message.role === "assistant" &&
+            entry.message.stopReason === "aborted"
+          );
+        }),
+      ).toHaveLength(1);
+      if (boundary !== "auth") expect(failures).toEqual([true]);
+    },
+    150_000,
+  );
 });

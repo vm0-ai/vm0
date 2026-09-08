@@ -52,6 +52,8 @@ import {
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
   lightboxDialogMountRef$,
+  completeLightboxDialogExit$,
+  lightboxDialogElement$,
   navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
@@ -626,6 +628,7 @@ function ArtifactDialogImageStage({
   preview: Extract<AttachmentLightboxState, { kind: "image" }>;
   resourceUrl: string | null;
 }) {
+  const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
   // Marks live on the draft rather than in the file, so the viewer has to draw
   // them too — otherwise reopening an annotated image shows a clean picture.
@@ -636,12 +639,18 @@ function ArtifactDialogImageStage({
       <ArtifactDialogCard fillHeight>
         <div className="relative h-full min-h-0">
           {resourceUrl === null ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              <Loader2 className="animate-spin" />
+            <div
+              role="status"
+              aria-label={t(($) => {
+                return $.artifacts.catalog.loading;
+              })}
+              className="flex h-full items-center justify-center text-muted-foreground"
+            >
+              <Loader2 className="animate-spin" aria-hidden />
             </div>
           ) : (
             <ZoomableArtifactImageCanvas
-              key={`${fullscreen ? "fullscreen" : "windowed"}:${preview.url}`}
+              key={`${fullscreen ? "fullscreen" : "windowed"}:${resourceUrl}`}
               src={resourceUrl}
               alt={filename}
               signals={attachmentLightboxImageCanvasSignals}
@@ -649,6 +658,16 @@ function ArtifactDialogImageStage({
               contentClassName="p-6"
               imageClassName="rounded-lg shadow-sm"
               canvasTestId="artifact-dialog-image-stage"
+              pendingContent={
+                <div
+                  role="status"
+                  aria-label={t(($) => {
+                    return $.artifacts.catalog.loading;
+                  })}
+                >
+                  <Loader2 className="animate-spin" aria-hidden />
+                </div>
+              }
               overlay={
                 annotation ? (
                   <AnnotationMarkLayer annotation={annotation} />
@@ -1208,13 +1227,13 @@ function ArtifactPreviewDialogActions({
         />
       )}
       <ArtifactDownloadMenu
+        key={`${preview.url}:${artifact?.filename ?? artifactDialogFilename(preview)}`}
         ariaLabel={t(($) => {
           return $.artifacts.actions.downloadOptions;
         })}
         artifactKind={artifact?.artifactKind}
         filename={artifact?.filename ?? artifactDialogFilename(preview)}
         iconSize={18}
-        menuInstanceKey="artifact-dialog"
         syncTarget={artifactDialogSyncTarget(artifact)}
         url={preview.url}
       />
@@ -1254,6 +1273,8 @@ function ArtifactPreviewDialogContent({
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
   const dialogMountRef = useSet(lightboxDialogMountRef$);
+  const dialogElement = useSet(lightboxDialogElement$);
+  const completeDialogExit = useSet(completeLightboxDialogExit$);
   const closeArtifactCatalogPreview = useSet(closeArtifactCatalogPreview$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
@@ -1267,6 +1288,7 @@ function ArtifactPreviewDialogContent({
   return (
     <Dialog
       open={visible}
+      onOpenChangeComplete={completeDialogExit}
       onOpenChange={(nextOpen) => {
         if (!nextOpen && visible) {
           closeWithAnimation();
@@ -1275,6 +1297,7 @@ function ArtifactPreviewDialogContent({
     >
       <DialogContent
         ref={dialogMountRef}
+        initialFocus={dialogElement}
         showCloseButton={false}
         overlayClassName="okou-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
         className={cn(
@@ -1313,7 +1336,7 @@ function ArtifactPreviewDialogContent({
             "relative flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
             fullscreen
               ? "okou-fixed-viewport-shell w-dvw rounded-none"
-              : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-xl",
+              : "h-[min(1000px,calc(100dvh-3rem))] w-[min(1440px,calc(100vw-3rem))] rounded-xl",
           )}
           data-testid="attachment-lightbox-panel"
         >

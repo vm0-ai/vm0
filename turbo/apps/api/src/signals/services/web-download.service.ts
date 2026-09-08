@@ -1,13 +1,13 @@
 import { computed, type Computed } from "ccstate";
 
-import { env } from "../../lib/env";
 import { downloadS3Buffer } from "../external/s3";
-import { resolvedArtifactObject } from "./artifact-storage.service";
+import { uploadedArtifactObject } from "./uploaded-artifact.service";
 
 interface DownloadFileResult {
   readonly buffer: Buffer;
   readonly contentType: string;
   readonly filename: string;
+  readonly isPrivate: boolean;
 }
 
 /**
@@ -17,23 +17,23 @@ interface DownloadFileResult {
 export function webDownloadFile(
   fileId: string,
   userId: string,
+  orgId?: string,
 ): Computed<Promise<DownloadFileResult | null>> {
   return computed(async (get): Promise<DownloadFileResult | null> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    if (!bucket) {
-      return null;
-    }
-    const object = await get(resolvedArtifactObject(userId, fileId));
+    const object = await get(
+      uploadedArtifactObject({ userId, orgId, id: fileId }),
+    );
     if (!object) {
       return null;
     }
 
-    const buffer = await get(downloadS3Buffer(bucket, object.key));
+    const buffer = await get(downloadS3Buffer(object.bucket, object.key));
 
     return {
       buffer,
       contentType: object.contentType,
       filename: object.filename,
+      isPrivate: object.isPrivate,
     };
   });
 }

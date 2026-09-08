@@ -1,3 +1,4 @@
+import { createChatComposerLayoutOnRef } from "./chat-layout.ts";
 import {
   command,
   computed,
@@ -4370,6 +4371,10 @@ function createChatPanelSignalsWithDraft(
     ...threadTitle,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    composerLayoutOnRef$: createChatComposerLayoutOnRef(
+      composer.editor.editor,
+      messages.scroll.restoreScrollPosition$,
+    ),
     scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
     scrollContainer$: messages.scroll.scrollContainer$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
@@ -4378,6 +4383,7 @@ function createChatPanelSignalsWithDraft(
     scrollTo$: messages.scroll.scrollTo$,
     scrollToTop$: messages.scroll.scrollToTop$,
     scrollToBottom$: messages.scroll.scrollToBottom$,
+    restoreScrollPosition$: messages.scroll.restoreScrollPosition$,
     ...container,
     composer,
     feedback,

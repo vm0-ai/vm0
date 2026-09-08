@@ -5,12 +5,14 @@ import {
   workflowsCollectionContract,
   workflowsDetailContract,
   workflowVisibilityContract,
+  type WorkflowCreateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { agents } from "@okouai/db/schema/agent";
+import { storages } from "@okouai/db/schema/storage";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,
@@ -30,8 +32,8 @@ import {
 } from "../services/api-dispatch-timing.service";
 import { autonomyBudgetExhausted, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
+import { logger } from "../../lib/log";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
-import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import {
   deleteOrphanedWorkflowVolume$,
   deleteWorkflow$,
@@ -59,7 +61,7 @@ import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
-import { bestEffort, onRejection } from "../utils";
+import { awaitWithSignal, bestEffort, onRejection } from "../utils";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
 import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
 import { lockConnectorAccountTarget } from "../services/auth-state-lock.service";
@@ -96,6 +98,8 @@ import {
   commitPreparedVolumeServerSide,
   ensureVolumeStorage$,
   prepareVolumeServerSideWithDb$,
+  prepareVolumeServerSide$,
+  type PreparedServerSideVolume,
 } from "../services/storage-volume-publication.service";
 
 const workflowReadAuth = {
@@ -141,9 +145,10 @@ async function loadAgentForConfiguration(
   args: {
     readonly orgId: string;
     readonly agentId: string;
+    readonly lock?: boolean;
   },
 ): Promise<ConfigurableAgent | null> {
-  const [agent] = await db
+  const query = db
     .select({
       id: agents.id,
       owner: agents.owner,
@@ -154,6 +159,7 @@ async function loadAgentForConfiguration(
     .from(agents)
     .where(and(eq(agents.orgId, args.orgId), eq(agents.id, args.agentId)))
     .limit(1);
+  const [agent] = await (args.lock ? query.for("update") : query);
 
   return agent ?? null;
 }
@@ -209,6 +215,14 @@ async function publicWorkflowSlugExists(
   return existing !== undefined;
 }
 
+function workflowSlugConflict(visibility: "public" | "private", name: string) {
+  return conflict(
+    visibility === "public"
+      ? `A public workflow named "/${name}" already exists on this agent. Rename this workflow or keep it private.`
+      : `You already have a private workflow named "/${name}" on this agent. Rename the existing workflow or choose a different name.`,
+  );
+}
+
 async function requirePublicWorkflowSlugAvailable(
   db: Db,
   args: {
@@ -219,11 +233,7 @@ async function requirePublicWorkflowSlugAvailable(
   },
 ) {
   const exists = await publicWorkflowSlugExists(db, args);
-  return exists
-    ? conflict(
-        `A public workflow named "/${args.name}" already exists on this agent. Rename this workflow or keep it private.`,
-      )
-    : null;
+  return exists ? workflowSlugConflict("public", args.name) : null;
 }
 
 async function privateWorkflowSlugExists(
@@ -267,11 +277,7 @@ async function requirePrivateWorkflowSlugAvailable(
   },
 ) {
   const exists = await privateWorkflowSlugExists(db, args);
-  return exists
-    ? conflict(
-        `You already have a private workflow named "/${args.name}" on this agent. Rename the existing workflow or choose a different name.`,
-      )
-    : null;
+  return exists ? workflowSlugConflict("private", args.name) : null;
 }
 
 async function requireWorkflowSlugAvailableForVisibility(
@@ -344,6 +350,201 @@ const listWorkflowsInner$ = computed(async (get) => {
   return { status: 200 as const, body: [...workflows] };
 });
 
+interface WorkflowCreationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly body: WorkflowCreateRequest;
+  readonly visibility: "public" | "private";
+}
+
+async function validateWorkflowCreation(
+  db: Db,
+  args: WorkflowCreationInput,
+  lockAgent: boolean,
+  signal: AbortSignal,
+) {
+  const agent = await loadAgentForConfiguration(db, {
+    orgId: args.orgId,
+    agentId: args.body.agentId,
+    lock: lockAgent,
+  });
+  signal.throwIfAborted();
+  if (!agent) {
+    return notFound(`Agent not found: ${args.body.agentId}`);
+  }
+  const permissionError =
+    args.visibility === "public"
+      ? requireAgentWritePermission(
+          agent,
+          args.member,
+          "create workflows on this agent",
+        )
+      : requireVisibleAgentForPrivateWorkflowCreate(agent, args.member);
+  if (permissionError) {
+    return permissionError;
+  }
+  const slugError = await requireWorkflowSlugAvailableForVisibility(db, {
+    orgId: args.orgId,
+    agentId: agent.id,
+    ownerUserId: args.member.userId,
+    name: args.body.name,
+    visibility: args.visibility,
+  });
+  signal.throwIfAborted();
+  return slugError;
+}
+
+async function createPreparedWorkflow(
+  db: Db,
+  args: WorkflowCreationInput & {
+    readonly workflowId: string;
+    readonly volume: PreparedServerSideVolume;
+  },
+  signal: AbortSignal,
+) {
+  return await db.transaction(async (tx) => {
+    const error = await validateWorkflowCreation(tx, args, true, signal);
+    if (error) {
+      return { kind: "error" as const, response: error };
+    }
+
+    // Cleanup takes this same lock before checking Workflow absence, so even
+    // an uncertain COMMIT cannot let cleanup race a late publication.
+    const [storage] = await tx
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.id, args.volume.version.storageId))
+      .for("update");
+    signal.throwIfAborted();
+    if (!storage) {
+      throw new Error(
+        `Prepared workflow storage not found: ${args.workflowId}`,
+      );
+    }
+
+    const { body, member, visibility } = args;
+    const currentTime = nowDate();
+    const [workflow] = await tx
+      .insert(workflows)
+      .values({
+        id: args.workflowId,
+        orgId: args.orgId,
+        agentId: body.agentId,
+        name: body.name,
+        visibility,
+        instruction: body.instruction ?? null,
+        ownerUserId: member.userId,
+        displayName: body.displayName ?? null,
+        description: body.description ?? null,
+        createdBy: member.userId,
+        updatedBy: member.userId,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      })
+      .onConflictDoNothing()
+      .returning({ id: workflows.id });
+    signal.throwIfAborted();
+    if (!workflow) {
+      return {
+        kind: "error" as const,
+        response: workflowSlugConflict(visibility, body.name),
+      };
+    }
+
+    const chatThreadId = body.chatThreadId
+      ? await loadMatchingWorkflowCreationThreadId(tx, {
+          userId: member.userId,
+          agentId: body.agentId,
+          chatThreadId: body.chatThreadId,
+        })
+      : null;
+    signal.throwIfAborted();
+    if (chatThreadId) {
+      await tx.insert(workflowUserAutomationThreads).values({
+        orgId: args.orgId,
+        userId: member.userId,
+        workflowId: workflow.id,
+        chatThreadId,
+        createdAt: currentTime,
+        updatedAt: currentTime,
+      });
+      signal.throwIfAborted();
+    }
+    await commitPreparedVolumeServerSide(
+      { db: tx, volume: args.volume },
+      signal,
+    );
+    return { kind: "created" as const, workflow, chatThreadId };
+  });
+}
+
+const cleanupUnpublishedWorkflow$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string; readonly workflowId: string },
+  ): Promise<void> => {
+    // Cleanup gets its own bounded lifetime, including when create was aborted.
+    // Its failure (including timeout) must never replace the creation error.
+    const signal = AbortSignal.timeout(5000);
+    const [result] = await Promise.allSettled([
+      awaitWithSignal(set(deleteOrphanedWorkflowVolume$, args, signal), signal),
+    ]);
+    if (result.status === "rejected") {
+      logger("WorkflowCreate").warn(
+        "Failed to clean up unpublished workflow volume",
+        {
+          ...args,
+          error: result.reason,
+        },
+      );
+    }
+  },
+);
+
+const prepareAndCreateWorkflow$ = command(
+  async ({ set }, args: WorkflowCreationInput, signal: AbortSignal) => {
+    const workflowId = randomUUID();
+    const cleanup = { orgId: args.orgId, workflowId };
+    const result = await onRejection(
+      (async () => {
+        const volume = await set(
+          prepareVolumeServerSide$,
+          {
+            orgId: args.orgId,
+            storageName: getCustomSkillStorageName(workflowId),
+            files: [
+              {
+                path: "SKILL.md",
+                content: synthesizeWorkflowSkillMd({
+                  name: args.body.name,
+                  description: args.body.description ?? null,
+                  instruction: args.body.instruction ?? null,
+                }),
+              },
+              ...(args.body.files ?? []),
+            ],
+          },
+          signal,
+        );
+        const created = await createPreparedWorkflow(
+          set(writeDb$),
+          { ...args, workflowId, volume },
+          signal,
+        );
+        if (created.kind === "error") {
+          await set(cleanupUnpublishedWorkflow$, cleanup);
+        }
+        return created;
+      })(),
+      async () => {
+        await set(cleanupUnpublishedWorkflow$, cleanup);
+      },
+    );
+    signal.throwIfAborted();
+    return result;
+  },
+);
+
 const createWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -353,121 +554,30 @@ const createWorkflowInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-
     const body = bodyResult.data;
-    const visibility = body.visibility ?? "private";
-
     if (SEED_SKILLS.includes(body.name)) {
       return conflict(
         `Workflow name "${body.name}" conflicts with a built-in workflow`,
       );
     }
-
+    const args = {
+      orgId: auth.orgId,
+      member,
+      body,
+      visibility: body.visibility ?? "private",
+    };
     const writeDb = set(writeDb$);
-    const agent = await loadAgentForConfiguration(writeDb, {
-      orgId: auth.orgId,
-      agentId: body.agentId,
-    });
-    signal.throwIfAborted();
-    if (!agent) {
-      return notFound(`Agent not found: ${body.agentId}`);
+    const error = await validateWorkflowCreation(writeDb, args, false, signal);
+    if (error) {
+      return error;
     }
-
-    const permissionError =
-      visibility === "public"
-        ? requireAgentWritePermission(
-            agent,
-            member,
-            "create workflows on this agent",
-          )
-        : requireVisibleAgentForPrivateWorkflowCreate(agent, member);
-    if (permissionError) {
-      return permissionError;
-    }
-
-    const slugError = await requireWorkflowSlugAvailableForVisibility(writeDb, {
-      orgId: auth.orgId,
-      agentId: agent.id,
-      ownerUserId: auth.userId,
-      name: body.name,
-      visibility,
-    });
+    const inserted = await set(prepareAndCreateWorkflow$, args, signal);
+    // Publication has committed. Notification, response or cancellation failures
+    // from this point must leave the valid Workflow and its volume intact.
     signal.throwIfAborted();
-    if (slugError) {
-      return slugError;
+    if (inserted.kind === "error") {
+      return inserted.response;
     }
-
-    const currentTime = nowDate();
-    const inserted = await writeDb.transaction(async (tx) => {
-      const [workflow] = await tx
-        .insert(workflows)
-        .values({
-          orgId: auth.orgId,
-          agentId: agent.id,
-          name: body.name,
-          visibility,
-          instruction: body.instruction ?? null,
-          ownerUserId: auth.userId,
-          displayName: body.displayName ?? null,
-          description: body.description ?? null,
-          createdBy: auth.userId,
-          updatedBy: auth.userId,
-          createdAt: currentTime,
-          updatedAt: currentTime,
-        })
-        .returning({ id: workflows.id });
-
-      if (!workflow) {
-        return null;
-      }
-
-      const chatThreadId = body.chatThreadId
-        ? await loadMatchingWorkflowCreationThreadId(tx, {
-            userId: auth.userId,
-            agentId: agent.id,
-            chatThreadId: body.chatThreadId,
-          })
-        : null;
-
-      if (chatThreadId) {
-        await tx.insert(workflowUserAutomationThreads).values({
-          orgId: auth.orgId,
-          userId: auth.userId,
-          workflowId: workflow.id,
-          chatThreadId,
-          createdAt: currentTime,
-          updatedAt: currentTime,
-        });
-      }
-
-      return { workflow, chatThreadId };
-    });
-    signal.throwIfAborted();
-    if (!inserted) {
-      throw new Error("Failed to create workflow");
-    }
-
-    const skillMd = synthesizeWorkflowSkillMd({
-      name: body.name,
-      description: body.description ?? null,
-      instruction: body.instruction ?? null,
-    });
-    await set(
-      uploadVolumeServerSide$,
-      {
-        orgId: auth.orgId,
-        storageName: getCustomSkillStorageName(inserted.workflow.id),
-        files: [
-          { path: "SKILL.md", content: skillMd },
-          ...(body.files ?? []).map((file) => {
-            return { path: file.path, content: file.content };
-          }),
-        ],
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
     const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -477,7 +587,6 @@ const createWorkflowInner$ = command(
     if (!visible) {
       throw new Error(`Created workflow not found: ${inserted.workflow.id}`);
     }
-
     const summary = workflowSummary({
       workflow: visible.workflow,
       agent: visible.agent,

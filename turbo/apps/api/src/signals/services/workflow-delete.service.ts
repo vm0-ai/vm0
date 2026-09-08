@@ -39,20 +39,6 @@ export const deleteOrphanedWorkflowVolume$ = command(
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
     const result = await writeDb.transaction(async (tx) => {
-      const [workflow] = await tx
-        .select({ id: workflows.id })
-        .from(workflows)
-        .where(
-          and(
-            eq(workflows.orgId, args.orgId),
-            eq(workflows.id, args.workflowId),
-          ),
-        )
-        .limit(1);
-      if (workflow) {
-        return { deleted: false as const };
-      }
-
       const [storage] = await tx
         .select({ id: storages.id, s3Prefix: storages.s3Prefix })
         .from(storages)
@@ -68,6 +54,25 @@ export const deleteOrphanedWorkflowVolume$ = command(
       if (!storage) {
         return { deleted: false as const };
       }
+
+      signal.throwIfAborted();
+      // Publication holds the storage lock before inserting the Workflow. Read
+      // its reference only after that transaction's commit/rollback is known.
+      const [workflow] = await tx
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.orgId, args.orgId),
+            eq(workflows.id, args.workflowId),
+          ),
+        )
+        .limit(1);
+      if (workflow) {
+        return { deleted: false as const };
+      }
+
+      signal.throwIfAborted();
 
       await tx.delete(storages).where(eq(storages.id, storage.id));
       return {

@@ -158,7 +158,7 @@ const dispatchInternalCallback$ = command(
             },
             handleTerminalGoal: input.handleTerminalGoal
               ? async (runId, inputSignal) => {
-                  const result = await tapError(
+                  await tapError(
                     set(
                       handleTerminalGoalContinuation$,
                       {
@@ -174,9 +174,7 @@ const dispatchInternalCallback$ = command(
                       });
                     },
                   );
-                  return (
-                    result?.kind === "enqueued" || result?.kind === "coalesced"
-                  );
+                  return false;
                 }
               : undefined,
           },

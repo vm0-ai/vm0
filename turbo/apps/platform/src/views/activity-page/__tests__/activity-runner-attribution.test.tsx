@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import {
   runAgentEventsContract,
@@ -21,16 +21,21 @@ const context = testContext();
 
 interface ActivityFixture {
   readonly status: LogStatus;
+  readonly framework?: string | null;
   readonly runner: RunRunnerResponse;
 }
 
-function logDetail(runId: string, status: LogStatus): LogDetail {
+function logDetail(
+  runId: string,
+  status: LogStatus,
+  framework: string | null = "claude-code",
+): LogDetail {
   return {
     id: runId,
     sessionId: "session-runner-attribution",
     agentId: "c0000000-0000-4000-a000-000000000001",
     displayName: "Runner Attribution",
-    framework: "claude-code",
+    framework,
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
@@ -53,7 +58,10 @@ function mockActivities(
     if (!fixture) {
       throw new Error("Missing activity fixture for " + params.id);
     }
-    return respond(200, logDetail(params.id, fixture.status));
+    return respond(
+      200,
+      logDetail(params.id, fixture.status, fixture.framework),
+    );
   });
   context.mocks.api(
     runAgentEventsContract.getAgentEvents,
@@ -115,6 +123,7 @@ function getStartupCard(): HTMLElement {
 test("Runner diagnostics identify the exact environment used for an activity", async () => {
   const firstRunId = "a0000000-0000-4000-a000-000000000301";
   const secondRunId = "a0000000-0000-4000-a000-000000000302";
+  const piRunId = "a0000000-0000-4000-a000-000000000303";
   mockActivities({
     [firstRunId]: {
       status: "completed",
@@ -129,6 +138,7 @@ test("Runner diagnostics identify the exact environment used for an activity", a
     },
     [secondRunId]: {
       status: "completed",
+      framework: "codex",
       runner: {
         sandboxReuseResult: "reused",
         workspaceReuseResult: "sandboxReused",
@@ -136,6 +146,14 @@ test("Runner diagnostics identify the exact environment used for an activity", a
         runnerVersion: "0.168.14",
         runnerId: "b0000000-0000-4000-a000-000000000002",
         runnerHeartbeatGeneration: 8,
+      },
+    },
+    [piRunId]: {
+      status: "completed",
+      framework: "pi",
+      runner: {
+        sandboxReuseResult: "reused",
+        runnerHostname: "prod-3.aws.vm3.ai",
       },
     },
   });
@@ -148,6 +166,7 @@ test("Runner diagnostics identify the exact environment used for an activity", a
   await expect(
     screen.findByText("prod-1.aws.vm3.ai"),
   ).resolves.toBeInTheDocument();
+  expectRunnerAttribute("Framework", "Claude Code");
   expectRunnerAttribute("Version", "0.168.14");
   expectRunnerAttribute("Runner ID", "b0000000-0000-4000-a000-000000000001");
   expectRunnerAttribute("Generation", "7");
@@ -159,10 +178,19 @@ test("Runner diagnostics identify the exact environment used for an activity", a
   await expect(
     screen.findByText("prod-2.aws.vm3.ai"),
   ).resolves.toBeInTheDocument();
+  expectRunnerAttribute("Framework", "Codex");
   expectRunnerAttribute("Version", "0.168.14");
   expectRunnerAttribute("Runner ID", "b0000000-0000-4000-a000-000000000002");
   expectRunnerAttribute("Generation", "8");
   expect(screen.queryByText("prod-1.aws.vm3.ai")).not.toBeInTheDocument();
+
+  navigateToRunner(piRunId);
+
+  await expect(
+    screen.findByText("prod-3.aws.vm3.ai"),
+  ).resolves.toBeInTheDocument();
+  expectRunnerAttribute("Framework", "pi");
+  expect(screen.queryByText("prod-2.aws.vm3.ai")).not.toBeInTheDocument();
 });
 
 test("Runner diagnostics explain how the activity environment started", async () => {
@@ -240,6 +268,7 @@ test("Missing runner attribution distinguishes active provisioning from historic
   mockActivities({
     [activeRunId]: {
       status: "running",
+      framework: null,
       runner: {
         sandboxReuseResult: null,
         workspaceReuseResult: null,
@@ -251,6 +280,7 @@ test("Missing runner attribution distinguishes active provisioning from historic
     },
     [historicalRunId]: {
       status: "completed",
+      framework: null,
       runner: {
         sandboxReuseResult: null,
         workspaceReuseResult: null,
@@ -267,6 +297,7 @@ test("Missing runner attribution distinguishes active provisioning from historic
   await expect(
     screen.findByRole("heading", { name: "Environment" }),
   ).resolves.toBeInTheDocument();
+  expectRunnerAttribute("Framework", "Unavailable");
   expectRunnerAttribute("Hostname", "Provisioning");
   expectRunnerAttribute("Version", "Provisioning");
   expectRunnerAttribute("Runner ID", "Provisioning");
@@ -274,8 +305,10 @@ test("Missing runner attribution distinguishes active provisioning from historic
 
   navigateToRunner(historicalRunId);
 
-  await screen.findAllByText("Unavailable");
-  expectRunnerAttribute("Hostname", "Unavailable");
+  await waitFor(() => {
+    expectRunnerAttribute("Hostname", "Unavailable");
+  });
+  expectRunnerAttribute("Framework", "Unavailable");
   expectRunnerAttribute("Version", "Unavailable");
   expectRunnerAttribute("Runner ID", "Unavailable");
   expectRunnerAttribute("Generation", "Unavailable");
