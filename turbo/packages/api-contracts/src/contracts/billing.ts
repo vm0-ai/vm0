@@ -616,7 +616,7 @@ const redeemCodeRequestSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Zero contract for GET /api/billing/status
+ * Contract for GET /api/billing/status
  */
 export const billingStatusContract = c.router({
   get: {
@@ -636,7 +636,7 @@ export const billingStatusContract = c.router({
 export type BillingStatusContract = typeof billingStatusContract;
 
 /**
- * Zero contract for POST /api/billing/checkout
+ * Contract for POST /api/billing/checkout
  */
 export const billingCheckoutContract = c.router({
   create: {
@@ -695,7 +695,7 @@ export const billingCheckoutContract = c.router({
 export type BillingCheckoutContract = typeof billingCheckoutContract;
 
 /**
- * Zero contract for POST /api/billing/usage-pack-checkout
+ * Contract for POST /api/billing/usage-pack-checkout
  */
 export const billingUsagePackCheckoutContract = c.router({
   create: {
@@ -964,7 +964,7 @@ export type BillingUsagePackMigrationContract =
   typeof billingUsagePackMigrationContract;
 
 /**
- * Zero contract for POST /api/billing/concurrency-checkout
+ * Contract for POST /api/billing/concurrency-checkout
  */
 export const billingConcurrencyCheckoutContract = c.router({
   preview: {
@@ -1005,7 +1005,7 @@ export type BillingConcurrencyCheckoutContract =
   typeof billingConcurrencyCheckoutContract;
 
 /**
- * Zero contract for concurrency subscriptions.
+ * Contract for concurrency subscriptions.
  */
 export const billingConcurrencySubscriptionContract = c.router({
   previewChange: {
@@ -1092,7 +1092,7 @@ export type BillingConcurrencySubscriptionContract =
   typeof billingConcurrencySubscriptionContract;
 
 /**
- * Zero contract for POST /api/billing/credit-checkout
+ * Contract for POST /api/billing/credit-checkout
  */
 export const billingCreditCheckoutContract = c.router({
   create: {
@@ -1132,7 +1132,7 @@ export type BillingCreditCheckoutContract =
   typeof billingCreditCheckoutContract;
 
 /**
- * Zero contract for POST /api/billing/portal
+ * Contract for POST /api/billing/portal
  */
 export const billingPortalContract = c.router({
   create: {
@@ -1155,7 +1155,7 @@ export const billingPortalContract = c.router({
 export type BillingPortalContract = typeof billingPortalContract;
 
 /**
- * Zero contract for /api/billing/auto-recharge
+ * Contract for /api/billing/auto-recharge
  */
 export const billingAutoRechargeContract = c.router({
   get: {
@@ -1188,7 +1188,7 @@ export const billingAutoRechargeContract = c.router({
 export type BillingAutoRechargeContract = typeof billingAutoRechargeContract;
 
 /**
- * Zero contract for GET /api/billing/invoices
+ * Contract for GET /api/billing/invoices
  */
 const invoiceSchema = z.object({
   id: z.string(),
@@ -1295,7 +1295,7 @@ const restoreResponseSchema = z.discriminatedUnion("status", [
 ]);
 
 /**
- * Zero contract for POST /api/billing/downgrade
+ * Contract for POST /api/billing/downgrade
  */
 export const billingDowngradeContract = c.router({
   create: {
@@ -1319,7 +1319,7 @@ export const billingDowngradeContract = c.router({
 export type BillingDowngradeContract = typeof billingDowngradeContract;
 
 /**
- * Zero contract for POST /api/billing/restore
+ * Contract for POST /api/billing/restore
  */
 export const billingRestoreContract = c.router({
   create: {
@@ -1342,7 +1342,7 @@ export const billingRestoreContract = c.router({
 export type BillingRestoreContract = typeof billingRestoreContract;
 
 /**
- * Zero contract for POST /api/billing/redeem/:campaign
+ * Contract for POST /api/billing/redeem/:campaign
  *
  * One-time campaign redemption. The handler validates the campaign whitelist,
  * creates (or resumes) a Stripe Checkout session, and returns a discriminated
@@ -1371,7 +1371,7 @@ export const billingRedeemContract = c.router({
 export type BillingRedeemContract = typeof billingRedeemContract;
 
 /**
- * Zero contract for POST /api/billing/redeem-code
+ * Contract for POST /api/billing/redeem-code
  *
  * Proxies onboarding invite codes to the Atom redeem endpoint. The platform
  * waits for billing status to update through realtime before completing
