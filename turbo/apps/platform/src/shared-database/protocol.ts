@@ -95,6 +95,7 @@ const userRealtimeTopicSchema = z.union([
   z.literal("customConnectorListChanged"),
   z.literal("feishu:changed"),
   z.literal("github:changed"),
+  z.literal("imageReferencesChanged"),
   z.literal("presentationTemplatesChanged"),
   z.literal("slack:changed"),
   z.literal("teams:changed"),
@@ -113,7 +114,9 @@ function isSharedDatabaseAppRealtimeSubscription(
 ): boolean {
   return (
     (scope === "user" && userRealtimeTopicSchema.safeParse(topic).success) ||
-    (scope === "org" && topic === "presentationTemplatesChanged")
+    (scope === "org" &&
+      (topic === "imageReferencesChanged" ||
+        topic === "presentationTemplatesChanged"))
   );
 }
 

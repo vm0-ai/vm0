@@ -13,6 +13,7 @@ import {
 import { i18n } from "../i18n/index.ts";
 import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
+import { subscribeImageReferencesChanged$ } from "./okou-page/image-reference-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
 import {
   bridgeConnected$,
@@ -30,6 +31,7 @@ const runAppRealtimeDaemons$ = command(
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(subscribePresentationTemplatesChanged$, signal),
+      set(subscribeImageReferencesChanged$, signal),
       set(setupUserPreferenceRealtime$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
     ]);

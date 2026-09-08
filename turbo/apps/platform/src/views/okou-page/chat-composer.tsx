@@ -6808,12 +6808,22 @@ function ComposerImportedTemplateUrlRefreshLifecycle({
   const setImportedTemplateUrlRefreshLifecycleRef = useSet(
     signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
   );
+  const setImageReferenceLifecycleRef = useSet(
+    signals.template.imageReference.lifecycleRef$,
+  );
   return (
-    <span
-      ref={setImportedTemplateUrlRefreshLifecycleRef}
-      aria-hidden="true"
-      className="pointer-events-none absolute size-px overflow-hidden opacity-0"
-    />
+    <>
+      <span
+        ref={setImportedTemplateUrlRefreshLifecycleRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+      />
+      <span
+        ref={setImageReferenceLifecycleRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+      />
+    </>
   );
 }
 
