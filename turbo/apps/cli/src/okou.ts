@@ -49,7 +49,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   ],
   resource: null,
   github: ["github:read", "github:write"],
-  slack: "slack:write",
+  slack: ["slack:read", "slack:write"],
   feishu: "feishu:write",
   teams: "teams:write",
   telegram: ["telegram:read", "telegram:write"],
@@ -190,7 +190,7 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
   {
     name: "slack",
     description:
-      "Send messages, upload files, and download files from Slack as the bot",
+      "List channels, read history, send messages, and transfer files as the Slack bot",
     load: async () => {
       return (await import("./commands/slack")).slackCommand;
     },

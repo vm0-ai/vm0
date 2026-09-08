@@ -11,6 +11,7 @@ export const CAPABILITIES = [
   "goal:user-control:write",
   "github:read",
   "github:write",
+  "slack:read",
   "slack:write",
   "feishu:write",
   "teams:write",
@@ -81,6 +82,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   "github:write": {
     group: "Integrations",
     label: "Send GitHub comments and files",
+  },
+  "slack:read": {
+    group: "Integrations",
+    label: "List Slack channels and read history",
   },
   "slack:write": { group: "Integrations", label: "Send Slack messages" },
   "feishu:write": {
