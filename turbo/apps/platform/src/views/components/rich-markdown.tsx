@@ -1,5 +1,4 @@
 import "../css/vendor/uiw-react-markdown-preview-5.2.0.css";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { CopyButton } from "@okouai/ui";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
@@ -12,7 +11,6 @@ import {
   escapeHtmlTags,
   parseMarkdownTree,
 } from "../../lib/markdown/pipeline.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts";
 import { openMarkdownArtifact$ } from "../../signals/okou-page/markdown-artifact-preview.ts";
 import type {
@@ -148,8 +146,6 @@ function ArtifactLinkIcon({ kind }: { readonly kind: ArtifactKind }) {
 function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   const openArtifact = useSet(openMarkdownArtifact$);
   const openImageLightbox = useSet(openImageLightbox$);
-  const showArtifactLinkKindIcons =
-    useGet(featureSwitch$)[FeatureSwitchKey.ArtifactLinkKindIcons] ?? false;
   const card = rest.node?.data?.card;
   return (
     <PlainLink
@@ -178,7 +174,7 @@ function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
         }
       }}
     >
-      {showArtifactLinkKindIcons && card?.kind === "artifact" && (
+      {card?.kind === "artifact" && (
         <ArtifactLinkIcon kind={card.signals.kind} />
       )}
       {children}

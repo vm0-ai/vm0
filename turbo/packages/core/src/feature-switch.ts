@@ -391,13 +391,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactLinkKindIcons]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Show image, video, or file icons before trusted artifact text links.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatThinkingSpinner]: {
     maintainer: "yuma@vm0.ai",
     description:

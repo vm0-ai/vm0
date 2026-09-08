@@ -1,6 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -99,7 +98,7 @@ test("One image keeps distinct link labels and image previews in the same messag
   ).resolves.toHaveAttribute("src", url);
 });
 
-test("Artifact links show image, video, and file kinds when enabled", async () => {
+test("Artifact links show image, video, and file kinds", async () => {
   const imageUrl = publicArtifactUrl("screenshot.png");
   const videoUrl = publicArtifactUrl("walkthrough.mp4");
   const fileUrl = publicArtifactUrl("report.pdf");
@@ -113,11 +112,7 @@ test("Artifact links show image, video, and file kinds when enabled", async () =
     ].join("\n\n"),
   );
 
-  await setupPage({
-    context,
-    path: `/chats/${ATTACHMENT_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ArtifactLinkKindIcons]: true },
-  });
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
   expect(
     within(await findNamedLink("Screenshot")).getByTestId(
@@ -139,28 +134,6 @@ test("Artifact links show image, video, and file kinds when enabled", async () =
       "[data-testid^='markdown-artifact-link-icon-']",
     ),
   ).toBeNull();
-});
-
-test("Artifact links stay text-only when kind icons are disabled", async () => {
-  const url = publicArtifactUrl("screenshot.png");
-  installMessage(`[Screenshot](${url})`);
-
-  await setupPage({
-    context,
-    path: `/chats/${ATTACHMENT_THREAD_ID}`,
-    featureSwitches: { [FeatureSwitchKey.ArtifactLinkKindIcons]: false },
-  });
-
-  const link = await findNamedLink("Screenshot");
-  expect(link).toHaveAttribute("href", url);
-  expect(link).toHaveTextContent("Screenshot");
-  expect(
-    link.querySelector("[data-testid^='markdown-artifact-link-icon-']"),
-  ).toBeNull();
-  click(link);
-  await expect(
-    screen.findByTestId("attachment-lightbox-image"),
-  ).resolves.toHaveAttribute("src", url);
 });
 
 test("Bare platform URLs stay links and fenced URLs stay code", async () => {
