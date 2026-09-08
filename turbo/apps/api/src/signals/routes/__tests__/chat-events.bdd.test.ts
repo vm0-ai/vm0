@@ -2807,10 +2807,11 @@ async function postThreadPiAutomationEvent(args: {
   readonly webhookUrl: string;
   readonly webhookSecret: string;
   readonly payload: string;
+  readonly timestamp: number;
   readonly usagePricingResolution: UsagePricingFixture["resolution"];
 }) {
   const rawBody = JSON.stringify({ event: args.payload });
-  const timestamp = Math.floor(now() / 1000);
+  const timestamp = args.timestamp;
   const response = await createAppWithRoutes({
     signal: context.signal,
     routes: webhooksWorkflowAutomationsRoutes,
@@ -2928,6 +2929,7 @@ describe("thread-bound Pi Automation and Goal execution", () => {
         await postThreadPiAutomationEvent({
           ...eventRoute,
           payload: "legacy",
+          timestamp: Math.floor(now() / 1000),
           usagePricingResolution,
         });
         if (!automation.chatThreadId) {
@@ -2995,6 +2997,7 @@ describe("thread-bound Pi Automation and Goal execution", () => {
         const event = {
           ...eventRoute,
           payload: "pi-event",
+          timestamp: Math.floor(now() / 1000),
           usagePricingResolution,
         };
         await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
@@ -3002,6 +3005,8 @@ describe("thread-bound Pi Automation and Goal execution", () => {
             duplicate: false,
           },
         );
+        // A retry keeps the original signed envelope across clock seconds.
+        mockNow(now() + 1000);
         await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
           {
             duplicate: true,
