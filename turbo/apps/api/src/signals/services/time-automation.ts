@@ -15,14 +15,12 @@ export function calculateNextRun(
 
 /**
  * Next run after a completion callback (the run finished, success or failure).
- * Cron advances from the cron expression captured at dispatch (null when the
- * one-time callback carried no expression); a loop advances by the automation's
- * interval and requires one to be present. Disabling collapses the next run to
- * null.
+ * Cron and loop use the automation's current persisted schedule. A loop requires
+ * an interval to be present. Disabling collapses the next run to null.
  */
 export function advanceTimeAutomationAfterCompletion(args: {
   readonly scheduleType: "cron" | "loop";
-  readonly cronExpression: string | undefined;
+  readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
   readonly timezone: string;
   readonly completedAt: Date;
