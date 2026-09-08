@@ -304,6 +304,8 @@ const CODEX_CHATGPT_ACCOUNT_UNSUPPORTED_MODEL_MESSAGE =
 
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
+export const IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE =
+  "The selected reference image is unavailable. Choose another reference or remove it and try again.";
 
 export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   ...Object.values(RUN_ERROR_GUIDANCE).flatMap((guidance) => {
@@ -312,6 +314,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Cannot continue session",
   "Invalid signature in thinking block",
   "Run cancelled",
+  IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
   CODEX_PROVIDER_OVERLOADED_MESSAGE,
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).

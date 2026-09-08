@@ -148,6 +148,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
+import { IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import { buildVideoRunOptionsPrompt } from "@okouai/core/video-run-options-prompt";
 import {
   additionalVolumesForRun,
@@ -163,6 +164,7 @@ import {
 } from "../../lib/template-usage-log";
 import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
+import { imageReferenceSelectionsAreAvailable } from "./image-reference-chat-selection.service";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -1132,6 +1134,16 @@ async function validateGenerationTemplatePrompt(
 ): Promise<NormalSendFailure | AuthorizedGenerationTemplates> {
   if (generationTemplates.length === 0) {
     return { userPresentationTemplateIds: [] };
+  }
+  if (
+    !(await imageReferenceSelectionsAreAvailable(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      generationTemplates,
+      featureSwitchContext: featureSwitches.featureSwitchContext,
+    }))
+  ) {
+    return badRequestMessage(IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE);
   }
   // Syntax first: every selection this message names is a candidate mount, so
   // the builder can reject a malformed private id before consulting the database.

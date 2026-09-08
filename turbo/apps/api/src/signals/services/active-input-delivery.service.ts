@@ -37,6 +37,16 @@ import type { GenerationTemplateIdentity } from "@okouai/core/generation-templat
 import { lockChatQueueThread } from "./chat-event-queue.service";
 import { replaceLoadedChatEvent } from "./chat-event.service";
 import { lockPiApiFirstTurnLifecycle } from "./pi-api-first-turn-lifecycle.service";
+import {
+  failQueuedUserMessage,
+  failQueuedUserMessageInTransaction,
+} from "./chat-queued-event.service";
+import { IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE } from "@okouai/api-contracts/contracts/errors";
+import { nowDate } from "../../lib/time";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChangedSafely,
+} from "../external/realtime";
 
 interface ActiveInputDeliveryScope {
   readonly runId: string;
@@ -173,49 +183,137 @@ function materializedPrompt(
   return materialized;
 }
 
+async function publishUnavailableActiveInputFailure(
+  scope: ActiveInputDeliveryScope,
+  signal: AbortSignal,
+): Promise<void> {
+  await publishChatThreadMessageCreatedSafely({
+    userId: scope.userId,
+    orgId: scope.orgId,
+    threadId: scope.chatThreadId,
+  });
+  signal.throwIfAborted();
+  await publishThreadListChangedSafely({
+    userId: scope.userId,
+    orgId: scope.orgId,
+  });
+  signal.throwIfAborted();
+}
+
+async function rejectUnavailableActiveInput(
+  db: Db,
+  scope: ActiveInputDeliveryScope,
+  eventId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const failed = await failQueuedUserMessage(db, {
+    threadId: scope.chatThreadId,
+    eventId,
+    assistantContent: IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+    errorMarker: "image_reference_unavailable",
+    currentTime: nowDate(),
+  });
+  signal.throwIfAborted();
+  if (!failed) {
+    return false;
+  }
+  await publishUnavailableActiveInputFailure(scope, signal);
+  return true;
+}
+
+async function rejectUnavailableOpenActiveInput(
+  db: Db,
+  scope: ActiveInputDeliveryScope,
+  delivery: ActiveInputDeliveryReference,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const failed = await db.transaction(async (tx) => {
+    await lockPiApiFirstTurnLifecycle(tx, scope.runId);
+    if (!(await lockChatQueueThread(tx, scope.chatThreadId))) {
+      return null;
+    }
+    const open = await lockOpenDelivery(tx, scope);
+    if (
+      !open ||
+      open.deliveryId !== delivery.deliveryId ||
+      open.items.length !== 1 ||
+      open.items[0]?.sourceEventId !== delivery.sourceEventId
+    ) {
+      return null;
+    }
+    await settleOpenActiveInputDeliveryAsUndelivered(
+      tx,
+      scope,
+      open.deliveryId,
+      open.items,
+    );
+    return await failQueuedUserMessageInTransaction(tx, {
+      threadId: scope.chatThreadId,
+      eventId: delivery.sourceEventId,
+      assistantContent: IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+      errorMarker: "image_reference_unavailable",
+      currentTime: nowDate(),
+    });
+  });
+  signal.throwIfAborted();
+  if (!failed) {
+    return false;
+  }
+  await publishUnavailableActiveInputFailure(scope, signal);
+  return true;
+}
+
 async function prepareReservation(
   db: Db,
   clerk: ClerkClient,
   scope: ActiveInputDeliveryScope,
   signal: AbortSignal,
 ): Promise<PreparedReservation> {
-  const rows = await pendingActiveInputRows(
-    db,
-    scope.chatThreadId,
-    scope.runId,
-  ).limit(1);
-  signal.throwIfAborted();
-  const [row] = rows;
-  if (!row) {
-    return { kind: "empty" };
-  }
-  const prompts = await materializePendingActiveInputPrompts(
-    db,
-    clerk,
-    rows,
-    scope,
-    signal,
-  );
-  if (!prompts) {
-    throw new Error("Pending active input cannot be materialized");
-  }
-  const materialized = materializedPrompt(row, prompts);
-  const deliveryId = randomUUID();
-  if (
-    !activeInputDeliveryPromptFitsControlPayload(
+  while (true) {
+    const rows = await pendingActiveInputRows(
+      db,
+      scope.chatThreadId,
+      scope.runId,
+    ).limit(1);
+    signal.throwIfAborted();
+    const [row] = rows;
+    if (!row) {
+      return { kind: "empty" };
+    }
+    const prompts = await materializePendingActiveInputPrompts(
+      db,
+      clerk,
+      rows,
+      scope,
+      signal,
+    );
+    if (!prompts) {
+      throw new Error("Pending active input cannot be materialized");
+    }
+    const materialized = materializedPrompt(row, prompts);
+    if (materialized.status === "image_reference_unavailable") {
+      if (!(await rejectUnavailableActiveInput(db, scope, row.id, signal))) {
+        return { kind: "empty" };
+      }
+      continue;
+    }
+    const deliveryId = randomUUID();
+    if (
+      !activeInputDeliveryPromptFitsControlPayload(
+        deliveryId,
+        materialized.prompt,
+      )
+    ) {
+      return { kind: "rejected", reason: "payload_too_large" };
+    }
+    return {
+      kind: "ready",
       deliveryId,
-      materialized.prompt,
-    )
-  ) {
-    return { kind: "rejected", reason: "payload_too_large" };
+      sourceEventId: row.id,
+      prompt: materialized.prompt,
+      templateIdentities: materialized.templateIdentities,
+    };
   }
-  return {
-    kind: "ready",
-    deliveryId,
-    sourceEventId: row.id,
-    prompt: materialized.prompt,
-    templateIdentities: materialized.templateIdentities,
-  };
 }
 
 async function canReturnEmptyReservation(
@@ -380,13 +478,17 @@ async function transitionReservation(
   };
 }
 
+type ActiveInputDeliveryMaterialization =
+  | { readonly status: "resolved"; readonly prompt: string }
+  | { readonly status: "image_reference_unavailable" };
+
 async function materializeDelivery(
   db: Db,
   clerk: ClerkClient,
   scope: ActiveInputDeliveryScope,
   delivery: ActiveInputDeliveryReference,
   signal: AbortSignal,
-): Promise<string> {
+): Promise<ActiveInputDeliveryMaterialization> {
   const rows = await activeInputRowsByIds(db, scope.chatThreadId, [
     delivery.sourceEventId,
   ]);
@@ -405,13 +507,17 @@ async function materializeDelivery(
   if (!prompts) {
     throw new Error("Active input delivery cannot be rematerialized");
   }
-  const { prompt } = materializedPrompt(row, prompts);
+  const materialized = materializedPrompt(row, prompts);
+  if (materialized.status === "image_reference_unavailable") {
+    return materialized;
+  }
+  const { prompt } = materialized;
   if (
     !activeInputDeliveryPromptFitsControlPayload(delivery.deliveryId, prompt)
   ) {
     throw new Error("Active input delivery exceeds the control payload limit");
   }
-  return prompt;
+  return { status: "resolved", prompt };
 }
 
 export async function reserveActiveInputDelivery(
@@ -472,11 +578,22 @@ export async function reserveActiveInputDelivery(
       };
     }
     if (result.outcome === "retrieve") {
+      const materialized = await materializeDelivery(
+        db,
+        clerk,
+        scope,
+        result,
+        signal,
+      );
+      if (materialized.status === "image_reference_unavailable") {
+        await rejectUnavailableOpenActiveInput(db, scope, result, signal);
+        continue;
+      }
       return {
         outcome: "reserved",
         deliveryId: result.deliveryId,
         sourceEventId: result.sourceEventId,
-        prompt: await materializeDelivery(db, clerk, scope, result, signal),
+        prompt: materialized.prompt,
       };
     }
     return result;

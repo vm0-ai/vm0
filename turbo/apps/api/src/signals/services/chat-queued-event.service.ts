@@ -753,7 +753,7 @@ export async function discardUnclaimedUserMessage(
  * assistant replacements that explain a permanent integration admission
  * failure.
  */
-interface FailQueuedUserMessageArgs {
+export interface FailQueuedUserMessageArgs {
   readonly threadId: string;
   readonly eventId: string;
   readonly assistantContent: string;
@@ -761,7 +761,7 @@ interface FailQueuedUserMessageArgs {
   readonly currentTime: Date;
 }
 
-async function failQueuedUserMessageInTransaction(
+export async function failQueuedUserMessageInTransaction(
   tx: DbTransaction,
   args: FailQueuedUserMessageArgs,
 ): Promise<{ readonly assistantEventId: string } | null> {

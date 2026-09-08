@@ -23,6 +23,7 @@ import {
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { imageReferenceSelectionsAreAvailable } from "./image-reference-chat-selection.service";
 
 type ChatEventContextType = NonNullable<
   (typeof chatEvents.$inferSelect)["contextType"]
@@ -174,10 +175,13 @@ export type PendingActiveInputRow = Awaited<
  * prompt several times. The caller reports it once, when the delivery row is
  * created.
  */
-export interface MaterializedActiveInputPrompt {
-  readonly prompt: string;
-  readonly templateIdentities: readonly GenerationTemplateIdentity[];
-}
+export type MaterializedActiveInputPrompt =
+  | {
+      readonly status: "resolved";
+      readonly prompt: string;
+      readonly templateIdentities: readonly GenerationTemplateIdentity[];
+    }
+  | { readonly status: "image_reference_unavailable" };
 
 export async function materializePendingActiveInputPrompts(
   db: Db,
@@ -294,6 +298,16 @@ async function materializeActiveInputPrompt(
     throw new Error("Active input event is missing userMessage");
   }
   const projection = projectUserMessage(userMessage);
+  if (
+    !(await imageReferenceSelectionsAreAvailable(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      generationTemplates: projection.templates,
+      featureSwitchContext: args.featureSwitchContext,
+    }))
+  ) {
+    return { status: "image_reference_unavailable" };
+  }
   const integration = await loadIntegrationPromptMaterial(db, args.event, args);
   if (isContextBackedContextType(args.event.contextType) && !integration) {
     throw new Error(
@@ -329,6 +343,7 @@ async function materializeActiveInputPrompt(
     throw new Error("Active input event materialized to an empty prompt");
   }
   return {
+    status: "resolved",
     prompt: materialized,
     templateIdentities: generationTemplates.identities,
   };

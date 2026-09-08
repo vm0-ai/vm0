@@ -7,7 +7,10 @@ import {
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
+import {
+  formatRunErrorForExternalSurface,
+  IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+} from "@okouai/api-contracts/contracts/errors";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import {
   serializeChatFollowupsContent,
@@ -225,6 +228,7 @@ import {
   type PresentationTemplateVolume,
 } from "./presentation-template-data.service";
 import { OFFICIAL_WORKFLOW_RUN_ADMISSION_MESSAGE } from "./official-workflow-run.service";
+import { imageReferenceSelectionsAreAvailable } from "./image-reference-chat-selection.service";
 
 const log = logger("callback:chat");
 const PG_FOREIGN_KEY_VIOLATION = "23503";
@@ -3068,6 +3072,15 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
  * a volume this user may not read must never be assembled — so the same lookup
  * decides both what is mounted and what the prompt is allowed to mention.
  */
+type QueuedMessageTemplateContext =
+  | {
+      readonly status: "resolved";
+      readonly generationTemplatePrompt: string;
+      readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
+      readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
+    }
+  | { readonly status: "image_reference_unavailable" };
+
 async function resolveQueuedMessageTemplateContext(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
@@ -3079,18 +3092,23 @@ async function resolveQueuedMessageTemplateContext(args: {
     typeof resolveQueuedMessageGenerationTemplatePrompt
   >[0]["userMessageProjection"];
   readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<{
-  readonly generationTemplatePrompt: string;
-  readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
-  readonly presentationTemplateVolumes: readonly PresentationTemplateVolume[];
-}> {
+}): Promise<QueuedMessageTemplateContext> {
+  const templates = args.userMessageProjection?.templates ?? [];
+  if (
+    !(await imageReferenceSelectionsAreAvailable(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      generationTemplates: templates,
+      featureSwitchContext: args.featureSwitchContext,
+    }))
+  ) {
+    return { status: "image_reference_unavailable" };
+  }
   const mountedUserPresentationTemplateIds =
     await authorizedUserPresentationTemplateIds(args.db, {
       orgId: args.orgId,
       userId: args.userId,
-      templateIds: selectedUserPresentationTemplateIds(
-        args.userMessageProjection?.templates ?? [],
-      ),
+      templateIds: selectedUserPresentationTemplateIds(templates),
     });
   const generationTemplates =
     await resolveQueuedMessageGenerationTemplatePrompt({
@@ -3100,12 +3118,13 @@ async function resolveQueuedMessageTemplateContext(args: {
         args.db,
         args.input.clerk,
         args.userId,
-        args.userMessageProjection?.templates ?? [],
+        templates,
         args.featureSwitchContext,
       ),
       mountedUserPresentationTemplateIds,
     });
   return {
+    status: "resolved",
     generationTemplatePrompt: generationTemplates.prompt,
     generationTemplateIdentities: generationTemplates.identities,
     presentationTemplateVolumes: userPresentationTemplateVolumes(
@@ -3231,11 +3250,7 @@ async function buildCreateQueuedChatRunInput(
       });
     },
   );
-  const {
-    generationTemplatePrompt,
-    generationTemplateIdentities,
-    presentationTemplateVolumes,
-  } = await resolveQueuedMessageTemplateContext({
+  const templateContext = await resolveQueuedMessageTemplateContext({
     db: args.db,
     orgId: args.agent.orgId,
     userId: args.userId,
@@ -3243,6 +3258,12 @@ async function buildCreateQueuedChatRunInput(
     userMessageProjection,
     featureSwitchContext,
   });
+  if (templateContext.status === "image_reference_unavailable") {
+    return queuedMessageAdmissionFailure(args, launchMaterial, {
+      code: "BAD_REQUEST",
+      message: IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+    });
+  }
   const computerUseHostGrant =
     await resolveQueuedMessageComputerUseHostGrant(args);
   const prompt = queuedMessagePrompt({
@@ -3259,11 +3280,11 @@ async function buildCreateQueuedChatRunInput(
       }),
       incompleteContext,
       priorContext,
-      generationTemplatePrompt,
+      templateContext.generationTemplatePrompt,
       computerUseHostGrant?.displayName ?? null,
     ),
-    presentationTemplateVolumes,
-    generationTemplateIdentities,
+    presentationTemplateVolumes: templateContext.presentationTemplateVolumes,
+    generationTemplateIdentities: templateContext.generationTemplateIdentities,
     publicBrand: launchMaterial.publicBrand,
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,

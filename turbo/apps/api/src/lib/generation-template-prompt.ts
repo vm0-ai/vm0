@@ -24,11 +24,16 @@ import {
   type AvatarTemplateOptions,
 } from "@okouai/core/avatar-template";
 import {
+  isUserImageReferenceId,
+  parseUserImageReferenceId,
+} from "@okouai/core/image-reference-selection";
+import {
   PRESENTATION_IMAGE_BATCH_INSTRUCTION,
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
 import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import { IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import {
   EXPLAINER_VIDEO_TEMPLATE_ID,
   explainerVideoInstructionLines,
@@ -482,9 +487,19 @@ function buildAvatarGenerationTemplatePrompt(
 function buildIllustrationGenerationTemplatePrompt(
   generationTemplate: IllustrationGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
-  const imageStyle = findImageStyle(
-    generationTemplate.selection.illustrationStyleId,
-  );
+  const { illustrationStyleId } = generationTemplate.selection;
+  if (isUserImageReferenceId(illustrationStyleId)) {
+    const referenceId = parseUserImageReferenceId(illustrationStyleId);
+    if (referenceId === undefined) {
+      return {
+        status: "invalid",
+        message: IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+      };
+    }
+    return buildUserImageReferencePrompt(referenceId);
+  }
+
+  const imageStyle = findImageStyle(illustrationStyleId);
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
@@ -508,6 +523,27 @@ function buildIllustrationGenerationTemplatePrompt(
       `- ${sourceInstruction}`,
       '- Then run `okou generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
       "- If a flag above no longer applies, run `okou generate image -h` to discover the current flags, models, providers, and styles.",
+    ].join("\n"),
+  };
+}
+
+function buildUserImageReferencePrompt(
+  referenceId: string,
+): GenerationTemplatePromptResult {
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("an illustration or image"),
+      "Selected reference image:",
+      "- Artifact type: illustration",
+      "- Treat the saved reference id as opaque. Do not resolve or expose its URL, storage key, filename, or title.",
+      "",
+      "When you produce an illustration or image from the user's request:",
+      "- Use raw, model-native prompting. Do not compile a style package or use `--style`, `--compile`, or `--compiled-prompt`.",
+      `- Generate with \`okou generate image --provider built-in --image-reference-id ${referenceId} --raw-prompt "<user request>"\`, adding only resolved compatible CLI options.`,
+      "- Preserve only the reference's visual language: palette, texture, medium, lighting, and composition rhythm.",
+      "- The user request controls the new subject. Do not preserve depicted objects, text, people, or brand marks from the reference.",
+      "- If a flag above no longer applies, run `okou generate image -h` to discover the current flags, models, and providers.",
     ].join("\n"),
   };
 }

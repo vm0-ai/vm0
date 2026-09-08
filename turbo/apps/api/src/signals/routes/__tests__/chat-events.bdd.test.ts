@@ -11,6 +11,7 @@ import {
 
 import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
+import { IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE as IMAGE_REFERENCE_UNAVAILABLE_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import {
   chatEventsContract,
   chatThreadConnectorSelectionContract,
@@ -68,6 +69,7 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_IMAGE_MODEL_ENV,
 } from "@okouai/core/image-model-catalog";
+import { formatUserImageReferenceId } from "@okouai/core/image-reference-selection";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { DEFAULT_VIDEO_MODEL } from "@okouai/core/video-model-catalog";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
@@ -200,6 +202,7 @@ import {
 import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createImageReferencesBddApi } from "./helpers/api-bdd-image-references";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
@@ -271,6 +274,7 @@ const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
+const imageReferences = createImageReferencesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const connectors = createConnectorBddApi(context);
@@ -590,6 +594,36 @@ interface ChatRunSendBody {
  * Template markers render inline, so a client that wants the template on its
  * own line sends the blank line as an explicit text part.
  */
+function userImageReferenceTemplate(
+  referenceId: string,
+): GenerationTemplateRequest {
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: formatUserImageReferenceId(referenceId),
+    },
+  };
+}
+
+function restoreChatStorageMocks(): void {
+  chatCallbacks.acceptChatObjectStorage();
+  api.acceptStorageDownloads();
+}
+
+async function setReferenceImages(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Image reference tests require an organization");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    { [FeatureSwitchKey.ReferenceImages]: enabled },
+  );
+}
+
 function userMessageWithTemplate(
   prompt: string,
   template: GenerationTemplateRequest,
@@ -22355,6 +22389,476 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).not.toContain("render.mjs");
     await cancelChatRun(actor, website.runId);
+  }, 90_000);
+
+  it("resolves authorized saved illustration references without leaking catalog metadata", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await setReferenceImages(actor, true);
+    const reference = await imageReferences.createReference(actor, {
+      title: "Secret campaign reference title",
+    });
+    restoreChatStorageMocks();
+    context.mocks.axiom.ingest.mockClear();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "draw a launch-day fox",
+      template: userImageReferenceTemplate(reference.id),
+    });
+    const firstRun = await api.readRun(actor, first.runId);
+    const guidance = firstRun.appendSystemPrompt ?? "";
+    const generationCommand = guidance.split("\n").find((line) => {
+      return line.includes("okou generate image");
+    });
+    expect(generationCommand).toContain(
+      `--image-reference-id ${reference.id} --raw-prompt`,
+    );
+    expect(generationCommand).not.toContain("--style");
+    expect(generationCommand).not.toContain("--compile");
+    expect(guidance).toContain(
+      "palette, texture, medium, lighting, and composition rhythm",
+    );
+    expect(guidance).toContain(
+      "Do not preserve depicted objects, text, people, or brand marks",
+    );
+    expect(guidance).not.toContain("Secret campaign reference title");
+    expect(guidance).not.toContain("chat-reference.png");
+    expect(guidance).not.toContain("preview.example.test");
+    expect(guidance).not.toContain("upload.example.test");
+    const usage = templateUsageEvents();
+    expect(usage).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "normal-send",
+        templateCategory: "illustration",
+        templateCount: 1,
+        templateId: "user-reference",
+        templateSlug: "user-reference",
+        templateSource: "user-reference",
+      }),
+    ]);
+    expect(JSON.stringify(usage)).not.toContain(reference.id);
+    expect(JSON.stringify(usage)).not.toContain(
+      "Secret campaign reference title",
+    );
+    await cancelChatRun(actor, first.runId);
+
+    await imageReferences.updateReference(actor, reference.id, {
+      visibility: "public",
+    });
+    restoreChatStorageMocks();
+    const orgId = requireOrgId(actor);
+    const member = bdd.user({ orgId, orgRole: "org:member" });
+    bdd.acceptAgentStorageWrites();
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "Shared reference member agent",
+    });
+    restoreChatStorageMocks();
+    const shared = await sendChatRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "draw a shared-reference poster",
+      template: userImageReferenceTemplate(reference.id),
+    });
+    expect(
+      (await api.readRun(member, shared.runId)).appendSystemPrompt,
+    ).toContain(`--image-reference-id ${reference.id} --raw-prompt`);
+    await cancelChatRun(member, shared.runId);
+
+    const followUp = await sendChatRun(member, {
+      agentId: memberAgent.agentId,
+      threadId: shared.threadId,
+      prompt: "make another with the same selected reference",
+      template: userImageReferenceTemplate(reference.id),
+    });
+    const followUpRun = await api.readRun(member, followUp.runId);
+    expect(followUpRun.appendSystemPrompt).toContain(
+      `--image-reference-id ${reference.id} --raw-prompt`,
+    );
+    expect(followUpRun.prompt).toContain(
+      "make another with the same selected reference",
+    );
+    await cancelChatRun(member, followUp.runId);
+  }, 120_000);
+
+  it("fails malformed, missing, deleted, and unauthorized saved references identically before persistence", async () => {
+    const owner = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await setReferenceImages(owner.actor, true);
+    const reference = await imageReferences.createReference(owner.actor, {
+      title: "Private authorization fixture",
+    });
+    restoreChatStorageMocks();
+
+    const orgId = requireOrgId(owner.actor);
+    const member = bdd.user({ orgId, orgRole: "org:member" });
+    bdd.acceptAgentStorageWrites();
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "Private reference non-owner",
+    });
+    restoreChatStorageMocks();
+
+    const crossOrg = await entitledChatActor();
+    await setReferenceImages(crossOrg.actor, true);
+    const attempts: readonly {
+      readonly actor: ApiTestUser;
+      readonly agentId: string;
+      readonly template: GenerationTemplateRequest;
+    }[] = [
+      {
+        actor: member,
+        agentId: memberAgent.agentId,
+        template: userImageReferenceTemplate(reference.id),
+      },
+      {
+        actor: crossOrg.actor,
+        agentId: crossOrg.agentId,
+        template: userImageReferenceTemplate(reference.id),
+      },
+      {
+        actor: owner.actor,
+        agentId: owner.agentId,
+        template: userImageReferenceTemplate(randomUUID()),
+      },
+    ];
+    for (const attempt of attempts) {
+      const threadId = randomUUID();
+      const rejected = await chat.requestSendEvent(
+        attempt.actor,
+        {
+          agentId: attempt.agentId,
+          clientThreadId: threadId,
+          prompt: "try an unavailable saved reference",
+          userMessage: userMessageWithTemplate(
+            "try an unavailable saved reference",
+            attempt.template,
+          ),
+        },
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toBe(
+        IMAGE_REFERENCE_UNAVAILABLE_MESSAGE,
+      );
+      await chat.requestReadThread(attempt.actor, threadId, [404]);
+    }
+
+    await setReferenceImages(owner.actor, false);
+    const featureOffThreadId = randomUUID();
+    const featureOff = await chat.requestSendEvent(
+      owner.actor,
+      {
+        agentId: owner.agentId,
+        clientThreadId: featureOffThreadId,
+        prompt: "try while references are off",
+        userMessage: userMessageWithTemplate(
+          "try while references are off",
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [400],
+    );
+    expectApiError(featureOff.body);
+    expect(featureOff.body.error.message).toBe(
+      IMAGE_REFERENCE_UNAVAILABLE_MESSAGE,
+    );
+    await chat.requestReadThread(owner.actor, featureOffThreadId, [404]);
+
+    await setReferenceImages(owner.actor, true);
+    const malformedThreadId = randomUUID();
+    const malformed = await chat.requestSendEvent(
+      owner.actor,
+      {
+        agentId: owner.agentId,
+        clientThreadId: malformedThreadId,
+        prompt: "try a malformed saved reference",
+        userMessage: userMessageWithTemplate(
+          "try a malformed saved reference",
+          {
+            type: "illustration",
+            selection: {
+              illustrationStyleId: "user-image-reference:not-a-uuid",
+            },
+          },
+        ),
+      },
+      [400],
+    );
+    expectApiError(malformed.body);
+    expect(malformed.body.error.message).toBe(
+      IMAGE_REFERENCE_UNAVAILABLE_MESSAGE,
+    );
+    await chat.requestReadThread(owner.actor, malformedThreadId, [404]);
+
+    await imageReferences.deleteReference(owner.actor, reference.id);
+    restoreChatStorageMocks();
+    const deletedThreadId = randomUUID();
+    const deleted = await chat.requestSendEvent(
+      owner.actor,
+      {
+        agentId: owner.agentId,
+        clientThreadId: deletedThreadId,
+        prompt: "try a deleted saved reference",
+        userMessage: userMessageWithTemplate(
+          "try a deleted saved reference",
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [400],
+    );
+    expectApiError(deleted.body);
+    expect(deleted.body.error.message).toBe(
+      IMAGE_REFERENCE_UNAVAILABLE_MESSAGE,
+    );
+    await chat.requestReadThread(owner.actor, deletedThreadId, [404]);
+  }, 120_000);
+
+  it("re-authorizes saved references for successful queued dispatch", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await setReferenceImages(actor, true);
+    const reference = await imageReferences.createReference(actor);
+    restoreChatStorageMocks();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold a valid reference in the queue",
+    });
+    await flushWaitUntilForTest();
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        clientEventId: queuedEventId,
+        prompt: "dispatch this saved reference later",
+        userMessage: userMessageWithTemplate(
+          "dispatch this saved reference later",
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+    context.mocks.axiom.ingest.mockClear();
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedEventId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const dispatchedRunId = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedEventId;
+    })?.runId;
+    if (!dispatchedRunId) {
+      throw new Error("Expected the saved reference message to dispatch");
+    }
+    const run = await api.readRun(actor, dispatchedRunId);
+    expect(run.appendSystemPrompt).toContain(
+      `--image-reference-id ${reference.id} --raw-prompt`,
+    );
+    const usage = templateUsageEvents();
+    expect(usage).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "queued-claim",
+        templateId: "user-reference",
+        templateSource: "user-reference",
+      }),
+    ]);
+    expect(JSON.stringify(usage)).not.toContain(reference.id);
+    await cancelChatRun(actor, dispatchedRunId);
+  }, 90_000);
+
+  it("rejects a queued saved reference after same-org access is revoked", async () => {
+    const owner = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await setReferenceImages(owner.actor, true);
+    const reference = await imageReferences.createReference(owner.actor, {
+      visibility: "public",
+    });
+    restoreChatStorageMocks();
+    const member = bdd.user({
+      orgId: requireOrgId(owner.actor),
+      orgRole: "org:member",
+    });
+    bdd.acceptAgentStorageWrites();
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "Queued reference member agent",
+    });
+    restoreChatStorageMocks();
+
+    const anchor = await sendChatRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "hold the reference queue open",
+    });
+    await flushWaitUntilForTest();
+    const anchorClaim = await claimChatRun(owner.runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queuedPrompt = "preserve this queued reference request";
+    const queued = await chat.requestSendEvent(
+      member,
+      {
+        agentId: memberAgent.agentId,
+        threadId: anchor.threadId,
+        clientEventId: queuedEventId,
+        prompt: queuedPrompt,
+        userMessage: userMessageWithTemplate(
+          queuedPrompt,
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    await imageReferences.updateReference(owner.actor, reference.id, {
+      visibility: "private",
+    });
+    restoreChatStorageMocks();
+    context.mocks.axiom.ingest.mockClear();
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const messages = await waitForThreadMessages(
+      member,
+      anchor.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return message.content === IMAGE_REFERENCE_UNAVAILABLE_MESSAGE;
+        });
+      },
+    );
+    const rejected = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedEventId;
+    });
+    expect(rejected).toMatchObject({
+      eventType: "input.rejected",
+      error: "bad_request",
+    });
+    expect(rejected?.runId).toBeUndefined();
+    expect(chatEventDisplayText(rejected!)?.trimEnd()).toBe(queuedPrompt);
+    expect(templateUsageEvents()).toStrictEqual([]);
+  }, 90_000);
+
+  it("re-authorizes saved references before active-input delivery", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await setReferenceImages(actor, true);
+    const reference = await imageReferences.createReference(actor);
+    restoreChatStorageMocks();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold an active run for steering",
+    });
+    await flushWaitUntilForTest();
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const acceptedInputId = randomUUID();
+    const accepted = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        clientEventId: acceptedInputId,
+        prompt: "deliver this active saved reference",
+        userMessage: userMessageWithTemplate(
+          "deliver this active saved reference",
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [201],
+    );
+    expect(accepted.body).toMatchObject({ runId: null });
+    context.mocks.axiom.ingest.mockClear();
+    const acceptedReservation = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (acceptedReservation.outcome !== "reserved") {
+      throw new Error("Expected the authorized active input to be reserved");
+    }
+    expect(acceptedReservation.prompt).toContain(
+      `--image-reference-id ${reference.id} --raw-prompt`,
+    );
+    expect(templateUsageEvents()).toStrictEqual([
+      expect.objectContaining({
+        dispatchPath: "active-input",
+        templateId: "user-reference",
+        templateSource: "user-reference",
+      }),
+    ]);
+    await api.recordRunnerActiveInputDelivery(
+      claimed.claim.sandboxToken,
+      active.runId,
+      acceptedReservation.deliveryId,
+    );
+
+    const activeInputId = randomUUID();
+    const activePrompt = "preserve this active reference request";
+    const steered = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        clientEventId: activeInputId,
+        prompt: activePrompt,
+        userMessage: userMessageWithTemplate(
+          activePrompt,
+          userImageReferenceTemplate(reference.id),
+        ),
+      },
+      [201],
+    );
+    expect(steered.body).toMatchObject({ runId: null });
+    const reservedBeforeDelete = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reservedBeforeDelete.outcome !== "reserved") {
+      throw new Error("Expected the second active input to be reserved");
+    }
+    expect(reservedBeforeDelete.eventIds).toStrictEqual([activeInputId]);
+
+    await imageReferences.deleteReference(actor, reference.id);
+    restoreChatStorageMocks();
+    context.mocks.axiom.ingest.mockClear();
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(reserved.outcome).toBe("empty");
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return assistantMessages(items).some((message) => {
+          return message.content === IMAGE_REFERENCE_UNAVAILABLE_MESSAGE;
+        });
+      },
+    );
+    const rejected = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === activeInputId;
+    });
+    expect(rejected).toMatchObject({
+      eventType: "input.rejected",
+      error: "image_reference_unavailable",
+    });
+    expect(rejected?.runId).toBeUndefined();
+    expect(chatEventDisplayText(rejected!)?.trimEnd()).toBe(activePrompt);
+    expect(templateUsageEvents()).toStrictEqual([]);
+    await cancelChatRun(actor, active.runId, claimed.sandboxHeaders);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {

@@ -1,6 +1,7 @@
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { parseAvatarTemplateStylePresetId } from "./avatar-template";
+import { isUserImageReferenceId } from "./image-reference-selection";
 import { isUserPresentationTemplateId } from "./presentation-template-selection";
 import { findWorkflowTemplateItem } from "./workflow-template-items";
 
@@ -21,7 +22,10 @@ export type GenerationTemplateCategory =
   | "workflow";
 
 /** Where the selected template came from. */
-export type GenerationTemplateSource = "builtin" | "user-imported";
+export type GenerationTemplateSource =
+  | "builtin"
+  | "user-imported"
+  | "user-reference";
 
 /**
  * One template selection, normalised into a shape that is comparable across
@@ -55,6 +59,7 @@ export interface GenerationTemplateIdentity {
  * built-in templates from bring-your-own ones.
  */
 const USER_IMPORTED_TEMPLATE_ID = "user-template";
+const USER_IMAGE_REFERENCE_TEMPLATE_ID = "user-reference";
 
 function unreachableGenerationTemplateType(request: never): never {
   throw new Error(
@@ -164,6 +169,14 @@ export function generationTemplateIdentity(
       return videoIdentity(request.selection);
     }
     case "illustration": {
+      if (isUserImageReferenceId(request.selection.illustrationStyleId)) {
+        return {
+          category: "illustration",
+          templateId: USER_IMAGE_REFERENCE_TEMPLATE_ID,
+          templateSlug: USER_IMAGE_REFERENCE_TEMPLATE_ID,
+          source: "user-reference",
+        };
+      }
       return builtinIdentity(
         "illustration",
         request.selection.illustrationStyleId,

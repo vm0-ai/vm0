@@ -5,6 +5,7 @@ import {
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
   getCodexChatGptAccountUnsupportedModel,
+  IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
   INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE,
   isActionableRunError,
   isAgentExecutionTimeoutRunError,
@@ -29,6 +30,23 @@ describe("formatRunErrorForExternalSurface", () => {
         message: "Cannot continue session with this provider",
       }),
     ).toBe("Cannot continue session with this provider");
+  });
+
+  it("preserves the actionable unavailable-reference error", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "BAD_REQUEST",
+        message: IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+      }),
+    ).toBe(IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE);
+    expect(
+      isActionableRunError(IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE),
+    ).toBe(true);
+    expect(
+      isGenericRunErrorForDisplay(
+        IMAGE_REFERENCE_SELECTION_UNAVAILABLE_MESSAGE,
+      ),
+    ).toBe(false);
   });
 
   it.each([
