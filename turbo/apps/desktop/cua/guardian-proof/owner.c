@@ -64,7 +64,7 @@ static napi_value launch(napi_env env, napi_callback_info info) {
   if (argc != 1 || napi_get_array_length(env, args[0], &length) != napi_ok ||
       length != 7) return fail(env, "expected seven diagnostic paths/options");
   char strings[7][PATH_MAX];
-  char *argv[8];
+  char *argv[9];
   for (uint32_t i = 0; i < length; ++i) {
     napi_value value;
     size_t copied;
@@ -74,7 +74,10 @@ static napi_value launch(napi_env env, napi_callback_info info) {
       return fail(env, "invalid diagnostic launch argument");
     argv[i] = strings[i];
   }
-  argv[7] = NULL;
+  char parent_group[32];
+  snprintf(parent_group, sizeof(parent_group), "%d", getpgrp());
+  argv[7] = parent_group;
+  argv[8] = NULL;
   int pipefd[2];
   if (pipe(pipefd) != 0) return fail(env, "lifetime pipe failed");
   fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);

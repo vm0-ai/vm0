@@ -21,10 +21,12 @@ def read_when_present(path, child):
     raise RuntimeError(f"no marker {path.name}")
 
 
-def run_case(electron, build, sdk, output, mode, iteration):
+def run_case(electron, build, sdk, output, native, mode, iteration):
     directory = output / f"{mode}-{iteration}"
     directory.mkdir(mode=0o700)
     socket = directory / "d.sock"
+    real = mode in {"healthy", "native-cancel"}
+    daemon_path = native / "cua-driver" if real else build / "fixture"
     environment = {
         "HOME": str(directory),
         "TMPDIR": str(directory),
@@ -33,7 +35,7 @@ def run_case(electron, build, sdk, output, mode, iteration):
     with (directory / "electron.log").open("w") as log:
         child = subprocess.Popen(
             [str(electron), str(Path(__file__).with_name("main.mjs")),
-             str(build), str(sdk), str(socket), mode],
+             str(build), str(sdk), str(socket), mode, str(daemon_path)],
             env=environment, stdout=log, stderr=log,
         )
         info = json.loads(read_when_present(Path(f"{socket}.main"), child))
@@ -44,12 +46,19 @@ def run_case(electron, build, sdk, output, mode, iteration):
             assert result["confirmed"], result
             return {"identity": info, "result": result}
         helper = json.loads(read_when_present(Path(f"{socket}.helper"), child))
-        daemon, parent, group = map(
-            int, Path(f"{socket}.daemon").read_text().split())
-        assert parent == helper["pid"] and group == info["guardian"]
+        if real:
+            daemon = helper["daemon"]
+            group = os.getpgid(daemon)
+            assert helper["nativeVersion"] == "0.23.2"
+        else:
+            daemon, parent, group = map(
+                int, Path(f"{socket}.daemon").read_text().split())
+            assert parent == helper["pid"]
+            assert helper["stateStarting"] and helper["connectionAbsent"]
+            assert not helper["settled"]
+        assert group == info["guardian"]
         assert helper["parent"] == info["guardian"]
-        assert helper["stateStarting"] and helper["connectionAbsent"]
-        assert not helper["settled"]
+        assert os.getpgid(helper["pid"]) == group
         assert os.getpgid(child.pid) != group
         assert os.getpgid(os.getpid()) != group
         observed_pids = {child.pid, info["guardian"], helper["pid"], daemon}
@@ -82,7 +91,8 @@ def run_case(electron, build, sdk, output, mode, iteration):
             result = json.loads(Path(f"{socket}.result").read_text())
             negative = mode in {"failed-kill", "identity-mismatch", "lost-observation"}
             assert result["confirmed"] is not negative, result
-            assert result["beats"] >= 200, result
+            if mode in {"blocked-before-ready", "guardian-dies"} or negative:
+                assert result["beats"] >= 200, result
             if negative:
                 assert result["fenceRetained"], result
                 assert 4990 <= result["elapsedMs"] < 5200, result
@@ -94,6 +104,10 @@ def run_case(electron, build, sdk, output, mode, iteration):
                 assert result["crashSample"]["exited"] == 1, result
                 assert result["crashSample"]["waitError"] == 0, result
                 assert result["crashSample"]["remaining"] >= 2, result
+            if mode == "healthy":
+                graceful = json.loads(Path(f"{socket}.graceful").read_text())
+                assert graceful["ended"]["success"], graceful
+                assert result["signalResult"] is None, result
         return {
             "identity": info, "helper": helper, "daemon": daemon, "group": group,
             "kernelExitObservedMs": exits, "result": result,
@@ -103,7 +117,7 @@ def run_case(electron, build, sdk, output, mode, iteration):
 def main():
     if sys.platform != "darwin":
         raise RuntimeError("This proof requires macOS; Linux is not equivalent")
-    electron, build, sdk, output = map(Path, sys.argv[1:])
+    electron, build, sdk, output, native = map(Path, sys.argv[1:])
     output.mkdir(parents=True, exist_ok=True)
     results = {
         "platform": platform.platform(), "architecture": platform.machine(),
@@ -118,9 +132,11 @@ def main():
         "identity-mismatch", "lost-observation",
     ]]
     cases += [("spawn-stop", i) for i in range(10)]
+    cases += [("healthy", i) for i in range(3)]
+    cases += [("native-cancel", i) for i in range(3)]
     try:
         for mode, iteration in cases:
-            result = run_case(electron, build, sdk, output, mode, iteration)
+            result = run_case(electron, build, sdk, output, native, mode, iteration)
             results["cases"].append(result)
             print(json.dumps(result), flush=True)
     except Exception as error:

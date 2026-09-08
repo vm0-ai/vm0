@@ -11,10 +11,14 @@ is retained unchanged. No production path loads these diagnostic files.
    `POSIX_SPAWN_SETPGROUP`, group zero, to create a native guardian as the sole
    initial member and leader of a new group. Kernel parentage and group creation
    exist before any guardian instruction, SDK import or daemon spawn.
-2. The guardian directly spawns the same bundled Electron executable in its
-   supported `ELECTRON_RUN_AS_NODE` mode, with a fixed SDK entry and minimal
-   environment. This SDK helper inherits the group. Only it imports the public
-   CUA 0.23.2 SDK/EmbeddedCuaDriverHost. The host's daemon inherits that group.
+2. The single-threaded guardian forks a native bootstrap child into that group,
+   blocked on a private gate. The guardian moves itself back to main's group
+   using `setpgid`, retaining its live PID while leaving the kill target. Only
+   after the move succeeds does it permit the child to exec the bundled Electron
+   executable in `ELECTRON_RUN_AS_NODE` mode, with a fixed SDK entry and minimal
+   environment. Only that helper imports the public CUA 0.23.2 SDK/host. If the
+   move fails (including main's group disappearing), the gate stays closed and
+   the guardian terminates/reaps its direct native bootstrap child; no SDK runs.
 3. Main owns the guardian directly through the native module, **not** a Node
    ChildProcess/libuv process handle. `waitid(WNOWAIT | WNOHANG | WEXITED)`
    observes its exit without reaping. The unreaped direct child reserves its PID
@@ -30,14 +34,18 @@ is retained unchanged. No production path loads these diagnostic files.
    Group enumeration errors, overflow or missing waitable identity fail closed.
 5. Main's monotonic five-second retirement deadline is armed before cleanup.
    Three seconds are available for graceful work, the remaining two for group
-   SIGKILL and exit observation. A failed kill or missing observation produces
+   SIGKILL and exit observation. Signals repeat while the reserved group still
+   contains members: macOS testing proved a spawn already inside the kernel can
+   survive a single group signal. A failed kill or missing observation produces
    `cleanup_unproven`, retaining the native child reservation and generation
    fence. No replacement/update is permitted. A syscall return is not evidence
    of exit.
 6. Guardian independently watches a close-on-exec lifetime pipe from main and
    a heartbeat lease. Main death/lease expiry makes the still-live guardian
-   signal its own group, including itself. Guardian failure is handled by main
-   using the retained direct-child identity. No third unsupervised guardian,
+   repeatedly signal the reserved group from outside it, observe group emptiness
+   and reap its SDK helper, then exit. Guardian failure is handled by main using
+   the retained direct-child identity. The guardian never voluntarily exits
+   while descendants remain. No third unsupervised guardian,
    LaunchAgent, privileges, responsibility disclaimer or new entitlement is
    introduced. This covers individual main, guardian and helper faults; it does
    not claim a kernel guarantee under simultaneous destruction of both owners.

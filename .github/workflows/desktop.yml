@@ -83,9 +83,18 @@ jobs:
           set -euo pipefail
           node -e 'require("electron")'
           electron="$(node -p 'require("electron")')"
-          sdk="$PWD/node_modules/@trycua/cua-driver/dist/index.js"
+          native="$RUNNER_TEMP/cua-guardian-runtime"
+          python3 scripts/stage-cua-runtime.py --out "$native"
+          python3 - "$native" <<'PY'
+          import json, subprocess, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          for relative in json.loads(Path("cua/artifacts.json").read_text())["nativeCode"]:
+              subprocess.run(["codesign", "--force", "--sign", "-", str(root / relative)], check=True)
+          PY
+          sdk="$native/node_modules/@trycua/cua-driver/dist/index.js"
           python3 cua/guardian-proof/run-macos.py "$electron" \
-            "$RUNNER_TEMP/cua-guardian-build" "$sdk" "$RUNNER_TEMP/cua-guardian-evidence"
+            "$RUNNER_TEMP/cua-guardian-build" "$sdk" "$RUNNER_TEMP/cua-guardian-evidence" "$native"
       - name: Upload guardian proof evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

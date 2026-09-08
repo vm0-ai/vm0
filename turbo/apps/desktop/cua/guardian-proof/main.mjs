@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
 const loadAddon = createRequire(import.meta.url);
-const [build, sdkPath, socketPath, mode] = process.argv.slice(-4);
+const [build, sdkPath, socketPath, mode, daemonPath] = process.argv.slice(-5);
 app.commandLine.appendSwitch("disable-gpu");
 
 void app.whenReady().then(async () => {
@@ -14,7 +14,7 @@ void app.whenReady().then(async () => {
     process.execPath,
     fileURLToPath(new URL("./helper.mjs", import.meta.url)),
     sdkPath,
-    path.join(build, "fixture"),
+    daemonPath,
     socketPath,
     mode,
   ]);
@@ -59,12 +59,12 @@ void app.whenReady().then(async () => {
     signalResult = owner.force(guardian + 1);
   }
   const noForce = ["failed-kill", "identity-mismatch"].includes(mode);
-  let forced = false;
+  let signals = 0;
   let confirmed = false;
   while (performance.now() < deadline) {
     const elapsed = performance.now() - started;
-    if (!forced && !noForce && (elapsed >= 3_000 || mode === "spawn-stop")) {
-      forced = true;
+    if (!noForce && (elapsed >= 3_000 || mode === "spawn-stop")) {
+      ++signals;
       signalResult = owner.force(guardian);
     }
     const state = owner.sample();
@@ -100,6 +100,7 @@ void app.whenReady().then(async () => {
         elapsedMs,
         beats: beats - beginningBeats,
         signalResult,
+        signals,
         crashSample,
         fenceRetained,
         samples,
@@ -110,9 +111,9 @@ void app.whenReady().then(async () => {
   );
   if (!confirmed) {
     // Separate diagnostic rescue, never counted as successful retirement.
-    owner.force(guardian);
     const rescueUntil = performance.now() + 2_000;
     while (performance.now() < rescueUntil) {
+      owner.force(guardian);
       const state = owner.sample();
       if (state.exited && state.waitError === 0 && state.remaining === 0) {
         owner.reap();
