@@ -36,6 +36,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { UnsavedBar } from "./unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
+import { AgentSshAccess } from "./agent-ssh-access.tsx";
 import {
   AgentDeleteDialog,
   type AgentDeleteWorkflow,
@@ -384,6 +385,7 @@ export function SettingsTab({
   return (
     <>
       <div className="mx-auto max-w-[900px]">
+        <AgentSshAccess agentId={agentId} />
         <Card className={surfaceVariants({ className: "overflow-hidden" })}>
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow

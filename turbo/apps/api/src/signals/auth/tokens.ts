@@ -6,6 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/capabilities";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { isStaffOrg } from "@okouai/core/staff-org";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -28,6 +29,8 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["slack:read", FeatureSwitchKey.SlackRead],
+  ["ssh:read", FeatureSwitchKey.SshAccess],
+  ["ssh:write", FeatureSwitchKey.SshAccess],
 ] as const satisfies readonly (readonly [Capability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -132,6 +135,12 @@ function isAgentCapabilityEnabled(
   orgId: string,
   overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
 ): boolean {
+  if (
+    (capability === "ssh:read" || capability === "ssh:write") &&
+    !isStaffOrg(orgId)
+  ) {
+    return false;
+  }
   const featureSwitch = featureSwitchForCapability(
     CONDITIONAL_CAPABILITIES,
     capability,

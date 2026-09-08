@@ -34,6 +34,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: ["connector:read", "connector:write"],
   mcp: "connector:read",
+  ssh: ["ssh:read", "ssh:write"],
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
@@ -76,9 +77,16 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["mcp", "image-recognition"]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "ssh", "image-recognition"]);
 
 const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
+  {
+    name: "ssh",
+    description: "List authorized SSH hosts and execute remote commands",
+    load: async () => {
+      return (await import("./commands/ssh")).sshCommand;
+    },
+  },
   {
     name: "__agent-loop",
     description: "Internal sandbox agent loop",

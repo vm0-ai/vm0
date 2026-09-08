@@ -16162,6 +16162,51 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
   });
 
+  it.each([
+    { staff: true, enabled: true },
+    { staff: true, enabled: false },
+    { staff: false, enabled: true },
+  ])(
+    "gates SSH guidance on staff=$staff enabled=$enabled and withholds non-staff scopes",
+    async ({ staff, enabled }) => {
+      const api = createRunsApi(context);
+      const connectors = createConnectorBddApi(context);
+      const { actor, agentId, runnerGroup } = await entitledRunActor(
+        staff ? { orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" } : {},
+      );
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SshAccess]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "inspect my SSH hosts",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (staff && enabled) {
+        expect(prompt).toContain("okou ssh host list --json");
+        expect(prompt).toContain("failure_reason and effects, not error text");
+      } else {
+        expect(prompt).not.toContain("okou ssh");
+      }
+      // The shared hard-coded staff org can have active SSH fixtures from
+      // parallel files. Do not alter its quota or claim another fixture's Run.
+      if (!staff) {
+        await api.heartbeatRunner(runnerGroup);
+        const claim = await api.claimRunnerJob(run.runId);
+        const token = claim.platformEnvironment.OKOU_TOKEN;
+        if (!token) {
+          throw new Error("Expected a minted Run token");
+        }
+        const capabilities = verifyOkouToken(token)?.capabilities;
+        expect(capabilities).not.toContain("ssh:read");
+        expect(capabilities).not.toContain("ssh:write");
+      }
+      await api.requestCancelRun(actor, run.runId, [200]);
+    },
+  );
+
   it("advertises connector account switching", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();

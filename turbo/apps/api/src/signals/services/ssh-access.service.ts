@@ -1,0 +1,177 @@
+import { sshHostSchema } from "@okouai/api-contracts/contracts/ssh-access";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isStaffOrg } from "@okouai/core/staff-org";
+import { agents } from "@okouai/db/schema/agent";
+import { agentRuns } from "@okouai/db/schema/agent-run";
+import { agentSessions } from "@okouai/db/schema/agent-session";
+import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
+import { sshConnections } from "@okouai/db/schema/ssh-connection";
+import { and, asc, eq } from "drizzle-orm";
+
+import type { Db, ReadonlyDb } from "../external/db";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { publishSshRuntimeInvalidation } from "./ssh-runtime-wakeup.service";
+
+interface Owner {
+  readonly orgId: string;
+  readonly userId: string;
+}
+interface AgentOwner extends Owner {
+  readonly agentId: string;
+}
+
+export async function isSshAccessAvailable(
+  db: ReadonlyDb,
+  owner: Owner,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!isStaffOrg(owner.orgId)) {
+    return false;
+  }
+  const context = await loadUserFeatureSwitchContext(
+    db,
+    owner.orgId,
+    owner.userId,
+  );
+  signal.throwIfAborted();
+  return isFeatureEnabled(FeatureSwitchKey.SshAccess, context);
+}
+
+function ownedAgent(owner: AgentOwner) {
+  return and(
+    eq(agents.id, owner.agentId),
+    eq(agents.orgId, owner.orgId),
+    eq(agents.owner, owner.userId),
+  );
+}
+
+function ownedGrant(owner: AgentOwner) {
+  return and(
+    eq(agentSshAccess.agentId, owner.agentId),
+    eq(agentSshAccess.orgId, owner.orgId),
+    eq(agentSshAccess.userId, owner.userId),
+  );
+}
+
+export async function getAgentSshAccess(db: ReadonlyDb, owner: AgentOwner) {
+  const [row] = await db
+    .select({ grant: agentSshAccess.agentId })
+    .from(agents)
+    .leftJoin(agentSshAccess, ownedGrant(owner))
+    .where(ownedAgent(owner));
+  return row ? { enabled: row.grant !== null } : null;
+}
+
+export async function updateAgentSshAccess(
+  db: Db,
+  owner: AgentOwner,
+  enabled: boolean,
+  signal: AbortSignal,
+) {
+  const result = await db.transaction(async (tx) => {
+    const [agent] = await tx
+      .select({ id: agents.id })
+      .from(agents)
+      .where(ownedAgent(owner))
+      .for("update");
+    signal.throwIfAborted();
+    if (!agent) {
+      return null;
+    }
+    if (enabled) {
+      await tx.insert(agentSshAccess).values(owner).onConflictDoNothing();
+    } else {
+      await tx.delete(agentSshAccess).where(ownedGrant(owner));
+    }
+    signal.throwIfAborted();
+    return { enabled };
+  });
+  if (result) {
+    // The grant may already be deleted. Discover recipients through owner Runs.
+    await publishSshRuntimeInvalidation(db, { ...owner, connectionId: null });
+  }
+  signal.throwIfAborted();
+  return result;
+}
+
+export async function listRunSshHosts(
+  db: ReadonlyDb,
+  owner: Owner & { readonly runId: string },
+) {
+  // A left join preserves the authorized empty inventory in the same snapshot.
+  const rows = await db
+    .select({
+      id: sshConnections.id,
+      displayName: sshConnections.displayName,
+      host: sshConnections.host,
+      port: sshConnections.port,
+      username: sshConnections.username,
+      algorithm: sshConnections.learnedHostKeyAlgorithm,
+      fingerprint: sshConnections.learnedHostKeyFingerprint,
+    })
+    .from(agentRuns)
+    .innerJoin(
+      agentSessions,
+      and(
+        eq(agentSessions.id, agentRuns.sessionId),
+        eq(agentSessions.orgId, agentRuns.orgId),
+        eq(agentSessions.userId, agentRuns.userId),
+      ),
+    )
+    .innerJoin(
+      agents,
+      and(
+        eq(agents.id, agentSessions.agentId),
+        eq(agents.orgId, agentRuns.orgId),
+        eq(agents.owner, agentRuns.userId),
+      ),
+    )
+    .innerJoin(
+      agentSshAccess,
+      and(
+        eq(agentSshAccess.agentId, agents.id),
+        eq(agentSshAccess.orgId, agentRuns.orgId),
+        eq(agentSshAccess.userId, agentRuns.userId),
+      ),
+    )
+    .leftJoin(
+      sshConnections,
+      and(
+        eq(sshConnections.orgId, agentRuns.orgId),
+        eq(sshConnections.userId, agentRuns.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(agentRuns.id, owner.runId),
+        eq(agentRuns.orgId, owner.orgId),
+        eq(agentRuns.userId, owner.userId),
+        eq(agentRuns.status, "running"),
+      ),
+    )
+    .orderBy(asc(sshConnections.displayName), asc(sshConnections.id));
+  if (rows.length === 0) {
+    return null;
+  }
+  return {
+    hosts: rows.flatMap((row) => {
+      if (row.id === null) {
+        return [];
+      }
+      return [
+        sshHostSchema.parse({
+          id: row.id,
+          displayName: row.displayName,
+          host: row.host,
+          port: row.port,
+          username: row.username,
+          learnedHostKey:
+            row.algorithm === null && row.fingerprint === null
+              ? null
+              : { algorithm: row.algorithm, fingerprint: row.fingerprint },
+        }),
+      ];
+    }),
+  };
+}
