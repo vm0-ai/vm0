@@ -82,7 +82,7 @@ test("Each product milestone uses its defined conversion action", async () => {
     },
   );
 
-  await setupPage({ context, path: "/agents", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/agents", host: "app.okou.ai" });
 
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
@@ -147,7 +147,7 @@ test("Only newly earned conversion milestones are reported", async () => {
     },
   );
 
-  await setupPage({ context, path: "/agents", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/agents", host: "app.okou.ai" });
 
   await expect(
     screen.findByRole("heading", { name: "Agents" }),

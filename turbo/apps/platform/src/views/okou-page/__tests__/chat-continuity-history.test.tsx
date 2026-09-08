@@ -210,7 +210,7 @@ test("Load a long chat history without losing grouped-run context", async () => 
   );
   addPair("Most recent follow-up", "Most recent answer", "history-run-recent");
 
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 20,
     threads: [thread],
     chatEventRows: rows,
@@ -219,7 +219,7 @@ test("Load a long chat history without losing grouped-run context", async () => 
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -279,7 +279,7 @@ test("Navigate chat history with scroll controls and keyboard commands", async (
       }),
     );
   }
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 21,
     threads: [thread],
     chatEventRows: rows,
@@ -288,7 +288,7 @@ test("Navigate chat history with scroll controls and keyboard commands", async (
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -354,7 +354,7 @@ test("Keep open chats live without duplicating messages", async () => {
     outputRow(22, 2, side.id, "Existing side answer", { id: sideRunId }),
   ];
   let allRows = [...initialMainRows, ...initialSideRows];
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 22,
     threads: [main, side],
     chatEventRows: allRows,
@@ -383,7 +383,7 @@ test("Keep open chats live without duplicating messages", async () => {
   await setupPage({
     context,
     path: `/chats/${main.id}?sidebar=${side.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await waitFor(() => {

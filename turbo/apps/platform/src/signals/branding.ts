@@ -1,32 +1,19 @@
 import { computed } from "ccstate";
-import { isOkouHostname } from "../lib/platform-host.ts";
 
-type Branding = "vm0" | "okou";
-export type BrandName = "VM0" | "Okou";
-export type AssistantName = "Zero" | "Okou";
+// Only okou.ai serves the app, so the product identity is no longer chosen
+// from the page hostname.
+export type BrandName = "Okou";
+export type AssistantName = "Okou";
 
-export function resolveBrandNameForHostname(hostname: string): BrandName {
-  return isOkouHostname(hostname) ? "Okou" : "VM0";
-}
+export const BRAND_NAME: BrandName = "Okou";
+export const ASSISTANT_NAME: AssistantName = "Okou";
 
-export function resolveAssistantNameForHostname(
-  hostname: string,
-): AssistantName {
-  return resolveBrandNameForHostname(hostname) === "Okou" ? "Okou" : "Zero";
-}
-
-const branding$ = computed<Branding>(() => {
-  return resolveBrandNameForHostname(location.hostname) === "Okou"
-    ? "okou"
-    : "vm0";
+export const brandName$ = computed<BrandName>(() => {
+  return BRAND_NAME;
 });
 
-export const brandName$ = computed<BrandName>((get) => {
-  return get(branding$) === "okou" ? "Okou" : "VM0";
-});
-
-export const assistantName$ = computed<AssistantName>((get) => {
-  return get(branding$) === "okou" ? "Okou" : "Zero";
+export const assistantName$ = computed<AssistantName>(() => {
+  return ASSISTANT_NAME;
 });
 
 // Computer Use currently follows the public assistant identity. Keep the

@@ -154,7 +154,7 @@ function installCatalogRefresh(initial: PublicConnectorCatalogStatusResponse): {
   };
 }
 
-test("A migration idea uses Okou product identity on Okou", async () => {
+test("A migration idea uses the Okou product identity", async () => {
   configureAgent();
   mockCatalog([
     catalogItem("zapier", "Zapier"),
@@ -175,30 +175,6 @@ test("A migration idea uses Okou product identity on Okou", async () => {
   const composer = await findComposer();
   expect(composer.textContent).toBe(
     "Help me migrate my Zapier workflows to Okou. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
-  );
-});
-
-test("A migration idea uses VM0 product identity on VM0", async () => {
-  configureAgent();
-  mockCatalog([
-    catalogItem("zapier", "Zapier"),
-    catalogItem("slack", "Slack"),
-    catalogItem("notion", "Notion"),
-  ]);
-
-  await setupPage({
-    context,
-    host: "app.vm0.ai",
-    path: IDEAS_PATH,
-    featureSwitches: { [FeatureSwitchKey.ZapierConnector]: true },
-  });
-  const idea = await screen.findByText("Zapier → VM0 migration");
-
-  click(idea);
-
-  const composer = await findComposer();
-  expect(composer.textContent).toBe(
-    "Help me migrate my Zapier workflows to VM0. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
   );
 });
 

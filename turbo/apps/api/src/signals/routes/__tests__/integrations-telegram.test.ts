@@ -1358,7 +1358,7 @@ describe("POST /api/integrations/telegram/link", () => {
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          origin: "https://app.vm0.ai",
+          origin: "https://app.okou.ai",
         },
         body: JSON.stringify({
           telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
@@ -1421,7 +1421,7 @@ describe("POST /api/integrations/telegram/link", () => {
         OFFICIAL_BOT_TOKEN,
       ),
     };
-    const vm0Response = await accept(
+    const response = await accept(
       client.link({
         headers: { authorization: `Bearer ${token}` },
         body,
@@ -1429,20 +1429,7 @@ describe("POST /api/integrations/telegram/link", () => {
       [409],
     );
 
-    expect(vm0Response.body.error).toStrictEqual({
-      code: "CONFLICT",
-      message: `This Telegram account is already connected to another VM0 organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
-    });
-
-    const okouResponse = await accept(
-      client.link({
-        headers: { authorization: `Bearer ${token}` },
-        extraHeaders: { origin: "https://app.okou.ai" },
-        body,
-      }),
-      [409],
-    );
-    expect(okouResponse.body.error).toStrictEqual({
+    expect(response.body.error).toStrictEqual({
       code: "CONFLICT",
       message: `This Telegram account is already connected to another Okou organization through the official Telegram bot @${OFFICIAL_BOT_USERNAME}. Disconnect it before connecting a different account.`,
     });
@@ -1478,7 +1465,7 @@ describe("POST /api/integrations/telegram/link", () => {
       telegramBotId,
       telegramAuth: makeTelegramAuth(99_004, "taken_tg"),
     };
-    const vm0Response = await accept(
+    const response = await accept(
       client.link({
         headers: { authorization: `Bearer ${token}` },
         body,
@@ -1486,21 +1473,8 @@ describe("POST /api/integrations/telegram/link", () => {
       [409],
     );
 
-    expect(vm0Response.body.error.code).toBe("CONFLICT");
-    expect(vm0Response.body.error.message).toContain(
-      "already connected to another VM0 account",
-    );
-
-    const okouResponse = await accept(
-      client.link({
-        headers: { authorization: `Bearer ${token}` },
-        extraHeaders: { origin: "https://app.okou.ai" },
-        body,
-      }),
-      [409],
-    );
-    expect(okouResponse.body.error.code).toBe("CONFLICT");
-    expect(okouResponse.body.error.message).toContain(
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toContain(
       "already connected to another Okou account",
     );
   });

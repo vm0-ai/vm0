@@ -1,4 +1,4 @@
-// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
 
 import { screen, waitFor } from "@testing-library/react";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
@@ -73,7 +73,7 @@ test("An aborted route does not claim thread timing", async () => {
   await startPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     env: PAGE_ENV,
   });
 
@@ -110,7 +110,7 @@ test("Startup is reported once", async () => {
   await setupPage({
     context,
     path: ROUTES.error,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     env: PAGE_ENV,
   });
 
@@ -129,7 +129,7 @@ test("Startup timing is bounded and anonymous", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     env: PAGE_ENV,
   });
 
@@ -231,7 +231,7 @@ test("Startup timing is bounded and anonymous", async () => {
       navigation_response_end_ms: 87,
       navigation_response_start_ms: 41,
       paint_metric: "first-contentful-paint",
-      public_brand: "vm0",
+      public_brand: "okou",
       response_end_to_skeleton_paint_ms: 12,
       skeleton_paint_ms: 98,
       token: POSTHOG_KEY,

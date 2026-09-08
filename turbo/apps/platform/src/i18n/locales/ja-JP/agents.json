@@ -38,17 +38,11 @@
     "description": "スタイルを選ぶか、シャッフルしてランダムな見た目を試せます。",
     "editDescription": "各パーツを微調整するか、シャッフルして新しい見た目にできます。",
     "editTitle": "アバターを編集",
-    "intensity": {
-      "chill": "チル",
-      "hyped": "ハイテンション",
-      "normal": "ノーマル"
-    },
     "nextStep": "次のステップ",
     "previousStep": "前のステップ",
     "randomize": "アバターをランダム化する",
     "shuffleHint": "シャッフル — ランダムに見てみましょう!",
     "steps": {
-      "angle": "角度",
       "color": "色",
       "face": "顔",
       "hair": "髪",

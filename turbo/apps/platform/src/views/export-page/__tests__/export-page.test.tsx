@@ -65,7 +65,7 @@ test("A completed export shows its contents, expiry, and cooldown", async () => 
     });
   });
 
-  await setupPage({ context, path: "/export", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/export", host: "app.okou.ai" });
 
   await expect(
     screen.findByRole("heading", { name: "Export data" }),

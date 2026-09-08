@@ -32,17 +32,17 @@ const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
 > = {
   slack: null,
   workflow:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
   presentation:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-presentation_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-presentation_80x80.png",
   video:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-video_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-video_80x80.png",
   images:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-images_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-images_80x80.png",
   website:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-website_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-website_80x80.png",
   explore:
-    "https://static.vm0.io/web/assets/onboarding/v2-choice-explore_80x80.png",
+    "https://static.okou.io/web/assets/onboarding/v2-choice-explore_80x80.png",
 };
 
 export function onboardingMakeOptions(

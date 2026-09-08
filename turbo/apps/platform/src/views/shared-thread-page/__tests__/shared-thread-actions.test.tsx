@@ -32,7 +32,7 @@ test("A visitor can continue a shared idea in Platform", async () => {
     return respond(200, sharedThread());
   });
 
-  await setupSharedThreadPage(context, { host: "app.vm0.ai" });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
 
   await expect(
     screen.findByText("Make this conversation yours"),
@@ -41,7 +41,7 @@ test("A visitor can continue a shared idea in Platform", async () => {
 
   const handoffLink = getLinkByName("Try it yourself");
   const handoffUrl = new URL(handoffLink.getAttribute("href") ?? "");
-  expect(handoffUrl.origin).toBe("https://app.vm0.ai");
+  expect(handoffUrl.origin).toBe("https://app.okou.ai");
   expect(handoffUrl.pathname).toBe("/");
   expect(handoffUrl.searchParams.get("prompt")).toContain(
     `/share/threads/${SHARED_THREAD_ID}`,
@@ -99,7 +99,7 @@ test("A visitor can copy complete public message content", async () => {
     });
   });
 
-  await setupSharedThreadPage(context, { host: "app.vm0.ai" });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
 
   await expect(
     screen.findByRole("heading", { name: "Public launch plan" }),
@@ -144,7 +144,7 @@ test("A visitor can copy the public conversation link", async () => {
     return respond(200, sharedThread());
   });
 
-  await setupSharedThreadPage(context, { host: "app.vm0.ai" });
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
 
   await expect(
     screen.findByRole("heading", { name: "Public launch plan" }),
@@ -155,7 +155,7 @@ test("A visitor can copy the public conversation link", async () => {
 
   await waitFor(() => {
     expect(clipboard.writes).toStrictEqual([
-      `https://app.vm0.ai/share/threads/${SHARED_THREAD_ID}`,
+      `https://app.okou.ai/share/threads/${SHARED_THREAD_ID}`,
     ]);
   });
   await expect(screen.findByText("Link copied")).resolves.toBeInTheDocument();

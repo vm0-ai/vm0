@@ -134,7 +134,7 @@ function expectSelected(element: HTMLElement): void {
 test("A user can change theme while reviewing the unified preferences", async () => {
   mockPreferences();
 
-  await setupPage({ context, path: "/settings", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/settings", host: "app.okou.ai" });
 
   await expect(
     screen.findByText("Your preferred color scheme"),
@@ -161,7 +161,7 @@ test("Account-backed appearance preferences are restored and saved", async () =>
   await setupPage({
     context,
     path: "/settings",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
   });
 
@@ -198,7 +198,7 @@ test("A user can select a gradient color theme when available", async () => {
   await setupPage({
     context,
     path: "/settings",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
   });
 
@@ -222,7 +222,7 @@ test("Gradient color themes stay hidden when the capability is disabled", async 
   await setupPage({
     context,
     path: "/settings",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: false },
   });
 
@@ -242,7 +242,7 @@ test("Chat settings fall back to Preference while the capability is disabled", a
   await setupPage({
     context,
     path: "/?settings=chat",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.ChatPreference]: false },
   });
 
@@ -287,7 +287,7 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
   await setupPage({
     context,
     path: "/?settings=chat",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: {
       [FeatureSwitchKey.ChatPreference]: true,
       [FeatureSwitchKey.CodexFastMode]: true,
@@ -363,7 +363,7 @@ test("Chat settings keep the agreed row order and save chat defaults", async () 
 test("A user can save message-send and time-zone preferences", async () => {
   const updates = mockPreferences();
 
-  await setupPage({ context, path: "/settings", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/settings", host: "app.okou.ai" });
 
   await expect(screen.findByText("Send message with")).resolves.toBeVisible();
   click(getFastRole("button", "⌘ Enter"));

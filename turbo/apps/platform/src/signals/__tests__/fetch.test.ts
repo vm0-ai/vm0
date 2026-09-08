@@ -148,7 +148,7 @@ test("The update dialog appears only when an update is required", async () => {
     name: "Update required",
   });
   expect(dialog).toHaveTextContent(
-    "This version of VM0 is no longer supported. Refresh to load the latest version.",
+    "This version of Okou is no longer supported. Refresh to load the latest version.",
   );
   const refresh = queryAllByRoleFast("button", dialog).find((button) => {
     return button.textContent?.trim() === "Refresh";

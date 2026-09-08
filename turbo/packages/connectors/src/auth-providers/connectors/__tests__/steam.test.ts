@@ -8,7 +8,7 @@ import {
 } from "../steam/openid";
 
 const STEAM_ID = "76561198000000000";
-const RETURN_TO = "https://api.vm0.ai/api/connectors/steam/callback?state=abc";
+const RETURN_TO = "https://api.okou.ai/api/connectors/steam/callback?state=abc";
 const REALM = "https://vm0.ai/";
 
 function callbackParams(
@@ -115,7 +115,7 @@ describe("Steam OpenID provider", () => {
         {
           callbackParams: callbackParams({
             "openid.return_to":
-              "https://api.vm0.ai/api/connectors/steam/callback?state=other",
+              "https://api.okou.ai/api/connectors/steam/callback?state=other",
           }),
           expectedReturnTo: RETURN_TO,
           expectedRealm: REALM,

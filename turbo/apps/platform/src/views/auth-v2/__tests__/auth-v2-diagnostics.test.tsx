@@ -1,4 +1,4 @@
-// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
 
 import { fireEvent, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -39,7 +39,7 @@ function setupSignIn(path = "/sign-in"): Promise<void> {
   context.mocks.posthog();
   return setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path,
     auth: null,
     env: PAGE_ENV,

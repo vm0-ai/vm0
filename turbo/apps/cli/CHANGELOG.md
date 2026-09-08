@@ -1,5 +1,38 @@
 # Changelog
 
+## [9.317.1](https://github.com/vm0-ai/vm0/compare/cli-v9.317.0...cli-v9.317.1) (2026-09-08)
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.415.1
+    * @okouai/connectors bumped to 3.8.3
+    * @okouai/core bumped to 8.635.1
+    * @okouai/pi-agent-runtime bumped to 1.23.0
+
+## [9.317.0](https://github.com/vm0-ai/vm0/compare/cli-v9.316.7...cli-v9.317.0) (2026-09-08)
+
+
+### Features
+
+* add slack bot channel discovery and history reads ([#32527](https://github.com/vm0-ai/vm0/issues/32527)) ([9873338](https://github.com/vm0-ai/vm0/commit/9873338effbfa71fa10e7fbf4c8a3508a9de1ba3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.415.0
+    * @okouai/core bumped to 8.635.0
+    * @okouai/pi-agent-runtime bumped to 1.22.1
+
 ## [9.316.7](https://github.com/vm0-ai/vm0/compare/cli-v9.316.6...cli-v9.316.7) (2026-09-08)
 
 

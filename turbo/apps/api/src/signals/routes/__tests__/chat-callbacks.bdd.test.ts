@@ -4705,182 +4705,159 @@ describe("CHAT-02: chat output extraction and terminal callbacks", () => {
 });
 
 describe("CHAT-02: drain-time admission failure", () => {
-  it.each([
-    {
-      publicBrand: "okou",
-      anchorBrand: "vm0",
-      expectedUrl: "https://app.okou.ai/?settings=billing&billingView=credits",
-      otherOrigin: "https://app.vm0.ai",
-    },
-    {
-      publicBrand: "vm0",
-      anchorBrand: "okou",
-      expectedUrl: "https://app.vm0.ai/?settings=billing&billingView=credits",
-      otherOrigin: "https://app.okou.ai",
-    },
-  ] as const)(
-    "terminalizes a queued $publicBrand Web message when credits are lost before drain",
-    async ({ publicBrand, anchorBrand, expectedUrl, otherOrigin }) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      if (!actor.orgId) {
-        throw new Error("Expected an org-scoped Web chat actor");
-      }
-      const startedAt = now();
-      mockNow(startedAt);
-      onTestFinished(() => {
-        clearMockNow();
-      });
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
+  it("terminalizes a queued Web message when credits are lost before drain", async () => {
+    mockEnv("APP_URL", "https://app.okou.ai");
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Web chat actor");
+    }
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
 
-      const anchor = await startChatRun(
-        actor,
-        {
-          agentId,
-          prompt: "finish after queued Web credit loss",
-        },
-        { publicBrand: anchorBrand },
-      );
-      const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
-      const queuedEventId = randomUUID();
-      const queuedPrompt = "reject this queued Web message after credit loss";
-      const queued = await chat.requestSendEvent(
-        actor,
-        {
-          agentId,
-          threadId: anchor.threadId,
-          prompt: queuedPrompt,
-          clientEventId: queuedEventId,
-        },
-        [201],
-        { publicBrand },
-      );
-      if ("error" in queued.body) {
-        throw new Error(queued.body.error.message);
-      }
-      expect(queued.body.runId).toBeNull();
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "finish after queued Web credit loss",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    const queuedEventId = randomUUID();
+    const queuedPrompt = "reject this queued Web message after credit loss";
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in queued.body) {
+      throw new Error(queued.body.error.message);
+    }
+    expect(queued.body.runId).toBeNull();
 
-      await seedOrgMetadata({
-        orgId: actor.orgId,
-        tier: "pro-suspend",
-        credits: 0,
-      });
-      await upsertOrgPlanEntitlementFixture({
-        orgId: actor.orgId,
-        status: "suspended",
-        canBuyCredits: true,
-      });
-      context.mocks.ably.publish.mockClear();
-      context.mocks.ably.publish.mockRejectedValue(
-        new Error("Injected queued Web admission realtime failure"),
-      );
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: actor.orgId,
+      status: "suspended",
+      canBuyCredits: true,
+    });
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("Injected queued Web admission realtime failure"),
+    );
 
-      await completeChatRunOk(anchor.runId, anchorHeaders);
-      await flushWaitUntilForTest();
-      context.mocks.ably.publish.mockResolvedValue(undefined);
-      const terminal = await waitForThreadMessages(
-        actor,
-        anchor.threadId,
-        (events) => {
-          return (
-            userMessages(events).some((event) => {
-              return (
-                event.eventType === "input.rejected" &&
-                event.revokesEventId === queuedEventId &&
-                event.error === "insufficient_credits"
-              );
-            }) &&
-            assistantMessages(events).some((event) => {
-              return (
-                event.eventType === "output.error" &&
-                event.error === "insufficient_credits"
-              );
-            })
-          );
-        },
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    const terminal = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (events) => {
+        return (
+          userMessages(events).some((event) => {
+            return (
+              event.eventType === "input.rejected" &&
+              event.revokesEventId === queuedEventId &&
+              event.error === "insufficient_credits"
+            );
+          }) &&
+          assistantMessages(events).some((event) => {
+            return (
+              event.eventType === "output.error" &&
+              event.error === "insufficient_credits"
+            );
+          })
+        );
+      },
+    );
+    const original = userMessages(terminal.events).find((event) => {
+      return event.id === queuedEventId;
+    });
+    expect(original).toMatchObject({
+      eventType: "input.prompt",
+    });
+    expect(original ? chatEventDisplayText(original) : null).toBe(queuedPrompt);
+    const replacements = userMessages(terminal.events).filter((event) => {
+      return event.revokesEventId === queuedEventId;
+    });
+    expect(replacements).toStrictEqual([
+      expect.objectContaining({
+        eventType: "input.rejected",
+        error: "insufficient_credits",
+      }),
+    ]);
+    const errors = assistantMessages(terminal.events).filter((event) => {
+      return (
+        event.eventType === "output.error" &&
+        event.error === "insufficient_credits"
       );
-      const original = userMessages(terminal.events).find((event) => {
-        return event.id === queuedEventId;
-      });
-      expect(original).toMatchObject({
-        eventType: "input.prompt",
-      });
-      expect(original ? chatEventDisplayText(original) : null).toBe(
-        queuedPrompt,
-      );
-      const replacements = userMessages(terminal.events).filter((event) => {
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toContain("Add credits");
+    expect(errors[0]?.content).toContain(
+      "https://app.okou.ai/?settings=billing&billingView=credits",
+    );
+    expect(errors[0]?.content).not.toContain("https://app.vm0.ai");
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${anchor.threadId}`,
+      null,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
+    );
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await reconcileCancellationRecoveryFixtures(anchor.threadId);
+    const retried = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: queuedPrompt,
+        clientEventId: queuedEventId,
+      },
+      [201],
+    );
+    if ("error" in retried.body) {
+      throw new Error(retried.body.error.message);
+    }
+    expect(retried.body.runId).toBeNull();
+    await flushWaitUntilForTest();
+
+    const afterRecovery = await chat.listThreadEvents(actor, anchor.threadId);
+    expect(
+      userMessages(afterRecovery.events).filter((event) => {
         return event.revokesEventId === queuedEventId;
-      });
-      expect(replacements).toStrictEqual([
-        expect.objectContaining({
-          eventType: "input.rejected",
-          error: "insufficient_credits",
-        }),
-      ]);
-      const errors = assistantMessages(terminal.events).filter((event) => {
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(afterRecovery.events).filter((event) => {
         return (
           event.eventType === "output.error" &&
           event.error === "insufficient_credits"
         );
-      });
-      expect(errors).toHaveLength(1);
-      expect(errors[0]?.content).toContain("Add credits");
-      expect(errors[0]?.content).toContain(expectedUrl);
-      expect(errors[0]?.content).not.toContain(otherOrigin);
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        `chatThreadMessageCreated:${anchor.threadId}`,
-        null,
-      );
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        "threadListChanged",
-        null,
-      );
-      mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
-      await reconcileCancellationRecoveryFixtures(anchor.threadId);
-      const retried = await chat.requestSendEvent(
-        actor,
-        {
-          agentId,
-          threadId: anchor.threadId,
-          prompt: queuedPrompt,
-          clientEventId: queuedEventId,
-        },
-        [201],
-        { publicBrand },
-      );
-      if ("error" in retried.body) {
-        throw new Error(retried.body.error.message);
-      }
-      expect(retried.body.runId).toBeNull();
-      await flushWaitUntilForTest();
-
-      const afterRecovery = await chat.listThreadEvents(actor, anchor.threadId);
-      expect(
-        userMessages(afterRecovery.events).filter((event) => {
-          return event.revokesEventId === queuedEventId;
-        }),
-      ).toHaveLength(1);
-      expect(
-        assistantMessages(afterRecovery.events).filter((event) => {
-          return (
-            event.eventType === "output.error" &&
-            event.error === "insufficient_credits"
-          );
-        }),
-      ).toHaveLength(1);
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
-    },
-    90_000,
-  );
+      }),
+    ).toHaveLength(1);
+    expect(
+      (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
+        return run.prompt === queuedPrompt;
+      }),
+    ).toHaveLength(0);
+  }, 90_000);
 
   it("terminalizes a queued Web message with neutral copy when every built-in route is unavailable", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -5297,7 +5274,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
@@ -5389,7 +5366,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5399,7 +5376,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5416,7 +5393,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5424,7 +5401,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "member",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.okou.ai/?settings=model",
     );
   }, 90_000);
 });
@@ -6267,18 +6244,14 @@ describe("CHAT-02: thread deletion while a run is active", () => {
 });
 
 describe("CHAT-02: push notification gating", () => {
-  it("uses each subscription's public brand for the VAPID contact identity", async () => {
+  it("uses the Okou VAPID contact identity for every subscription", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     chatCallbacks.enableVapid();
-    const vm0Endpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "vm0",
-    );
-    const okouEndpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "okou",
-    );
+    const endpoints = [
+      await chatCallbacks.registerPushSubscription(actor),
+      await chatCallbacks.registerPushSubscription(actor),
+    ];
 
     const run = await startChatRun(actor, {
       agentId,
@@ -6295,30 +6268,19 @@ describe("CHAT-02: push notification gating", () => {
       .toBe(2);
     await flushWaitUntilForTest();
 
-    const vm0Call = context.mocks.webpush.sendNotification.mock.calls.find(
-      (call) => {
-        return isRecord(call[0]) && call[0].endpoint === vm0Endpoint;
-      },
-    );
-    const okouCall = context.mocks.webpush.sendNotification.mock.calls.find(
-      (call) => {
-        return isRecord(call[0]) && call[0].endpoint === okouEndpoint;
-      },
-    );
-    expect(vm0Call?.[2]).toStrictEqual({
-      vapidDetails: {
-        subject: "mailto:contact@vm0.ai",
-        publicKey: "bdd-vapid-public-key",
-        privateKey: "bdd-vapid-private-key",
-      },
-    });
-    expect(okouCall?.[2]).toStrictEqual({
-      vapidDetails: {
-        subject: "mailto:contact@okou.ai",
-        publicKey: "bdd-vapid-public-key",
-        privateKey: "bdd-vapid-private-key",
-      },
-    });
+    for (const endpoint of endpoints) {
+      const notification =
+        context.mocks.webpush.sendNotification.mock.calls.find((call) => {
+          return isRecord(call[0]) && call[0].endpoint === endpoint;
+        });
+      expect(notification?.[2]).toStrictEqual({
+        vapidDetails: {
+          subject: "mailto:contact@okou.ai",
+          publicKey: "bdd-vapid-public-key",
+          privateKey: "bdd-vapid-private-key",
+        },
+      });
+    }
   }, 60_000);
 
   it("suppresses completed run pushes while the thread has an active goal", async () => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.142](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.141...guest-write-file-v0.1.142) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** batch required connector context with agent private files ([#32545](https://github.com/vm0-ai/vm0/issues/32545)) ([a297e80](https://github.com/vm0-ai/vm0/commit/a297e80b989a3d11b3b26a5bc93939d69a996318))
+
 ## [0.1.141](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.140...guest-write-file-v0.1.141) (2026-09-08)
 
 ## [0.1.140](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.139...guest-write-file-v0.1.140) (2026-09-08)

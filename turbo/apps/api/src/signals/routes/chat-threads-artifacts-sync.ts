@@ -3,11 +3,11 @@ import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/cha
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isBadRequestResponse, isNotFoundResponse } from "../../lib/error";
 import { syncArtifactToGoogleDrive$ } from "../services/google-drive-artifact-sync.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -29,8 +29,7 @@ const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       threadId: params.threadId,
       runId: bodyResult.data.runId,
       fileId: bodyResult.data.fileId,
-      publicBrand:
-        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     },
     signal,
   );

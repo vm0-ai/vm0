@@ -156,8 +156,8 @@ runs:
         fi
 
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
-          web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
-          app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
+          web_url="${INPUT_WEB_URL:-https://www.okou.ai}"
+          app_url="${INPUT_APP_URL:-https://app.okou.ai}"
           axiom_dataset_suffix="prod"
           deploy_env="production"
           runner_default_group="vm0/production"
@@ -169,7 +169,7 @@ runs:
           user_artifacts_access_key_id="$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)"
           user_artifacts_secret_access_key="$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)"
           public_artifacts_base_url="$(repo_var PUBLIC_ARTIFACTS_BASE_URL)"
-          static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_PROD)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.vm0.io")"
+          static_assets_base_url="$(first_non_empty "$(repo_var STATIC_ASSETS_BASE_URL_PROD)" "$(repo_var STATIC_ASSETS_BASE_URL)" "https://static.okou.io")"
           atom_url="$(repo_var ATOM_URL)"
         else
           web_url="$INPUT_WEB_URL"

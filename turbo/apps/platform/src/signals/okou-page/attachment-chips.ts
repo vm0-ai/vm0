@@ -220,9 +220,11 @@ export const closeLightboxWithDialogExit$ = command(
  * the preview swaps the sidebar content instead of stacking a dialog over it.
  * Previews that cannot move into the sidebar keep the lightbox.
  *
- * This is opt-out: a new lightbox caller is routed unless it sets
- * `splitViewAvailable: false`. Set it for previews that do not belong in the
- * thread sidebar, such as a pending composer upload. File-backed previews pass
+ * This is opt-out: a new lightbox caller is routed unless it explicitly targets
+ * the lightbox or sets `splitViewAvailable: false`. An explicit target lets a
+ * modal stack its preview without disabling the preview's split-view action.
+ * Disable split view for previews that do not belong in the thread sidebar,
+ * such as a pending composer upload. File-backed previews pass
  * the File metadata so each destination can create an object URL for its own
  * consumer lifetime while preserving the name and content type.
  */
@@ -264,8 +266,12 @@ export function attachmentSidebarRef(
 }
 
 const routeToOpenArtifactSidebar$ = command(
-  ({ set }, value: AttachmentSidebarPreviewInput): boolean => {
-    if (value.splitViewAvailable === false) {
+  (
+    { set },
+    value: AttachmentSidebarPreviewInput,
+    target?: "lightbox",
+  ): boolean => {
+    if (target === "lightbox" || value.splitViewAvailable === false) {
       return false;
     }
     return set(openArtifactInOpenSidebar$, attachmentSidebarRef(value));
@@ -286,9 +292,13 @@ function imageLightboxState(
 }
 
 export const openImageLightbox$ = command(
-  ({ get, set }, value: string | AttachmentImageLightboxInput) => {
+  (
+    { get, set },
+    value: string | AttachmentImageLightboxInput,
+    target?: "lightbox",
+  ) => {
     const input = typeof value === "string" ? { url: value } : value;
-    if (set(routeToOpenArtifactSidebar$, input)) {
+    if (set(routeToOpenArtifactSidebar$, input, target)) {
       return;
     }
     set(attachmentLightboxImageCanvasSignals.reset$);
@@ -335,8 +345,12 @@ export const navigateImageLightbox$ = command(
 );
 
 export const openDocumentLightbox$ = command(
-  ({ get, set }, value: AttachmentDocumentLightboxInput) => {
-    if (set(routeToOpenArtifactSidebar$, value)) {
+  (
+    { get, set },
+    value: AttachmentDocumentLightboxInput,
+    target?: "lightbox",
+  ) => {
+    if (set(routeToOpenArtifactSidebar$, value, target)) {
       return;
     }
     const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
@@ -361,15 +375,17 @@ export const openDocumentLightbox$ = command(
 );
 
 function createSimpleLightboxOpener(kind: "audio" | "file" | "video") {
-  return command(({ get, set }, value: AttachmentNamedLightboxBase) => {
-    if (set(routeToOpenArtifactSidebar$, value)) {
-      return;
-    }
-    set(resetLightboxPreviewSignal$, get(rootSignal$));
-    set(internalLightboxDialogVisible$, true);
-    set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, { kind, ...value });
-  });
+  return command(
+    ({ get, set }, value: AttachmentNamedLightboxBase, target?: "lightbox") => {
+      if (set(routeToOpenArtifactSidebar$, value, target)) {
+        return;
+      }
+      set(resetLightboxPreviewSignal$, get(rootSignal$));
+      set(internalLightboxDialogVisible$, true);
+      set(internalLightboxDialogFullscreen$, false);
+      set(internalLightboxState$, { kind, ...value });
+    },
+  );
 }
 
 export const openFileLightbox$ = createSimpleLightboxOpener("file");

@@ -63,7 +63,7 @@ pub fn read_hello(stream: &mut UnixStream) -> io::Result<()> {
 /// Returns `InvalidInput` if the message id is empty, the message id does not
 /// fit in `u16`, or the payload exceeds [`crate::MAX_CONTROL_PAYLOAD_BYTES`].
 /// Stream write failures are returned as standard library `io::Error` values.
-pub fn write_request(stream: &mut UnixStream, request: &ControlRequest) -> io::Result<()> {
+pub fn write_request(stream: &mut impl Write, request: &ControlRequest) -> io::Result<()> {
     let message_id = request.message_id.as_bytes();
     if message_id.is_empty() || message_id.len() > MAX_MESSAGE_ID_BYTES {
         return Err(io::Error::new(
@@ -163,7 +163,7 @@ pub fn write_response(stream: &mut UnixStream, response: &ControlResponse) -> io
 /// UTF-8, contains trailing bytes, contains an unknown status byte, or declares
 /// a diagnostic larger than [`crate::MAX_DIAGNOSTIC_BYTES`]. Stream read
 /// failures are returned as standard library `io::Error` values.
-pub fn read_response(stream: &mut UnixStream) -> io::Result<ControlResponse> {
+pub fn read_response(stream: &mut impl Read) -> io::Result<ControlResponse> {
     let frame = read_frame(stream)?;
     if frame.kind != FRAME_RESPONSE {
         return Err(io::Error::new(
@@ -214,7 +214,7 @@ fn write_frame(stream: &mut UnixStream, kind: u8, payload: &[u8]) -> io::Result<
     stream.write_all(&frame)
 }
 
-fn read_frame(stream: &mut UnixStream) -> io::Result<Frame> {
+fn read_frame(stream: &mut impl Read) -> io::Result<Frame> {
     let mut len = [0u8; 4];
     stream.read_exact(&mut len)?;
     let body_len = u32::from_be_bytes(len) as usize;

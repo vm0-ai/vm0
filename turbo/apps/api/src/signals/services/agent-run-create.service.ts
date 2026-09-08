@@ -100,7 +100,6 @@ import {
   type ImageModel,
 } from "@okouai/core/image-model-catalog";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@okouai/core/github-url";
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   getCustomConnectorSkillName,
   getCustomConnectorSkillStorageName,
@@ -2518,7 +2517,7 @@ async function builtInModelProviderEnvironment(
       const baseUrl = environment.OPENAI_BASE_URL;
       if (!baseUrl) {
         throw new Error(
-          `Missing OPENAI_BASE_URL for VM0 Codex provider ${route.providerType}`,
+          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
         );
       }
       codexRuntimeConfig = {
@@ -6552,7 +6551,7 @@ function buildStoredPlatformEnvironment(args: {
 }): Record<string, string> {
   const platformEnvironment = {
     ...args.platformEnvironment,
-    CLI_PKG_URL: cliPackageUrlForPublicBrand(args.okouTokenPublicBrand),
+    CLI_PKG_URL: env("CLI_PKG_URL"),
   };
   return args.canonicalOkouRuntime
     ? (withoutLegacyAgentRunEnvironmentEntries(platformEnvironment) ?? {})
@@ -6924,12 +6923,6 @@ function billableFirewallsForPermissions(args: {
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
-}
-
-function cliPackageUrlForPublicBrand(
-  publicBrand: PublicBrand | undefined,
-): string {
-  return staticUrlForPublicBrand(env("CLI_PKG_URL"), publicBrand ?? "vm0");
 }
 
 function countBucket(count: number): (typeof COUNT_BUCKET_DIMENSIONS)[number] {
@@ -7421,7 +7414,6 @@ function preparedRunnerJobBody(
     args.orgId,
     args.featureSwitchContext.overrides,
     {
-      publicBrand: args.okouTokenPublicBrand ?? "vm0",
       ...(args.okouTokenComputerUseHostId
         ? { computerUseHostId: args.okouTokenComputerUseHostId }
         : {}),

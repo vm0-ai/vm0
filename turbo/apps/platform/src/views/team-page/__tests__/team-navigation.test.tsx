@@ -4,7 +4,6 @@ import {
   chatThreadEventsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { avatarComposerUrl } from "@okouai/core/agent-avatar";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -168,7 +167,6 @@ test("A user opens avatar customization from an agent", async () => {
   await setupTeamPage({
     context,
     path: `/agents/${RESEARCH_AGENT_ID}`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   const agentHeading = await screen.findByRole("heading", {
@@ -202,7 +200,6 @@ test("The agent header opens avatar customization on the current avatar", async 
         }),
       }),
     ],
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   await screen.findByRole("heading", { name: "Research Agent" });

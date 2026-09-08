@@ -130,7 +130,7 @@ async function openPasswordStep(): Promise<HTMLElement> {
   mockedClerk.clientSignInCreate.mockReturnValueOnce(identification.promise);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
@@ -227,7 +227,7 @@ test("Sign-in can complete while background page recovery is pending", async () 
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}?tab=profile`,
     auth: {
       user: {
@@ -288,7 +288,7 @@ test("Switching methods does not duplicate a pending sign-up", async () => {
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-up",
     auth: null,
   });

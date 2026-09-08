@@ -85,7 +85,7 @@ test("A VM0 production user sees an active maintenance notice", async () => {
     });
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: "/agents" });
+  await setupPage({ context, host: "app.okou.ai", path: "/agents" });
 
   await expect(
     screen.findByRole("status", {
@@ -103,7 +103,7 @@ test("A lookalike production hostname does not request service status", async ()
 
   await setupPage({
     context,
-    host: "app.vm0.ai.evil.example",
+    host: "app.okou.ai.evil.example",
     path: "/agents",
   });
 

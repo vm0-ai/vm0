@@ -568,18 +568,30 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn output_command_timeout_reaps_recorded_child() -> io::Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let pid_path = temp_dir.path().join("pid");
         let command = pid_recording_command(&pid_path);
-        let task = tokio::spawn(run_output_bounded(
+        let command_timeout = Duration::from_secs(1);
+        let mut command_future = Box::pin(run_output_bounded(
             command,
             "sh",
             CommandOutputPolicy::semantic_stdout(),
-            Duration::from_secs(1),
+            command_timeout,
         ));
-        let (pid, starttime) = match wait_for_recorded_process(&pid_path).await {
+        // Start the real child and deadline, but do not schedule this future
+        // until its identity is recorded. Paused time alone can auto-advance
+        // while the observer awaits filesystem I/O.
+        assert!(futures_util::poll!(command_future.as_mut()).is_pending());
+        let process = wait_for_recorded_process(&pid_path).await;
+
+        tokio::time::advance(command_timeout).await;
+        // Kill/reap uses real OS scheduling: resume time before cleanup so its
+        // watchdog cannot auto-advance ahead of the child's exit.
+        tokio::time::resume();
+        let task = tokio::spawn(command_future);
+        let (pid, starttime) = match process {
             Ok(process) => process,
             Err(error) => {
                 task.abort();

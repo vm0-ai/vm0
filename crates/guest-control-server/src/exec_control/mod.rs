@@ -7,6 +7,7 @@ use crate::error::to_io_error;
 use crate::writer::GuestWriter;
 
 mod accept;
+mod deadline_io;
 mod forward;
 mod registry;
 mod sink;

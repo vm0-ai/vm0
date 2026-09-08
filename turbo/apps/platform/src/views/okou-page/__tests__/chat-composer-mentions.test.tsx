@@ -145,7 +145,7 @@ test("Hide mention suggestions when nothing useful matches", async () => {
   );
   const untitled = withAgent(continuityThread(61, 3, "Untitled"), AGENT_ID);
   const untitledThread = { ...untitled, title: null };
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 61,
     threads: [current, projectBeta, untitledThread],
   });
@@ -154,7 +154,7 @@ test("Hide mention suggestions when nothing useful matches", async () => {
   await setupPage({
     context,
     path: `/chats/${current.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const user = userEvent.setup();
@@ -195,7 +195,7 @@ test("Mention another agent in a message", async () => {
     agent(SALES_ID, "Sales Agent", null),
     agent(FINANCE_ID, "Finance Agent", null, "private"),
   ];
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 62,
     threads: [current, matchingThread, savedMentionThread],
     drafts: new Map([
@@ -216,7 +216,7 @@ test("Mention another agent in a message", async () => {
   await setupPage({
     context,
     path: `/chats/${current.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const user = userEvent.setup();
@@ -306,7 +306,7 @@ test("Mention a chat thread from any agent", async () => {
     continuityThread(63, 2, "Other Alpha"),
     REVIEWER_ID,
   );
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 63,
     threads: [projectAlpha, otherAlpha],
   });
@@ -318,7 +318,7 @@ test("Mention a chat thread from any agent", async () => {
   await setupPage({
     context,
     path: `/chats/${projectAlpha.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const user = userEvent.setup();

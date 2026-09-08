@@ -50,7 +50,7 @@ test("A blockquote remains recognizable when HTML is treated as text", async () 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const quotedText = await screen.findByText(/Quoted passage/);
@@ -86,7 +86,7 @@ test("Common Markdown features remain recognizable", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const bold = await screen.findByText("Bold feature");
@@ -121,7 +121,7 @@ test("A complete HEX color has a preview in a plain assistant response", async (
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await waitFor(() => {
@@ -159,7 +159,7 @@ test("Preview exact inline HEX code without decorating linked or partial code", 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const brand = await screen.findByText("Brand #112233");
@@ -205,7 +205,7 @@ test("Fenced code stays readable for known and unknown languages", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const knownHeading = await screen.findByText("Known JavaScript");
@@ -240,7 +240,7 @@ test("Media links keep their text while image syntax shows a preview", async () 
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const image = await screen.findByRole("img", {
@@ -281,7 +281,7 @@ test("Raw message content cannot impersonate Platform controls", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const rawControl = await screen.findByText(/Counterfeit copy control/);
@@ -311,7 +311,7 @@ test("Raw HTML cannot change the surrounding page", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const literalHtml = await screen.findByText(/Visible safe text/);
@@ -348,7 +348,7 @@ test("Mermaid content remains readable code on surfaces without diagrams", async
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("flowchart TD", { exact: false });

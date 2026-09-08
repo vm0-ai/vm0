@@ -4,9 +4,9 @@ import { getOkouAppUrl } from "../../lib/okou-env";
 /**
  * Transform the API host to the platform (app) host.
  *
- *   api.vm0.ai                    → app.vm0.ai
- *   www.vm0.ai                    → app.vm0.ai
- *   platform.vm0.ai               → app.vm0.ai
+ *   api.okou.ai                   → app.okou.ai
+ *   www.okou.ai                   → app.okou.ai
+ *   platform.okou.ai              → app.okou.ai
  *   staging-api.vm6.ai            → staging-app.omby.ai
  *   pr-123-api.vm6.ai             → pr-123-app.omby.ai
  *   tunnel-user-host-www.vm7.ai   → tunnel-user-host-app.vm7.ai

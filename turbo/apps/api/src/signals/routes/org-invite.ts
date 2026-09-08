@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import type { UsagePackUsd } from "@okouai/api-contracts/contracts/billing";
 import { orgInviteContract } from "@okouai/api-contracts/contracts/org-member-routes";
 import type { OrgRole } from "@okouai/api-contracts/contracts/org-members";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -16,7 +15,7 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$, requestSignal$ } from "../context/hono";
+import { requestSignal$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -37,6 +36,7 @@ import {
 } from "../services/billing-payment-method.service";
 import type { RouteEntry } from "../route-entry";
 import { withBillingClerkRateLimit } from "./billing-clerk-rate-limit";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const log = logger("api:org-invite");
 
@@ -229,7 +229,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     emailAddress: body.data.email,
     inviterUserId: auth.userId,
     role: body.data.role === "admin" ? "org:admin" : "org:member",
-    redirectUrl: appUrlForPublicBrand(env("APP_URL"), get(publicBrand$)),
+    redirectUrl: env("APP_URL"),
   });
   signal.throwIfAborted();
 
@@ -337,7 +337,7 @@ const purchasePreviewInner$ = command(
         email: body.data.email,
         role: body.data.role,
         usagePackUsd: body.data.usagePackUsd,
-        publicBrand: get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
       },
       readSignal,
     );

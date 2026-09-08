@@ -1,5 +1,4 @@
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 export type ApiOrgRole = "admin" | "member";
 
@@ -47,7 +46,6 @@ export type AgentAuthContext =
       readonly orgRole?: ApiOrgRole;
       readonly runId: string;
       readonly capabilities: readonly Capability[];
-      readonly publicBrand: PublicBrand;
       readonly computerUseHostId?: string;
       readonly customConnectorSourceIds?: Readonly<Record<string, string>>;
     }
@@ -55,7 +53,6 @@ export type AgentAuthContext =
       readonly tokenType: "agent";
       readonly userId: string;
       readonly runId: string;
-      readonly publicBrand: PublicBrand;
       readonly orgId?: undefined;
       readonly orgRole?: undefined;
       readonly capabilities?: undefined;
@@ -85,7 +82,6 @@ export interface AgentAuth {
   readonly runId: string;
   readonly orgId: string;
   readonly capabilities: readonly Capability[];
-  readonly publicBrand: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: true;
   readonly customConnectorSourceIds?: Readonly<Record<string, string>>;

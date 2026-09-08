@@ -11,7 +11,6 @@ import { telegramUserAgentPreferences } from "@okouai/db/schema/telegram-user-ag
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishOrgSignal, publishUserSignal } from "../external/realtime";
@@ -23,6 +22,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { bestEffort, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const log = logger("api:telegram:integration-bot");
 
@@ -205,8 +205,7 @@ const updateCustomBot$ = command(
 
 const updateBotInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const { botId } = get(pathParamsOf(integrationsTelegramContract.updateBot));
   const bodyResult = await get(
     bodyResultOf(integrationsTelegramContract.updateBot),
