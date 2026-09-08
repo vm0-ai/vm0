@@ -985,6 +985,125 @@ describe("native pending-tool cancellation", () => {
     ).toHaveLength(1);
   }, 150_000);
   it.each([false, true])(
+    "persists context-only custom messages across tool and settlement boundaries (cancel=%s)",
+    async (cancel) => {
+      if (await runInIsolatedProcess(import.meta.url)) return;
+      const toolStarted = barrier();
+      const finishTool = barrier();
+      const settling = barrier();
+      const finishSettlement = barrier();
+      const requests = observeRequests();
+      const executions: string[] = [];
+      const { session, file, events } = await fixture({
+        count: 2,
+        resolved: true,
+        extensionFactories: [
+          (pi) => {
+            pi.on("agent_settled", async () => {
+              settling.release();
+              await finishSettlement.promise;
+              pi.sendMessage(
+                {
+                  customType: "settlement-note",
+                  content: "accepted by the terminal extension",
+                  display: false,
+                },
+                { triggerTurn: false },
+              );
+            });
+          },
+        ],
+        tool: tool(async (id) => {
+          executions.push(id);
+          toolStarted.release();
+          await finishTool.promise;
+          return {
+            content: [{ type: "text", text: "tool done" }],
+            details: {},
+          };
+        }),
+      });
+      const customEvents: string[] = [];
+      const customEntries = () => {
+        return SessionManager.open(file)
+          .getEntries()
+          .filter((entry) => {
+            return entry.type === "custom_message";
+          })
+          .map((entry) => {
+            return entry.customType;
+          });
+      };
+      const persistedAtSettlement: string[][] = [];
+      session.subscribe((event) => {
+        if (event.type === "message_end" && event.message.role === "custom")
+          customEvents.push(event.message.customType);
+        if (event.type === "agent_settled")
+          persistedAtSettlement.push(customEntries());
+      });
+      const run = resumePiApiFirstTurn(session);
+      await toolStarted.promise;
+      await session.sendCustomMessage(
+        {
+          customType: "tool-note",
+          content: "accepted while the tool is running",
+          display: false,
+        },
+        { triggerTurn: false },
+      );
+      expect(customEntries()).toEqual([]);
+      expect(customEvents).toEqual([]);
+      finishTool.release();
+      await settling.promise;
+      expect(customEntries()).toEqual(["tool-note"]);
+      const abort = cancel ? session.abort() : undefined;
+      finishSettlement.release();
+      await Promise.all([run, abort]);
+      expect(executions).toEqual(["call-1"]);
+      expect(requests).toHaveLength(1);
+      expect(customEntries()).toEqual(["tool-note", "settlement-note"]);
+      expect(customEvents).toEqual(["tool-note", "settlement-note"]);
+      expect(persistedAtSettlement).toEqual([["tool-note", "settlement-note"]]);
+      expect(
+        session.messages
+          .filter((message) => {
+            return message.role === "custom";
+          })
+          .map((message) => {
+            return message.customType;
+          }),
+      ).toEqual(["tool-note", "settlement-note"]);
+      const entries = SessionManager.open(file).getEntries();
+      const toolResult = entries.findIndex((entry) => {
+        return (
+          entry.type === "message" &&
+          entry.message.role === "toolResult" &&
+          entry.message.toolCallId === "call-1"
+        );
+      });
+      expect(toolResult).toBeGreaterThan(-1);
+      expect(
+        entries.findIndex((entry) => {
+          return entry.type === "custom_message";
+        }),
+      ).toBeGreaterThan(toolResult);
+      expect(
+        session.messages
+          .filter((message) => {
+            return message.role === "assistant";
+          })
+          .at(-1),
+      ).toMatchObject({ stopReason: cancel ? "aborted" : "stop" });
+      expect(
+        events.filter((event) => {
+          return event === "agent_settled";
+        }),
+      ).toHaveLength(1);
+    },
+    150_000,
+  );
+
+  it.each([false, true])(
     "compacts a large handoff tool result before responding and admits preparation steering once (already queued=%s)",
     async (alreadyQueued) => {
       if (await runInIsolatedProcess(import.meta.url)) return;

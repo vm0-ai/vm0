@@ -86,6 +86,14 @@ and drains those same queues; there is no new journal or restoration queue.
 Upstream's second steering poll remains conditional on an empty first poll, so
 one-at-a-time admission does not deliver two messages in one response.
 
+Upstream 0.85.1 also defers context-only custom messages while streaming to
+avoid inserting them between tool calls and results. Flush that existing
+custom-message queue before and after terminal extension preparation and at
+the final settlement boundary. These messages must reach native state, JSONL
+and message events before public settlement, without triggering another model
+request. The regression covers messages accepted during a tool and an awaited
+settlement extension, with successful and cancelled outcomes.
+
 API first-turn preflight still compares a settled checkpoint against the public
 pre-prompt compaction semantics and delegates unproven cases to the sandbox.
 The API transport issues one response only; next-response compaction belongs

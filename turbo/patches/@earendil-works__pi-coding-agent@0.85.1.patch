@@ -12,7 +12,7 @@ index 89f96e8..c2305bf 100644
      private _handlePostAgentRun;
      /**
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
-index 66e874e..4501fc8 100644
+index 66e874e..0362807 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
 @@ -271,7 +271,8 @@ export class AgentSession {
@@ -47,7 +47,7 @@ index 66e874e..4501fc8 100644
              const nextContext = previousSnapshot?.context ?? context;
              return {
                  ...previousSnapshot,
-@@ -769,6 +773,35 @@ export class AgentSession {
+@@ -769,6 +773,38 @@ export class AgentSession {
      // =========================================================================
      // Prompting
      // =========================================================================
@@ -64,12 +64,15 @@ index 66e874e..4501fc8 100644
 +            afterRun: (signal) => this._handlePostAgentRun(signal),
 +            beforeSettled: async () => {
 +                this._flushPendingBashMessages();
++                this._flushPendingCustomMessages();
 +                await this._extensionRunner.emit({ type: "agent_settled" });
++                this._flushPendingCustomMessages();
 +            },
 +            onSettled: () => {
 +                this._lastAssistantMessage = undefined;
 +                this._systemPromptOverride = undefined;
 +                this._flushPendingBashMessages();
++                this._flushPendingCustomMessages();
 +                try {
 +                    this._emit({ type: "agent_settled" });
 +                }
@@ -83,7 +86,7 @@ index 66e874e..4501fc8 100644
      async _runAgentPrompt(messages) {
          this._isAgentRunActive = true;
          try {
-@@ -784,13 +817,14 @@ export class AgentSession {
+@@ -784,13 +820,14 @@ export class AgentSession {
              await this._emitAgentSettled();
          }
      }
@@ -100,7 +103,7 @@ index 66e874e..4501fc8 100644
              return true;
          }
          if (msg.stopReason === "error" && this._retryAttempt > 0) {
-@@ -802,7 +836,8 @@ export class AgentSession {
+@@ -802,7 +839,8 @@ export class AgentSession {
              });
              this._retryAttempt = 0;
          }
@@ -110,7 +113,7 @@ index 66e874e..4501fc8 100644
              return true;
          }
          // The agent loop drains both queues before emitting agent_end. Any messages
-@@ -1044,8 +1079,6 @@ export class AgentSession {
+@@ -1044,8 +1082,6 @@ export class AgentSession {
       * Internal: Queue a steering message (already expanded, no extension command check).
       */
      async _queueSteer(text, images) {
@@ -119,7 +122,7 @@ index 66e874e..4501fc8 100644
          const content = [{ type: "text", text }];
          if (images) {
              content.push(...images);
-@@ -1055,13 +1088,13 @@ export class AgentSession {
+@@ -1055,13 +1091,13 @@ export class AgentSession {
              content,
              timestamp: Date.now(),
          });
@@ -135,7 +138,7 @@ index 66e874e..4501fc8 100644
          const content = [{ type: "text", text }];
          if (images) {
              content.push(...images);
-@@ -1071,6 +1104,8 @@ export class AgentSession {
+@@ -1071,6 +1107,8 @@ export class AgentSession {
              content,
              timestamp: Date.now(),
          });
@@ -144,7 +147,7 @@ index 66e874e..4501fc8 100644
      }
      /**
       * Throw an error if the text is an extension command.
-@@ -1227,10 +1262,10 @@ export class AgentSession {
+@@ -1227,10 +1265,10 @@ export class AgentSession {
          await this.waitForIdle();
      }
      async waitForIdle() {
@@ -158,7 +161,7 @@ index 66e874e..4501fc8 100644
      }
      // =========================================================================
      // Model Management
-@@ -1631,7 +1666,8 @@ export class AgentSession {
+@@ -1631,7 +1669,8 @@ export class AgentSession {
       * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
       * @returns Whether the post-run loop should call `agent.continue()` for overflow recovery or queued messages
       */
@@ -168,7 +171,7 @@ index 66e874e..4501fc8 100644
          const settings = this.settingsManager.getCompactionSettings();
          if (!settings.enabled)
              return false;
-@@ -1662,7 +1698,7 @@ export class AgentSession {
+@@ -1662,7 +1701,7 @@ export class AgentSession {
              // Case 2: the response completed successfully. Compact, but do not retry because
              // agent.continue() cannot continue from a completed assistant response.
              if (!willRetry) {
@@ -177,7 +180,7 @@ index 66e874e..4501fc8 100644
              }
              if (this._overflowRecoveryAttempted) {
                  const errorMessage = contextOverflow
-@@ -1692,7 +1728,7 @@ export class AgentSession {
+@@ -1692,7 +1731,7 @@ export class AgentSession {
              if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
                  this.agent.state.messages = messages.slice(0, -1);
              }
@@ -186,7 +189,7 @@ index 66e874e..4501fc8 100644
          }
          // Case 3: threshold compaction without retry.
          // For error messages or all-zero usage messages, estimate from the last valid response.
-@@ -1722,7 +1758,7 @@ export class AgentSession {
+@@ -1722,7 +1761,7 @@ export class AgentSession {
              contextTokens = directContextTokens;
          }
          if (shouldCompact(contextTokens, contextWindow, settings)) {
@@ -195,7 +198,7 @@ index 66e874e..4501fc8 100644
          }
          return false;
      }
-@@ -1736,7 +1772,8 @@ export class AgentSession {
+@@ -1736,7 +1775,8 @@ export class AgentSession {
       * @param willRetry Whether to continue the interrupted turn after overflow compaction
       * @returns Whether the post-run loop should call `agent.continue()`
       */
@@ -205,7 +208,7 @@ index 66e874e..4501fc8 100644
          const settings = this.settingsManager.getCompactionSettings();
          let started = false;
          let fromExtension = false;
-@@ -1745,6 +1782,7 @@ export class AgentSession {
+@@ -1745,6 +1785,7 @@ export class AgentSession {
                  return false;
              }
              const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
@@ -213,7 +216,7 @@ index 66e874e..4501fc8 100644
              const pathEntries = this.sessionManager.getBranch();
              const preparation = prepareCompaction(pathEntries, settings);
              if (!preparation) {
-@@ -1753,6 +1791,8 @@ export class AgentSession {
+@@ -1753,6 +1794,8 @@ export class AgentSession {
              this._emit({ type: "compaction_start", reason });
              this._autoCompactionAbortController = new AbortController();
              started = true;
@@ -222,7 +225,7 @@ index 66e874e..4501fc8 100644
              let extensionCompaction;
              if (this._extensionRunner.hasHandlers("session_before_compact")) {
                  const extensionResult = (await this._extensionRunner.emit({
-@@ -1762,7 +1802,7 @@ export class AgentSession {
+@@ -1762,7 +1805,7 @@ export class AgentSession {
                      customInstructions: undefined,
                      reason,
                      willRetry,
@@ -231,7 +234,7 @@ index 66e874e..4501fc8 100644
                  }));
                  if (extensionResult?.cancel) {
                      this._emit({
-@@ -1785,6 +1825,7 @@ export class AgentSession {
+@@ -1785,6 +1828,7 @@ export class AgentSession {
                      fromExtension = true;
                  }
              }
@@ -239,7 +242,7 @@ index 66e874e..4501fc8 100644
              let summary;
              let firstKeptEntryId;
              let tokensBefore;
-@@ -1800,14 +1841,14 @@ export class AgentSession {
+@@ -1800,14 +1844,14 @@ export class AgentSession {
              }
              else {
                  // Shared default summary generator, also used by manual compaction.
@@ -256,7 +259,7 @@ index 66e874e..4501fc8 100644
                  this._emit({
                      type: "compaction_end",
                      reason,
-@@ -1874,14 +1915,14 @@ export class AgentSession {
+@@ -1874,14 +1918,14 @@ export class AgentSession {
                      type: "compaction_end",
                      reason,
                      result: undefined,
@@ -273,7 +276,7 @@ index 66e874e..4501fc8 100644
                      willRetry: false,
                      fromExtension,
                  });
-@@ -2283,7 +2324,8 @@ export class AgentSession {
+@@ -2283,7 +2327,8 @@ export class AgentSession {
       * Prepare a retryable error for continuation with exponential backoff.
       * @returns true if the caller should continue the agent, false otherwise
       */
@@ -283,7 +286,7 @@ index 66e874e..4501fc8 100644
          const settings = this.settingsManager.getRetrySettings();
          if (!settings.enabled) {
              return false;
-@@ -2310,7 +2352,7 @@ export class AgentSession {
+@@ -2310,7 +2355,7 @@ export class AgentSession {
          // Wait with exponential backoff (abortable)
          this._retryAbortController = new AbortController();
          try {
@@ -292,6 +295,13 @@ index 66e874e..4501fc8 100644
          }
          catch {
              // Aborted during sleep - emit end event so UI can clean up
+@@ -2828,4 +2873,4 @@ export class AgentSession {
+         return this._extensionRunner;
+     }
+ }
+-//# sourceMappingURL=agent-session.js.map
+\ No newline at end of file
++//# sourceMappingURL=agent-session.js.map
 diff --git a/dist/utils/photon.js b/dist/utils/photon.js
 index 3078895..d67667b 100644
 --- a/dist/utils/photon.js
