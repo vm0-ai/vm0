@@ -539,6 +539,18 @@ describe("okou generate image command", () => {
       ],
       message: "--image-reference-id can be specified at most once",
     },
+    {
+      name: "a connector-backed saved reference request",
+      args: ["--image-reference-id", IMAGE_REFERENCE_ID, "--provider", "fal"],
+      message:
+        "--image-reference-id is only supported by the built-in provider",
+    },
+    {
+      name: "a saved reference in compile mode",
+      args: ["--image-reference-id", IMAGE_REFERENCE_ID, "--compile"],
+      message:
+        "--image-reference-id is only available for direct image generation",
+    },
   ])("should reject $name", async ({ args, message }) => {
     await expect(async () => {
       await generateCommand.parseAsync([

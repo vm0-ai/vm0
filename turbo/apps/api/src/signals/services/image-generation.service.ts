@@ -1338,7 +1338,7 @@ function validateSourceImages(
   return null;
 }
 
-export function imageSourceCount(
+function imageSourceCount(
   options: Pick<ImageOptions, "sourceImageUrls" | "savedImageReferenceCount">,
 ): number {
   return options.sourceImageUrls.length + options.savedImageReferenceCount;
@@ -1442,6 +1442,51 @@ function requestedImageSize(
   return readString(body, "size", defaultSize);
 }
 
+interface ParsedImageSources {
+  readonly sourceImageUrls: readonly string[];
+  readonly imageReferenceIds: readonly string[];
+  readonly savedImageReferenceCount: number;
+  readonly hasSourceImages: boolean;
+}
+
+function parseImageSources(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  savedImageReferenceCountOverride: number | undefined,
+): ParsedImageSources | ErrorResponse {
+  const sourceImageUrls = parseSourceImageUrls(body);
+  if (typeof sourceImageUrls === "object" && "status" in sourceImageUrls) {
+    return sourceImageUrls;
+  }
+  const imageReferenceIds = parseImageReferenceIds(body);
+  if (typeof imageReferenceIds === "object" && "status" in imageReferenceIds) {
+    return imageReferenceIds;
+  }
+  const savedImageReferenceCount =
+    savedImageReferenceCountOverride ?? imageReferenceIds.length;
+  if (
+    !Number.isInteger(savedImageReferenceCount) ||
+    savedImageReferenceCount < imageReferenceIds.length ||
+    savedImageReferenceCount > 1
+  ) {
+    throw new Error("Invalid saved image reference count");
+  }
+  const sourceImageError = validateSourceImages(
+    modelConfig,
+    sourceImageUrls,
+    savedImageReferenceCount,
+  );
+  if (sourceImageError) {
+    return sourceImageError;
+  }
+  return {
+    sourceImageUrls,
+    imageReferenceIds,
+    savedImageReferenceCount,
+    hasSourceImages: sourceImageUrls.length + savedImageReferenceCount > 0,
+  };
+}
+
 export function parseImageOptions(
   body: unknown,
   options?: {
@@ -1464,32 +1509,20 @@ export function parseImageOptions(
     return prompt;
   }
 
-  const sourceImageUrls = parseSourceImageUrls(body);
-  if (typeof sourceImageUrls === "object" && "status" in sourceImageUrls) {
-    return sourceImageUrls;
-  }
-  const imageReferenceIds = parseImageReferenceIds(body);
-  if (typeof imageReferenceIds === "object" && "status" in imageReferenceIds) {
-    return imageReferenceIds;
-  }
-  const savedImageReferenceCount =
-    options?.savedImageReferenceCount ?? imageReferenceIds.length;
-  if (
-    !Number.isInteger(savedImageReferenceCount) ||
-    savedImageReferenceCount < imageReferenceIds.length ||
-    savedImageReferenceCount > 1
-  ) {
-    throw new Error("Invalid saved image reference count");
-  }
-  const sourceImageError = validateSourceImages(
+  const sources = parseImageSources(
+    body,
     modelConfig,
-    sourceImageUrls,
-    savedImageReferenceCount,
+    options?.savedImageReferenceCount,
   );
-  if (sourceImageError) {
-    return sourceImageError;
+  if ("status" in sources) {
+    return sources;
   }
-  const hasSourceImages = sourceImageUrls.length + savedImageReferenceCount > 0;
+  const {
+    sourceImageUrls,
+    imageReferenceIds,
+    savedImageReferenceCount,
+    hasSourceImages,
+  } = sources;
 
   const size = requestedImageSize(body, model, hasSourceImages);
   const sizeError = validateImageSize(model, size);

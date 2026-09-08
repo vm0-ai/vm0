@@ -113,6 +113,33 @@ function collectImageReferenceId(value: string, previous: string[]): string[] {
   return [...previous, value.trim()];
 }
 
+function validateSavedImageReferenceOptions(options: ImageOptions): void {
+  if (
+    options.imageReferenceId.some((id) => {
+      return !isUuid(id);
+    })
+  ) {
+    throw new Error("--image-reference-id must be a valid UUID");
+  }
+  if (options.imageReferenceId.length > 1) {
+    throw new Error("--image-reference-id can be specified at most once");
+  }
+  if (
+    options.imageReferenceId.length > 0 &&
+    options.provider !== undefined &&
+    options.provider !== "built-in"
+  ) {
+    throw new Error(
+      "--image-reference-id is only supported by the built-in provider",
+    );
+  }
+  if (options.imageReferenceId.length > 0 && options.compile === true) {
+    throw new Error(
+      "--image-reference-id is only available for direct image generation",
+    );
+  }
+}
+
 function parseStyleSource(value: string): "github" | "r2" {
   if (value !== "github" && value !== "r2") {
     throw new InvalidArgumentError("style source must be github or r2");
@@ -411,21 +438,7 @@ ${formatRegistryListing(styles, "image styles")}`;
     })
     .action(
       withErrorHandler(async (options: ImageOptions, command: Command) => {
-        if (options.imageReferenceId.some((id) => !isUuid(id))) {
-          throw new Error("--image-reference-id must be a valid UUID");
-        }
-        if (options.imageReferenceId.length > 1) {
-          throw new Error("--image-reference-id can be specified at most once");
-        }
-        if (
-          options.imageReferenceId.length > 0 &&
-          options.provider !== undefined &&
-          options.provider !== "built-in"
-        ) {
-          throw new Error(
-            "--image-reference-id is only supported by the built-in provider",
-          );
-        }
+        validateSavedImageReferenceOptions(options);
 
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
@@ -444,11 +457,6 @@ ${formatRegistryListing(styles, "image styles")}`;
         const mode = resolveImagePromptMode(options, config.usageCommand);
 
         if (mode === "compile") {
-          if (options.imageReferenceId.length > 0) {
-            throw new Error(
-              "--image-reference-id is only available for direct image generation",
-            );
-          }
           if (options.json) {
             throw new Error(
               "--json is only available for direct built-in generation",

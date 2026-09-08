@@ -117,6 +117,17 @@ function imageReferenceAccessError(
       },
     };
   }
+  if (access.kind === "unavailable") {
+    return {
+      status: 503,
+      body: {
+        error: {
+          message: "Image reference is temporarily unavailable",
+          code: "PROVIDER_UNAVAILABLE",
+        },
+      },
+    };
+  }
   return {
     status: 404,
     body: {
@@ -127,6 +138,28 @@ function imageReferenceAccessError(
     },
   };
 }
+
+const preflightImageReference$ = command(
+  async (
+    { get, set },
+    options: ImageOptions,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    const referenceId = options.imageReferenceIds[0];
+    if (!referenceId) {
+      return null;
+    }
+    const auth = get(organizationAuthContext$);
+    const access = await set(
+      authorizeImageReferenceForGeneration$,
+      { orgId: auth.orgId, userId: auth.userId, referenceId },
+      signal,
+    );
+    return access.kind === "authorized"
+      ? null
+      : imageReferenceAccessError(access);
+  },
+);
 
 async function loadRunImageModelDefault(
   db: ReadonlyDb,
@@ -559,16 +592,9 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return options;
   }
 
-  const referenceId = options.imageReferenceIds[0];
-  if (referenceId) {
-    const access = await set(
-      authorizeImageReferenceForGeneration$,
-      { orgId: auth.orgId, userId: auth.userId, referenceId },
-      signal,
-    );
-    if (access.kind !== "authorized") {
-      return imageReferenceAccessError(access);
-    }
+  const referenceError = await set(preflightImageReference$, options, signal);
+  if (referenceError) {
+    return referenceError;
   }
 
   const hasCredits = await set(

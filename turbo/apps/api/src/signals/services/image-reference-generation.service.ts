@@ -4,6 +4,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { db$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
+import { settle } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadAccessibleImageReference } from "./image-reference-data.service";
 import {
@@ -15,7 +16,8 @@ const IMAGE_REFERENCE_PROVIDER_URL_TTL_SECONDS = 60 * 60;
 
 type ImageReferenceGenerationAccessFailure =
   | { readonly kind: "disabled" }
-  | { readonly kind: "not-found" };
+  | { readonly kind: "not-found" }
+  | { readonly kind: "unavailable" };
 
 interface AuthorizedImageReference {
   readonly kind: "authorized";
@@ -27,7 +29,7 @@ export type ImageReferenceGenerationAccess =
   | ImageReferenceGenerationAccessFailure
   | AuthorizedImageReference;
 
-export type ResolvedImageReferenceProviderUrl =
+type ResolvedImageReferenceProviderUrl =
   | ImageReferenceGenerationAccessFailure
   | {
       readonly kind: "resolved";
@@ -71,32 +73,32 @@ export const authorizeImageReferenceForGeneration$ = command(
       return { kind: "disabled" };
     }
 
-    let reference;
-    try {
-      reference = await loadAccessibleImageReference(db, args);
-    } catch (error) {
-      signal.throwIfAborted();
-      if (containsSensitiveMetadataError(error)) {
+    const referenceResult = await settle(
+      loadAccessibleImageReference(db, args),
+      signal,
+    );
+    if (!referenceResult.ok) {
+      if (containsSensitiveMetadataError(referenceResult.error)) {
         return { kind: "not-found" };
       }
-      throw error;
+      return { kind: "unavailable" };
     }
-    signal.throwIfAborted();
+    const reference = referenceResult.value;
     if (!reference) {
       return { kind: "not-found" };
     }
 
-    let source;
-    try {
-      source = await get(privateArtifactRecord(reference.sourceFileId));
-    } catch (error) {
-      signal.throwIfAborted();
-      if (containsSensitiveMetadataError(error)) {
+    const sourceResult = await settle(
+      get(privateArtifactRecord(reference.sourceFileId)),
+      signal,
+    );
+    if (!sourceResult.ok) {
+      if (containsSensitiveMetadataError(sourceResult.error)) {
         return { kind: "not-found" };
       }
-      throw error;
+      return { kind: "unavailable" };
     }
-    signal.throwIfAborted();
+    const source = sourceResult.value;
     if (
       !source ||
       source.userId !== reference.ownerUserId ||
@@ -139,19 +141,24 @@ export const resolveImageReferenceProviderUrl$ = command(
       return access;
     }
 
-    const url = await get(
-      generatePresignedGetUrl(
-        privateArtifactsBucket(),
-        access.key,
-        IMAGE_REFERENCE_PROVIDER_URL_TTL_SECONDS,
-        undefined,
-        true,
+    const urlResult = await settle(
+      get(
+        generatePresignedGetUrl(
+          privateArtifactsBucket(),
+          access.key,
+          IMAGE_REFERENCE_PROVIDER_URL_TTL_SECONDS,
+          undefined,
+          true,
+        ),
       ),
+      signal,
     );
-    signal.throwIfAborted();
+    if (!urlResult.ok) {
+      return { kind: "unavailable" };
+    }
     return {
       kind: "resolved",
-      url,
+      url: urlResult.value,
       referenceSource: access.referenceSource,
     };
   },
