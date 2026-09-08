@@ -64,7 +64,6 @@ export enum FeatureSwitchKey {
   CustomConnectorMcp = "customConnectorMcp",
   SshAccess = "sshAccess",
   PiLoop = "piLoop",
-  PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
   ChatDesktopSelection = "chatDesktopSelection",

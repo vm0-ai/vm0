@@ -132,6 +132,7 @@
         "diskPressure": "Se omitió la reutilización del espacio de trabajo porque el runner tenía presión de disco.",
         "environment": "Entorno",
         "featureDisabled": "La reutilización del sandbox está desactivada para esta ejecución.",
+        "framework": "Framework",
         "generation": "Generación",
         "hostname": "Nombre de host",
         "invalidMetadata": "Los metadatos del espacio de trabajo en caché no eran válidos.",

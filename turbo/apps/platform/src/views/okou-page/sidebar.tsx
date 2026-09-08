@@ -206,11 +206,9 @@ function AccountDropdownContainer({
   renderCodexResetDialog?: boolean;
 }) {
   const onAccountAction = useSet(handleAccountAction$);
-  const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
   return (
     <AccountDropdown
       onAccountAction={onAccountAction}
-      settingsOwnerId={settingsOwnerId}
       collapsed={collapsed}
       renderCodexResetDialog={renderCodexResetDialog}
     />

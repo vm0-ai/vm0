@@ -146,7 +146,32 @@ test("Move between neighboring chats from the focused pane", async () => {
   expectPaneTitle(current, "Current keyboard chat");
 });
 
-test("Add, replace, or remove the focused chat icon", async () => {
+test("Open the emoji picker for the focused chat", async () => {
+  const current = continuityThread(17, 1, "Project plan");
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 17,
+    threads: [current],
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${current.id}`,
+    ...workspace.pageOptions,
+    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
+  });
+
+  await waitFor(() => {
+    expect(composerIn(current.id)).toBeVisible();
+  });
+  composerIn(current.id).focus();
+  await userEvent.keyboard("{Shift>}{F2}{/Shift}");
+  const searchInput = await screen.findByLabelText("Search emoji");
+  await waitFor(() => {
+    expect(searchInput).toHaveFocus();
+  });
+});
+
+test("Add, replace, or remove the focused chat icon with shortcuts", async () => {
   const current = continuityThread(18, 1, "Project plan");
   const emojiOnlySide = continuityThread(18, 2, "❓");
   const workspace = installContinuityWorkspace(context, {
@@ -166,30 +191,18 @@ test("Add, replace, or remove the focused chat icon", async () => {
   await waitFor(() => {
     expect(composerIn(current.id)).toBeVisible();
     expect(composerIn(emojiOnlySide.id)).toBeVisible();
-    expect(threadContainer(emojiOnlySide.id)).toBeVisible();
   });
-  const mainComposer = composerIn(current.id);
-  mainComposer.focus();
-  await userEvent.keyboard("{Shift>}{F2}{/Shift}");
-  await screen.findByLabelText("Search emoji");
-  const doneEmoji = document.querySelector<HTMLElement>(
-    '[data-chat-thread-emoji="✅"]',
-  );
-  if (!doneEmoji) {
-    throw new Error("Expected Done emoji option");
-  }
-  await userEvent.click(doneEmoji);
-
+  const currentLink = continuitySidebarLink(current.id);
+  composerIn(current.id).focus();
+  await userEvent.keyboard("{Control>}{Shift>}1{/Shift}{/Control}");
   await waitFor(() => {
     expect(renameRequests.at(-1)).toStrictEqual({
       threadId: current.id,
       title: "✅ Project plan",
     });
-    expectPaneTitle(current, "Project plan");
-    expect(continuitySidebarLink(current.id)).toHaveTextContent(
-      "✅ Project plan",
-    );
+    expect(currentLink).toHaveTextContent("✅ Project plan");
   });
+  expect(screen.queryByLabelText("Search emoji")).toBeNull();
 
   composerIn(current.id).focus();
   await userEvent.keyboard("{Control>}{Shift>}2{/Shift}{/Control}");
@@ -198,11 +211,8 @@ test("Add, replace, or remove the focused chat icon", async () => {
       threadId: current.id,
       title: "🔥 Project plan",
     });
-    expect(continuitySidebarLink(current.id)).toHaveTextContent(
-      "🔥 Project plan",
-    );
+    expect(currentLink).toHaveTextContent("🔥 Project plan");
   });
-  expect(document.querySelector('[aria-label="Search emoji"]')).toBeNull();
 
   composerIn(current.id).focus();
   await userEvent.keyboard("{Control>}{Shift>}0{/Shift}{/Control}");
@@ -211,7 +221,7 @@ test("Add, replace, or remove the focused chat icon", async () => {
       threadId: current.id,
       title: "Project plan",
     });
-    expect(continuitySidebarLink(current.id)).toHaveTextContent("Project plan");
+    expect(currentLink).toHaveTextContent("Project plan");
   });
 
   const requestCountBeforeDeclinedRemoval = renameRequests.length;

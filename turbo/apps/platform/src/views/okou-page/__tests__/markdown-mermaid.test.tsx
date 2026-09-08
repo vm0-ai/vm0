@@ -55,6 +55,12 @@ function diagramButtons(container: ParentNode = document.body): HTMLElement[] {
 }
 
 test("A Mermaid diagram can move from chat into artifact split view", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    900,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    600,
+  );
   const chat = createMarkdownChatFixture(context);
   const source = [
     "```mermaid",

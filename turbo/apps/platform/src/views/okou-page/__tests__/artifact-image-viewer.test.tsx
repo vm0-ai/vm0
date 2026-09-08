@@ -4,7 +4,7 @@ import {
   type ChatThreadArtifactFile,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
@@ -33,8 +33,11 @@ function artifactFile(
   };
 }
 
-function queryButtonByName(name: string): HTMLElement | undefined {
-  return queryAllByRoleFast("button").find((candidate) => {
+function queryButtonByName(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("button", container).find((candidate) => {
     return (
       candidate.textContent?.trim() === name ||
       candidate.getAttribute("aria-label") === name
@@ -42,12 +45,44 @@ function queryButtonByName(name: string): HTMLElement | undefined {
   });
 }
 
-function getButtonByName(name: string): HTMLElement {
-  const button = queryButtonByName(name);
+function getButtonByName(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryButtonByName(name, container);
   if (!button) {
     throw new Error(`Expected button named "${name}"`);
   }
   return button;
+}
+
+function getLightboxImage(): HTMLImageElement {
+  const image = screen.getByTestId("attachment-lightbox-image");
+  if (!(image instanceof HTMLImageElement)) {
+    throw new Error("Expected the lightbox image");
+  }
+  return image;
+}
+
+function setImageDimensions(
+  image: HTMLImageElement,
+  naturalWidth: number,
+  naturalHeight: number,
+): void {
+  Object.defineProperties(image, {
+    naturalHeight: { configurable: true, value: naturalHeight },
+    naturalWidth: { configurable: true, value: naturalWidth },
+  });
+}
+
+async function finishLightboxImageDecode(
+  image: HTMLImageElement,
+  resolveDecode: () => void,
+): Promise<void> {
+  resolveDecode();
+  await waitFor(() => {
+    expect(image).toBeVisible();
+  });
 }
 
 test("The image viewer navigates across one assistant response", async () => {
@@ -55,6 +90,19 @@ test("The image viewer navigates across one assistant response", async () => {
     "https://cdn.vm7.io/artifacts/test/body-image-split-navigation/first.png";
   const secondImageUrl =
     "https://cdn.vm7.io/artifacts/test/body-image-split-navigation/second.png";
+  const firstDecode = context.mocks.deferred<void>();
+  const secondDecode = context.mocks.deferred<void>();
+  vi.spyOn(HTMLImageElement.prototype, "decode").mockImplementation(function (
+    this: HTMLImageElement,
+  ) {
+    if (this.src === firstImageUrl) {
+      return firstDecode.promise;
+    }
+    if (this.src === secondImageUrl) {
+      return secondDecode.promise;
+    }
+    return Promise.resolve();
+  });
   const runId = "run-body-image-split-navigation";
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {
@@ -126,10 +174,34 @@ test("The image viewer navigates across one assistant response", async () => {
   fireEvent.load(firstImage);
   click(previewButton);
   await waitFor(() => {
-    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
-      "alt",
-      "first.png",
-    );
+    const image = getLightboxImage();
+    expect(image).toHaveAttribute("alt", "first.png");
+    expect(image).toHaveAttribute("src", firstImageUrl);
+  });
+  const dialog = screen.getByRole("dialog", { name: "first.png preview" });
+  await waitFor(() => {
+    expect(dialog).toHaveFocus();
+  });
+  const firstLightboxImage = getLightboxImage();
+  expect(firstLightboxImage).not.toBeVisible();
+  expect(
+    screen.getByRole("status", { name: "Loading artifacts" }),
+  ).toBeVisible();
+  setImageDimensions(firstLightboxImage, 1600, 900);
+  expect(firstLightboxImage).not.toBeVisible();
+  await finishLightboxImageDecode(firstLightboxImage, () => {
+    return firstDecode.resolve();
+  });
+  expect(firstLightboxImage).toHaveStyle({ width: "1600px" });
+  expect(
+    screen.queryByRole("status", { name: "Loading artifacts" }),
+  ).toBeNull();
+  const downloadButton = getButtonByName("Download options", dialog);
+  click(downloadButton);
+  const downloadMenu = await screen.findByRole("menu");
+  fireEvent.keyDown(downloadMenu, { key: "Escape", code: "Escape" });
+  await waitFor(() => {
+    expect(downloadButton).toHaveFocus();
   });
   expect(queryButtonByName("Previous image artifact")).toBeUndefined();
   const nextImage = await waitFor(() => {
@@ -139,9 +211,22 @@ test("The image viewer navigates across one assistant response", async () => {
   click(nextImage);
 
   await waitFor(() => {
-    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
-      "alt",
-      "second.png",
-    );
+    const image = getLightboxImage();
+    expect(image).toHaveAttribute("alt", "second.png");
+    expect(image).toHaveAttribute("src", secondImageUrl);
   });
+  const secondLightboxImage = getLightboxImage();
+  expect(secondLightboxImage).not.toBeVisible();
+  expect(
+    screen.getByRole("status", { name: "Loading artifacts" }),
+  ).toBeVisible();
+  setImageDimensions(secondLightboxImage, 1200, 1200);
+  expect(secondLightboxImage).not.toBeVisible();
+  await finishLightboxImageDecode(secondLightboxImage, () => {
+    return secondDecode.resolve();
+  });
+  expect(secondLightboxImage).toHaveStyle({ width: "1200px" });
+  expect(
+    screen.queryByRole("status", { name: "Loading artifacts" }),
+  ).toBeNull();
 });

@@ -130,6 +130,7 @@
         "diskPressure": "Workspace reuse was skipped because the runner was under disk pressure.",
         "environment": "Environment",
         "featureDisabled": "Sandbox reuse is disabled for this run.",
+        "framework": "Framework",
         "generation": "Generation",
         "hostname": "Hostname",
         "invalidMetadata": "Cached workspace metadata was invalid.",

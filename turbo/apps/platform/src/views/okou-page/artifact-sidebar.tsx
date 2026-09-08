@@ -563,12 +563,12 @@ function ArtifactSidebarPreviewActions({
         />
       )}
       <ArtifactDownloadMenu
+        key={`${url}:${title}`}
         ariaLabel={t(($) => {
           return $.artifacts.actions.downloadArtifact;
         })}
         artifactKind={artifactKind}
         filename={title}
-        menuInstanceKey="artifact-sidebar"
         syncTarget={syncTarget}
         url={url}
       />
@@ -1104,6 +1104,7 @@ function ArtifactImageBody({
             signals={imageCanvasSignals}
             imageTestId="artifact-sidebar-body-image"
             contentClassName="p-6"
+            pendingContent={<ArtifactSpinner />}
           >
             {(controls) => {
               return (

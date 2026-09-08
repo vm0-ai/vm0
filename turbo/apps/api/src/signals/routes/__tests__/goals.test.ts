@@ -1,38 +1,35 @@
-import { HttpResponse, http } from "msw";
-import { flushWaitUntilForTest } from "../../context/wait-until";
-import {
-  auxiliaryResults,
-  auxiliaryWarnings,
-} from "./helpers/auxiliary-generation";
-import { z } from "zod";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
-import { mockOptionalEnv } from "../../../lib/env";
-import { server } from "../../../mocks/server";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import {
   admitGoalQueueEventFixture,
+  activateLegacyGoalPiFixture,
+  claimPreparedGoalFixture,
+  drainChatThreadQueueFixture,
   readGoalQueueStateFixture,
   readGoalThreadFixture,
+  seedGoalForRunFixture,
+  setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
-import {
-  readRunAutonomyBudgetFixture,
-  readThreadGoalAutonomyBudgetFixture,
-  setRunAutonomyBudgetFixture,
-} from "./helpers/runtime-state";
-import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
+import { holdAgentRunRowLockFixture } from "../../../test-fixtures/chat-events";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../../lib/time";
+import { goalsRoutes } from "../goals";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
-import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
-import { chatThreadRoutes } from "../chat-threads";
-import { goalsRoutes } from "../goals";
+import {
+  readThreadGoalAutonomyBudgetFixture,
+  setRunAutonomyBudgetFixture,
+} from "./helpers/runtime-state";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
@@ -53,6 +50,7 @@ interface GoalApiAuthFixture {
 
 interface GoalApiFixture extends GoalApiAuthFixture {
   readonly actor: ApiTestUser;
+  readonly runnerGroup: string;
 }
 
 function currentSecond(): number {
@@ -97,7 +95,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
-  api.configureRunnerGroup();
+  const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
@@ -116,8 +114,10 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   if (sent.status !== 201 || sent.body.runId === null) {
     throw new Error("Expected the chat send to create a thread-linked run");
   }
+  await flushWaitUntilForTest();
   return {
     actor,
+    runnerGroup,
     orgId: actor.orgId,
     userId: actor.userId,
     runId: sent.body.runId,
@@ -126,829 +126,383 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   };
 }
 
-const openRouterBodySchema = z.object({
-  model: z.string(),
-  messages: z.array(z.object({ role: z.string(), content: z.string() })),
-  max_tokens: z.number().optional(),
-  reasoning: z
-    .object({ effort: z.enum(["none", "minimal", "low", "medium", "high"]) })
-    .optional(),
-});
+const retiredMessage =
+  "Okou Goals have been retired. Continue with a regular chat message.";
 
-/**
- * Goal creation is the only fast-path caller on this route, but the OpenRouter
- * endpoint is shared, so match the objective-brief system prompt rather than
- * counting every completion request.
- */
-function isObjectiveBriefRequest(
-  body: z.infer<typeof openRouterBodySchema>,
-): boolean {
-  return (
-    body.messages[0]?.content.includes(
-      "Rewrite the goal objective into a short objective brief",
-    ) ?? false
-  );
-}
-
-async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {
-  return await accept(
-    goalsClient().create({
-      headers: headers(fixture),
-      body: { objective },
-    }),
-    [201],
-  );
-}
-
-async function readCurrentGoal(fixture: GoalApiFixture) {
-  return await accept(
-    goalsClient().get({
-      headers: headers(fixture),
-    }),
-    [200],
-  );
-}
-
-async function readThreadGoalWithSession(fixture: GoalApiFixture) {
-  mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return await accept(
-    goalsClient().getForChatThread({
-      headers: { authorization: "Bearer clerk-session" },
-      params: { threadId: fixture.threadId },
-    }),
-    [200],
-  );
-}
-
-async function readGoalMarkerSummaries(fixture: GoalApiFixture) {
-  const chat = createChatFilesBddApi(context);
-  const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
-  return page.events
-    .filter((event) => {
-      return (
-        event.eventType === "goal.open" || event.eventType === "goal.close"
-      );
-    })
-    .map((event) => {
-      return { eventType: event.eventType, content: event.content };
-    });
-}
-
-describe("agent goals", () => {
-  beforeEach(() => {
-    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-  });
-
-  it("exposes lifecycle transitions through the goal API", async () => {
+describe("Goal retirement compatibility", () => {
+  it("rejects an old-client create before generating a brief or writing Goal state", async () => {
     const fixture = await seedGoalApiFixture();
-
-    const created = await createGoal(fixture, "ship thread goals");
-    await expect(
-      readRunAutonomyBudgetFixture(context, fixture.runId),
-    ).resolves.toBe(10);
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(9);
-    expect(created.body).toStrictEqual({
-      objective: "ship thread goals",
-      objectiveBrief: "ship thread goals",
-      status: "active",
-    });
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: created.body,
-    });
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-    ]);
-
-    const duplicate = await accept(
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-goal-retirement-key");
+    let briefRequests = 0;
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        briefRequests++;
+        return HttpResponse.json(
+          { error: "Goal briefing must not run" },
+          { status: 500 },
+        );
+      }),
+    );
+    const chat = createChatFilesBddApi(context);
+    const before = await chat.listThreadEvents(fixture.actor, fixture.threadId);
+    const denied = await accept(
       goalsClient().create({
         headers: headers(fixture),
-        body: { objective: "try another goal" },
+        body: { objective: "continue automatically" },
       }),
       [409],
     );
-    expect(duplicate.body.error.message).toContain("existing goal");
+    expect(denied.body.error.message).toBe(retiredMessage);
+    expect(briefRequests).toBe(0);
+    await expect(
+      readGoalThreadFixture({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        threadId: fixture.threadId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      chat.listThreadEvents(fixture.actor, fixture.threadId),
+    ).resolves.toStrictEqual(before);
+    expect(
+      (await readGoalQueueStateFixture(fixture.threadId)).runIds,
+    ).toStrictEqual([]);
+  });
 
+  it.each(["active", "paused", "blocked", "complete"] as const)(
+    "rejects edit and resume of a %s Goal without changing its row or markers",
+    async (status) => {
+      const fixture = await seedGoalApiFixture();
+      const original = await seedGoalForRunFixture(
+        fixture.runId,
+        "historical objective",
+        status,
+      );
+      await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
+      const chat = createChatFilesBddApi(context);
+      const before = await chat.listThreadEvents(
+        fixture.actor,
+        fixture.threadId,
+      );
+      const edited = await accept(
+        goalsClient().edit({
+          headers: headers(fixture),
+          body: { objective: "replacement objective" },
+        }),
+        [409],
+      );
+      const resumed = await accept(
+        goalsClient().resume({ headers: headers(fixture) }),
+        [409],
+      );
+      expect(edited.body.error.message).toBe(retiredMessage);
+      expect(resumed.body.error.message).toBe(retiredMessage);
+      const current = await accept(
+        goalsClient().get({ headers: headers(fixture) }),
+        [200],
+      );
+      expect(current.body).toStrictEqual({
+        objective: original.objective,
+        objectiveBrief: original.objectiveBrief,
+        status,
+      });
+      await expect(
+        readGoalThreadFixture({
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          threadId: fixture.threadId,
+        }),
+      ).resolves.toStrictEqual({
+        goalId: original.id,
+        threadId: fixture.threadId,
+      });
+      await expect(
+        chat.listThreadEvents(fixture.actor, fixture.threadId),
+      ).resolves.toStrictEqual(before);
+      await expect(
+        readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+      ).resolves.toBe(9);
+    },
+  );
+
+  it("preserves capability and run ownership checks before retirement responses", async () => {
+    const fixture = await seedGoalApiFixture();
+    await seedGoalForRunFixture(fixture.runId, "owned objective");
+    const insufficient = headers(fixture, ["goal:read"]);
+    expect(
+      (
+        await accept(
+          goalsClient().create({
+            headers: insufficient,
+            body: { objective: "unauthorized" },
+          }),
+          [403],
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await accept(
+          goalsClient().edit({
+            headers: insufficient,
+            body: { objective: "unauthorized" },
+          }),
+          [403],
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await accept(goalsClient().resume({ headers: insufficient }), [403]))
+        .status,
+    ).toBe(403);
+    const another = await seedGoalApiFixture();
+    const forgedContext = headers({ ...another, runId: fixture.runId });
+    expect(
+      (
+        await accept(
+          goalsClient().edit({
+            headers: forgedContext,
+            body: { objective: "cross-owner" },
+          }),
+          [400],
+        )
+      ).status,
+    ).toBe(400);
+    mocks.clerk.session(another.userId, another.orgId, "org:member");
+    expect(
+      (
+        await accept(
+          goalsClient().getForChatThread({
+            headers: { authorization: "Bearer clerk-session" },
+            params: { threadId: fixture.threadId },
+          }),
+          [404],
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  it("keeps read, pause and terminal compatibility without reactivation", async () => {
+    const fixture = await seedGoalApiFixture();
+    await seedGoalForRunFixture(fixture.runId, "in-flight objective");
+    const paused = await accept(
+      goalsClient().pause({ headers: headers(fixture) }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
     const blocked = await accept(
       goalsClient().block({ headers: headers(fixture) }),
       [200],
     );
     expect(blocked.body.status).toBe("blocked");
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: { status: "blocked" },
-    });
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-    ]);
-
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
-    const exhaustedResume = await accept(
-      goalsClient().resume({ headers: headers(fixture) }),
-      [409],
-    );
-    expect(exhaustedResume.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
-    const exhaustedEdit = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:user-control:write"]),
-        body: { objective: "bypass bounded goal depth" },
-      }),
-      [409],
-    );
-    expect(exhaustedEdit.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: {
-        status: "blocked",
-        objective: "ship thread goals",
-      },
-    });
-
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
-
-    const resumed = await accept(
-      goalsClient().resume({ headers: headers(fixture) }),
-      [200],
-    );
-    expect(resumed.body.status).toBe("active");
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: { status: "active", objectiveBrief: "ship thread goals" },
-    });
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(0);
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-      { eventType: "goal.open", content: "ship thread goals" },
-    ]);
-
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
       [200],
     );
     expect(completed.body.status).toBe("complete");
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: { status: "complete" },
-    });
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-    ]);
-
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
-    const exhausted = await accept(
-      goalsClient().create({
-        headers: headers(fixture),
-        body: { objective: "exceed goal depth" },
-      }),
-      [409],
-    );
-    expect(exhausted.body.error.code).toBe("AUTONOMY_BUDGET_EXHAUSTED");
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: { status: "complete", objective: "ship thread goals" },
-    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    expect(
+      (
+        await accept(
+          goalsClient().getForChatThread({
+            headers: { authorization: "Bearer clerk-session" },
+            params: { threadId: fixture.threadId },
+          }),
+          [200],
+        )
+      ).body,
+    ).toStrictEqual(completed.body);
+    expect(
+      (await accept(goalsClient().resume({ headers: headers(fixture) }), [409]))
+        .body.error.message,
+    ).toBe(retiredMessage);
+    expect(
+      (await readGoalQueueStateFixture(fixture.threadId)).runIds,
+    ).toStrictEqual([]);
   });
 
-  it("refreshes reactivated goal budgets from the current run", async () => {
+  it("revokes old pending inputs exactly once even while another run is pending", async () => {
     const fixture = await seedGoalApiFixture();
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
-    await createGoal(fixture, "refresh inherited goal budget");
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(0);
-
-    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 5);
-    await accept(goalsClient().resume({ headers: headers(fixture) }), [200]);
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(4);
-
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 7);
-    await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:user-control:write"]),
-        body: { objective: "refresh inherited goal budget again" },
-      }),
-      [200],
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "old queued objective",
     );
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(6);
+    const event = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      goalId: goal.id,
+      objectiveBrief: goal.objectiveBrief,
+    });
+    if (event.kind !== "inserted") {
+      throw new Error("Expected an old Goal input");
+    }
+    await drainChatThreadQueueFixture({
+      threadId: fixture.threadId,
+      signal: context.signal,
+    });
+    await drainChatThreadQueueFixture({
+      threadId: fixture.threadId,
+      signal: context.signal,
+    });
+    const events = await createChatFilesBddApi(context).listThreadEvents(
+      fixture.actor,
+      fixture.threadId,
+    );
+    expect(
+      events.events.filter((item) => {
+        return item.revokesEventId === event.eventId;
+      }),
+    ).toMatchObject([{ eventType: "control.revoke" }]);
+    expect(
+      (await readGoalQueueStateFixture(fixture.threadId)).runIds,
+    ).toStrictEqual([]);
   });
 
-  it("bootstraps a provisioned goal thread through a claimed input.goal event", async () => {
-    const bdd = createBddApi(context);
+  it("rejects a captured pending Goal runner job and retains its cancelled history", async () => {
+    const fixture = await seedGoalApiFixture();
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "captured Goal job",
+    );
+    await setLegacyGoalRunOriginFixture(fixture.runId, goal.id);
     const api = createRunsApi(context);
-    const chat = createChatFilesBddApi(context);
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Goal bootstrap requires an org-scoped actor");
-    }
-    bdd.acceptAgentStorageWrites();
-    api.acceptStorageDownloads();
-    api.acceptTelemetryIngest();
-    api.configureRunnerGroup();
-    await api.grantProEntitlement(actor);
-    await api.ensureOrgModelProvider(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "Goal Bootstrap Agent",
-      visibility: "private",
-    });
-    const origin = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "create a goal outside chat",
-      modelProvider: "anthropic-api-key",
-    });
-    const kms = useSecretKmsProbe();
-
-    const created = await accept(
-      goalsClient().create({
-        headers: headers({
-          orgId: actor.orgId,
-          userId: actor.userId,
-          runId: origin.runId,
-          threadId: "",
-          agentId: agent.agentId,
-        }),
-        body: { objective: "bootstrap autonomously" },
-      }),
-      [201],
-    );
-    expect(created.body.status).toBe("active");
-
-    const goal = await readGoalThreadFixture({
-      orgId: actor.orgId,
-      userId: actor.userId,
-      agentId: agent.agentId,
-    });
-    if (!goal) {
-      throw new Error("Expected the provisioned thread goal");
-    }
-    await expect(
-      readRunAutonomyBudgetFixture(context, origin.runId),
-    ).resolves.toBe(10);
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, goal.threadId),
-    ).resolves.toBe(9);
-
-    let goalRunId: string | undefined;
-    await expect
-      .poll(async () => {
-        const state = await readGoalQueueStateFixture(goal.threadId);
-        goalRunId = state.runIds[0];
-        return goalRunId;
-      })
-      .toBeDefined();
-    if (!goalRunId) {
-      throw new Error("Expected the bootstrapped goal run");
-    }
-    await expect(
-      readRunAutonomyBudgetFixture(context, goalRunId),
-    ).resolves.toBe(9);
-
-    const state = await readGoalQueueStateFixture(goal.threadId);
-    const goalEventId = state.eventIds[0];
-    if (!goalEventId) {
-      throw new Error("Expected the bootstrap input.goal source event");
-    }
-
-    const page = await chat.listThreadEvents(actor, goal.threadId);
-    const goalQueueEvent = page.events.find((event) => {
-      return event.id === goalEventId;
-    });
-    expect(goalQueueEvent).toStrictEqual({
-      id: goalEventId,
-      threadId: goal.threadId,
-      eventType: "input.goal",
-      content: null,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "goal", goalBrief: "bootstrap autonomously" }],
-      },
-      seqId: expect.any(Number),
-      createdAt: expect.any(String),
-    });
-    const claimedGoalEvent = page.events.find((event) => {
-      return (
-        event.eventType === "input.prompt" &&
-        event.runId === goalRunId &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    expect(claimedGoalEvent).toMatchObject({
-      eventType: "input.prompt",
-      runId: goalRunId,
-      runGroupId: goal.goalId,
-      revokesEventId: goalEventId,
-      userMessage: {
-        version: 1,
-        parts: [
-          { type: "goal", goalBrief: "bootstrap autonomously" },
-          { type: "model", selectedModel: "claude-sonnet-5" },
-        ],
-      },
-    });
-    if (!claimedGoalEvent) {
-      throw new Error("Expected the claimed goal event");
-    }
-    const admittedContext = await readChatEventContextFixture(goalEventId);
-    const claimedContext = await readChatEventContextFixture(
-      claimedGoalEvent.id,
-    );
-    expect(admittedContext).toMatchObject({
-      contextType: "goal",
-      contextId: goal.goalId,
-    });
-    expect(claimedContext).toMatchObject({
-      contextType: "goal",
-      contextId: goal.goalId,
-    });
-    expect(state.runIds).toHaveLength(1);
-    expect(state.runs).toContainEqual({
-      id: goalRunId,
-      goalId: goal.goalId,
-    });
-    expect(kms.generateDataKeyCalls).toBe(1);
-
-    await api.requestCancelRun(actor, goalRunId, [200]);
-    await api.requestCancelRun(actor, origin.runId, [200]);
-  }, 60_000);
-
-  it("coalesces repeated goal queue admission to one unclaimed event per thread", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "coalesce goal triggers");
-    const goal = await readGoalThreadFixture({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      threadId: fixture.threadId,
-    });
-    if (!goal) {
-      throw new Error("Expected the active goal");
-    }
-    const kms = useSecretKmsProbe();
-
-    const first = await admitGoalQueueEventFixture({
-      threadId: fixture.threadId,
-      goalId: goal.goalId,
-      objectiveBrief: "coalesce goal triggers",
-    });
-    const second = await admitGoalQueueEventFixture({
-      threadId: fixture.threadId,
-      goalId: goal.goalId,
-      objectiveBrief: "coalesce goal triggers",
-    });
-
-    expect(first.kind).toBe("inserted");
-    expect(second).toStrictEqual({ kind: "coalesced" });
-    expect(kms.generateDataKeyCalls).toBe(0);
-    const state = await readGoalQueueStateFixture(fixture.threadId);
-    expect(state.eventIds).toHaveLength(1);
-  });
-
-  it("returns an unclaimed input.goal event without its server-side queue fields", async () => {
-    const fixture = await seedGoalApiFixture();
-    const objectiveBrief = "keep pending goal triggers internal";
-    await createGoal(fixture, objectiveBrief);
-    const goal = await readGoalThreadFixture({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      threadId: fixture.threadId,
-    });
-    if (!goal) {
-      throw new Error("Expected the active goal");
-    }
-
-    const admission = await admitGoalQueueEventFixture({
-      threadId: fixture.threadId,
-      goalId: goal.goalId,
-      objectiveBrief,
-    });
-    if (admission.kind !== "inserted") {
-      throw new Error("Expected an unclaimed goal queue event");
-    }
-
-    const chat = createChatFilesBddApi(context);
-    const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
-    const event = page.events.find((candidate) => {
-      return candidate.id === admission.eventId;
-    });
-    expect(event).toStrictEqual({
-      id: admission.eventId,
-      threadId: fixture.threadId,
-      eventType: "input.goal",
-      content: null,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "goal", goalBrief: objectiveBrief }],
-      },
-      seqId: expect.any(Number),
-      createdAt: expect.any(String),
-    });
-    await expect(
-      readChatEventContextFixture(admission.eventId),
-    ).resolves.toMatchObject({
-      contextType: "goal",
-      contextId: goal.goalId,
-    });
-  });
-
-  it("edits a blocked goal back to active and replaces a completed goal", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship goals");
-
-    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
-    const edited = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:user-control:write"]),
-        body: { objective: "ship goals v2" },
-      }),
-      [200],
-    );
-    expect(edited.body).toStrictEqual({
-      objective: "ship goals v2",
-      objectiveBrief: "ship goals v2",
-      status: "active",
-    });
-
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: edited.body,
-    });
-    await accept(goalsClient().complete({ headers: headers(fixture) }), [200]);
-    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
-
-    const replacement = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:user-control:write"]),
-        body: { objective: "start the next goal" },
-      }),
-      [200],
-    );
-    expect(replacement.body).toMatchObject({
-      objective: "start the next goal",
-      objectiveBrief: "start the next goal",
-      status: "active",
-    });
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: replacement.body,
-    });
-    await expect(
-      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
-    ).resolves.toBe(0);
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship goals" },
-      { eventType: "goal.close", content: null },
-      { eventType: "goal.open", content: "ship goals v2" },
-      { eventType: "goal.close", content: null },
-      { eventType: "goal.open", content: "start the next goal" },
-    ]);
-  });
-
-  it("pauses a chat thread goal with session auth", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship thread goals");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const paused = await accept(
-      goalsClient().pauseForChatThread({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: fixture.threadId },
-      }),
-      [200],
-    );
-
-    expect(paused.body.status).toBe("paused");
-    await expect(readThreadGoalWithSession(fixture)).resolves.toMatchObject({
-      body: { status: "paused" },
-    });
-    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-    ]);
-  });
-
-  it("reads a chat thread goal with session auth", async () => {
-    const fixture = await seedGoalApiFixture();
-    const objective =
-      "# Ship goals\n\nKeep the release moving with **daily** checks.";
-    await createGoal(fixture, objective);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const response = await accept(
-      goalsClient().getForChatThread({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { threadId: fixture.threadId },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      objective,
-      objectiveBrief: "Ship goals",
-      status: "active",
-    });
-  });
-
-  it("truncates long Unicode objective briefs without splitting codepoints", async () => {
-    const fixture = await seedGoalApiFixture();
-    const chat = createChatFilesBddApi(context);
-    const rareLetter = "\u{10400}";
-    const objective = rareLetter.repeat(200);
-    const expectedBrief = `${rareLetter.repeat(137)}...`;
-    const created = await createGoal(fixture, objective);
-
-    expect(created.body).toStrictEqual({
-      objective,
-      objectiveBrief: expectedBrief,
-      status: "active",
-    });
-    for (const char of created.body.objectiveBrief) {
-      expect(char === rareLetter || char === ".").toBeTruthy();
-    }
-
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadEvents(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:member",
-        email: "goal-user@example.com",
-      },
-      fixture.threadId,
-    );
-    expect(messages.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "goal.open",
-        content: expectedBrief,
-      }),
-    );
-  });
-
-  it("keeps Unicode objective briefs at the codepoint limit untruncated", async () => {
-    const fixture = await seedGoalApiFixture();
-    const rareLetter = "\u{10400}";
-    const objective = rareLetter.repeat(140);
-    const created = await createGoal(fixture, objective);
-
-    expect(created.body).toStrictEqual({
-      objective,
-      objectiveBrief: objective,
-      status: "active",
-    });
-  });
-
-  it("keeps the deterministic goal brief when upstream is rate limited", async () => {
-    const fixture = await seedGoalApiFixture();
-    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
-    server.use(
-      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
-        return HttpResponse.json({ error: { code: "rate_limit_exceeded" } });
-      }),
-    );
-    const created = await createGoal(fixture, "ship thread goals");
-    await flushWaitUntilForTest();
-    expect(created.body).toStrictEqual({
-      objective: "ship thread goals",
-      objectiveBrief: "ship thread goals",
-      status: "active",
-    });
+    await api.heartbeatRunner(fixture.runnerGroup);
+    const claim = await api.requestClaimRunnerJob(true, fixture.runId, [404]);
+    expect(claim.status).toBe(404);
+    const run = await api.readRun(fixture.actor, fixture.runId);
+    expect(run.status).toBe("cancelled");
+    expect(run.error).toBe(retiredMessage);
     expect(
-      auxiliaryResults(context).filter(({ feature }) => {
-        return feature === "goal_objective_brief";
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({ outcome: "degraded", reason: "rate_limited" }),
-    ]);
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
-  });
-
-  it("pins the model, reasoning effort, and token budget of the objective brief completion", async () => {
-    const fixture = await seedGoalApiFixture();
-    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
-
-    let briefRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        async ({ request }) => {
-          const body = openRouterBodySchema.parse(await request.json());
-          if (isObjectiveBriefRequest(body)) {
-            briefRequestBody = body;
-          }
-          return HttpResponse.json({
-            choices: [
-              {
-                finish_reason: "stop",
-                message: { content: "Ship the token budget repair" },
-              },
-            ],
-          });
-        },
-      ),
-    );
-
-    const created = await createGoal(
-      fixture,
-      "Make sure the reasoning token budgets are large enough everywhere",
-    );
-
-    expect(created.body).toStrictEqual({
-      objective:
-        "Make sure the reasoning token budgets are large enough everywhere",
-      objectiveBrief: "Ship the token budget repair",
-      status: "active",
-    });
-    await flushWaitUntilForTest();
-    expect(
-      auxiliaryResults(context).filter(({ feature }) => {
-        return feature === "goal_objective_brief";
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({ outcome: "success", reason: "none" }),
-    ]);
-    // Reasoning tokens are drawn from the same budget as the answer, so a
-    // budget sized for a non-reasoning model starves the answer entirely.
-    expect(briefRequestBody).toMatchObject({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 768,
-      reasoning: { effort: "low" },
-    });
-  });
-
-  it("falls back to the objective when the brief completion is token-limited", async () => {
-    const fixture = await seedGoalApiFixture();
-    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
-
-    let briefRequests = 0;
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        async ({ request }) => {
-          const body = openRouterBodySchema.parse(await request.json());
-          if (isObjectiveBriefRequest(body)) {
-            briefRequests += 1;
-          }
-          return HttpResponse.json({
-            choices: [
-              {
-                finish_reason: "length",
-                native_finish_reason: "MAX_TOKENS",
-                message: { content: "A truncated brief that must not" },
-              },
-            ],
-          });
-        },
-      ),
-    );
-
-    const created = await createGoal(fixture, "ship thread goals");
-
-    expect(briefRequests).toBe(1);
-    expect(created.body).toStrictEqual({
-      objective: "ship thread goals",
-      objectiveBrief: "ship thread goals",
-      status: "active",
-    });
-  });
-
-  it("keeps markdown-only goal objective briefs non-empty", async () => {
-    const fixture = await seedGoalApiFixture();
-    const chat = createChatFilesBddApi(context);
-    const created = await createGoal(fixture, "---");
-
-    expect(created.body).toStrictEqual({
-      objective: "---",
-      objectiveBrief: "---",
-      status: "active",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadEvents(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:member",
-        email: "goal-user@example.com",
-      },
-      fixture.threadId,
-    );
-    expect(messages.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "goal.open",
-        content: "---",
-      }),
-    );
-  });
-
-  it("clears the current goal and writes a cleared marker", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship thread goals");
-
-    const cleared = await accept(
-      goalsClient().clear({
-        headers: headers(fixture, ["goal:user-control:write"]),
-      }),
-      [200],
-    );
-
-    expect(cleared.body).toStrictEqual({ cleared: true });
-    const missing = await accept(
-      goalsClient().get({ headers: headers(fixture) }),
-      [404],
-    );
-    expect(missing.body.error.code).toBe("NOT_FOUND");
-
-    const chat = createChatFilesBddApi(context);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const messages = await chat.listThreadEvents(
-      {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "org:member",
-        email: "goal-user@example.com",
-      },
+      (await api.requestClaimRunnerJob(true, fixture.runId, [404])).status,
+    ).toBe(404);
+    const events = await createChatFilesBddApi(context).listThreadEvents(
+      fixture.actor,
       fixture.threadId,
     );
     expect(
-      messages.events
-        .filter((event) => {
-          return (
-            event.eventType === "goal.open" || event.eventType === "goal.close"
-          );
-        })
-        .map((event) => {
-          return { eventType: event.eventType, content: event.content };
-        }),
-    ).toStrictEqual([
-      { eventType: "goal.open", content: "ship thread goals" },
-      { eventType: "goal.close", content: null },
-    ]);
+      events.events.filter((item) => {
+        return item.eventType === "run.cancelled";
+      }),
+    ).toHaveLength(1);
   });
 
-  it("enforces user-control and agent-result capability boundaries", async () => {
+  it("does not treat a manual run's historical goal id as Goal execution authority", async () => {
     const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship thread goals");
-
-    const editDenied = await accept(
-      goalsClient().edit({
-        headers: headers(fixture, ["goal:read", "goal:agent-result:write"]),
-        body: { objective: "should be forbidden" },
-      }),
-      [403],
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "historical association",
     );
-    expect(editDenied.body.error.message).toContain("goal:user-control:write");
-
-    const completeDenied = await accept(
-      goalsClient().complete({
-        headers: headers(fixture, ["goal:read", "goal:user-control:write"]),
-      }),
-      [403],
-    );
-    expect(completeDenied.body.error.message).toContain(
-      "goal:agent-result:write",
-    );
-  });
-
-  it("rejects stale autonomous goal result writes without user-control capability", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship thread goals");
-
-    const stale = await accept(
-      goalsClient().block({
-        headers: headers(fixture, ["goal:agent-result:write"]),
-      }),
-      [409],
-    );
-    expect(stale.body.error.message).toBe(
-      "The goal changed after this run started",
-    );
-
-    await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
-      body: { status: "active" },
-    });
-  });
-
-  it("excludes goal-state markers from a thread's unread state", async () => {
-    const fixture = await seedGoalApiFixture();
-    await createGoal(fixture, "ship thread goals");
-
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const unreads = await accept(
-      setupApp({ context, routes: chatThreadRoutes })(
-        chatThreadsContract,
-      ).unreads({
-        headers: { authorization: "Bearer clerk-session" },
-        query: { agentId: fixture.agentId },
-      }),
+    await setLegacyGoalRunOriginFixture(fixture.runId, goal.id, "chat");
+    await createRunsApi(context).heartbeatRunner(fixture.runnerGroup);
+    const claim = await createRunsApi(context).requestClaimRunnerJob(
+      true,
+      fixture.runId,
       [200],
     );
-
+    expect(claim.status).toBe(200);
+    await createRunsApi(context).requestCancelRun(
+      fixture.actor,
+      fixture.runId,
+      [200],
+    );
+  });
+  it("leaves a Goal run running when its earlier claim wins the row lock", async () => {
+    const fixture = await seedGoalApiFixture();
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "racing legacy claim",
+    );
+    await setLegacyGoalRunOriginFixture(fixture.runId, goal.id);
+    const api = createRunsApi(context);
+    await api.heartbeatRunner(fixture.runnerGroup);
+    const lock = await holdAgentRunRowLockFixture({
+      runId: fixture.runId,
+      signal: context.signal,
+      statusOnRelease: "running",
+    });
+    const claim = api.requestClaimRunnerJob(true, fixture.runId, [404]);
+    onTestFinished(async () => {
+      lock.release();
+      await lock.done;
+      await claim;
+    });
+    await expect.poll(lock.waiterCount).toBeGreaterThan(0);
+    lock.release();
+    await lock.done;
+    expect((await claim).status).toBe(404);
+    expect((await api.readRun(fixture.actor, fixture.runId)).status).toBe(
+      "running",
+    );
+    const events = await createChatFilesBddApi(context).listThreadEvents(
+      fixture.actor,
+      fixture.threadId,
+    );
     expect(
-      unreads.body.unreads.map((unread) => {
-        return unread.threadId;
+      events.events.filter((event) => {
+        return event.eventType === "run.cancelled";
       }),
-    ).not.toContain(fixture.threadId);
+    ).toHaveLength(0);
+    await api.requestCancelRun(fixture.actor, fixture.runId, [200]);
+  });
+
+  it("rejects an already-prepared final Goal claim without replacing its input", async () => {
+    const fixture = await seedGoalApiFixture();
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "captured preparation",
+    );
+    const event = await admitGoalQueueEventFixture({
+      threadId: fixture.threadId,
+      goalId: goal.id,
+      objectiveBrief: goal.objectiveBrief,
+    });
+    if (event.kind !== "inserted") {
+      throw new Error("Expected a historical Goal input");
+    }
+    await expect(
+      claimPreparedGoalFixture({
+        goal,
+        eventId: event.eventId,
+        runId: fixture.runId,
+      }),
+    ).resolves.toBe("lost");
+    await drainChatThreadQueueFixture({
+      threadId: fixture.threadId,
+      signal: context.signal,
+    });
+    const events = await createChatFilesBddApi(context).listThreadEvents(
+      fixture.actor,
+      fixture.threadId,
+    );
+    expect(
+      events.events.filter((item) => {
+        return item.revokesEventId === event.eventId;
+      }),
+    ).toMatchObject([{ eventType: "control.revoke" }]);
+  });
+
+  it("settles a captured API-owned Pi Goal before any provider request", async () => {
+    const fixture = await seedGoalApiFixture();
+    const goal = await seedGoalForRunFixture(
+      fixture.runId,
+      "old Pi activation",
+    );
+    await setLegacyGoalRunOriginFixture(fixture.runId, goal.id);
+    let providerRequests = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        providerRequests++;
+        return HttpResponse.json(
+          { error: "Retired Goal must not execute" },
+          { status: 500 },
+        );
+      }),
+    );
+    await activateLegacyGoalPiFixture(fixture.runId, context.signal);
+    expect(providerRequests).toBe(0);
+    expect(
+      (await createRunsApi(context).readRun(fixture.actor, fixture.runId))
+        .status,
+    ).toBe("cancelled");
   });
 });

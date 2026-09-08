@@ -13,7 +13,7 @@ interface SecretKmsProbe {
   readonly decryptCalls: number;
 }
 
-export function generateDataKeyOutput(
+function generateDataKeyOutput(
   request: SecretKmsGenerateDataKeyRequest,
 ): SecretKmsDataKey {
   return {

@@ -58,7 +58,6 @@ import {
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
   selectedUsagePackPlan$,
-  resetUsagePackPricing$,
   setMemberUsageSelection$,
   setMemberUsageSelections$,
   setSelectedUsagePackPlan$,
@@ -3107,7 +3106,6 @@ export function UsagePackMigrationDialogs({
   readonly open?: boolean;
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
-  const resetPricing = useSet(resetUsagePackPricing$);
   const migrationPreview = useGet(usagePackMigrationPreview$);
   const migrationRevisionPreview = useGet(usagePackMigrationRevisionPreview$);
   const closeMigrationPreview = useSet(closeUsagePackMigrationPreview$);
@@ -3130,10 +3128,6 @@ export function UsagePackMigrationDialogs({
   const reviewing =
     configuring &&
     (revising ? migrationRevisionPreview !== null : migrationPreview !== null);
-  const closeFlow = () => {
-    resetPricing();
-    onClose();
-  };
   return (
     <PricingStepDialog
       flush={!configuring}
@@ -3157,14 +3151,14 @@ export function UsagePackMigrationDialogs({
             ? onBack
             : undefined
       }
-      onClose={closeFlow}
+      onClose={onClose}
     >
       {configurationStep ? (
         <UsagePackMigrationPage
           configuration={migration.configuration ?? null}
           effectiveAt={configurationStep.effectiveAt}
           migrationId={migration.migrationId}
-          onComplete={closeFlow}
+          onComplete={onClose}
           sourceTier={migration.tier}
           targetTier={configurationStep.targetTier}
         />
@@ -3242,11 +3236,7 @@ export function UsagePackPricingDialogs({
               }
             : undefined
       }
-      onClose={() => {
-        closePreview();
-        setSelectedPlan(null);
-        onClose();
-      }}
+      onClose={onClose}
     >
       {!catalog || !managementLoaded ? (
         <div

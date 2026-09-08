@@ -1,3 +1,8 @@
+import { dispatchGoalRetirementEffects$ } from "../services/goal-retirement-effects.service";
+import {
+  retirePendingGoalRunInTransaction,
+  type RetiredGoalRun,
+} from "../services/goal-retirement.service";
 import { clerk$ } from "../external/clerk";
 import { command } from "ccstate";
 import {
@@ -89,7 +94,10 @@ import {
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { transitionAgentRunsToTerminal } from "../services/agent-run-terminal-transition.service";
-import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
+import {
+  dispatchCompleteSideEffects$,
+  drainOrgQueue$,
+} from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
 import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
@@ -1167,7 +1175,10 @@ async function transitionClaimedJobToRunning(
   runnerAttribution: RunnerClaimAttribution | undefined,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
+): Promise<
+  | ClaimTransitionResult
+  | { readonly status: "retired"; readonly run: RetiredGoalRun }
+> {
   const query = buildClaimTransitionSql(
     runId,
     runnerAttribution?.runnerIdentity.runnerId ?? null,
@@ -1176,6 +1187,10 @@ async function transitionClaimedJobToRunning(
     runnerAttribution?.runnerVersion ?? null,
   );
   return await db.transaction(async (tx) => {
+    const retired = await retirePendingGoalRunInTransaction(tx, runId);
+    if (retired) {
+      return { status: "retired" as const, run: retired };
+    }
     const result = await timing.measure(
       "claim_route_transition_execute",
       "nested",
@@ -2525,6 +2540,13 @@ async function resolveStoredExecutionContextForClaim(
   };
 }
 
+const finishRetiredGoalClaim$ = command(
+  async ({ set }, run: RetiredGoalRun, signal: AbortSignal): Promise<void> => {
+    await set(dispatchGoalRetirementEffects$, run, signal);
+    await set(drainOrgQueue$, { orgId: run.orgId }, signal);
+  },
+);
+
 const claimAuthorizedJob$ = command(
   async (
     { set },
@@ -2613,6 +2635,16 @@ const claimAuthorizedJob$ = command(
         );
       },
     );
+    if (signal.aborted) {
+      L.debug("Runner claim request aborted after committed transition", {
+        runId,
+      });
+    }
+    if (claimResult.status === "retired") {
+      const committedSignal = new AbortController().signal;
+      waitUntil(set(finishRetiredGoalClaim$, claimResult.run, committedSignal));
+      return notFound("Job not found in queue");
+    }
     signal.throwIfAborted();
     if (claimResult.status !== "claimed") {
       return claimTransitionErrorResponse(claimResult);

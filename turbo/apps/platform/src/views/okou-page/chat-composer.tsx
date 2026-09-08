@@ -45,7 +45,6 @@ import {
 } from "./explainer-video-selection-labels.ts";
 import {
   importPresentationTemplateDeck$,
-  presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
@@ -5891,16 +5890,13 @@ function PptTemplateGrid({
   onImported: () => void;
   signals: ComposerSignals;
 }) {
-  const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
   const importedTemplateItems =
     useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {importEnabled ? (
-        <PptImportCard signals={signals} onImported={onImported} />
-      ) : null}
+      <PptImportCard signals={signals} onImported={onImported} />
       {importedTemplateItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
@@ -6313,6 +6309,11 @@ function TemplatePickerDialog({
       onOpenChangeComplete={(nextOpen) => {
         if (!nextOpen) {
           completeTemplatePickerClose();
+          return;
+        }
+        ownPreviewResources(runtime, pageSignal);
+        if (!isPreviewing) {
+          prewarmTemplatePreviewsForCategory(selectedCategory);
         }
       }}
     >
@@ -6326,13 +6327,7 @@ function TemplatePickerDialog({
         onKeyDownCapture={
           isPreviewing ? handleTemplateDetailTabKeyDown : undefined
         }
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          ownPreviewResources(runtime, pageSignal);
-          if (!isPreviewing) {
-            prewarmTemplatePreviewsForCategory(selectedCategory);
-          }
-        }}
+        initialFocus={false}
       >
         <div
           inert={isPreviewing}

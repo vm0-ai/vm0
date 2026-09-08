@@ -85,7 +85,7 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
   expect(featureRows).toHaveLength(Object.values(FeatureSwitchKey).length);
   expect(screen.getAllByRole("switch")).toHaveLength(featureRows.length);
   expect(
-    within(released).getByText(FeatureSwitchKey.PresentationTemplates),
+    within(released).getByText(FeatureSwitchKey.AvatarNeckSweater),
   ).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
   expect(within(alpha).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
@@ -112,9 +112,6 @@ test("A user can filter Lab features by maintainer", async () => {
 
   expect(
     screen.getByText(FeatureSwitchKey.ComposerCreateCommands),
-  ).toBeVisible();
-  expect(
-    screen.getByText(FeatureSwitchKey.PresentationTemplates),
   ).toBeVisible();
   expect(
     screen.queryByText(FeatureSwitchKey.AhrefsConnector),

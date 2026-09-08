@@ -130,6 +130,7 @@
         "diskPressure": "Die Wiederverwendung des Arbeitsbereichs wurde wegen Speicherdrucks auf dem Runner übersprungen.",
         "environment": "Umgebung",
         "featureDisabled": "Die Wiederverwendung von Sandboxen ist für diese Ausführung deaktiviert.",
+        "framework": "Framework",
         "generation": "Generation",
         "hostname": "Hostname",
         "invalidMetadata": "Die Metadaten des zwischengespeicherten Arbeitsbereichs waren ungültig.",

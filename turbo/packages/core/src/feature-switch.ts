@@ -295,12 +295,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationTemplates]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Enable owner-scoped presentation template imports and catalog APIs.",
-    enabled: true,
-  },
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:

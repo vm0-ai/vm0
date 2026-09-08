@@ -1,67 +1,64 @@
-import { createHash, randomUUID } from "node:crypto";
 import { HttpResponse } from "msw";
 import {
   auxiliaryResults,
   auxiliaryWarnings,
 } from "./helpers/auxiliary-generation";
-import { WebPushError } from "web-push";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
-import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import {
   resolveChatEventRecommendedFollowups,
-  type GenerationTemplateRequest,
   type ChatEvent,
+  type GenerationTemplateRequest,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
+import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
-import { goalsContract } from "@okouai/api-contracts/contracts/goals";
+import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@okouai/core";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { WebPushError } from "web-push";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { withBuiltInModelRuntimeRouteUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
-import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdChatEventInsertTransactionFixture,
-  holdGoalThreadLockFixture,
-  holdModelPolicyReadsFixture,
   holdRunOutputMaterializationRowFixture,
-  invalidateChatCallbackPayloadFixture,
   insertQueuedSlackMissingContextFixture,
-  readChatEventContextFixture,
+  invalidateChatCallbackPayloadFixture,
   removeAcknowledgedCancellationLifecycleFixture,
   removeChatCallbackPublicBrandFixture,
 } from "../../../test-fixtures/chat-events";
+import {
+  readGoalQueueStateFixture,
+  seedGoalForRunFixture,
+  setLegacyGoalRunOriginFixture,
+} from "../../../test-fixtures/goal-queue";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import { goalsRoutes } from "../goals";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
-import {
-  generateDataKeyOutput,
-  useSecretKmsProbe,
-} from "./helpers/secret-kms-probe";
 import { seedBuiltInModelKey } from "./helpers/runtime-state";
-import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
-import { goalsRoutes } from "../goals";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -86,33 +83,6 @@ function goalsClient() {
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_agent_chat_callback_";
-const GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX =
-  "api_dispatch_pre_create_agent_goal_drain_";
-const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_pre_entry",
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_run_thread_lookup",
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_notify_running_run",
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_goal_handoff",
-] as const;
-const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_built_in_route",
-] as const;
-const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
-  ...GOAL_SCHEDULER_TIMING_ACTION_TYPES,
-  "api_dispatch_pre_create_agent_goal_drain_event_queue_age",
-  "api_dispatch_pre_create_agent_goal_drain_load_event",
-  "api_dispatch_pre_create_agent_goal_drain_load_event_lock_thread",
-  "api_dispatch_pre_create_agent_goal_drain_load_event_select_candidate",
-  "api_dispatch_pre_create_agent_goal_drain_load_target",
-  "api_dispatch_pre_create_agent_goal_drain_resolve_model_context",
-  "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches",
-  "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy",
-  "api_dispatch_pre_create_agent_goal_drain_build_run_input",
-  "api_dispatch_pre_create_agent_goal_drain_handoff_run",
-] as const;
 const GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
@@ -160,22 +130,6 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "presignedUrl",
   "archive_url",
   "archiveUrl",
-] as const;
-const FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS = [
-  ...FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS,
-  "event_id",
-  "eventId",
-  "provider_id",
-  "providerId",
-  "model_provider_id",
-  "modelProviderId",
-  "run_group_id",
-  "runGroupId",
-  "callback",
-  "callback_payload",
-  "callbackPayload",
-  "token",
-  "authorization",
 ] as const;
 
 type UserMessage = Extract<
@@ -415,17 +369,11 @@ async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
 }
 
 async function createGoalForRun(
-  actor: ApiTestUser,
+  _actor: ApiTestUser,
   runId: string,
   objective: string,
 ): Promise<void> {
-  await accept(
-    goalsClient().create({
-      headers: goalHeaders(actor, runId),
-      body: { objective },
-    }),
-    [201],
-  );
+  await seedGoalForRunFixture(runId, objective);
 }
 
 async function claimChatRunJob(runnerGroup: string, runId: string) {
@@ -715,23 +663,6 @@ function isUserMessage(message: ChatEvent): message is UserMessage {
   }
 }
 
-function isGoalContinuationUserMessage(
-  message: UserMessage,
-  objectiveBrief: string,
-): boolean {
-  if (!("userMessage" in message) || !message.userMessage) {
-    return false;
-  }
-  const goalPart = message.userMessage.parts.find((part) => {
-    return part.type === "goal";
-  });
-  return (
-    message.runId !== undefined &&
-    goalPart?.type === "goal" &&
-    goalPart.goalBrief === objectiveBrief
-  );
-}
-
 function eventBackedContents(
   messages: readonly ChatEvent[],
   runId: string,
@@ -852,17 +783,6 @@ function chatCallbackPreCreateTimingEventsForRun(
   });
 }
 
-function goalDrainPreCreateTimingEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return (
-      typeof event.op_type === "string" &&
-      event.op_type.startsWith(GOAL_DRAIN_PRE_CREATE_TIMING_PREFIX)
-    );
-  });
-}
-
 function timingEventsForAction(
   events: readonly Record<string, unknown>[],
   actionType: string,
@@ -870,171 +790,6 @@ function timingEventsForAction(
   return events.filter((event) => {
     return event.op_type === actionType;
   });
-}
-
-function isGoalDrainWaitingTimingAction(actionType: string): boolean {
-  return (
-    actionType ===
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
-    actionType === "api_dispatch_pre_create_agent_goal_drain_event_queue_age"
-  );
-}
-
-function isGoalSchedulerTimingAction(actionType: string): boolean {
-  return (
-    actionType ===
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap" ||
-    actionType.startsWith("api_dispatch_pre_create_agent_goal_drain_scheduler_")
-  );
-}
-
-async function expectGoalDrainPreCreateTiming(args: {
-  readonly runId: string;
-  readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
-  readonly builtInModelContext: boolean;
-  readonly skippedHigherPriorityDrains: boolean;
-  readonly forbiddenValues: readonly string[];
-}): Promise<void> {
-  const expectedActionTypes = [
-    ...GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES,
-    ...(args.builtInModelContext
-      ? GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES
-      : []),
-  ];
-  await expect
-    .poll(() => {
-      const observed = new Set(
-        goalDrainPreCreateTimingEventsForRun(args.runId).map((event) => {
-          return event.op_type;
-        }),
-      );
-      return expectedActionTypes.filter((actionType) => {
-        return !observed.has(actionType);
-      });
-    })
-    .toStrictEqual([]);
-
-  const allEvents = sandboxOperationEventsForRun(args.runId);
-  const goalDrainEvents = goalDrainPreCreateTimingEventsForRun(args.runId);
-  expect(goalDrainEvents).toHaveLength(expectedActionTypes.length);
-  for (const actionType of expectedActionTypes) {
-    const matchingEvents = timingEventsForAction(goalDrainEvents, actionType);
-    expect(matchingEvents).toHaveLength(1);
-    const event = matchingEvents[0];
-    if (!event) {
-      throw new Error(`Expected goal drain timing for ${actionType}`);
-    }
-    expect(event).toStrictEqual(
-      expect.objectContaining({
-        source: "api",
-        op_type: actionType,
-        sandbox_type: "runner",
-        success: true,
-        run_id: args.runId,
-        span_kind: "nested",
-        trigger_source: "goal",
-        agent_run_origin: "goal_continuation",
-        goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
-          ? "waiting"
-          : "phase",
-        ...(isGoalSchedulerTimingAction(actionType)
-          ? { goal_scheduler_origin: args.schedulerOrigin }
-          : {}),
-      }),
-    );
-    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
-    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
-    expect(event.goal_drain_attempt).toBe(
-      isGoalSchedulerTimingAction(actionType) ? undefined : "initial",
-    );
-  }
-
-  const schedulerStartGap = timingEventsForAction(
-    goalDrainEvents,
-    "api_dispatch_pre_create_agent_goal_drain_scheduler_start_gap",
-  )[0];
-  if (!schedulerStartGap) {
-    throw new Error("Expected goal scheduler start gap timing");
-  }
-  const schedulerPhaseDuration = GOAL_SCHEDULER_TIMING_ACTION_TYPES.reduce(
-    (total, actionType) => {
-      const event = timingEventsForAction(goalDrainEvents, actionType)[0];
-      return total + Number(event?.duration_ms);
-    },
-    0,
-  );
-  expect(schedulerPhaseDuration).toBe(Number(schedulerStartGap.duration_ms));
-  const higherPriorityDrainDurations = [
-    "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
-    "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
-  ].map((actionType) => {
-    return timingEventsForAction(goalDrainEvents, actionType)[0]?.duration_ms;
-  });
-  const numericHigherPriorityDrainDurations = [
-    expect.any(Number),
-    expect.any(Number),
-  ];
-  const expectedHigherPriorityDrainDurations = args.skippedHigherPriorityDrains
-    ? [0, 0]
-    : numericHigherPriorityDrainDurations;
-  expect(higherPriorityDrainDurations).toStrictEqual(
-    expectedHigherPriorityDrainDurations,
-  );
-
-  const entrypointGapEvents = timingEventsForAction(
-    allEvents,
-    "api_dispatch_pre_create_agent_entrypoint_gap",
-  );
-  expect(entrypointGapEvents).toHaveLength(1);
-  const entrypointGap = entrypointGapEvents[0];
-  if (!entrypointGap) {
-    throw new Error("Expected goal drain entrypoint timing");
-  }
-  expect(entrypointGap).toStrictEqual(
-    expect.objectContaining({
-      source: "api",
-      sandbox_type: "runner",
-      success: true,
-      run_id: args.runId,
-      span_kind: "nested",
-      trigger_source: "goal",
-      agent_run_origin: "goal_continuation",
-      goal_drain_attempt: "initial",
-      goal_drain_timing_role: "aggregate",
-    }),
-  );
-  expect(
-    timingEventsForAction(
-      allEvents,
-      "api_dispatch_pre_create_agent_resolve_agent_id",
-    ),
-  ).toHaveLength(1);
-  const preCreateEvents = timingEventsForAction(
-    allEvents,
-    "api_dispatch_pre_create_agent_run",
-  );
-  expect(preCreateEvents).toHaveLength(1);
-  const preCreate = preCreateEvents[0];
-  if (!preCreate) {
-    throw new Error("Expected goal continuation pre-create timing");
-  }
-  expect(preCreate).toStrictEqual(
-    expect.objectContaining({
-      span_kind: "top_level",
-      trigger_source: "goal",
-      agent_run_origin: "goal_continuation",
-    }),
-  );
-
-  for (const event of [...goalDrainEvents, entrypointGap]) {
-    for (const key of FORBIDDEN_GOAL_DRAIN_PRE_CREATE_TIMING_KEYS) {
-      expect(event).not.toHaveProperty(key);
-    }
-    const serialized = JSON.stringify(event);
-    for (const forbiddenValue of args.forbiddenValues) {
-      expect(serialized).not.toContain(forbiddenValue);
-    }
-  }
 }
 
 function expectNoForbiddenChatCallbackPreCreateTimingKeys(
@@ -2333,7 +2088,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("runs a queued prompt before an admitted goal fast path", async () => {
+  it("continues a queued prompt while a historical Goal remains active", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2380,140 +2135,14 @@ describe("CHAT-02: completed chat callback", () => {
       "run before the admitted goal",
     );
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-    await expect(goalQueueEventIds(first.threadId)).resolves.toHaveLength(1);
+    await expect(goalQueueEventIds(first.threadId)).resolves.toHaveLength(0);
 
     await api.requestCancelRun(actor, claimedPrompt.runId, [200]);
     await waitForRunStatus(actor, claimedPrompt.runId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("sources the goal system prompt from thread goals", async () => {
-    const { actor, agentId, runnerGroup, providerId } =
-      await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    await seedBuiltInModelKey(context, "claude-sonnet-5");
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "claude-sonnet-5",
-        isDefault: true,
-        defaultProviderType: "built-in",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before goal continuation",
-    });
-    const goalBrief = "Keep making autonomous progress";
-    const noisySeparator = "!".repeat(1100);
-    const goalObjective = `${goalBrief}
-
-${noisySeparator}
-
-Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
-    await createGoalForRun(actor, first.runId, goalObjective);
-    const kms = useSecretKmsProbe();
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before goal continuation"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    const messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return isGoalContinuationUserMessage(message, goalBrief);
-        });
-      },
-    );
-    const goalContinuation = userMessages(messages.events).find((message) => {
-      return isGoalContinuationUserMessage(message, goalBrief);
-    });
-    if (!goalContinuation || !("userMessage" in goalContinuation)) {
-      throw new Error("Expected a goal continuation user message");
-    }
-    expect(goalContinuation.userMessage).toStrictEqual({
-      version: 1,
-      parts: [
-        { type: "goal", goalBrief },
-        { type: "model", selectedModel: "claude-sonnet-5" },
-      ],
-    });
-    expect(goalContinuation.content).toBeNull();
-    expect(chatEventDisplayText(goalContinuation)).toBe("");
-
-    if (!goalContinuation.runId) {
-      throw new Error("Expected goal continuation run id");
-    }
-    await flushWaitUntilForTest();
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await expectGoalDrainPreCreateTiming({
-      runId: goalContinuation.runId,
-      schedulerOrigin: "chat_callback",
-      builtInModelContext: true,
-      skippedHigherPriorityDrains: true,
-      forbiddenValues: [
-        goalBrief,
-        goalObjective,
-        noisySeparator,
-        "https://acme.example.com/treasury",
-        actor.userId,
-        ...(actor.orgId ? [actor.orgId] : []),
-        agentId,
-        providerId,
-        first.threadId,
-        goalContinuation.id,
-      ],
-    });
-    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
-    expect(goalContext.body.prompt).toBe("Continue the active thread goal.");
-    expect(goalContext.body.prompt).not.toContain(goalBrief);
-    expect(goalContext.body.prompt).not.toContain(goalObjective);
-    const appendSystemPrompt = goalContext.body.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain("# Active thread goal");
-    expect(appendSystemPrompt).not.toContain("# Thread Goal\n\nStatus: paused");
-    expect(appendSystemPrompt).toContain(goalObjective);
-    expect(appendSystemPrompt).toContain("# User-visible objective brief");
-    expect(appendSystemPrompt).toContain(goalBrief);
-    expect(appendSystemPrompt).toContain("Autonomy budget: 9");
-    expect(appendSystemPrompt).toContain("# How to operate");
-    expect(appendSystemPrompt).toContain(
-      "- Inspect goal state anytime with `okou goal get`.\n- Do not stop to ask the user and wait; act on the best available information.",
-    );
-    expect(goalContext.body.sessionId).toBe(
-      cliAgentSessionIdForChatRun(first.runId),
-    );
-    const continuationClaim = await claimChatRunJob(
-      runnerGroup,
-      goalContinuation.runId,
-    );
-    expect(continuationClaim.resumeSession?.sessionId).toBe(
-      cliAgentSessionIdForChatRun(first.runId),
-    );
-    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
-    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
-    await flushWaitUntilForTest();
-    const afterCancel = await chat.listThreadEvents(actor, first.threadId);
-    const closeMarker = afterCancel.events
-      .filter((event) => {
-        return event.eventType === "goal.close";
-      })
-      .at(-1);
-    expect(closeMarker).toMatchObject({
-      eventType: "goal.close",
-      content: null,
-    });
-  }, 90_000);
-
-  it("adds paused goal context to a later thread run", async () => {
+  it("prepares a resumed manual run without paused Goal authority", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2548,761 +2177,38 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     });
     const runContext = await waitForRunContext(actor, second.runId);
     const appendSystemPrompt = runContext.body.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain(`# Thread Goal
-
-Status: paused
-Objective: ${goalBrief}
-
-A paused goal does not continue automatically.
-
-Goal CLI:
-- Check: \`okou goal get\`
-- Resume: \`okou goal resume\`
-- Block: \`okou goal block\`
-- Complete: \`okou goal complete\``);
-    expect(appendSystemPrompt).not.toContain("okou goal pause");
-
-    const goalTimingEvents = timingEventsForAction(
-      sandboxOperationEventsForRun(second.runId),
-      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
-    );
-    expect(goalTimingEvents).toStrictEqual([
-      expect.objectContaining({
-        run_id: second.runId,
-        span_kind: "nested",
-        duration_ms: expect.any(Number),
-        run_preparation_retry_count: "0",
+    expect(appendSystemPrompt).not.toContain("# Thread Goal");
+    expect(appendSystemPrompt).not.toContain("okou goal");
+    const claimed = await claimChatRunJob(runnerGroup, second.runId);
+    expect(
+      claimed.storageManifest?.storageMounts.map((mount) => {
+        return mount.mountPath;
       }),
-    ]);
-    for (const event of goalTimingEvents) {
-      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
-      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
-      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
-      expect(JSON.stringify(event)).not.toContain(goalBrief);
-      expect(JSON.stringify(event)).not.toContain(first.threadId);
-      expect(JSON.stringify(event)).not.toContain(actor.userId);
-    }
+    ).not.toContain("/home/user/.claude/skills/goal");
+    expect(claimed.resumeSession).not.toBeNull();
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await waitForRunStatus(actor, second.runId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("falls back to the terminal scheduler when the chat callback fails", async () => {
+  it("does not continue a Goal through the fallback terminal callback", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-
     const first = await startChatRun(actor, {
       agentId,
-      prompt: "finish before the chat callback fallback",
+      prompt: "finish with a historical Goal",
     });
-    const goalBrief = "Continue through the terminal fallback";
-    await createGoalForRun(actor, first.runId, goalBrief);
+    await createGoalForRun(actor, first.runId, "historical Goal objective");
     await invalidateChatCallbackPayloadFixture(first.runId);
-    const kms = useSecretKmsProbe();
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-
-    const messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return isGoalContinuationUserMessage(message, goalBrief);
-        });
-      },
-    );
-    const continuation = userMessages(messages.events).find((message) => {
-      return isGoalContinuationUserMessage(message, goalBrief);
-    });
-    if (!continuation?.runId) {
-      throw new Error("Expected a fallback goal continuation run");
-    }
-    await flushWaitUntilForTest();
-    expect(kms.generateDataKeyCalls).toBe(1);
-    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([
-      continuation.runId,
-    ]);
-    await expectGoalDrainPreCreateTiming({
-      runId: continuation.runId,
-      schedulerOrigin: "terminal_callback_fallback",
-      builtInModelContext: false,
-      skippedHigherPriorityDrains: false,
-      forbiddenValues: [
-        goalBrief,
-        actor.userId,
-        ...(actor.orgId ? [actor.orgId] : []),
-        agentId,
-        first.threadId,
-        continuation.id,
-      ],
-    });
-
-    await api.requestCancelRun(actor, continuation.runId, [200]);
-    await waitForRunStatus(actor, continuation.runId, "cancelled");
-    await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("rebuilds a preparing goal run from the latest row despite its UI marker", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before the goal objective is updated",
-    });
-    const initialObjective = "Continue the original goal target";
-    const updatedObjective = "Continue the updated goal target";
-    await createGoalForRun(actor, first.runId, initialObjective);
-
-    const goalRunPreparationStarted = createDeferredPromise<void>(
-      context.signal,
-    );
-    const releaseGoalRunPreparation = deferredGate();
-    useSecretKmsProbe((request) => {
-      if (!goalRunPreparationStarted.settled()) {
-        goalRunPreparationStarted.resolve(undefined);
-      }
-      return releaseGoalRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(request);
-      });
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before the goal objective changed"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await goalRunPreparationStarted.promise;
-
-    const edited = await accept(
-      goalsClient().edit({
-        headers: goalHeaders(actor, first.runId),
-        body: { objective: updatedObjective },
-      }),
-      [200],
-    );
-    expect(edited.body).toMatchObject({
-      objective: updatedObjective,
-      objectiveBrief: updatedObjective,
-      status: "active",
-    });
-    releaseGoalRunPreparation.release();
-
-    const messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return isGoalContinuationUserMessage(message, updatedObjective);
-        });
-      },
-    );
-    const continuation = userMessages(messages.events).find((message) => {
-      return isGoalContinuationUserMessage(message, updatedObjective);
-    });
-    if (!continuation?.runId) {
-      throw new Error("Expected the updated goal continuation run");
-    }
-    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([
-      continuation.runId,
-    ]);
-
-    const goalContext = await waitForRunContext(actor, continuation.runId);
-    expect(goalContext.body.prompt).toBe("Continue the active thread goal.");
-    expect(goalContext.body.prompt).not.toContain(initialObjective);
-    expect(goalContext.body.prompt).not.toContain(updatedObjective);
-    expect(goalContext.body.appendSystemPrompt).toContain(updatedObjective);
-    expect(goalContext.body.appendSystemPrompt).not.toContain(initialObjective);
-
-    await api.requestCancelRun(actor, continuation.runId, [200]);
-    await waitForRunStatus(actor, continuation.runId, "cancelled");
-    await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("revokes a goal deleted during run preparation without creating a run", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before post-claim goal invalidation",
-    });
-    const objectiveBrief = "invalidate after goal preparation";
-    await createGoalForRun(actor, first.runId, objectiveBrief);
-    const runPreparationStarted = createDeferredPromise<void>(context.signal);
-    const releaseRunPreparation = deferredGate();
-    useSecretKmsProbe((request) => {
-      // Hold the terminal callback's single retained preparation so the goal
-      // can be deleted before its final queue-first claim.
-      if (!runPreparationStarted.settled()) {
-        runPreparationStarted.resolve(undefined);
-      }
-      return releaseRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(request);
-      });
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before post-claim goal invalidation"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await runPreparationStarted.promise;
-
-    const cleared = await accept(
-      goalsClient().clear({
-        headers: goalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(cleared.body).toStrictEqual({ cleared: true });
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
-    if (!goalEventId) {
-      throw new Error("Expected the invalidated goal queue event");
-    }
-    releaseRunPreparation.release();
-
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "control.revoke" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    expect(events.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: goalEventId,
-        content: null,
-      }),
-    );
-    const revoked = events.events.find((event) => {
-      return (
-        event.eventType === "control.revoke" &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    if (revoked?.eventType !== "control.revoke") {
-      throw new Error("Expected the invalidated goal event to be revoked");
-    }
-    const admittedContext = await readChatEventContextFixture(goalEventId);
-    const revokedContext = await readChatEventContextFixture(revoked.id);
-    expect(admittedContext).toMatchObject({
-      contextType: "goal",
-      contextId: expect.any(String),
-    });
-    expect(revokedContext).toMatchObject({
-      contextType: "goal",
-      contextId: admittedContext?.contextId,
-    });
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-    await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("revokes a goal invalidated while a failing launch resolves", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before the invalidated goal launch fails",
-    });
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await createGoalForRun(
-      actor,
-      first.runId,
-      "revoke the stale failed launch",
-    );
-    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
-    const modelPolicyReads = await holdModelPolicyReadsFixture({
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      modelPolicyReads.release();
-      await modelPolicyReads.done;
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before the invalidated goal launch failed"),
-    ]);
-
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await expect
-      .poll(modelPolicyReads.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-
-    let goalEventId: string | undefined;
-    await expect
-      .poll(async () => {
-        const [eventId] = await goalQueueEventIds(first.threadId);
-        goalEventId = eventId;
-        return eventId;
-      })
-      .toBeDefined();
-    if (!goalEventId) {
-      throw new Error("Expected the invalidated failing goal queue event");
-    }
-    const paused = await accept(
-      goalsClient().pause({
-        headers: goalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(paused.body.status).toBe("paused");
-    modelPolicyReads.release();
-    await modelPolicyReads.done;
-
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "control.revoke" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    expect(events.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: goalEventId,
-        content: null,
-      }),
-    );
-    expect(events.events).not.toContainEqual(
-      expect.objectContaining({
-        eventType: "input.rejected",
-        revokesEventId: goalEventId,
-      }),
-    );
-    const goal = await accept(
-      goalsClient().get({
-        headers: goalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(goal.body.status).toBe("paused");
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("revokes a goal invalidated at the final failed-launch boundary", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before the final goal failure settlement",
-    });
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await createGoalForRun(
-      actor,
-      first.runId,
-      "revoke the goal invalidated at final settlement",
-    );
-    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
-    const goalThreadLock = await holdGoalThreadLockFixture({
-      threadId: first.threadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      goalThreadLock.release();
-      await goalThreadLock.done;
-    });
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before the final goal launch failure"),
-    ]);
-
-    let goalEventId: string | undefined;
-    const [paused] = await Promise.all([
-      accept(
-        goalsClient().pause({
-          headers: goalHeaders(actor, first.runId),
-        }),
-        [200],
-      ),
-      (async () => {
-        await expect.poll(goalThreadLock.waiterCount).toBe(1);
-        await completeChatRunOk(first.runId, sandboxHeaders, {
-          lastEventSequence: 0,
-        });
-        await expect
-          .poll(async () => {
-            const [eventId] = await goalQueueEventIds(first.threadId);
-            goalEventId = eventId;
-            return eventId;
-          })
-          .toBeDefined();
-        await expect.poll(goalThreadLock.waiterCount).toBeGreaterThanOrEqual(2);
-        goalThreadLock.release();
-        await goalThreadLock.done;
-      })(),
-    ]);
-    expect(paused.body.status).toBe("paused");
-    await flushWaitUntilForTest();
-
-    if (!goalEventId) {
-      throw new Error("Expected the final-boundary goal queue event");
-    }
-
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "control.revoke" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    expect(events.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: goalEventId,
-        content: null,
-      }),
-    );
-    expect(events.events).not.toContainEqual(
-      expect.objectContaining({
-        eventType: "input.rejected",
-        revokesEventId: goalEventId,
-      }),
-    );
-    const goal = await accept(
-      goalsClient().get({
-        headers: goalHeaders(actor, first.runId),
-      }),
-      [200],
-    );
-    expect(goal.body.status).toBe("paused");
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("pauses the goal and rejects its event when claim-time run creation fails", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before goal claim fails",
-    });
-    await createGoalForRun(actor, first.runId, "pause after claim failure");
-    await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before goal claim failure"),
-    ]);
-
     const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
     await flushWaitUntilForTest();
-
-    await expect
-      .poll(async () => {
-        const goal = await accept(
-          goalsClient().get({
-            headers: goalHeaders(actor, first.runId),
-          }),
-          [200],
-        );
-        return goal.body.status;
-      })
-      .toBe("paused");
-    const [goalEventId] = await goalQueueEventIds(first.threadId);
-    expect(goalEventId).toBeDefined();
-    const events = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return items.some((event) => {
-          return (
-            event.eventType === "input.rejected" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    const rejectedGoalEvent = events.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    if (rejectedGoalEvent?.eventType !== "input.rejected") {
-      throw new Error("Expected the failed goal event to be rejected");
-    }
-    expect(rejectedGoalEvent).toMatchObject({
-      eventType: "input.rejected",
-      content: null,
-      userMessage: {
-        version: 1,
-        parts: [{ type: "goal", goalBrief: "pause after claim failure" }],
-      },
-    });
-    expect(chatEventDisplayText(rejectedGoalEvent)).toBe("");
-    expect(JSON.stringify(rejectedGoalEvent?.userMessage)).not.toContain(
-      rejectedGoalEvent.error,
-    );
-    expect(rejectedGoalEvent).not.toHaveProperty("runId");
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-  }, 90_000);
-
-  it("starts a fresh goal session after current policy changes framework", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before the goal route changes framework",
-    });
-    const objective = "Continue autonomously through the current model route";
-    await createGoalForRun(actor, first.runId, objective);
-
-    const provider = await misc.upsertOrgModelProvider(
-      actor,
-      { type: "openai-api-key", secret: "goal-openai-key" },
-      [201],
-    );
-    if (provider.status !== 201) {
-      throw new Error("Expected the goal OpenAI provider to be created");
-    }
-    await api.updateOrgModelPolicies(actor, [
-      {
-        model: "gpt-5.6-terra",
-        isDefault: true,
-        defaultProviderType: "openai-api-key",
-        credentialScope: "org",
-        modelProviderId: provider.body.provider.id,
-      },
-    ]);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before the goal route changed"),
-    ]);
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-
-    const messages = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return isGoalContinuationUserMessage(message, objective);
-        });
-      },
-    );
-    const continuation = userMessages(messages.events).find((message) => {
-      return isGoalContinuationUserMessage(message, objective);
-    });
-    if (!continuation?.runId) {
-      throw new Error("Expected goal continuation run id");
-    }
-    const goalContext = await waitForRunContext(actor, continuation.runId);
-    expect(goalContext.body.sessionId).toBeNull();
-    expect(goalContext.body.environment.OPENAI_MODEL).toBe("gpt-5.6-terra");
-    expect(goalContext.body.environment.ANTHROPIC_MODEL).toBeUndefined();
-
-    await api.requestCancelRun(actor, continuation.runId, [200]);
-    await waitForRunStatus(actor, continuation.runId, "cancelled");
-    await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("admits a user message while the pending goal run is being prepared", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "finish before a queued user interruption",
-    });
-    const goalObjective = "keep making autonomous progress";
-    const goalBrief = goalObjective;
-    await createGoalForRun(actor, first.runId, goalObjective);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed before the queued message"),
-    ]);
-
-    const goalRunPreparationStarted = createDeferredPromise<void>(
-      context.signal,
-    );
-    const releaseGoalRunPreparation = deferredGate();
-    useSecretKmsProbe((request) => {
-      if (!goalRunPreparationStarted.settled()) {
-        goalRunPreparationStarted.resolve(undefined);
-      }
-      return releaseGoalRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(request);
-      });
-    });
-
-    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await goalRunPreparationStarted.promise;
-
-    const userMessageId = randomUUID();
-    const [userRun] = await Promise.all([
-      startChatRun(
-        actor,
-        {
-          agentId,
-          threadId: first.threadId,
-          prompt: "user message admitted during goal run preparation",
-          clientEventId: userMessageId,
-        },
-        {
-          onMessageAccepted: () => {
-            releaseGoalRunPreparation.release();
-          },
-        },
-      ),
-      waitForThreadMessages(actor, first.threadId, (events) => {
-        return events.some((event) => {
-          return (
-            event.id === userMessageId && event.eventType === "input.prompt"
-          );
-        });
-      }).finally(() => {
-        releaseGoalRunPreparation.release();
-      }),
-    ]);
-
-    let goalEventId: string | undefined;
-    await expect
-      .poll(async () => {
-        const [eventId] = await goalQueueEventIds(first.threadId);
-        goalEventId = eventId;
-        return eventId;
-      })
-      .toBeDefined();
-    if (!goalEventId) {
-      throw new Error("Expected a pending goal queue event");
-    }
-
-    const pendingPage = await chat.listThreadEvents(actor, first.threadId);
-    expect(pendingPage.events).toContainEqual(
-      expect.objectContaining({
-        id: goalEventId,
-        eventType: "input.goal",
-        content: null,
-        userMessage: {
-          version: 1,
-          parts: [{ type: "goal", goalBrief }],
-        },
-      }),
-    );
-    expect(
-      userMessages(pendingPage.events).find((message) => {
-        return isGoalContinuationUserMessage(message, goalBrief);
-      }),
-    ).toBeUndefined();
-    expect(userRun.runId).toBeDefined();
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-    await flushWaitUntilForTest();
-
-    let lostGoalRunId: string | undefined;
-    await expect
-      .poll(() => {
-        const lostClaim = sandboxOperationEvents().find((event) => {
-          return (
-            event.op_type === "api_dispatch_claim_queue_first_message" &&
-            event.api_start_source === "goal_input" &&
-            event.queue_first_claim_result === "lost" &&
-            event.queue_first_launch_outcome === "claim_lost"
-          );
-        });
-        lostGoalRunId =
-          typeof lostClaim?.run_id === "string" ? lostClaim.run_id : undefined;
-        return lostGoalRunId;
-      })
-      .toBeDefined();
-    if (!lostGoalRunId) {
-      throw new Error("Expected the prepared goal to lose its final claim");
-    }
-    const lostGoalTiming = goalDrainPreCreateTimingEventsForRun(lostGoalRunId);
-    for (const actionType of [
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_user_message_drain",
-      "api_dispatch_pre_create_agent_goal_drain_scheduler_workflow_drain",
-    ]) {
-      expect(timingEventsForAction(lostGoalTiming, actionType)).toStrictEqual([
-        expect.objectContaining({
-          duration_ms: 0,
-          goal_scheduler_origin: "chat_callback",
-          queue_first_launch_outcome: "claim_lost",
-        }),
-      ]);
-    }
-
-    const paused = await accept(
-      goalsClient().pause({
-        headers: goalHeaders(actor, userRun.runId),
-      }),
-      [200],
-    );
-    expect(paused.body.status).toBe("paused");
-
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "completed after the goal was paused"),
-    ]);
-    const userRunHeaders = await claimChatRun(runnerGroup, userRun.runId);
-    await completeChatRunOk(userRun.runId, userRunHeaders, {
-      lastEventSequence: 0,
-    });
-    const revoked = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (events) => {
-        return events.some((event) => {
-          return (
-            event.eventType === "control.revoke" &&
-            event.revokesEventId === goalEventId
-          );
-        });
-      },
-    );
-    const revokedGoalEvent = revoked.events.find((event) => {
-      return (
-        event.eventType === "control.revoke" &&
-        event.revokesEventId === goalEventId
-      );
-    });
-    expect(revokedGoalEvent).toMatchObject({
-      eventType: "control.revoke",
-    });
-    expect(revokedGoalEvent).not.toHaveProperty("runId");
-    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
-    await flushWaitUntilForTest();
-  }, 90_000);
+    await expect(goalRunIds(first.threadId)).resolves.toStrictEqual([]);
+    await expect(goalQueueEventIds(first.threadId)).resolves.toStrictEqual([]);
+  }, 60_000);
 
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -6505,53 +5411,29 @@ describe("CHAT-02: push notification gating", () => {
     }
   }, 60_000);
 
-  it("suppresses completed run pushes while the thread has an active goal", async () => {
+  it("delivers completed run pushes once while a historical Goal remains active", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     chatCallbacks.enableVapid();
     await chatCallbacks.registerPushSubscription(actor);
-
     const run = await startChatRun(actor, {
       agentId,
-      prompt: "complete while goal remains active",
+      prompt: "complete while Goal remains active",
     });
-    await createGoalForRun(actor, run.runId, "keep working after this run");
+    const goal = await seedGoalForRunFixture(run.runId, "historical objective");
     chatCallbacks.mockChatOutputEvents([]);
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await setLegacyGoalRunOriginFixture(run.runId, goal.id);
     await completeChatRunOk(run.runId, sandboxHeaders);
-
-    const messages = await waitForThreadMessages(
-      actor,
-      run.threadId,
-      (threadMessages) => {
-        return userMessages(threadMessages).some((message) => {
-          return isGoalContinuationUserMessage(
-            message,
-            "keep working after this run",
-          );
-        });
-      },
-    );
     await flushWaitUntilForTest();
-    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
-
-    const continuation = userMessages(messages.events).find((message) => {
-      return isGoalContinuationUserMessage(
-        message,
-        "keep working after this run",
-      );
-    });
-    if (!continuation?.runId) {
-      throw new Error("Expected an active goal continuation run");
-    }
-    await api.requestCancelRun(actor, continuation.runId, [200]);
-    await waitForRunStatus(actor, continuation.runId, "cancelled");
+    await completeChatRunOk(run.runId, sandboxHeaders);
     await flushWaitUntilForTest();
-    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
+    await expect(goalQueueEventIds(run.threadId)).resolves.toStrictEqual([]);
+    await expect(goalRunIds(run.threadId)).resolves.toStrictEqual([run.runId]);
   }, 60_000);
 
-  it("suppresses failed run pushes while the thread has an active goal", async () => {
+  it("delivers failed run pushes while a historical Goal remains active", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -6576,9 +5458,9 @@ describe("CHAT-02: push notification gating", () => {
         );
         return goal.body.status;
       })
-      .toBe("paused");
+      .toBe("active");
     await flushWaitUntilForTest();
-    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
   }, 60_000);
 
   it("withholds pushes without VAPID keys and deletes stale subscriptions after gone responses", async () => {

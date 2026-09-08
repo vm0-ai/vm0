@@ -1,3 +1,4 @@
+import { GOAL_RETIRED_MESSAGE } from "./goal-retirement.service";
 import { createHash, randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import {
@@ -107,11 +108,7 @@ import {
   getSkillStorageName,
   MEMORY_ARTIFACT_NAME,
 } from "@okouai/core/storage-names";
-import {
-  GOAL_SKILL_NAME,
-  INTRO_VIDEO_SKILL_NAME,
-  SEED_SKILLS,
-} from "@okouai/core/seed-skills";
+import { INTRO_VIDEO_SKILL_NAME, SEED_SKILLS } from "@okouai/core/seed-skills";
 import {
   expandVariables,
   expandVariablesInString,
@@ -1395,14 +1392,6 @@ function buildInjectedSkillVolumes(
       ).map((volume) => {
         return { ...volume, baselineCandidate: true };
       }),
-      "system_skill",
-    ) ?? []),
-    ...(prepareAdditionalVolumesWithSource(
-      buildLegacySystemSkillVolumes(
-        [GOAL_SKILL_NAME],
-        skillsRoot,
-        args.systemSkillStorageResolution,
-      ),
       "system_skill",
     ) ?? []),
     ...(args.introVideoEnabled
@@ -10457,6 +10446,12 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    if (
+      input.args.body.triggerSource === "goal" ||
+      input.args.queueFirstAssociation?.kind === "goal_input"
+    ) {
+      return conflict(GOAL_RETIRED_MESSAGE);
+    }
     assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard carries the bypass as
     // API-authored environment while the runner preserves its existing filter.
@@ -10523,6 +10518,12 @@ export const completeAgentRun$ = command(
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
+    if (
+      input.prepared.args.body.triggerSource === "goal" ||
+      input.prepared.args.queueFirstAssociation?.kind === "goal_input"
+    ) {
+      return conflict(GOAL_RETIRED_MESSAGE);
+    }
     assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);
     const { args, timing } = input.prepared;

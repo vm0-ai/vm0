@@ -5,11 +5,7 @@ import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -220,10 +216,6 @@ export async function materializePendingActiveInputPrompts(
         orgId: auth.orgId,
         userId: auth.userId,
         featureSwitchContext,
-        presentationTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.PresentationTemplates,
-          featureSwitchContext,
-        ),
       }),
     );
     signal.throwIfAborted();
@@ -291,7 +283,6 @@ async function materializeActiveInputPrompt(
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
-    readonly presentationTemplatesEnabled: boolean;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<MaterializedActiveInputPrompt> {
@@ -319,7 +310,6 @@ async function materializeActiveInputPrompt(
     ),
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     // Steered into a run that is already executing, whose volumes were fixed
     // when it was created. There is no package to point the agent at, so a
     // private template contributes no guidance rather than a dangling path.

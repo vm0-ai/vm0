@@ -3,11 +3,7 @@
 import * as React from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 
-import {
-  asChildRender,
-  type LegacyAutoFocusHandler,
-  withLegacyAutoFocus,
-} from "../../lib/base-ui-compat";
+import { asChildRender } from "../../lib/base-ui-compat";
 import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
@@ -45,61 +41,8 @@ const DropdownMenuTrigger = React.forwardRef<
 });
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
-interface DropdownMenuSubContextValue {
-  open: boolean;
-  openFromClick: () => void;
-}
-
-const DropdownMenuSubContext = React.createContext<
-  DropdownMenuSubContextValue | undefined
->(undefined);
-
-function DropdownMenuSub({
-  defaultOpen = false,
-  onOpenChange,
-  open: controlledOpen,
-  ...props
-}: MenuPrimitive.SubmenuRoot.Props) {
-  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
-  const open = controlledOpen ?? uncontrolledOpen;
-  const handleOpenChange = React.useCallback(
-    (
-      nextOpen: boolean,
-      eventDetails: MenuPrimitive.SubmenuRoot.ChangeEventDetails,
-    ) => {
-      if (controlledOpen === undefined) {
-        setUncontrolledOpen(nextOpen);
-      }
-      onOpenChange?.(nextOpen, eventDetails);
-    },
-    [controlledOpen, onOpenChange],
-  );
-  const openFromClick = React.useCallback(() => {
-    if (open) {
-      return;
-    }
-    if (controlledOpen === undefined) {
-      setUncontrolledOpen(true);
-    }
-    const legacyOpenChange = onOpenChange as
-      | ((nextOpen: boolean) => void)
-      | undefined;
-    legacyOpenChange?.(true);
-  }, [controlledOpen, onOpenChange, open]);
-  const context = React.useMemo(() => {
-    return { open, openFromClick };
-  }, [open, openFromClick]);
-
-  return (
-    <DropdownMenuSubContext.Provider value={context}>
-      <MenuPrimitive.SubmenuRoot
-        data-slot="dropdown-menu-sub"
-        open={open}
-        onOpenChange={handleOpenChange}
-        {...props}
-      />
-    </DropdownMenuSubContext.Provider>
-  );
+function DropdownMenuSub(props: MenuPrimitive.SubmenuRoot.Props) {
+  return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />;
 }
 
 type DropdownMenuPositionerProps = Pick<
@@ -120,7 +63,6 @@ type DropdownMenuContentProps = MenuPrimitive.Popup.Props &
   DropdownMenuPositionerProps & {
     avoidCollisions?: boolean;
     hideWhenDetached?: boolean;
-    onCloseAutoFocus?: LegacyAutoFocusHandler;
     portalContainer?: HTMLElement | null;
     updatePositionStrategy?: "always" | "optimized";
   };
@@ -144,9 +86,7 @@ const DropdownMenuContent = React.forwardRef<
       collisionBoundary,
       collisionPadding,
       disableAnchorTracking,
-      finalFocus,
       hideWhenDetached = false,
-      onCloseAutoFocus,
       portalContainer,
       positionMethod = "fixed",
       side = "bottom",
@@ -194,11 +134,6 @@ const DropdownMenuContent = React.forwardRef<
               anchoredPopupTransitionClassName,
               "max-h-[var(--available-height)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]",
               className,
-            )}
-            finalFocus={withLegacyAutoFocus(
-              finalFocus,
-              onCloseAutoFocus,
-              "closeAutoFocus",
             )}
             {...props}
           >
@@ -261,8 +196,7 @@ DropdownMenuSeparator.displayName = "DropdownMenuSeparator";
 const DropdownMenuSubTrigger = React.forwardRef<
   HTMLElement,
   MenuPrimitive.SubmenuTrigger.Props
->(({ className, onClick, ...props }, ref) => {
-  const submenu = React.useContext(DropdownMenuSubContext);
+>(({ className, ...props }, ref) => {
   return (
     <MenuPrimitive.SubmenuTrigger
       ref={ref}
@@ -271,12 +205,6 @@ const DropdownMenuSubTrigger = React.forwardRef<
         "flex cursor-default select-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none hover:bg-state-hover data-highlighted:bg-state-hover data-popup-open:bg-state-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
-      onClick={(event) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) {
-          submenu?.openFromClick();
-        }
-      }}
       {...props}
     />
   );

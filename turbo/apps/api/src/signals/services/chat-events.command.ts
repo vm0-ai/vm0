@@ -457,7 +457,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   readonly introVideoEnabled: boolean;
   /**
    * Carried whole so downstream checks can read it without reloading the
@@ -1085,10 +1084,6 @@ async function resolveNormalSendFeatureSwitches(
       templates,
       context,
     ),
-    presentationTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplates,
-      context,
-    ),
     featureSwitchContext: context,
   };
 }
@@ -1110,7 +1105,6 @@ function resolveSelectedTemplateContext(
     introVideoEnabled: featureSwitches.introVideoEnabled,
     explicit: runtimeBody.primaryTemplate,
     explicitTemplates: runtimeBody.templates,
-    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
   return {
@@ -1140,14 +1134,11 @@ async function validateGenerationTemplatePrompt(
     return { userPresentationTemplateIds: [] };
   }
   // Syntax first: every selection this message names is a candidate mount, so
-  // the builder can reject a malformed or switched-off private id here without
-  // the database having been consulted yet.
+  // the builder can reject a malformed private id before consulting the database.
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
       introVideoEnabled: featureSwitches.introVideoEnabled,
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
       mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {

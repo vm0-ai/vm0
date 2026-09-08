@@ -17,7 +17,6 @@ import {
 } from "../../../lib/platform-template-items.ts";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   context,
   expectInlineTemplate,
   mockAvatarCatalog,
@@ -115,7 +114,6 @@ test("Find and choose an avatar template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const dialog = await openTemplatePicker(user, "Avatar");
@@ -193,7 +191,6 @@ test("Preview and choose a video template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const dialog = await openTemplatePicker(user, "Video");
@@ -228,7 +225,6 @@ test("Open plans from a gated video template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await openTemplatePicker(user, "Video");
@@ -256,7 +252,6 @@ test("Preview and send a website template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const picker = await openTemplatePicker(user, "Website");

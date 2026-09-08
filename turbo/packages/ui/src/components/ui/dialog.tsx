@@ -4,11 +4,7 @@ import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
-import {
-  asChildRender,
-  type LegacyAutoFocusHandler,
-  withLegacyAutoFocus,
-} from "../../lib/base-ui-compat";
+import { asChildRender } from "../../lib/base-ui-compat";
 import {
   dialogBackdropAnimationClassName,
   dialogPopupAnimationClassName,
@@ -91,8 +87,6 @@ DialogOverlay.displayName = "DialogOverlay";
 
 interface DialogContentProps extends DialogPrimitive.Popup.Props {
   readonly closeLabel?: string;
-  readonly onCloseAutoFocus?: LegacyAutoFocusHandler;
-  readonly onOpenAutoFocus?: LegacyAutoFocusHandler;
   readonly overlayClassName?: string;
   readonly showCloseButton?: boolean;
 }
@@ -103,10 +97,6 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       children,
       className,
       closeLabel = "Close",
-      finalFocus,
-      initialFocus,
-      onCloseAutoFocus,
-      onOpenAutoFocus,
       overlayClassName,
       showCloseButton = true,
       ...props
@@ -123,16 +113,6 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             dialogPopupAnimationClassName,
             "fixed left-[50%] top-[50%] grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
             className,
-          )}
-          finalFocus={withLegacyAutoFocus(
-            finalFocus,
-            onCloseAutoFocus,
-            "closeAutoFocus",
-          )}
-          initialFocus={withLegacyAutoFocus(
-            initialFocus,
-            onOpenAutoFocus,
-            "openAutoFocus",
           )}
           {...props}
         >

@@ -18,10 +18,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  settingsDialogOpen$,
-  settingsDialogSessionActive$,
-} from "../../../signals/okou-page/settings/settings-dialog.ts";
 import { OKOU_LOCALE_COOKIE_NAME } from "../../../i18n/locale-fallback.ts";
 import frFRCommonUrl from "../../../i18n/locales/fr-FR/common.json?url";
 
@@ -184,15 +180,15 @@ test("Offer only languages supported by the workspace", async () => {
   const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
   const finishCloseTransition = holdElementAnimations(settingsDialog);
   click(screen.getByLabelText("Close"));
-  expect(context.store.get(settingsDialogOpen$)).toBeFalsy();
-  expect(context.store.get(settingsDialogSessionActive$)).toBeTruthy();
+  expect(
+    new URL(window.location.href).searchParams.has("settings"),
+  ).toBeFalsy();
   expect(settingsDialog).toBeVisible();
   finishCloseTransition();
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", { name: "Settings" }),
     ).not.toBeInTheDocument();
-    expect(context.store.get(settingsDialogSessionActive$)).toBeFalsy();
   });
   const rail = await screen.findByTestId("labeled-nav-rail");
   const accountButton = within(rail).getByLabelText("Test User");

@@ -33,21 +33,6 @@ export function MultiSelectCombobox({
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Modal dialogs can install a document-level wheel listener for content
-  // outside the dialog DOM. Popover portal content lives outside that DOM, so
-  // stop propagation before the event reaches the modal scroll lock.
-  const scrollContainerRef = React.useCallback(
-    (node: HTMLDivElement | null) => {
-      if (!node) return;
-      const stop = (e: Event) => {
-        return e.stopPropagation();
-      };
-      node.addEventListener("wheel", stop);
-      node.addEventListener("touchmove", stop);
-    },
-    [],
-  );
-
   const filtered = React.useMemo(() => {
     if (!search) return options;
     const lower = search.toLowerCase();
@@ -94,7 +79,15 @@ export function MultiSelectCombobox({
   }, [selected, options]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearch("");
+        }
+      }}
+    >
       <PopoverTrigger asChild nativeButton={false}>
         <div
           role="combobox"
@@ -147,14 +140,8 @@ export function MultiSelectCombobox({
       <PopoverContent
         className="w-[var(--anchor-width)] p-0"
         align="start"
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-          searchInputRef.current?.focus();
-        }}
-        onCloseAutoFocus={(e) => {
-          e.preventDefault();
-          setSearch("");
-        }}
+        initialFocus={searchInputRef}
+        finalFocus={false}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <Search size={14} className="shrink-0 text-muted-foreground" />
@@ -169,7 +156,7 @@ export function MultiSelectCombobox({
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
-        <div ref={scrollContainerRef} className="max-h-60 overflow-y-auto p-1">
+        <div className="max-h-60 overflow-y-auto p-1">
           {filtered.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               No results found
