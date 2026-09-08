@@ -3,6 +3,7 @@ import { onRef, withCleanup } from "./utils.ts";
 
 const pendingConnections$ = state<ReadonlySet<symbol>>(new Set());
 const progressDismissed$ = state(false);
+const progressDialogRequested$ = state(false);
 const connectionDialogs$ = state(0);
 
 export const connectorConnectionPending$ = computed((get) => {
@@ -10,7 +11,11 @@ export const connectorConnectionPending$ = computed((get) => {
 });
 
 export const connectorConnectionProgressActive$ = computed((get) => {
-  return get(connectorConnectionPending$) && !get(progressDismissed$);
+  return (
+    get(connectorConnectionPending$) &&
+    get(progressDialogRequested$) &&
+    !get(progressDismissed$)
+  );
 });
 
 export const connectorConnectionProgressVisible$ = computed((get) => {
@@ -44,7 +49,11 @@ export const registerConnectorConnectionDialog$ = onRef(
 /** Keep feedback visible through nested connection commands and continuations. */
 export function withConnectorConnectionProgress<T, Args extends unknown[]>(
   source$: Command<Promise<T>, [...Args, AbortSignal]>,
-  { continuation = false }: { readonly continuation?: boolean } = {},
+  {
+    showDialog = false,
+  }: {
+    readonly showDialog?: boolean;
+  } = {},
 ): Command<Promise<T>, [...Args, AbortSignal]> {
   const tracked$ = command(
     async (
@@ -53,8 +62,11 @@ export function withConnectorConnectionProgress<T, Args extends unknown[]>(
       signal: AbortSignal,
     ): Promise<T> => {
       signal.throwIfAborted();
-      if (!continuation && !get(connectorConnectionPending$)) {
+      if (!get(connectorConnectionPending$)) {
         set(progressDismissed$, false);
+        // Most entry points already show connecting feedback. Only callers
+        // without visible feedback opt in to the shared dialog.
+        set(progressDialogRequested$, showDialog);
       }
       const invocation = Symbol();
       set(pendingConnections$, (pending) => {

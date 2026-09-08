@@ -569,8 +569,14 @@ test("Use the shortest valid connector setup from chat", async () => {
   expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
   expect(screen.queryByRole("dialog", { name: "Google Analytics" })).toBeNull();
   expect(within(catalog).getByRole("status")).toHaveTextContent(
-    "Please wait while we finish setting up your connection.",
+    "Connecting...",
   );
+  expect(
+    within(catalog).getByPlaceholderText("Find connectors..."),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("dialog", { name: "Connecting your account" }),
+  ).toBeNull();
   authWindow.close();
   await waitFor(() => {
     expect(within(catalog).queryByRole("status")).toBeNull();
@@ -631,8 +637,11 @@ test.each([null, "Close", "Escape", "backdrop"] as const)(
       );
     });
     expect(within(catalog).getByRole("status")).toHaveTextContent(
-      "Please wait while we finish setting up your connection.",
+      "Connecting...",
     );
+    expect(
+      within(catalog).getByPlaceholderText("Find connectors..."),
+    ).toBeVisible();
     expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
 
     if (dismissal) {
@@ -672,11 +681,9 @@ test.each([null, "Close", "Escape", "backdrop"] as const)(
     expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
       dismissal ? 0 : 1,
     );
-    expect(
-      screen.queryAllByText(
-        /Please wait while we finish setting up your connection/u,
-      ),
-    ).toHaveLength(dismissal ? 0 : 1);
+    expect(screen.queryAllByText("Connecting...")).toHaveLength(
+      dismissal ? 0 : 1,
+    );
     authorization.resolve();
     await expect(
       screen.findByText("Google Analytics connected and authorized for Scout"),
@@ -734,7 +741,9 @@ test("Keep a reopened connector directory usable while chat OAuth is pending", a
   expect(connect).toHaveAttribute("aria-disabled", "true");
   await user.click(connect);
   expect(browserOpen.calls).toHaveLength(1);
-  expect(within(reopened).queryByRole("status")).toBeNull();
+  expect(within(reopened).getByRole("status")).toHaveTextContent(
+    "Connecting...",
+  );
 
   authWindow.close();
   await waitFor(() => {

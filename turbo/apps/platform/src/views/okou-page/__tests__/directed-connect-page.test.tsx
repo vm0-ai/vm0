@@ -318,6 +318,7 @@ function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
 }
 
 function mockConnectorOauthStart(args?: {
+  readonly popupClosed?: boolean;
   readonly onStart?: (
     agentId: string | undefined,
     authorizeAgent: true | undefined,
@@ -326,7 +327,7 @@ function mockConnectorOauthStart(args?: {
   readonly authWindow: Window;
 } {
   const authWindow = context.mocks.browser.authWindow();
-  authWindow.closed = true;
+  authWindow.closed = args?.popupClosed ?? true;
   Object.defineProperty(authWindow, "location", {
     value: { href: "" },
     configurable: true,
@@ -892,6 +893,7 @@ test("Start public OAuth from a directed connection link", async () => {
   let startedAgentId: string | undefined;
   let authorizeAgent: true | undefined;
   const { authWindow } = mockConnectorOauthStart({
+    popupClosed: false,
     onStart: (agentId, requestedAuthorization) => {
       startedAgentId = agentId;
       authorizeAgent = requestedAuthorization;
@@ -950,6 +952,8 @@ test("Start public OAuth from a directed connection link", async () => {
     expect(startedAgentId).toBe(AGENT_ID);
     expect(authorizeAgent).toBeTruthy();
   });
+  await expect(screen.findByText("Connecting...")).resolves.toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 test("Connect a no-auth connector and continue the originating chat", async () => {

@@ -45,6 +45,35 @@ function createAuthWindow(): Window {
   return authWindow;
 }
 
+function delayAccountDetails(connectorSlug: ConnectorSlug) {
+  const requested = context.mocks.deferred<void>();
+  const ready = context.mocks.deferred<void>();
+  context.mocks.api(
+    connectorAccountsContract.connection,
+    async ({ params, respond }) => {
+      requested.resolve();
+      await ready.promise;
+      return respond(200, {
+        id: params.connectionId,
+        target: { kind: "builtin", connectorSlug },
+        authMethod: "oauth",
+        displayName: null,
+        isDefault: true,
+        externalId: null,
+        externalUsername: `mock-${connectorSlug}`,
+        externalEmail: null,
+        oauthScopes: [],
+        connectionStatus: "connected",
+        reconnectReason: null,
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    },
+  );
+  return { requested, ready };
+}
+
 function storeConnectedConnector(
   slug: ConnectorSlug,
   authMethod: string,
@@ -175,6 +204,7 @@ async function openAwsWithCode(code: string): Promise<{
 }
 
 test("Add an AWS account with an external code", async () => {
+  const details = delayAccountDetails("aws");
   const permissions = context.mocks.deferred<void>();
   const permissionsStarted = context.mocks.deferred<void>();
   mockConnectors(context, []);
@@ -241,6 +271,12 @@ test("Add an AWS account with an external code", async () => {
   ).toBeDisabled();
   permissions.resolve();
   await expect(screen.findByText("AWS connected")).resolves.toBeInTheDocument();
+  await details.requested.promise;
+  await expect(within(dialog).findByRole("status")).resolves.toHaveTextContent(
+    "Saving permissions...",
+  );
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  details.ready.resolve();
   const naming = await screen.findByRole("dialog", {
     name: "Name your AWS account",
   });
@@ -483,6 +519,7 @@ test("Authorize visible agents only for the first manual account", async () => {
 });
 
 test("Connect through device authorization", async () => {
+  const details = delayAccountDetails("base44");
   const permissions = context.mocks.deferred<void>();
   const permissionsStarted = context.mocks.deferred<void>();
   mockConnectors(context, []);
@@ -546,6 +583,12 @@ test("Connect through device authorization", async () => {
     }),
   ).toBeTruthy();
   permissions.resolve();
+  await details.requested.promise;
+  await expect(within(dialog).findByRole("status")).resolves.toHaveTextContent(
+    "Saving permissions...",
+  );
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  details.ready.resolve();
   const naming = await screen.findByRole("dialog", {
     name: "Name your Base44 account",
   });
@@ -1252,8 +1295,9 @@ test("Keep OAuth startup safe across repeated actions and navigation", async () 
   click(connect);
 
   await expect(
-    screen.findByText("Connecting your account"),
+    screen.findByRole("status", { name: "Connecting..." }),
   ).resolves.toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
   await waitFor(() => {
     expect(starts).toBe(1);
     expect(browserOpen.calls).toHaveLength(1);

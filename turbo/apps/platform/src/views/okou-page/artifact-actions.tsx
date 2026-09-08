@@ -44,7 +44,7 @@ import {
   syncArtifactFileToGoogleDrive,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import {
-  connectConnectorOAuthAuthCodeAndSettle$,
+  connectConnectorOAuthAuthCodeWithDialogAndSettle$,
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
@@ -330,7 +330,9 @@ function useGoogleDriveMenuAction(
 ): () => void {
   const createClient = useGet(apiClient$);
   const pageSignal = useGet(pageSignal$);
-  const connectGoogleDrive = useSet(connectConnectorOAuthAuthCodeAndSettle$);
+  const connectGoogleDrive = useSet(
+    connectConnectorOAuthAuthCodeWithDialogAndSettle$,
+  );
 
   return () => {
     if (!syncTarget) {

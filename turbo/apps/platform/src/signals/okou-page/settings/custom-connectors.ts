@@ -794,6 +794,33 @@ export const connectCustomConnectorAuthorization$ = command(
   },
 );
 
+/** Custom connector cards have no inline connection indicator. */
+export const connectCustomConnectorAuthorizationWithDialog$ =
+  withConnectorConnectionProgress(
+    command(
+      async (
+        { set },
+        args: {
+          readonly id: string;
+          readonly account: PlatformConnectorAccountMutationIntent;
+          readonly onSuccess: (connectionId: string | null) => Promise<void>;
+        },
+        signal: AbortSignal,
+      ) => {
+        const result = await set(
+          connectCustomConnectorAuthorization$,
+          { id: args.id, account: args.account },
+          signal,
+        );
+        if (result.connected) {
+          signal.throwIfAborted();
+          await args.onSuccess(result.connectionId);
+        }
+      },
+    ),
+    { showDialog: true },
+  );
+
 export const connectCustomConnectorAuthorizationForAgent$ = command(
   async (
     { set },

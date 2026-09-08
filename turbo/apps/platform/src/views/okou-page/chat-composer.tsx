@@ -217,11 +217,9 @@ import { matchesConnectorSearch } from "../../signals/okou-page/settings/connect
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { resetCustomConnectorConnectInput$ } from "../../signals/okou-page/settings/custom-connectors.ts";
 import {
-  connectorConnectionProgressActive$,
   dismissConnectorConnectionProgress$,
   registerConnectorConnectionDialog$,
 } from "../../signals/connector-connection-progress.ts";
-import { ConnectorConnectionStatus } from "../components/connector-connection-dialog-body.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -7113,7 +7111,6 @@ function AddConnectorsDialog({
     resetCustomConnectorConnectInput$,
   );
   const registerConnectionDialog = useSet(registerConnectorConnectionDialog$);
-  const progressActive = useGet(connectorConnectionProgressActive$);
   const dismissProgress = useSet(dismissConnectorConnectionProgress$);
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
@@ -7141,66 +7138,65 @@ function AddConnectorsDialog({
       >
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            {progressActive
-              ? t(($) => {
-                  return $.connectors.connectionProgress.title;
-                })
-              : t(
-                  ($) => {
-                    return $.chat.connectors.available;
-                  },
-                  {
-                    count: visibleConnectorCount,
-                  },
-                )}
+            {t(
+              ($) => {
+                return $.chat.connectors.available;
+              },
+              { count: visibleConnectorCount },
+            )}
           </DialogTitle>
+          {connecting && (
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+              {t(($) => {
+                return $.connectors.actions.connecting;
+              })}
+            </p>
+          )}
         </DialogHeader>
-        {progressActive ? (
-          <ConnectorConnectionStatus />
-        ) : (
-          <>
-            <div className="shrink-0">
-              <Input
-                type="text"
-                placeholder={t(($) => {
-                  return $.chat.connectors.find;
-                })}
-                value={search}
-                onChange={(e) => {
-                  return updateConnectorUi({ addDialogSearch: e.target.value });
-                }}
-                autoFocus
-              />
-            </div>
-            <div className="overflow-y-auto -mx-6 px-6">
-              <div className="grid grid-cols-2 gap-3">
-                {filtered.map((item) => {
-                  return (
-                    <ConnectorCard
-                      key={item.slug}
-                      variant="catalog"
-                      connector={item}
-                      busy={connecting}
-                      connect={connectHandlers(item)}
-                    />
-                  );
-                })}
-                {filteredCustom.map((item) => {
-                  return (
-                    <CustomConnectorCatalogCard
-                      key={item.id}
-                      connector={item}
-                      onConnect={() => {
-                        resetCustomConnectorConnectInput();
-                        onConnectCustom(item);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
+        <div className="shrink-0">
+          <Input
+            type="text"
+            placeholder={t(($) => {
+              return $.chat.connectors.find;
+            })}
+            value={search}
+            onChange={(e) => {
+              return updateConnectorUi({ addDialogSearch: e.target.value });
+            }}
+            autoFocus
+          />
+        </div>
+        <div className="overflow-y-auto -mx-6 px-6">
+          <div className="grid grid-cols-2 gap-3">
+            {filtered.map((item) => {
+              return (
+                <ConnectorCard
+                  key={item.slug}
+                  variant="catalog"
+                  connector={item}
+                  busy={connecting}
+                  connect={connectHandlers(item)}
+                />
+              );
+            })}
+            {filteredCustom.map((item) => {
+              return (
+                <CustomConnectorCatalogCard
+                  key={item.id}
+                  connector={item}
+                  onConnect={() => {
+                    resetCustomConnectorConnectInput();
+                    onConnectCustom(item);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

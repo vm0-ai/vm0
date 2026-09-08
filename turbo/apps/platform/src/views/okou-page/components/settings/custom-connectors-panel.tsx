@@ -22,7 +22,7 @@ import {
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   closeCustomConnectorDialog$,
-  connectCustomConnectorAuthorization$,
+  connectCustomConnectorAuthorizationWithDialog$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
@@ -453,7 +453,7 @@ function CustomConnectorGrid({
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const connectAccountAuthorization = useSet(
-    connectCustomConnectorAuthorization$,
+    connectCustomConnectorAuthorizationWithDialog$,
   );
   const signal = useGet(pageSignal$);
   const openAccountManager = useSet(openCustomAccountManager$);
@@ -476,15 +476,16 @@ function CustomConnectorGrid({
   const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectsDirectlyWithAuthorization(connector)) {
       detach(
-        (async () => {
-          const result = await connectAccountAuthorization(
-            { id: connector.id, account: { intent: "add" } },
-            signal,
-          );
-          if (result.connected) {
-            await finishExplicitAccountAdd(connector, result.connectionId);
-          }
-        })(),
+        connectAccountAuthorization(
+          {
+            id: connector.id,
+            account: { intent: "add" },
+            onSuccess: (connectionId) => {
+              return finishExplicitAccountAdd(connector, connectionId);
+            },
+          },
+          signal,
+        ),
         Reason.DomCallback,
       );
       return;
@@ -540,7 +541,7 @@ function CustomAccountDialogs({
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
   const finishAccountConnection = useSet(finishConnectorAccountConnection$);
   const connectAccountAuthorization = useSet(
-    connectCustomConnectorAuthorization$,
+    connectCustomConnectorAuthorizationWithDialog$,
   );
   const signal = useGet(pageSignal$);
   return (
@@ -594,26 +595,27 @@ function CustomAccountDialogs({
             closeAccountManager();
             if (connectsDirectlyWithAuthorization(managedAccounts)) {
               detach(
-                (async () => {
-                  const result = await connectAccountAuthorization(
-                    { id: managedAccounts.id, account: { intent: "add" } },
-                    signal,
-                  );
-                  if (result.connected) {
-                    await finishAccountConnection(
-                      {
-                        target: {
-                          kind: "custom",
-                          customConnectorId: managedAccounts.id,
+                connectAccountAuthorization(
+                  {
+                    id: managedAccounts.id,
+                    account: { intent: "add" },
+                    onSuccess: (connectionId) => {
+                      return finishAccountConnection(
+                        {
+                          target: {
+                            kind: "custom",
+                            customConnectorId: managedAccounts.id,
+                          },
+                          connectionId,
+                          connectorLabel: managedAccounts.displayName,
+                          mode: { kind: "add" },
                         },
-                        connectionId: result.connectionId,
-                        connectorLabel: managedAccounts.displayName,
-                        mode: { kind: "add" },
-                      },
-                      signal,
-                    );
-                  }
-                })(),
+                        signal,
+                      );
+                    },
+                  },
+                  signal,
+                ),
                 Reason.DomCallback,
               );
               return;

@@ -1466,10 +1466,9 @@ test.each([false, true])(
       );
     });
     await expect(
-      within(dialog).findByRole("status"),
-    ).resolves.toHaveTextContent(
-      "Please wait while we finish setting up your connection.",
-    );
+      within(dialog).findByText("Connecting…"),
+    ).resolves.toBeVisible();
+    expect(getConnectorAction("button", "Connecting…", dialog)).toBeDisabled();
     expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
     expect(within(dialog).getByLabelText("Close")).toBeEnabled();
     cancelledWindow.close();
@@ -1489,7 +1488,9 @@ test.each([false, true])(
         "https://oauth.acme.test/reconnect",
       );
     });
-    await expect(within(dialog).findByRole("status")).resolves.toBeVisible();
+    await expect(
+      within(dialog).findByText("Connecting…"),
+    ).resolves.toBeVisible();
     expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
     if (dismiss) {
       click(within(dialog).getByLabelText("Close"));

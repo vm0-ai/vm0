@@ -28,7 +28,6 @@ import {
   mockConnectors,
   mockPublicConnectorStatus,
   publicStatusItem,
-  queryConnectorAction,
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
@@ -119,13 +118,10 @@ test.each([
   { grantKind: "openid-auth", existing: false, dismiss: null },
   { grantKind: "auth-code", existing: true, dismiss: null },
   { grantKind: "auth-code", existing: true, dismiss: "Close" },
-  { grantKind: "auth-code", existing: false, dismiss: "Close" },
-  { grantKind: "auth-code", existing: false, dismiss: "Escape" },
-  { grantKind: "auth-code", existing: false, dismiss: "backdrop" },
+  { grantKind: "auth-code", existing: true, dismiss: "Escape" },
 ] as const)(
-  "Track $grantKind through naming (existing dialog: $existing, dismissal: $dismiss)",
+  "Keep existing $grantKind feedback through naming without an extra dialog (dialog: $existing, dismissal: $dismiss)",
   async ({ grantKind, existing, dismiss }) => {
-    const dialogName = existing ? "Stripe" : PROGRESS;
     const account = connectedAccount({
       kind: "builtin",
       connectorSlug: "stripe",
@@ -214,13 +210,20 @@ test.each([
       const chooser = await screen.findByRole("dialog", { name: "Stripe" });
       click(getConnectorAction("button", "Connect", chooser));
     }
-    const progress = await expectProgressDialog(dialogName);
+    await expect(screen.findByRole("status")).resolves.toBeVisible();
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+      existing ? 1 : 0,
+    );
+    expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
     expect(connect).toBeDisabled();
     await waitFor(() => {
       return expect(popup.location.href).toBe(start.authorizationUrl);
     });
     if (dismiss) {
-      await dismissProgress(progress, dismiss);
+      await dismissProgress(
+        screen.getByRole("dialog", { name: "Stripe" }),
+        dismiss,
+      );
     }
     expect(popup.closed).toBeFalsy();
     expect(connect).toBeDisabled();
@@ -229,18 +232,19 @@ test.each([
     context.mocks.data.connectors([{ ...account, slug: "stripe" }]);
     popup.close();
     await permissionRequest.promise;
-    expect(screen.queryAllByRole("dialog", { name: dialogName })).toHaveLength(
-      dismiss ? 0 : 1,
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+      existing && !dismiss ? 1 : 0,
     );
+    expect(screen.getByRole("status")).toBeVisible();
     expect(
       screen.queryByRole("dialog", { name: "Name your Stripe account" }),
     ).toBeNull();
     permissions.resolve();
     await detailRequest.promise;
-    expect(screen.queryAllByRole("dialog", { name: dialogName })).toHaveLength(
-      dismiss ? 0 : 1,
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(
+      existing && !dismiss ? 1 : 0,
     );
-    expect(queryConnectorAction("button", "Manage Stripe accounts")).toBeNull();
+    expect(screen.getByRole("status")).toBeVisible();
     details.resolve();
     const naming = await screen.findByRole("dialog", {
       name: "Name your Stripe account",
@@ -338,11 +342,16 @@ test.each([false, true])(
       const chooser = await screen.findByRole("dialog", { name: "Stripe" });
       click(getConnectorAction("button", "Connect", chooser));
     }
-    const progress = await expectProgressDialog(existing ? "Stripe" : PROGRESS);
     await waitFor(() => {
       expect(popup.location.href).toBe(authorizationUrl);
     });
-    await dismissProgress(progress, "Close");
+    if (existing) {
+      await dismissProgress(
+        screen.getByRole("dialog", { name: "Stripe" }),
+        "Close",
+      );
+    }
+    expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
     expect(
       getConnectorAction("button", "Manage Axiom accounts"),
     ).toBeDisabled();
@@ -382,33 +391,24 @@ test.each([false, true])(
   },
 );
 
-test("Show progress for a new connection after dismissing the previous attempt", async () => {
-  mockConnectors(context, []);
-  mockPublicConnectorStatus(context, [
-    publicStatusItem({
-      connectorSlug: "stripe",
-      label: "Stripe",
-      singleAuthCodeAuthMethodId: "oauth",
-      authMethods: [
-        {
-          id: "oauth",
-          label: "OAuth",
-          description: null,
-          grantKind: "auth-code",
-          manualFields: [],
-          startOptions: [],
-        },
-      ],
-    }),
-  ]);
-  const authorizationUrl = "https://oauth.test/stripe/authorize";
-  context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
-    return respond(200, { authorizationUrl });
+test("Show progress for a custom connection after dismissing the previous attempt", async () => {
+  const connector = customConnector({
+    authMode: "oauth",
+    oauthConfig: customOAuthConfig(),
+    fields: [],
+    missingRequiredFields: ["oauth"],
+  });
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [connector] });
+  });
+  const authorizationUrl = "https://oauth.test/custom/authorize";
+  context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
+    return respond(200, { result: "authorization", authorizationUrl });
   });
   const firstPopup = authorizationWindow();
-  await setupPage({ context, path: "/connectors?keywords=stripe" });
+  await setupPage({ context, path: "/connectors?tab=custom" });
   const connect = await waitFor(() => {
-    return getConnectorAction("button", "Connect Stripe");
+    return getConnectorAction("button", `Connect ${connector.displayName}`);
   });
   click(connect);
   const progress = await expectProgressDialog();
@@ -434,9 +434,16 @@ test("Show progress for a new connection after dismissing the previous attempt",
   });
 });
 
-test.each(["http", "mcp", "automatic"] as const)(
-  "Keep custom %s progress after closing authorization and until naming is ready",
-  async (kind) => {
+test.each([
+  { kind: "http", dismiss: null },
+  { kind: "mcp", dismiss: null },
+  { kind: "automatic", dismiss: null },
+  { kind: "http", dismiss: "Close" },
+  { kind: "http", dismiss: "Escape" },
+  { kind: "http", dismiss: "backdrop" },
+] as const)(
+  "Keep custom $kind progress until naming is ready and respect dismissal ($dismiss)",
+  async ({ kind, dismiss }) => {
     let connector =
       kind === "http"
         ? customConnector({
@@ -528,11 +535,14 @@ test.each(["http", "mcp", "automatic"] as const)(
       return getConnectorAction("button", `Connect ${connector.displayName}`);
     });
     click(connect);
-    await expectProgressDialog();
+    const progress = await expectProgressDialog();
     expect(connect).toBeDisabled();
     await waitFor(() => {
       return expect(popup.location.href).toBe(start.authorizationUrl);
     });
+    if (dismiss) {
+      await dismissProgress(progress, dismiss);
+    }
     authorized = true;
     connector = {
       ...connector,
@@ -542,10 +552,14 @@ test.each(["http", "mcp", "automatic"] as const)(
     };
     popup.close();
     await confirmRequest.promise;
-    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
+    expect(screen.queryAllByRole("dialog", { name: PROGRESS })).toHaveLength(
+      dismiss ? 0 : 1,
+    );
     confirmation.resolve();
     await detailRequest.promise;
-    expect(screen.getByRole("dialog", { name: PROGRESS })).toBeVisible();
+    expect(screen.queryAllByRole("dialog", { name: PROGRESS })).toHaveLength(
+      dismiss ? 0 : 1,
+    );
     expect(
       screen.queryByRole("dialog", {
         name: `Name your ${connector.displayName} account`,

@@ -428,9 +428,9 @@ test("Present a connector with no accounts", async () => {
 
   click(connect);
   await expect(
-    screen.findByRole("dialog", { name: "Connecting your account" }),
+    screen.findByRole("status", { name: "Connecting..." }),
   ).resolves.toBeVisible();
   expect(connect).toBeDisabled();
-  expect(queryConnectorAction("button", "Connect GitHub")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
   oauthStarted.resolve();
 });

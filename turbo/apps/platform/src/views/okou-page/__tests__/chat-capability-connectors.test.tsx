@@ -436,12 +436,7 @@ test("Connect a single available connector without an unnecessary chooser", asyn
       "https://provider.example.test/authorize-drive",
     );
   });
-  expect(
-    screen.queryByRole("dialog", { name: "Drive Demo" }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("dialog", { name: "Connecting your account" }),
-  ).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
   connected = true;
   context.mocks.data.connectors([

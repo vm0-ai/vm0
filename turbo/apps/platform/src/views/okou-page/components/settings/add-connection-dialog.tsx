@@ -54,7 +54,6 @@ import {
   manualGrantFormValuesFor$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
-  hasConnectorStatusBrowserAuthGrant,
   manualGrantInputValuesForMethod,
   type ConnectorConnectionResult,
   type ConnectorExternalCodeState,
@@ -387,17 +386,28 @@ function UnavailableConnectMethodsContent() {
   );
 }
 
-function getOAuthAuthCodeProgressContent({
-  isPolling,
-  settling,
-}: {
-  isPolling: boolean;
-  settling: boolean;
-}) {
+function useConnectorProgressContent(
+  connectorSlug: ConnectorSlug,
+  pending: {
+    readonly browser: boolean;
+    readonly device: boolean;
+    readonly external: boolean;
+  },
+) {
+  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const deviceAuthState = useGet(connectorOAuthDeviceAuthState$);
+  const externalCodeState = useGet(connectorExternalCodeState$);
+  const isPolling = pollingConnectorSlug === connectorSlug;
+  const settling =
+    pending.browser ||
+    (pending.device &&
+      !connectorOAuthDeviceAuthFlowIsActive(deviceAuthState, connectorSlug)) ||
+    (pending.external &&
+      !connectorExternalCodeFlowIsActive(externalCodeState, connectorSlug));
   // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p role="status" className="text-sm text-muted-foreground">
         {i18n.t(($) => {
           return $.connectors.connectDialog.progress.connecting;
         })}
@@ -407,7 +417,7 @@ function getOAuthAuthCodeProgressContent({
 
   if (settling) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p role="status" className="text-sm text-muted-foreground">
         {i18n.t(($) => {
           return $.connectors.connectDialog.progress.savingPermissions;
         })}
@@ -1378,7 +1388,7 @@ function ConnectModalContent({
   const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
   );
-  const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
+  const [deviceAuthLoadable, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
   );
   const [, connectExternalCodeCommand] = useLoadableSet(
@@ -1405,13 +1415,10 @@ function ConnectModalContent({
   };
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
-  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
-  const settling = settleLoadable.state === "loading";
   const externalCodeCompleting =
     completeExternalCodeLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
-  const isPolling = pollingConnectorSlug === item.slug;
   const entries = getConnectEntries(item, accountMode, reconnectAuthMethod);
   const onConnectSuccess = async (connectionId: string | null) => {
     await runConnectSuccess(item.slug, onSuccess, connectionId, pageSignal);
@@ -1462,12 +1469,11 @@ function ConnectModalContent({
     await connectNoAuthAndSettleCommand(args, signal);
   };
 
-  const progressContent = hasConnectorStatusBrowserAuthGrant(item)
-    ? getOAuthAuthCodeProgressContent({
-        isPolling,
-        settling,
-      })
-    : null;
+  const progressContent = useConnectorProgressContent(item.slug, {
+    browser: settleLoadable.state === "loading",
+    device: deviceAuthLoadable.state === "loading",
+    external: externalCodeCompleting,
+  });
   if (progressContent) {
     return progressContent;
   }
@@ -1576,13 +1582,7 @@ export function ConnectModal({
           </p>
         )}
 
-        <ConnectorConnectionDialogBody
-          interactive={
-            connectorOAuthDeviceAuthState.status === "pending" ||
-            connectorOAuthDeviceAuthState.status === "polling" ||
-            connectorExternalCodeState.status === "pending"
-          }
-        >
+        <ConnectorConnectionDialogBody>
           <ConnectModalContent
             item={item}
             agentId={agentId}

@@ -456,6 +456,33 @@ export function ConnectorAccountSummaryText({
   );
 }
 
+function AccountConnectionIndicator({ busy }: { readonly busy: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+        !busy && "border border-border/60",
+      )}
+      role={busy ? "status" : undefined}
+      aria-label={
+        busy
+          ? t(($) => {
+              return $.connectors.actions.connecting;
+            })
+          : undefined
+      }
+      aria-hidden={busy ? undefined : true}
+    >
+      {busy ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <Plus size={14} />
+      )}
+    </span>
+  );
+}
+
 function AccountsConnectorCard({
   connector,
   summary,
@@ -534,20 +561,8 @@ function AccountsConnectorCard({
         >
           {connector.label}
         </span>
-        {accountCount === 0 && summaryStatus === "ready" ? (
-          <span
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-              !busy && "border border-border/60",
-            )}
-            aria-hidden="true"
-          >
-            {busy ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Plus size={14} />
-            )}
-          </span>
+        {busy || (accountCount === 0 && summaryStatus === "ready") ? (
+          <AccountConnectionIndicator busy={busy} />
         ) : null}
       </div>
       {showDescription ? (

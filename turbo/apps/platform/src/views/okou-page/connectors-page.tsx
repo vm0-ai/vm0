@@ -34,6 +34,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowConnectorSlug$,
+  runConnectorConnectSuccess$,
   connectorsSearch$,
   connectorsConnectionFilter$,
   filteredConnectorCatalogItems$,
@@ -990,6 +991,7 @@ export function ConnectorsPage() {
     accountSummariesLoadable.state,
   );
   const finishAccountConnection = useSet(finishConnectorAccountConnection$);
+  const runConnectSuccess = useSet(runConnectorConnectSuccess$);
   const managedAccountConnector = useGet(builtinAccountManager$);
   const accountConnect = useGet(builtinAccountConnectDialog$);
   const openAccountManager = useSet(openBuiltinAccountManager$);
@@ -1047,13 +1049,20 @@ export function ConnectorsPage() {
     connector: PlatformConnectorCatalogStatusItem,
     connectionId: string | null,
   ): Promise<void> => {
-    await finishAccountConnection(
-      {
-        target: { kind: "builtin", connectorSlug: connector.slug },
-        connectionId,
-        connectorLabel: connector.label,
-        mode: { kind: "add" },
+    await runConnectSuccess(
+      connector.slug,
+      (completedConnectionId) => {
+        return finishAccountConnection(
+          {
+            target: { kind: "builtin", connectorSlug: connector.slug },
+            connectionId: completedConnectionId,
+            connectorLabel: connector.label,
+            mode: { kind: "add" },
+          },
+          signal,
+        );
       },
+      connectionId,
       signal,
     );
   };

@@ -243,14 +243,6 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
     );
   });
 }
-export function hasConnectorStatusBrowserAuthGrant(
-  connector: PlatformConnectorCatalogStatusItem,
-): boolean {
-  return connector.authMethods.some((method) => {
-    return isBrowserAuthGrantKind(method.grantKind);
-  });
-}
-
 export function getConnectorStatusConnectLaunchMode(
   connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
@@ -2649,4 +2641,11 @@ const connectConnectorOAuthAuthCodeAndSettleCommand$ = command(
 export const connectConnectorOAuthAuthCodeAndSettle$ =
   withConnectorConnectionProgress(
     connectConnectorOAuthAuthCodeAndSettleCommand$,
+  );
+
+/** Menu actions disappear on activation and need their own progress feedback. */
+export const connectConnectorOAuthAuthCodeWithDialogAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthAuthCodeAndSettleCommand$,
+    { showDialog: true },
   );

@@ -252,11 +252,10 @@ test("Reconnect the exact Gmail account required by a persisted mail card", asyn
       { intent: "reconnect", connectionId: GMAIL_CONNECTION_ID },
     ]);
   });
-  const progress = await screen.findByRole("dialog", {
-    name: "Connecting your account",
-  });
-  expect(within(progress).getByRole("status")).toBeVisible();
-  click(await findControl("button", "Close", progress));
+  expect(
+    screen.queryByRole("dialog", { name: "Connecting your account" }),
+  ).toBeNull();
+  await expect(screen.findByText("Reconnecting…")).resolves.toBeVisible();
   await expect(findMailCard(subject)).resolves.toBeVisible();
 
   gmailReady = true;
