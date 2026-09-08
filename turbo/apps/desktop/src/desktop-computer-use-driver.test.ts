@@ -1,3 +1,4 @@
+import type { ComputerUseCommandClock } from "./computer-use-command-budget";
 import { DesktopRecorderController } from "./desktop-recorder-controller";
 import { createRecorderNativeBackend } from "./desktop-recorder-native";
 import { mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:fs";
@@ -215,6 +216,7 @@ function nativeProcesses(events: string[]) {
 
 function desktop(
   options: {
+    commandClock?: ComputerUseCommandClock;
     transitionTimeoutMs?: number;
     nativeShutdownGraceMs?: number;
     expectedQuitError?: string;
@@ -316,6 +318,7 @@ function desktop(
               throw new Error("No plugin configured in this fixture");
             return options.plugin.execute(command);
           },
+          commandClock: options.commandClock,
           setTimeout: timers.schedule,
           clearTimeout: timers.clear,
         },
@@ -362,7 +365,7 @@ function desktop(
           command: {
             timeoutMs: 60_000,
             createdAt: new Date().toISOString(),
-            claimedAt: null,
+            claimedAt: new Date().toISOString(),
             ...command,
           },
         });
@@ -912,3 +915,44 @@ describe("production driver generation and admission wiring", () => {
     expect(claims).toBe(1);
   });
 });
+
+it.each(["permissions.state", "apps.list", "app.open", "app.state"])(
+  "keeps one Okou deadline through %s even before the timer callback is delivered",
+  async (phase) => {
+    let monotonic = 0;
+    const app = desktop({
+      commandClock: {
+        wallNow: () => Date.parse("2026-09-08T02:42:36.593Z"),
+        monotonicNow: () => monotonic,
+        setTimeout: (run, delay) => setTimeout(run, delay),
+        clearTimeout: (timer) => clearTimeout(timer),
+      },
+    });
+    await app.controller.start();
+    const gate = app.native.pause(phase);
+    const command = app.claim({
+      id: "deadline-command",
+      kind: phase === "apps.list" ? "apps.list" : "app.open",
+      payload: { app: "test.app" },
+      timeoutMs: 10_000,
+      createdAt: "2026-09-08T02:44:35.425Z",
+      claimedAt: "2026-09-08T02:44:36.980Z",
+    });
+    app.timers.run(5_000);
+    await command.reached.promise;
+    command.response.resolve();
+    await gate.reached.promise;
+    monotonic = 10_000;
+    const before = app.events.length;
+    gate.resume.resolve();
+    expect(await command.completed.promise).toMatchObject({
+      status: "failed",
+      error: { code: "command_timeout" },
+    });
+    expect(app.events.slice(before)).not.toContain("1:app.open");
+    expect(app.events.slice(before)).not.toContain("1:app.state");
+    expect(app.driver.getCapabilities()).toEqual([]);
+    command.completeResponse.resolve();
+    await app.driver.retire();
+  },
+);

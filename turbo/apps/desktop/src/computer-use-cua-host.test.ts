@@ -1,9 +1,10 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import { createComputerUseNativeBackend } from "./computer-use-native";
 import { ComputerUseDriverController } from "./computer-use-driver";
 import { createCuaComputerUseDriver } from "./computer-use-cua";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
@@ -35,6 +36,8 @@ async function desktop(
   granted = true,
   pluginEnabled = false,
   options: {
+    driver?: "okou" | "cua";
+    wallTime?: number;
     startupFailure?: boolean;
     stopDuringPreparation?: boolean;
     ignoreNetworkAbort?: boolean;
@@ -42,24 +45,49 @@ async function desktop(
 ) {
   const external = cuaBoundary();
   external.granted = granted;
+  // macOS TMPDIR can contain /var -> /private/var aliases; MCP requires canonical roots.
+  const directory = await realpath(
+    await mkdtemp(path.join(tmpdir(), "cua-plugin-")),
+  );
+  const helperPath = path.join(directory, "computer-use-helper");
+  const nativeLog = path.join(directory, "native.jsonl");
+  await writeFile(nativeLog, "");
+  if (options.driver === "okou") {
+    // Exercise the shipped Okou backend against the external helper protocol.
+    await writeFile(
+      helperPath,
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+require("node:readline").createInterface({ input: process.stdin }).on("line", line => {
+  const request = JSON.parse(line);
+  fs.appendFileSync(${JSON.stringify(nativeLog)}, JSON.stringify(request) + "\\n");
+  const result = request.kind === "permissions.state"
+    ? { accessibility: true, screenRecording: true }
+    : { apps: [{ name: "Editor", bundleId: "test.editor", running: true, pid: 123 }] };
+  process.stdout.write(JSON.stringify({ id: request.id, status: "succeeded", result }) + "\\n");
+});
+`,
+      { mode: 0o755 },
+    );
+  }
   const driver = new ComputerUseDriverController(
-    createCuaComputerUseDriver({
-      runtimeRoot: "/packaged/cua",
-      hostBundleId: "ai.okou.desktop",
-      loadSdk: async () => {
-        if (options.startupFailure) throw new Error("SDK load failed");
-        return external.sdk;
-      },
-    }),
+    options.driver === "okou"
+      ? {
+          id: "okou",
+          createBackend: () => createComputerUseNativeBackend({ helperPath }),
+        }
+      : createCuaComputerUseDriver({
+          runtimeRoot: "/packaged/cua",
+          hostBundleId: "ai.okou.desktop",
+          loadSdk: async () => {
+            if (options.startupFailure) throw new Error("SDK load failed");
+            return external.sdk;
+          },
+        }),
     "darwin",
   );
   const permissions = createComputerUsePermissions((read) =>
     driver.withPermissionProvider(read),
-  );
-  // macOS TMPDIR can contain /var -> /private/var aliases; MCP authorizes
-  // canonical roots and validates the requested path before following symlinks.
-  const directory = await realpath(
-    await mkdtemp(path.join(tmpdir(), "cua-plugin-")),
   );
   await writeFile(
     path.join(directory, "document.txt"),
@@ -76,19 +104,20 @@ async function desktop(
   plugin.setEnabled(pluginEnabled);
   const timers = new Map<
     ReturnType<typeof setTimeout>,
-    { run: () => void; delay: number }
+    { run: () => void; delay: number; due: number }
   >();
   const schedule = (run: () => void, delay: number) => {
     const id = setTimeout(() => {}, 2 ** 30);
     id.unref();
-    timers.set(id, { run, delay });
+    timers.set(id, { run, delay, due: monotonic + delay });
     return id;
   };
   const clear: typeof clearTimeout = (id) => {
     if (typeof id === "object") timers.delete(id);
     clearTimeout(id);
   };
-  let now = Date.now();
+  let now = options.wallTime ?? Date.now();
+  const serverNow = Date.parse("2026-09-08T02:44:36.980Z");
   let monotonic = 0;
   const budgetTimers = new Map<ReturnType<typeof setTimeout>, () => void>();
   const commandClock: ComputerUseCommandClock = {
@@ -128,6 +157,9 @@ async function desktop(
   let completion = deferred<Record<string, unknown>>();
   let claimGate: ReturnType<typeof deferred<void>> | null = null;
   const claimEntered = deferred<void>();
+  let streamClaim = false;
+  let respondToCompletion: (request: Request) => Promise<Response> = async () =>
+    HttpResponse.json({ ok: true });
   const controller = new ComputerUseRuntimeController({
     driver,
     refreshPermissions: permissions.refreshComputerUsePermissionState,
@@ -194,6 +226,24 @@ async function desktop(
         const next = command;
         command = null;
         if (next && claimGate) {
+          if (streamClaim) {
+            const gate = claimGate;
+            return new HttpResponse(
+              new ReadableStream({
+                async start(writer) {
+                  claimEntered.resolve();
+                  await gate.promise;
+                  writer.enqueue(
+                    new TextEncoder().encode(
+                      JSON.stringify({ status: "command", command: next }),
+                    ),
+                  );
+                  writer.close();
+                },
+              }),
+              { headers: { "content-type": "application/json" } },
+            );
+          }
           claimEntered.resolve();
           await claimGate.promise;
         }
@@ -201,7 +251,10 @@ async function desktop(
           next ? { status: "command", command: next } : { status: "idle" },
         );
       }
-      if (url.pathname.endsWith("/complete")) completion.resolve(body);
+      if (url.pathname.endsWith("/complete")) {
+        completion.resolve(body);
+        return respondToCompletion(request);
+      }
       return HttpResponse.json({ ok: true });
     }),
   );
@@ -219,7 +272,30 @@ async function desktop(
     requests,
     directory,
     plugin,
-    delayClaim() {
+    serverNow,
+    nativeLog: () => readFile(nativeLog, "utf8"),
+    setWall(time: number) {
+      now = time;
+    },
+    reportWith(respond: typeof respondToCompletion) {
+      respondToCompletion = respond;
+    },
+    hasReportingTimer(delay: number) {
+      return [...timers].some(
+        ([id, timer]) => budgetTimers.has(id) && timer.delay === delay,
+      );
+    },
+    runReportingTimer(delay: number) {
+      const entry = [...timers].find(
+        ([id, timer]) => budgetTimers.has(id) && timer.delay === delay,
+      );
+      if (!entry) throw new Error(`No reporting timer for ${delay}ms`);
+      clear(entry[0]);
+      budgetTimers.delete(entry[0]);
+      entry[1].run();
+    },
+    delayClaim(body = false) {
+      streamClaim = body;
       claimGate = deferred();
       return {
         entered: claimEntered.promise,
@@ -232,6 +308,17 @@ async function desktop(
       );
       if (!timer) throw new Error("No command poll deadline is scheduled");
       timer.run();
+    },
+    elapse(ms: number) {
+      now += ms;
+      monotonic += ms;
+      for (const [id, timer] of [...timers]) {
+        if (timer.due <= monotonic) {
+          clear(id);
+          budgetTimers.delete(id);
+          timer.run();
+        }
+      }
     },
     advance(ms: number) {
       now += ms;
@@ -252,8 +339,8 @@ async function desktop(
         kind,
         payload,
         timeoutMs: 30_000,
-        createdAt: new Date(now).toISOString(),
-        claimedAt: null,
+        createdAt: new Date(serverNow).toISOString(),
+        claimedAt: new Date(serverNow).toISOString(),
         ...metadata,
       };
       const poll = [...timers].find(
@@ -430,7 +517,8 @@ it.each([
       { app: "test.editor" },
       {
         timeoutMs,
-        createdAt: createdAt ?? new Date(Date.now() - age - 1000).toISOString(),
+        createdAt:
+          createdAt ?? new Date(d.serverNow - age - 1000).toISOString(),
       },
     );
     expect(completed).toMatchObject({
@@ -483,4 +571,345 @@ it("charges discovery time against action and post-state without resetting a 30-
     error: { code: "command_timeout" },
   });
   expect(d.driver.getCapabilities()).toEqual([]);
+});
+
+const observedClaim = {
+  createdAt: "2026-09-08T02:44:35.425Z",
+  claimedAt: "2026-09-08T02:44:36.980Z",
+  timeoutMs: 10_000,
+};
+
+it.each(["okou", "cua"] as const)(
+  "admits the user's actual server/Mac timestamp inversion through %s",
+  async (driver) => {
+    const d = await desktop(true, false, {
+      driver,
+      wallTime: Date.parse("2026-09-08T02:44:36.593Z"),
+    });
+    const completed = await d.queue("apps.list", {}, observedClaim);
+    expect(completed).toMatchObject({
+      status: "succeeded",
+      result: {
+        apps: expect.arrayContaining([
+          expect.objectContaining({ bundleId: "test.editor" }),
+        ]),
+      },
+    });
+    expect(d.controller.getHostState().localCommandLog[0]).toMatchObject({
+      startedAt: "2026-09-08T02:44:36.593Z",
+      status: "succeeded",
+      driver: { id: driver },
+    });
+    if (driver === "okou")
+      expect(await d.nativeLog()).toContain('"kind":"apps.list"');
+    else
+      expect(d.external.calls.some((call) => call.name === "list_apps")).toBe(
+        true,
+      );
+  },
+);
+
+for (const driver of ["okou", "cua"] as const) {
+  it.each([-120_000, 120_000])(
+    `${driver} admits a fresh server grant with a %s ms wall offset`,
+    async (offset) => {
+      const d = await desktop(true, false, { driver });
+      d.setWall(d.serverNow + offset);
+      expect(await d.queue("apps.list", {}, observedClaim)).toMatchObject({
+        status: "succeeded",
+      });
+    },
+  );
+
+  it.each([false, true])(
+    `${driver} charges delayed claim headers/body (%s) before any permission or native action`,
+    async (body) => {
+      const d = await desktop(true, false, { driver, wallTime: 0 });
+      const before = d.external.calls.length;
+      const nativeBefore = await d.nativeLog();
+      const gate = d.delayClaim(body);
+      const report = d.queue("apps.list", {}, observedClaim);
+      await gate.entered;
+      d.advance(8_500); // 1,555 ms server queue age + transport exceeds 10 seconds.
+      gate.release();
+      expect(await report).toMatchObject({
+        status: "failed",
+        error: { code: "command_timeout" },
+      });
+      expect(d.external.calls.slice(before)).toEqual([]);
+      expect(await d.nativeLog()).toBe(nativeBefore);
+    },
+  );
+
+  it.each([
+    { claimedAt: null },
+    { claimedAt: undefined },
+    { claimedAt: "invalid" },
+    { claimedAt: "2026-09-08T02:44:35.424Z" },
+    { createdAt: undefined },
+    { timeoutMs: undefined },
+    { timeoutMs: 999 },
+    { timeoutMs: 120_001 },
+    { timeoutMs: 1000.5 },
+    { createdAt: "2026-09-08T02:44:26.980Z" },
+  ])(
+    `${driver} fails closed on unprovable or expired successful-claim metadata %j`,
+    async (metadata) => {
+      const d = await desktop(true, false, { driver });
+      const before = d.external.calls.length;
+      const nativeBefore = await d.nativeLog();
+      const report = await d.queue(
+        "apps.list",
+        {},
+        { ...observedClaim, ...metadata },
+      );
+      expect(report).toMatchObject({
+        status: "failed",
+        error: { code: "command_timeout" },
+      });
+      expect(d.external.calls.slice(before)).toEqual([]);
+      expect(await d.nativeLog()).toBe(nativeBefore);
+    },
+  );
+
+  it(`${driver} accepts the existing nullable timeout default without new API fields`, async () => {
+    const d = await desktop(true, false, { driver });
+    expect(await d.queue("apps.list", {}, { timeoutMs: null })).toMatchObject({
+      status: "succeeded",
+    });
+  });
+}
+
+it("does not renew a deadline after a backwards or forwards Mac wall-clock adjustment", async () => {
+  const d = await desktop();
+  d.external.intercept = async (name) => {
+    if (name === "check_permissions") {
+      d.setWall(d.serverNow + 120_000);
+      d.advance(10_000);
+      d.setWall(d.serverNow - 120_000);
+    }
+  };
+  expect(
+    await d.queue("app.open", { app: "test.editor" }, observedClaim),
+  ).toMatchObject({
+    status: "failed",
+    error: { code: "command_timeout" },
+  });
+  expect(d.external.calls.some((call) => call.name === "launch_app")).toBe(
+    false,
+  );
+  expect(d.driver.getCapabilities()).toEqual([]);
+});
+
+it("keeps a cancelled poll's delayed JSON body owned and reports without dispatch", async () => {
+  const d = await desktop(true, false, { ignoreNetworkAbort: true });
+  const gate = d.delayClaim(true);
+  const report = d.queue("apps.list", {}, { timeoutMs: 60_000 });
+  await gate.entered;
+  d.advance(31_000);
+  d.expirePoll();
+  gate.release();
+  expect(await report).toMatchObject({
+    status: "failed",
+    error: {
+      code: "command_timeout",
+      message: expect.stringContaining("polling deadline"),
+    },
+  });
+  expect(d.external.calls.some((call) => call.name === "list_apps")).toBe(
+    false,
+  );
+});
+
+it("delivers an exhausted execution's original error after 100 ms of reporting latency", async () => {
+  const d = await desktop();
+  const received = deferred<void>();
+  const response = deferred<void>();
+  d.reportWith(async () => {
+    received.resolve();
+    await response.promise;
+    return HttpResponse.json({ ok: true });
+  });
+  const report = d.queue(
+    "apps.list",
+    {},
+    { ...observedClaim, createdAt: "2026-09-08T02:44:26.980Z" },
+  );
+  await received.promise;
+  d.elapse(100);
+  response.resolve();
+  expect(await report).toMatchObject({
+    status: "failed",
+    error: { code: "command_timeout" },
+  });
+  await expect
+    .poll(() => d.controller.getHostState().lastCommandAt)
+    .not.toBeNull();
+  expect(d.requests.filter((r) => r.path.endsWith("/complete"))).toHaveLength(
+    1,
+  );
+});
+
+it("bounds transient retries and an abort-ignoring reporting request by one five-second deadline", async () => {
+  const d = await desktop(true, false, { ignoreNetworkAbort: true });
+  const secondAttempt = deferred<void>();
+  const lateResponse = deferred<void>();
+  let attempts = 0;
+  d.reportWith(async () => {
+    attempts++;
+    if (attempts === 1) return new HttpResponse(null, { status: 503 });
+    secondAttempt.resolve();
+    await lateResponse.promise;
+    return HttpResponse.json({ ok: true });
+  });
+  await d.queue("apps.list", {}, { ...observedClaim, claimedAt: null });
+  await expect.poll(() => attempts).toBe(1);
+  // Wait for HTTP consumption to schedule the retry, without replacing async code.
+  await expect.poll(() => d.hasReportingTimer(2_000)).toBe(true);
+  d.runReportingTimer(2_000);
+  d.advance(2_000);
+  await secondAttempt.promise;
+  d.advance(3_000);
+  d.runReportingTimer(5_000);
+  await expect
+    .poll(() => d.controller.getHostState().status)
+    .toBe("recovering");
+  expect(d.controller.getHostState().lastError).toContain(
+    "reporting timed out after 5000ms",
+  );
+  expect(attempts).toBe(2);
+  // Neither the pending response nor its late success keeps the native lease.
+  await d.driver.retire();
+  lateResponse.resolve();
+  expect(d.controller.getHostState().lastCommandAt).toBeNull();
+  expect(d.external.calls.some((call) => call.name === "list_apps")).toBe(
+    false,
+  );
+});
+
+it.each(["stop", "sign-out", "quit"])(
+  "%s cancels reporting and releases its lease without waiting for the reporting deadline",
+  async (reason) => {
+    const d = await desktop();
+    const received = deferred<void>();
+    const cancelled = deferred<void>();
+    const respond = deferred<void>();
+    d.reportWith(async (request) => {
+      request.signal.addEventListener("abort", () => cancelled.resolve(), {
+        once: true,
+      });
+      received.resolve();
+      await respond.promise;
+      return HttpResponse.json({ ok: true });
+    });
+    await d.queue("apps.list", {}, observedClaim);
+    await received.promise;
+    if (reason === "stop") await d.controller.stop();
+    else if (reason === "sign-out") await d.controller.stopForAuthChange();
+    else await d.controller.stopForQuit();
+    await cancelled.promise;
+    respond.resolve();
+    expect(d.controller.getHostState().status).toBe("offline");
+    expect(d.driver.getCapabilities()).toEqual([]);
+    expect(d.external.destroyed).toBe(true);
+    expect(d.requests.filter((r) => r.path.endsWith("/complete"))).toHaveLength(
+      1,
+    );
+  },
+);
+
+it("retries only result delivery and preserves the original result on success", async () => {
+  const d = await desktop();
+  let attempts = 0;
+  d.reportWith(async () =>
+    ++attempts === 1
+      ? new HttpResponse(null, { status: 503 })
+      : HttpResponse.json({ ok: true }),
+  );
+  const result = await d.queue("apps.list", {}, observedClaim);
+  await expect.poll(() => d.hasReportingTimer(2_000)).toBe(true);
+  d.advance(2_000);
+  d.runReportingTimer(2_000);
+  await expect
+    .poll(() => d.controller.getHostState().lastCommandAt)
+    .not.toBeNull();
+  expect(
+    d.requests.filter((r) => r.path.endsWith("/complete")).map((r) => r.body),
+  ).toEqual([result, result]);
+  expect(
+    d.external.calls.filter((call) => call.name === "list_apps"),
+  ).toHaveLength(1);
+});
+
+it("accepts a terminal server completion without retrying or overwriting the local failure", async () => {
+  const d = await desktop();
+  d.reportWith(async () => new HttpResponse(null, { status: 409 }));
+  const result = await d.queue(
+    "apps.list",
+    {},
+    { ...observedClaim, claimedAt: null },
+  );
+  await expect
+    .poll(() => d.controller.getHostState().lastCommandAt)
+    .not.toBeNull();
+  expect(result).toMatchObject({
+    status: "failed",
+    error: { code: "command_timeout" },
+  });
+  expect(d.controller.getHostState().localCommandLog[0]?.status).toBe("failed");
+  expect(d.requests.filter((r) => r.path.endsWith("/complete"))).toHaveLength(
+    1,
+  );
+});
+
+it("retains the original driver generation while a normal switch drains reporting", async () => {
+  const d = await desktop();
+  const received = deferred<void>();
+  const response = deferred<void>();
+  d.reportWith(async () => {
+    received.resolve();
+    await response.promise;
+    return HttpResponse.json({ ok: true });
+  });
+  await d.queue("apps.list", {}, observedClaim);
+  await received.promise;
+  const generation = d.driver.generation;
+  const replacement = cuaBoundary();
+  const transition = d.controller.transitionDriver(
+    createCuaComputerUseDriver({
+      runtimeRoot: "/packaged/cua",
+      hostBundleId: "ai.okou.desktop",
+      loadSdk: async () => replacement.sdk,
+    }),
+  );
+  expect(d.external.destroyed).toBe(false);
+  expect(replacement.sessions).toBe(0);
+  d.advance(100);
+  response.resolve();
+  await transition;
+  expect(d.external.destroyed).toBe(true);
+  expect(d.driver.generation).not.toBe(generation);
+  expect(
+    d.requests.filter((r) => r.path.endsWith("/hosts/start")),
+  ).toHaveLength(1);
+  expect(
+    d.external.calls.filter((call) => call.name === "list_apps"),
+  ).toHaveLength(1);
+});
+
+it("cancels retry backoff on Stop without further reporting or native work", async () => {
+  const d = await desktop();
+  d.reportWith(async () => new HttpResponse(null, { status: 503 }));
+  await d.queue("apps.list", {}, observedClaim);
+  await expect.poll(() => d.hasReportingTimer(2_000)).toBe(true);
+  await d.controller.stop();
+  expect(d.hasReportingTimer(2_000)).toBe(false);
+  expect(d.hasReportingTimer(5_000)).toBe(false);
+  expect(d.controller.getHostState().status).toBe("offline");
+  expect(d.requests.filter((r) => r.path.endsWith("/complete"))).toHaveLength(
+    1,
+  );
+  expect(
+    d.external.calls.filter((call) => call.name === "list_apps"),
+  ).toHaveLength(1);
 });

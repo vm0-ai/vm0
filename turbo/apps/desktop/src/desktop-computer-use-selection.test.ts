@@ -286,7 +286,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
                   ...next,
                   timeoutMs: 60_000,
                   createdAt: new Date().toISOString(),
-                  claimedAt: null,
+                  claimedAt: new Date().toISOString(),
                 },
               }
             : { status: "idle" },
