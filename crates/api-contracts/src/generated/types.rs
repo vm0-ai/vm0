@@ -803,6 +803,16 @@ pub mod runners {
 
     /// Private Runner SSH authority DTOs.
     pub mod ssh {
+        /// Best-effort SSH authority eviction, never an authorization grant.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct InvalidateNotification {
+            /// Affected active Run UUID.
+            pub run_id: String,
+            /// Affected connection UUID, or null for every connection in the Run.
+            pub connection_id: Option<String>,
+        }
+
         /// Immutable winning official Runner process.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]

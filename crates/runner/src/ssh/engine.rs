@@ -12,9 +12,8 @@ use tokio::net::TcpStream;
 
 use super::{
     FailureReason, Scope,
-    authority::{Authority, Credential},
+    authority::{Authority, PreparedCredential},
     io::{GuestIo, Lease, SshSocket},
-    keys::SigningKey,
     output::{Output, RemoteExit, Stream},
 };
 use crate::ids::RunId;
@@ -24,8 +23,7 @@ pub(super) struct Execution {
     pub(super) run: RunId,
     pub(super) connection: uuid::Uuid,
     pub(super) lease: Arc<Lease>,
-    pub(super) credential: Credential,
-    pub(super) key: SigningKey,
+    pub(super) credential: Arc<PreparedCredential>,
 }
 
 impl Execution {
@@ -43,8 +41,7 @@ impl Execution {
             self.authority,
             self.run,
             self.connection,
-            self.credential.generation,
-            self.credential.pin,
+            Arc::clone(&self.credential),
             scope.clone(),
         );
         let failure = Arc::clone(&handler.failure);
@@ -59,7 +56,7 @@ impl Execution {
                     .unwrap_or(FailureReason::Protocol)
             })?;
         let result = async {
-            let hash = if matches!(self.key.0.algorithm(), Algorithm::Rsa { .. }) {
+            let hash = if matches!(self.credential.key.0.algorithm(), Algorithm::Rsa { .. }) {
                 match scope
                     .wait(session.best_supported_rsa_hash())
                     .await?
@@ -74,8 +71,8 @@ impl Execution {
             };
             let authentication = scope
                 .wait(session.authenticate_publickey(
-                    self.credential.username,
-                    PrivateKeyWithHashAlg::new(self.key.0, hash),
+                    self.credential.username.clone(),
+                    PrivateKeyWithHashAlg::new(Arc::clone(&self.credential.key.0), hash),
                 ))
                 .await?
                 .map_err(|_| FailureReason::AuthenticationFailed)?;

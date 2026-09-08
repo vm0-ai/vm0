@@ -1,6 +1,7 @@
 //! Official Runner-owned, one-shot SSH dispatch. No guest-supplied authority.
 
 mod authority;
+mod cache;
 mod engine;
 mod io;
 mod keys;
@@ -12,7 +13,10 @@ mod tests;
 use runner_rpc_proto::{Delivery, ErrorCode, Response, ResponseWriter};
 use sandbox::{AcceptedGuestRpc, GuestRpcAcceptor, Sandbox};
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::{
     sync::Semaphore,
     task::{JoinHandle, JoinSet},
@@ -21,7 +25,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{http::HttpClient, ids::RunId, runner_process_identity::RunnerProcessIdentity};
-use authority::Authority;
+use authority::{Authority, PreparedCredential, Trust};
 use io::{GuestIo, Lease};
 use network::{Network, PublicNetwork};
 
@@ -71,9 +75,42 @@ pub(crate) struct SshRuntime {
     network: Arc<dyn Network>,
     permits: Arc<Semaphore>,
     cpu: Arc<Semaphore>,
+    cache: cache::Cache,
 }
 
 impl SshRuntime {
+    pub(crate) fn ably_connected(&self, connected: bool) {
+        self.cache.connected(connected);
+    }
+
+    pub(crate) fn ably_message(&self, message: &ably_subscriber::Message) -> bool {
+        use api_contracts::generated::types::runners::ssh::InvalidateNotification;
+        if message.name.as_deref() != Some("ssh-authority-invalidated") {
+            return false;
+        }
+        if message.data.get("connectionId").is_none() {
+            return true;
+        }
+        let Ok(notification) =
+            serde_json::from_value::<InvalidateNotification>(message.data.clone())
+        else {
+            tracing::warn!("Invalid SSH authority invalidation notification");
+            return true;
+        };
+        let Ok(run) = notification.run_id.parse::<RunId>() else {
+            return true;
+        };
+        let connection = match notification.connection_id {
+            Some(value) => match value.parse::<uuid::Uuid>() {
+                Ok(connection) => Some(connection),
+                Err(_) => return true,
+            },
+            None => None,
+        };
+        self.cache.invalidate(run, connection);
+        true
+    }
+
     pub(crate) fn official(
         http: HttpClient,
         token: &str,
@@ -93,6 +130,7 @@ impl SshRuntime {
             network: Arc::new(PublicNetwork),
             permits: Arc::new(Semaphore::new(RUNNER_CAPACITY)),
             cpu: Arc::new(Semaphore::new(2)),
+            cache: cache::Cache::new(),
         })))
     }
 
@@ -116,12 +154,17 @@ impl SshRuntime {
         let cancel = cancel.child_token();
         let runtime = Arc::clone(self);
         let task_cancel = cancel.clone();
+        let registration = self.cache.register(run);
+        let task_registration = Arc::clone(&registration);
         let task = tokio::spawn(async move {
-            runtime.serve(acceptor, sandbox, run, task_cancel).await;
+            runtime
+                .serve(acceptor, sandbox, run, task_cancel, task_registration)
+                .await;
         });
         SshRun {
             cancel,
             task: Some(task),
+            registration,
         }
     }
 
@@ -131,6 +174,7 @@ impl SshRuntime {
         sandbox: String,
         run: RunId,
         cancel: CancellationToken,
+        registration: Arc<cache::Registration>,
     ) {
         let permits = Arc::new(Semaphore::new(SANDBOX_CAPACITY));
         let mut tasks = JoinSet::new();
@@ -162,15 +206,23 @@ impl SshRuntime {
                 deadline: Instant::now() + Duration::from_secs(60),
             };
             let lease = Arc::new(Lease::new(accepted.stream, local, global));
+            let registration = Arc::clone(&registration);
             tasks.spawn(async move {
-                runtime.dispatch(lease, run, scope).await;
+                runtime.dispatch(lease, run, scope, registration).await;
             });
         }
         cancel.cancel();
+        registration.close();
         while tasks.join_next().await.is_some() {}
     }
 
-    async fn dispatch(self: Arc<Self>, lease: Arc<Lease>, run: RunId, mut scope: Scope) {
+    async fn dispatch(
+        self: Arc<Self>,
+        lease: Arc<Lease>,
+        run: RunId,
+        mut scope: Scope,
+        registration: Arc<cache::Registration>,
+    ) {
         let _cancel_on_drop = scope.cancelled.clone().drop_guard();
         let started = Instant::now();
         let mut input = GuestIo(Arc::clone(&lease));
@@ -226,6 +278,7 @@ impl SshRuntime {
                 &work,
                 &mut writer,
                 &mut output,
+                &registration,
             )
             .await;
         let outcome = output.terminal(result);
@@ -250,12 +303,45 @@ impl SshRuntime {
         scope: &Scope,
         writer: &mut ResponseWriter<GuestIo>,
         output: &mut output::Output,
+        registration: &Arc<cache::Registration>,
     ) -> Result<output::RemoteExit, FailureReason> {
-        let ExecRequest {
-            run,
-            connection,
-            command,
-        } = request;
+        let run = request.run;
+        let connection = request.connection;
+        let access = registration.lookup(connection)?;
+        let result = async {
+            let credential = scope
+                .wait(access.prepare(self.prepare(Arc::clone(&lease), run, connection, scope)))
+                .await??;
+            self.execute_prepared(lease, request, credential, scope, writer, output)
+                .await
+        }
+        .await;
+        if result.as_ref().is_err_and(|failure| {
+            matches!(
+                failure,
+                FailureReason::Unavailable
+                    | FailureReason::AuthorityFailure
+                    | FailureReason::InvalidCredential
+                    | FailureReason::UnsupportedCredential
+                    | FailureReason::CredentialResourceLimit
+                    | FailureReason::HostKeyMismatch
+                    | FailureReason::UnsupportedHostKey
+                    | FailureReason::ConfigurationChanged
+                    | FailureReason::AuthenticationFailed
+            )
+        }) {
+            access.invalidate();
+        }
+        result
+    }
+
+    async fn prepare(
+        &self,
+        lease: Arc<Lease>,
+        run: RunId,
+        connection: uuid::Uuid,
+        scope: &Scope,
+    ) -> Result<PreparedCredential, FailureReason> {
         let credential = scope
             .wait(self.authority.resolve(run, connection))
             .await??;
@@ -273,12 +359,37 @@ impl SshRuntime {
                 credential.passphrase.as_ref().map(|value| value.expose()),
             )?;
             worker_scope.check()?;
-            Ok::<_, FailureReason>((credential, key))
+            Ok::<_, FailureReason>(PreparedCredential {
+                host: credential.host,
+                port: credential.port,
+                username: credential.username,
+                trust: Mutex::new(Trust {
+                    generation: credential.generation,
+                    pin: credential.pin,
+                }),
+                key,
+            })
         });
-        let (credential, key) = scope
+        scope
             .wait(worker)
             .await?
-            .map_err(|_| FailureReason::InvalidCredential)??;
+            .map_err(|_| FailureReason::InvalidCredential)?
+    }
+
+    async fn execute_prepared(
+        &self,
+        lease: Arc<Lease>,
+        request: ExecRequest,
+        credential: Arc<PreparedCredential>,
+        scope: &Scope,
+        writer: &mut ResponseWriter<GuestIo>,
+        output: &mut output::Output,
+    ) -> Result<output::RemoteExit, FailureReason> {
+        let ExecRequest {
+            run,
+            connection,
+            command,
+        } = request;
         // System DNS can own blocking resolver work after its waiter is dropped.
         // This task retains the real stream/permits until resolution completes.
         let network = Arc::clone(&self.network);
@@ -303,7 +414,6 @@ impl SshRuntime {
             connection,
             lease,
             credential,
-            key,
         }
         .execute(stream, command, scope, writer, output)
         .await
@@ -352,10 +462,12 @@ impl Scope {
 pub(crate) struct SshRun {
     cancel: CancellationToken,
     task: Option<JoinHandle<()>>,
+    registration: Arc<cache::Registration>,
 }
 impl SshRun {
     pub(crate) async fn shutdown(mut self) {
         self.cancel.cancel();
+        self.registration.close();
         if let Some(task) = self.task.take() {
             let _ = task.await;
         }
@@ -364,6 +476,7 @@ impl SshRun {
 impl Drop for SshRun {
     fn drop(&mut self) {
         self.cancel.cancel();
+        self.registration.close();
     }
 }
 

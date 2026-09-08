@@ -12,15 +12,18 @@ use russh::{
 };
 use std::sync::{Arc, Mutex};
 
-use super::super::{FailureReason, Scope, authority::Authority, keys};
+use super::super::{
+    FailureReason, Scope,
+    authority::{Authority, PreparedCredential},
+    keys,
+};
 use crate::ids::RunId;
 
 pub(super) struct HostTrust {
     authority: Arc<Authority>,
     run: RunId,
     connection: uuid::Uuid,
-    generation: i64,
-    pin: Option<ResolveResponseResolvedLearnedHostKey>,
+    credential: Arc<PreparedCredential>,
     scope: Scope,
     pub(super) failure: Arc<Mutex<Option<FailureReason>>>,
 }
@@ -30,16 +33,14 @@ impl HostTrust {
         authority: Arc<Authority>,
         run: RunId,
         connection: uuid::Uuid,
-        generation: i64,
-        pin: Option<ResolveResponseResolvedLearnedHostKey>,
+        credential: Arc<PreparedCredential>,
         scope: Scope,
     ) -> Self {
         Self {
             authority,
             run,
             connection,
-            generation,
-            pin,
+            credential,
             scope,
             failure: Arc::new(Mutex::new(None)),
         }
@@ -75,23 +76,50 @@ impl HostTrust {
             _ => return Err(FailureReason::UnsupportedHostKey),
         };
         let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
-        if let Some(pin) = &self.pin {
-            if pin.algorithm != pinned_algorithm || pin.fingerprint != fingerprint {
-                return Err(FailureReason::HostKeyMismatch);
+        let generation = {
+            let trust = self
+                .credential
+                .trust
+                .lock()
+                .map_err(|_| FailureReason::Protocol)?;
+            if let Some(pin) = &trust.pin {
+                if pin.algorithm != pinned_algorithm || pin.fingerprint != fingerprint {
+                    return Err(FailureReason::HostKeyMismatch);
+                }
+                return Ok(());
             }
-            return Ok(());
-        }
+            trust.generation
+        };
         self.scope
             .wait(self.authority.pin(
                 self.run,
                 self.connection,
-                self.generation,
+                generation,
                 PinRequestObservedHostKey {
                     algorithm: observed_algorithm,
-                    fingerprint,
+                    fingerprint: fingerprint.clone(),
                 },
             ))
-            .await?
+            .await??;
+        self.scope.check()?;
+        let mut trust = self
+            .credential
+            .trust
+            .lock()
+            .map_err(|_| FailureReason::Protocol)?;
+        if trust
+            .pin
+            .as_ref()
+            .is_some_and(|pin| pin.algorithm != pinned_algorithm || pin.fingerprint != fingerprint)
+        {
+            return Err(FailureReason::HostKeyMismatch);
+        }
+        trust.generation = generation + 1;
+        trust.pin = Some(ResolveResponseResolvedLearnedHostKey {
+            algorithm: pinned_algorithm,
+            fingerprint,
+        });
+        Ok(())
     }
 }
 

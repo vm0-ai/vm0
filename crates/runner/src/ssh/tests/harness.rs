@@ -172,12 +172,20 @@ impl Harness {
         Self::with_keys(reply, key(Algorithm::Ed25519), key(Algorithm::Ed25519)).await
     }
     pub(super) async fn with_keys(reply: Reply, key: PrivateKey, host_key: PrivateKey) -> Self {
+        Self::with_api(reply, key, host_key, None).await
+    }
+    pub(super) async fn with_api(
+        reply: Reply,
+        key: PrivateKey,
+        host_key: PrivateKey,
+        api_url: Option<String>,
+    ) -> Self {
         let api = MockServer::start_async().await;
         let (control, control_peer) = control_connection().await;
         let identity = RunnerProcessIdentity::new(uuid::Uuid::new_v4(), 27).unwrap();
         let run = RunId::new_v4();
         let http = HttpClient::new(HttpClientConfig {
-            api_url: api.base_url(),
+            api_url: api_url.unwrap_or_else(|| api.base_url()),
             vercel_bypass: None,
             client_session_id: "ssh-integration".into(),
         })
@@ -295,6 +303,19 @@ impl Harness {
         if let Some(dispatcher) = self.dispatcher.take() {
             dispatcher.shutdown().await;
         }
+    }
+
+    pub(super) async fn restart(&mut self, run: RunId) {
+        self.shutdown().await;
+        self.run = run;
+        let (incoming, receiver) = mpsc::channel(32);
+        self.incoming = incoming;
+        self.dispatcher = Some(self.runtime.start(
+            Arc::new(Acceptor(tokio::sync::Mutex::new(receiver))),
+            "sandbox-authoritative".into(),
+            run,
+            &self.cancel,
+        ));
     }
 }
 impl Drop for Harness {

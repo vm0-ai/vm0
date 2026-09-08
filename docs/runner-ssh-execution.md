@@ -3,7 +3,8 @@
 #32387 implements the Runner-owned execution slice of #32013 (under #31932).
 It does not activate SSH, expose a CLI/UI, or support local/PAT Runners.
 Current [API authority](runner-ssh-authority.md), including the staff/feature
-gate and current Agent grant, remains mandatory on every request. Run source,
+gate and current Agent grant, is required on a cache miss and for first-use pinning.
+Successful authority snapshots follow the Run-scoped lifetime below. Run source,
 chat channel, workflows, goals and trigger metadata add no eligibility gate.
 
 ## One-shot request and outcomes
@@ -14,7 +15,7 @@ The guest calls `runner-rpc-client` with the [generic envelope](runner-rpc-trans
 Run, owner, Agent, endpoint, username, private key, pin, timeout or SSH options.
 Unknown methods and invalid params are rejected before credential resolution.
 
-The Runner resolves current credentials, validates the destination, makes one
+The Runner resolves or reuses its Run-owned credentials, validates the destination, makes one
 TCP connection, verifies host trust, authenticates using the private key, opens
 one session channel and requests one non-PTY exec with acknowledgement. It sends
 EOF on stdin. It never requests shell, environment, PTY, agent forwarding, port
@@ -59,9 +60,52 @@ Resolve/pin requests use the host's immutable Runner process identity and exact
 current Run assignment. A token prefix selects official transport only; API
 authentication and winning-claim checks provide the actual authority. Responses
 must be HTTP 200, fit 512 KiB, and satisfy generated DTOs and semantic bounds.
-Redirects are rejected. A missing/old API fails closed without affecting normal
-Agent execution. An already-authorized handoff remains subject to the API's
-documented in-flight revocation window.
+Redirects are rejected. A missing/old API fails closed whenever a fresh resolve
+or pin is required, without affecting normal Agent execution. Cache hits make no
+API request. In-flight handoffs cannot be retracted; missed invalidations may
+additionally preserve an authorized snapshot until Run end.
+
+### Run-scoped authority and key cache
+
+The first use of a connection resolves current authority and parses the private
+key under the existing CPU/admission limits. While the Runner's Ably subscription
+is connected, later commands in the same Run reuse that prepared configuration,
+generation, host trust and parsed key. There is no TTL, periodic refresh,
+connection pooling, disk persistence or cross-Run credential sharing. Raw private
+key/passphrase text is released after preparation rather than retained alongside
+the parsed key. Every connection still validates its public destination and the
+server's cryptographic proof and fingerprint.
+
+The runtime retains at most 256 cache cells, including evicted cells still owned
+by in-flight requests. Saturation bypasses caching instead of rejecting a command;
+uncached/in-flight work still uses the existing request and CPU limits. Concurrent
+misses share a fill. Cache entries belong to a specific active Run registration,
+not just its UUID; replacement, Run end, cancellation, teardown and shutdown retire
+them. Removed entries cannot be republished by late resolve/decode/pin completion.
+Already-admitted work may retain bounded references until it actually finishes.
+
+API mutations publish `ssh-authority-invalidated` on the existing Runner-group
+Ably channel, with `{runId, connectionId}`; a null connection ID evicts all entries
+for that Run. Notices contain no credentials and cannot grant access or establish
+trust. Connection edits/rotation, deletion and explicit host-key reset notify
+active owner Runs after commit. New Agent-access/inventory writers must use the
+Run-wide invalidation hook before activation. First-use pin/match records the
+confirmed identity locally only after the authorized N+1 response.
+
+Before subscription readiness or while disconnected/failed, the Runner bypasses
+shared caching and resolves each command. Observed connection loss clears cached
+entries; recovery rebuilds them lazily from the API. A relevant invalidation or
+authentication/trust/configuration failure evicts the entry for later commands.
+Required re-resolution failure never restores an invalidated credential, and no
+failure or invalidation automatically replays a command or silently repins a host.
+
+Publishing is best effort and subscriber business messages can be dropped when
+its queue is full. **A missed notice can leave old authority usable for the rest
+of the Run, even after deletion or revocation.** There is no 30-second freshness
+guarantee; observed-disconnect clearing does not guarantee delivery. This window
+and longer bounded retention of parsed keys in Runner memory are accepted product
+trade-offs. Cache invalidation does not promise to stop an already-started remote
+command. HTTP/proxy caching remains disabled with `Cache-Control: no-store`.
 
 Native public-address constants are generated from the canonical connector
 destination policy and exercised against its shared JSON fixtures. All DNS

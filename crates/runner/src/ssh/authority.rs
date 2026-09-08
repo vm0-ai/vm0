@@ -4,9 +4,10 @@ use api_contracts::generated::{
     routes::runners::runs::by_run_id::ssh as routes, types::runners::ssh::*,
 };
 use serde::{Serialize, de::DeserializeOwned};
+use std::sync::Mutex;
 use zeroize::Zeroizing;
 
-use super::FailureReason;
+use super::{FailureReason, keys::SigningKey};
 use crate::{http::HttpClient, ids::RunId, runner_process_identity::RunnerProcessIdentity};
 
 const MAX_API_BYTES: usize = 512 * 1024;
@@ -26,6 +27,19 @@ pub(super) struct Credential {
     pub(super) pin: Option<ResolveResponseResolvedLearnedHostKey>,
     pub(super) private_key: api_contracts::SecretText<65536>,
     pub(super) passphrase: Option<api_contracts::SecretText<4096>>,
+}
+
+pub(super) struct PreparedCredential {
+    pub(super) host: String,
+    pub(super) port: u16,
+    pub(super) username: String,
+    pub(super) trust: Mutex<Trust>,
+    pub(super) key: SigningKey,
+}
+
+pub(super) struct Trust {
+    pub(super) generation: i64,
+    pub(super) pin: Option<ResolveResponseResolvedLearnedHostKey>,
 }
 
 impl Authority {

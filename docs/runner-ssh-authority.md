@@ -55,8 +55,37 @@ Configuration, encrypted credentials and relational authority are captured in
 one joined read, followed by the feature check. That authorized snapshot is an
 in-flight handoff: revocation cannot retract a response already authorized.
 Every later resolve checks again and sees committed rotation/deletion/revocation.
+The Runner can reuse a successfully resolved snapshot and parsed key for the
+current Run while Ably is connected; it does not resolve on every command. This
+explicit application-owned retention is not HTTP/proxy caching.
 KMS decryption runs outside transactions and row locks, so slow KMS does not
 block owner edits or revocation. Resolve never writes a learned host key.
+
+### Invalidation and accepted freshness
+
+After a successful connection edit (including credential rotation), deletion or
+explicit host-key reset, the API sends identifier-only `ssh-authority-invalidated`
+messages on `runner-group:<group>` for affected running owner Runs. Payloads are
+`{runId, connectionId}`; null `connectionId` means the whole Run. Recipient discovery
+must not require a grant or connection row that the mutation may have deleted.
+The Run-wide hook accepts an Agent scope; future Agent-access/ownership writers
+must invoke it before SSH activation. Current production access/inventory APIs
+remain a later delivery stage.
+
+Notices are sent after commit and before the request observes cancellation. A
+failed publish is logged, not reported as failure of the already-committed edit.
+The Runner only evicts local authority; it obtains any replacement from the API.
+Before Ably readiness and during disconnect/failure it resolves per command,
+clears cached entries on observed connection loss, and refills lazily after recovery.
+
+There is no fixed TTL or periodic authorization poll. Missed publication or a
+dropped subscriber message may leave previous configuration/credentials/grants
+usable for the remainder of the Run, including after deletion/revocation. This
+Run-lifetime stale-authority window is explicitly accepted; Ably is not a reliable
+revocation protocol. Cached parsed keys remain bounded in process memory and are
+retired on invalidation or Run teardown. Per-connection public-destination and
+cryptographic proof/pin checks remain mandatory, and invalidation never authorizes
+command replay or guarantees termination of a remote command already started.
 
 ## Atomic trust on first use
 

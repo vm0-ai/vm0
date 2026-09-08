@@ -1,3 +1,4 @@
+mod cache;
 mod credentials;
 mod harness;
 mod lifecycle;

@@ -939,6 +939,7 @@ async fn run_start_with_home(
             http.clone(),
             server.token,
             ApiProviderConfig {
+                ssh: ssh.clone(),
                 runner_identity,
                 runner_hostname: hostname.clone(),
                 group,

@@ -1,4 +1,7 @@
-import { runnerSshContract } from "../contracts/runner-ssh";
+import {
+  runnerSshContract,
+  runnerSshInvalidateSchema,
+} from "../contracts/runner-ssh";
 import {
   SSH_PRIVATE_KEY_MAX_LENGTH,
   SSH_PASSPHRASE_MAX_LENGTH,
@@ -43,6 +46,26 @@ function hostKeyDocs(name: string): RustTypeDeclarationDoc[] {
 }
 
 export const sshTypeBindings = [
+  {
+    schema: runnerSshInvalidateSchema,
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "InvalidateNotification",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "InvalidateNotification",
+        rustDoc: [
+          "Best-effort SSH authority eviction, never an authorization grant.",
+        ],
+        fields: {
+          runId: ["Affected active Run UUID."],
+          connectionId: [
+            "Affected connection UUID, or null for every connection in the Run.",
+          ],
+        },
+      },
+    ],
+  },
   {
     schema: runnerSshContract.resolve.body,
     rustModulePath: ["runners", "ssh"],
