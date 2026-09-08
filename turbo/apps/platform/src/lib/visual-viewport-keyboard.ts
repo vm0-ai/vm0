@@ -1,18 +1,23 @@
 import { delay } from "signal-timers";
-import { detach, Reason } from "../signals/utils.ts";
+import {
+  createChildAbortController,
+  detach,
+  Reason,
+} from "../signals/utils.ts";
 import { captureVisualViewportResidue } from "./posthog.ts";
 
 const KEYBOARD_SHRINK_RATIO = 0.15;
 const MIN_KEYBOARD_SHRINK_PX = 120;
 const LAYOUT_VIEWPORT_CHANGE_TOLERANCE_PX = 8;
 const VIEWPORT_SETTLE_DELAY_MS = 50;
-const VISUAL_VIEWPORT_RESIDUE_TOLERANCE_PX = 1;
+const VISUAL_VIEWPORT_RESIDUE_MIN_PX = 24;
+const VISUAL_VIEWPORT_RESIDUE_CONFIRM_DELAY_MS = 500;
+const VISUAL_VIEWPORT_SCALE_TOLERANCE = 0.01;
 const CONTENTEDITABLE_SELECTOR =
   "[contenteditable]:not([contenteditable='false'])";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer] .okou-composer";
 const KEYBOARD_SCROLL_RESERVE_PROPERTY = "--okou-keyboard-scroll-reserve";
 const VISUAL_VIEWPORT_TOP_PROPERTY = "--okou-visual-viewport-top";
-const VISUAL_VIEWPORT_HEIGHT_PROPERTY = "--okou-visual-viewport-height";
 const COMPOSER_KEYBOARD_GAP_PX = 16;
 const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
@@ -157,9 +162,12 @@ function readVisualViewportOffsetTop(viewport: VisualViewport): number {
   return Math.round(viewport.offsetTop);
 }
 
+// A pinch-zoomed page legitimately pans its visual viewport; only an unzoomed
+// pan of at least a few rows of text counts as a residue.
 function hasVisualViewportResidue(viewport: VisualViewport): boolean {
   return (
-    readVisualViewportOffsetTop(viewport) > VISUAL_VIEWPORT_RESIDUE_TOLERANCE_PX
+    Math.abs(viewport.scale - 1) < VISUAL_VIEWPORT_SCALE_TOLERANCE &&
+    readVisualViewportOffsetTop(viewport) >= VISUAL_VIEWPORT_RESIDUE_MIN_PX
   );
 }
 
@@ -174,17 +182,12 @@ function setVisualViewportResidue(viewport: VisualViewport): void {
     VISUAL_VIEWPORT_TOP_PROPERTY,
     `${readVisualViewportOffsetTop(viewport)}px`,
   );
-  root.style.setProperty(
-    VISUAL_VIEWPORT_HEIGHT_PROPERTY,
-    `${Math.round(viewport.height)}px`,
-  );
 }
 
 function clearVisualViewportResidue(): void {
   const root = document.documentElement;
   delete root.dataset.visualViewportResidue;
   root.style.removeProperty(VISUAL_VIEWPORT_TOP_PROPERTY);
-  root.style.removeProperty(VISUAL_VIEWPORT_HEIGHT_PROPERTY);
 }
 
 type FrameTask = {
@@ -267,11 +270,20 @@ type VisualViewportResidueTracker = {
 
 function createVisualViewportResidueTracker(
   viewport: VisualViewport,
+  signal: AbortSignal,
   isKeyboardOpen: () => boolean,
 ): VisualViewportResidueTracker {
   let checkPending = false;
   let following = false;
   let offsetTopBeforeScroll = 0;
+  let confirmController: AbortController | null = null;
+
+  const cancelConfirm = () => {
+    if (confirmController) {
+      confirmController.abort();
+      confirmController = null;
+    }
+  };
 
   const sync = () => {
     if (!following) {
@@ -305,20 +317,42 @@ function createVisualViewportResidueTracker(
     });
   });
 
-  const check = () => {
-    if (window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches) {
-      // Standalone WebKit briefly reports a stale offsetTop after close, and
-      // its root is scrolled programmatically through the keyboard reserve.
-      return;
-    }
-    decideFrame.cancel();
-    if (!hasVisualViewportResidue(viewport)) {
+  // The keyboard close animation keeps panning the visual viewport for a few
+  // hundred milliseconds after its last event. Only a pan that outlives that
+  // animation is a residue; acting earlier would move the root mid-animation.
+  const confirm = async (confirmSignal: AbortSignal) => {
+    await delay(VISUAL_VIEWPORT_RESIDUE_CONFIRM_DELAY_MS, {
+      signal: confirmSignal,
+    });
+    confirmSignal.throwIfAborted();
+    confirmController = null;
+    if (isKeyboardOpen() || !hasVisualViewportResidue(viewport)) {
       return;
     }
     offsetTopBeforeScroll = readVisualViewportOffsetTop(viewport);
     // A stuck document scroll is the cheap case: return to the origin first.
     window.scrollTo(0, 0);
     decideFrame.schedule();
+  };
+
+  const check = () => {
+    if (
+      !isIOSDevice() ||
+      window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches
+    ) {
+      // Standalone WebKit briefly reports a stale offsetTop after close, and
+      // its root is scrolled programmatically through the keyboard reserve.
+      return;
+    }
+    cancelConfirm();
+    decideFrame.cancel();
+    const controller = createChildAbortController(signal);
+    confirmController = controller;
+    detach(
+      confirm(controller.signal),
+      Reason.DomCallback,
+      "visual viewport residue",
+    );
   };
 
   return {
@@ -335,6 +369,7 @@ function createVisualViewportResidueTracker(
     },
     sync,
     clear() {
+      cancelConfirm();
       decideFrame.cancel();
       checkPending = false;
       following = false;
@@ -435,7 +470,7 @@ export function setupVisualViewportKeyboardState(
     keyboardOpen: false,
     resetBaselineOnSettle: false,
   };
-  const residue = createVisualViewportResidueTracker(viewport, () => {
+  const residue = createVisualViewportResidueTracker(viewport, signal, () => {
     return state.keyboardOpen;
   });
   // The scroll reserve is a pseudo-element driven by the keyboard-open style.

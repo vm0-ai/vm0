@@ -115,8 +115,10 @@ body {
    follows the visual viewport so it keeps filling the visible screen. */
 :root[data-visual-viewport-residue="true"] #root {
   top: var(--okou-visual-viewport-top);
-  height: var(--okou-visual-viewport-height);
-  min-height: var(--okou-visual-viewport-height);
+  height: calc(var(--okou-viewport-height) - var(--okou-visual-viewport-top));
+  min-height: calc(
+    var(--okou-viewport-height) - var(--okou-visual-viewport-top)
+  );
 }
 
 @media (display-mode: standalone) {

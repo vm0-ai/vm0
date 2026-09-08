@@ -376,21 +376,47 @@ function installScrollTo(
   return scrollTo;
 }
 
-function residueStyle(): { top: string; height: string } {
-  return {
-    top: document.documentElement.style.getPropertyValue(
-      "--okou-visual-viewport-top",
-    ),
-    height: document.documentElement.style.getPropertyValue(
-      "--okou-visual-viewport-height",
-    ),
-  };
+const IPHONE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
+
+function setIPhoneUserAgent(): void {
+  Object.defineProperty(navigator, "userAgent", {
+    configurable: true,
+    value: IPHONE_USER_AGENT,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(navigator, "userAgent");
+    },
+    { once: true },
+  );
+}
+
+function residueTop(): string {
+  return document.documentElement.style.getPropertyValue(
+    "--okou-visual-viewport-top",
+  );
+}
+
+async function closeKeyboardWithResidue(
+  viewport: MockVisualViewport,
+  clock: ControlledViewportClock,
+  entry: HTMLTextAreaElement,
+  offsetTop: number,
+): Promise<void> {
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, offsetTop);
+  // The residue is confirmed only after the close animation has had time to
+  // finish; that confirmation and its decision frame settle here.
+  await clock.flushUpdate();
 }
 
 test("A mobile browser root follows a visual viewport that stays panned after the keyboard closes", async () => {
   const viewport = new MockVisualViewport(844);
   setInnerHeight(844);
   setStandalone(false);
+  setIPhoneUserAgent();
   installVisualViewport(viewport);
   const scrollTo = installScrollTo(viewport, false);
   const entry = focusTextEntry();
@@ -399,19 +425,18 @@ test("A mobile browser root follows a visual viewport that stays panned after th
   await resizeAndSettle(viewport, clock, 520, 310);
   expect(document.documentElement.dataset.keyboardOpen).toBe("true");
 
-  entry.blur();
-  await resizeAndSettle(viewport, clock, 844, 310);
+  await closeKeyboardWithResidue(viewport, clock, entry, 310);
 
   expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
   expect(scrollTo).toHaveBeenCalledWith(0, 0);
   expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
-  expect(residueStyle()).toStrictEqual({ top: "310px", height: "844px" });
+  expect(residueTop()).toBe("310px");
 
   // The browser keeps panning the visual viewport while the residue lasts.
   viewport.offsetTop = 120;
   viewport.dispatchEvent(new Event("scroll"));
   await clock.flushUpdate();
-  expect(residueStyle()).toStrictEqual({ top: "120px", height: "844px" });
+  expect(residueTop()).toBe("120px");
 
   viewport.offsetTop = 0;
   viewport.dispatchEvent(new Event("scroll"));
@@ -419,41 +444,89 @@ test("A mobile browser root follows a visual viewport that stays panned after th
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
+  expect(residueTop()).toBe("");
 });
 
 test("A residual visual viewport pan that an origin scroll clears needs no root follow", async () => {
   const viewport = new MockVisualViewport(844);
   setInnerHeight(844);
   setStandalone(false);
+  setIPhoneUserAgent();
   installVisualViewport(viewport);
   const scrollTo = installScrollTo(viewport, true);
   const entry = focusTextEntry();
   const clock = startViewportKeyboardState();
 
   await resizeAndSettle(viewport, clock, 520, 310);
-  entry.blur();
-  await resizeAndSettle(viewport, clock, 844, 310);
+  await closeKeyboardWithResidue(viewport, clock, entry, 310);
 
   expect(scrollTo).toHaveBeenCalledTimes(1);
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
+  expect(residueTop()).toBe("");
+});
+
+test("A pan that ends with the keyboard close animation is not a residue", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  setIPhoneUserAgent();
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  // The close sample still carries the pan; the animation clears it later.
+  await resizeAndSettle(viewport, clock, 844, 48);
+  viewport.offsetTop = 0;
+  viewport.dispatchEvent(new Event("scroll"));
+  await clock.flushUpdate();
+
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+  expect(residueTop()).toBe("");
+});
+
+test("A pinch-zoomed page keeps its visual viewport pan after the keyboard closes", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  setIPhoneUserAgent();
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  viewport.scale = 2;
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 422, 310);
+  await clock.flushUpdate();
+
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
 });
 
 test("Reopening the keyboard ends the root follow", async () => {
   const viewport = new MockVisualViewport(844);
   setInnerHeight(844);
   setStandalone(false);
+  setIPhoneUserAgent();
   installVisualViewport(viewport);
   installScrollTo(viewport, false);
   const entry = focusTextEntry();
   const clock = startViewportKeyboardState();
 
   await resizeAndSettle(viewport, clock, 520, 310);
-  entry.blur();
-  await resizeAndSettle(viewport, clock, 844, 310);
+  await closeKeyboardWithResidue(viewport, clock, entry, 310);
   expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
 
   entry.focus();
@@ -462,22 +535,22 @@ test("Reopening the keyboard ends the root follow", async () => {
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
+  expect(residueTop()).toBe("");
 });
 
 test("A standalone PWA keeps its programmatic keyboard scroll after the keyboard closes", async () => {
   const viewport = new MockVisualViewport(844);
   setInnerHeight(844);
   setStandalone(true);
+  setIPhoneUserAgent();
   installVisualViewport(viewport);
   const scrollTo = installScrollTo(viewport, false);
   const entry = focusTextEntry();
   const clock = startViewportKeyboardState();
 
   await resizeAndSettle(viewport, clock, 520, 310);
-  entry.blur();
   // Standalone WebKit can report the stale offsetTop for a moment after close.
-  await resizeAndSettle(viewport, clock, 844, 310);
+  await closeKeyboardWithResidue(viewport, clock, entry, 310);
 
   expect(scrollTo).not.toHaveBeenCalled();
   expect(
