@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.48.8](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.7...desktop-v0.48.8) (2026-09-08)
+
+
+### Bug Fixes
+
+* **desktop:** prevent auth and application menu reentry ([#32596](https://github.com/vm0-ai/vm0/issues/32596)) ([31c98f1](https://github.com/vm0-ai/vm0/commit/31c98f1feb32cd19c975467d6943c9532813fc52))
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+
 ## [0.48.7](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.6...desktop-v0.48.7) (2026-09-08)
 
 

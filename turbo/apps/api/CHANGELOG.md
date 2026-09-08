@@ -8,6 +8,29 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.569.0](https://github.com/vm0-ai/vm0/compare/api-v1.568.0...api-v1.569.0) (2026-09-08)
+
+
+### Features
+
+* **pi:** support custom responses fast for terra sol and luna ([#32593](https://github.com/vm0-ai/vm0/issues/32593)) ([a030906](https://github.com/vm0-ai/vm0/commit/a030906361418347b6673a2af718270632a9e4d6))
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+    * @okouai/connectors bumped to 3.8.3
+    * @okouai/core bumped to 8.635.1
+    * @okouai/db bumped to 1.245.17
+    * @okouai/pi-agent-runtime bumped to 1.23.0
+
 ## [1.568.0](https://github.com/vm0-ai/vm0/compare/api-v1.567.1...api-v1.568.0) (2026-09-08)
 
 
