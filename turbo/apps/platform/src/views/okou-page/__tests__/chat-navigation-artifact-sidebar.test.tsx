@@ -102,11 +102,11 @@ function officeFileEvents(
   ];
 }
 
-async function setupGeneratedOfficePreview(
+async function setupGeneratedFilePreview(
   filename: string,
   contentType: string,
+  url = `https://cdn.vm7.io/artifacts/tests/office/${filename}`,
 ): Promise<string> {
-  const url = `https://cdn.vm7.io/artifacts/tests/office/${filename}`;
   mockArtifactConversation(context, {
     catalog: [],
     artifactRuns: () => {
@@ -240,7 +240,7 @@ test("Keep attachment cards closed until the user selects one", async () => {
 
 test("Preview a DOCX attachment in the dialog and split view", async () => {
   const filename = "release-plan.docx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
@@ -261,7 +261,7 @@ test("Preview a DOCX attachment in the dialog and split view", async () => {
 
 test("Preview a PPTX attachment in the dialog and split view", async () => {
   const filename = "quarterly-review.pptx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   );
@@ -282,7 +282,7 @@ test("Preview a PPTX attachment in the dialog and split view", async () => {
 
 test("Preview an XLSX attachment in the dialog and split view", async () => {
   const filename = "launch-budget.xlsx";
-  const url = await setupGeneratedOfficePreview(
+  const url = await setupGeneratedFilePreview(
     filename,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   );
@@ -328,6 +328,70 @@ test("Use a public URL for a private Office attachment preview", async () => {
   const frame = await within(dialog).findByTitle(`${filename} preview`);
   expectOfficeViewerUrl(frame, publicUrl);
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
+});
+
+test("Preview a private document with an expiring URL and refresh it when returning to the tab", async () => {
+  const fileId = "f0000000-0000-4000-a000-000000000936";
+  const filename = "private-plan.docx";
+  const contentType =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const firstUrl = `https://storage.example.test/${filename}?signature=first`;
+  const refreshedUrl = `https://storage.example.test/${filename}?signature=refreshed`;
+  let resourceUrl = firstUrl;
+  const visibility = context.mocks.browser.visibilityState("visible");
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    expect(query.file_id).toBe(fileId);
+    return respond(200, { url: resourceUrl, publicUrl: null });
+  });
+  mockArtifactConversation(context, {
+    catalog: [],
+    chatEvents: officeFileEvents(fileId, filename, contentType),
+  });
+  await setupPage({
+    context,
+    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+    host: "app.vm0.ai",
+  });
+  click(await screen.findByLabelText(`Preview ${filename}`));
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  const frame = await within(dialog).findByTitle(`${filename} preview`);
+  expectOfficeViewerUrl(frame, firstUrl);
+  expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
+
+  act(() => {
+    visibility.changeTo("hidden");
+  });
+  resourceUrl = refreshedUrl;
+  act(() => {
+    visibility.changeTo("visible");
+  });
+  await waitFor(() => {
+    expectOfficeViewerUrl(frame, refreshedUrl);
+  });
+});
+
+test("Render a generated private image from the authenticated file reference", async () => {
+  const filename = "private-image.png";
+  const fileId = "f0000000-0000-4000-a000-000000000938";
+  const resourceUrl =
+    "https://private-r2.example/private-image.png?signature=image";
+  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+    expect(query.file_id).toBe(fileId);
+    return respond(200, { url: resourceUrl, publicUrl: null });
+  });
+  await setupGeneratedFilePreview(
+    filename,
+    "image/png",
+    `https://api.vm0.ai/api/web/download-file?file_id=${fileId}&filename=${filename}`,
+  );
+  const embedded = await screen.findByAltText(filename);
+  expect(embedded).toHaveAttribute("src", resourceUrl);
+  click(embedded);
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  expect(
+    within(dialog).getByTestId("attachment-lightbox-image"),
+  ).toHaveAttribute("src", resourceUrl);
+  expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
 });
 
 test("Explain empty and unavailable CSV previews", async () => {

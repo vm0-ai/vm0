@@ -4,7 +4,7 @@ import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 export const uploadFileCommand = new Command()
   .name("upload-file")
-  .description("Upload a local file and print a permanent URL")
+  .description("Upload a local file and print its stable URL")
   .requiredOption("-f, --file <path>", "Local file path to upload")
   .option("--content-type <mime>", "Override inferred content type")
   .addHelpText(
@@ -20,8 +20,9 @@ Output:
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
-  - Returned URL is permanent (serves a short-lived signed redirect on access)
-  - Safe to persist in chat messages or share over external channels
+  - Persist the returned stable URL in chat messages
+  - Private file URLs require the owner's authentication; they do not grant public access
+  - Use okou web download-file <id> to retrieve a private file
   - Max file size: 1 GB
   - Allowed image types: png / jpeg / gif / webp / avif / svg / bmp / heic / heif / tiff / psd
   - Allowed video types: mp4 / webm / mov
@@ -35,6 +36,7 @@ Notes:
       async (options: { file: string; contentType?: string }) => {
         const result = await uploadWebFile(options.file, {
           contentType: options.contentType,
+          purpose: "artifact",
         });
         console.log(JSON.stringify(result));
       },
