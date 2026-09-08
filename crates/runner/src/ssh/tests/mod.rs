@@ -121,8 +121,10 @@ async fn unavailable_old_api_and_malformed_credentials_fail_before_network() {
 async fn host_key_mismatch_never_authenticates() {
     let h = Harness::new(Reply::default()).await;
     let mut body = h.credential(true);
-    body["learnedHostKey"]["fingerprint"] =
-        json!("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    body["learnedHostKey"]["fingerprint"] = json!(format!(
+        "SHA256:{}",
+        base64::engine::general_purpose::STANDARD_NO_PAD.encode([0_u8; 32])
+    ));
     let _resolve = h.resolve(body).await;
     let frames = h.request(params()).await;
     assert_eq!(terminal(&frames)["failure_reason"], "host_key_mismatch");
