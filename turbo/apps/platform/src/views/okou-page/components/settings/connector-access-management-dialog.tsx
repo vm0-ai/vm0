@@ -612,7 +612,6 @@ function CustomConnectorAccessPermissionsDrawer({
       bundle={bundle}
       loading={loading}
       loadError={loadError}
-      overlayClassName="bg-overlay/45 backdrop-blur-sm dark:bg-overlay/55"
       onClose={() => {
         onClose(draft);
       }}

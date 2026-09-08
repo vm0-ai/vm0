@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Dialog, DialogContent, DialogTitle } from "../dialog";
 
 describe("Dialog", () => {
-  it("applies the default dialog animation classes", () => {
+  it("applies the shared Base UI dialog transitions", () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -12,11 +12,15 @@ describe("Dialog", () => {
       </Dialog>,
     );
 
-    const overlay = document.querySelector(".okou-dialog-overlay");
-    expect(overlay).toBeInTheDocument();
-    expect(overlay).toHaveClass("okou-dialog-overlay");
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass(
+      "transition-opacity",
+      "data-starting-style:opacity-0",
+      "data-ending-style:opacity-0",
+    );
     expect(screen.getByRole("dialog", { name: "Default dialog" })).toHaveClass(
-      "okou-dialog-content",
+      "transition-[transform,opacity]",
+      "data-starting-style:opacity-0",
+      "data-ending-style:opacity-0",
     );
   });
 
@@ -34,7 +38,9 @@ describe("Dialog", () => {
       </Dialog>,
     );
 
-    expect(document.querySelectorAll(".okou-dialog-overlay")).toHaveLength(2);
+    expect(
+      document.querySelectorAll('[data-slot="dialog-overlay"]'),
+    ).toHaveLength(2);
   });
 
   it("can leave close controls to a custom dialog header", () => {

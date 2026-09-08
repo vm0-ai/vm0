@@ -229,29 +229,6 @@ describe("global Lucide defaults", () => {
   });
 });
 
-describe("dialog transitions", () => {
-  it("does not apply exit styles while a remounted dialog is open", () => {
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-overlay[data-ending-style]:not([data-open])",
-      ),
-    ).toMatch(/animation:\s*okou-dialog-overlay-out/);
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-overlay[data-ending-style]:not([data-open])::after",
-      ),
-    ).toMatch(/visibility:\s*hidden/);
-    expect(
-      readRuleBody(
-        globalCss,
-        ".okou-dialog-content[data-ending-style]:not([data-open])",
-      ),
-    ).toMatch(/animation:\s*okou-dialog-content-out/);
-  });
-});
-
 describe("interaction state ladder", () => {
   it.each(THEMES)(
     "gives $name a layer colour and every alpha",

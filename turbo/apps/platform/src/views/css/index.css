@@ -3,8 +3,8 @@
 
 @custom-variant pointer-coarse (@media (pointer: coarse));
 
-/* Include @okouai/ui components in Tailwind's content scanning */
-@source "../../../../../packages/ui/src/**/*.tsx";
+/* Include @okouai/ui class recipes in Tailwind's content scanning. */
+@source "../../../../../packages/ui/src/**/*.{ts,tsx}";
 
 @theme {
   /* Font families */
@@ -1428,36 +1428,6 @@ details > summary {
   outline: none;
 }
 
-/* Sheet / side drawer animations */
-@keyframes sheet-slide-in-right {
-  0% {
-    transform: translateX(100%);
-  }
-  70% {
-    transform: translateX(-2%);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-@keyframes sheet-slide-out-right {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.sheet-content[data-side="right"][data-open] {
-  animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.sheet-content[data-side="right"][data-ending-style] {
-  animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
 /* ---------------------------------------------------------------------------
  * Mic button – voice activity fill
  * ------------------------------------------------------------------------- */
@@ -1916,22 +1886,6 @@ details > summary {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-/* A dialog scrim blurs the page behind it, and that blur only stays cached
-   while the page holds still — one moving pixel re-blurs the whole viewport,
-   every frame, for as long as the dialog is open. These are the app's
-   always-on animations, so park them while a scrim is mounted. Anything
-   rendered inside the dialog keeps running. */
-html:has(.okou-dialog-overlay)
-  :is(
-    .okou-shimmer-text,
-    .okou-blocks span,
-    .okou-thinking-spinner,
-    .mic-starting-spinner,
-    .owf-diagram-beam
-  ):not(.okou-dialog-content *) {
-  animation-play-state: paused;
 }
 
 /* Dark carries the brand hue instead of a lighter neutral. The light ring can

@@ -1119,6 +1119,8 @@ function PricingStepDialog({
   flush = false,
   onBack,
   onClose,
+  onOpenChangeComplete,
+  open = true,
   step,
   title,
   total,
@@ -1127,6 +1129,8 @@ function PricingStepDialog({
   readonly flush?: boolean;
   readonly onBack?: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly step: PricingStep;
   readonly title?: string;
   readonly total: PricingStepTotal;
@@ -1134,12 +1138,13 @@ function PricingStepDialog({
   const { t } = useTranslation();
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(next) => {
         if (!next) {
           onClose();
         }
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
     >
       <DialogContent
         aria-describedby={undefined}
@@ -3088,6 +3093,8 @@ export function UsagePackMigrationDialogs({
   migrationTargetTier,
   onBack,
   onClose,
+  onOpenChangeComplete,
+  open,
   onSelect,
 }: {
   readonly currentTier: BillingTier;
@@ -3096,6 +3103,8 @@ export function UsagePackMigrationDialogs({
   readonly migrationTargetTier: UsagePackPlanTier | null;
   readonly onBack: () => void;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly onSelect: (tier: UsagePackPlanTier) => void;
 }) {
   const resetPricing = useSet(resetUsagePackPricing$);
@@ -3137,6 +3146,8 @@ export function UsagePackMigrationDialogs({
           : undefined
       }
       total={3}
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onBack={
         reviewing
           ? revising
@@ -3173,12 +3184,16 @@ export function UsagePackPricingDialogs({
   currentTier,
   grantedPlanCheckoutAllowed,
   onClose,
+  onOpenChangeComplete,
+  open,
   onReplaceCancellationWithPro,
 }: {
   readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly grantedPlanCheckoutAllowed: boolean;
   readonly onClose: () => void;
+  readonly onOpenChangeComplete?: (open: boolean) => void;
+  readonly open?: boolean;
   readonly onReplaceCancellationWithPro?: () => void;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
@@ -3216,6 +3231,8 @@ export function UsagePackPricingDialogs({
       flush={!selectedPlan}
       step={reviewing ? 3 : selectedPlan ? 2 : 1}
       total={management === null ? 2 : 3}
+      open={open}
+      onOpenChangeComplete={onOpenChangeComplete}
       onBack={
         reviewing
           ? closePreview

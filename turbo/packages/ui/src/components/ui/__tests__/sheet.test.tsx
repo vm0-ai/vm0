@@ -10,7 +10,7 @@ describe("Sheet", () => {
         <DialogContent>
           <DialogTitle>Parent dialog</DialogTitle>
           <Sheet open>
-            <SheetContent overlayClassName="bg-overlay/45 backdrop-blur-sm dark:bg-overlay/55">
+            <SheetContent>
               <SheetTitle>Nested sheet</SheetTitle>
             </SheetContent>
           </Sheet>
@@ -21,6 +21,13 @@ describe("Sheet", () => {
     expect(screen.getByRole("dialog", { name: "Nested sheet" })).toBeVisible();
     expect(document.querySelector('[data-slot="sheet-overlay"]')).toHaveClass(
       "bg-overlay/45",
+      "transition-opacity",
+      "data-ending-style:opacity-0",
+    );
+    expect(screen.getByRole("dialog", { name: "Nested sheet" })).toHaveClass(
+      "transition-[translate,opacity]",
+      "data-ending-style:translate-x-full",
+      "data-ending-style:opacity-0",
     );
   });
 });

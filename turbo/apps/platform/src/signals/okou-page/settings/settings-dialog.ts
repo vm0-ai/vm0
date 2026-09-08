@@ -219,9 +219,7 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
-  set(resetSettingsDialogSignal$);
-  set(releaseSettingsDialogSession$);
-  set(clearBillingScrollTarget$);
+  set(internalSettingsDialogOpen$, false);
 
   const params = new URLSearchParams(get(searchParams$));
   if (params.has("settings") || params.has("billingView")) {
@@ -229,6 +227,15 @@ export const closeSettingsModal$ = command(({ get, set }) => {
     params.delete("billingView");
     set(updateSearchParams$, params);
   }
+});
+
+export const completeSettingsModalClose$ = command(({ get, set }) => {
+  if (get(internalSettingsDialogOpen$)) {
+    return;
+  }
+  set(resetSettingsDialogSignal$);
+  set(releaseSettingsDialogSession$);
+  set(clearBillingScrollTarget$);
 });
 
 /**
@@ -253,6 +260,7 @@ export const setSettingsDialogOpen$ = command(
     }
 
     if (get(internalSettingsDialogSessionActive$)) {
+      set(internalSettingsDialogOpen$, true);
       set(setSettingsActiveSection$, get(internalActiveSection$));
       return;
     }

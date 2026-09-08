@@ -391,22 +391,25 @@ function createVideoRunOptionsUiSignals() {
 }
 
 function createTemplatePickerDialogSignals() {
-  const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
-  const internalWebsiteTemplatePreviewLoaded$ = state(false);
+  const internalTemplatePickerMounted$ = state(false);
   const internalTemplatePickerOpen$ = state(false);
-  const internalTemplatePickerSkipEnterAnimation$ = state(false);
-  const templatePickerOpen$ = computed((get) => {
-    return (
-      get(internalTemplatePickerOpen$) &&
-      get(internalWebsiteTemplatePreviewId$) === null
-    );
+  const templatePickerMounted$ = computed((get) => {
+    return get(internalTemplatePickerMounted$);
   });
-  const templatePickerSkipEnterAnimation$ = computed((get) => {
-    return get(internalTemplatePickerSkipEnterAnimation$);
+  const templatePickerOpen$ = computed((get) => {
+    return get(internalTemplatePickerOpen$);
   });
   const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
-    set(internalTemplatePickerSkipEnterAnimation$, false);
+    if (open) {
+      set(internalTemplatePickerMounted$, true);
+    }
     set(internalTemplatePickerOpen$, open);
+  });
+  const completeTemplatePickerClose$ = command(({ get, set }) => {
+    if (get(internalTemplatePickerOpen$)) {
+      return;
+    }
+    set(internalTemplatePickerMounted$, false);
   });
 
   const internalTemplatePickerReferenceValue$ =
@@ -420,37 +423,51 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
+  const internalWebsiteTemplatePreviewLoaded$ = state(false);
+  const internalWebsiteTemplatePreviewOpen$ = state(false);
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
   const websiteTemplatePreviewLoaded$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewLoaded$);
   });
+  const websiteTemplatePreviewOpen$ = computed((get) => {
+    return get(internalWebsiteTemplatePreviewOpen$);
+  });
   const markWebsiteTemplatePreviewLoaded$ = command(({ set }) => {
     set(internalWebsiteTemplatePreviewLoaded$, true);
   });
   const openWebsiteTemplatePreview$ = command(({ set }, templateId: string) => {
-    set(internalTemplatePickerSkipEnterAnimation$, false);
     set(internalWebsiteTemplatePreviewLoaded$, false);
     set(internalWebsiteTemplatePreviewId$, templateId);
+    set(internalWebsiteTemplatePreviewOpen$, true);
   });
   const closeWebsiteTemplatePreview$ = command(({ set }) => {
-    set(internalTemplatePickerSkipEnterAnimation$, true);
+    set(internalWebsiteTemplatePreviewOpen$, false);
+  });
+  const completeWebsiteTemplatePreviewClose$ = command(({ get, set }) => {
+    if (get(internalWebsiteTemplatePreviewOpen$)) {
+      return;
+    }
     set(internalWebsiteTemplatePreviewLoaded$, false);
     set(internalWebsiteTemplatePreviewId$, null);
   });
 
   return {
+    templatePickerMounted$,
     templatePickerOpen$,
-    templatePickerSkipEnterAnimation$,
     setTemplatePickerOpen$,
+    completeTemplatePickerClose$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
+    websiteTemplatePreviewOpen$,
     markWebsiteTemplatePreviewLoaded$,
     openWebsiteTemplatePreview$,
     closeWebsiteTemplatePreview$,
+    completeWebsiteTemplatePreviewClose$,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   type LegacyAutoFocusHandler,
   withLegacyAutoFocus,
 } from "../../lib/base-ui-compat";
+import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
 interface VirtualAnchor {
@@ -235,7 +236,8 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
             ref={ref}
             data-slot="popover-content"
             className={cn(
-              "w-72 origin-[var(--transform-origin)] rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none transition-[transform,opacity] duration-100 ease-out data-starting-style:opacity-0 data-starting-style:[transform:scale(0.98)] data-ending-style:opacity-0 data-ending-style:[transform:scale(0.98)] motion-reduce:transition-none",
+              anchoredPopupTransitionClassName,
+              "w-72 rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none",
               className,
             )}
             finalFocus={withLegacyAutoFocus(

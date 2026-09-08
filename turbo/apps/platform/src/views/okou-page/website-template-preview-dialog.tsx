@@ -15,11 +15,13 @@ function WebsiteTemplatePreviewDialog({
   item,
   open,
   onOpenChange,
+  onOpenChangeComplete,
   signals,
 }: {
   item: WebsiteTemplateItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete: (open: boolean) => void;
   signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
@@ -33,14 +35,17 @@ function WebsiteTemplatePreviewDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       <DialogContent
         aria-describedby={undefined}
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-open:!animate-none [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
-        overlayClassName="okou-dialog-overlay-instant"
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
       >
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:pr-16">
           <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
@@ -106,7 +111,11 @@ export function WebsiteTemplatePreviewDialogSlot({
   signals: ComposerSignals;
 }) {
   const previewId = useGet(signals.template.websiteTemplatePreviewId$);
+  const open = useGet(signals.template.websiteTemplatePreviewOpen$);
   const closePreview = useSet(signals.template.closeWebsiteTemplatePreview$);
+  const completeClose = useSet(
+    signals.template.completeWebsiteTemplatePreviewClose$,
+  );
   const item =
     previewId === null ? null : (findWebsiteTemplateItem(previewId) ?? null);
 
@@ -117,11 +126,16 @@ export function WebsiteTemplatePreviewDialogSlot({
   return (
     <WebsiteTemplatePreviewDialog
       item={item}
-      open
+      open={open}
       signals={signals}
-      onOpenChange={(open) => {
-        if (!open) {
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
           closePreview();
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
         }
       }}
     />

@@ -38,8 +38,6 @@
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
-    "okou-dialog-content",
-    "okou-dialog-overlay",
     "okou-emoji",
     "okou-fixed-viewport-shell",
     "okou-icon-mono",
@@ -95,7 +93,6 @@
     "running-indicator",
     "running-indicator-center",
     "running-indicator-ripple",
-    "sheet-content",
     "slide-in-from-bottom-2",
     "table-wrapper",
     "toaster",
@@ -1685,20 +1682,6 @@
         "selector": ":where([data-theme=\"dark\"]) .okou-app[data-gradient-color-themes] .okou-workspace-bg::before",
         "property": "background-image",
         "value": "radial-gradient(ellipse 58% 64%at 0% 0%,color-mix(in srgb,hsl(var(--card)) 92%,var(--okou-color-theme-anchor)) 0%,transparent 70%),radial-gradient(ellipse 54% 60%at 100% 100%,color-mix(in srgb,hsl(var(--card)) 94%,var(--okou-color-theme-companion)) 0%,transparent 70%)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".sheet-content[data-side=\"right\"][data-open]",
-        "property": "animation",
-        "value": "sheet-slide-in-right 0.35s cubic-bezier(0.22,1,0.36,1) forwards",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".sheet-content[data-side=\"right\"][data-ending-style]",
-        "property": "animation",
-        "value": "sheet-slide-out-right 0.25s cubic-bezier(0.22,1,0.36,1) forwards",
         "important": false
       },
       {
@@ -3670,13 +3653,6 @@
       },
       {
         "atRules": [],
-        "selector": "html:has(.okou-dialog-overlay) :is(.okou-shimmer-text,.okou-blocks span,.okou-thinking-spinner,.mic-starting-spinner,.owf-diagram-beam):not(.okou-dialog-content *)",
-        "property": "animation-play-state",
-        "value": "paused",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ":where([data-theme=\"dark\"]) .okou-app .okou-composer",
         "property": "--okou-composer-ring",
         "value": " 38.8 38% 38%",
@@ -3915,117 +3891,6 @@
         "selector": ".dialog-scrollable::-webkit-scrollbar-thumb:hover",
         "property": "background-color",
         "value": "rgba(128,128,128,0.5)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay[data-open]",
-        "property": "animation",
-        "value": "okou-dialog-overlay-in 180ms ease",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay[data-ending-style]:not([data-open])",
-        "property": "animation",
-        "value": "okou-dialog-overlay-out 180ms ease",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay::after",
-        "property": "content",
-        "value": "\"\"",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay::after",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay::after",
-        "property": "inset",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay::after",
-        "property": "-webkit-backdrop-filter",
-        "value": "blur(2px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay::after",
-        "property": "backdrop-filter",
-        "value": "blur(2px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay[data-open]::after",
-        "property": "animation",
-        "value": "okou-dialog-blur-in 180ms step-end",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay[data-ending-style]:not([data-open])::after",
-        "property": "visibility",
-        "value": "hidden",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-overlay-instant[data-open],.okou-dialog-overlay-instant[data-open]::after",
-        "property": "animation",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": "html:has(.okou-dialog-overlay) :is(.running-indicator-center,.running-indicator-ripple):not(.okou-dialog-content *)",
-        "property": "animation-play-state",
-        "value": "paused",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-content[data-open]",
-        "property": "animation",
-        "value": "okou-dialog-content-in 180ms ease",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".okou-dialog-content[data-ending-style]:not([data-open])",
-        "property": "animation",
-        "value": "okou-dialog-content-out 180ms ease",
-        "important": false
-      },
-      {
-        "atRules": [
-          "@layer components",
-          "@media (prefers-reduced-motion:reduce)"
-        ],
-        "selector": ".okou-dialog-overlay[data-open],.okou-dialog-overlay[data-ending-style],.okou-dialog-content[data-open],.okou-dialog-content[data-ending-style]",
-        "property": "animation",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [
-          "@layer components",
-          "@media (prefers-reduced-motion:reduce)"
-        ],
-        "selector": ".okou-dialog-overlay[data-open]::after",
-        "property": "animation",
-        "value": "none",
         "important": false
       },
       {
@@ -4689,9 +4554,7 @@
     },
     "packages/ui/src/components/ui/dialog.tsx": {
       "dialog-scrollable": 1,
-      "icon-button": 1,
-      "okou-dialog-content": 1,
-      "okou-dialog-overlay": 1
+      "icon-button": 1
     },
     "packages/ui/src/components/ui/dropdown-menu.tsx": {
       "okou-border-t": 1
@@ -4705,8 +4568,7 @@
       "okou-border-t": 1
     },
     "packages/ui/src/components/ui/sheet.tsx": {
-      "icon-button": 1,
-      "sheet-content": 1
+      "icon-button": 1
     },
     "packages/ui/src/components/ui/sonner.tsx": {
       "toaster": 1

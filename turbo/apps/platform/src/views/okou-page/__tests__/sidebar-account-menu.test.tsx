@@ -1223,7 +1223,7 @@ test("Restore page interaction after closing Settings", async () => {
     ).not.toBeInTheDocument();
   });
 
-  expect(document.querySelector(".okou-dialog-overlay")).toBeNull();
+  expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
   expect(document.body.style.pointerEvents).not.toBe("none");
 
   const chatList = await screen.findByTestId("chat-list-column");
