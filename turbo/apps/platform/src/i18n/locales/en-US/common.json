@@ -2198,7 +2198,6 @@
     "run": {
       "automatedRun": "Automated run",
       "collapseGroupedHistory": "Collapse grouped run history",
-      "collapseHistoryMessage": "Collapse history message: {{message}}",
       "collapseWorkHistory": "Collapse work history",
       "creditUsage": "Credit usage",
       "done": {

@@ -34,7 +34,6 @@ function normalizedBaseUrl(url: string): string {
 }
 
 interface PiRuntimeContract {
-  readonly api: "openai-responses";
   readonly thinkingLevel?: PiModelConfigLegacy["thinkingLevel"];
   readonly serviceTier?: PiModelConfigLegacy["serviceTier"];
 }
@@ -113,7 +112,6 @@ function piRuntimeContract(args: {
 }): PiRuntimeContract {
   if (isPiGptModel(args.selectedModel)) {
     return {
-      api: "openai-responses",
       thinkingLevel: "max",
       ...((isBuiltInModelProviderType(args.providerType) ||
         args.providerType === "custom-openai-responses") &&
@@ -122,7 +120,7 @@ function piRuntimeContract(args: {
         : {}),
     };
   }
-  return { api: "openai-responses" };
+  return {};
 }
 
 function piProvider(

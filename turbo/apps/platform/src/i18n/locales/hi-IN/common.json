@@ -2198,7 +2198,6 @@
     "run": {
       "automatedRun": "स्वचालित रन",
       "collapseGroupedHistory": "समूहीकृत रन इतिहास को संक्षिप्त करें",
-      "collapseHistoryMessage": "इतिहास संदेश संक्षिप्त करें: {{message}}",
       "collapseWorkHistory": "कार्य इतिहास संक्षिप्त करें",
       "creditUsage": "क्रेडिट उपयोग",
       "done": {

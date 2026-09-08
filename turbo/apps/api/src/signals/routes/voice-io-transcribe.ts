@@ -183,9 +183,11 @@ async function validateVoiceDraftDuration(
       "Voice segment must contain new audio beyond its overlap",
     );
   }
-  // Validate precise WAV duration above; only usage counters use whole seconds.
+  // Preserve the precise uploaded duration for response grounding checks; only
+  // usage counters round the unique, non-overlapping recording time.
   return {
-    durationSeconds: Math.ceil(
+    audioDurationSeconds: durationSeconds,
+    usageDurationSeconds: Math.ceil(
       durationSeconds - segment.overlapDurationSeconds,
     ),
   };
@@ -244,13 +246,13 @@ const voiceIoTranscribeHandler$ = command(
     if ("status" in duration) {
       return duration;
     }
-    const { durationSeconds } = duration;
+    const { audioDurationSeconds, usageDurationSeconds } = duration;
 
     const policy = await set(
       sttDailyPolicy$,
       auth.orgId,
       auth.userId,
-      durationSeconds,
+      usageDurationSeconds,
       signal,
     );
     if ("status" in policy) {
@@ -260,6 +262,7 @@ const voiceIoTranscribeHandler$ = command(
     const input = {
       files,
       model,
+      audioDurationSeconds,
       debug: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext),
       ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
       ...(editorContext === undefined ? {} : { editorContext }),

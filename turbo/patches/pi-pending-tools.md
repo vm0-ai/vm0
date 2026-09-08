@@ -69,6 +69,12 @@ patch hunks together, regenerate the pnpm patch hashes, and verify a frozen
 install plus the runtime/CLI type, build and focused test checks. Preserve the
 independent photon and provider account-binding patches.
 
+The coding-agent patch also retains the Bash spool backpressure repair merged
+in #32651 for #32637. Its six JS/declaration hunks are rebased onto 0.85.1's
+shared shell factories without replacing upstream context-cwd or spool-prefix
+selection. The existing `bash-spool.test.ts` and real child/file fixtures are
+preserved unchanged; see `packages/pi-agent-runtime/bash-spool-backpressure.md`.
+
 ## 0.85.1 next-response preparation
 
 Retain upstream `lastCompletedTurn`: prepare only before an actual next model

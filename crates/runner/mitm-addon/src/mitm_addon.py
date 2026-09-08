@@ -155,7 +155,7 @@ _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
-_WEBSOCKET_KEY_BASE64_CHARS = 24
+_WEBSOCKET_KEY_BASE64_BYTES = 24
 _WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT = 8 * 1024
 _BufferedRequestBodyCheckKind = Literal["ok", "too_large", "length_required"]
 
@@ -1550,38 +1550,44 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
         return False
     if flow.request.http_version != "HTTP/1.1":
         return False
-    if not http_header_syntax.header_values_contain_token(
-        flow.request.headers.get_all("Upgrade"),
-        "websocket",
+    if not http_header_syntax.header_fields_contain_token(
+        flow.request.headers.fields,
+        b"upgrade",
+        b"websocket",
         max_work_units=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     ):
         return False
     websocket_key = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Key"),
-        max_value_chars=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+        flow.request.headers.fields,
+        b"sec-websocket-key",
+        max_fields=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+        max_value_bytes=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
     if websocket_key is None or not _is_valid_websocket_key(websocket_key):
         return False
     websocket_version = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Version"),
-        max_value_chars=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+        flow.request.headers.fields,
+        b"sec-websocket-version",
+        max_fields=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+        max_value_bytes=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
-    if websocket_version != "13":
+    if websocket_version != b"13":
         return False
 
-    return http_header_syntax.header_values_contain_token(
-        flow.request.headers.get_all("Connection"),
-        "upgrade",
+    return http_header_syntax.header_fields_contain_token(
+        flow.request.headers.fields,
+        b"connection",
+        b"upgrade",
         max_work_units=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
 
 
-def _is_valid_websocket_key(value: str) -> bool:
-    if len(value) != _WEBSOCKET_KEY_BASE64_CHARS:
+def _is_valid_websocket_key(value: bytes) -> bool:
+    if len(value) != _WEBSOCKET_KEY_BASE64_BYTES:
         return False
     try:
         decoded = base64.b64decode(value, validate=True)
-    except (binascii.Error, ValueError):
+    except binascii.Error:
         return False
     return len(decoded) == _WEBSOCKET_KEY_BYTES
 

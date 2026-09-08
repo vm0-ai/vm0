@@ -2,8 +2,6 @@ import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-
 import { mockedClerk } from "./mock-auth.ts";
 import { queryAllByRoleFast, setupPage, startPage } from "./page-helper.ts";
 import frFRCommon from "../i18n/locales/fr-FR/common.json";
@@ -83,14 +81,11 @@ test("Authentication is ready before Platform content becomes interactive", asyn
   expect(queryAllByRoleFast("link").length).toBeGreaterThan(0);
 });
 
-test("The SharedWorker owns realtime when its feature switch is enabled", async () => {
+test("The SharedWorker owns realtime", async () => {
   await setupPage({
     context,
     host: "app.okou.ai",
     path: "/agents",
-    featureSwitches: {
-      [FeatureSwitchKey.SharedWorkerRealtime]: true,
-    },
     sharedWorkerTestTransport: "message-port",
   });
 

@@ -2198,7 +2198,6 @@
     "run": {
       "automatedRun": "Automatisierte Ausführung",
       "collapseGroupedHistory": "Gruppierten Ausführungsverlauf einklappen",
-      "collapseHistoryMessage": "Nachricht im Arbeitsverlauf einklappen: {{message}}",
       "collapseWorkHistory": "Arbeitsverlauf einklappen",
       "creditUsage": "Credit-Nutzung",
       "done": {

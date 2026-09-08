@@ -2195,7 +2195,6 @@
     "run": {
       "automatedRun": "自動実行",
       "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
-      "collapseHistoryMessage": "履歴メッセージを折りたたむ: {{message}}",
       "collapseWorkHistory": "作業履歴を折りたたむ",
       "creditUsage": "クレジット使用量",
       "done": {

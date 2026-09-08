@@ -14,8 +14,8 @@ export const CHAT_THREAD_RESPONSE_COMPACT_STACK_CLASS =
   "flex min-w-0 flex-col gap-2 group-data-[run-work-folding]/chat:gap-1";
 
 // Wide response lines align with the 36px avatar regardless of work folding.
-// Folding uses the same frame on narrow layouts. Dense history previews and
-// follow-up items keep their own line metrics.
+// Folding uses the same frame on narrow layouts. Follow-up items keep their
+// own line metrics.
 export const CHAT_THREAD_RESPONSE_LINE_CLASS =
   "@[900px]:h-auto @[900px]:min-h-9 @[900px]:py-[calc((2.25rem-1lh)/2)] @[900px]:leading-[1.59375rem] group-data-[run-work-folding]/chat:h-auto group-data-[run-work-folding]/chat:min-h-9 group-data-[run-work-folding]/chat:py-[calc((2.25rem-1lh)/2)] group-data-[run-work-folding]/chat:leading-[1.59375rem]";
 

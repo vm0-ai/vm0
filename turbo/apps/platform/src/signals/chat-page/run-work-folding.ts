@@ -42,7 +42,6 @@ export interface RunWorkSection {
   readonly stepCount: number;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
-  readonly previewMessages: readonly EnrichedChatEvent[];
   readonly remainingArtifactCards: readonly RunWorkArtifactCard[];
   readonly startTime: number;
   readonly endTime?: number;
@@ -648,7 +647,6 @@ function foldRunWorkGroup(
       stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
-      previewMessages: outputMessages.slice(-4, -1),
       remainingArtifactCards: remainingArtifactCards(outputMessages),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),

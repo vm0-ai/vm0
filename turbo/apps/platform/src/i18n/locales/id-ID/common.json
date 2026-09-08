@@ -2195,7 +2195,6 @@
     "run": {
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
-      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {

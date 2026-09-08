@@ -1,4 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import { HttpResponse } from "msw";
+import {
+  auxiliaryResults,
+  auxiliaryWarnings,
+} from "./helpers/auxiliary-generation";
 import { WebPushError } from "web-push";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
@@ -1732,6 +1737,187 @@ describe("CHAT-02: completed chat callback", () => {
     expect(marker).not.toHaveProperty("recommendedFollowups");
   });
 
+  it("silently degrades all four callback features while delivering the generic notification", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        ![
+          "Generate a short, descriptive title",
+          "recommended follow-up messages",
+          "one short notification sentence",
+          "agent run in at most 50 words",
+        ].some((text) => {
+          return system.includes(text);
+        })
+      ) {
+        return "Thinking";
+      }
+      return HttpResponse.json({
+        choices: [
+          {
+            finish_reason: "error",
+            error: { metadata: { error_type: "rate_limit_exceeded" } },
+          },
+        ],
+      });
+    });
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep the main answer",
+    });
+    await flushWaitUntilForTest();
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    // Separate the eager title from the callback's three generations.
+    const beforeComplete = auxiliaryResults(context).length;
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
+    );
+    expect(
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
+      }),
+    ).toBeFalsy();
+    await expect(
+      readThreadTitleFromEvents(actor, run.threadId),
+    ).resolves.toBeNull();
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.map(pushPayload),
+    ).toContainEqual(
+      expect.objectContaining({ body: "Your task is complete" }),
+    );
+    const results = auxiliaryResults(context);
+    expect(results.slice(0, beforeComplete)).toStrictEqual([
+      expect.objectContaining({
+        feature: "chat_title",
+        outcome: "degraded",
+        reason: "rate_limited",
+      }),
+    ]);
+    expect(
+      results
+        .slice(beforeComplete)
+        .map(({ feature }) => {
+          return feature;
+        })
+        .sort(),
+    ).toStrictEqual([
+      "notification_summary",
+      "recommended_followups",
+      "run_summary",
+    ]);
+    expect(
+      results.every((event) => {
+        return event.outcome === "degraded" && event.reason === "rate_limited";
+      }),
+    ).toBeTruthy();
+    expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
+    expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
+  });
+
+  it("keeps title and summary storage failures observable after successful generation", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    // PostgreSQL rejects NUL in text. This induces a real write failure using
+    // a provider response, without DB mocks or changing shared schema/state.
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        system.includes("Generate a short, descriptive title") ||
+        system.includes("agent run in at most 50 words")
+      ) {
+        return "Unstorable\u0000text";
+      }
+      if (system.includes("recommended follow-up messages")) {
+        return JSON.stringify([
+          { prompt: "Continue the analysis", kind: "talk" },
+        ]);
+      }
+      return "Task finished";
+    });
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep storage errors visible",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+    await expect(
+      readThreadTitleFromEvents(actor, run.threadId),
+    ).resolves.toBeNull();
+    const warnings = context.mocks.axiomLogging.warn.mock.calls.map(
+      ([message]) => {
+        return message;
+      },
+    );
+    expect(warnings).toContain("Chat title persistence failed");
+    expect(warnings).toContain("Failed to save run summary");
+    expect(auxiliaryResults(context)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ feature: "chat_title", outcome: "success" }),
+        expect.objectContaining({ feature: "run_summary", outcome: "success" }),
+      ]),
+    );
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    expect(
+      auxiliaryResults(context).every((event) => {
+        return event.outcome === "success";
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps push delivery errors observable after summary degradation", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, { agentId, prompt: "Notify me" });
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return new HttpResponse(null, { status: 503 });
+    });
+    context.mocks.webpush.sendNotification.mockRejectedValue(
+      new Error("Push delivery failed"),
+    );
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "Completed answer")]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.map(pushPayload),
+    ).toContainEqual(
+      expect.objectContaining({ body: "Your task is complete" }),
+    );
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    expect(context.mocks.axiomLogging.warn.mock.calls).toContainEqual([
+      "Failed to send push notification",
+      expect.objectContaining({
+        error: expect.objectContaining({ message: "Push delivery failed" }),
+      }),
+    ]);
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "Completed answer" }),
+    );
+  });
+
   it("pins the model, reasoning effort, and token budget of every fast-path completion", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1781,6 +1967,21 @@ describe("CHAT-02: completed chat callback", () => {
       lastEventSequence: 0,
     });
     await flushWaitUntilForTest();
+
+    expect(
+      auxiliaryResults(context)
+        .map(({ feature, outcome, reason }) => {
+          return { feature, outcome, reason };
+        })
+        .sort((a, b) => {
+          return a.feature.localeCompare(b.feature);
+        }),
+    ).toStrictEqual([
+      { feature: "chat_title", outcome: "success", reason: "none" },
+      { feature: "notification_summary", outcome: "success", reason: "none" },
+      { feature: "recommended_followups", outcome: "success", reason: "none" },
+      { feature: "run_summary", outcome: "success", reason: "none" },
+    ]);
 
     // Reasoning tokens are drawn from the same budget as the answer, so a
     // budget sized for a non-reasoning model starves the answer entirely.

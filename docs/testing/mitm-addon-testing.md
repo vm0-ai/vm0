@@ -123,6 +123,37 @@ metadata, and this contract together. The
 [`test_mitmproxy_websocket_framing.py`](../../crates/runner/mitm-addon/tests/test_mitmproxy_websocket_framing.py)
 suite must continue to pass as the executable framing contract.
 
+## WebSocket handshake inspection boundary
+
+Request classification and 101 response confirmation inspect `Headers.fields`
+as raw bytes. They do not obtain full strings through `Headers.get_all()` before
+checking the handshake budget. The caller owns one 8,192 limit and passes it to
+response confirmation:
+
+- Token lookup spends one unit per visited raw field, including unrelated
+  fields, and one per inspected matching-value byte. A complete token at a comma
+  or actual field end can return immediately; exhausting the budget is not a
+  field ending. Later fields and an irrelevant suffix are not inspected.
+- Singleton lookup separately allows at most 8,192 raw fields and an inclusive
+  8,192 value bytes. It verifies cardinality and length before stripping SP/HTAB,
+  so oversized or repeated key/version/accept fields cannot trigger full-value
+  conversion or copying.
+- Raw names are length-checked before ASCII case normalization. Key validation
+  still requires 24 encoded bytes and 16 decoded bytes; version is `13`, and
+  response confirmation requires an ASCII key and the matching 28-byte accept.
+
+Over-budget or invalid handshakes fail closed to ordinary HTTP classification
+and terminal usage handling. These are local addon inspection limits, separate
+from mitmproxy's raw HTTP head buffering and other header consumers. Old runners
+retain their previous inspection behavior until they are updated.
+
+`test_http_header_syntax.py` uses guarded raw values and field sequences to prove
+early termination and bounded access. `test_mitmproxy_websocket_header_budget.py`
+feeds non-UTF-8 values through real HTTP/1 request hooks and guards the dependency
+conversion boundary. `test_model_provider_websocket_lifecycle.py` verifies raw
+response confirmation and tracked-flow retention/release. These regressions use
+structural assertions, with no timing or allocation thresholds.
+
 ## Path normalization work boundary
 
 Path safety validation accepts at most 65,536 input characters and five percent
