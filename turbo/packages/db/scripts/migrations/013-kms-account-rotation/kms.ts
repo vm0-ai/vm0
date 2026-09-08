@@ -141,6 +141,7 @@ export async function decrypt(
       "aes-256-gcm",
       plaintext,
       Buffer.from(string(envelope.kms.iv), "base64"),
+      { authTagLength: 16 },
     );
     decipher.setAuthTag(Buffer.from(string(envelope.kms.authTag), "base64"));
     return Buffer.concat([
@@ -177,7 +178,9 @@ export async function encrypt(
       throw new Error("invalid_data_key_size");
     }
     const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", response.Plaintext, iv);
+    const cipher = createCipheriv("aes-256-gcm", response.Plaintext, iv, {
+      authTagLength: 16,
+    });
     const ciphertext = Buffer.concat([
       cipher.update(plaintext),
       cipher.final(),
