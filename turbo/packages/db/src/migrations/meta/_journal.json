@@ -92,6 +92,13 @@
       "when": 1788854007814,
       "tag": "1090_show_usage_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 1091,
+      "version": "7",
+      "when": 1788866420335,
+      "tag": "1091_retire_show_usage_pack_compatibility",
+      "breakpoints": true
     }
   ]
 }

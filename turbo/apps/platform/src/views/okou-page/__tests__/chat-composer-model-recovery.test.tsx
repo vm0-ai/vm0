@@ -102,6 +102,7 @@ function billingStatus(args: {
   readonly tier: "limited-free-1" | "pro";
 }): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: args.tier,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,

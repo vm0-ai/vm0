@@ -82,6 +82,7 @@ async function hoverSubscriptionComparison(): Promise<HTMLElement> {
 
 function activeProBillingStatus(): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: "pro",
     credits: 25_000,
     onboardingPaymentPending: false,
@@ -153,6 +154,7 @@ function activeCustomBillingStatus(): BillingStatusResponse {
 
 function noActiveBillingStatus(): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier: "pro-suspend",
     credits: 0,
     onboardingPaymentPending: false,

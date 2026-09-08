@@ -201,6 +201,7 @@ function billingStatus(
   },
 ): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier,
     ...modelCapabilities,
     credits: 20_000,

@@ -144,6 +144,7 @@ function mockBillingCapabilities(modelCapabilities: {
 }): void {
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     const status: BillingStatusResponse = {
+      showUsagePack: false,
       tier: "pro",
       ...modelCapabilities,
       credits: 20_000,

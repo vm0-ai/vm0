@@ -126,6 +126,7 @@ function billingStatus(
   capabilities: Partial<BillingStatusResponse> = {},
 ): BillingStatusResponse {
   return {
+    showUsagePack: false,
     tier,
     credits: 20_000,
     onboardingPaymentPending: false,

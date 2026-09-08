@@ -292,6 +292,7 @@ function mockAdminBillingStatus(
         });
       }
       return respond(200, {
+        showUsagePack: false,
         tier: "pro",
         credits,
         onboardingPaymentPending: false,
