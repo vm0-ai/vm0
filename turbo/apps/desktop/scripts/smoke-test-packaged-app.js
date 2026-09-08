@@ -196,6 +196,42 @@ child.on("close", (code, signal) => {
     console.error(
       `Packaged verification failed: code=${code} signal=${signal} timedOut=${timedOut} outputExceeded=${outputExceeded}`,
     );
+    if (cuaProbe && !outputExceeded) {
+      // Only fixed lifecycle codes can cross the failure diagnostic boundary.
+      // Never print raw SDK/Electron output, arbitrary strings or user paths.
+      const record = stdout
+        .split(/\r?\n/)
+        .find((line) => line.startsWith("[cua-probe] ") && line.length <= 8192);
+      try {
+        const state = JSON.parse(
+          record?.slice("[cua-probe] ".length) ?? "null",
+        );
+        if (
+          state &&
+          [
+            "cua_start_failed",
+            "cua_probe_failed",
+            "cua_unexpected_exit",
+            "cua_cleanup_unproven",
+            "cua_exit_observer_failed",
+          ].includes(state.error) &&
+          ["stopped", "starting", "ready", "retiring", "error"].includes(
+            state.phase,
+          ) &&
+          typeof state.cleanupPending === "boolean"
+        ) {
+          console.error(
+            JSON.stringify({
+              phase: state.phase,
+              cleanupPending: state.cleanupPending,
+              error: state.error,
+            }),
+          );
+        }
+      } catch {
+        // Invalid child diagnostics remain suppressed.
+      }
+    }
     process.exitCode = 1;
   }
 });

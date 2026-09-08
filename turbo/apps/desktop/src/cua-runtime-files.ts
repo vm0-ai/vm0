@@ -13,7 +13,7 @@ import type {
 } from "@trycua/cua-driver";
 
 export interface CuaSdk {
-  readonly processOwner?: CuaProcessOwner;
+  readonly processOwner?: Pick<CuaProcessOwner, "retire">;
   readonly standardPermissionMode: EmbeddedPermissionMode;
   readonly stoppedState: EmbeddedDriverHostState;
   createHost(

@@ -210,9 +210,11 @@ export class CuaEmbeddedRuntime {
         if (!context.retired) this.fail(context, "cua_unexpected_exit");
         return exit;
       });
-    void context.exit.catch(() =>
-      this.fail(context, "cua_exit_observer_failed"),
-    );
+    void context.exit.catch(() => {
+      // Forced retirement closes the remote observer; independent OS exit
+      // evidence owns completion after this generation has stopped admission.
+      if (!context.retired) this.fail(context, "cua_exit_observer_failed");
+    });
     this.assertCurrent(context);
     context.client = sdk.connect(connection.socketPath);
     const metadata = await context.client.metadata({
@@ -406,7 +408,7 @@ export class CuaEmbeddedRuntime {
       context.probe,
       this.options.deadlineMs ?? 15_000,
     ).catch(() => {
-      this.fail(context, "cua_probe_failed");
+      if (!context.retired) this.fail(context, "cua_probe_failed");
       throw new Error("CUA host probe failed");
     });
   }
