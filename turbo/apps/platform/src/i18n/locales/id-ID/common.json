@@ -5526,6 +5526,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Tindakan diperlukan — pengiriman dijeda",
         "addAction": "Tambahkan otomatisasi Kalender",
         "addAria": "Tambahkan otomatisasi Google Calendar",
         "addDescriptionCancelled": "Jalankan alur kerja ini saat acara Google Calendar dibatalkan.",
@@ -5534,16 +5535,24 @@
         "addTitle": "Tambahkan otomatisasi Google Calendar",
         "calendarId": "ID Kalender",
         "calendarIdPlaceholder": "utama",
+        "calendarNotFoundDescription": "Kalender ini tidak lagi tersedia. Pilih kalender lain untuk melanjutkan otomatisasi ini.",
         "cancelledDescription": "Jalankan saat acara kalender dibatalkan.",
         "cancelledRule": "Saat acara kalender {{calendar}} dibatalkan",
         "cancelledTitle": "Acara Google Calendar dibatalkan",
+        "changeAria": "Ubah otomatisasi Google Calendar",
+        "changeCalendar": "Ubah kalender",
         "createdDescription": "Jalankan saat acara kalender dibuat.",
         "createdRule": "Saat kalender {{calendar}} mendapat acara baru",
         "createdTitle": "Acara Google Calendar dibuat",
+        "enabledIntent": "Diaktifkan",
+        "reconnectDescription": "Google Calendar perlu dihubungkan kembali sebelum otomatisasi ini dapat dilanjutkan.",
+        "reconnectGoogleCalendar": "Hubungkan kembali Google Calendar",
+        "saveCalendar": "Simpan kalender",
         "summary": "Kalender {{calendar}}",
         "updatedDescription": "Jalankan saat acara kalender diperbarui.",
         "updatedRule": "Saat acara kalender {{calendar}} diperbarui",
-        "updatedTitle": "Acara Google Calendar diperbarui"
+        "updatedTitle": "Acara Google Calendar diperbarui",
+        "updateError": "Kami tidak dapat mengubah kalender ini. Coba lagi."
       },
       "chat": {
         "addAction": "Tambahkan otomatisasi chat",
@@ -6119,6 +6128,7 @@
       }
     },
     "list": {
+      "actionRequired": "Tindakan diperlukan",
       "agentEmpty": "Belum ada alur kerja yang dijalankan sebagai agen ini.",
       "all": "Semua",
       "allAgents": "Semua agen",
@@ -6136,6 +6146,7 @@
       },
       "noWorkflows": "Tidak ada alur kerja",
       "open": "Buka {{title}}",
+      "openRecovery": "Buka pemulihan {{title}}",
       "runsAs": "Dijalankan sebagai",
       "runsAsAria": "Dijalankan sebagai {{agent}}",
       "section": {
