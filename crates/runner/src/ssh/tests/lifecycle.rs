@@ -1,5 +1,5 @@
 use super::{
-    harness::{Harness, Reply, frames, params},
+    harness::{Harness, Reply, frames, key, params, read_http_request, respond},
     terminal, wait_for,
 };
 use serde_json::json;
@@ -68,32 +68,40 @@ async fn lifecycle_cancellation_during_exec_closes_connection_and_releases_park_
 
 #[tokio::test]
 async fn cancelled_first_use_pin_cannot_authenticate_when_the_response_arrives_late() {
-    let h = Harness::new(Reply::Hold).await;
-    let _resolve = h.resolve(h.credential(false)).await;
-    let pin = h
-        .api
-        .mock_async(|when, then| {
-            when.method("POST")
-                .path(format!("/api/runners/runs/{}/ssh/pin", h.run));
-            then.status(200)
-                .delay(Duration::from_millis(250))
-                .json_body(json!({"outcome":"pinned","generation":8}));
-        })
-        .await;
-    let (frames, ()) = tokio::join!(h.request(params()), async {
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while pin.calls_async().await == 0 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let h = Harness::with_api(
+        Reply::Hold,
+        key(russh::keys::Algorithm::Ed25519),
+        key(russh::keys::Algorithm::Ed25519),
+        Some(format!("http://{}", listener.local_addr().unwrap())),
+    )
+    .await;
+    let server = async {
+        let (mut resolve, _) = listener.accept().await.unwrap();
+        read_http_request(&mut resolve).await;
+        respond(&mut resolve, h.credential(false)).await.unwrap();
+        let (mut pin, _) = listener.accept().await.unwrap();
+        read_http_request(&mut pin).await;
         assert_eq!(h.observed.auth.load(Ordering::SeqCst), 0);
         h.cancel.cancel();
-    });
+        wait_for(|| h.observed.reservations.load(Ordering::SeqCst) == 0).await;
+        // Cancellation may already have closed the HTTP transport. Either a
+        // late response or that explicit socket closure must leave auth at zero.
+        let late = respond(&mut pin, json!({"outcome":"pinned","generation":8})).await;
+        assert!(
+            late.is_ok()
+                || late.is_err_and(|error| matches!(
+                    error.kind(),
+                    std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                ))
+        );
+    };
+    let (frames, ()) = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(h.request(params()), server)
+    })
+    .await
+    .unwrap();
     assert_eq!(terminal(&frames)["failure_reason"], "cancelled");
-    wait_for(|| h.observed.reservations.load(Ordering::SeqCst) == 0).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(h.observed.auth.load(Ordering::SeqCst), 0);
     assert!(h.observed.commands.lock().unwrap().is_empty());
     drop(h.control.try_fence_normal_operations().unwrap());

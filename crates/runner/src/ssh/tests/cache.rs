@@ -5,10 +5,9 @@ use std::{
 
 use russh::keys::Algorithm;
 use serde_json::{Value, json};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{
-    harness::{self, Harness, Reply, params},
+    harness::{self, Harness, Reply, params, read_http_request, respond},
     terminal,
 };
 use crate::ids::RunId;
@@ -219,26 +218,6 @@ async fn authentication_failure_evicts_only_the_failed_snapshot_without_replay()
     assert_eq!(h.observed.commands.lock().unwrap().len(), 2);
 }
 
-async fn read_http_headers(socket: &mut tokio::net::TcpStream) {
-    let mut header = Vec::new();
-    while !header.ends_with(b"\r\n\r\n") {
-        header.push(socket.read_u8().await.unwrap());
-        assert!(header.len() < 8192);
-    }
-    let header = String::from_utf8(header).unwrap();
-    let length: usize = header
-        .lines()
-        .filter_map(|line| line.split_once(':'))
-        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
-        .unwrap()
-        .1
-        .trim()
-        .parse()
-        .unwrap();
-    assert!(length < 8192);
-    socket.read_exact(&mut vec![0; length]).await.unwrap();
-}
-
 #[tokio::test]
 async fn full_retained_cache_bypasses_caching_without_rejecting_commands() {
     let h = Harness::new(Reply::default()).await;
@@ -273,12 +252,6 @@ async fn full_retained_cache_bypasses_caching_without_rejecting_commands() {
     resolve.assert_calls_async(259).await;
 }
 
-async fn respond(socket: &mut tokio::net::TcpStream, body: Value) {
-    let body = body.to_string();
-    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
-    socket.shutdown().await.unwrap();
-}
-
 #[tokio::test]
 async fn invalidation_during_resolve_fences_the_late_result_before_authentication() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -292,15 +265,17 @@ async fn invalidation_during_resolve_fences_the_late_result_before_authenticatio
     h.runtime.ably_connected(true);
     let server = async {
         let (mut socket, _) = listener.accept().await.unwrap();
-        read_http_headers(&mut socket).await;
+        read_http_request(&mut socket).await;
         notify(
             &h,
             json!({"runId":h.run, "connectionId":harness::CONNECTION}),
         );
-        respond(&mut socket, h.credential(true)).await;
+        respond(&mut socket, h.credential(true)).await.unwrap();
         let (mut socket, _) = listener.accept().await.unwrap();
-        read_http_headers(&mut socket).await;
-        respond(&mut socket, json!({"outcome":"unavailable"})).await;
+        read_http_request(&mut socket).await;
+        respond(&mut socket, json!({"outcome":"unavailable"}))
+            .await
+            .unwrap();
     };
     let client = async {
         assert_eq!(
@@ -338,24 +313,24 @@ async fn late_pin_results_cannot_repopulate_or_evict_a_replacement_snapshot() {
         h.runtime.ably_connected(true);
         let server = async {
             let (mut resolve, _) = listener.accept().await.unwrap();
-            read_http_headers(&mut resolve).await;
-            respond(&mut resolve, h.credential(false)).await;
+            read_http_request(&mut resolve).await;
+            respond(&mut resolve, h.credential(false)).await.unwrap();
             let (mut pin, _) = listener.accept().await.unwrap();
-            read_http_headers(&mut pin).await;
+            read_http_request(&mut pin).await;
             notify(
                 &h,
                 json!({"runId": h.run, "connectionId": harness::CONNECTION}),
             );
             let replacement = async {
                 let (mut resolve, _) = listener.accept().await.unwrap();
-                read_http_headers(&mut resolve).await;
+                read_http_request(&mut resolve).await;
                 let mut credential = h.credential(true);
                 credential["generation"] = json!(9);
-                respond(&mut resolve, credential).await;
+                respond(&mut resolve, credential).await.unwrap();
             };
             let (second, ()) = tokio::join!(h.request(params()), replacement);
             assert_eq!(terminal(&second)["type"], "finished");
-            respond(&mut pin, pin_result.clone()).await;
+            respond(&mut pin, pin_result.clone()).await.unwrap();
         };
         let ((), first) = tokio::time::timeout(Duration::from_secs(10), async {
             tokio::join!(server, h.request(params()))

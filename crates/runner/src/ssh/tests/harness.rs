@@ -7,6 +7,7 @@ use russh::{
 };
 use serde_json::{Value, json};
 use std::{
+    borrow::Cow,
     io,
     net::SocketAddr,
     sync::{
@@ -215,6 +216,12 @@ impl Harness {
         let peer_key = key.public_key().clone();
         let config = Arc::new(server::Config {
             keys: vec![host_key.clone()],
+            // Use a supported hardware-accelerated cipher so fragmented-output
+            // tests measure dispatch and framing, not debug-build ChaCha loops.
+            preferred: russh::Preferred {
+                cipher: Cow::Borrowed(&[russh::cipher::AES_128_GCM]),
+                ..russh::Preferred::default()
+            },
             auth_rejection_time: Duration::ZERO,
             auth_rejection_time_initial: Some(Duration::ZERO),
             ..server::Config::default()
@@ -383,6 +390,32 @@ async fn control_connection() -> (
 
 pub(super) fn key(algorithm: Algorithm) -> PrivateKey {
     PrivateKey::random(&mut russh::keys::key::safe_rng(), algorithm).unwrap()
+}
+
+pub(super) async fn read_http_request(socket: &mut TcpStream) {
+    let mut header = Vec::new();
+    while !header.ends_with(b"\r\n\r\n") {
+        header.push(socket.read_u8().await.unwrap());
+        assert!(header.len() < 8192);
+    }
+    let header = String::from_utf8(header).unwrap();
+    let length: usize = header
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .unwrap()
+        .1
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(length < 8192);
+    socket.read_exact(&mut vec![0; length]).await.unwrap();
+}
+
+pub(super) async fn respond(socket: &mut TcpStream, body: Value) -> io::Result<()> {
+    let body = body.to_string();
+    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
+    socket.shutdown().await
 }
 pub(super) fn params() -> Value {
     json!({"sshConnectionId":CONNECTION,"command":"printf test-command"})
