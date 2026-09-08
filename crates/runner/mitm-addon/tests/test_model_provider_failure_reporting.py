@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 import threading
+import urllib.request
 import zlib
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -420,190 +421,68 @@ def test_report_http_failure_logs_omission_and_reclaims_capacity(
     )
 
 
-# Remove these rollout-only fallback tests with the compatibility branch under #29882.
-def test_source_aware_400_retries_once_with_legacy_body(
+@pytest.mark.parametrize("connection_source", ["provider_response", "upstream_transport"])
+def test_connection_report_http_failure_preserves_source_and_reclaims_capacity(
     tmp_path,
     real_flow,
     mitm_ctx,
+    connection_source: str,
     model_provider_failure_api,
 ):
-    proxy_log_path = tmp_path / "legacy-retry.jsonl"
-    model_provider_failure_api.queue_response(400)
-    model_provider_failure_api.queue_response(204)
-
-    _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
-
-    assert _reported_payloads(model_provider_failure_api) == [
-        {
-            "failureKind": "connection",
-            "connectionSource": "upstream_transport",
-        },
-        {"failureKind": "connection"},
-    ]
-    requests = model_provider_failure_api.requests
-    assert [request.method for request in requests] == ["POST", "POST"]
-    assert [request.path for request in requests] == [
-        "/api/runners/runs/run-model-failure/model-provider-failures",
-        "/api/runners/runs/run-model-failure/model-provider-failures",
-    ]
-    assert [request.header("authorization") for request in requests] == [
-        f"Bearer {id(model_provider_failure_api)}",
-        f"Bearer {id(model_provider_failure_api)}",
-    ]
-    assert [request.body for request in requests] == [
-        b'{"failureKind":"connection","connectionSource":"upstream_transport"}',
-        b'{"failureKind":"connection"}',
-    ]
-    assert _report_omissions(proxy_log_path) == []
-
-
-@pytest.mark.parametrize(
-    (
-        "monotonic_values",
-        "fallback_status",
-        "expected_timeouts",
-        "expected_payloads",
-        "expected_http_status",
-    ),
-    [
-        (
-            (100.0, 100.25, 101.5),
-            204,
-            [2.75, 1.5],
-            [
-                {
-                    "failureKind": "connection",
-                    "connectionSource": "provider_response",
-                },
-                {"failureKind": "connection"},
-            ],
-            None,
-        ),
-        (
-            (100.0, 100.25, 103.0),
-            None,
-            [2.75],
-            [
-                {
-                    "failureKind": "connection",
-                    "connectionSource": "provider_response",
-                }
-            ],
-            400,
-        ),
-    ],
-    ids=("positive-fallback-budget", "exhausted-fallback-budget"),
-)
-def test_source_aware_400_fallback_shares_delivery_deadline(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    monotonic_values: tuple[float, float, float],
-    fallback_status: int | None,
-    expected_timeouts: list[float],
-    expected_payloads: list[dict[str, str]],
-    expected_http_status: int | None,
-    model_provider_failure_api,
-):
-    monotonic_ticks = iter(monotonic_values)
-    request_timeouts: list[float] = []
-    original_build_api_opener = platform_api.build_api_opener
-
-    class ReportTime:
-        @staticmethod
-        def monotonic() -> float:
-            return next(monotonic_ticks)
-
-    class TimeoutRecordingOpener:
-        def __init__(self):
-            self._opener = original_build_api_opener()
-
-        def open(self, request, *, timeout: float):
-            request_timeouts.append(timeout)
-            return self._opener.open(request, timeout=timeout)
-
-    body = b'{"error":{"code":"connection_error"}}'
-    proxy_log_path = tmp_path / "legacy-retry-deadline.jsonl"
-    flow = _make_flow(
-        real_flow,
-        proxy_log_path,
-        response_body=body,
-    )
-    model_provider_failure_api.queue_response(400)
-    if fallback_status is not None:
-        model_provider_failure_api.queue_response(fallback_status)
-
-    with (
-        patch.object(model_provider_failure, "time", ReportTime),
-        patch.object(
-            platform_api,
-            "build_api_opener",
-            side_effect=TimeoutRecordingOpener,
-        ),
-    ):
-        _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
-        assert _reported_payloads(model_provider_failure_api) == expected_payloads
-
-    assert request_timeouts == pytest.approx(expected_timeouts)
-    if expected_http_status is None:
-        assert not jsonl_exists_after_flush(proxy_log_path)
-    else:
-        _assert_single_report_omission(
-            proxy_log_path,
-            flow_id=flow.id,
-            reason="http_error",
-            failure_kind="connection",
-            http_status=expected_http_status,
-        )
-        _assert_full_report_capacity(
-            real_flow,
-            tmp_path / "exhausted-fallback-capacity-recovery.jsonl",
-            model_provider_failure_api,
-        )
-
-
-def test_source_aware_400_failed_fallback_is_not_retried(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    model_provider_failure_api,
-):
-    proxy_log_path = tmp_path / "legacy-retry-failed.jsonl"
+    proxy_log_path = tmp_path / "connection-http-error.jsonl"
     release_target = threading.Event()
     initial_request_count = model_provider_failure_api.request_count
-    model_provider_failure_api.queue_response(400)
-    model_provider_failure_api.queue_response(503, release_event=release_target)
+    model_provider_failure_api.queue_response(400, release_event=release_target)
+    request_timeouts: list[float] = []
+    original_open = urllib.request.OpenerDirector.open
 
-    flow = _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
+    def record_timeout(opener, request, *, timeout: float):
+        request_timeouts.append(timeout)
+        return original_open(opener, request, timeout=timeout)
 
-    assert model_provider_failure_api.wait_for_request_count(initial_request_count + 2)
-    assert [
-        request.json_body()
-        for request in model_provider_failure_api.requests[
-            initial_request_count : initial_request_count + 2
-        ]
-    ] == [
-        {
-            "failureKind": "connection",
-            "connectionSource": "upstream_transport",
-        },
-        {"failureKind": "connection"},
-    ]
+    body = b'{"error":{"code":"connection_error"}}'
+    with patch.object(urllib.request.OpenerDirector, "open", record_timeout):
+        if connection_source == "upstream_transport":
+            flow = _finish_upstream_transport_failure(real_flow, proxy_log_path, mitm_ctx)
+        else:
+            flow = _make_flow(real_flow, proxy_log_path, response_body=body)
+            _finish_http_flow(flow, body=body, mitm_ctx=mitm_ctx)
+
+        assert model_provider_failure_api.wait_for_request_count(initial_request_count + 1)
+
+    request = model_provider_failure_api.requests[initial_request_count]
+    assert request.json_body() == {
+        "failureKind": "connection",
+        "connectionSource": connection_source,
+    }
+    assert request.method == "POST"
+    assert request.path == "/api/runners/runs/run-model-failure/model-provider-failures"
+    assert request.header("authorization") == f"Bearer {id(model_provider_failure_api)}"
+    assert request_timeouts == [3]
     _assert_single_reclaimed_report_slot(
         real_flow,
-        tmp_path / "legacy-retry-failed-capacity-recovery.jsonl",
+        tmp_path / "connection-http-error-recovery.jsonl",
         model_provider_failure_api,
         release_target,
         initial_request_count=initial_request_count,
-        target_outbound_count=2,
+        target_outbound_count=1,
     )
     _assert_single_report_omission(
         proxy_log_path,
         flow_id=flow.id,
         reason="http_error",
         failure_kind="connection",
-        http_status=503,
+        http_status=400,
     )
+    if connection_source == "upstream_transport":
+        assert flow.response is None
+        assert flow.error is not None
+        assert flow.error.msg == "connection reset by peer"
+    else:
+        assert flow.response is not None
+        assert flow.response.status_code == 200
+        assert flow.response.content == body
+        assert flow.error is None
 
 
 def test_source_aware_non_400_failure_is_not_retried(

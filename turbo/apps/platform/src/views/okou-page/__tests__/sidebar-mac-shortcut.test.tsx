@@ -74,6 +74,7 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
           selectedModel: null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
         };
       }),
       latestEventId: null,

@@ -42,7 +42,6 @@ path calls ``release_flow()`` to remove the reducer state and the registered res
 
 import json
 import threading
-import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
@@ -98,7 +97,6 @@ _MAX_PENDING_REPORTS = _REPORT_WORKERS * 4
 RUNNER_AUTH_ENV = "OKOU_MITM_RUNNER_TOKEN"
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
-_HTTP_STATUS_BAD_REQUEST = 400
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_PAYMENT_REQUIRED = 402
 _HTTP_STATUS_REQUEST_TIMEOUT = 408
@@ -907,9 +905,7 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     payload: dict[str, str | int] = {"failureKind": failure.failure_kind}
     if failure.retry_after_seconds is not None:
         payload["retryAfterSeconds"] = failure.retry_after_seconds
-    legacy_content: bytes | None = None
     if failure.connection_source is not None:
-        legacy_content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         payload["connectionSource"] = failure.connection_source
     content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     report_url = (
@@ -924,7 +920,6 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
                     report_url,
                     bearer_credential,
                     content,
-                    legacy_content,
                 )
             except RuntimeError:
                 pass
@@ -941,45 +936,12 @@ def _post_report(
     url: str,
     bearer_credential: str,
     content: bytes,
-    legacy_content: bytes | None,
-) -> int:
-    deadline = time.monotonic() + _REPORT_TIMEOUT_SECONDS
-    status = _post_report_once(
-        url,
-        bearer_credential,
-        content,
-        timeout=deadline - time.monotonic(),
-    )
-    if status != _HTTP_STATUS_BAD_REQUEST or legacy_content is None:
-        return status
-
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return status
-
-    # New runners can reach a pre-#29671 API during rollout or rollback. Remove this
-    # new-runner -> old-API fallback under #29882 after old runners and sandboxes drain
-    # and those APIs are neither serving nor retained rollback targets.
-    return _post_report_once(
-        url,
-        bearer_credential,
-        legacy_content,
-        timeout=remaining,
-    )
-
-
-def _post_report_once(
-    url: str,
-    bearer_credential: str,
-    content: bytes,
-    *,
-    timeout: float,
 ) -> int:
     request = platform_api.make_api_request(url, content, bearer_credential)
     try:
         with platform_api.build_api_opener().open(
             request,
-            timeout=timeout,
+            timeout=_REPORT_TIMEOUT_SECONDS,
         ) as response:
             return response.status
     except urllib.error.HTTPError as error:
