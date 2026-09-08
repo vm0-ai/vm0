@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -191,6 +192,117 @@ test("A carried image keeps its label and opens a lightbox over the dialog", asy
     expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
   });
   expect(dialog).toBeVisible();
+});
+
+async function openRelatedArtifactOverSidebar(filename: string, body?: string) {
+  const url = artifactUrl("sidebar-preview", filename);
+  if (body !== undefined) {
+    context.mocks.http.get(url, () => {
+      return HttpResponse.text(body);
+    });
+  }
+  await setupArtifactRun([
+    assistantEvent({
+      id: "sidebar-artifact-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: `[Supporting artifact](${url})`,
+    }),
+    assistantEvent({
+      id: "sidebar-artifact-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Final sidebar artifact summary",
+    }),
+  ]);
+  click(await findButton("Open artifacts"));
+  await expect(
+    screen.findByTestId("thread-sidebar-artifacts"),
+  ).resolves.toBeVisible();
+
+  const dialog = await openRelatedArtifacts();
+  click(relatedArtifactRow(dialog, url));
+  const lightbox = await screen.findByRole("dialog", {
+    name: `${filename} preview`,
+  });
+  expect(lightbox).toBeVisible();
+  expect(dialog).toBeVisible();
+  return { dialog, lightbox, url };
+}
+
+async function closeRelatedArtifactPreview(dialog: HTMLElement) {
+  click(screen.getByTestId("attachment-lightbox-backdrop"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+  });
+  expect(dialog).toBeVisible();
+}
+
+test("Open a carried image over an existing artifact sidebar", async () => {
+  const { dialog, lightbox, url } =
+    await openRelatedArtifactOverSidebar("evidence.png");
+  await expect(
+    within(lightbox).findByTestId("attachment-lightbox-image"),
+  ).resolves.toHaveAttribute("src", url);
+  await closeRelatedArtifactPreview(dialog);
+});
+
+test.each([
+  ["walkthrough.mp4", "Video"],
+  ["narration.mp3", "Audio"],
+])(
+  "Open carried media %s over an existing artifact sidebar",
+  async (filename, kind) => {
+    const { dialog, lightbox, url } =
+      await openRelatedArtifactOverSidebar(filename);
+    await expect(
+      within(lightbox).findByLabelText(`${kind} preview for ${filename}`),
+    ).resolves.toHaveAttribute("src", url);
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test.each([
+  ["report.pdf", "#navpanes=0"],
+  ["page.html", ""],
+])(
+  "Open carried document %s over an existing artifact sidebar",
+  async (filename, fragment) => {
+    const { dialog, lightbox, url } =
+      await openRelatedArtifactOverSidebar(filename);
+    await expect(
+      within(lightbox).findByTitle(`${filename} preview`),
+    ).resolves.toHaveAttribute("src", `${url}${fragment}`);
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test.each([
+  ["summary.txt", "Related artifact content"],
+  ["notes.md", "# Related artifact content"],
+  ["data.json", '{"result":"Related artifact content"}'],
+  ["report.csv", "result\nRelated artifact content"],
+])(
+  "Read carried text %s over an existing artifact sidebar",
+  async (filename, body) => {
+    const { dialog, lightbox } = await openRelatedArtifactOverSidebar(
+      filename,
+      body,
+    );
+    await expect(
+      within(lightbox).findByText(/Related artifact content/u),
+    ).resolves.toBeVisible();
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test("Open a carried generic file over an existing artifact sidebar", async () => {
+  const { dialog, lightbox } =
+    await openRelatedArtifactOverSidebar("archive.zip");
+  expect(
+    within(lightbox).getByText("No inline preview available for this file."),
+  ).toBeVisible();
+  await closeRelatedArtifactPreview(dialog);
 });
 
 test("List every carried artifact without a secondary browse step", async () => {
