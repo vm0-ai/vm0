@@ -76,6 +76,10 @@ body,
 
 body {
   margin: 0;
+  /* The canvas behind the app root shows the app color instead of white when
+     a browser leaves a gap below the root. Safari 26 also samples this color
+     for its Liquid Glass chrome. */
+  background-color: hsl(var(--background));
 }
 
 @keyframes auth-v2-otp-caret-blink {
@@ -104,6 +108,15 @@ body {
      delegated to the active viewport shell or its bottom interaction. */
   background-color: hsl(var(--background));
   padding: var(--sat) var(--sar) 0 var(--sal);
+}
+
+/* iOS browser surfaces can leave the visual viewport panned after the software
+   keyboard closes. While the keyboard state observes that residue, the root
+   follows the visual viewport so it keeps filling the visible screen. */
+:root[data-visual-viewport-residue="true"] #root {
+  top: var(--okou-visual-viewport-top);
+  height: var(--okou-visual-viewport-height);
+  min-height: var(--okou-visual-viewport-height);
 }
 
 @media (display-mode: standalone) {

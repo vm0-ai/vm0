@@ -362,3 +362,125 @@ test("Browsers without visual-viewport support keep the normal layout", () => {
 
   expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 });
+
+function installScrollTo(
+  viewport: MockVisualViewport,
+  restoresOffset: boolean,
+) {
+  const scrollTo = vi.fn((_x: number, _y: number): void => {
+    if (restoresOffset) {
+      viewport.offsetTop = 0;
+    }
+  });
+  vi.stubGlobal("scrollTo", scrollTo);
+  return scrollTo;
+}
+
+function residueStyle(): { top: string; height: string } {
+  return {
+    top: document.documentElement.style.getPropertyValue(
+      "--okou-visual-viewport-top",
+    ),
+    height: document.documentElement.style.getPropertyValue(
+      "--okou-visual-viewport-height",
+    ),
+  };
+}
+
+test("A mobile browser root follows a visual viewport that stays panned after the keyboard closes", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+
+  expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
+  expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
+  expect(residueStyle()).toEqual({ top: "310px", height: "844px" });
+
+  // The browser keeps panning the visual viewport while the residue lasts.
+  viewport.offsetTop = 120;
+  viewport.dispatchEvent(new Event("scroll"));
+  await clock.flushUpdate();
+  expect(residueStyle()).toEqual({ top: "120px", height: "844px" });
+
+  viewport.offsetTop = 0;
+  viewport.dispatchEvent(new Event("scroll"));
+  await clock.flushUpdate();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+  expect(residueStyle()).toEqual({ top: "", height: "" });
+});
+
+test("A residual visual viewport pan that an origin scroll clears needs no root follow", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, true);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+  expect(residueStyle()).toEqual({ top: "", height: "" });
+});
+
+test("Reopening the keyboard ends the root follow", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  installVisualViewport(viewport);
+  installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+  expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
+
+  entry.focus();
+  await resizeAndSettle(viewport, clock, 520, 310);
+  expect(document.documentElement.dataset.keyboardOpen).toBe("true");
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+  expect(residueStyle()).toEqual({ top: "", height: "" });
+});
+
+test("A standalone PWA keeps its programmatic keyboard scroll after the keyboard closes", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(true);
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  // Standalone WebKit can report the stale offsetTop for a moment after close.
+  await resizeAndSettle(viewport, clock, 844, 310);
+
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+});

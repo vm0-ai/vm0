@@ -1,6 +1,7 @@
 import { isDesktopAuthFlow } from "./desktop-auth-flow.ts";
 import { command, state } from "ccstate";
 import { posthog, type CaptureResult } from "posthog-js/dist/module.slim";
+import { iosVersionFromUserAgent } from "./browser-support.ts";
 import { isStandalonePwa } from "./keyboard-dismiss-gesture.ts";
 import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
@@ -300,6 +301,38 @@ export function clearPostHogUser(): void {
 export function captureTaskCompletedSuccessfully(): void {
   runPostHog(() => {
     posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+  });
+}
+
+interface VisualViewportResidueProperties {
+  innerHeight: number;
+  offsetTopAfterScroll: number;
+  offsetTopBeforeScroll: number;
+  recoveredByScroll: boolean;
+  viewportHeight: number;
+}
+
+/**
+ * An iOS visual viewport that stayed panned after the software keyboard
+ * closed. Reported once per keyboard session so the affected iOS versions and
+ * browser surfaces can be read from production instead of guessed.
+ */
+export function captureVisualViewportResidue(
+  properties: VisualViewportResidueProperties,
+): void {
+  runPostHog(() => {
+    posthog.capture("visual_viewport_residue", {
+      inner_height: properties.innerHeight,
+      ios_version: iosVersionFromUserAgent(navigator.userAgent) ?? "unknown",
+      offset_top_after_scroll: properties.offsetTopAfterScroll,
+      offset_top_before_scroll: properties.offsetTopBeforeScroll,
+      recovered_by_scroll: properties.recoveredByScroll,
+      referrer_origin: document.referrer
+        ? new URL(document.referrer).origin
+        : "",
+      standalone: isStandalonePwa(),
+      viewport_height: properties.viewportHeight,
+    });
   });
 }
 
