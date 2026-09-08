@@ -62,8 +62,9 @@ impl R2ImageCache {
             .region(Region::new("auto"))
             .endpoint_url(endpoint)
             .credentials_provider(SharedCredentialsProvider::new(creds))
-            // Bound connection establishment and time to a response. Do not cap
-            // whole template transfers; SDK stalled-stream protection bounds idle I/O.
+            // Bound connection and first-response waits. Upload parts use a
+            // separate response budget; downloaded bodies retain SDK stalled-stream
+            // protection without a short whole-transfer deadline.
             .timeout_config(
                 TimeoutConfig::builder()
                     .connect_timeout(Duration::from_secs(10))
