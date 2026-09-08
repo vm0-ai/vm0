@@ -31,6 +31,8 @@ pub mod generated;
 
 mod decode_path;
 mod route;
+mod secret_text;
 
 pub use decode_path::{DecodePathCursor, DecodePathMapSegment, DecodePathSchema};
 pub use route::{Method, ResolvedRoute, Route, RouteTemplate};
+pub use secret_text::SecretText;

@@ -1,22 +1,34 @@
 import { Command } from "commander";
 import { uploadWebFile } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import {
+  createArtifactMarkdownOutput,
+  formatArtifactPresentationContext,
+} from "../shared/artifact-return";
+
+interface UploadFileOptions {
+  readonly file: string;
+  readonly contentType?: string;
+  readonly json?: boolean;
+}
 
 export const uploadFileCommand = new Command()
   .name("upload-file")
-  .description("Upload a local file and print its stable URL")
+  .description("Upload a local file and print artifact presentation context")
   .requiredOption("-f, --file <path>", "Local file path to upload")
   .option("--content-type <mime>", "Override inferred content type")
+  .option("--json", "Output metadata and Markdown return forms as JSON")
   .addHelpText(
     "after",
     `
 Examples:
   Upload a file:           okou web upload-file -f /tmp/report.pdf
   Override content-type:   okou web upload-file -f /tmp/data --content-type text/csv
+  Machine-readable output: okou web upload-file -f /tmp/report.pdf --json
 
 Output:
-  Prints a JSON object to stdout on success:
-    {"id":"...","filename":"...","contentType":"...","size":N,"url":"https://..."}
+  By default, prints artifact presentation context with inline-link and rich-preview Markdown forms.
+  With --json, prints metadata plus inlineMarkdownLink and previewMarkdownBlock.
 
 Notes:
   - Authenticates via OKOU_TOKEN (requires file:write capability)
@@ -32,13 +44,25 @@ Notes:
   - Use --content-type for ambiguous extensions like .mp4 or .webm when needed`,
   )
   .action(
-    withErrorHandler(
-      async (options: { file: string; contentType?: string }) => {
-        const result = await uploadWebFile(options.file, {
-          contentType: options.contentType,
-          purpose: "artifact",
-        });
-        console.log(JSON.stringify(result));
-      },
-    ),
+    withErrorHandler(async (options: UploadFileOptions) => {
+      const result = await uploadWebFile(options.file, {
+        contentType: options.contentType,
+        purpose: "artifact",
+      });
+      const markdown = createArtifactMarkdownOutput(
+        result.filename,
+        result.url,
+      );
+      if (options.json) {
+        console.log(JSON.stringify({ ...result, ...markdown }));
+        return;
+      }
+      console.log(
+        [
+          "The artifact upload completed successfully.",
+          "",
+          formatArtifactPresentationContext(markdown),
+        ].join("\n"),
+      );
+    }),
   );

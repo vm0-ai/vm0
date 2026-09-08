@@ -591,6 +591,9 @@
       "categories": "テンプレートのカテゴリ",
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
+      "creativeVideo": "クリエイティブ動画",
+      "explainerUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
+      "explainerVideo": "解説動画",
       "filters": {
         "age": "年齢",
         "all": "すべて",
@@ -1986,6 +1989,20 @@
       },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "コンテンツに合う音声を選びます。",
+      "avatarVoice": "アバターの音声",
+      "changeAvatar": "アバターを変更",
+      "chooseStyle": "スタイルを選択",
+      "chooseStyleAndVoice": "スタイルと音声を選択してください。",
+      "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
+      "ready": "準備ができました。チャットにコンテンツを追加してください。",
+      "searchAvatars": "アバターを検索",
+      "searchStyles": "スタイルを検索",
+      "settings": "解説動画の設定",
+      "style": "スタイル",
+      "useSelection": "この設定を使用"
+    },
     "feedback": {
       "emailDraftDescription": "メールの下書き (メールの下書き ID: {{id}})",
       "partHeading": "返信のこの部分に関するフィードバック:",
@@ -2014,50 +2031,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "自動 · Okou におまかせ",
-        "autoDescription": "ご要望に合う HeyGen の公開プレゼンターを選択",
         "heading": "アバターを選択",
         "label": "アバター",
         "none": "アバターなし",
-        "noneDescription": "プレゼンターなしで動画を作成",
         "previewLook": "{{name}} の外見をプレビュー"
       },
-      "cardDescription": "アイデアや資料を完成した動画に変換",
       "catalog": {
-        "empty": "HeyGen の公開オプションはありません。",
-        "error": "HeyGen の一覧を読み込めませんでした。",
+        "error": "カタログを読み込めませんでした。",
         "loading": "さらに読み込み中",
         "reload": "一覧を再読み込み",
         "retry": "再試行"
       },
-      "description": "資料を追加してご要望を説明し、必要に応じて HeyGen のスタイル、アバター、音声を選んでください。",
-      "errors": {
-        "sendFailed": "チャットスレッドを作成できませんでした。リクエストはこの画面に残っているので、もう一度お試しください。",
-        "uploadFailed": "一部のファイルをアップロードできませんでした。削除するか、もう一度お試しください。"
-      },
       "footer": {
-        "cancel": "キャンセル",
-        "create": "動画を作成",
-        "hint": "指示やファイルを追加してください"
-      },
-      "format": {
-        "auto": "自動",
-        "output": "出力の画面比率"
-      },
-      "heading": "イントロビデオを作成",
-      "help": "資料の追加やご要望の説明、またはその両方から始められます。あとは Okou におまかせください。",
-      "prompt": {
-        "label": "動画で何を伝えたいですか？",
-        "placeholder": "目的、対象者、言語、雰囲気など、大切なことを説明してください"
-      },
-      "source": {
-        "drop": "ここにファイルをドロップ、またはクリックしてアップロード",
-        "remove": "{{filename}} を削除"
+        "cancel": "キャンセル"
       },
       "style": {
         "auto": "Okou におまかせ",
         "browseGroups": "スタイルから探す",
-        "description": "スタイルはシーン、トランジション、テキストの表示、テンポを決めます。",
         "groups": {
           "cinematic": "映画と写真",
           "handmade": "手作りと素材",
@@ -2067,25 +2057,16 @@
           "print": "印刷と出版",
           "retro-tech": "レトロテックとインターフェース"
         },
-        "heading": "参考にするスタイルを選択",
-        "label": "スタイル参考",
         "preview": "{{title}} のプレビュー",
         "previewUnavailable": "このスタイルの動画プレビューはありません。"
       },
-      "title": "イントロビデオを作成",
       "voice": {
         "auto": "Okou におまかせ",
-        "autoDescription": "Okou が最適な HeyGen の公開音声を選択",
-        "default": "デフォルト · アバターに合わせる",
         "defaultDescription": "選択したアバターのデフォルト音声を使用",
-        "defaultForAvatar": "デフォルト · {{avatar}}",
-        "defaultForAvatarDescription": "{{avatar}} の HeyGen デフォルト音声を使用",
         "heading": "音声を選択",
         "label": "音声",
         "none": "ナレーションなし",
-        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。",
-        "original": "元の音声",
-        "originalDescription": "選択した元の音声を保持し、生成音声は追加しません"
+        "noneDescription": "ナレーションは追加せず、消音の指定がない限り元の音声を保持します。"
       }
     },
     "mail": {

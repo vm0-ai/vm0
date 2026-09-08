@@ -1,3 +1,4 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 import { createElement } from "react";
 import { AgentChatPage } from "../../views/okou-page/agent-chat-page.tsx";
@@ -88,10 +89,11 @@ export const setupAgentChatPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    const featureSwitches = get(featureSwitch$);
     const templatePicker = parseTemplatePickerEntryCategory(
       params.get("templatePicker"),
+      featureSwitches[FeatureSwitchKey.IntroVideo] === true,
     );
-    const featureSwitches = get(featureSwitch$);
     const desktopRecordingHandoff =
       desktopRecordingHandoffFeatureEnabled(featureSwitches) &&
       hasDesktopRecordingHandoff(params);
@@ -108,12 +110,18 @@ export const setupAgentChatPage$ = command(
     }
     if (desktopRecordingHandoff) {
       const targetDraft = agentDraft?.draft ?? get(talkDraft$);
-      await set(
+      const restored = await set(
         applyDesktopRecordingHandoff$,
         targetDraft,
         get(searchParams$),
         signal,
       );
+      if (restored) {
+        set(get(agentChatComposerSignals$).template.openTemplatePicker$, {
+          kind: "insert",
+          category: "explainer",
+        });
+      }
     }
     if (templatePicker) {
       const composerSignals = get(agentChatComposerSignals$);

@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { ComponentProps, ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -853,11 +854,11 @@ function ChatListColumn() {
 
 function ThreeColumnNav() {
   const chatListHidden = useGet(sidebarOff$);
-  return (
+  return withChatScrollLayout(
     <>
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
-    </>
+    </>,
   );
 }
 

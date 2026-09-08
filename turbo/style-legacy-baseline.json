@@ -4450,9 +4450,6 @@
     "apps/platform/src/views/okou-page/image-annotation-editor.tsx": {
       "okou-app": 1
     },
-    "apps/platform/src/views/okou-page/intro-video-wizard.tsx": {
-      "okou-app": 2
-    },
     "apps/platform/src/views/okou-page/replace-composer-draft-dialog.tsx": {
       "okou-app": 1
     },

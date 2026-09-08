@@ -1,5 +1,4 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { animationFrame } from "signal-timers";
 import { logger } from "../log.ts";
 import { onDomEventFn, onRef, setLoop } from "../utils.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
@@ -66,6 +65,7 @@ export interface ChatThreadScrollSignals {
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
   readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
+  readonly restoreScrollPosition$: Command<Promise<void>, [AbortSignal]>;
 }
 
 const threadScrollPositions$ = state(new Map<string, ThreadScrollPosition>());
@@ -234,7 +234,6 @@ function sameScrollPosition(
 
 interface ScrollRuntime {
   initialized: boolean;
-  resizeScheduled: boolean;
   latestRenderRequestRevision: number;
   // Offset this module last wrote to the container, cleared once the container
   // reports a different one. Scroll events are delivered asynchronously, so
@@ -427,18 +426,18 @@ function createScrollNavigationSignals(
     },
   );
 
-  const restoreAfterResize$ = command(
+  const restoreScrollPosition$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const position = get(scroll.threadScrollPosition$);
       const container = get(scroll.scrollContainer$);
-      L.debug("resize scroll restore", {
+      if (!runtime.initialized || !container) {
+        return;
+      }
+      L.debug("layout scroll restore", {
         threadId,
         targetEventId: position?.targetEventId ?? null,
         viewportOffsetTop: position?.viewportOffsetTop ?? null,
       });
-      if (!container) {
-        throw new Error("Chat scroll container is not mounted");
-      }
       if (position) {
         if (
           scrollToPosition(
@@ -452,16 +451,15 @@ function createScrollNavigationSignals(
           return;
         }
         if (get(pendingScrollAfterRenderRequest$) !== null) {
-          // Event rendering can replace the content between ResizeObserver's
-          // notification and this restore. The commit marker owns that pending
-          // batch, so keep the anchor until React acknowledges its final DOM.
-          L.debug("resize scroll restore waiting for render commit", {
+          // The commit marker owns the pending event batch. Keep its anchor
+          // until React acknowledges the final DOM for that batch.
+          L.debug("layout scroll restore waiting for render commit", {
             threadId,
             targetEventId: position.targetEventId,
           });
           return;
         }
-        L.debug("resize scroll restore target no longer rendered", {
+        L.debug("layout scroll restore target no longer rendered", {
           threadId,
           targetEventId: position.targetEventId,
         });
@@ -470,52 +468,11 @@ function createScrollNavigationSignals(
     },
   );
 
-  // The viewport and the composer settle their layout over a frame, so their
-  // restore waits for the next one and the flag folds repeated notifications
-  // into a single run. Resizing the viewport also reflows the message box, so
-  // the content observer restores inside the frame as well and this pass then
-  // runs once more against the settled layout; both write the same position,
-  // which makes the repeat invisible.
-  const scheduleRestoreAfterResize$ = command(
-    ({ set }, signal: AbortSignal) => {
-      if (!runtime.initialized || runtime.resizeScheduled) {
-        return;
-      }
-      runtime.resizeScheduled = true;
-      L.debug("resize scroll restore scheduled", { threadId });
-      animationFrame(
-        onDomEventFn(() => {
-          runtime.resizeScheduled = false;
-          return set(restoreAfterResize$, signal);
-        }),
-        { signal },
-      );
-    },
-  );
-
-  // Content growth restores in the same frame that produced it. ResizeObserver
-  // callbacks run after layout and before paint, so a scroll written here is
-  // part of that frame; waiting for the next one would paint the grown content
-  // at the old offset first, which reads as a flash before the view snaps back.
-  // Deliberately outside `resizeScheduled`: sharing that flag would fold this
-  // restore into the deferred pass, which is the frame of delay it exists to
-  // avoid.
-  const restoreAfterContentResize$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      if (!runtime.initialized) {
-        return;
-      }
-      L.debug("content resize scroll restore", { threadId });
-      await set(restoreAfterResize$, signal);
-    },
-  );
-
   return {
     scrollTo$,
     scrollToBottom$,
     scrollToTop$,
-    scheduleRestoreAfterResize$,
-    restoreAfterContentResize$,
+    restoreScrollPosition$,
   };
 }
 
@@ -690,9 +647,9 @@ function createScrollContainerOnRef(
           signal,
         );
       });
-      const scheduleRestoreAfterResize = () => {
-        set(navigation.scheduleRestoreAfterResize$, signal);
-      };
+      const restoreLayout = onDomEventFn(() => {
+        return set(navigation.restoreScrollPosition$, signal);
+      });
       const handleScrollEnd = (event: Event) => {
         if (
           event.target === container &&
@@ -706,7 +663,7 @@ function createScrollContainerOnRef(
           runtime.programmaticSmoothScrollTop = null;
         }
       };
-      const resizeObserver = new ResizeObserver(scheduleRestoreAfterResize);
+      const view = container.ownerDocument.defaultView;
 
       container.addEventListener("scroll", handleScroll, {
         capture: true,
@@ -715,26 +672,23 @@ function createScrollContainerOnRef(
       container.addEventListener("scrollend", handleScrollEnd, {
         passive: true,
       });
-      resizeObserver.observe(container);
-      container.ownerDocument.defaultView?.visualViewport?.addEventListener(
-        "resize",
-        scheduleRestoreAfterResize,
-        { passive: true },
+      view?.addEventListener("resize", restoreLayout, { signal });
+      container.ownerDocument.fonts?.addEventListener(
+        "loadingdone",
+        restoreLayout,
+        { signal },
       );
+      view?.visualViewport?.addEventListener("resize", restoreLayout, {
+        signal,
+      });
 
       signal.addEventListener(
         "abort",
         () => {
-          runtime.resizeScheduled = false;
           container.removeEventListener("scroll", handleScroll, {
             capture: true,
           });
           container.removeEventListener("scrollend", handleScrollEnd);
-          resizeObserver.disconnect();
-          container.ownerDocument.defaultView?.visualViewport?.removeEventListener(
-            "resize",
-            scheduleRestoreAfterResize,
-          );
           set(scroll.clearScrollContainer$, container);
           runtime.initialized = false;
           runtime.programmaticScrollTop = null;
@@ -747,18 +701,7 @@ function createScrollContainerOnRef(
   );
 }
 
-/**
- * Observes the element that holds the messages. The container's own box only
- * changes with the viewport or the composer, so content that arrives after its
- * scroll was committed — a diagram that finishes rendering, an image that
- * finishes loading — is invisible to the container observer and leaves the
- * thread stranded above the bottom.
- *
- * `observe` delivers once on its own. Both refs belong to the same thread and
- * bind together, so that delivery either arrives before the thread is
- * initialized and is dropped, or arrives in the frame the render commit already
- * scrolled and re-applies the position the thread is holding.
- */
+/** Native resource and disclosure events run after their layout changes. */
 function createScrollContentOnRef(
   threadId: string,
   navigation: ScrollNavigationSignals,
@@ -766,20 +709,17 @@ function createScrollContentOnRef(
   return onRef(
     command(({ set }, content: HTMLElement, signal: AbortSignal) => {
       L.debug("content bound", { threadId });
-      const resizeObserver = new ResizeObserver(
-        onDomEventFn(() => {
-          return set(navigation.restoreAfterContentResize$, signal);
-        }),
-      );
-      resizeObserver.observe(content);
-      signal.addEventListener(
-        "abort",
-        () => {
-          resizeObserver.disconnect();
-          L.debug("content unbound", { threadId });
-        },
-        { once: true },
-      );
+      const restoreLayout = onDomEventFn(() => {
+        return set(navigation.restoreScrollPosition$, signal);
+      });
+      // These events do not bubble; capture them from the actual resource or
+      // details element. React-owned changes restore at their commit marker.
+      for (const event of ["load", "error", "loadedmetadata", "toggle"]) {
+        content.addEventListener(event, restoreLayout, {
+          capture: true,
+          signal,
+        });
+      }
     }),
   );
 }
@@ -793,7 +733,6 @@ export function createChatThreadScrollSignals(
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
-    resizeScheduled: false,
     latestRenderRequestRevision: 0,
     programmaticScrollTop: null,
     programmaticSmoothScrollTop: null,
@@ -888,5 +827,6 @@ export function createChatThreadScrollSignals(
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,
+    restoreScrollPosition$: navigation.restoreScrollPosition$,
   };
 }

@@ -5,6 +5,8 @@ import { z } from "zod";
  * contracts. Keep this module independent of the full runner route graph.
  */
 export const CANONICAL_GUEST_HOME_DIR = "/home/user";
+/** Token kind only; possession of this prefix is never authentication. */
+export const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
 export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
 
 /**

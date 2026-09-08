@@ -27,6 +27,14 @@ pub struct Request {
     pub method: String,
     /// Must be an object. Its fields and values are not interpreted here.
     pub params: Box<RawValue>,
+    /// Bundled-helper remaining wall-time budget at transmission. The host
+    /// treats this as untrusted and clamps it to its own maximum deadline.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub remaining_ms: Option<u64>,
 }
 
 impl Request {

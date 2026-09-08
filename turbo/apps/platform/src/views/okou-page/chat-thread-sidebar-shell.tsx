@@ -1,3 +1,5 @@
+import { chatLayoutTransitionOnRef$ } from "../../signals/chat-page/chat-layout.ts";
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
   PointerEvent as ReactPointerEvent,
@@ -79,6 +81,7 @@ export function ChatThreadSidebarShell({
   readonly open: boolean;
   readonly sidebar: ReactNode;
 }) {
+  const transitionRef = useSet(chatLayoutTransitionOnRef$);
   const syncActiveBrowserFitAction = useSet(syncActiveBrowserFitAction$);
   const { style, transition } = chatThreadSidebarLayout(
     useGet(chatThreadSidebarWidth$),
@@ -98,10 +101,12 @@ export function ChatThreadSidebarShell({
     syncActiveBrowserFitAction();
   }
 
-  return (
-    // Keep this structure stable across sidebar open/close so the chat thread
-    // subtree and its scroll and keyboard state never unmount.
-    <div className="flex flex-1 min-h-0 bg-transparent" style={style}>
+  return withChatScrollLayout(
+    <div
+      ref={transitionRef}
+      className="flex flex-1 min-h-0 bg-transparent"
+      style={style}
+    >
       <div
         className={cn(
           "min-w-0 min-h-0",
@@ -127,6 +132,6 @@ export function ChatThreadSidebarShell({
       >
         {sidebar}
       </div>
-    </div>
+    </div>,
   );
 }

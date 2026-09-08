@@ -304,7 +304,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
+      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },

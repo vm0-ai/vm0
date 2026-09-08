@@ -60,6 +60,7 @@ mod fresh_sandbox;
 mod idle_pool;
 mod proxy_registry;
 mod reuse;
+mod ssh;
 mod workspace_cache;
 
 fn codex_oauth_context() -> crate::types::ExecutionContext {

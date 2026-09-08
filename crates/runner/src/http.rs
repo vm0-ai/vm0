@@ -124,9 +124,8 @@ impl ApiRequestBuilder {
         })
     }
 
-    #[cfg(test)]
-    pub fn build(self) -> RunnerResult<Request> {
-        Ok(self.finalize("test")?.request)
+    pub(crate) fn build(self) -> RunnerResult<Request> {
+        Ok(self.finalize("build")?.request)
     }
 
     #[cfg(test)]

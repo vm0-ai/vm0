@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -93,9 +94,9 @@ export function ComposerCreateControls({
   const mode = useGet(signals.create.mode$);
   const setMode = useSet(signals.create.setMode$);
   if (!choosing && !mode) {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return (
+  return withChatScrollLayout(
     <div
       className="@container/create-controls"
       onKeyDown={(event) => {
@@ -165,7 +166,7 @@ export function ComposerCreateControls({
           <ComposerCreateChip signals={signals} mode={mode} />
         ) : null}
       </div>
-    </div>
+    </div>,
   );
 }
 

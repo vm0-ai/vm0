@@ -140,6 +140,8 @@ async fn invalid_input_never_connects_and_never_echoes_untrusted_content() {
         input(""),
         vec![b'x'; runner_rpc_proto::MAX_REQUEST_BYTES + 1],
         br#"{"version":1,"method":"fixture.echo","params":{},"host":"secret"}"#.to_vec(),
+        br#"{"version":1,"method":"fixture.echo","params":{},"remaining_ms":60000}"#.to_vec(),
+        br#"{"version":1,"method":"fixture.echo","params":{},"remaining_ms":null}"#.to_vec(),
     ] {
         let mut output = Vec::new();
         let result = runner_rpc_client::run_with_io(bytes.as_slice(), &mut output, || async {
@@ -158,6 +160,62 @@ async fn invalid_input_never_connects_and_never_echoes_untrusted_content() {
         );
     }
     assert_eq!(calls.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn helper_transmits_only_its_remaining_budget_after_input_and_connection() {
+    let (mut input_writer, input_reader) = tokio::io::duplex(1024);
+    let (client, mut server) = UnixStream::pair().unwrap();
+    let mut output = Vec::new();
+    let helper = runner_rpc_client::run_with_io(input_reader, &mut output, || async {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        Ok(client)
+    });
+    let host = async {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        input_writer
+            .write_all(&input("fixture.echo"))
+            .await
+            .unwrap();
+        input_writer.shutdown().await.unwrap();
+        let request = runner_rpc_proto::read_request(&mut server).await.unwrap();
+        assert_eq!(request.remaining_ms, Some(44_900));
+        ResponseWriter::new(server).send(&result()).await.unwrap();
+    };
+    let (succeeded, ()) = tokio::join!(helper, host);
+    assert!(succeeded.unwrap());
+}
+
+#[tokio::test]
+async fn helper_rejects_budget_metadata_overflow_before_transmission() {
+    let base = r#"{"version":1,"method":"fixture.echo","params":{"text":""}}"#;
+    let bytes = base.replacen(
+        r#""""#,
+        &format!(
+            "\"{}\"",
+            "x".repeat(runner_rpc_proto::MAX_REQUEST_BYTES - base.len())
+        ),
+        1,
+    );
+    assert_eq!(bytes.len(), runner_rpc_proto::MAX_REQUEST_BYTES);
+    let (client, mut server) = UnixStream::pair().unwrap();
+    let mut output = Vec::new();
+    let helper =
+        runner_rpc_client::run_with_io(bytes.as_bytes(), &mut output, || async { Ok(client) });
+    let host = async {
+        let mut bytes = Vec::new();
+        server.read_to_end(&mut bytes).await.unwrap();
+        assert!(bytes.is_empty());
+    };
+    let (succeeded, ()) = tokio::join!(helper, host);
+    assert!(!succeeded.unwrap());
+    assert_eq!(
+        frames(&output),
+        [expected_error(
+            ErrorCode::InvalidRequest,
+            Delivery::NotDispatched
+        )]
+    );
 }
 
 #[tokio::test]

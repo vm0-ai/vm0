@@ -5,10 +5,10 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-proc-macro2 = { workspace = true, features = ["span-locations"] }
+proc-macro2 = { workspace = true, features = ["proc-macro", "span-locations"] }
 
 [dev-dependencies]
-tempfile.workspace = true
+tempfile = { workspace = true, features = ["getrandom"] }
 
 [lints]
 workspace = true

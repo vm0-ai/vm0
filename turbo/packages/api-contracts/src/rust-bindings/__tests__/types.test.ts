@@ -29,6 +29,31 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "InvalidateNotification",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "ResolveRequest",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "ResolveResponse",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "PinRequest",
+    direction: "request",
+  },
+  {
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "PinResponse",
+    direction: "response",
+  },
+  {
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
     rustTypeName: "Request",
     direction: "request",
@@ -245,6 +270,21 @@ function compareBindingName(
 }
 
 describe("Rust type bindings", () => {
+  it("renders private SSH handoffs without aggregate debug, clone or tagged value buffering", () => {
+    const source = renderRustTypes(rustTypeBindings);
+    expect(source).toContain("pub enum ResolveResponse {");
+    expect(source).toContain("private_key: crate::SecretText<65536>");
+    expect(source).toContain("passphrase: Option<crate::SecretText<4096>>");
+    expect(source).toContain(
+      "impl<'de> serde::Deserialize<'de> for ResolveResponse",
+    );
+    expect(source).toContain("map.next_key::<Field>()?");
+    expect(source).toContain("duplicate authority field");
+    expect(source).toContain("invalid authority outcome fields");
+    expect(source).not.toMatch(
+      /#\[derive\([^\]]*(Debug|Clone|Serialize)[^\]]*\)\]\s*(#\[[^\]]*\]\s*)*pub enum ResolveResponse\s*\{/,
+    );
+  });
   it("contains exactly the supported Rust DTO set", () => {
     const actualBindings = normalizeTypeBindings(rustTypeBindings).map(
       (binding) => {

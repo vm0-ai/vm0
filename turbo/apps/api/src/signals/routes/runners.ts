@@ -1,3 +1,4 @@
+import { clerk$ } from "../external/clerk";
 import { command } from "ccstate";
 import {
   claimCompatibleStoredExecutionContextSchema,
@@ -2924,6 +2925,7 @@ const reserveActiveInputsInner$ = command(
     }
     const result = await reserveActiveInputDelivery(
       set(writeDb$),
+      get(clerk$),
       {
         runId,
         userId: auth.userId,

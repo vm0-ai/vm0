@@ -591,6 +591,9 @@
       "categories": "Kategori template",
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
+      "creativeVideo": "Video kreatif",
+      "explainerUnavailable": "Template video ini tidak lagi tersedia. Hapus untuk mengirim pesan Anda.",
+      "explainerVideo": "Video penjelasan",
       "filters": {
         "age": "Usia",
         "all": "Semua",
@@ -1986,6 +1989,20 @@
       },
       "runCancelled": "Tertunda di tengah pikiran — lanjutkan kapan saja."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Temukan suara yang cocok dengan konten Anda.",
+      "avatarVoice": "Suara avatar",
+      "changeAvatar": "Ubah avatar",
+      "chooseStyle": "Pilih gaya",
+      "chooseStyleAndVoice": "Pilih gaya dan suara.",
+      "noMatches": "Tidak ada hasil. Coba pencarian atau kategori lain.",
+      "ready": "Siap digunakan. Tambahkan konten Anda di obrolan.",
+      "searchAvatars": "Cari avatar",
+      "searchStyles": "Cari gaya",
+      "settings": "Pengaturan video penjelasan",
+      "style": "Gaya",
+      "useSelection": "Gunakan pilihan"
+    },
     "feedback": {
       "emailDraftDescription": "draf email (ID draf mail: {{id}})",
       "partHeading": "Masukan untuk bagian balasan Anda ini:",
@@ -2014,50 +2031,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Otomatis · Okou memilih",
-        "autoDescription": "Pilih presenter publik HeyGen yang sesuai dengan permintaan",
         "heading": "Pilih avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
-        "noneDescription": "Buat video tanpa presenter",
         "previewLook": "Pratinjau tampilan {{name}}"
       },
-      "cardDescription": "Ubah ide atau materi menjadi video siap pakai",
       "catalog": {
-        "empty": "Tidak ada pilihan publik HeyGen yang tersedia.",
-        "error": "Katalog HeyGen tidak dapat dimuat.",
+        "error": "Katalog tidak dapat dimuat.",
         "loading": "Memuat pilihan lainnya",
         "reload": "Muat ulang katalog",
         "retry": "Coba lagi"
       },
-      "description": "Tambahkan materi, jelaskan keinginan Anda, lalu pilih gaya, avatar, dan suara HeyGen jika diperlukan.",
-      "errors": {
-        "sendFailed": "Utas chat tidak dapat dibuat. Permintaan Anda masih ada di sini agar Anda dapat mencoba lagi.",
-        "uploadFailed": "Satu atau beberapa file tidak dapat diunggah. Hapus file tersebut atau coba lagi."
-      },
       "footer": {
-        "cancel": "Batal",
-        "create": "Buat video",
-        "hint": "Tambahkan instruksi, file, atau keduanya"
-      },
-      "format": {
-        "auto": "Otomatis",
-        "output": "Format keluaran"
-      },
-      "heading": "Buat video intro Anda",
-      "help": "Tambahkan materi, jelaskan keinginan Anda, atau lakukan keduanya. Okou menangani sisanya.",
-      "prompt": {
-        "label": "Apa yang harus disampaikan video ini?",
-        "placeholder": "Jelaskan tujuan, audiens, bahasa, nada, atau detail penting lainnya"
-      },
-      "source": {
-        "drop": "Letakkan file di sini atau klik untuk mengunggah",
-        "remove": "Hapus {{filename}}"
+        "cancel": "Batal"
       },
       "style": {
         "auto": "Biarkan Okou memilih",
         "browseGroups": "Jelajahi menurut gaya",
-        "description": "Gaya menentukan adegan, transisi, teks overlay, dan tempo.",
         "groups": {
           "cinematic": "Film dan fotografi",
           "handmade": "Kerajinan dan material",
@@ -2067,25 +2057,16 @@
           "print": "Percetakan dan penerbitan",
           "retro-tech": "Teknologi retro dan antarmuka"
         },
-        "heading": "Pilih referensi gaya",
-        "label": "Referensi gaya",
         "preview": "Pratinjau {{title}}",
         "previewUnavailable": "Pratinjau video tidak tersedia untuk gaya ini."
       },
-      "title": "Buat video intro",
       "voice": {
         "auto": "Biarkan Okou memilih",
-        "autoDescription": "Okou memilih suara publik HeyGen yang sesuai",
-        "default": "Default · Mengikuti avatar",
         "defaultDescription": "Gunakan suara default avatar yang dipilih",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Gunakan suara HeyGen default milik {{avatar}}",
         "heading": "Pilih suara",
         "label": "Suara",
         "none": "Tanpa narasi",
-        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya.",
-        "original": "Audio asli",
-        "originalDescription": "Pertahankan audio sumber yang dipilih tanpa menambahkan ucapan buatan"
+        "noneDescription": "Jangan tambahkan narasi; pertahankan audio sumber kecuali Anda meminta untuk membisukannya."
       }
     },
     "mail": {

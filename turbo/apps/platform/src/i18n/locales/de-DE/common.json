@@ -592,6 +592,9 @@
       "categories": "Vorlagenkategorien",
       "category": "Vorlagenkategorie",
       "chooseVoice": "Stimme für {{title}} auswählen",
+      "creativeVideo": "Kreatives Video",
+      "explainerUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
+      "explainerVideo": "Erklärvideo",
       "filters": {
         "age": "Alter",
         "all": "Alle",
@@ -1989,6 +1992,20 @@
       },
       "runCancelled": "Mitten im Gedanken pausiert – machen Sie jederzeit weiter."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
+      "avatarVoice": "Stimme des Avatars",
+      "changeAvatar": "Avatar ändern",
+      "chooseStyle": "Stil auswählen",
+      "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
+      "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
+      "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
+      "searchAvatars": "Avatare suchen",
+      "searchStyles": "Stile suchen",
+      "settings": "Einstellungen für Erklärvideos",
+      "style": "Stil",
+      "useSelection": "Auswahl verwenden"
+    },
     "feedback": {
       "emailDraftDescription": "ein E-Mail-Entwurf (E-Mail-Entwurfs-ID: {{id}})",
       "partHeading": "Feedback zu diesem Teil Ihrer Antwort:",
@@ -2017,50 +2034,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Automatisch · Okou entscheidet",
-        "autoDescription": "Einen öffentlichen HeyGen-Präsentator passend zur Anfrage wählen",
         "heading": "Avatar auswählen",
         "label": "Avatar",
         "none": "Kein Avatar",
-        "noneDescription": "Das Video ohne Präsentator erstellen",
         "previewLook": "Look {{name}} ansehen"
       },
-      "cardDescription": "Eine Idee oder Materialien in ein fertiges Video verwandeln",
       "catalog": {
-        "empty": "Keine öffentlichen HeyGen-Optionen verfügbar.",
-        "error": "Der HeyGen-Katalog konnte nicht geladen werden.",
+        "error": "Der Katalog konnte nicht geladen werden.",
         "loading": "Weitere Optionen werden geladen",
         "reload": "Katalog neu laden",
         "retry": "Erneut versuchen"
       },
-      "description": "Füge Materialien hinzu, beschreibe dein Ziel und wähle optional einen HeyGen-Stil, einen Avatar und eine Stimme.",
-      "errors": {
-        "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Anfrage ist noch hier. Du kannst es erneut versuchen.",
-        "uploadFailed": "Eine oder mehrere Dateien konnten nicht hochgeladen werden. Entferne sie oder versuche es erneut."
-      },
       "footer": {
-        "cancel": "Abbrechen",
-        "create": "Video erstellen",
-        "hint": "Anweisungen, Dateien oder beides hinzufügen"
-      },
-      "format": {
-        "auto": "Automatisch",
-        "output": "Ausgabeformat"
-      },
-      "heading": "Erstelle dein Intro-Video",
-      "help": "Füge Materialien hinzu, beschreibe dein Ziel oder mache beides. Okou erledigt den Rest.",
-      "prompt": {
-        "label": "Was soll das Video vermitteln?",
-        "placeholder": "Beschreibe Ziel, Zielgruppe, Sprache, Ton oder andere wichtige Details"
-      },
-      "source": {
-        "drop": "Dateien hier ablegen oder zum Hochladen klicken",
-        "remove": "{{filename}} entfernen"
+        "cancel": "Abbrechen"
       },
       "style": {
         "auto": "Okou wählen lassen",
         "browseGroups": "Nach Stil durchsuchen",
-        "description": "Der Stil bestimmt Szenen, Übergänge, Texteinblendungen und Tempo.",
         "groups": {
           "cinematic": "Film und Fotografie",
           "handmade": "Handarbeit und Materialien",
@@ -2070,25 +2060,16 @@
           "print": "Druck und Verlagswesen",
           "retro-tech": "Retro-Technik und Oberflächen"
         },
-        "heading": "Stilreferenz wählen",
-        "label": "Stilreferenz",
         "preview": "Vorschau von {{title}}",
         "previewUnavailable": "Für diesen Stil ist keine Videovorschau verfügbar."
       },
-      "title": "Intro-Video erstellen",
       "voice": {
         "auto": "Okou wählen lassen",
-        "autoDescription": "Okou wählt eine passende öffentliche HeyGen-Stimme",
-        "default": "Standard · Folgt dem Avatar",
         "defaultDescription": "Die Standardstimme des gewählten Avatars verwenden",
-        "defaultForAvatar": "Standard · {{avatar}}",
-        "defaultForAvatarDescription": "Die HeyGen-Standardstimme von {{avatar}} verwenden",
         "heading": "Stimme auswählen",
         "label": "Stimme",
         "none": "Kein Voiceover",
-        "noneDescription": "Keine Erzählstimme hinzufügen; Originalton behalten, sofern du ihn nicht stummschalten möchtest.",
-        "original": "Originalaudio",
-        "originalDescription": "Den ausgewählten Originalton ohne zusätzliche generierte Sprache behalten"
+        "noneDescription": "Keine Erzählstimme hinzufügen; Originalton behalten, sofern du ihn nicht stummschalten möchtest."
       }
     },
     "mail": {

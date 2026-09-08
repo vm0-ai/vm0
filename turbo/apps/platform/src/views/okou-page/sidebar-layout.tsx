@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { ReactNode } from "react";
 import {
   useGet,
@@ -360,7 +361,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
   const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
-  return (
+  return withChatScrollLayout(
     <div
       ref={shellDocumentAttributesRef}
       className="okou-app okou-viewport-shell okou-managed-bottom-safe-area flex w-full bg-background md:bg-sidebar"
@@ -381,7 +382,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         {!isDesktop && <MobileTopBar />}
         {children}
       </WorkspaceInset>
-    </div>
+    </div>,
   );
 }
 

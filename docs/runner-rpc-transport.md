@@ -1,10 +1,10 @@
-# Guest-to-Runner RPC (no production methods)
+# Guest-to-Runner RPC
 
-The transport delivered by #32012 is infrastructure under #31932, independent
-of its first planned consumer, SSH. It installs no production dispatcher or
-handler, performs no API calls, and has no business validators. Local/mock
-sandbox providers expose no capability. Keep SSH disabled until the later
-execution, Agent/UI and activation slices are complete.
+The transport delivered by #32012 is infrastructure under #31932. Its first
+consumer is the [Runner SSH dispatcher](runner-ssh-execution.md), installed by
+#32387 for official API-backed Runs. The generic transport itself has no API
+calls or business validators. Local/mock sandbox providers expose no capability.
+SSH remains disabled until the Agent/UI and activation slices are complete.
 
 ## Guest boundary
 
@@ -22,7 +22,7 @@ terminated by EOF:
 }
 ```
 
-This is the planned SSH adapter's request, not a method installed by this PR.
+This is the SSH adapter's request; availability still depends on current API authority.
 Transport validates version 1, a nonempty method of at most 64 ASCII letters,
 digits, dots, underscores or hyphens, and object-valued params. Unknown envelope
 fields, duplicate envelope keys, invalid types and extra request bytes fail.
@@ -89,6 +89,13 @@ The total helper budget is 60 seconds over stdin, connect, request/response I/O
 and stdout, with the last 100 ms reserved for terminal reporting. Failed or
 cancelled partial stdout writes exit unsuccessfully without appending a corrupt
 replacement terminal. A broken pipe cannot guarantee terminal delivery.
+
+After stdin and connect, the bundled helper adds internal `remaining_ms` metadata
+to the wire envelope. Callers cannot supply that field, including null. The host
+clamps it to 60 seconds, includes request reading in that budget, and reserves
+the final second for its terminal response. The metadata is an untrusted deadline
+hint, never authority. It contains no method-specific data. Helper and official
+Runner ship together; no fallback or protocol negotiation is added.
 
 ## Host ownership and lifecycle
 
