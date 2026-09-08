@@ -24,7 +24,11 @@ import type {
   ConnectorDirectoryTab,
 } from "../../signals/okou-page/connectors.ts";
 import type { ConnectorCategorySection } from "../../signals/okou-page/settings/connector-categories.ts";
-import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import {
+  ConnectorCard,
+  DIRECTORY_HAIRLINE,
+  DIRECTORY_SURFACE,
+} from "./components/settings/connector-card.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import {
@@ -47,6 +51,8 @@ const SCROLL_EDGE_FADE =
   "[mask-image:linear-gradient(to_bottom,transparent_0,#000_18px,#000_calc(100%-44px),transparent_100%)]";
 
 const SECTION_PREVIEW_LIMIT = 6;
+
+const KEYCAP = "rounded-md bg-gray-0 px-1.5 py-px";
 
 type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 
@@ -119,7 +125,12 @@ function DirectoryEmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <span className="flex h-13 w-13 items-center justify-center rounded-[14px] bg-gray-50 text-muted-foreground okou-border">
+      <span
+        className={cn(
+          "flex h-13 w-13 items-center justify-center rounded-[14px] bg-gray-50 text-muted-foreground",
+          DIRECTORY_HAIRLINE,
+        )}
+      >
         {icon}
       </span>
       <div>
@@ -138,7 +149,7 @@ function DirectorySkeleton() {
     <div className="grid animate-pulse grid-cols-1 gap-3 sm:grid-cols-2">
       {Array.from({ length: 6 }, (_, index) => {
         return (
-          <div key={index} className="okou-card flex flex-col">
+          <div key={index} className={cn(DIRECTORY_SURFACE, "flex flex-col")}>
             <div className="flex items-center gap-3 px-4 pb-2 pt-3.5">
               <span className="h-9 w-9 shrink-0 rounded-[10px] bg-muted/50" />
               <span className="h-3.5 flex-1 rounded bg-muted/50" />
@@ -197,11 +208,19 @@ function CustomConnectorDirectoryCard({
         },
         { connector: connector.displayName },
       )}
-      className="okou-card cursor-pointer overflow-hidden text-left"
+      className={cn(
+        DIRECTORY_SURFACE,
+        "cursor-pointer overflow-hidden text-left hover:bg-card-hover",
+      )}
       onClick={onConnect}
     >
       <span className="flex items-center gap-3 px-4 pb-2 pt-3.5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-gray-50 okou-border">
+        <span
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-gray-50",
+            DIRECTORY_HAIRLINE,
+          )}
+        >
           <CustomConnectorIcon
             id={connector.id}
             displayName={connector.displayName}
@@ -215,7 +234,12 @@ function CustomConnectorDirectoryCard({
           >
             {connector.displayName}
           </span>
-          <span className="okou-badge shrink-0 rounded-md px-1.5 py-px text-[10px] text-muted-foreground">
+          <span
+            className={cn(
+              "shrink-0 rounded-md bg-gray-0 px-1.5 py-px text-[10px] text-muted-foreground",
+              DIRECTORY_HAIRLINE,
+            )}
+          >
             {t(($) => {
               return $.chat.connectors.directory.customBadge;
             })}
@@ -259,7 +283,8 @@ function DirectoryCategoryChips({
   const { t } = useTranslation();
   const chipClass = (active: boolean) => {
     return cn(
-      "okou-chip flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs whitespace-nowrap transition-colors",
+      "flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 text-xs whitespace-nowrap transition-colors",
+      DIRECTORY_HAIRLINE,
       active
         ? "bg-state-selected font-medium text-foreground"
         : "text-muted-foreground",
@@ -562,14 +587,14 @@ function DirectoryFooter() {
   const { t } = useTranslation();
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-t border-border/50 bg-gray-50 px-6 py-2.5 text-xs text-muted-foreground">
-      <span className="okou-badge rounded-md px-1.5 py-px">↑</span>
-      <span className="okou-badge rounded-md px-1.5 py-px">↓</span>
+      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↑</span>
+      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↓</span>
       <span>
         {t(($) => {
           return $.chat.connectors.directory.keyMove;
         })}
       </span>
-      <span className="okou-badge ml-2 rounded-md px-1.5 py-px">↵</span>
+      <span className={cn(KEYCAP, "ml-2", DIRECTORY_HAIRLINE)}>↵</span>
       <span>
         {t(($) => {
           return $.chat.connectors.directory.keyOpen;
@@ -975,7 +1000,7 @@ export function ConnectorDirectoryDialog({
       }}
     >
       <DialogContent
-        className="okou-app flex h-[min(600px,85vh)] max-w-2xl flex-col gap-0 p-0"
+        className="flex h-[min(600px,85vh)] max-w-2xl flex-col gap-0 p-0"
         aria-describedby={undefined}
         onKeyDown={handleKeyDown}
       >

@@ -4,7 +4,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   builtinConnector,
   httpConnector,
@@ -37,6 +41,19 @@ function directoryCatalog() {
       connected: false,
     }),
   ];
+}
+
+function dialogButton(dialog: HTMLElement, name: string): HTMLElement {
+  const match = queryAllByRoleFast("button", dialog).find((element) => {
+    return (
+      element.getAttribute("aria-label") === name ||
+      element.textContent?.trim() === name
+    );
+  });
+  if (!match) {
+    throw new Error(`Expected a button named "${name}" in the dialog`);
+  }
+  return match;
 }
 
 async function openDirectory(
@@ -119,9 +136,7 @@ test("Open connector detail and step back to the list", async () => {
   });
 
   const dialog = await openDirectory(user);
-  await user.click(
-    within(dialog).getByRole("button", { name: "Open GitHub details" }),
-  );
+  await user.click(dialogButton(dialog, "Open GitHub details"));
 
   await waitFor(() => {
     expect(
@@ -130,7 +145,7 @@ test("Open connector detail and step back to the list", async () => {
   });
   expect(within(dialog).getByText("Connection")).toBeVisible();
 
-  await user.click(within(dialog).getByRole("button", { name: "Back" }));
+  await user.click(dialogButton(dialog, "Back"));
   await waitFor(() => {
     expect(
       within(dialog).getByRole("heading", { name: "Connected" }),

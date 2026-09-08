@@ -215,6 +215,20 @@ function CatalogConnectorCard({
   );
 }
 
+/**
+ * `okou-card` and `okou-border` as utilities. The directory renders through a
+ * dialog portal, outside the `.okou-app` scope that owns the card tokens, so
+ * the radius and shadow values are inlined the way the other portalled
+ * surfaces already do.
+ */
+export const DIRECTORY_HAIRLINE =
+  "border-[0.7px] border-[hsl(var(--gray-400))]";
+export const DIRECTORY_SURFACE = cn(
+  "rounded-[1.25rem] bg-card transition-colors",
+  DIRECTORY_HAIRLINE,
+  "shadow-[0_2px_12px_hsl(30_6%_45%/0.05),0_0_0_0.5px_hsl(30_6%_45%/0.025)]",
+);
+
 /** Square container that gives every connector mark the same optical weight. */
 export function ConnectorIconTile({
   icon,
@@ -226,7 +240,8 @@ export function ConnectorIconTile({
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-gray-50 okou-border",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-gray-50",
+        DIRECTORY_HAIRLINE,
         size === "lg" ? "h-13 w-13 rounded-[14px]" : "h-9 w-9",
       )}
     >
@@ -354,8 +369,9 @@ function DirectoryConnectorCard({
       }
       aria-disabled={!interactive}
       className={cn(
-        "okou-card flex flex-col overflow-hidden text-left",
-        interactive ? "cursor-pointer" : "cursor-default",
+        DIRECTORY_SURFACE,
+        "flex flex-col overflow-hidden text-left",
+        interactive ? "cursor-pointer hover:bg-card-hover" : "cursor-default",
         unavailable && "opacity-60",
         active && "bg-state-selected",
       )}
