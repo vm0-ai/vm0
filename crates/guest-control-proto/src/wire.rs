@@ -113,6 +113,12 @@ pub const MSG_WORKSPACE_DRIVE_MOUNT: u8 = 0x1E;
 /// Guest-to-host result of mounting the fixed workspace drive.
 pub const MSG_WORKSPACE_DRIVE_MOUNT_RESULT: u8 = 0x1F;
 
+/// Host-to-guest read-only file-write status query with an empty payload.
+pub const MSG_FILE_WRITE_STATUS: u8 = 0x20;
+
+/// Guest-to-host snapshot of the latest admitted file-write lifecycle stage.
+pub const MSG_FILE_WRITE_STATUS_RESULT: u8 = 0x21;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -203,6 +209,12 @@ mod tests {
                 0x1F,
             ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
+            ("MSG_FILE_WRITE_STATUS", MSG_FILE_WRITE_STATUS, 0x20),
+            (
+                "MSG_FILE_WRITE_STATUS_RESULT",
+                MSG_FILE_WRITE_STATUS_RESULT,
+                0x21,
+            ),
         ];
 
         for (name, actual, expected) in message_types {

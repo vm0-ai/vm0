@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use std::{fmt, io};
 
@@ -12,8 +12,8 @@ use shell_quote::quote_shell_arg;
 
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
-    FrameWriteObserver, GuestControlClient, Shared, exec_operation,
-    exec_operation::ExecOperationWaitOutcome,
+    FrameWriteObserver, GuestControlClient, RequestTimeoutError, RequestTimeoutStage, Shared,
+    exec_operation, exec_operation::ExecOperationWaitOutcome,
     normal_request_on_shared_with_write_observer_frame_builder,
     request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
@@ -812,17 +812,27 @@ impl GuestControlClient {
             .await;
         let _file_write_guard = self.shared.file_write_gate.lock().await;
         let timeout = WRITE_FILE_REQUEST_DEADLINE;
+        let sequence = AtomicU32::new(0);
+        let write_sequence = &sequence;
         let resp = normal_request_on_shared_with_write_observer_frame_builder(
             &self.shared,
             WRITE_FILES_TERMINAL_MSG_TYPES,
             timeout,
             write_observer,
             move |seq, frame| {
+                write_sequence.store(seq, Ordering::Relaxed);
                 mode.encode_frame(frame, seq, &proto_entries)
                     .map_err(protocol_invalid_input)
             },
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            annotate_private_write_timeout(
+                error,
+                matches!(mode, WriteFilesMode::Private),
+                &sequence,
+            )
+        })?;
 
         if resp.msg_type == MSG_ERROR {
             let msg = guest_control_proto::decode_error(&resp.payload)
@@ -857,6 +867,12 @@ impl GuestControlClient {
 
         let _file_write_guard = self.shared.file_write_gate.lock().await;
         let timeout = WRITE_FILE_REQUEST_DEADLINE;
+        let sequence = AtomicU32::new(0);
+        let write_sequence = &sequence;
+        let build_frame = move |seq, frame: &mut Vec<u8>| {
+            write_sequence.store(seq, Ordering::Relaxed);
+            encode_write_file_chunk_frame(frame, seq, request)
+        };
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
                 normal_request_on_shared_with_write_observer_frame_builder(
@@ -864,9 +880,9 @@ impl GuestControlClient {
                     WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
                     write_observer,
-                    move |seq, frame| encode_write_file_chunk_frame(frame, seq, request),
+                    build_frame,
                 )
-                .await?
+                .await
             }
             WriteFileChunkTracking::Composite(normal_operation) => {
                 request_on_shared_with_composite_operation_and_observer_frame_builder(
@@ -875,11 +891,12 @@ impl GuestControlClient {
                     timeout,
                     normal_operation,
                     write_observer,
-                    move |seq, frame| encode_write_file_chunk_frame(frame, seq, request),
+                    build_frame,
                 )
-                .await?
+                .await
             }
-        };
+        }
+        .map_err(|error| annotate_private_write_timeout(error, request.private, &sequence))?;
 
         if resp.msg_type == MSG_ERROR {
             let msg = guest_control_proto::decode_error(&resp.payload)
@@ -903,6 +920,22 @@ impl GuestControlClient {
 
         Ok(())
     }
+}
+
+fn annotate_private_write_timeout(
+    mut error: io::Error,
+    private: bool,
+    sequence: &AtomicU32,
+) -> io::Error {
+    if private
+        && let Some(timeout) = error
+            .get_mut()
+            .and_then(|source| source.downcast_mut::<RequestTimeoutError>())
+        && timeout.stage() == RequestTimeoutStage::AwaitingTerminalResponse
+    {
+        timeout.private_write_sequence = Some(sequence.load(Ordering::Relaxed));
+    }
+    error
 }
 
 fn validate_write_files<'a>(

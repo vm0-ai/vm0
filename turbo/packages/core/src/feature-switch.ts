@@ -407,12 +407,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
-  [FeatureSwitchKey.FollowUpOptimize]: {
-    maintainer: "lancy@okou.ai",
-    description:
-      "Use a concise, language-matched prompt for recommended chat follow-ups.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@okou.ai",
     description:

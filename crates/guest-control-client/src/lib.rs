@@ -125,12 +125,17 @@ pub enum RequestTimeoutStage {
 pub struct RequestTimeoutError {
     stage: RequestTimeoutStage,
     timeout: Duration,
+    private_write_sequence: Option<u32>,
 }
 
 impl RequestTimeoutError {
     /// Create a timeout error for an observed request stage and total budget.
     pub const fn new(stage: RequestTimeoutStage, timeout: Duration) -> Self {
-        Self { stage, timeout }
+        Self {
+            stage,
+            timeout,
+            private_write_sequence: None,
+        }
     }
 
     /// Return the request stage observed when the deadline expired.
@@ -141,6 +146,14 @@ impl RequestTimeoutError {
     /// Return the configured end-to-end request timeout.
     pub const fn timeout(&self) -> Duration {
         self.timeout
+    }
+
+    /// Private-write request to correlate with a read-only guest diagnostic.
+    ///
+    /// Present only after a complete private-write frame has timed out waiting
+    /// for its terminal response. It does not permit retrying the write.
+    pub const fn private_write_sequence(&self) -> Option<u32> {
+        self.private_write_sequence
     }
 }
 

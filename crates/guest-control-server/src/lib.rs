@@ -11,6 +11,7 @@ mod drain;
 mod error;
 mod exec_control;
 mod exec_operation;
+mod file_write_progress;
 mod file_write_worker;
 mod guest_dns_readiness;
 mod guest_state_restore;
