@@ -1,8 +1,10 @@
 import { command, type Store } from "ccstate";
 
 import {
+  registerDirectRealtimeSubscription,
   subscribeChatDatabaseEvents,
   subscribeChatDatabaseRecovery,
+  subscribeNamedRealtimeEvents,
   subscribeUserRealtimeEvents,
 } from "../mocks/ably.ts";
 import {
@@ -91,8 +93,31 @@ interface DirectRealtimeMessage {
 
 interface DirectRealtimeSubscription {
   readonly listener: (message: SharedDatabaseRealtimeMessage) => void;
+  readonly release: () => void;
   readonly scope: SharedDatabaseRealtimeScope;
   readonly topic: string;
+}
+
+interface DirectSharedDatabaseBridgeOptions {
+  readonly cachedChatThreadEvents?: ChatThreadEventQueryResult;
+  readonly identity: SharedDatabaseIdentity;
+}
+
+function directRealtimeChannelName(
+  identity: SharedDatabaseIdentity,
+  scope: SharedDatabaseRealtimeScope,
+): string {
+  switch (scope) {
+    case "credential": {
+      return `user-org:${identity.userId}:${identity.orgId}`;
+    }
+    case "org": {
+      return `org:${identity.orgId}`;
+    }
+    case "user": {
+      return `user:${identity.userId}`;
+    }
+  }
 }
 
 function waitForWorkerOperation<T>(
@@ -136,7 +161,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     private readonly events: SharedDatabaseBridgeEvents,
     private readonly workerSignal: AbortSignal,
     private readonly getToken: SharedDatabaseTokenProvider,
-    private readonly cachedChatThreadEvents?: ChatThreadEventQueryResult,
+    private readonly options: DirectSharedDatabaseBridgeOptions,
   ) {}
 
   private readonly emit = onDomEventFn(
@@ -164,6 +189,21 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       this.events.statusChanged(event.status);
     },
   );
+
+  handleNamedRealtimeMessage(
+    channelName: string,
+    message: DirectRealtimeMessage,
+  ): void {
+    const scope = (["credential", "org", "user"] as const).find((candidate) => {
+      return (
+        directRealtimeChannelName(this.options.identity, candidate) ===
+        channelName
+      );
+    });
+    if (scope) {
+      this.handleRealtimeMessage(scope, message);
+    }
+  }
 
   handleRealtimeMessage(
     scope: SharedDatabaseRealtimeScope,
@@ -217,6 +257,16 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
       { getToken: this.getToken, port: directWorkerPort(this.emit) },
       connectionSignal,
     );
+    this.connectionSignal.addEventListener(
+      "abort",
+      () => {
+        for (const subscription of this.realtimeSubscriptions.values()) {
+          subscription.release();
+        }
+        this.realtimeSubscriptions.clear();
+      },
+      { once: true },
+    );
     const daemon = this.workerStore.set(startSharedDatabaseWorkerDaemons$);
     if (daemon) {
       detach(daemon, Reason.Daemon, "test shared database Worker");
@@ -233,11 +283,22 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     if (this.realtimeSubscriptions.has(subscriptionId)) {
       throw new Error("Shared database realtime subscription already exists");
     }
-    this.realtimeSubscriptions.set(subscriptionId, { listener, scope, topic });
+    const release = registerDirectRealtimeSubscription(
+      directRealtimeChannelName(this.options.identity, scope),
+      topic,
+    );
+    this.realtimeSubscriptions.set(subscriptionId, {
+      listener,
+      release,
+      scope,
+      topic,
+    });
     return Promise.resolve();
   }
 
   unsubscribeRealtime(subscriptionId: string): void {
+    const subscription = this.realtimeSubscriptions.get(subscriptionId);
+    subscription?.release();
     this.realtimeSubscriptions.delete(subscriptionId);
   }
 
@@ -269,11 +330,11 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     if (
       query.dataKey.kind === "chat-thread-event" &&
       query.consistency === "cache-only" &&
-      this.cachedChatThreadEvents
+      this.options.cachedChatThreadEvents
     ) {
       return parseSharedDatabaseQueryResult(
         query.dataKey,
-        structuredClone(this.cachedChatThreadEvents),
+        structuredClone(this.options.cachedChatThreadEvents),
       );
     }
     const operation = this.workerStore.set(
@@ -372,7 +433,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     const host: SharedDatabaseBridgeHost = {
-      createBridge: (_identity, getToken, events, connectionSignal) => {
+      createBridge: (identity, getToken, events, connectionSignal) => {
         let bridge: SharedDatabaseBridge;
         if (options.transport === "message-port") {
           const channel = new MessageChannel();
@@ -395,6 +456,9 @@ export const setupSharedWorkerTestBootstrap$ = command(
             subscribeUserRealtimeEvents((message) => {
               directBridge?.handleRealtimeMessage("user", message);
             }, signal);
+            subscribeNamedRealtimeEvents((channelName, message) => {
+              directBridge?.handleNamedRealtimeMessage(channelName, message);
+            }, signal);
             subscribeChatDatabaseRecovery(() => {
               directBridge?.handleRealtimeRecovery();
             }, signal);
@@ -405,7 +469,10 @@ export const setupSharedWorkerTestBootstrap$ = command(
             events,
             signal,
             getToken,
-            options.cachedChatThreadEvents,
+            {
+              identity,
+              cachedChatThreadEvents: options.cachedChatThreadEvents,
+            },
           );
           bridge = directBridge;
         }

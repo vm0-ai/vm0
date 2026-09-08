@@ -3830,7 +3830,12 @@ function mockCalendarReconnect(
   return {
     submittedAccounts,
     open: async () => {
-      await setupWorkflowDetailPage(workflowDetailPath("automations"));
+      mockBillingTier("team");
+      await setupPage({
+        context,
+        path: workflowDetailPath("automations"),
+        sharedWorkerTestTransport: "message-port",
+      });
 
       const warning = await screen.findByRole("alert");
       expect(warning).toHaveTextContent(
