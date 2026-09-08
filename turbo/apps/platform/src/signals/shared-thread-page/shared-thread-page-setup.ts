@@ -15,7 +15,10 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
-import { agentMessageMathEnabled$ } from "../external/feature-switch.ts";
+import {
+  agentMessageMathEnabled$,
+  initialFeatureSwitchHydration$,
+} from "../external/feature-switch.ts";
 import { createSharedThreadRichContentSignals } from "./shared-thread-rich-content.ts";
 
 export const setupSharedThreadPage$ = command(
@@ -24,11 +27,14 @@ export const setupSharedThreadPage$ = command(
     const params = get(pathParams$);
     const id = String(params?.id ?? "");
     const client = get(apiClient$)(sharedThreadsContract);
+    const featureSwitchHydration = get(initialFeatureSwitchHydration$);
     const result = await accept(
       client.get({ params: { id }, fetchOptions: { signal } }),
       [200, 404],
       signal,
     );
+    await featureSwitchHydration;
+    signal.throwIfAborted();
     let sharedThread: SharedDisplayThread | null = null;
     const mathEnabled = get(agentMessageMathEnabled$);
     if (result.status === 200) {
