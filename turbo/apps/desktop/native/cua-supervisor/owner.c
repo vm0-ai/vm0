@@ -13,6 +13,8 @@
 #include <unistd.h>
 #ifdef __APPLE__
 #include <libproc.h>
+#include <sys/proc.h>
+#include <sys/proc_info.h>
 #endif
 
 static pid_t child = 0;
@@ -52,6 +54,28 @@ static int members(void) {
   return count;
 #else
   return -1; /* Linux is compile-only; no substitute containment proof. */
+#endif
+}
+
+/* A frozen guardian may retain its exited direct child as a zombie. Do not
+ * destroy the remaining supervisor until every group member has exited. */
+static int descendants_exited(void) {
+#ifdef __APPLE__
+  pid_t pids[4096];
+  errno = 0;
+  int length = proc_listpgrppids(child, pids, sizeof(pids));
+  if (length < 0 || (length == 0 && errno != 0) ||
+      length >= (int)(sizeof(pids) / sizeof(pids[0]))) return 0;
+  for (int i = 0; i < length; ++i) {
+    if (pids[i] == 0 || pids[i] == child) continue;
+    struct proc_bsdinfo state;
+    if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &state, sizeof(state)) !=
+        (int)sizeof(state) || state.pbi_pid != (uint32_t)pids[i] ||
+        state.pbi_pgid != (uint32_t)child || state.pbi_status != SZOMB) return 0;
+  }
+  return 1;
+#else
+  return 0;
 #endif
 }
 
@@ -136,6 +160,9 @@ static napi_value force(napi_env env, napi_callback_info info) {
   if (argc == 1 && napi_get_value_int32(env, args[0], &expected) == napi_ok &&
       expected == child && observe(&status) == 0) {
     result = kill(-child, SIGKILL);
+    // Keep the guardian available if main dies during force. Only terminate
+    // its retained PID once every SDK descendant is gone or kernel-exited.
+    if (status.si_pid == 0 && descendants_exited()) kill(child, SIGKILL);
   }
   napi_value value;
   napi_create_int32(env, result, &value);
@@ -158,6 +185,16 @@ static napi_value sample(napi_env env, napi_callback_info info) {
 }
 
 #ifdef CUA_SUPERVISOR_TESTING
+static napi_value stop_guardian(napi_env env, napi_callback_info info) {
+  (void)info;
+  siginfo_t status;
+  if (observe(&status) != 0 || status.si_pid != 0)
+    return fail(env, "guardian identity is unavailable");
+  napi_value value;
+  napi_create_int32(env, kill(child, SIGSTOP), &value);
+  return value;
+}
+
 static napi_value crash_guardian(napi_env env, napi_callback_info info) {
   (void)info;
   siginfo_t status;
@@ -194,6 +231,7 @@ static napi_value init(napi_env env, napi_value exports) {
     {"reap", NULL, reap, NULL, NULL, NULL, napi_default, NULL},
 #ifdef CUA_SUPERVISOR_TESTING
     {"crashGuardian", NULL, crash_guardian, NULL, NULL, NULL, napi_default, NULL},
+    {"stopGuardian", NULL, stop_guardian, NULL, NULL, NULL, napi_default, NULL},
 #endif
   };
   napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);

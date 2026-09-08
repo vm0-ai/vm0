@@ -84,14 +84,14 @@ def run_case(electron, build, sdk, output, native, mode, iteration):
             "group": group, "kernelExitObservedMs": exits,
         }, indent=2) + "\n")
         assert set(exits) == observed_pids, (mode, exits, observed_pids)
-        if mode == "main-dies":
+        if mode in {"main-dies", "main-dies-during-force"}:
             assert max(exits.values()) < 5000, exits
             result = {"mode": mode, "parentDeathExitObserved": True}
         else:
             result = json.loads(Path(f"{socket}.result").read_text())
             negative = mode in {"failed-kill", "identity-mismatch", "lost-observation"}
             assert result["confirmed"] is not negative, result
-            if mode in {"blocked-before-ready", "guardian-dies"} or negative:
+            if mode in {"blocked-before-ready", "guardian-dies", "guardian-stops"} or negative:
                 assert result["beats"] >= 200, result
             if negative:
                 assert result["fenceRetained"], result
@@ -104,6 +104,9 @@ def run_case(electron, build, sdk, output, native, mode, iteration):
                 assert result["crashSample"]["exited"] == 1, result
                 assert result["crashSample"]["waitError"] == 0, result
                 assert result["crashSample"]["remaining"] >= 2, result
+            if mode == "guardian-stops":
+                assert result["crashSample"]["exited"] == 0, result
+                assert result["crashSample"]["waitError"] == 0, result
             if mode == "healthy":
                 graceful = json.loads(Path(f"{socket}.graceful").read_text())
                 assert graceful["ended"]["success"], graceful
@@ -128,7 +131,8 @@ def main():
     }
     cases = [("blocked-before-ready", i) for i in range(3)]
     cases += [(mode, 0) for mode in [
-        "guardian-dies", "helper-dies", "main-dies", "failed-kill",
+        "guardian-dies", "guardian-stops", "helper-dies", "main-dies",
+        "main-dies-during-force", "failed-kill",
         "identity-mismatch", "lost-observation",
     ]]
     cases += [("spawn-stop", i) for i in range(10)]

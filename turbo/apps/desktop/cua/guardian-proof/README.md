@@ -32,7 +32,15 @@ is retained unchanged. No production path loads these diagnostic files.
    `proc_listpgrppids` query proving no remaining group members; the test also
    independently registers `EVFILT_PROC/NOTE_EXIT` before each injected fault.
    Group enumeration errors, overflow or missing waitable identity fail closed.
-5. Main's monotonic five-second retirement deadline is armed before cleanup.
+5. Main can also signal its exact still-waitable guardian PID, after Darwin
+   reports that all group members have exited. A stopped guardian can retain a
+   zombie helper: `PROC_PIDTBSDINFO` must report the same reserved group/PID and
+   `SZOMB` for every remaining member before main terminates the guardian.
+   Failed status/identity reads retain the fence. This preserves the guardian
+   if main dies while force is still reclaiming live SDK descendants. Main then
+   retains the guardian zombie until the group is completely empty.
+
+   Main's monotonic five-second retirement deadline is armed before cleanup.
    Three seconds are available for graceful work, the remaining two for group
    SIGKILL and exit observation. Signals repeat while the reserved group still
    contains members: macOS testing proved a spawn already inside the kernel can
@@ -40,6 +48,7 @@ is retained unchanged. No production path loads these diagnostic files.
    `cleanup_unproven`, retaining the native child reservation and generation
    fence. No replacement/update is permitted. A syscall return is not evidence
    of exit.
+
 6. Guardian independently watches a close-on-exec lifetime pipe from main and
    a heartbeat lease. Main death/lease expiry makes the still-live guardian
    repeatedly signal the reserved group from outside it, observe group emptiness

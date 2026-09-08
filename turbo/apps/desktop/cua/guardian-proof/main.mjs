@@ -49,9 +49,18 @@ void app.whenReady().then(async () => {
   let crashSample = null;
   let fenceRetained = false;
   if (mode === "main-dies") process.kill(process.pid, "SIGKILL");
+  if (mode === "main-dies-during-force") {
+    owner.force(guardian);
+    process.kill(process.pid, "SIGKILL");
+  }
   if (mode === "guardian-dies") {
     owner.crashGuardian();
     // Let libuv run repeatedly; this must not reap the unregistered child.
+    await pause(200);
+    crashSample = owner.sample();
+  }
+  if (mode === "guardian-stops") {
+    if (owner.stopGuardian() !== 0) throw new Error("guardian stop failed");
     await pause(200);
     crashSample = owner.sample();
   }
