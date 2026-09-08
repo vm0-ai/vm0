@@ -40,6 +40,13 @@ for name in "${required_env[@]}"; do
   require_env "$name"
 done
 
+# Match the Crates Runner behavior lane's selection without replicating each
+# CI namespace's idle and prewarmed pools across every metal host.
+SELECTED_CONTEXT=$(AWS_METAL_RUNNER_HOSTS="$METAL_HOSTS" \
+  "${SCRIPT_DIR}/runner-host-architecture-groups.sh" select-context "$JOB_REF")
+SELECTED_HOST=$(jq -r '.host' <<<"$SELECTED_CONTEXT")
+echo "Selected runner service host: ${SELECTED_HOST}"
+
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/runner-reconcile-start.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 check_output="${work_dir}/check.out"
@@ -234,6 +241,7 @@ stop_started_hosts() {
   local HOST_INDEX=0
   for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
     HOST_INDEX=$((HOST_INDEX + 1))
+    [ "$HOST" = "$SELECTED_HOST" ] || continue
     local RUNNER_SERVICE_SUFFIX="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
     local REMOTE="${METAL_USER}@${HOST}"
     echo "::warning::Requesting stop for partially started runner service ${RUNNER_SERVICE_SUFFIX} on ${HOST}"
@@ -267,6 +275,8 @@ export -f read_host_capacity start_on_host
 HOST_INDEX=0
 for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
   HOST_INDEX=$((HOST_INDEX + 1))
+  # Retain the original inventory index so reruns replace the existing service.
+  [ "$HOST" = "$SELECTED_HOST" ] || continue
   HOSTS+=("$HOST")
   RUNNER_START_RECORDING=1
   setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" >"${LOG_DIR}/${HOST}.log" 2>&1 &
