@@ -186,7 +186,6 @@ test("Hide passage actions for a run summary inside an AI reply", async () => {
     path: RUN_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ChatDesktopSelection]: true,
-      [FeatureSwitchKey.ChatRunWorkFolding]: true,
     },
   });
 

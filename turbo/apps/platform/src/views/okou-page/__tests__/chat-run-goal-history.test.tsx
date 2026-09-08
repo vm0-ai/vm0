@@ -1,5 +1,4 @@
 import { screen } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -176,7 +175,6 @@ test("Review goal continuations as one work history", async () => {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -292,7 +290,6 @@ async function renderWaitingGoalContinuation(currentRunGroupId: string) {
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -417,7 +414,6 @@ test("Keep a cancelled goal continuation beside its latest answer", async () => 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();
@@ -551,7 +547,6 @@ test("Start a fresh work history after interrupting a goal continuation", async 
   await setupPage({
     context,
     path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
   await readyChat();

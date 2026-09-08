@@ -172,13 +172,13 @@ test("Load a long chat history without losing grouped-run context", async () => 
   const runGroupId = "launch-brief-group";
   addPair(
     "Build the launch brief from these references",
-    "First hidden launch brief result",
+    "First launch brief result",
     "history-group-run-1",
     runGroupId,
   );
   addPair(
     "Build the launch brief from these references",
-    "Second hidden launch brief result",
+    "Second launch brief result",
     "history-group-run-2",
     runGroupId,
   );
@@ -235,17 +235,10 @@ test("Load a long chat history without losing grouped-run context", async () => 
     expect(container).toHaveTextContent("launch-evidence.pdf");
   });
   expect(composer).toBeVisible();
-  expect(container).not.toHaveTextContent("First hidden launch brief result");
-  expect(container).not.toHaveTextContent("Second hidden launch brief result");
+  expect(container).toHaveTextContent("First launch brief result");
+  expect(container).toHaveTextContent("Second launch brief result");
   expect(container).not.toHaveTextContent("Earliest retained request");
 
-  const folds = container.querySelectorAll("[data-chat-run-group-fold]");
-  expect(folds).toHaveLength(1);
-  const foldButton = folds[0]?.querySelector("button");
-  expect(foldButton).toHaveAttribute("aria-expanded", "false");
-  expect(foldButton).toHaveTextContent(
-    "2 runs for Build the launch brief from these references",
-  );
   expect(eventAnchorCount(container, latestGrouped.response.id)).toBe(1);
 
   const scroller = scrollContainer(thread.id);
@@ -260,9 +253,6 @@ test("Load a long chat history without losing grouped-run context", async () => 
   expect(eventAnchorCount(container, earliest.prompt.id)).toBe(1);
   expect(eventAnchorCount(container, beforeGroup.prompt.id)).toBe(1);
   expect(eventAnchorCount(container, afterGroup.response.id)).toBe(1);
-  expect(container.querySelectorAll("[data-chat-run-group-fold]")).toHaveLength(
-    1,
-  );
 });
 
 test("Navigate chat history with scroll controls and keyboard commands", async () => {

@@ -32,7 +32,6 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
-  CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "../okou-page/chat-message-surface.tsx";
@@ -217,7 +216,7 @@ function SharedAssistantGroup({
             return (
               <ChatAssistantMessageBody
                 key={message.messageIndex}
-                className={CHAT_THREAD_RESPONSE_LINE_CLASS}
+                className="@[900px]:h-auto @[900px]:min-h-9 @[900px]:py-[calc((2.25rem-1lh)/2)] @[900px]:leading-[1.59375rem]"
               >
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody

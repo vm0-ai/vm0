@@ -1,5 +1,4 @@
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
@@ -519,7 +518,6 @@ test("Keep a visible work message in place when its run completes", async () => 
     context,
     path: `/chats/${THREAD_IDS.expandedWork}`,
     host: "app.okou.ai",
-    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await screen.findByText("Reading the rollout health report");
   await waitFor(() => {

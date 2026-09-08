@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_EVENT_TYPES,
-  foldActiveChatGoalObjective,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
   foldPendingChatQueueEvents,
@@ -511,53 +510,6 @@ describe("ChatEvent folds", () => {
     expect(terminatedChatRunIds([queued, completed])).toStrictEqual(
       new Set(["run-1"]),
     );
-  });
-
-  it("folds only canonical goal markers", () => {
-    const queued = chatEvents.find((event) => {
-      return event.eventType === "input.goal";
-    });
-    const open = chatEvents.find((event) => {
-      return event.eventType === "goal.open";
-    });
-    const close = chatEvents.find((event) => {
-      return event.eventType === "goal.close";
-    });
-    if (!queued || !open || !close) {
-      throw new Error("Missing goal fold fixture");
-    }
-
-    expect(foldActiveChatGoalObjective([queued])).toBeNull();
-    expect(foldActiveChatGoalObjective([open])).toBe("Ship the refactor");
-    expect(foldActiveChatGoalObjective([open, queued])).toBe(
-      "Ship the refactor",
-    );
-    expect(foldActiveChatGoalObjective([open, queued, close])).toBeNull();
-  });
-
-  it("uses sequence order when a close is followed by a reopen", () => {
-    const close = {
-      id: "goal-close-later",
-      eventType: "goal.close" as const,
-      content: null,
-      seqId: 30,
-    };
-    const reopened = {
-      id: "goal-reopened",
-      eventType: "goal.open" as const,
-      content: "Reopened objective",
-      seqId: 31,
-    };
-
-    expect(foldActiveChatGoalObjective([reopened, close])).toBe(
-      "Reopened objective",
-    );
-    expect(
-      foldActiveChatGoalObjective([
-        reopened,
-        { ...close, id: "goal-final-close", seqId: 32 },
-      ]),
-    ).toBeNull();
   });
 
   it("keeps the latest settled usage snapshot for each run", () => {

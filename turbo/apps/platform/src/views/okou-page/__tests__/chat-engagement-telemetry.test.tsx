@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { click } from "../../../__tests__/page-helper.ts";
@@ -113,9 +112,6 @@ describe("chat engagement telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      },
     });
 
     const expandWork = await findWorkHistoryToggle("collapsed");
@@ -193,9 +189,6 @@ describe("chat engagement telemetry", () => {
     await setupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      },
     });
 
     const expandWork = await findWorkHistoryToggle("collapsed");
