@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { now } from "../../lib/time.ts";
@@ -349,7 +350,7 @@ function ArtifactCardView({
       : undefined;
 
   if (signals.kind === "image") {
-    return (
+    return withChatScrollLayout(
       <ChatImagePreviewLink
         alt={signals.filename}
         ariaLabel={t(
@@ -369,11 +370,11 @@ function ArtifactCardView({
         placeholderClassName="h-full w-full"
         resourceUrl$={signals.resourceUrl$}
         url={signals.url}
-      />
+      />,
     );
   }
   if (signals.kind === "video") {
-    return (
+    return withChatScrollLayout(
       <ChatVideoPreviewButton
         ariaLabel={t(
           ($) => {
@@ -397,10 +398,10 @@ function ArtifactCardView({
         previewImageUrl={previewImageUrl}
         url={signals.url}
         videoClassName="h-full w-full object-contain"
-      />
+      />,
     );
   }
-  return (
+  return withChatScrollLayout(
     <AttachmentPreview
       attachment={{
         filename: signals.kind === "html" && label ? label : signals.filename,
@@ -417,7 +418,7 @@ function ArtifactCardView({
       }}
       previewImageLoad={signals.previewImageLoad}
       text$={signals.text$}
-    />
+    />,
   );
 }
 
@@ -478,13 +479,13 @@ function CatalogConnectorActionCard({
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
   if (!catalogItem && catalogItemLoadable.state === "loading") {
-    return <ConnectorActionCardSkeleton />;
+    return withChatScrollLayout(<ConnectorActionCardSkeleton />);
   }
   if (!catalogItem) {
-    return null;
+    return withChatScrollLayout(null);
   }
 
-  return (
+  return withChatScrollLayout(
     <ConnectorCard
       variant="action"
       className={cn(
@@ -503,7 +504,7 @@ function CatalogConnectorActionCard({
       onActivate={() => {
         detach(activate(pageSignal), Reason.DomCallback);
       }}
-    />
+    />,
   );
 }
 
@@ -525,13 +526,13 @@ function CustomConnectorActionCard({
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
   if (!connector && connectorLoadable.state === "loading") {
-    return <ConnectorActionCardSkeleton />;
+    return withChatScrollLayout(<ConnectorActionCardSkeleton />);
   }
   if (!connector) {
-    return null;
+    return withChatScrollLayout(null);
   }
 
-  return (
+  return withChatScrollLayout(
     <ConnectorCard
       variant="action"
       className={cn(
@@ -556,7 +557,7 @@ function CustomConnectorActionCard({
       onActivate={() => {
         detach(activate(pageSignal), Reason.DomCallback);
       }}
-    />
+    />,
   );
 }
 
@@ -574,7 +575,7 @@ function ComputerUseAuthorizationCard({
   signals: ComputerUseAuthorizationSignals;
 }) {
   const { t } = useTranslation();
-  return (
+  return withChatScrollLayout(
     <div
       data-testid="computer-use-authorization-card"
       className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
@@ -607,7 +608,7 @@ function ComputerUseAuthorizationCard({
         })}
         <ArrowUpRight size={15} />
       </a>
-    </div>
+    </div>,
   );
 }
 
@@ -620,7 +621,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
     detach(open(pageSignal), Reason.DomCallback);
   };
 
-  return (
+  return withChatScrollLayout(
     <div
       data-testid="plan-upgrade-card"
       className="okou-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
@@ -651,7 +652,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
           return $.chat.billing.comparePlans;
         })}
       </Button>
-    </div>
+    </div>,
   );
 }
 
@@ -1357,7 +1358,7 @@ function PermissionActionCardForTarget({
     status: actionState.status,
   });
 
-  return (
+  return withChatScrollLayout(
     <PermissionActionCardContent
       signals={signals}
       icon={permissionMetadata?.icon}
@@ -1386,7 +1387,7 @@ function PermissionActionCardForTarget({
         },
         pageSignal,
       )}
-    />
+    />,
   );
 }
 

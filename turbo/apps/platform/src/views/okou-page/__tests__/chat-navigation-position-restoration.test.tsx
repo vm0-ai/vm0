@@ -9,7 +9,6 @@ import { chatEventRowsResponse } from "../../../signals/__tests__/test-helpers.t
 import {
   context,
   mockChatLifecycleWithoutBrowserSession,
-  mockResizeObserver,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
 import { fillComposer } from "./chat-test-helpers.ts";
@@ -436,7 +435,6 @@ async function expectAtLatestActivity(
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
   const currentEvents = conversationEvents("keyboard-current", "Current");
   mockThreadStories(KEYBOARD_CURRENT_THREAD_ID, [
     {
@@ -471,7 +469,7 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const initialGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(initialGeometry.atBottom()).toBeTruthy();
   });
@@ -497,14 +495,13 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const returnedGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(returnedGeometry, targetText);
 });
 
 test("Restore the reading position after switching threads from the sidebar", async () => {
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
   mockThreadStories(SIDEBAR_CURRENT_THREAD_ID, [
     {
       id: SIDEBAR_OTHER_THREAD_ID,
@@ -529,7 +526,7 @@ test("Restore the reading position after switching threads from the sidebar", as
   const initialGeometry = installChatScrollGeometry(
     threadContainer(SIDEBAR_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(initialGeometry.atBottom()).toBeTruthy();
   });
@@ -572,13 +569,12 @@ test("Restore the reading position after switching threads from the sidebar", as
   const returnedGeometry = installChatScrollGeometry(
     threadContainer(SIDEBAR_CURRENT_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(returnedGeometry, targetText);
 });
 
 test("Open a conversation at a linked message", async () => {
-  const resize = mockResizeObserver();
   const events = conversationEvents("deep-link", "Linked");
   mockChatLifecycleWithoutBrowserSession({
     threadId: DEEP_LINK_THREAD_ID,
@@ -598,7 +594,7 @@ test("Open a conversation at a linked message", async () => {
   const geometry = installChatScrollGeometry(
     threadContainer(DEEP_LINK_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, linkedText, 0);
   expect(geometry.viewportOffsetFor("Linked message 6")).toBeGreaterThan(
@@ -608,7 +604,6 @@ test("Open a conversation at a linked message", async () => {
 });
 
 test("Open a conversation safely when a linked message is unavailable", async () => {
-  const resize = mockResizeObserver();
   mockChatLifecycleWithoutBrowserSession({
     threadId: MISSING_LINK_THREAD_ID,
     threadTitle: "Available conversation",
@@ -626,7 +621,7 @@ test("Open a conversation safely when a linked message is unavailable", async ()
   const geometry = installChatScrollGeometry(
     threadContainer(MISSING_LINK_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectLatestActivity(geometry, latestText);
   expect(
@@ -636,7 +631,6 @@ test("Open a conversation safely when a linked message is unavailable", async ()
 
 test("Return to the latest message after sending from history", async () => {
   const user = userEvent.setup();
-  const resize = mockResizeObserver();
   const events = conversationEvents("send-history", "History");
   events.push({
     id: "send-history-active-user",
@@ -664,7 +658,7 @@ test("Return to the latest message after sending from history", async () => {
   const geometry = installChatScrollGeometry(
     threadContainer(SEND_FROM_HISTORY_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(geometry.atBottom()).toBeTruthy();
   });
@@ -681,13 +675,12 @@ test("Return to the latest message after sending from history", async () => {
     expect(screen.getByText(sentText)).toBeVisible();
   });
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectAtLatestActivity(geometry);
 });
 
 test("Preserve the reading position while entering and leaving sharing mode", async () => {
-  const resize = mockResizeObserver();
   mockChatLifecycleWithoutBrowserSession({
     threadId: SHARING_THREAD_ID,
     threadTitle: "Shareable research",
@@ -708,7 +701,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   const geometry = installChatScrollGeometry(
     threadContainer(SHARING_THREAD_ID),
   );
-  resize.automationAll();
+  fireEvent.resize(window);
   await waitFor(() => {
     expect(geometry.atBottom()).toBeTruthy();
   });
@@ -721,7 +714,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   });
   geometry.setViewportHeight(VIEWPORT_HEIGHT - 80);
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, targetText);
 
@@ -732,7 +725,7 @@ test("Preserve the reading position while entering and leaving sharing mode", as
   });
   geometry.setViewportHeight(VIEWPORT_HEIGHT);
   geometry.refresh();
-  resize.automationAll();
+  fireEvent.resize(window);
 
   await expectReadingPosition(geometry, targetText);
 });

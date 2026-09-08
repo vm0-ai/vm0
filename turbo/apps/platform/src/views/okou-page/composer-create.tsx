@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -43,10 +44,10 @@ export function ComposerCreateHeader({
   const mode = useGet(signals.create.mode$);
   const setMode = useSet(signals.create.setMode$);
   if (!mode) {
-    return null;
+    return withChatScrollLayout(null);
   }
   const Icon = COMPOSER_CREATE_ICONS[mode];
-  return (
+  return withChatScrollLayout(
     <div
       className="flex items-center gap-2 px-4 pt-3 text-sm font-medium"
       data-testid="composer-create-mode"
@@ -68,7 +69,7 @@ export function ComposerCreateHeader({
       >
         <X size={16} />
       </Button>
-    </div>
+    </div>,
   );
 }
 

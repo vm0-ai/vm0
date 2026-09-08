@@ -57,8 +57,11 @@ async function expectSentPrompt(prompt: string): Promise<void> {
 }
 
 async function expectAgentWorking(): Promise<void> {
-  await expect(findFastControl("button", "Stop")).resolves.toBeVisible();
   await waitFor(() => {
+    const stop = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Stop";
+    });
+    expect(stop).toBeVisible();
     expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
   });
 }
