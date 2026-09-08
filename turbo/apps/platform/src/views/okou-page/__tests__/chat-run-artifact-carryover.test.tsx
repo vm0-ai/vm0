@@ -478,7 +478,10 @@ test("Subtract final artifacts after ordered URL deduplication", async () => {
     }),
   ]);
 
-  const firstHistory = screen.getByText("First historical output");
+  expect(screen.getByText("Final artifact summary")).toBeVisible();
+  expect(screen.queryByText("First historical output")).toBeNull();
+  click(await findWorkHistoryToggle("collapsed"));
+  const firstHistory = await screen.findByText("First historical output");
   const secondHistory = screen.getByText("Second historical output");
   const main = screen.getByText("Final artifact summary");
   await findNamedLink("Open pdf preview for repeated.pdf");
@@ -532,11 +535,11 @@ test("Keep artifacts with the same filename distinct when their URLs differ", as
   const second = relatedArtifactRow(dialog, secondUrl);
   expectDocumentOrder(first, second);
   expect(within(dialog).getAllByText("Report")).toHaveLength(2);
-  expect(screen.getByText("First report version")).toBeVisible();
-  expect(screen.getByText("Second report version")).toBeVisible();
+  expect(screen.queryByText("First report version")).toBeNull();
+  expect(screen.queryByText("Second report version")).toBeNull();
 });
 
-test("Render inline media and action cards inside visible short history", async () => {
+test("Render inline media and action cards after expanding short history", async () => {
   await setupArtifactRun([
     assistantEvent({
       id: "non-artifact-history",
@@ -557,11 +560,18 @@ test("Render inline media and action cards inside visible short history", async 
   ]);
 
   expect(screen.getByText("Final result without artifacts")).toBeVisible();
-  expect(screen.getByText("Historical rich output")).toBeVisible();
+  expect(screen.queryByText("Historical rich output")).toBeNull();
+  expect(screen.queryByAltText("Inline chart")).toBeNull();
+  expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
+  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
+  click(await findWorkHistoryToggle("collapsed"));
+  await expect(
+    screen.findByText("Historical rich output"),
+  ).resolves.toBeVisible();
   expect(screen.getByAltText("Inline chart")).toBeVisible();
   expect(screen.getByTestId("plan-upgrade-card")).toBeVisible();
   expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("expanded")).toBeVisible();
 });
 
 test("Carry artifacts across every run in the same run group", async () => {
@@ -642,11 +652,11 @@ test("Carry artifacts across every run in the same run group", async () => {
   await readyChat();
 
   expect(screen.getByText("Latest run result")).toBeVisible();
-  expect(screen.getByText("Earlier run output")).toBeVisible();
+  expect(screen.queryByText("Earlier run output")).toBeNull();
   const dialog = await openRelatedArtifacts();
   expect(relatedArtifactRow(dialog, earlierUrl)).toHaveTextContent("Report");
   expect(queryButton("Expand grouped run history")).toBeNull();
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  expect(queryWorkHistoryToggle("collapsed")).toBeVisible();
 });
 
 test("Ignore artifacts from revoked output messages", async () => {

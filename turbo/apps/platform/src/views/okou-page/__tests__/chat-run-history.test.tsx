@@ -203,10 +203,22 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
-  expect(screen.getByText("Collected requirements")).toBeVisible();
-  expect(screen.getByText("Compared rollback options")).toBeVisible();
-  expect(screen.getByText("Checked launch dependencies")).toBeVisible();
-  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
+  expect(screen.queryByText("Collected requirements")).toBeNull();
+  expect(screen.queryByText("Compared rollback options")).toBeNull();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(3);
+
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase one outline")),
+    ),
+  );
+  await expect(
+    screen.findByText("Collected requirements"),
+  ).resolves.toBeVisible();
+  expect(screen.queryByText("Compared rollback options")).toBeNull();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -214,6 +226,27 @@ test("Browse completed work by conversation phase", async () => {
     "Include rollback steps",
     "Phase one final plan",
   );
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase one final plan")),
+    ),
+  );
+  await expect(
+    screen.findByText("Compared rollback options"),
+  ).resolves.toBeVisible();
+  expect(screen.queryByText("Checked launch dependencies")).toBeNull();
+
+  click(
+    buttonNamedIn(
+      "Expand work history",
+      assistantGroupFor(screen.getByText("Phase two final plan")),
+    ),
+  );
+  await expect(
+    screen.findByText("Checked launch dependencies"),
+  ).resolves.toBeVisible();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expect(screen.getByLabelText("Credit usage 7")).toBeVisible();
 
   expect(screen.getByText("Plan phase two")).toBeVisible();
@@ -498,8 +531,8 @@ test.each(finalOutputDocuments)(
     const main = await find();
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
-    expect(screen.getByText("Earlier output belongs in history")).toBeVisible();
-    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
+    expect(screen.queryByText("Earlier output belongs in history")).toBeNull();
+    expect(queryWorkHistoryToggles("collapsed")).toHaveLength(1);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
     );

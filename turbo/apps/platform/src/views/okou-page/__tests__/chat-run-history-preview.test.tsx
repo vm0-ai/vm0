@@ -54,33 +54,24 @@ test("Show no history messages without assistant output", async () => {
   expect(
     document.querySelector("[data-chat-run-work-history-list]"),
   ).toBeNull();
+  expect(queryButton("Expand work history")).toBeNull();
 });
 
-test.each([1, 2, 3, 4])(
-  "Show every history message without a group toggle with %s outputs",
-  async (count) => {
-    await setupRunWithOutputCount(count);
+test("Show no history toggle when the only output is the main result", async () => {
+  await setupRunWithOutputCount(1);
 
-    for (let index = 1; index < count; index += 1) {
-      const message = screen.getByText(`Step ${String(index)}`);
-      expect(message).toBeVisible();
-      expect(
-        message.closest("[data-chat-run-work-history-list]"),
-      ).toBeVisible();
-      expect(message.closest("button")).toBeNull();
-    }
-    const main = screen
-      .getByText(`Step ${String(count)}`)
-      .closest("[data-chat-run-work-main]");
-    if (!main) {
-      throw new Error("Expected the main result container");
-    }
-    expect(queryButton("Copy message", main)).toBeVisible();
-    expect(queryButton("Expand work history")).toBeNull();
-  },
-);
+  const main = screen.getByText("Step 1").closest("[data-chat-run-work-main]");
+  if (!main) {
+    throw new Error("Expected the main result container");
+  }
+  expect(queryButton("Copy message", main)).toBeVisible();
+  expect(queryButton("Expand work history")).toBeNull();
+  expect(
+    document.querySelector("[data-chat-run-work-history-list]"),
+  ).toBeNull();
+});
 
-test.each([5, 6])(
+test.each([2, 3, 4, 5, 6])(
   "Hide all collapsed history and expand every message with %s outputs",
   async (count) => {
     await setupRunWithOutputCount(count);
@@ -266,10 +257,14 @@ test("Render a card-only history output without message folding", async () => {
   });
   await readyChat();
 
+  expect(screen.getByText("The comparison is ready")).toBeVisible();
+  expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
+  click(await findWorkHistoryToggle("collapsed"));
+
   const card = await screen.findByTestId("plan-upgrade-card");
   expect(card).toBeVisible();
   expect(card.closest("[data-chat-run-work-history-list]")).toBeVisible();
-  expect(queryButton("Expand work history")).toBeNull();
+  expect(queryButton("Collapse work history")).toBeVisible();
 });
 
 test.each(["completed", "failed", "cancelled"] as const)(
@@ -320,6 +315,14 @@ test.each(["completed", "failed", "cancelled"] as const)(
     });
     await readyChat();
 
+    expect(screen.getByText("The review is ready")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Review" })).toBeNull();
+    expect(screen.queryByAltText("Dependency chart")).toBeNull();
+    click(await findWorkHistoryToggle("collapsed"));
+    await expect(
+      screen.findByRole("heading", { name: "Review" }),
+    ).resolves.toBeVisible();
+
     const historyBody = document.querySelector<HTMLElement>(
       '[data-chat-scroll-anchor-event-id="rich-preview-0"]',
     );
@@ -336,6 +339,6 @@ test.each(["completed", "failed", "cancelled"] as const)(
     await expect(
       findLink("Open pdf preview for report.pdf"),
     ).resolves.toBeVisible();
-    expect(queryButton("Expand work history")).toBeNull();
+    expect(queryButton("Collapse work history")).toBeVisible();
   },
 );

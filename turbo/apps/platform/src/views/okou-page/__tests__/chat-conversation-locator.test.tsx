@@ -496,8 +496,7 @@ test("The conversation locator follows folded goal continuation work", async () 
   });
 
   await screen.findByText("All deployment regions are healthy");
-  await screen.findByText("Checked the first deployment region");
-  expect(screen.getByText("Checked the first deployment region")).toBeVisible();
+  expect(screen.queryByText("Checked the first deployment region")).toBeNull();
   expect(
     screen.queryByText("Keep checking the deployment regions"),
   ).not.toBeInTheDocument();

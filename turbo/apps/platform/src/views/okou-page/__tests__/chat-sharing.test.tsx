@@ -182,8 +182,8 @@ test("A folded multi-message answer counts as one shared selection", async () =>
   });
 
   await screen.findByText("Launch answer 3");
-  expect(screen.getByText("Launch answer 1")).toBeVisible();
-  expect(screen.getByText("Launch answer 2")).toBeVisible();
+  expect(screen.queryByText("Launch answer 1")).toBeNull();
+  expect(screen.queryByText("Launch answer 2")).toBeNull();
   await waitFor(() => {
     expect(buttonsNamed("Share messages").length).toBeGreaterThan(0);
   });

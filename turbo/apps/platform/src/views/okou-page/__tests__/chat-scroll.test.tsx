@@ -528,6 +528,7 @@ test("Keep a visible work message in place when its run completes", async () => 
     ).not.toBeInTheDocument();
   });
 
+  click(buttonByLabel("Expand work history"));
   await screen.findByText("Checked the first rollout stage");
   const container = chatScrollContainer();
   const geometry = installChatScrollGeometry(container);
@@ -563,9 +564,7 @@ test("Keep a visible work message in place when its run completes", async () => 
   await screen.findByText("The rollout is healthy");
   await waitFor(() => {
     expect(screen.getByText("Checked the first rollout stage")).toBeVisible();
-    expect(
-      document.querySelector("[data-chat-run-work-range]"),
-    ).not.toBeInTheDocument();
+    expect(buttonByLabel("Collapse work history")).toBeVisible();
     expect(screen.getByText("Worked for 1m")).toBeVisible();
     expect(
       anchorById(
