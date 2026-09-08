@@ -62,7 +62,6 @@ export enum FeatureSwitchKey {
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
   SshAccess = "sshAccess",
-  SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",

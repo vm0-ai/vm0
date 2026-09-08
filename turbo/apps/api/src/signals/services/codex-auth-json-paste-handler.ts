@@ -12,6 +12,10 @@ import {
 } from "./codex-auth-json-parser";
 import { fetchCodexUsageMetadata } from "./codex-usage.service";
 import type { PersonalProviderAccountErrorResponse } from "./model-provider-account.service";
+import {
+  invalidateCodexResetCreditExpiry,
+  prepareCodexResetCreditExpiryRead,
+} from "./codex-reset-credit-expiry.service";
 import { logger } from "../../lib/log";
 import { settle, tapError, throwIfAbort } from "../utils";
 
@@ -165,6 +169,14 @@ export async function handleCodexAuthJsonPaste(
   const pasteResult = await settle(
     (async () => {
       const parsed = parseCodexAuthJson(args.rawAuthJson);
+      const invalidateExpiry = () => {
+        invalidateCodexResetCreditExpiry(args, { accountId: parsed.accountId });
+      };
+      invalidateExpiry();
+      const readResetCreditExpiry = prepareCodexResetCreditExpiryRead(
+        args,
+        "connect",
+      );
       const usageMetadata =
         (await tapError(
           fetchCodexUsageMetadata(
@@ -172,39 +184,45 @@ export async function handleCodexAuthJsonPaste(
               accessToken: parsed.accessToken,
               accountId: parsed.accountId,
               idToken: parsed.idToken,
+              readResetCreditExpiry,
             },
             signal,
           ),
           () => {
+            signal.throwIfAborted();
             return undefined;
           },
         )) ?? null;
 
-      const upserted = await args.upsert({
-        authMethod: "auth_json",
-        secretValues: {
-          CHATGPT_ACCESS_TOKEN: parsed.accessToken,
-          CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
-          CHATGPT_ACCOUNT_ID: parsed.accountId,
-          CHATGPT_ID_TOKEN: parsed.idToken,
-        },
-        selectedModel: args.selectedModel,
-        metadata: {
-          externalAccountId: parsed.accountId,
-          accountEmail:
-            usageMetadata?.accountEmail ??
-            extractCodexAccountEmailFromIdToken(parsed.idToken),
-          tokenExpiresAt: parsed.tokenExpiresAt,
-          workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
-          planType: usageMetadata?.planType ?? parsed.planType,
-          ...(usageMetadata
-            ? {
-                subscriptionResetPeriod: usageMetadata.subscriptionResetPeriod,
-                subscriptionNextResetAt: usageMetadata.subscriptionNextResetAt,
-              }
-            : {}),
-        },
-      });
+      const upserted = await args
+        .upsert({
+          authMethod: "auth_json",
+          secretValues: {
+            CHATGPT_ACCESS_TOKEN: parsed.accessToken,
+            CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
+            CHATGPT_ACCOUNT_ID: parsed.accountId,
+            CHATGPT_ID_TOKEN: parsed.idToken,
+          },
+          selectedModel: args.selectedModel,
+          metadata: {
+            externalAccountId: parsed.accountId,
+            accountEmail:
+              usageMetadata?.accountEmail ??
+              extractCodexAccountEmailFromIdToken(parsed.idToken),
+            tokenExpiresAt: parsed.tokenExpiresAt,
+            workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
+            planType: usageMetadata?.planType ?? parsed.planType,
+            ...(usageMetadata
+              ? {
+                  subscriptionResetPeriod:
+                    usageMetadata.subscriptionResetPeriod,
+                  subscriptionNextResetAt:
+                    usageMetadata.subscriptionNextResetAt,
+                }
+              : {}),
+          },
+        })
+        .finally(invalidateExpiry);
       if ("status" in upserted) {
         return upserted;
       }

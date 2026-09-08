@@ -5,8 +5,9 @@ import {
   ChevronRight,
   FileText,
   Image,
-  Video,
   Presentation,
+  Sparkles,
+  Video,
 } from "lucide-react";
 import { cn, PopoverContent } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
@@ -15,11 +16,12 @@ import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/okou-page/workflow-composer-domain.ts";
 
 import {
-  composerCreateModeLabel,
-  type ComposerCreateMode,
+  composerCreateCommandLabel,
+  type ComposerCreateCommand,
 } from "../../signals/okou-page/composer-create.ts";
 
 export const COMPOSER_CREATE_ICONS = {
+  choose: Sparkles,
   image: Image,
   video: Video,
   presentation: Presentation,
@@ -76,47 +78,51 @@ function SlashCreateGroup({
   selectedIndex,
   onSelect,
 }: {
-  readonly modes: readonly ComposerCreateMode[];
+  readonly modes: readonly ComposerCreateCommand[];
   readonly selectedIndex: number;
-  readonly onSelect: (mode: ComposerCreateMode) => void;
+  readonly onSelect: (mode: ComposerCreateCommand) => void;
 }) {
   const { t } = useTranslation();
   if (modes.length === 0) {
     return null;
   }
   return (
-    <>
-      <div className="px-2.5 py-2 text-xs font-medium text-muted-foreground">
-        {t(($) => {
-          return $.chat.composer.create.title;
-        })}
-      </div>
-      <div className="px-1.5 pb-1.5">
-        {modes.map((mode, index) => {
-          const Icon = COMPOSER_CREATE_ICONS[mode];
-          return (
-            <button
-              key={mode}
-              id={slashWorkflowOptionId(mode)}
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors",
-                index === selectedIndex ? "bg-accent" : "hover:bg-state-hover",
+    <div className="px-1.5 py-1.5">
+      {modes.map((mode, index) => {
+        const Icon = COMPOSER_CREATE_ICONS[mode];
+        return (
+          <button
+            key={mode}
+            id={slashWorkflowOptionId(mode)}
+            type="button"
+            aria-label={composerCreateCommandLabel(mode)}
+            className={cn(
+              "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors",
+              index === selectedIndex ? "bg-accent" : "hover:bg-state-hover",
+            )}
+            onPointerDown={(event) => {
+              event.preventDefault();
+            }}
+            onClick={() => {
+              onSelect(mode);
+            }}
+          >
+            <Icon size={16} aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block">{composerCreateCommandLabel(mode)}</span>
+              {mode === "choose" && (
+                <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                  {t(($) => {
+                    return $.chat.composer.create.description;
+                  })}
+                </span>
               )}
-              onPointerDown={(event) => {
-                event.preventDefault();
-              }}
-              onClick={() => {
-                onSelect(mode);
-              }}
-            >
-              <Icon size={16} aria-hidden />
-              {composerCreateModeLabel(mode)}
-            </button>
-          );
-        })}
-      </div>
-    </>
+            </span>
+            {mode === "choose" && <ChevronRight size={16} aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -131,8 +137,8 @@ export function SlashWorkflowMenu({
   onSelect,
 }: {
   readonly workflows: readonly ComposerSlashWorkflow[];
-  readonly createModes: readonly ComposerCreateMode[];
-  readonly onSelectCreate: (mode: ComposerCreateMode) => void;
+  readonly createModes: readonly ComposerCreateCommand[];
+  readonly onSelectCreate: (mode: ComposerCreateCommand) => void;
   readonly query: string;
   readonly loading: boolean;
   readonly selectedIndex: number;
@@ -152,6 +158,8 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
+      // The selected command owns focus, including the Create type chooser.
+      finalFocus={false}
       className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="slash-workflow-menu"
     >

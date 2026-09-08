@@ -143,7 +143,7 @@ function findDataRows(lines: readonly string[]): string[] {
     if (!trimmed) return false;
     if (trimmed.startsWith("SLUG")) return false;
     if (trimmed.startsWith("No exact match")) return false;
-    if (trimmed.startsWith("Too many results")) return false;
+    if (trimmed.startsWith("Supported connector matches")) return false;
     if (trimmed.startsWith("No matches found")) return false;
     return true;
   });
@@ -167,6 +167,8 @@ describe("okou connector search command", () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
+    searchCommand.setOptionValue("agent", undefined);
+    searchCommand.setOptionValue("limit", undefined);
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -191,15 +193,17 @@ describe("okou connector search command", () => {
   });
 
   describe("without agent context", () => {
-    it("returns github first for an exact slug match with no banner", async () => {
+    it("returns github first for an exact slug match", async () => {
       await searchCommand.parseAsync(["node", "cli", "github"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
       expect(output).not.toContain("No exact match");
-      expect(output).not.toContain("Too many results");
+      expect(output).toContain("Supported connector matches:");
+      expect(output).not.toContain("Showing top");
       expect(output).not.toContain("AUTHORIZED FOR");
       expect(output).not.toContain("LABEL");
+      expect(output).toContain("AVAILABLE");
       expect(output).toContain("CONNECTED AS");
 
       const dataRows = findDataRows(lines);
@@ -303,12 +307,28 @@ describe("okou connector search command", () => {
       );
     });
 
-    it("caps at --limit and prefixes with Too many results", async () => {
+    it("returns every supported match by default", async () => {
+      server.use(
+        stubAvailableConnectors(["sheet-alpha", "sheet-beta", "sheet-gamma"]),
+      );
+
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const output = lines.join("\n");
+      expect(output).toContain("Supported connector matches: 3.");
+      expect(output).not.toContain("Showing top");
+      expect(findDataRows(lines)).toHaveLength(3);
+    });
+
+    it("caps at --limit and reports the supported match count", async () => {
       await searchCommand.parseAsync(["node", "cli", "api", "--limit", "3"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
-      expect(output).toMatch(/Too many results \(top 3 of \d+\):/);
+      expect(output).toMatch(
+        /Supported connector matches: \d+\. Showing top 3:/,
+      );
       const dataRows = findDataRows(lines);
       expect(dataRows).toHaveLength(3);
     });
@@ -587,8 +607,10 @@ describe("okou connector search command", () => {
       await searchCommand.parseAsync(["node", "cli", "github"]);
 
       const text = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(text).toContain("AVAILABLE THIS RUN");
       expect(text).toContain("ACCOUNT USED BY THIS RUN");
-      expect(text).toContain("Run account B (reconnect needed)");
+      expect(text).toContain("Run account B");
+      expect(text).toContain("no (reconnect needed)");
       expect(text).not.toContain("default-account-a");
       expect(defaultStatusRequests).toBe(0);
     });
@@ -635,28 +657,50 @@ describe("okou connector search command", () => {
       ).toContain("Custom run account B");
     });
 
-    it("distinguishes a not-admitted connector from owner disconnection", async () => {
+    it("returns every supported run match and distinguishes availability", async () => {
       vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       writeRunConnectorAccountContext(contextPath, [
         {
           kind: "builtin",
-          connectorSlug: "github",
-          connectionId: null,
+          connectorSlug: "google-sheets",
+          connectionId: RUN_CONNECTION_ID,
         },
       ]);
       server.use(
         stubConnectorCatalog([
-          catalogItem({ connectorSlug: "github", label: "GitHub" }),
+          catalogItem({
+            connectorSlug: "google-sheets",
+            label: "Google Sheets",
+          }),
+          catalogItem({ connectorSlug: "sheetdb", label: "SheetDB" }),
+        ]),
+        stubRunConnectorAccountInspection([
+          {
+            kind: "available",
+            connectionId: RUN_CONNECTION_ID,
+            target: { kind: "builtin", connectorSlug: "google-sheets" },
+            authMethod: "oauth",
+            displayName: "Sheets account",
+            externalId: "sheets-account",
+            externalUsername: null,
+            externalEmail: "sheets@example.com",
+            connectionStatus: "connected",
+            reconnectReason: null,
+          },
         ]),
         stubAgent(AGENT_UUID, "maya"),
-        stubUserConnectors(AGENT_UUID, ["github"]),
+        stubUserConnectors(AGENT_UUID, ["google-sheets"]),
       );
 
-      await searchCommand.parseAsync(["node", "cli", "github"]);
+      await searchCommand.parseAsync(["node", "cli", "sheet"]);
 
-      expect(
-        (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain("(not admitted for this run)");
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const output = lines.join("\n");
+      expect(output).toContain("Supported connector matches: 2.");
+      expect(output).toContain("AVAILABLE THIS RUN");
+      expect(findDataRows(lines)).toHaveLength(2);
+      expect(output).toMatch(/google-sheets\s+yes\s+Sheets account/u);
+      expect(output).toMatch(/sheetdb\s+no \(not admitted\)\s+-/u);
     });
 
     it("retains a deleted exact ID and fails closed for missing legacy context", async () => {
@@ -678,16 +722,20 @@ describe("okou connector search command", () => {
       );
 
       await searchCommand.parseAsync(["node", "cli", "github"]);
-      expect(
-        (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain(`${RUN_CONNECTION_ID} (metadata unavailable or deleted)`);
+      const metadataUnavailableOutput = (
+        mockConsoleLog.mock.calls.flat() as string[]
+      ).join("\n");
+      expect(metadataUnavailableOutput).toContain(RUN_CONNECTION_ID);
+      expect(metadataUnavailableOutput).toContain(
+        "no (metadata unavailable or deleted)",
+      );
 
       mockConsoleLog.mockClear();
       vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
       await searchCommand.parseAsync(["node", "cli", "github"]);
       expect(
         (mockConsoleLog.mock.calls.flat() as string[]).join("\n"),
-      ).toContain("(run account unavailable)");
+      ).toContain("unknown (run context unavailable)");
     });
   });
 

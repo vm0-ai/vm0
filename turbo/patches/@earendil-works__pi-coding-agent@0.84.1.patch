@@ -1,18 +1,18 @@
-diff --git a/dist/utils/photon.js b/dist/utils/photon.js
-index 3078895bedba898ce26c439b6123425834ca2586..2ad6a42c60d6277dd0ab49c3e972eaa42a2e3ff3 100644
---- a/dist/utils/photon.js
-+++ b/dist/utils/photon.js
-@@ -105,7 +105,8 @@ export async function loadPhoton() {
-     loadPromise = (async () => {
-         const restoreReadFileSync = patchPhotonWasmRead();
-         try {
--            photonModule = await import("@silvia-odwyer/photon-node");
-+            const imported = await import("@silvia-odwyer/photon-node");
-+            photonModule = imported.default;
-             return photonModule;
-         }
-         catch {
+diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
+index f37d1ccd41418199e1450f753de8d03b3205c83d..845fc54bda9210ed17c0b2b0dffab925ada761d3 100644
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -341,6 +341,8 @@ export declare class AgentSession {
+     private _normalizePromptSnippet;
+     private _normalizePromptGuidelines;
+     private _rebuildSystemPrompt;
++    /** Resume unresolved tools; settlement extensions prepare once before native cancellation/input reconciliation and public settlement. */
++    continuePendingTools(options?: Pick<PromptOptions, "preflightResult">): Promise<void>;
+     private _runAgentPrompt;
+     private _handlePostAgentRun;
+     /**
 diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+index ce8a9a2a613c08de483a6c94ef4f6341efff0457..755e681c47d609e6e4ece121dd8ae5e0dfb7f002 100644
 --- a/dist/core/agent-session.js
 +++ b/dist/core/agent-session.js
 @@ -741,6 +741,35 @@ export class AgentSession {
@@ -251,15 +251,520 @@ diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
          }
          catch {
              // Aborted during sleep - emit end event so UI can clean up
-diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
---- a/dist/core/agent-session.d.ts
-+++ b/dist/core/agent-session.d.ts
-@@ -341,6 +341,8 @@ export declare class AgentSession {
-     private _normalizePromptSnippet;
-     private _normalizePromptGuidelines;
-     private _rebuildSystemPrompt;
-+    /** Resume unresolved tools; settlement extensions prepare once before native cancellation/input reconciliation and public settlement. */
-+    continuePendingTools(options?: Pick<PromptOptions, "preflightResult">): Promise<void>;
-     private _runAgentPrompt;
-     private _handlePostAgentRun;
-     /**
+diff --git a/dist/core/tools/bash.d.ts b/dist/core/tools/bash.d.ts
+index 7fcbe2435afa926ae3f76fc8f915f6e66d7c7667..8d8597653722d9b499844c9f364890c09651bf76 100644
+--- a/dist/core/tools/bash.d.ts
++++ b/dist/core/tools/bash.d.ts
+@@ -29,6 +29,8 @@ export interface BashOperations {
+      */
+     exec: (command: string, cwd: string, options: {
+         onData: (data: Buffer) => void;
++        /** Local execution pauses both pipes until this optional spool wait settles. */
++        waitForDrain?: (signal: AbortSignal) => Promise<void> | undefined;
+         signal?: AbortSignal;
+         timeout?: number;
+         env?: NodeJS.ProcessEnv;
+diff --git a/dist/core/tools/bash.js b/dist/core/tools/bash.js
+index f274908793624a5870008ab738fa19ac6758165c..f8f542c27d8f244d8b043e6c1aee28a951aec8d2 100644
+--- a/dist/core/tools/bash.js
++++ b/dist/core/tools/bash.js
+@@ -42,7 +42,7 @@ export const bashToolSystemPromptContribution = {
+  */
+ export function createLocalBashOperations(options) {
+     return {
+-        exec: async (command, cwd, { onData, signal, timeout, env }) => {
++        exec: async (command, cwd, { onData, waitForDrain, signal, timeout, env }) => {
+             const timeoutMs = resolveTimeoutMs(timeout);
+             if (signal?.aborted) {
+                 throw new Error("aborted");
+@@ -54,6 +54,7 @@ export function createLocalBashOperations(options) {
+             catch {
+                 throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
+             }
++            if (signal?.aborted) throw new Error("aborted");
+             const commandFromStdin = shellConfig.commandTransport === "stdin";
+             const child = spawn(shellConfig.shell, commandFromStdin ? shellConfig.args : [...shellConfig.args, command], {
+                 cwd,
+@@ -68,49 +69,75 @@ export function createLocalBashOperations(options) {
+             }
+             if (child.pid)
+                 trackDetachedChildPid(child.pid);
+-            let timedOut = false;
++            const execution = new AbortController();
+             let timeoutHandle;
+-            const onAbort = () => {
+-                if (child.pid)
+-                    killProcessTree(child.pid);
++            let outputPaused = false;
++            let pendingOutput;
++            const onAbort = () => execution.abort(new Error("aborted"));
++            const stopChild = () => {
++                if (child.pid) killProcessTree(child.pid);
+             };
+-            try {
+-                // Set timeout if provided.
+-                if (timeoutMs !== undefined) {
+-                    timeoutHandle = setTimeout(() => {
+-                        timedOut = true;
+-                        if (child.pid)
+-                            killProcessTree(child.pid);
+-                    }, timeoutMs);
++            const onResume = () => {
++                // Node flushStdio() resumes child pipes after exit. Reassert the
++                // shared pause before its resume event can start flowing data.
++                if (outputPaused) {
++                    child.stdout?.pause();
++                    child.stderr?.pause();
+                 }
+-                // Stream stdout and stderr.
+-                child.stdout?.on("data", onData);
+-                child.stderr?.on("data", onData);
+-                // Handle abort signal by killing the entire process tree.
+-                if (signal) {
+-                    if (signal.aborted)
+-                        onAbort();
+-                    else
+-                        signal.addEventListener("abort", onAbort, { once: true });
++            };
++            const handleData = (data) => {
++                if (execution.signal.aborted) return;
++                try {
++                    onData(data);
++                    const drain = waitForDrain?.(execution.signal);
++                    if (drain) {
++                        outputPaused = true;
++                        child.stdout?.pause();
++                        child.stderr?.pause();
++                        // Pausing both streams synchronously admits only one wait,
++                        // not an output-sized chain of async EventEmitter callbacks.
++                        pendingOutput = drain.then(() => {
++                            outputPaused = false;
++                            if (!execution.signal.aborted) {
++                                child.stdout?.resume();
++                                child.stderr?.resume();
++                            }
++                        }, (error) => execution.abort(error));
++                    }
+                 }
+-                // Handle shell spawn errors and wait for the process to terminate without hanging
+-                // on inherited stdio handles held by detached descendants.
+-                const exitCode = await waitForChildProcess(child);
+-                if (signal?.aborted) {
+-                    throw new Error("aborted");
++                catch (error) {
++                    execution.abort(error);
+                 }
+-                if (timedOut) {
+-                    throw new Error(`timeout:${timeout}`);
++            };
++            try {
++                execution.signal.addEventListener("abort", stopChild, { once: true });
++                if (timeoutMs !== undefined) {
++                    timeoutHandle = setTimeout(() => execution.abort(new Error(`timeout:${timeout}`)), timeoutMs);
+                 }
++                child.stdout?.on("resume", onResume);
++                child.stderr?.on("resume", onResume);
++                child.stdout?.on("data", handleData);
++                child.stderr?.on("data", handleData);
++                const completion = waitForChildProcess(child, {
++                    signal: execution.signal,
++                    isOutputPaused: () => outputPaused,
++                });
++                signal?.addEventListener("abort", onAbort, { once: true });
++                if (signal?.aborted) onAbort();
++                const exitCode = await completion;
++                await pendingOutput;
++                execution.signal.throwIfAborted();
+                 return { exitCode };
+             }
+             finally {
+-                if (child.pid)
+-                    untrackDetachedChildPid(child.pid);
+-                if (timeoutHandle)
+-                    clearTimeout(timeoutHandle);
+-                if (signal)
+-                    signal.removeEventListener("abort", onAbort);
++                child.stdout?.off("resume", onResume);
++                child.stderr?.off("resume", onResume);
++                child.stdout?.off("data", handleData);
++                child.stderr?.off("data", handleData);
++                execution.signal.removeEventListener("abort", stopChild);
++                if (child.pid) untrackDetachedChildPid(child.pid);
++                if (timeoutHandle) clearTimeout(timeoutHandle);
++                signal?.removeEventListener("abort", onAbort);
+             }
+         },
+     };
+@@ -237,7 +264,14 @@ export function createBashToolDefinition(cwd, options) {
+         async execute(_toolCallId, { command, timeout }, signal, onUpdate, ctx) {
+             const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
+             const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook, exposeSessionEnvironment, ctx);
+-            const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });
++            const timeoutMs = resolveTimeoutMs(timeout);
++            const execution = new AbortController();
++            const onAbort = () => execution.abort(new Error("aborted"));
++            const output = new OutputAccumulator({
++                tempFilePrefix: "pi-bash",
++                onError: (error) => execution.abort(error),
++            });
++            let timeoutHandle;
+             let acceptingOutput = true;
+             let updateTimer;
+             let updateDirty = false;
+@@ -274,12 +308,10 @@ export function createBashToolDefinition(cwd, options) {
+                 }
+                 updateTimer ??= setTimeout(() => {
+                     updateTimer = undefined;
+-                    emitOutputUpdate();
++                    try { emitOutputUpdate(); }
++                    catch (error) { execution.abort(error); }
+                 }, delay);
+             };
+-            if (onUpdate) {
+-                onUpdate({ content: [], details: undefined });
+-            }
+             const handleData = (data) => {
+                 if (!acceptingOutput)
+                     return;
+@@ -292,7 +324,7 @@ export function createBashToolDefinition(cwd, options) {
+                 clearUpdateTimer();
+                 emitOutputUpdate();
+                 const snapshot = output.snapshot({ persistIfTruncated: true });
+-                await output.closeTempFile();
++                await output.closeTempFile(execution.signal);
+                 return snapshot;
+             };
+             const formatOutput = (snapshot, emptyText = "(no output)") => {
+@@ -318,37 +350,48 @@ export function createBashToolDefinition(cwd, options) {
+             };
+             const appendStatus = (text, status) => `${text ? `${text}\n\n` : ""}${status}`;
+             try {
+-                let exitCode;
+-                try {
+-                    const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
+-                        onData: handleData,
+-                        signal,
+-                        timeout,
+-                        env: spawnContext.env,
+-                    });
+-                    exitCode = result.exitCode;
+-                }
+-                catch (err) {
+-                    const snapshot = await finishOutput();
+-                    const { text } = formatOutput(snapshot, "");
+-                    if (err instanceof Error && err.message === "aborted") {
+-                        throw new Error(appendStatus(text, "Command aborted"));
+-                    }
+-                    if (err instanceof Error && err.message.startsWith("timeout:")) {
+-                        const timeoutSecs = err.message.split(":")[1];
+-                        throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
+-                    }
+-                    throw err;
++                signal?.addEventListener("abort", onAbort, { once: true });
++                if (signal?.aborted) onAbort();
++                if (timeoutMs !== undefined) {
++                    // The caller's existing deadline also owns the final file flush.
++                    timeoutHandle = setTimeout(() => execution.abort(new Error(`timeout:${timeout}`)), timeoutMs);
+                 }
++                execution.signal.throwIfAborted();
++                onUpdate?.({ content: [], details: undefined });
++                const { exitCode } = await ops.exec(spawnContext.command, spawnContext.cwd, {
++                    onData: handleData,
++                    waitForDrain: (drainSignal) => output.waitForDrain(drainSignal),
++                    signal: execution.signal,
++                    timeout,
++                    env: spawnContext.env,
++                });
+                 const snapshot = await finishOutput();
++                execution.signal.throwIfAborted();
+                 const { text: outputText, details } = formatOutput(snapshot);
+                 if (exitCode !== 0 && exitCode !== null) {
+                     throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
+                 }
+                 return { content: [{ type: "text", text: outputText }], details };
+             }
++            catch (error) {
++                const err = execution.signal.aborted ? execution.signal.reason : error;
++                acceptingOutput = false;
++                output.finish({ persist: false });
++                const text = output.snapshot().content;
++                if (err instanceof Error && err.message === "aborted") {
++                    throw new Error(appendStatus(text, "Command aborted"));
++                }
++                if (err instanceof Error && err.message.startsWith("timeout:")) {
++                    throw new Error(appendStatus(text, `Command timed out after ${err.message.split(":")[1]} seconds`));
++                }
++                throw err;
++            }
+             finally {
++                acceptingOutput = false;
+                 clearUpdateTimer();
++                if (timeoutHandle) clearTimeout(timeoutHandle);
++                signal?.removeEventListener("abort", onAbort);
++                output.destroyTempFile();
+             }
+         },
+         renderCall(args, _theme, context) {
+diff --git a/dist/core/tools/output-accumulator.d.ts b/dist/core/tools/output-accumulator.d.ts
+index fbd581f6067c98771dc6a29272a5bab2b2653dcd..6ecae286e90e6d2008ea1c8a77526f4589fe4f80 100644
+--- a/dist/core/tools/output-accumulator.d.ts
++++ b/dist/core/tools/output-accumulator.d.ts
+@@ -3,6 +3,7 @@ export interface OutputAccumulatorOptions {
+     maxLines?: number;
+     maxBytes?: number;
+     tempFilePrefix?: string;
++    onError?: (error: Error) => void;
+ }
+ export interface OutputSnapshot {
+     content: string;
+@@ -35,13 +36,18 @@ export declare class OutputAccumulator {
+     private finished;
+     private tempFilePath;
+     private tempFileStream;
++    private tempFileError;
++    private onError;
++    private disposed;
+     constructor(options?: OutputAccumulatorOptions);
+     append(data: Buffer): void;
+-    finish(): void;
++    finish(options?: { persist?: boolean }): void;
+     snapshot(options?: {
+         persistIfTruncated?: boolean;
+     }): OutputSnapshot;
+-    closeTempFile(): Promise<void>;
++    waitForDrain(signal?: AbortSignal): Promise<void> | undefined;
++    closeTempFile(signal?: AbortSignal): Promise<void>;
++    destroyTempFile(): void;
+     getLastLineBytes(): number;
+     private appendDecodedText;
+     private trimTail;
+diff --git a/dist/core/tools/output-accumulator.js b/dist/core/tools/output-accumulator.js
+index 72416680b6307108ffeace36e45fa7076cc8b7e5..293d1f1509c95505c3c5ac2371eb3df9a55df038 100644
+--- a/dist/core/tools/output-accumulator.js
++++ b/dist/core/tools/output-accumulator.js
+@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
+ import { createWriteStream } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { finished } from "node:stream/promises";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail } from "./truncate.js";
+ function defaultTempFilePath(prefix) {
+     const id = randomBytes(8).toString("hex");
+@@ -36,7 +37,11 @@ export class OutputAccumulator {
+     finished = false;
+     tempFilePath;
+     tempFileStream;
++    tempFileError;
++    onError;
++    disposed = false;
+     constructor(options = {}) {
++        this.onError = options.onError;
+         this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
+         this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+         this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
+@@ -56,13 +61,13 @@ export class OutputAccumulator {
+             this.rawChunks.push(data);
+         }
+     }
+-    finish() {
++    finish(options = {}) {
+         if (this.finished) {
+             return;
+         }
+         this.finished = true;
+         this.appendDecodedText(this.decoder.decode());
+-        if (this.shouldUseTempFile()) {
++        if (options.persist !== false && this.shouldUseTempFile()) {
+             this.ensureTempFile();
+         }
+     }
+@@ -93,26 +98,43 @@ export class OutputAccumulator {
+             fullOutputPath: this.tempFilePath,
+         };
+     }
+-    async closeTempFile() {
+-        if (!this.tempFileStream) {
+-            return;
+-        }
++    // The producer must stop both pipes while this single wait is pending.
++    waitForDrain(signal) {
++        signal?.throwIfAborted();
++        if (this.tempFileError) throw this.tempFileError;
+         const stream = this.tempFileStream;
+-        this.tempFileStream = undefined;
+-        await new Promise((resolve, reject) => {
+-            const onError = (error) => {
+-                stream.off("finish", onFinish);
+-                reject(error);
+-            };
+-            const onFinish = () => {
++        if (!stream?.writableNeedDrain) return;
++        return new Promise((resolve, reject) => {
++            const cleanup = () => {
++                stream.off("drain", onDrain);
+                 stream.off("error", onError);
+-                resolve();
++                stream.off("close", onClose);
++                signal?.removeEventListener("abort", onAbort);
+             };
++            const onDrain = () => { cleanup(); resolve(); };
++            const onError = (error) => { cleanup(); reject(error); };
++            const onClose = () => onError(new Error("Output file closed before draining"));
++            const onAbort = () => onError(signal.reason);
++            stream.once("drain", onDrain);
+             stream.once("error", onError);
+-            stream.once("finish", onFinish);
+-            stream.end();
++            stream.once("close", onClose);
++            signal?.addEventListener("abort", onAbort, { once: true });
+         });
+     }
++    async closeTempFile(signal) {
++        signal?.throwIfAborted();
++        if (this.tempFileError) throw this.tempFileError;
++        const stream = this.tempFileStream;
++        if (!stream) return;
++        const completion = finished(stream, { cleanup: true, signal });
++        stream.end();
++        await completion;
++    }
++    destroyTempFile() {
++        this.disposed = true;
++        this.rawChunks = [];
++        this.tempFileStream?.destroy();
++    }
+     getLastLineBytes() {
+         return this.currentLineBytes;
+     }
+@@ -174,10 +196,23 @@ export class OutputAccumulator {
+             return;
+         }
+         this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
+-        this.tempFileStream = createWriteStream(this.tempFilePath);
+-        for (const chunk of this.rawChunks) {
+-            this.tempFileStream.write(chunk);
+-        }
++        const stream = createWriteStream(this.tempFilePath, { highWaterMark: 64 * 1024 });
++        this.tempFileStream = stream;
++        const onError = (error) => {
++            if (this.tempFileError || this.disposed) return;
++            this.tempFileError = error;
++            this.onError?.(error);
++        };
++        stream.on("error", onError);
++        stream.once("close", () => {
++            if (!stream.writableFinished && !this.disposed) {
++                onError(new Error("Output file closed before finishing"));
++            }
++            stream.off("error", onError);
++        });
++        // The pre-spool prefix is at most maxBytes. Flush it as one bounded
++        // write, then include it in writableNeedDrain before admitting more data.
++        if (this.rawChunks.length > 0) stream.write(Buffer.concat(this.rawChunks));
+         this.rawChunks = [];
+     }
+ }
+diff --git a/dist/utils/child-process.d.ts b/dist/utils/child-process.d.ts
+index c75b42d9d43a0ef9000277b4ef5426443eab9a3e..a554d3e4ef12363dc903f366abb0143d68d7c950 100644
+--- a/dist/utils/child-process.d.ts
++++ b/dist/utils/child-process.d.ts
+@@ -14,5 +14,5 @@ export declare function spawnProcessSync(command: string, args: string[], option
+  * us reading, while a quiet inherited handle (e.g. a Windows daemonized descendant
+  * that never lets `close` fire) still releases us after the grace elapses.
+  */
+-export declare function waitForChildProcess(child: ChildProcess): Promise<number | null>;
++export declare function waitForChildProcess(child: ChildProcess, options?: { signal?: AbortSignal; isOutputPaused?: () => boolean }): Promise<number | null>;
+ //# sourceMappingURL=child-process.d.ts.map
+\ No newline at end of file
+diff --git a/dist/utils/child-process.js b/dist/utils/child-process.js
+index 48e5724c50f719449e4ef4e20f3497eed779ae35..fcdd8fef93006ff9cc45ecf653127af203cbbb88 100644
+--- a/dist/utils/child-process.js
++++ b/dist/utils/child-process.js
+@@ -20,7 +20,7 @@ export function spawnProcessSync(command, args, options) {
+  * us reading, while a quiet inherited handle (e.g. a Windows daemonized descendant
+  * that never lets `close` fire) still releases us after the grace elapses.
+  */
+-export function waitForChildProcess(child) {
++export function waitForChildProcess(child, options = {}) {
+     return new Promise((resolve, reject) => {
+         let settled = false;
+         let exited = false;
+@@ -33,9 +33,12 @@ export function waitForChildProcess(child) {
+                 clearTimeout(postExitTimer);
+                 postExitTimer = undefined;
+             }
++            options.signal?.removeEventListener("abort", onAbort);
+             child.removeListener("error", onError);
+             child.removeListener("exit", onExit);
+             child.removeListener("close", onClose);
++            child.stdout?.removeListener("resume", onResume);
++            child.stderr?.removeListener("resume", onResume);
+             child.stdout?.removeListener("end", onStdoutEnd);
+             child.stderr?.removeListener("end", onStderrEnd);
+             child.stdout?.removeListener("data", onData);
+@@ -58,10 +61,16 @@ export function waitForChildProcess(child) {
+             }
+         };
+         const armIdleTimer = () => {
+-            if (postExitTimer)
+-                clearTimeout(postExitTimer);
++            if (postExitTimer) clearTimeout(postExitTimer);
++            postExitTimer = undefined;
++            // Paused disk consumers accrue no idle time. Resume starts a fresh
++            // grace window, including when an inherited pipe remains quiet.
++            if (options.isOutputPaused?.()) return;
+             postExitTimer = setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+         };
++        const onResume = () => {
++            if (exited && !settled) armIdleTimer();
++        };
+         const onData = () => {
+             // Output is still arriving after exit; defer finalizing so we don't
+             // destroy the stream mid-write and truncate the tail.
+@@ -81,8 +90,11 @@ export function waitForChildProcess(child) {
+                 return;
+             settled = true;
+             cleanup();
++            child.stdout?.destroy();
++            child.stderr?.destroy();
+             reject(err);
+         };
++        const onAbort = () => onError(options.signal.reason);
+         const onExit = (code) => {
+             exited = true;
+             exitCode = code;
+@@ -94,6 +106,10 @@ export function waitForChildProcess(child) {
+         const onClose = (code) => {
+             finalize(code);
+         };
++        if (options.isOutputPaused) {
++            child.stdout?.on("resume", onResume);
++            child.stderr?.on("resume", onResume);
++        }
+         child.stdout?.once("end", onStdoutEnd);
+         child.stderr?.once("end", onStderrEnd);
+         child.stdout?.on("data", onData);
+@@ -101,6 +117,8 @@ export function waitForChildProcess(child) {
+         child.once("error", onError);
+         child.once("exit", onExit);
+         child.once("close", onClose);
++        options.signal?.addEventListener("abort", onAbort, { once: true });
++        if (options.signal?.aborted) onAbort();
+     });
+ }
+ //# sourceMappingURL=child-process.js.map
+\ No newline at end of file
+diff --git a/dist/utils/photon.js b/dist/utils/photon.js
+index 3078895bedba898ce26c439b6123425834ca2586..d67667b307af07c5a001efd5f1f5849a8cba8e6a 100644
+--- a/dist/utils/photon.js
++++ b/dist/utils/photon.js
+@@ -105,7 +105,8 @@ export async function loadPhoton() {
+     loadPromise = (async () => {
+         const restoreReadFileSync = patchPhotonWasmRead();
+         try {
+-            photonModule = await import("@silvia-odwyer/photon-node");
++            const imported = await import("@silvia-odwyer/photon-node");
++            photonModule = imported.default;
+             return photonModule;
+         }
+         catch {

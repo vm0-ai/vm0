@@ -26,32 +26,54 @@ test("sidebar scrollbar meets the workspace edge without a mobile inset", async 
 
   const chatList = page.getByTestId("chat-list-column");
   const scrollViewport = page.getByRole("region", { name: "Chat threads" });
-  const scrollbar = page.getByTestId("sidebar-scrollbar");
+  const scrollbar = chatList.getByTestId("sidebar-scrollbar");
   const workspace = page.getByTestId("workspace-inset");
   await expect(chatList).toBeVisible({ timeout: 20_000 });
   await expect(scrollViewport).toBeVisible({ timeout: 20_000 });
   await expect(workspace).toBeVisible({ timeout: 20_000 });
 
-  let scrollMetrics = { clientHeight: 0, scrollHeight: 0 };
-  for (let height = 520; height >= 160; height -= 10) {
-    await page.setViewportSize({ width: 1440, height });
-    scrollMetrics = await scrollViewport.evaluate((element) => {
-      return {
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      };
-    });
+  // Populate the list through the product instead of trying to make the empty
+  // state overflow by shrinking the viewport while the sidebar is loading.
+  const newChatButton = chatList
+    .getByRole("button", { name: "New chat", exact: true })
+    .last();
+  for (let index = 0; index < 20; index++) {
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        return (
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/chat-threads"
+        );
+      }),
+      newChatButton.click(),
+    ]);
+    expect(response.status()).toBe(201);
+    const thread: unknown = await response.json();
     if (
-      scrollMetrics.clientHeight > 0 &&
-      scrollMetrics.scrollHeight > scrollMetrics.clientHeight
+      typeof thread !== "object" ||
+      thread === null ||
+      !("id" in thread) ||
+      typeof thread.id !== "string"
     ) {
-      break;
+      throw new Error("Expected the created chat thread to have an id");
     }
+    await expect(page).toHaveURL(new URL(`/chats/${thread.id}`, appUrl).href);
+    await expect(
+      scrollViewport.locator(`a[href="/chats/${thread.id}"]`),
+    ).toBeVisible();
   }
-  expect(scrollMetrics.clientHeight).toBeGreaterThan(0);
-  expect(scrollMetrics.scrollHeight).toBeGreaterThan(
-    scrollMetrics.clientHeight,
-  );
+
+  await expect
+    .poll(async () => {
+      return scrollViewport.evaluate((element) => {
+        return (
+          element.clientHeight > 0 &&
+          element.scrollHeight > element.clientHeight
+        );
+      });
+    })
+    .toBe(true);
+  await expect(scrollbar).toBeVisible();
 
   const [chatListBox, scrollbarBox, workspaceBox] = await Promise.all([
     chatList.boundingBox(),
