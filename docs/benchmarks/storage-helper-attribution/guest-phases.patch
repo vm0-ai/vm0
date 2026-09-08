@@ -1,0 +1,98 @@
+diff --git a/crates/guest-control-server/src/guest_storage_manifest.rs b/crates/guest-control-server/src/guest_storage_manifest.rs
+index 5cb0197d67..ff79c026ef 100644
+--- a/crates/guest-control-server/src/guest_storage_manifest.rs
++++ b/crates/guest-control-server/src/guest_storage_manifest.rs
+@@ -255,6 +255,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+             );
+         }
+     };
++    let containment_created = Instant::now();
+     let mut prepared_containment = match process_containment.prepare_command() {
+         Ok(prepared) => prepared,
+         Err(error) => {
+@@ -287,6 +288,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+         );
+     }
+     prepared_containment.configure_process_inspection(&mut command);
++    let command_prepared = Instant::now();
+     let mut child = match spawn_in_own_process_group(&mut command) {
+         Ok(child) => child,
+         Err(error) => {
+@@ -299,6 +301,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+         }
+     };
+
++    let spawned = Instant::now();
+     let Some(stdin) = child.stdin.take() else {
+         return abort_spawned(
+             child,
+@@ -395,6 +398,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+     };
+     drop(drain_done_tx);
+
++    let io_ready = Instant::now();
+     let outcome = wait_with_kill_timeout_or_connection_cancelled(
+         child,
+         timeout_ms,
+@@ -403,9 +407,11 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+         // identity, so helper descendants cannot outlive this fixed operation.
+         || true,
+     );
++    let waited = Instant::now();
+     let cancellation_observed = connection_cancel.load(Ordering::Acquire);
+     let cleanup_mode = cleanup_mode_for_wait_outcome(&outcome, cancellation_observed);
+     let containment_result = process_containment.cleanup(cleanup_mode);
++    let contained = Instant::now();
+     let stdin_result = stdin_writer.join();
+     if !matches!(outcome, WaitOutcome::Exited(_))
+         || cancellation_observed
+@@ -457,6 +463,19 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
+         diagnostic = append_cleanup_failure(diagnostic, Some(&error));
+     }
+
++    if termination == (ExecTermination::Exited { exit_code: 0 }) && diagnostic.is_empty() {
++        diagnostic = serde_json::json!({
++            "containment_us": containment_created.duration_since(started).as_micros(),
++            "prepare_spawn_us": spawned.duration_since(containment_created).as_micros(),
++            "prepare_us": command_prepared.duration_since(containment_created).as_micros(),
++            "spawn_us": spawned.duration_since(command_prepared).as_micros(),
++            "io_setup_us": io_ready.duration_since(spawned).as_micros(),
++            "wait_us": waited.duration_since(io_ready).as_micros(),
++            "cleanup_us": contained.duration_since(waited).as_micros(),
++            "join_us": contained.elapsed().as_micros(),
++        })
++        .to_string();
++    }
+     GuestStorageManifestOutput {
+         termination,
+         duration_ms: elapsed_ms(started),
+diff --git a/crates/guest-control-server/tests/connection/guest_storage_manifest.rs b/crates/guest-control-server/tests/connection/guest_storage_manifest.rs
+index a35acfc499..05de5df59c 100644
+--- a/crates/guest-control-server/tests/connection/guest_storage_manifest.rs
++++ b/crates/guest-control-server/tests/connection/guest_storage_manifest.rs
+@@ -106,6 +106,24 @@ printf 'helper stderr\n' >&2
+     assert_eq!(result.stderr, b"helper stderr\n");
+     assert!(!result.stdout_truncated);
+     assert!(!result.stderr_truncated);
+-    assert!(result.diagnostic.is_empty());
++    let timings: serde_json::Value = serde_json::from_str(&result.diagnostic).unwrap();
++    assert_eq!(timings.as_object().unwrap().len(), 8);
++    for key in [
++        "containment_us",
++        "prepare_spawn_us",
++        "prepare_us",
++        "spawn_us",
++        "io_setup_us",
++        "wait_us",
++        "cleanup_us",
++        "join_us",
++    ] {
++        assert!(
++            timings
++                .get(key)
++                .and_then(serde_json::Value::as_u64)
++                .is_some()
++        );
++    }
+     finish_guest_connection(handle, host_stream);
+ }

@@ -1,0 +1,233 @@
+diff --git a/crates/runner/src/cmd/benchmark.rs b/crates/runner/src/cmd/benchmark.rs
+index 2642a800eb..0ca30d6b82 100644
+--- a/crates/runner/src/cmd/benchmark.rs
++++ b/crates/runner/src/cmd/benchmark.rs
+@@ -19,6 +19,8 @@ use crate::prefetch;
+ use crate::proxy;
+ use crate::workspace_mount::ensure_workspace_drive_mounted;
+
++mod storage_probe;
++
+ #[derive(Default)]
+ struct Timing {
+     boot_ms: Option<u128>,
+@@ -460,6 +462,13 @@ async fn run_in_sandbox(
+         .map(|(k, v)| (k.as_str(), v.as_str()))
+         .collect();
+
++    if args.command == "issue-32428-storage-probe" {
++        let started = Instant::now();
++        let result = storage_probe::run(sandbox).await;
++        timing.exec_ms = Some(started.elapsed().as_millis());
++        return (result, timing);
++    }
++
+     let t_exec = Instant::now();
+     let result = sandbox
+         .exec_with_diagnostic_label(
+diff --git a/crates/runner/src/cmd/benchmark/storage_probe.rs b/crates/runner/src/cmd/benchmark/storage_probe.rs
+new file mode 100644
+index 0000000000..f0945a9fab
+--- /dev/null
++++ b/crates/runner/src/cmd/benchmark/storage_probe.rs
+@@ -0,0 +1,200 @@
++//! Temporary synthetic experiment, not a production execution mode.
++use std::time::{Duration, Instant};
++
++use guest_contracts::storage_manifest::Manifest;
++use sandbox::{ExecRequest, ExecResult, ExecTermination, Sandbox, StorageManifestRequest};
++use serde_json::json;
++
++use crate::error::{RunnerError, RunnerResult};
++
++const ROOT: &str = "/home/user/issue-32428";
++const RUN_ID: &str = "00000000-0000-4000-8000-000000032428";
++const RUNTIME: &str = "/home/user/.vm0/guest-agent/runs/00000000-0000-4000-8000-000000032428";
++
++async fn command(sandbox: &dyn Sandbox, cmd: &str, sudo: bool) -> RunnerResult<ExecResult> {
++    let result = sandbox
++        .exec(&ExecRequest {
++            cmd,
++            timeout: Duration::from_secs(30),
++            env: &[],
++            sudo,
++            expected_exit_codes: &[],
++            stdin_bytes: None,
++            output_limits: sandbox::EXEC_OUTPUT_LIMIT_1_MIB,
++        })
++        .await?;
++    if result.termination != (ExecTermination::Exited { exit_code: 0 }) {
++        return Err(RunnerError::Internal(format!(
++            "synthetic setup/verification failed: {}",
++            String::from_utf8_lossy(&result.stderr)
++        )));
++    }
++    Ok(result)
++}
++
++fn manifest(high_work: bool, oversized: bool) -> RunnerResult<Manifest> {
++    let mounts: Vec<_> = (0..if high_work { 140 } else { 17 }).map(|i| {
++        json!({
++            "mountPath": format!("{ROOT}/mount-{i}"),
++            "cached": !high_work,
++            "archiveUrl": if high_work { Some(format!("file://{ROOT}/archive.tar.gz")) } else { None },
++            "instructionsTargetFilename": if !high_work && i == 0 { Some("CLAUDE.md") } else { None },
++            "name": if oversized && i == 0 { "x".repeat(70_000) } else { format!("synthetic-{i}") }
++        })
++    }).collect();
++    serde_json::from_value(json!({"storageMounts": mounts}))
++        .map_err(|e| RunnerError::Internal(e.to_string()))
++}
++
++async fn invoke(sandbox: &dyn Sandbox, manifest: &Manifest) -> RunnerResult<ExecResult> {
++    let bytes = serde_json::to_vec(manifest).map_err(|e| RunnerError::Internal(e.to_string()))?;
++    if bytes.len() <= guest_control_proto::MAX_EXEC_STDIN_BYTES {
++        return sandbox
++            .apply_storage_manifest(&StorageManifestRequest {
++                manifest_json: &bytes,
++                run_id: RUN_ID,
++                runtime_dir: RUNTIME,
++                timeout: Duration::from_secs(30),
++            })
++            .await
++            .map_err(Into::into);
++    }
++    let path = guest_contracts::runtime_paths::STORAGE_MANIFEST_PATH;
++    command(sandbox, &format!("rm -f -- {path}"), false).await?;
++    sandbox.write_file(path, &bytes).await?;
++    sandbox
++        .exec_with_diagnostic_label(
++            &ExecRequest {
++                cmd: &format!(
++                    "{} {path}",
++                    guest_contracts::guest_binary::STORAGE_APPLY_PATH
++                ),
++                timeout: Duration::from_secs(30),
++                env: &[
++                    (guest_contracts::env::RUN_ID_ENV, RUN_ID),
++                    (
++                        guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
++                        RUNTIME,
++                    ),
++                ],
++                sudo: false,
++                expected_exit_codes: &[],
++                stdin_bytes: None,
++                output_limits: sandbox::EXEC_OUTPUT_LIMIT_1_MIB,
++            },
++            "storage-download",
++        )
++        .await
++        .map_err(Into::into)
++}
++
++async fn sample(
++    sandbox: &dyn Sandbox,
++    manifest: &Manifest,
++    shape: &str,
++    phase: &str,
++    batch: usize,
++    index: usize,
++) -> RunnerResult<()> {
++    let start = Instant::now();
++    let result = invoke(sandbox, manifest).await;
++    let outer_us = start.elapsed().as_micros();
++    match result {
++        Ok(result) => {
++            let success = result.termination == (ExecTermination::Exited { exit_code: 0 });
++            println!(
++                "{}",
++                json!({"kind":"storage_probe", "shape":shape,"phase":phase,"batch":batch,"index":index,
++                "outer_us":outer_us,"guest_ms":result.guest_duration_ms,"success":success,"diagnostic":if success { result.diagnostic } else { String::new() },
++                "stdout_truncated":result.stdout_truncated,"stderr_truncated":result.stderr_truncated})
++            );
++            if !success || result.stdout_truncated || result.stderr_truncated {
++                return Err(RunnerError::Internal(format!(
++                    "storage probe failed: {}",
++                    String::from_utf8_lossy(&result.stderr)
++                )));
++            }
++            Ok(())
++        }
++        Err(error) => {
++            println!(
++                "{}",
++                json!({"kind":"storage_probe", "shape":shape,"phase":phase,"batch":batch,"index":index,"outer_us":outer_us,"success":false})
++            );
++            Err(error)
++        }
++    }
++}
++
++pub(super) async fn run(sandbox: &mut dyn Sandbox) -> RunnerResult<ExecResult> {
++    resources(sandbox, "before").await?;
++    command(
++        sandbox,
++        &format!("set -eu; mkdir -p {RUNTIME}/logs {ROOT}; chown -R user:user {RUNTIME} {ROOT}"),
++        true,
++    )
++    .await?;
++    command(sandbox, &format!("set -eu; for i in $(seq 0 139); do mkdir -p {ROOT}/mount-$i; done; printf 'synthetic instructions\\n' > {ROOT}/mount-0/CLAUDE.md; mkdir -p {ROOT}/source; head -c 4096 /dev/zero > {ROOT}/source/payload; tar -czf {ROOT}/archive.tar.gz -C {ROOT}/source payload"), false).await?;
++    let low = manifest(false, false)?;
++    sample(sandbox, &low, "cached-instructions", "first", 0, 0).await?;
++    for batch in 0..3 {
++        for index in 0..100 {
++            sample(
++                sandbox,
++                &low,
++                "cached-instructions",
++                "repeated",
++                batch,
++                index,
++            )
++            .await?;
++        }
++        if !matches!(sandbox.park().await?, sandbox::SandboxParkOutcome::Reusable) {
++            return Err(RunnerError::Internal(
++                "synthetic guest was not reusable".into(),
++            ));
++        }
++        sandbox.unpark().await?;
++        sample(sandbox, &low, "cached-instructions", "resumed", batch, 0).await?;
++    }
++    for (shape, input) in [
++        ("high-work", manifest(true, false)?),
++        ("oversized", manifest(false, true)?),
++    ] {
++        for index in 0..10 {
++            sample(sandbox, &input, shape, "repeated", 0, index).await?;
++        }
++    }
++    command(sandbox, &format!("set -eu; test \"$(cat {ROOT}/mount-0/CLAUDE.md)\" = 'synthetic instructions'; for i in $(seq 0 139); do test $(wc -c < {ROOT}/mount-$i/payload) -eq 4096; done; test ! -e {}", guest_contracts::runtime_paths::STORAGE_MANIFEST_PATH), false).await?;
++    let log = sandbox
++        .read_file(
++            &format!("{RUNTIME}/logs/sandbox-ops.jsonl"),
++            8 * 1024 * 1024,
++        )
++        .await?
++        .ok_or_else(|| RunnerError::Internal("synthetic child operation log missing".into()))?;
++    for line in log
++        .split(|byte| *byte == b'\n')
++        .filter(|line| !line.is_empty())
++    {
++        let value: serde_json::Value =
++            serde_json::from_slice(line).map_err(|e| RunnerError::Internal(e.to_string()))?;
++        if value.get("action_type").and_then(serde_json::Value::as_str) == Some("download_total") {
++            println!(
++                "{}",
++                json!({"kind":"storage_probe_inner", "duration_ms":value.get("duration_ms"),"success":value.get("success")})
++            );
++        }
++    }
++    resources(sandbox, "after").await?;
++    Ok(ExecResult::new(0, Vec::new(), Vec::new()))
++}
++
++async fn resources(sandbox: &dyn Sandbox, phase: &str) -> RunnerResult<()> {
++    let resources = command(sandbox, "set -eu; free -m; cat /proc/stat /proc/diskstats; for name in cpu memory io; do if test -r /proc/pressure/$name; then cat /proc/pressure/$name; else printf 'PSI %s unavailable\\n' $name; fi; done; cat /sys/fs/cgroup/vm0-exec/cpu.stat /sys/fs/cgroup/vm0-exec/memory.events /sys/fs/cgroup/vm0-exec/pids.events; count=$(find /sys/fs/cgroup/vm0-exec -mindepth 1 -maxdepth 1 -type d | wc -l); printf 'exec_groups_including_resource_probe=%s\\n' $count; test $count -eq 1; if command -v strace; then :; else printf 'strace unavailable\\n'; fi", true).await?;
++    println!(
++        "{}",
++        json!({"kind":"storage_probe_resources","phase":phase,"summary":String::from_utf8_lossy(&resources.stdout)})
++    );
++    Ok(())
++}
