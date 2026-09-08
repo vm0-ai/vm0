@@ -8,6 +8,26 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.571.1](https://github.com/vm0-ai/vm0/compare/api-v1.571.0...api-v1.571.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** retire okou goal runtime execution ([#32677](https://github.com/vm0-ai/vm0/issues/32677)) ([6d39111](https://github.com/vm0-ai/vm0/commit/6d391117e4fead19e2105136fb2792a6e77801d8))
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.637.1
+    * @okouai/db bumped to 1.246.2
+
 ## [1.571.0](https://github.com/vm0-ai/vm0/compare/api-v1.570.0...api-v1.571.0) (2026-09-08)
 
 

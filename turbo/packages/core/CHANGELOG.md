@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.637.1](https://github.com/vm0-ai/vm0/compare/core-v8.637.0...core-v8.637.1) (2026-09-08)
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
 ## [8.637.0](https://github.com/vm0-ai/vm0/compare/core-v8.636.0...core-v8.637.0) (2026-09-08)
 
 

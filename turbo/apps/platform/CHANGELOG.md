@@ -11,6 +11,31 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.866.0](https://github.com/vm0-ai/vm0/compare/app-v0.865.0...app-v0.866.0) (2026-09-08)
+
+
+### Features
+
+* **platform:** show the run framework in runner diagnostics ([#32671](https://github.com/vm0-ai/vm0/issues/32671)) ([8fe8e5b](https://github.com/vm0-ai/vm0/commit/8fe8e5bbabecc843edfb6d69d65da53e8ec720d9))
+
+
+### Bug Fixes
+
+* **ui:** use native base ui focus and image preview lifecycle ([#32574](https://github.com/vm0-ai/vm0/issues/32574)) ([712ce89](https://github.com/vm0-ai/vm0/commit/712ce890d2a8ff515b01b044f3ee489e9e5d5b9e))
+
+
+### Refactoring
+
+* remove presentation templates feature switch ([#32664](https://github.com/vm0-ai/vm0/issues/32664)) ([136add4](https://github.com/vm0-ai/vm0/commit/136add49f199cc0df10e826ed15885fb4767dc87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.637.1
+    * @okouai/ui bumped to 1.6.4
+
 ## [0.865.0](https://github.com/vm0-ai/vm0/compare/app-v0.864.0...app-v0.865.0) (2026-09-08)
 
 
