@@ -1,4 +1,4 @@
-// Okou CLI entry point - standalone binary for vm0 platform commands
+// Okou CLI entry point - standalone binary for Okou platform commands
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";

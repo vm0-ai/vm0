@@ -296,7 +296,6 @@ async function deliverClaimedTeamsChatCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: run.agentId,
-      publicBrand: payload.publicBrand,
       replyToMention:
         payload.conversationType !== "personal" && mentionerCount > 1
           ? replyTo

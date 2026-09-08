@@ -76,7 +76,7 @@ test("A user confirms the billing upgrade", async () => {
   await setupPage({
     context,
     path: "/settings?tab=billing",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: {
       user: { id: "user_123", fullName: "Test User" },
       organization: {

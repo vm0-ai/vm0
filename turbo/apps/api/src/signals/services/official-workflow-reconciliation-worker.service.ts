@@ -259,7 +259,6 @@ async function processClaimedWork(
       orgId: installation.orgId,
       member: { userId: installation.ownerUserId, role: "member" },
       workflowId: installation.id,
-      publicBrand: "vm0",
       activeDefinitionOnly: true,
     });
     signal.throwIfAborted();

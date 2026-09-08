@@ -88,7 +88,7 @@ export const integrationsGithubContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Link the authenticated VM0 user to the GitHub App installation",
+    summary: "Link the authenticated Okou user to the GitHub App installation",
   },
 });
 

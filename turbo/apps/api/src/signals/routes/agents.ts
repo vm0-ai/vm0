@@ -50,7 +50,6 @@ import {
 } from "../services/user-connectors.service";
 import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUBLIC_AGENT_LIMIT = 7;
 
@@ -439,7 +438,6 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      publicBrand: PUBLIC_BRAND,
     }),
   );
   if (!agent) {

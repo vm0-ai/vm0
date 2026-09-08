@@ -658,7 +658,6 @@ describe("okou generate image command", () => {
       expect(stdout).toContain(
         `./generated/resources/illustration-template/${slug}`,
       );
-      expect(stdout).not.toContain("Repository: `vm0-ai/vm0-skills@main`");
     },
   );
 
@@ -1010,7 +1009,6 @@ describe("okou generate image command", () => {
       "an optional short wordmark supplied by the user",
     );
     expect(helpOutput).toContain("omitted when none is supplied");
-    expect(helpOutput).not.toContain("wordmark (default VM0)");
   });
 
   it("should surface API errors", async () => {

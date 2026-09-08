@@ -197,7 +197,7 @@ const postGenerate$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const fileUrls = await set(
     resolveIntroVideoAgentReferences$,
-    { userId: auth.userId, urls: input.fileUrls ?? [] },
+    { userId: auth.userId, orgId: auth.orgId, urls: input.fileUrls ?? [] },
     signal,
   );
   if ("error" in fileUrls) {

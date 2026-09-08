@@ -25,7 +25,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import { customConnectorSlugSchema } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
@@ -95,6 +94,7 @@ import {
   isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
+import { isStaffOrg } from "@okouai/core/staff-org";
 import {
   DEFAULT_IMAGE_MODEL_ENV,
   IMAGE_MODEL_CONFIGS,
@@ -146,7 +146,6 @@ import {
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@okouai/db/schema/secret";
-import { userCache } from "@okouai/db/schema/user-cache";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { variables } from "@okouai/db/schema/variable";
 import type { PersistedStorageMount } from "@okouai/db/types";
@@ -1012,7 +1011,6 @@ export interface CreateAgentRunArgs {
    * preserves historical runner coverage without restoring a runtime dual-read.
    */
   readonly testOnlyResolveDirectRun?: TestOnlyDirectRunResolver;
-  readonly okouTokenPublicBrand?: PublicBrand;
   readonly okouTokenComputerUseHostId?: string;
   readonly okouTokenCloudBrowserEnabled?: boolean;
   /** Immutable Intro Video eligibility captured with the caller's switch context. */
@@ -6193,22 +6191,15 @@ function resolveAgentExecution(
   );
 }
 
-async function enforceCaptureNetworkBodiesGate(
-  db: Db,
-  userId: string,
+function enforceCaptureNetworkBodiesGate(
+  orgId: string,
   captureNetworkBodies: boolean | undefined,
-): Promise<CreateRunErrorResult | null> {
+): CreateRunErrorResult | null {
   if (!captureNetworkBodies || env("ENV") !== "production") {
     return null;
   }
 
-  const [cachedUser] = await db
-    .select({ email: userCache.email })
-    .from(userCache)
-    .where(eq(userCache.userId, userId))
-    .limit(1);
-
-  if (!cachedUser?.email.endsWith("@vm0.ai")) {
+  if (!isStaffOrg(orgId)) {
     return forbidden("captureNetworkBodies is restricted to internal accounts");
   }
   return null;
@@ -6536,7 +6527,6 @@ function storedConnectorRuntimeTargets(args: {
 
 function buildStoredPlatformEnvironment(args: {
   readonly platformEnvironment: Record<string, string> | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
   readonly canonicalOkouRuntime: boolean;
 }): Record<string, string> {
   const platformEnvironment = {
@@ -6582,7 +6572,6 @@ async function buildStoredExecutionContextDraft(args: {
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly includeOkouTokenSecret: boolean | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
@@ -6616,7 +6605,6 @@ async function buildStoredExecutionContextDraft(args: {
   );
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: args.platformEnvironment,
-    okouTokenPublicBrand: args.okouTokenPublicBrand,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
   const environment = buildStoredUntrustedEnvironment({
@@ -7059,7 +7047,6 @@ interface BuildRunnerJobPayloadInput {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeOkouTokenSecret: boolean | undefined;
-  readonly okouTokenPublicBrand: PublicBrand | undefined;
   readonly okouTokenComputerUseHostId: string | undefined;
   readonly okouTokenCloudBrowserEnabled: boolean | undefined;
   readonly imageRecognitionAvailable: boolean;
@@ -8621,7 +8608,6 @@ function buildAtomicLaunchPayload(
       additionalVolumes: args.context.additionalVolumes,
       additionalVolumeSources: args.context.additionalVolumeSources,
       includeOkouTokenSecret: args.createArgs.includeOkouTokenSecret,
-      okouTokenPublicBrand: args.createArgs.okouTokenPublicBrand,
       okouTokenComputerUseHostId: args.createArgs.okouTokenComputerUseHostId,
       okouTokenCloudBrowserEnabled:
         args.createArgs.okouTokenCloudBrowserEnabled,
@@ -9888,12 +9874,10 @@ function prepareRunContext(
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
       const initialBody = initialRunBody(args);
-      const captureGate = await enforceCaptureNetworkBodiesGate(
-        db,
-        args.userId,
+      const captureGate = enforceCaptureNetworkBodiesGate(
+        args.orgId,
         initialBody.captureNetworkBodies,
       );
-      signal.throwIfAborted();
       if (captureGate) {
         return captureGate;
       }

@@ -6,7 +6,6 @@ import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
 } from "@okouai/api-contracts/contracts/computer-use";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
@@ -419,7 +418,6 @@ export const createComputerUseAuthorizationRequest$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<CreateComputerUseAuthorizationRequestResult> => {

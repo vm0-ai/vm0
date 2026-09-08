@@ -195,12 +195,11 @@ function installOffsetVisualViewport(): void {
   );
 }
 
-test("Compose a message with inline templates", async () => {
+test("Send a message with multiple inline templates", async () => {
   const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
   const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1];
-  const replacement = PRESENTATION_TEMPLATE_PICKER_ITEMS[2];
-  if (!first || !second || !replacement) {
-    throw new Error("Expected at least three presentation templates");
+  if (!first || !second) {
+    throw new Error("Expected at least two presentation templates");
   }
   let sentTemplateTitles: string[] = [];
   mockAgent();
@@ -242,6 +241,34 @@ test("Compose a message with inline templates", async () => {
     }),
   ).toStrictEqual([first.title, second.title]);
   expect(composerInlineTemplates()).toHaveLength(0);
+});
+
+test("Replace an inline template after sending a message", async () => {
+  const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
+  const replacement = PRESENTATION_TEMPLATE_PICKER_ITEMS[2];
+  if (!first || !replacement) {
+    throw new Error("Expected presentation templates to insert and replace");
+  }
+  mockAgent();
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    threadTitle: "My thread",
+  });
+  installWorkflows(() => {
+    return [];
+  });
+
+  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+
+  const user = userEvent.setup();
+  await selectTemplate(user, first);
+  await user.click(await findComposerEditor());
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(structuredTemplateReferences()).toHaveLength(1);
+    expect(structuredTemplateReferences()[0]).toHaveTextContent(first.title);
+    expect(composerInlineTemplates()).toHaveLength(0);
+  });
 
   await selectTemplate(user, first);
   const inlineTemplate = composerInlineTemplates()[0];
@@ -261,6 +288,8 @@ test("Compose a message with inline templates", async () => {
     expect(templates).toHaveLength(1);
     expect(templates[0]).toHaveTextContent(replacement.title);
   });
+  expect(structuredTemplateReferences()).toHaveLength(1);
+  expect(structuredTemplateReferences()[0]).toHaveTextContent(first.title);
 });
 
 test("Dismiss workflow suggestions without losing the query", async () => {

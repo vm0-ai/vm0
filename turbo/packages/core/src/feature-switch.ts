@@ -358,7 +358,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PrivateArtifacts]: {
     maintainer: "yuma@okou.ai",
     description:
-      "Use private storage and authenticated previews for CLI artifact uploads.",
+      "Use private storage and authenticated previews for CLI artifact uploads and managed generation.",
     enabled: false,
   },
   [FeatureSwitchKey.AgentMessageMath]: {

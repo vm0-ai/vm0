@@ -1,6 +1,6 @@
-# Build VM0 Runner (Rust)
+# Build Okou Runner (Rust)
 #
-# This playbook prepares a new version of the Rust-based VM0 runner on
+# This playbook prepares a new version of the Rust-based Okou runner on
 # production metal instances **without starting the service**. It copies the
 # binary, downloads dependencies, builds the default rootfs/snapshot, and
 # writes the per-version config file. The systemd service is installed by
@@ -31,7 +31,7 @@
 #       warm step can fail visibly instead of allowing every host to rebuild
 #       the same template locally.
 
-- name: Build VM0 Runner
+- name: Build Okou Runner
   hosts: all
   become: true
 

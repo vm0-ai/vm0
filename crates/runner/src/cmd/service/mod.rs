@@ -207,7 +207,7 @@ fn systemd_run_command(
     let mut command = tokio::process::Command::new("systemd-run");
     command
         .arg(format!("--unit={}", unit.unit_name()))
-        .arg(format!("--description=VM0 Runner ({})", unit.unit_name()))
+        .arg(format!("--description=Okou Runner ({})", unit.unit_name()))
         .arg("--expand-environment=no")
         .args([
             "--property=Type=exec",
@@ -1542,7 +1542,7 @@ profiles:
             args,
             [
                 "--unit=vm0-runner-test",
-                "--description=VM0 Runner (vm0-runner-test)",
+                "--description=Okou Runner (vm0-runner-test)",
                 "--expand-environment=no",
                 "--property=Type=exec",
                 "--property=Restart=on-failure",

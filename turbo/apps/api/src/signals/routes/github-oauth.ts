@@ -109,7 +109,6 @@ function replayGithubAppSetupCallbackAt(
 
 function replayPersistedGithubAppSetupCallback(args: {
   readonly request: Request;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const requestOrigin = new URL(args.request.url).origin;
   const apiOrigins = new Set([githubApiOrigin(args.request)]);
@@ -378,14 +377,6 @@ async function resolveGithubCallbackState(args: {
   return { ok: true, state };
 }
 
-function githubCallbackPublicBrand(
-  stateResolution: GithubCallbackStateResolution,
-): PublicBrand {
-  return stateResolution.ok
-    ? stateResolution.state.publicBrand
-    : stateResolution.publicBrand;
-}
-
 function signedGithubCallbackReplayResponse(args: {
   readonly request: Request;
   readonly stateString: string | undefined;
@@ -410,7 +401,6 @@ async function githubAppUpdateCallbackResponse(
     readonly db: Db;
     readonly request: Request;
     readonly installationId: string | undefined;
-    readonly fallbackPublicBrand: PublicBrand;
     readonly usePersistedBrand: boolean;
   },
   signal: AbortSignal,
@@ -434,7 +424,6 @@ async function githubAppUpdateCallbackResponse(
 
   const replayUrl = replayPersistedGithubAppSetupCallback({
     request: args.request,
-    publicBrand: installation.setupPublicBrand,
   });
   return replayUrl
     ? noStoreRedirect(replayUrl)
@@ -1067,7 +1056,6 @@ const callbackGithubOauth$ = command(
       secretsEncryptionKey,
     });
     signal.throwIfAborted();
-    const callbackPublicBrand = githubCallbackPublicBrand(stateResolution);
     const replayResponse = signedGithubCallbackReplayResponse({
       request,
       stateString: query.state,
@@ -1095,7 +1083,6 @@ const callbackGithubOauth$ = command(
           db: set(writeDb$),
           request,
           installationId: query.installation_id,
-          fallbackPublicBrand: callbackPublicBrand,
           usePersistedBrand: !query.state || !stateResolution.ok,
         },
         signal,

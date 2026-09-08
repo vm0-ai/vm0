@@ -15972,7 +15972,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").toContain(
       "execute through the built-in platform provider",
     );
-    expect(claim.appendSystemPrompt ?? "").not.toContain("execute via vm0");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });

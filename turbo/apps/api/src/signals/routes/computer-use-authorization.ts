@@ -11,7 +11,6 @@ import {
 } from "../services/computer-use-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function expired() {
   return {
@@ -63,15 +62,12 @@ const createAuthorizationRequestInner$ = command(
         "Computer Use authorization requires a run token",
       );
     }
-    const publicBrand = PUBLIC_BRAND;
-
     const result = await set(
       createComputerUseAuthorizationRequest$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         runId: auth.runId,
-        publicBrand,
       },
       signal,
     );

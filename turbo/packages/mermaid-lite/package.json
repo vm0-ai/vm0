@@ -2,7 +2,7 @@
   "name": "@okouai/mermaid-lite",
   "version": "11.16.1-vm0.3",
   "private": true,
-  "description": "A Flowchart and Sequence Diagram Mermaid build for the vm0 web platform",
+  "description": "A Flowchart and Sequence Diagram Mermaid build for the Okou web platform",
   "type": "module",
   "exports": {
     ".": {

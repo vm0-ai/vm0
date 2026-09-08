@@ -84,7 +84,7 @@ pub(super) fn generate_unit_file(
     format!(
         "\
 [Unit]
-Description=VM0 Runner ({unit_name})
+Description=Okou Runner ({unit_name})
 After=network-online.target
 Wants=network-online.target
 
@@ -465,7 +465,7 @@ mod tests {
             &[],
             false,
         );
-        assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
+        assert!(content.contains("Description=Okou Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
             "ExecStart=:\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
         ));

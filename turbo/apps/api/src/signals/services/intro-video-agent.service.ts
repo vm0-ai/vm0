@@ -23,6 +23,7 @@ import {
 } from "./artifact-storage.service";
 import {
   builtInGenerationPublicBrand,
+  builtInGenerationIsPrivate,
   builtInGenerationRequestWithInternal,
   completeBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
@@ -43,6 +44,11 @@ import {
   type HeyGenVideoAgentSession,
 } from "./heygen.service";
 import { introVideoAgentPricing$ } from "./intro-video-agent-pricing.service";
+import {
+  artifactFileReference,
+  privateArtifactCreationEnabled,
+} from "./private-artifact-storage.service";
+import { uploadedArtifactObject } from "./uploaded-artifact.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   completeRunBuiltInAdmission$,
@@ -130,20 +136,37 @@ export function serializeIntroVideoAgentJob(
 export const resolveIntroVideoAgentReferences$ = command(
   async (
     { get, set },
-    args: { readonly userId: string; readonly urls: readonly string[] },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly urls: readonly string[];
+    },
     signal: AbortSignal,
   ): Promise<
     | readonly string[]
     | { readonly error: { readonly message: string; readonly code: string } }
   > => {
     const urls: string[] = [];
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     for (const url of args.urls) {
-      const key = await set(
-        resolveOwnedPublicArtifactKey$,
-        { userId: args.userId, url },
-        signal,
-      );
+      const reference = artifactFileReference(url);
+      const object = reference
+        ? await get(
+            uploadedArtifactObject({
+              id: reference.id,
+              userId: args.userId,
+              orgId: args.orgId,
+            }),
+          )
+        : null;
+      signal.throwIfAborted();
+      const bucket = object?.bucket ?? env("R2_USER_ARTIFACTS_BUCKET_NAME");
+      const key = reference
+        ? object?.key
+        : await set(
+            resolveOwnedPublicArtifactKey$,
+            { userId: args.userId, url },
+            signal,
+          );
       if (!key) {
         return introVideoAgentError(
           "Reference files must be uploaded to Okou by the current user. Use okou web upload-file for prepared files.",
@@ -175,7 +198,7 @@ export const resolveIntroVideoAgentReferences$ = command(
 
 export const createIntroVideoAgentJob$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -186,6 +209,10 @@ export const createIntroVideoAgentJob$ = command(
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
+    const privateArtifacts = await get(
+      privateArtifactCreationEnabled(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     const [created] = await set(writeDb$)
       .insert(builtInGenerationJobs)
       .values({
@@ -202,6 +229,7 @@ export const createIntroVideoAgentJob$ = command(
           },
           {
             publicBrand: args.publicBrand,
+            privateArtifacts,
             provider: "heygen",
             providerTask: PROVIDER_TASK,
             providerStatus: "submitting",
@@ -548,6 +576,8 @@ const persistAgentCompletion$ = command(
       storeGeneratedArtifactObject$,
       {
         userId: args.job.userId,
+        orgId: args.job.orgId,
+        privateArtifacts: builtInGenerationIsPrivate(args.job.request),
         identity: { id: args.job.id, variant: PROVIDER_TASK },
         filenamePrefix: "intro-video",
         extension: "mp4",

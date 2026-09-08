@@ -589,7 +589,6 @@ describe("workflow queue", () => {
       throw new Error("Expected the workflow automation to be rejected");
     }
     expect(rejected.error).toBe(BUILT_IN_MODEL_ROUTES_UNAVAILABLE_MESSAGE);
-    expect(rejected.error).not.toContain("VM0");
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
   });
 

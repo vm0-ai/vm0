@@ -183,7 +183,6 @@ const createAutomationInner$ = command(
     const result = await set(
       createWorkflowAutomation$,
       { ...bodyResult.data, ...automationInputBase },
-      PUBLIC_BRAND,
       signal,
     );
     signal.throwIfAborted();
@@ -222,7 +221,6 @@ const revealWebhookSecretInner$ = computed(async (get) => {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
     automationId: params.id,
-    publicBrand: PUBLIC_BRAND,
   });
   if (!secret) {
     return notFound("Workflow webhook automation not found");

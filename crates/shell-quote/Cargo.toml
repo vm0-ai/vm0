@@ -2,7 +2,7 @@
 name = "shell-quote"
 version = "0.1.2"
 edition.workspace = true
-description = "POSIX shell argument quoting for vm0 command construction"
+description = "POSIX shell argument quoting for Okou command construction"
 
 [lints]
 workspace = true

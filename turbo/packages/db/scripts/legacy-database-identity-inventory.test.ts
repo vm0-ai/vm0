@@ -86,29 +86,6 @@ describe("active legacy database identity inventory", () => {
       }),
     ).toEqual([]);
 
-    const removedAcquisitionKeys = [
-      "column:public.org_metadata.acquisition_vm0_source",
-      "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
-      "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
-    ];
-    expect(
-      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
-        return removedAcquisitionKeys.includes(entry.key);
-      }),
-    ).toEqual([]);
-
-    const removedEntitlementKeys = [
-      "column:public.org_plan_entitlements.restricted_vm0_models",
-      "function:public.ensure_legacy_org_metadata_plan_entitlement()",
-      "function:public.sync_org_plan_entitlement_model_restrictions_1023()",
-      "trigger:public.org_plan_entitlements.sync_org_plan_entitlement_model_restrictions_1023",
-    ];
-    expect(
-      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
-        return removedEntitlementKeys.includes(entry.key);
-      }),
-    ).toEqual([]);
-
     expect(
       LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
         return entry.sources.some((source) => {

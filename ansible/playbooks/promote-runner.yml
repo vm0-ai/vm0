@@ -1,4 +1,4 @@
-# Promote VM0 Runner (Rust) — Traffic Cutover Phase
+# Promote Okou Runner (Rust) — Traffic Cutover Phase
 #
 # This playbook activates a runner version that was previously prepared by
 # `build-runner.yml`. It installs the systemd service (which starts the new
@@ -24,7 +24,7 @@
 #       Forwarded to the systemd unit as AXIOM_TOKEN_TELEMETRY /
 #       AXIOM_DATASET_SUFFIX. Both must be set for Axiom telemetry to activate.
 
-- name: Promote VM0 Runner
+- name: Promote Okou Runner
   hosts: all
   become: true
 

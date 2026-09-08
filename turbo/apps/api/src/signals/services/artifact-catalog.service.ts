@@ -201,7 +201,7 @@ function fileThumbnail(row: CatalogFileRow): ArtifactThumbnail | null {
 }
 
 /**
- * The owning vm0 user for an artifact. Chat-backed runs are owned by the thread
+ * The owning Okou user for an artifact. Chat-backed runs are owned by the thread
  * user, so an artifact produced from a Slack or Feishu message is filed under
  * the vm0 account behind that thread rather than the external sender.
  */

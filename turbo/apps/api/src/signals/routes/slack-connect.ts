@@ -14,7 +14,6 @@ import {
 } from "../services/slack-connect.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("SlackConnect");
 
@@ -32,7 +31,6 @@ const getSlackConnectStatusInner$ = computed(async (get) => {
 
 const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   signal.throwIfAborted();
 
   const bodyResult = await get(bodyResultOf(slackConnectContract.connect));
@@ -92,7 +90,6 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
           slackUserId: result.slackUserId,
           orgId: auth.orgId,
           userId: auth.userId,
-          publicBrand,
           channelId: result.channelId,
           threadTs: result.threadTs,
         },

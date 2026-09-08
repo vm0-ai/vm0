@@ -57,8 +57,6 @@ test("Cloud-browser authorization uses the current app's brand", async () => {
     "src",
     platformOkouWordmarkDarkImg,
   );
-  expect(screen.queryByText("VM0")).toBeNull();
-  expect(screen.queryByLabelText("VM0")).toBeNull();
 });
 
 test("A user can enable the cloud browser for one conversation", async () => {

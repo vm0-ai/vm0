@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
   type ConnectorSlug,
@@ -116,7 +115,6 @@ export function agentDetail(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-  readonly publicBrand: PublicBrand;
 }): Computed<Promise<AgentResponse | null>> {
   return computed(async (get): Promise<AgentResponse | null> => {
     const [row] = await get(db$)

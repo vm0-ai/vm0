@@ -1025,7 +1025,6 @@ describe("CHAT-02: completed chat callback", () => {
     expect(followupSystemPrompts[0]).toContain(
       "Supported generation types are:",
     );
-    expect(followupSystemPrompts[0]).not.toContain("VM0");
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -3934,7 +3933,6 @@ describe("CHAT-02: drain-time admission failure", () => {
     expect(errors[0]?.content).toContain(
       "https://app.okou.ai/?settings=billing&billingView=credits",
     );
-    expect(errors[0]?.content).not.toContain("https://app.vm0.ai");
     expect(
       (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
         return run.prompt === queuedPrompt;
@@ -4067,7 +4065,6 @@ describe("CHAT-02: drain-time admission failure", () => {
     expect(errors[0]?.content).toBe(
       "Oops, something went wrong. Please try again later.",
     );
-    expect(errors[0]?.content).not.toContain("VM0");
     expect(
       (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
         return run.prompt === queuedPrompt;

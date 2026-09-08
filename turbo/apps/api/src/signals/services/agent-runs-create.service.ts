@@ -12,7 +12,6 @@ import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-thre
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import {
@@ -156,7 +155,6 @@ interface CreateAgentRunCommandArgs {
   readonly body: AgentRunCreateBody;
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
-  readonly publicBrand?: PublicBrand;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
@@ -566,7 +564,6 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 
 function buildAppendSystemPrompt(args: {
   readonly agent: AgentRunRecord;
-  readonly publicBrand: PublicBrand | undefined;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
@@ -651,11 +648,8 @@ function buildAgentRunPlatformEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
-  readonly publicBrand: PublicBrand | undefined;
 }): Record<string, string> {
   return {
-    // A run source that supplies no presentation brand is a VM0 run by
-    // contract; this does not derive brand identity from token scope.
     OKOU_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
     // Chat-mode automation (and web) runs carry their thread id so the
@@ -760,7 +754,6 @@ function createRunBody(args: {
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource | undefined;
-  readonly publicBrand: PublicBrand | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
@@ -771,7 +764,6 @@ function createRunBody(args: {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
-    publicBrand: args.publicBrand,
     userInfo: args.userInfo,
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -975,7 +967,6 @@ function buildCreateAgentRunArgs(args: {
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
-      publicBrand: command.publicBrand,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: isFeatureEnabled(
@@ -1014,12 +1005,10 @@ function buildCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
-      publicBrand: command.publicBrand,
     }),
     callbacks: command.callbacks,
     includeOkouTokenSecret: true,
     productAgentExecutionPlan,
-    okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
     introVideoEnabled,
