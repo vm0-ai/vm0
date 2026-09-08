@@ -19,9 +19,18 @@ import {
 import { setOfficialWorkflowConfigurationForm$ } from "./official-workflows-signals.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
+import { cancelGoogleCalendarRecovery$ } from "./google-calendar-recovery.ts";
 
 export const setupWorkflowDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(cancelGoogleCalendarRecovery$);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(cancelGoogleCalendarRecovery$);
+      },
+      { once: true },
+    );
     set(resetConnectorAccountDialogs$);
     set(setOfficialWorkflowConfigurationForm$, null);
     set(resetWorkflowDetailUiState$);
