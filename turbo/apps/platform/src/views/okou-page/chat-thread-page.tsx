@@ -5093,7 +5093,11 @@ function AssistantThinkingStatusRow({
     <div
       {...thinkingIndicatorProps}
       data-role="assistant-thinking"
-      className={RUN_SECTION_ROW_CLASS}
+      // This continues the response: reduce the outer 24px turn gap to 8px.
+      className={cn(
+        RUN_SECTION_ROW_CLASS,
+        "group-data-[run-work-folding-disabled]/chat:-mt-4",
+      )}
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">{content}</div>
@@ -7994,7 +7998,7 @@ function PagedAssistantEventItem({
         className={cn(
           compact ? "py-1 text-[13px] leading-5" : undefined,
           legacyTopPadding &&
-            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
+            "@[900px]:group-data-[run-work-folding-disabled]/chat:first:pt-2.5",
         )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
@@ -8019,7 +8023,7 @@ function PagedAssistantEventItem({
             ? "py-1 text-[13px] leading-5"
             : CHAT_THREAD_RESPONSE_LINE_CLASS,
           legacyTopPadding &&
-            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
+            "@[900px]:group-data-[run-work-folding-disabled]/chat:first:pt-2.5",
         )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
