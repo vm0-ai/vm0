@@ -1,3 +1,5 @@
+import { clerk$, type ClerkClient } from "../external/clerk";
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 
 import { command, createStore } from "ccstate";
@@ -1915,10 +1917,13 @@ async function generateRecommendedFollowupsForCompletedRun(
   signal: AbortSignal,
 ): Promise<readonly ChatRecommendedFollowup[] | undefined> {
   signal.throwIfAborted();
-  const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
-    messages: args.followupContext,
-    threadId: args.threadId,
-  });
+  const suggestions = await generateChatThreadRecommendedFollowupsFromContext(
+    {
+      messages: args.followupContext,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   return suggestions.length > 0 ? suggestions : undefined;
 }
@@ -2164,18 +2169,17 @@ async function runCompletedChatCallbackSideEffects(
 
     let summary: string | null = null;
     if (args.lastResultText) {
-      summary =
-        (await tapError(
-          generateChatNotificationSummary(args.run.prompt, args.lastResultText),
-          (error) => {
-            log.warn("Failed to generate notification summary", {
-              runId: args.runId,
-              error,
-            });
-          },
-        )) ?? null;
+      summary = await generateChatNotificationSummary(
+        {
+          prompt: args.run.prompt,
+          resultText: args.lastResultText,
+          runId: args.runId,
+        },
+        signal,
+      );
     }
 
+    signal.throwIfAborted();
     await sendUserPushNotifications({
       db: args.db,
       userId: args.chatThread.userId,
@@ -2706,6 +2710,7 @@ async function resolveQueuedMessageModelRoute(args: {
 
 interface CreateQueuedChatRunInputArgs {
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly threadId: string;
   readonly userId: string;
   readonly agent: AgentForAutoSend;
@@ -3071,6 +3076,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
+  readonly introVideoEnabled: boolean;
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
@@ -3079,6 +3085,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
+        introVideoEnabled: args.introVideoEnabled,
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         mountedUserPresentationTemplateIds:
@@ -3107,6 +3114,7 @@ async function resolveQueuedMessageTemplateContext(args: {
   readonly userMessageProjection: Parameters<
     typeof resolveQueuedMessageGenerationTemplatePrompt
   >[0]["userMessageProjection"];
+  readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<{
   readonly generationTemplatePrompt: string;
   readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
@@ -3124,6 +3132,13 @@ async function resolveQueuedMessageTemplateContext(args: {
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
+      introVideoEnabled: await loadIntroVideoTemplateAccess(
+        args.db,
+        args.input.clerk,
+        args.userId,
+        args.userMessageProjection?.templates ?? [],
+        args.featureSwitchContext,
+      ),
       mountedUserPresentationTemplateIds,
     });
   return {
@@ -3262,6 +3277,7 @@ async function buildCreateQueuedChatRunInput(
     userId: args.userId,
     input: args,
     userMessageProjection,
+    featureSwitchContext,
   });
   const computerUseHostGrant =
     await resolveQueuedMessageComputerUseHostGrant(args);
@@ -3993,6 +4009,7 @@ interface AutoSendQueuedMessageArgs {
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -4021,6 +4038,7 @@ async function prepareAutoSendQueuedMessageRunInput(input: {
     () => {
       return buildCreateQueuedChatRunInput({
         db: args.db,
+        clerk: args.clerk,
         threadId: args.chatThreadId,
         userId: args.userId,
         agent,
@@ -5504,7 +5522,7 @@ const buildChatCallbackDependencies$ = command(
 /** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
@@ -5543,6 +5561,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     await autoSendQueuedMessageForThread(
       {
         db,
+        clerk: get(clerk$),
         chatThreadId: args.chatThreadId,
         admissionTime,
         userId: thread.userId,

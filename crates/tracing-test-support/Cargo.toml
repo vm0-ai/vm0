@@ -5,8 +5,8 @@ edition.workspace = true
 description = "Tracing capture helpers for Rust tests"
 
 [dependencies]
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing = { workspace = true, features = ["attributes", "std"] }
+tracing-subscriber = { workspace = true, features = ["ansi", "fmt", "smallvec", "std", "tracing-log"] }
 
 [lints]
 workspace = true

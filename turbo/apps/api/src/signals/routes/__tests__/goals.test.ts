@@ -1,4 +1,9 @@
 import { HttpResponse, http } from "msw";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import {
+  auxiliaryResults,
+  auxiliaryWarnings,
+} from "./helpers/auxiliary-generation";
 import { z } from "zod";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
@@ -695,6 +700,31 @@ describe("agent goals", () => {
     });
   });
 
+  it("keeps the deterministic goal brief when upstream is rate limited", async () => {
+    const fixture = await seedGoalApiFixture();
+    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return HttpResponse.json({ error: { code: "rate_limit_exceeded" } });
+      }),
+    );
+    const created = await createGoal(fixture, "ship thread goals");
+    await flushWaitUntilForTest();
+    expect(created.body).toStrictEqual({
+      objective: "ship thread goals",
+      objectiveBrief: "ship thread goals",
+      status: "active",
+    });
+    expect(
+      auxiliaryResults(context).filter(({ feature }) => {
+        return feature === "goal_objective_brief";
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({ outcome: "degraded", reason: "rate_limited" }),
+    ]);
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+  });
+
   it("pins the model, reasoning effort, and token budget of the objective brief completion", async () => {
     const fixture = await seedGoalApiFixture();
     mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
@@ -731,6 +761,14 @@ describe("agent goals", () => {
       objectiveBrief: "Ship the token budget repair",
       status: "active",
     });
+    await flushWaitUntilForTest();
+    expect(
+      auxiliaryResults(context).filter(({ feature }) => {
+        return feature === "goal_objective_brief";
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({ outcome: "success", reason: "none" }),
+    ]);
     // Reasoning tokens are drawn from the same budget as the answer, so a
     // budget sized for a non-reasoning model starves the answer entirely.
     expect(briefRequestBody).toMatchObject({

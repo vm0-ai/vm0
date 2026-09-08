@@ -1,0 +1,150 @@
+name: KMS Production Preflight
+
+env:
+  npm_config_audit: "false"
+
+on:
+  workflow_dispatch:
+    inputs:
+      cursor:
+        description: "Optional inventory/verify checkpoint from the previous report"
+        type: string
+        default: ""
+
+concurrency:
+  group: kms-production-preflight-32264
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install migration dependencies
+        run: |
+          corepack enable pnpm
+          pnpm --dir turbo install --frozen-lockfile --ignore-scripts --filter @okouai/db...
+          command -v aws
+      - name: Resolve the production database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          project = os.environ["NEON_PROJECT_ID"]
+          if project != "hidden-lab-39609750":
+              raise SystemExit("Unexpected production Neon project")
+          base = f"https://console.neon.tech/api/v2/projects/{project}"
+          headers = {"Authorization": "Bearer " + os.environ["NEON_API_KEY"]}
+
+          def read(url):
+              with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
+                  return json.load(response)
+
+          branches = read(base + "/branches")["branches"]
+          production = [branch for branch in branches if branch["name"] == "production"]
+          if len(production) != 1:
+              raise SystemExit("Production branch must resolve uniquely")
+          branch = production[0]["id"]
+          query = urllib.parse.urlencode({"branch_id": branch, "database_name": "neondb", "role_name": "neondb_owner", "pooled": "false"})
+          uri = read(base + "/connection_uri?" + query)["uri"]
+          parsed = urllib.parse.urlsplit(uri)
+          parameters = dict(urllib.parse.parse_qsl(parsed.query))
+          parameters["sslmode"] = "verify-full"
+          uri = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(parameters)))
+          if "\n" in uri or "\r" in uri:
+              raise SystemExit("Invalid database URI")
+          print("::add-mask::" + uri.replace("%", "%25"))
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write("DATABASE_URL=" + uri + "\n")
+          print(json.dumps({"project": project, "branch": branch, "name": "production", "databaseAccess": "read-only script"}))
+          PYTHON
+      - name: Inventory and verify production ciphertext without writes
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          CURSOR: ${{ inputs.cursor }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$CURSOR" ]; then args+=(--cursor "$CURSOR"); fi
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
+            --verify --batch-size 100 --max-rows 100000 \
+            --source-key arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f92a7a8 \
+            --target-key arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947 \
+            --report-path "$RUNNER_TEMP/kms-production-inventory.json" "${args[@]}"
+      - name: Create synthetic fixtures using the current production credentials
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/kms-canary"
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts prepare-old "$RUNNER_TEMP/kms-canary"
+      - name: Load the existing target production credentials
+        id: target
+        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534 # v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: prd_kms_migration_32264
+      - name: Verify target production runtime reads and writes
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.target.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.target.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ steps.target.outputs.SECRETS_KMS_KEY_ID }}
+        run: |
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-new "$RUNNER_TEMP/kms-canary"
+      - name: Verify rollback using the current production credentials
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
+        run: |
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-rollback "$RUNNER_TEMP/kms-canary"
+      - name: Retain sanitized inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kms-production-inventory-${{ github.run_id }}
+          path: ${{ runner.temp }}/kms-production-inventory.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove synthetic ciphertext fixtures
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/kms-canary"

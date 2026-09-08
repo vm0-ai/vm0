@@ -87,6 +87,7 @@ export interface ApiTestMocks {
     readonly timeout: AbortSignalTimeoutMock;
   };
   readonly axiom: {
+    readonly useRealTelemetry: Mock<() => boolean>;
     readonly clientError: Mock<(error: Error) => void>;
     readonly clients: AxiomSdkClientMock[];
     readonly flush: AsyncMock;
@@ -321,6 +322,7 @@ type AxiomJSTransportMock = Readonly<Record<string, never>>;
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
+    useRealTelemetry: vi.fn<() => boolean>(),
     clientError: vi.fn<(error: Error) => void>(),
     clients: [],
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -1171,16 +1173,22 @@ vi.mock("../signals/external/axiom", async () => {
       });
     },
     getDatasetName: (name: string) => {
-      return name;
+      return apiTestMocks.axiom.useRealTelemetry()
+        ? actual.getDatasetName(name)
+        : name;
     },
     ingestToAxiom: (
       dataset: string,
       events: readonly Record<string, unknown>[],
     ) => {
-      return apiTestMocks.axiom.ingest(dataset, events);
+      return apiTestMocks.axiom.useRealTelemetry()
+        ? actual.ingestToAxiom(dataset, events)
+        : apiTestMocks.axiom.ingest(dataset, events);
     },
-    flushAxiom: (options?: unknown) => {
-      return apiTestMocks.axiom.flush(options);
+    flushAxiom: (options?: Parameters<typeof actual.flushAxiom>[0]) => {
+      return apiTestMocks.axiom.useRealTelemetry()
+        ? actual.flushAxiom(options)
+        : apiTestMocks.axiom.flush(options);
     },
   };
 });
@@ -1289,6 +1297,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.ably.requestToken.mockResolvedValue({
     token: "test-ably-token",
   });
+  apiTestMocks.axiom.useRealTelemetry.mockReset();
+  apiTestMocks.axiom.useRealTelemetry.mockReturnValue(false);
   apiTestMocks.axiom.clientError.mockReset();
   apiTestMocks.axiom.clients.splice(0);
   apiTestMocks.axiom.flush.mockReset();

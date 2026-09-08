@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.188.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.14...runner-rs-v0.188.15) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** bind orphan group signals to verified process identity ([#32563](https://github.com/vm0-ai/vm0/issues/32563)) ([60915a0](https://github.com/vm0-ai/vm0/commit/60915a0fc006981dc47a0660b550e0607a12495a))
+
+
+### Performance Improvements
+
+* **python:** bound raw websocket handshake header inspection ([#32618](https://github.com/vm0-ai/vm0/issues/32618)) ([4996a0f](https://github.com/vm0-ai/vm0/commit/4996a0fd9e4fb073934700cb47d24360fe1a61b5))
+
 ## [0.188.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.13...runner-rs-v0.188.14) (2026-09-08)
 
 ## [0.188.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.12...runner-rs-v0.188.13) (2026-09-08)

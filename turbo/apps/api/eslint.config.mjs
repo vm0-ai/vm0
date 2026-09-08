@@ -245,6 +245,17 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/codex-reset-credit-expiry.service.ts"],
+    rules: {
+      // One demand-driven aggregate per minute, not per-read diagnostics.
+      // Axiom's default transport drops debug events, so retain this bounded audit.
+      "api/no-logger-info": [
+        "error",
+        { allowedMessages: ["codex reset credit expiry outcomes"] },
+      ],
+    },
+  },
+  {
     files: ["src/signals/services/onboarding.service.ts"],
     rules: {
       "api/no-logger-info": [

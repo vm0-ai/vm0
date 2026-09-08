@@ -1,3 +1,4 @@
+import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
@@ -340,13 +341,14 @@ function HtmlSitePreviewViewport({
   title: string;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(publicUrl);
   return (
     <div
       data-testid="attachment-preview-html-viewport"
       className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
     >
       <iframe
-        src={publicUrl}
+        src={resourceUrl ?? undefined}
         title={t(
           ($) => {
             return $.artifacts.preview.siteLabel;

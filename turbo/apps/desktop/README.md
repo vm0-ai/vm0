@@ -2,10 +2,8 @@
 
 Electron shell for Okou.
 
-This pass is macOS-only. Windows packaging, native push, tray behavior, and
-auto-update are intentionally out of scope. Computer Use setup lives in the
-hosted Platform UI, while this app exposes the Desktop bridge and native macOS
-host runtime that page uses.
+Computer Use setup lives in the hosted Platform UI. This app exposes the
+Desktop bridge and native macOS host runtime that page uses.
 
 Okou supports macOS 14+ (macOS 14 or newer). Packaged app
 metadata, native helper builds, and release verification all use the same
@@ -40,7 +38,7 @@ This launches the generic Electron app from `node_modules`, so macOS URL scheme
 handlers, bundle identifiers, Dock identity, and permission prompts do not match
 the packaged Desktop app.
 
-From the monorepo root, start a packaged development app against the local proxy
+From `turbo/`, start a packaged development app against the local proxy
 with:
 
 ```bash
@@ -136,13 +134,6 @@ publishes `okou-desktop-vX.Y.Z` containing `Okou-darwin-arm64-X.Y.Z.zip` and
 
 The release workflow then updates the Okou manifest. The Zero manifest is frozen
 at its final bridge release and is no longer produced by any build.
-
-Use the product's DMG for manual installation. It opens with a product-specific
-Finder background, the app on the left, and an `/Applications` symlink on the
-right for drag-to-install. Update manifests continue to point at the ZIP
-artifacts because the auto-update feeds consume ZIP releases. Release smoke
-tests copy Okou from the DMG into an isolated Applications directory, launch it,
-replace it from the Okou update ZIP, and launch it again.
 
 ### Zero and Okou update compatibility
 

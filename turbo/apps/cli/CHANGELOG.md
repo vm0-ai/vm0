@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.317.3](https://github.com/vm0-ai/vm0/compare/cli-v9.317.2...cli-v9.317.3) (2026-09-08)
+
+
+### Refactoring
+
+* **pi:** stop legacy api writes while preserving wire readers ([#32632](https://github.com/vm0-ai/vm0/issues/32632)) ([c08d055](https://github.com/vm0-ai/vm0/commit/c08d0550f18aced7654548ac54f43d1c49f5355b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.416.0
+    * @okouai/core bumped to 8.636.0
+    * @okouai/pi-agent-runtime bumped to 1.23.2
+
 ## [9.317.2](https://github.com/vm0-ai/vm0/compare/cli-v9.317.1...cli-v9.317.2) (2026-09-08)
 
 

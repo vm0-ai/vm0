@@ -56,6 +56,7 @@ mod run_resolution;
 mod runner_dirname;
 mod runner_process_identity;
 mod runtime_overrides;
+mod ssh;
 mod state_file;
 mod status;
 mod status_file;
@@ -173,6 +174,9 @@ fn init_tracing_with_file(
         .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::filter_fn(
+            ssh::safe_log_metadata,
+        ))
         .with(fmt_layer)
         .with(axiom_layer)
         .init();
@@ -193,6 +197,9 @@ fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
         .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::filter_fn(
+            ssh::safe_log_metadata,
+        ))
         .with(fmt_layer)
         .with(axiom_layer)
         .init();

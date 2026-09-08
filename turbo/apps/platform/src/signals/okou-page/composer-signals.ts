@@ -10,6 +10,9 @@ import type {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
 import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
+import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
+import { toast } from "@okouai/ui/components/ui/sonner";
+import { i18n } from "../../i18n/index.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
@@ -550,7 +553,10 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const create = createComposerCreateSignals(workflowComposer, ui);
+  const create = createComposerCreateSignals(workflowComposer, ui, {
+    image: options.imageModel !== undefined,
+    video: options.videoModel !== undefined,
+  });
   const voice = createComposerVoiceInput(
     options,
     workflowComposer,
@@ -791,6 +797,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
   readonly voiceState$: ComposerVoiceInputSignals["state$"];
+  readonly choosingCreateType$: ComposerCreateSignals["choosing$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -806,7 +813,8 @@ function createComposerPrimaryActionSignal(args: {
     const attachments = get(draft.attachments$);
     const hasContent =
       get(workflowComposer.hasInput$) || attachments.length > 0;
-    const canSend = uploadsReady && hasContent;
+    const canSend =
+      !get(args.choosingCreateType$) && uploadsReady && hasContent;
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
       return "stop";
@@ -821,37 +829,20 @@ function createComposerPrimaryActionSignal(args: {
   });
 }
 
-function createComposerSubmissionSignals(
+function createSubmitCurrentInput(
   options: CreateComposerSignalsOptions,
-  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
   workflowComposer: WorkflowComposerSignals,
   videoOptions: ComposerVideoOptionsSignals,
-  {
-    voice,
-    create,
-  }: { voice: ComposerVoiceInputSignals; create: ComposerCreateSignals },
+  voice: ComposerVoiceInputSignals,
+  create: ComposerCreateSignals,
 ) {
-  const { state$: voiceState$, owner$ } = voice;
   const draft = options.draft.signals;
+  const voiceState$ = voice.state$;
   const readVideoRunOptions$ = createVideoRunOptionsSignal(
     options.videoModel,
     videoOptions,
   );
-  const invocation$ = state<{
-    readonly owner: AbortController;
-    readonly action: ComposerPrimaryAction;
-  } | null>(null);
-  const hasCurrentInvocation$ = computed((get) => {
-    const invocation = get(invocation$);
-    return invocation !== null && invocation.owner === get(owner$);
-  });
-  const primaryAction$ = createComposerPrimaryActionSignal({
-    options,
-    eventSignals,
-    workflowComposer,
-    voiceState$,
-  });
-  const submitCurrentInput$ = command(
+  return command(
     async (
       { get, set },
       action: ComposerPrimaryAction,
@@ -876,6 +867,28 @@ function createComposerSubmissionSignals(
         signal,
       );
       signal.throwIfAborted();
+      if (get(featureSwitch$)[FeatureSwitchKey.IntroVideo] !== true) {
+        const message = submission.editorDocument.toMessageDocument({
+          selectedTemplate: get(draft.generationTemplate$),
+        });
+        if (
+          message?.parts.some((part) => {
+            return (
+              part.type === "template" &&
+              part.template.type === "video" &&
+              part.template.selection.stylePresetId ===
+                EXPLAINER_VIDEO_TEMPLATE_ID
+            );
+          })
+        ) {
+          toast.error(
+            i18n.t(($) => {
+              return $.artifacts.templates.explainerUnavailable;
+            }),
+          );
+          return false;
+        }
+      }
       const visiblePrompt = submission.prompt.trim();
       if (visiblePrompt.length === 0 && get(draft.attachments$).length === 0) {
         return false;
@@ -921,6 +934,41 @@ function createComposerSubmissionSignals(
         signal,
       );
     },
+  );
+}
+
+function createComposerSubmissionSignals(
+  options: CreateComposerSignalsOptions,
+  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
+  workflowComposer: WorkflowComposerSignals,
+  videoOptions: ComposerVideoOptionsSignals,
+  {
+    voice,
+    create,
+  }: { voice: ComposerVoiceInputSignals; create: ComposerCreateSignals },
+) {
+  const { state$: voiceState$, owner$ } = voice;
+  const invocation$ = state<{
+    readonly owner: AbortController;
+    readonly action: ComposerPrimaryAction;
+  } | null>(null);
+  const hasCurrentInvocation$ = computed((get) => {
+    const invocation = get(invocation$);
+    return invocation !== null && invocation.owner === get(owner$);
+  });
+  const primaryAction$ = createComposerPrimaryActionSignal({
+    options,
+    eventSignals,
+    workflowComposer,
+    voiceState$,
+    choosingCreateType$: create.choosing$,
+  });
+  const submitCurrentInput$ = createSubmitCurrentInput(
+    options,
+    workflowComposer,
+    videoOptions,
+    voice,
+    create,
   );
   const activatePrimaryAction$ = command(
     async (

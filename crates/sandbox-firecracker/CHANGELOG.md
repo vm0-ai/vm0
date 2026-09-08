@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.2](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.1...sandbox-firecracker-v0.40.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **sandbox-firecracker:** retain pool index ownership through creation cleanup ([#32617](https://github.com/vm0-ai/vm0/issues/32617)) ([6ea0882](https://github.com/vm0-ai/vm0/commit/6ea088213e105b590ca7fa533e4eaf7e9a4e71fc))
+
 ## [0.40.1](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.0...sandbox-firecracker-v0.40.1) (2026-09-08)
 
 ## [0.40.0](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.39.6...sandbox-firecracker-v0.40.0) (2026-09-08)

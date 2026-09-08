@@ -1,291 +1,84 @@
-# Claude Code Project Guidelines
-
-## Development Environment
-
-**Claude Code runs in an isolated Docker container** with its own PostgreSQL server. This environment is completely separate from production.
-
-### Key Assumptions
-
-- **main branch is always stable** - All code merged to main has passed CI (build + tests). If your branch fails to build or pass tests, the issue is in your branch code, not main.
-- **Use the API dev script for local development with external callbacks** - Run `cd turbo && pnpm -F api dev` to start the API server and its public tunnel.
-- **Run `pnpm -F @okouai/db db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
-- **Run `scripts/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
-- **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
-- **API endpoints live in `apps/api`** - Implement every new or changed API endpoint in `turbo/apps/api` (Hono, `apps/api/src/signals/routes/`). Frontend apps must not add API route handlers or thin proxy route handlers. Browser clients should call the canonical API service directly. When a `/api/*` path must stay reachable on a frontend origin (external webhooks or OAuth callbacks), configure it in that frontend's active deployment layer while keeping the handler in `turbo/apps/api`.
-- **Deployment compatibility matters** - Frontend, backend, and runner deploy independently and can briefly run different versions. Open browser pages can keep using already-loaded frontend code until navigation or refresh, and old runners can overlap briefly before draining existing runs and stopping. When changing APIs, runner protocols, queue payloads, or persisted state, preserve cross-version compatibility and test old/new combinations. See `docs/deployment-compatibility.md`.
-
-## Architecture Design Principles
-
-### YAGNI (You Aren't Gonna Need It)
-**This is a core principle for this project.** We follow the YAGNI principle strictly to keep the codebase simple and maintainable.
-
-#### What this means:
-- **Don't add functionality until it's actually needed**
-- **Start with the simplest solution that works**
-- **Avoid premature abstractions**
-- **Delete unused code aggressively**
-
-#### Examples in this project:
-- Test helpers should only include functions that are actively used
-- Configuration files should start minimal and grow as needed
-- Avoid creating "utility" functions for single use cases
-- Don't add "just in case" parameters or options
-
-### Avoid Defensive Programming
-**Let exceptions propagate naturally.** Don't wrap everything in try/catch blocks.
-
-#### What this means:
-- **Only catch exceptions when you can meaningfully handle them**
-- **Let errors bubble up to where they can be properly addressed**
-- **Avoid defensive try/catch blocks that just log and re-throw**
-- **Trust the runtime and framework error handling**
-
-#### Examples in this project:
-- Database operations should fail fast if connection is broken
-- File operations should naturally throw if permissions are wrong
-- Don't wrap every async operation in try/catch
-- Only use try/catch when you have specific error recovery logic
-
-### Externally Managed References
-**Reference ownership follows the referenced entity's authority, not where the
-identifier is stored.** A local row can contain an identifier for an entity
-whose identity and lifecycle are managed by a provider, catalog, or another
-bounded context.
-
-- Distinguish untrusted input, externally managed references, required remote
-  operations, and local invariants; they do not share one failure policy
-- Resolve a well-formed external reference against its current authority and
-  represent an expected miss as unavailable rather than an internal error
-- Fail closed: an unresolved reference must never grant capabilities,
-  credentials, targets, or ownership
-- Do not turn database failures, programmer errors, or violated local
-  invariants into "external entity unavailable"
-- Test syntax validation and current existence as separate boundaries
-
-See `docs/externally-managed-references.md` for the full rules and examples.
-
-### Strict Type Checking
-**Maintain type safety throughout the codebase.** Never compromise on type checking.
-
-#### What this means:
-- **Absolutely no use of `any` type**
-- **Always provide explicit types where TypeScript can't infer**
-- **Use proper type narrowing instead of type assertions**
-- **Define interfaces and types for all data structures**
-
-#### Examples in this project:
-- All function parameters must have explicit types
-- API responses should have defined interfaces
-- Avoid `as` casting unless absolutely necessary
-- Use `unknown` instead of `any` when type is truly unknown
-
-### Zero Tolerance for Lint Violations
-**All code must pass linting without exceptions.** Maintain code quality standards consistently.
-
-#### What this means:
-- **Never add eslint-disable comments**
-- **Never add @ts-ignore or @ts-nocheck**
-- **Fix the underlying issue, don't suppress the warning**
-- **All lint rules are there for a reason - respect them**
-
-#### Examples in this project:
-- If a lint rule is triggered, refactor the code to comply
-- Don't disable rules in configuration files
-- Address TypeScript errors properly, don't ignore them
-- Unused variables should be removed, not ignored
-
-### App Styling Boundary
-
-**Business components use Tailwind utilities as their only styling API.** Do not add first-party CSS class selectors, CSS modules, `<style>` elements, runtime stylesheet injection, or CSS-in-JS in `turbo/apps/platform` or `turbo/packages/ui`.
-
-- Add or reuse semantic design tokens in the shared Tailwind `@theme` contract; do not hardcode a parallel component-local token system
-- Global environment rules and third-party generated DOM adapters require an exact entry in `turbo/style-allowlist.json`
-- Never add a business selector or component styling gap to the allowlist or legacy baseline
-- Existing first-party CSS and class dependencies are a shrink-only baseline. When removing one, run `cd turbo && pnpm lint:style:prune`
-- Run `cd turbo && pnpm lint:style` for the complete policy and Tailwind class validation
-
-Read `docs/styles.md` before changing App styles or fixing a style lint failure. It defines the final zero-first-party-selector goal, token ownership, exception boundaries, and lint behavior.
-
-### Testing Guidelines
-**"Write tests. Not too many. Mostly integration."** — Kent C. Dodds
-
-#### Core Rules:
-- **Integration Tests Only** - Test at entry points (CLI commands, API routes), not internal functions
-- **No Unit Tests** - Integration tests already exercise all internal logic
-- **E2E Tests for Happy Path** - E2E tests only cover happy path; error cases go in integration tests
-- **Only Mock External Dependencies** - If `vi.mock()` path starts with `../../`, it's wrong
-- **Use Real Infrastructure** - Real database, real filesystem (temp dirs), MSW for HTTP
-
-For detailed patterns and examples, use `/testing`.
-
-## Commit Message Guidelines
-
-**All commit messages must follow Conventional Commits format.** This ensures consistent commit history and enables automated versioning.
-
-### Format
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-### Required Rules:
-- **Type must be lowercase** - Use `feat:`, not `Feat:` or `FEAT:`
-- **Description must start with lowercase** - Use `add new feature`, not `Add new feature`  
-- **No period at the end** - Use `fix user login`, not `fix user login.`
-- **Keep title under 100 characters** - Ensure the entire first line is concise
-- **Use imperative mood** - Use `add`, not `added` or `adds`
-
-### Types:
-- `feat:` New feature
-- `fix:` Bug fix  
-- `docs:` Documentation changes
-- `style:` Code style changes (formatting, semicolons, etc)
-- `refactor:` Code refactoring
-- `test:` Test additions or changes
-- `chore:` Build process or auxiliary tool changes
-- `ci:` CI configuration changes
-- `perf:` Performance improvements
-- `build:` Build system changes
-- `revert:` Revert previous commit
-
-### Examples:
-- ✅ `feat: add user authentication system`
-- ✅ `fix: resolve database connection timeout`
-- ✅ `docs(api): update endpoint documentation`
-- ✅ `ci: optimize release workflow dependencies`
-- ❌ `Fix: Resolve database connection timeout.` (wrong case, has period)
-- ❌ `added user auth` (missing type, wrong tense)
-- ❌ `feat: Add user authentication system with OAuth2 integration, JWT tokens, refresh mechanism, and comprehensive error handling` (too long)
-
-## Pre-Commit Checks
-
-**Run every check relevant to the files and behavior changed before committing.** Do not run an unrelated language ecosystem's full suite. For example, Rust-only or Python-only changes do not require Turbo checks unless they affect Turbo inputs or consumers. Determine the affected scope from the changed files and their consumers, then expand the scope for shared configuration, generated artifacts, cross-language contracts, build or deployment tooling, and other changes with wider impact.
-
-### Select Checks by Affected Scope
-
-- **Turbo / TypeScript:** Run formatting, lint, type checking, Knip, and tests for the affected workspace(s). The full-repository forms below are appropriate when a change crosses workspaces, affects shared Turbo configuration, or cannot be isolated safely:
-  - `cd turbo && pnpm format`
-  - `cd turbo && pnpm turbo run lint`
-  - `cd turbo && pnpm check-types`
-  - `cd turbo && pnpm vitest run --maxWorkers=4 --silent=passed-only`
-  - `cd turbo && pnpm knip`
-- **Rust:** Run `cargo fmt`, Clippy, documentation checks, and tests for the affected crate(s) from `crates/`. Use workspace-wide checks when shared crates, workspace configuration, or cross-crate behavior changes.
-- **Python (`crates/runner/mitm-addon`):** Use the committed uv environment and run the following commands from that package:
-  - `uv lock --check`
-  - `uv sync --locked`
-  - `uv run --no-sync ruff format --check .`
-  - `uv run --no-sync ruff check .`
-  - `uv run --no-sync basedpyright -p .`
-  - `uv run --no-sync python -m pytest tests/`
-- **Documentation or configuration:** Run the formatter, validator, or specialized tests that consume the changed files. Unrelated Turbo, Rust, or Python suites are not required unless those files affect them.
-
-The root `lefthook.yml` selects formatting and static checks from staged file paths. It does not replace running the relevant tests manually.
-
-### Before Committing:
-
-1. Identify the affected languages, workspaces, crates, packages, generated outputs, and runtime consumers
-2. Run all formatting, linting, type checking, static analysis, and tests relevant to that scope
-3. Expand to broader or cross-language checks when the impact is shared or uncertain
-4. Fix any issues that are found
-5. Never commit code that fails an applicable check
-6. Use proper conventional commit message format
-
-### Running Vitest Correctly
-
-**Resource contention occurs when multiple vitest processes run simultaneously.** Follow these rules to avoid test conflicts:
-
-1. **Run one vitest process at a time** - Wait for it to fully exit before starting the next. Never launch parallel vitest processes.
-2. **Prefer workspace-scoped testing** - Instead of running all tests with `pnpm vitest`, target a specific workspace for faster, isolated runs:
-   ```
-   pnpm -F @okouai/app exec vitest
-   ```
-   Replace `@okouai/app` with the workspace name relevant to your changes (e.g. `@okouai/cli`, `api`).
-3. **Limit full-suite worker concurrency** - When an all-workspace run is necessary, cap file workers to avoid resource-contention timeouts:
-   ```
-   pnpm vitest run --maxWorkers=4 --silent=passed-only
-   ```
-   Do not increase test timeouts to compensate for excessive local concurrency.
-
-### CRITICAL: Never run checks in background
-
-**All selected pre-commit checks MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
-
-## Code Quality Tools
-
-### Knip - Dependency and Export Analysis
-
-**Knip is integrated to maintain a clean and efficient codebase.** It identifies unused files, dependencies, and exports across the monorepo.
-
-#### Available Commands:
-- `pnpm knip` - Run full analysis to find unused code
-- `pnpm knip:fix` - Automatically fix issues (removes unused files and dependencies)
-- `pnpm knip:production` - Strict production mode analysis
-- `pnpm knip --workspace <name>` - Analyze specific workspace only
-
-#### Configuration:
-- Configuration file: `turbo/knip.json`
-- Workspace-specific settings for each package
-- Integrated with lefthook pre-commit hooks
-
-#### Common Issues and Solutions:
-- **Unused dependencies:** Review and remove from package.json
-- **Unused exports:** Delete or mark as internal if needed
-- **Unused files:** Remove if truly unused, or add to entry patterns if needed
-- **False positives:** Add to ignore patterns in knip.json
-
-## PR Checks
-
-**All pull requests must pass CI checks before merging.** These checks are defined in `.github/workflows/turbo.yml` and run automatically on every PR, including lint, test, deploy, and cli-e2e.
-
-### GitHub Actions Shell Compatibility
-
-GitHub Actions container jobs run `run` steps with `sh` by default. Any step that uses Bash syntax or sources a Bash helper must set `shell: bash`, or the job must set `defaults.run.shell: bash`. A sourced script's shebang does not select the shell because the calling shell parses it.
-
-### Zero Tolerance for Skipping Tests
-
-**NEVER skip tests to make CI pass.** All tests selected for the affected scope, together with all tests selected by CI, must execute and pass:
-
-- Do not add `skip` flags or environment variables to bypass tests
-- Do not modify CI workflow to skip tests that are timing out or failing
-- If tests are slow or timing out, **fix the underlying issue** - either optimize the tests or fix the code
-- The purpose of tests is to validate functionality - skipping them defeats that purpose
-- Especially critical: **never skip tests for the feature being developed in the PR**
-
-If tests timeout, investigate why:
-
-1. Is there a bug in the code causing infinite loops or hangs?
-2. Are there network issues or external service dependencies?
-3. Is the test itself poorly designed and needs optimization?
-
-### CI Failure Rerun Limit
-
-**If a CI job fails 3 times, stop rerunning and investigate your own code.** Assume your changes caused the failure until proven otherwise — do not default to "infrastructure issue". Read the failure logs and search the entire repo (including `e2e/`, `.github/`, shell scripts) for references to anything you changed.
-
-### CLI E2E Timeout
-
-The `cli-e2e` jobs have a **maximum timeout** (10 minutes for serial, 8 minutes for browser, and 15 minutes for runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
-
-### Merge Requirements
-
-- All required checks must show **green (passed)**
-- "Cancelled" status does **not** satisfy the requirement
-
-## Language Standard
-
-**All project artifacts must be written in English,** but direct communication with users should use the user's preferred language.
-
-### English Required For:
-- **Source code** - Variable names, function names, class names
-- **Comments** - Inline comments and documentation comments
-- **Commit messages** - All git commit messages
-- **Pull requests** - PR titles, descriptions, and review comments
-- **Issues** - Bug reports, feature requests, and discussions
-- **Documentation** - README, guides, and all markdown files
-
-### User Communication:
-- **Use the user's language** - When communicating directly with users, respond in their language
-- **Language priority** - If the user uses multiple languages, prioritize them in this order: user's primary language(s) first, English last
-- **Consistency** - Once you identify the user's preferred language, maintain that language throughout the conversation
+# Project Guidelines
+
+`AGENTS.md` links to this file. Keep shared instructions here and load detailed
+guidance only for the surface being changed.
+
+## Project Boundaries
+
+- API endpoints belong in `turbo/apps/api` (Hono,
+  `src/signals/routes/`). Browser clients call the canonical API service.
+  Frontend apps must not add API handlers or thin proxy handlers. If a frontend
+  origin must expose `/api/*` for webhooks or OAuth, route it in that frontend's
+  deployment layer while keeping the handler in the API service.
+- Frontend, API, Runner, and persisted data can span versions. Read
+  [deployment compatibility](docs/deployment-compatibility.md) before changing
+  their boundaries; cover the relevant old/new combinations.
+- Reference authority follows the entity's owner, even when its ID is stored
+  locally. Expected external misses mean unavailable; unresolved references
+  must never grant access. Do not disguise dependency failures or broken local
+  invariants as missing external entities. See
+  [externally managed references](docs/externally-managed-references.md).
+- Implement the requested behavior with the smallest necessary abstraction.
+  Preserve meaningful error recovery, cleanup, permission checks, and active
+  compatibility contracts when removing unused code.
+- Keep TypeScript type safe: no `any` or lint/type suppression comments. Use
+  static production imports and fix violations at their source. See
+  [code quality](docs/bad-smell.md) for the project's specific boundaries.
+- Write repository artifacts, comments, commits, issues, and PRs in English.
+  Use the user's preferred language in direct conversation.
+
+## Task Routing
+
+Use [the documentation index](docs/docs.md) to select relevant guidance.
+
+| Changed surface                            | Read                                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Tests or test failures                     | [Testing](docs/testing.md), then the matching application guide                                             |
+| React, signals, async ownership            | [ccstate](.claude/skills/ccstate/SKILL.md), [effects](docs/effect.md), [cache](docs/cache.md) as applicable |
+| App or shared UI styling                   | [Styles](docs/styles.md)                                                                                    |
+| Database schema or queries                 | [Database development](.claude/skills/database-development/SKILL.md)                                        |
+| New user-facing features or switch changes | [Feature switches](.claude/skills/feature-switch/SKILL.md)                                                  |
+| CLI commands                               | [CLI design](.claude/skills/cli-design/SKILL.md)                                                            |
+| Fallbacks or compatibility removal         | [Fallbacks](docs/fallback.md)                                                                               |
+| Persistent or optimistic events            | [Event sourcing](docs/event-sourcing.md)                                                                    |
+| PR review                                  | [Review instructions](REVIEW.md)                                                                            |
+
+Business UI uses Tailwind utilities and shared semantic tokens. First-party
+selectors, CSS modules, runtime stylesheets, and CSS-in-JS are prohibited in
+Platform and UI. Exact global/third-party exceptions belong in
+`turbo/style-allowlist.json`; the legacy baseline only shrinks. Read the styles
+guide before changing either boundary.
+
+## Development and Verification
+
+- Start from a current `main` and inspect the worktree before editing. Diagnose
+  failures from logs and a relevant baseline; a branch name does not establish
+  that its code or environment is healthy.
+- Use [CONTRIBUTING.md](CONTRIBUTING.md) for environment setup and local URLs.
+  `scripts/prepare.sh` installs dependencies, syncs environment, migrates, and
+  seeds local data; run it when that setup is needed, not for every task.
+- Select checks from changed files and their consumers. Use affected-workspace
+  formatting, lint, types, Knip, and tests for TypeScript; affected-crate checks
+  for Rust; the locked addon environment for Python. Documentation requires its
+  formatter, links, and any actual consumers, not unrelated language suites.
+- Expand verification for shared configuration, generated outputs, deployment
+  tooling, or cross-language contracts. Commands and test boundaries are in
+  [Testing](docs/testing.md) and its surface guides.
+- Run heavy checks sequentially and await their results. Use one Vitest process
+  at a time, prefer package scope, and cap an explicitly needed full run at four
+  workers. Do not increase timeouts to hide local resource contention.
+- After applicable checks pass, repeat or broaden them only for new changes,
+  failures, or unresolved risks. `lefthook.yml` selects staged-file checks and
+  does not replace behavior verification.
+- Follow [commitlint.config.mjs](commitlint.config.mjs) for commit format; use
+  [the commit skill](.claude/skills/commit/SKILL.md) for scope and release guidance.
+
+## CI and Merge
+
+- Required CI checks must pass before merging. Cancelled checks do not pass.
+  Never skip tests, weaken checks, or bypass protection to obtain a green build.
+- After three failures of the same CI job, stop blind reruns, inspect logs, and
+  investigate the changed files and their consumers.
+- GitHub Actions container steps default to `sh`. Set `shell: bash` (or job
+  defaults) for Bash syntax and sourced Bash helpers; a sourced shebang does
+  not select the caller's shell.

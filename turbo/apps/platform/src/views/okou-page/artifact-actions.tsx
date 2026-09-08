@@ -182,8 +182,8 @@ export function ArtifactShareButton({
       return $.artifacts.actions.share;
     });
   if (shareUrl === null) {
-    // The share address is still being resolved. Offering the action now would
-    // hand out nothing, so wait until the resolution settles.
+    // Private artifacts have no public address. Keep the action hidden while
+    // resolving, and until explicit publication provides a share URL.
     return null;
   }
   return (

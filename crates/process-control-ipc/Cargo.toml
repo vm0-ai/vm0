@@ -4,10 +4,10 @@ version = "0.3.11"
 edition.workspace = true
 
 [dependencies]
-libc.workspace = true
+libc = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
-proptest.workspace = true
+proptest = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

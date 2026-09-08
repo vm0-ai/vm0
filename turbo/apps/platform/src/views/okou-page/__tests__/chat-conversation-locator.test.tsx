@@ -4,10 +4,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   context,
   mockChatLifecycleWithoutBrowserSession,
@@ -497,9 +494,7 @@ test("The conversation locator follows folded goal continuation work", async () 
 
   await screen.findByText("All deployment regions are healthy");
   await screen.findByText("Checked the first deployment region");
-  expect(
-    queryMessageBody("Checked the first deployment region"),
-  ).not.toBeInTheDocument();
+  expect(screen.getByText("Checked the first deployment region")).toBeVisible();
   expect(
     screen.queryByText("Keep checking the deployment regions"),
   ).not.toBeInTheDocument();
