@@ -368,7 +368,7 @@ export async function normalizeGoogleCalendarIdForConnector(
 
 async function resolveGoogleCalendarAccess(
   args: {
-    readonly db: Tx;
+    readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
@@ -508,7 +508,7 @@ export async function googleCalendarAutomationTargetMatchesConnector(
  */
 export async function lockReadyGoogleCalendarWatchTarget(
   args: {
-    readonly db: Db;
+    readonly db: Tx;
     readonly orgId: string;
     readonly userId: string;
     readonly connectorId: string;
