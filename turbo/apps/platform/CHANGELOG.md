@@ -11,6 +11,14 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.6](https://github.com/vm0-ai/vm0/compare/app-v0.862.5...app-v0.862.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align legacy chat response rows ([#32497](https://github.com/vm0-ai/vm0/issues/32497)) ([dfa2458](https://github.com/vm0-ai/vm0/commit/dfa2458727ab156d3f5e7af52f621e0d35be8159))
+* **platform:** authorize visible agents on the first connector account ([#32502](https://github.com/vm0-ai/vm0/issues/32502)) ([6169424](https://github.com/vm0-ai/vm0/commit/6169424485d472e98a27a55cb9626fa27548f207))
+
 ## [0.862.5](https://github.com/vm0-ai/vm0/compare/app-v0.862.4...app-v0.862.5) (2026-09-08)
 
 
