@@ -870,6 +870,11 @@ pub(super) async fn build_spawn_job_request(
             context: setup.claimed.context(),
             cancel: setup.cancellation.token(),
             reuse_result: setup.resource.reuse_result,
+            idle_kind: setup
+                .resource
+                .reuse_entry
+                .as_ref()
+                .map(ReusableIdleSandbox::kind),
             restored_identity: setup
                 .resource
                 .reuse_entry
