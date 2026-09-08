@@ -8022,8 +8022,10 @@ function PagedAssistantEventItem({
           compact
             ? "py-1 text-[13px] leading-5"
             : CHAT_THREAD_RESPONSE_LINE_CLASS,
+          // A preceding summary already occupies the avatar row. Its reply
+          // needs neither the avatar's top inset nor its minimum height.
           legacyTopPadding &&
-            "@[900px]:group-data-[run-work-folding-disabled]/chat:first:pt-2.5",
+            "@[900px]:group-data-[run-work-folding-disabled]/chat:first:pt-2.5 @[900px]:group-data-[run-work-folding-disabled]/chat:[&:not(:first-child)]:min-h-0 @[900px]:group-data-[run-work-folding-disabled]/chat:[&:not(:first-child)]:pt-0",
         )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
