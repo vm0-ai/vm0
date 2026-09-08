@@ -10,6 +10,8 @@
 //! deterministic scheduler pressure. Bounded waits are assertion deadlines and
 //! failure detectors; they are not sleeps used to make scheduling happen.
 
+mod pending_order;
+
 use crate::binary_logging::BinaryLoggingFixture;
 #[cfg(unix)]
 use crate::process;
