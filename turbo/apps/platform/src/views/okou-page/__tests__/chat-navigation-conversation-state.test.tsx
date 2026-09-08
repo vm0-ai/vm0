@@ -158,7 +158,7 @@ function mailDraft(
 
 test("Keep an empty conversation ready for its first message", async () => {
   const thread = continuityThread(31, 1, "Empty conversation");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 31,
     threads: [thread],
     chatEventRows: [],
@@ -167,7 +167,7 @@ test("Keep an empty conversation ready for its first message", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const invitation = await screen.findByText(
@@ -204,7 +204,7 @@ test("Explain unavailable email cards in a conversation", async () => {
     ),
     completedRow(32, 3, thread.id, runId),
   ];
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 32,
     threads: [thread],
     chatEventRows: rows,
@@ -236,7 +236,7 @@ test("Explain unavailable email cards in a conversation", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const deletedCard = await screen.findByLabelText(
@@ -281,7 +281,7 @@ test("Keep the work being read expanded as conversation groups change", async ()
       groupId: runGroupId,
     }),
   ];
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 33,
     threads: [thread],
     chatEventRows: rows,
@@ -290,7 +290,7 @@ test("Keep the work being read expanded as conversation groups change", async ()
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await screen.findByRole("textbox", { name: "Message" });
