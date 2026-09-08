@@ -80,40 +80,12 @@ const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
 const internalSettingsDialogSessionActive$ = state(false);
-const pendingAccountMenuSettingsSection$ = state<{
-  readonly ownerId: string;
-  readonly section: SettingsSection;
-} | null>(null);
 
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
 
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
-
-export const setPendingAccountMenuSettingsSection$ = command(
-  ({ get, set }, ownerId: string, section: SettingsSection | null) => {
-    if (section === null) {
-      const pending = get(pendingAccountMenuSettingsSection$);
-      if (pending?.ownerId === ownerId) {
-        set(pendingAccountMenuSettingsSection$, null);
-      }
-      return;
-    }
-    set(pendingAccountMenuSettingsSection$, { ownerId, section });
-  },
-);
-
-export const consumePendingAccountMenuSettingsSection$ = command(
-  ({ get, set }, ownerId: string) => {
-    const pending = get(pendingAccountMenuSettingsSection$);
-    const section = pending?.ownerId === ownerId ? pending.section : null;
-    if (section !== null) {
-      set(pendingAccountMenuSettingsSection$, null);
-    }
-    return section;
-  },
-);
 
 const internalActiveSection$ = state<SettingsSection>("preference");
 

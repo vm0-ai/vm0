@@ -304,7 +304,7 @@ import {
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
-  focusChatThreadContainer$,
+  chatThreadContainerElement$,
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
@@ -777,18 +777,11 @@ function useChatThreadEmojiMenuActions({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
-  const focusChatThreadContainer = useSet(focusChatThreadContainer$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
   function closeMenu() {
-    const openThreadId = emojiMenuThreadId;
     closeChatThreadEmojiMenu();
-    if (openThreadId) {
-      queueMicrotask(() => {
-        focusChatThreadContainer(openThreadId);
-      });
-    }
   }
 
   function selectEmoji(nextEmoji: string) {
@@ -846,6 +839,7 @@ function ChatThreadEmojiMenuButton({
   title: string | null | undefined;
 }) {
   const { t } = useTranslation();
+  const chatThreadContainerElement = useSet(chatThreadContainerElement$);
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
@@ -904,8 +898,8 @@ function ChatThreadEmojiMenuButton({
         <PopoverContent
           align="start"
           className="w-80 p-0"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
+          finalFocus={() => {
+            return chatThreadContainerElement(threadId);
           }}
         >
           <ChatThreadEmojiPicker

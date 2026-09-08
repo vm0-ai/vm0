@@ -1,4 +1,4 @@
-import { useGet, useLastResolved } from "ccstate-react";
+import { useGet, useResolved } from "ccstate-react";
 import {
   pageAttachmentResourceUrlResolver$,
   type AttachmentUrls,
@@ -7,7 +7,7 @@ import { publicAttachmentUrl } from "./attachment-url";
 
 export function useAttachmentUrls(url: string): AttachmentUrls | undefined {
   const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
-  return useLastResolved(resolveResourceUrl(publicAttachmentUrl(url)));
+  return useResolved(resolveResourceUrl(publicAttachmentUrl(url)));
 }
 
 /**
