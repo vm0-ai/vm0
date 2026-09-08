@@ -149,20 +149,24 @@ fn backpressured_control_request_stops_before_the_frame_is_complete() {
             forward_control_request(worker_sink, pending_slot, request, writer);
         });
 
-        let started = Instant::now();
-        let mut received = 0;
         let mut buffer = [0; 4096];
+        let mut received = peer.read(&mut buffer).unwrap();
+        assert!(
+            received > 0,
+            "request must start before the slow-drain window"
+        );
+        let started = Instant::now();
         while received < frame_len {
-            let count = peer.read(&mut buffer).unwrap();
-            if count == 0 {
-                break;
-            }
-            received += count;
             // Keep making progress below the per-call timeout, but take much
             // longer than the total budget. Bound even the broken-code path.
             if started.elapsed() < Duration::from_secs(2) {
                 std::thread::sleep(Duration::from_millis(40));
             }
+            let count = peer.read(&mut buffer).unwrap();
+            if count == 0 {
+                break;
+            }
+            received += count;
         }
 
         let (_, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
