@@ -2237,6 +2237,9 @@
       "keepGoingAt": "계속 진행 · {{timestamp}}",
       "modelChangedTo": "모델을 {{model}}로 변경했습니다",
       "queueEllipsis": "대기 중...",
+      "relatedArtifactCount_one": "{{formattedCount}}개의 아티팩트",
+      "relatedArtifactCount_other": "{{formattedCount}}개의 아티팩트",
+      "relatedArtifacts": "관련 아티팩트",
       "selectedModelAppliesAfterCurrentRun": "선택한 {{model}} 모델은 이번 실행 후에 적용됩니다",
       "thinking": {
         "assembling": "조립 중...",

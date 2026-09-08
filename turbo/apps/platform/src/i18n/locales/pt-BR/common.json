@@ -2282,6 +2282,10 @@
       "keepGoingAt": "Continuar · {{timestamp}}",
       "modelChangedTo": "Modelo alterado para {{model}}",
       "queueEllipsis": "fila...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefato",
+      "relatedArtifactCount_many": "{{formattedCount}} artefatos",
+      "relatedArtifactCount_other": "{{formattedCount}} artefatos",
+      "relatedArtifacts": "Artefatos relacionados",
       "selectedModelAppliesAfterCurrentRun": "O modelo {{model}} selecionado entrará em vigor após esta execução",
       "thinking": {
         "assembling": "Juntando as peças...",

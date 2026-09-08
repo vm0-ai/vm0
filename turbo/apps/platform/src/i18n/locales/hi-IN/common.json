@@ -2240,6 +2240,9 @@
       "keepGoingAt": "चलते रहें · {{timestamp}}",
       "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "relatedArtifactCount_one": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifactCount_other": "{{formattedCount}} आर्टिफ़ैक्ट",
+      "relatedArtifacts": "संबंधित आर्टिफ़ैक्ट",
       "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
