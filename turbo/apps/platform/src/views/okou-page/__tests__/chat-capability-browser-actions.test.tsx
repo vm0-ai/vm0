@@ -1,8 +1,13 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   browserContract,
   type BrowserSession,
 } from "@okouai/api-contracts/contracts/browser";
 import { screen, waitFor, within } from "@testing-library/react";
+import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import {
@@ -34,6 +39,42 @@ const SUSPENDED_SCREENSHOT_URL =
   "https://images.example.test/browser-suspended.png";
 const ACTIVE_BROWSER_URL = "https://browser.example.test/live/initial";
 const RESUMED_BROWSER_URL = "https://browser.example.test/live/resumed";
+const appStyles = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../css/index.css"),
+  "utf8",
+);
+
+async function createRenderedAppStyles(
+  signal: AbortSignal,
+): Promise<(element: HTMLElement) => void> {
+  const sharedCardRule = appStyles.match(
+    /\.okou-app \.okou-chat-card,\s*\.okou-app \.okou-chat-frame\s*\{[^}]+\}/u,
+  )?.[0];
+  if (!sharedCardRule) {
+    throw new Error("The shared chat card style rule was not found");
+  }
+  const renderedSharedCardRule = sharedCardRule.replace(
+    "hsl(var(--gray-400))",
+    "rgb(128, 128, 128)",
+  );
+  const compiler = await compile("@tailwind utilities;");
+  const styleElement = document.createElement("style");
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
+
+  return (element) => {
+    styleElement.textContent = [
+      renderedSharedCardRule,
+      compiler.build([...element.classList]),
+    ].join("\n");
+  };
+}
 
 function managedBrowserSession(args: {
   readonly status: "active" | "suspended";
@@ -121,6 +162,7 @@ function buttonsByName(
 }
 
 test("Follow a managed browser session from its chat card", async () => {
+  const sessionReady = context.mocks.deferred<void>();
   let browser = managedBrowserSession({
     status: "active",
     screenshotUrl: INITIAL_SCREENSHOT_URL,
@@ -138,8 +180,9 @@ test("Follow a managed browser session from its chat card", async () => {
       ].join("\n\n"),
     ),
   });
-  context.mocks.api(browserContract.get, ({ params, respond }) => {
+  context.mocks.api(browserContract.get, async ({ params, respond }) => {
     expect(params.threadId).toBe(RUN_THREAD_ID);
+    await sessionReady.promise;
     return respond(200, { browser });
   });
   context.mocks.api(browserContract.open, ({ params, respond }) => {
@@ -154,7 +197,18 @@ test("Follow a managed browser session from its chat card", async () => {
   await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
 
   await readyChat();
+  const renderAppStyles = await createRenderedAppStyles(context.signal);
+  const loadingCard = await screen.findByTestId("browser-session-card-loading");
+  renderAppStyles(loadingCard);
+  expect(getComputedStyle(loadingCard).borderTopWidth).toBe("1px");
+
+  sessionReady.resolve();
   const card = await findButton("Open Research browser");
+  renderAppStyles(card);
+  expect(getComputedStyle(card).borderTopWidth).toBe("1px");
+  expect(getComputedStyle(card).transitionProperty).toBe(
+    "background-color,border-color,transform",
+  );
   expect(card).toHaveTextContent("Cloud browser");
   expect(card).toHaveTextContent("Live");
   expect(screen.getByTestId("browser-session-thumbnail")).toHaveAttribute(
