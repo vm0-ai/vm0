@@ -367,6 +367,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentMessageMath]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Render explicit LaTeX delimiters in Agent messages as native MathML.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@okou.ai",
     description:
@@ -448,7 +455,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SshAccess]: {
-    maintainer: "ethan@okou.ai",
+    maintainer: "liangyou@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
   },

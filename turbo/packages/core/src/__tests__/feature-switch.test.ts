@@ -25,8 +25,9 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.SharedWorkerRealtime).toBe("sharedWorkerRealtime");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
-    expect(FeatureSwitchKey.SshAccess).toBe("_sshAccess");
+    expect(FeatureSwitchKey.SshAccess).toBe("sshAccess");
     expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
+    expect(FeatureSwitchKey.AgentMessageMath).toBe("agentMessageMath");
     expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
       "progressiveArtifactPreview",
     );
@@ -55,9 +56,9 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
-      maintainer: "ethan@okou.ai",
+      maintainer: "liangyou@okou.ai",
       description: "Enable standalone Runner-mediated SSH configuration",
-      rolloutStage: "internal",
+      rolloutStage: "alpha",
     });
   });
 
@@ -193,6 +194,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       true,
     );
@@ -220,6 +222,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
     );

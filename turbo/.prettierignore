@@ -15,3 +15,4 @@ apps/web/src/db/migrations/
 packages/db/src/migrations/
 packages/db/scripts/migrations/
 apps/platform/src/views/css/vendor/uiw-react-markdown-preview-5.2.0.css
+apps/platform/public/vendor/katex-0.18.7/katex.min.js
