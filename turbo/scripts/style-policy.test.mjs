@@ -373,6 +373,108 @@ test("the command freezes apply contents and the parent of a nested selector", (
   assertRejected(runPolicy(root), /New first-party CSS/);
 });
 
+test("the command rejects class-qualified scope roots and limits", (t) => {
+  const file = "apps/platform/src/example.css";
+  const original = ".legacy { color: red }";
+  const root = createCommandWorkspace(
+    t,
+    { [file]: original },
+    selectorBaseline(),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  for (const addition of [
+    "@scope (.legacy) { :scope { color: blue } }",
+    "@scope (.legacy) { &:hover { color: blue } }",
+    "@scope (.legacy) { span { color: blue } }",
+    "@scope (.legacy) { @media (hover: hover) { span { color: blue } } }",
+    "@scope (main) to (.legacy) { span { color: blue } }",
+    "@scope (.legacy) { @scope (section) { span { color: blue } } }",
+    "@scope (.legacy) { @scope { span { color: blue } } }",
+    "@SCOPE (.legacy) { span { color: blue } }",
+  ]) {
+    writeFileSync(join(root, file), `${original}\n${addition}`);
+    assertRejected(runPolicy(root), /New first-party CSS/);
+    assertRejected(runPolicy(root, ["--prune"]), /New first-party CSS/);
+  }
+});
+
+test("the command freezes scope boundaries and scoped declarations", (t) => {
+  const file = "apps/platform/src/example.css";
+  const scope = "@scope (.legacy) to (.boundary)";
+  const original = `${scope} { span { color: red } }`;
+  const baseline = {
+    ...emptyBaseline(["legacy"]),
+    cssAtoms: {
+      [file]: [
+        {
+          atRules: [scope],
+          parentSelectors: [scope],
+          selector: "span",
+          property: "color",
+          value: "red",
+          important: false,
+        },
+      ],
+    },
+  };
+  const root = createCommandWorkspace(t, { [file]: original }, baseline);
+  assert.equal(runPolicy(root).status, 0);
+  for (const changed of [
+    original.replace(".legacy", ".other"),
+    original.replace(".boundary", ".other"),
+    original.replace("span", "button"),
+    original.replace("red", "blue"),
+    `${scope} { @scope (section) { span { color: red } } }`,
+  ]) {
+    writeFileSync(join(root, file), changed);
+    assertRejected(runPolicy(root), /New first-party CSS/);
+  }
+  writeFileSync(join(root, file), "");
+  assert.equal(runPolicy(root, ["--prune"]).status, 0);
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(root, "style-legacy-baseline.json"), "utf8")),
+    emptyBaseline(),
+  );
+});
+
+test("the command matches scope adapters exactly without leaking context to siblings", (t) => {
+  const file = "apps/platform/src/example.css";
+  const scope = "@scope (.adapter) to (.boundary)";
+  const original = `${scope} { span { color: red } }`;
+  const root = createCommandWorkspace(t, { [file]: original }, emptyBaseline());
+  const allowlist = {
+    ...EMPTY_ALLOWLIST,
+    selectors: [
+      {
+        file,
+        atRules: [scope],
+        parentSelectors: [scope],
+        selector: "span",
+        kind: "third-party-dom-adapter",
+        owner: "frontend-infra",
+        upstream: "example-widget",
+        rationale: "The widget owns the scoped root and boundary classes.",
+        removal: "Remove with the widget.",
+      },
+    ],
+  };
+  writeFileSync(join(root, "style-allowlist.json"), JSON.stringify(allowlist));
+  writeFileSync(
+    join(root, file),
+    `${original} @scope { span { margin: 0 } } button { margin: 0 }`,
+  );
+  assert.equal(runPolicy(root).status, 0);
+  for (const changed of [
+    original.replace(".adapter", ".other"),
+    original.replace(".boundary", ".other"),
+    `${scope} { span { color: red } button { color: blue } }`,
+    `${scope} { @scope (section) { span { color: red } } }`,
+  ]) {
+    writeFileSync(join(root, file), changed);
+    assertRejected(runPolicy(root), /New first-party CSS/);
+  }
+});
+
 test("the command counts local and re-exported class aliases at each consumer", (t) => {
   const file = "apps/platform/src/view.tsx";
   const root = createCommandWorkspace(

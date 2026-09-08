@@ -242,6 +242,22 @@ function blockDeclarations(block) {
   return declarations;
 }
 
+function hasClassSelector(prelude) {
+  let found = false;
+  if (prelude !== null) {
+    cssSyntax.walk(prelude, (node) => {
+      if (node.type === "ClassSelector") {
+        found = true;
+      }
+    });
+  }
+  return found;
+}
+
+function isScopeRule(node) {
+  return node.type === "Atrule" && node.name.toLowerCase() === "scope";
+}
+
 function collectCssClassRules(file, text) {
   const ast = cssSyntax.parse(text, { filename: file, positions: true });
   const atRules = [];
@@ -276,6 +292,14 @@ function collectCssClassRules(file, text) {
     enter(node) {
       if (node.type === "Atrule") {
         atRules.push(atRuleName(node));
+        if (isScopeRule(node)) {
+          // Scope roots and limits qualify every descendant declaration,
+          // including :scope, &, and type selectors with no class of their own.
+          selectors.push({
+            selector: atRuleName(node),
+            hasClass: hasClassSelector(node.prelude),
+          });
+        }
         if (node.block !== null) {
           recordBlock(node, false);
         }
@@ -285,20 +309,17 @@ function collectCssClassRules(file, text) {
         return;
       }
 
-      let hasClass = false;
-      cssSyntax.walk(node.prelude, (selectorNode) => {
-        if (selectorNode.type === "ClassSelector") {
-          hasClass = true;
-        }
-      });
       selectors.push({
         selector: cssSyntax.generate(node.prelude),
-        hasClass,
+        hasClass: hasClassSelector(node.prelude),
       });
       recordBlock(node, true);
     },
     leave(node) {
       if (node.type === "Atrule") {
+        if (isScopeRule(node)) {
+          selectors.pop();
+        }
         atRules.pop();
       } else if (node.type === "Rule") {
         selectors.pop();
