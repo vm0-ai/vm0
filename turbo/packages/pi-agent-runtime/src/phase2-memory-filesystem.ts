@@ -354,7 +354,6 @@ function snapshotModel(
     ...(model.requestHeaders === undefined
       ? {}
       : { requestHeaders: Object.freeze({ ...model.requestHeaders }) }),
-    ...(model.api === undefined ? {} : { api: model.api }),
     ...(model.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: model.thinkingLevel }),

@@ -769,7 +769,6 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
   expect(execution.piModelConfig).toMatchObject({
     provider: "openai",
     model: "gpt-5.6-terra",
-    api: "openai-responses",
   });
   expect(maintenance).toMatchObject({
     memoryStorageId: scope.memoryStorageId,

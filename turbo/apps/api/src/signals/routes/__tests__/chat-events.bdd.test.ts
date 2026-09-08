@@ -1093,6 +1093,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function expectPiConfigObservation(runId: string, generation: 1 | 2 | 3): void {
+  const snapshots = context.mocks.axiom.ingest.mock.calls.flatMap(
+    ([dataset, events]) => {
+      return dataset === "run-context" && Array.isArray(events)
+        ? events.filter(isRecord).filter((event) => {
+            return event.runId === runId;
+          })
+        : [];
+    },
+  );
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toMatchObject({
+    cliAgentType: "pi",
+    piModelConfigGeneration: generation,
+    piModelConfigLegacyApi: "absent",
+  });
+  expect(snapshots[0]).not.toHaveProperty("piModelConfig");
+}
+
 function templateUsageEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
     const events = call[1];
@@ -5505,6 +5524,7 @@ function expectApiKeyGptSandboxCarrier(
   route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   tier: "fast" | undefined,
 ): void {
+  expectPiConfigObservation(claim.runId, tier === undefined ? 2 : 3);
   expect(claim.piModelConfig).toStrictEqual({
     schemaVersion: tier === undefined ? 2 : 3,
     ...(tier === undefined ? {} : { serviceTier: "priority" }),
@@ -8192,6 +8212,15 @@ describe("CHAT-02: model-first provider policies", () => {
       const { actor, agentId } = await entitledChatActor();
       const usagePricingResolution = await createGptUsagePricingResolution();
       await configureCustomPiModel(actor, selectedModel, upstreamModel);
+      if (selectedModel === "deepseek-v4-pro") {
+        // Snapshot availability must not block an admitted Pi provider request.
+        context.mocks.axiom.ingest.mockImplementation((dataset) => {
+          if (dataset === "run-context") {
+            throw new Error("run-context ingest failed");
+          }
+          return true;
+        });
+      }
       mockPiResourceArchiveDownloads();
       mockPiCheckpointObjectStore();
       const modelRequests: {
@@ -8246,6 +8275,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toMatchObject({
         launch_snapshot: { framework: "pi" },
       });
+      expectPiConfigObservation(run.runId, 1);
       expect(modelRequests).toStrictEqual([
         {
           body: expect.objectContaining({
@@ -8457,9 +8487,9 @@ describe("CHAT-02: model-first provider policies", () => {
       const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
       expect(claim.cliAgentType).toBe("pi");
       expect(claim.piSessionId).toBe(run.threadId);
+      expectPiConfigObservation(run.runId, 1);
       expect(claim.piModelConfig).toStrictEqual({
         provider: "openai",
-        api: "openai-responses",
         baseUrl: gateway.surface.apiBaseUrl,
         model: gateway.upstreamModel,
         catalogModel: selectedModel,
@@ -14031,7 +14061,6 @@ describe("CHAT-02: model-first provider policies", () => {
       prompt,
       piModelConfig: {
         provider: "openrouter",
-        api: "openai-responses",
         serviceTier: "priority",
       },
     });
@@ -14324,8 +14353,9 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(claimed.claim.piModelConfig).toMatchObject({
         provider: isDeepSeek ? "deepseek" : "openai",
         model: selectedModel,
-        api: "openai-responses",
       });
+      expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
+      expectPiConfigObservation(run.runId, 1);
       expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
       const sandboxUsageEvent = {
         idempotencyKey: randomUUID(),
@@ -14547,9 +14577,10 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(claimed.claim.piSessionId).toBe(run.threadId);
     expect(claimed.claim.piModelConfig).toMatchObject({
       provider: "openrouter",
-      api: "openai-responses",
       serviceTier: "priority",
     });
+    expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
+    expectPiConfigObservation(run.runId, 1);
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       schemaVersion: 2,
       apiFirstTurn: {
@@ -17464,6 +17495,7 @@ describe("CHAT-02: run-level model overrides", () => {
       const sandboxHeaders = {
         authorization: `Bearer ${claim.sandboxToken}`,
       };
+      expectPiConfigObservation(run.runId, generation);
       expect(claim).toMatchObject({
         cliAgentType: "pi",
         piSessionId: run.threadId,

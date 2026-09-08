@@ -236,7 +236,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}/v1`,
           apiKey: "test-key",
           model: "gpt-5.6-terra",
-          api: "openai-responses",
           dialect: "openai-responses",
           thinkingLevel: "low",
         },
@@ -402,7 +401,11 @@ describe("Pi API facade", () => {
         let sessionJsonl: string | undefined;
         const runTurn = async (
           serviceTier: "priority" | "fast" | undefined,
-          api: "openai-completions" | "openai-codex-responses",
+          api:
+            | "openai-completions"
+            | "openai-codex-responses"
+            | "openai-responses"
+            | undefined,
         ) => {
           const result = await runPiApiFirstTurn({
             cwd: "/home/user/workspace",
@@ -443,16 +446,22 @@ describe("Pi API facade", () => {
                         : "opaque-access-token";
                     },
                   })
-                : {
-                    provider: "openai",
-                    baseUrl: `http://127.0.0.1:${address.port}/v1`,
-                    apiKey: "test-key",
-                    model: "gpt-5.6-terra",
-                    api,
-                    dialect: "openai-responses",
-                    thinkingLevel: "low",
-                    ...(serviceTier ? { serviceTier } : {}),
-                  },
+                : await materializePiAgentModelConfig({
+                    config: piModelConfigSchema.parse({
+                      provider: "openai",
+                      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                      model: "gpt-5.6-terra",
+                      ...(api === undefined ? {} : { api }),
+                      apiKeyEnv: "OPENAI_API_KEY",
+                      credentialSecretName: "OPENAI_API_KEY",
+                      thinkingLevel: "low",
+                      ...(serviceTier ? { serviceTier } : {}),
+                    }),
+                    target: "direct",
+                    resolveCredential: () => {
+                      return "test-key";
+                    },
+                  }),
             resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
             ownership: createPiApiFirstTurnOwnership(),
           });
@@ -464,18 +473,17 @@ describe("Pi API facade", () => {
           route === "native" ? "fast" : "priority",
           "openai-codex-responses",
         );
-        const standardReturnResult = await runTurn(
-          undefined,
-          "openai-completions",
-        );
+        const standardReturnResult = await runTurn(undefined, undefined);
+        const publicResult = await runTurn(undefined, "openai-responses");
 
-        expect(providerRequests).toHaveLength(3);
+        expect(providerRequests).toHaveLength(4);
         if (route === "native") {
           expect(
             providerRequests.map((request) => {
               return request.accountId;
             }),
           ).toEqual([
+            "exact-account-id",
             "exact-account-id",
             "exact-account-id",
             "exact-account-id",
@@ -503,6 +511,10 @@ describe("Pi API facade", () => {
           },
         });
         expect(providerRequests[2]?.body).not.toHaveProperty("service_tier");
+        expect(providerRequests[3]?.body).not.toHaveProperty("service_tier");
+        expect(publicResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
         expect(
           inspectPiSessionJsonl(standardReturnResult.sessionJsonl),
         ).toMatchObject({
@@ -590,7 +602,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}`,
           apiKey: "test-key",
           model: "deepseek-v4-flash",
-          api: "openai-completions",
           dialect: "openai-responses",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
@@ -686,7 +697,6 @@ describe("Pi API facade", () => {
               baseUrl: `http://127.0.0.1:${address.port}/v1`,
               apiKey: "test-key",
               model: "openai/gpt-5.6-terra",
-              api: "openai-responses",
               dialect: "openai-responses",
               thinkingLevel: "low",
               serviceTier: "priority",
@@ -849,7 +859,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}/v1`,
           apiKey: "test-key",
           model: "openai/gpt-5.6-terra",
-          api: "openai-responses",
           dialect: "openai-responses",
           thinkingLevel: "low",
         },
@@ -926,7 +935,6 @@ describe("Pi API facade", () => {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "test-key",
       model: "gpt-5.6-terra",
-      api: "openai-responses",
       dialect: "openai-responses",
     });
     if (!resolvedModel) {
@@ -973,7 +981,6 @@ describe("Pi API facade", () => {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "test-key",
       model: "gpt-5.6-terra",
-      api: "openai-responses" as const,
       dialect: "openai-responses" as const,
       thinkingLevel: "low" as const,
     };

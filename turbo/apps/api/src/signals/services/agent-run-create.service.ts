@@ -192,6 +192,7 @@ import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
+import { piModelConfigObservation } from "../../lib/pi-model-config-observation";
 import { generateOkouToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -6748,6 +6749,10 @@ function buildRunContextSnapshot(args: {
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     sessionId: cliAgentSessionId,
     cliAgentType: storedContext.cliAgentType,
+    ...piModelConfigObservation(
+      storedContext.cliAgentType,
+      storedContext.piModelConfig,
+    ),
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: executionFirewallsToAxiomEntries(storedContext.firewalls),

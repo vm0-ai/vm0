@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -24,7 +25,6 @@ const TERRA_MODEL = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "test-key",
   model: "gpt-5.6-terra",
-  api: "openai-responses" as const,
   dialect: "openai-responses" as const,
   thinkingLevel: "max" as const,
 };
@@ -1184,6 +1184,18 @@ describe("official Pi AgentSession runtime", () => {
     GPT_MODELS.flatMap((selectedModel) => {
       return [
         {
+          name: "standard without api",
+          selectedModel,
+          api: undefined,
+          serviceTier: undefined,
+        },
+        {
+          name: "fast public Responses",
+          selectedModel,
+          api: "openai-responses",
+          serviceTier: "priority",
+        },
+        {
           name: "standard",
           selectedModel,
           api: "openai-completions",
@@ -1219,14 +1231,22 @@ describe("official Pi AgentSession runtime", () => {
         cwd: "/home/user/workspace",
         agentDir: "/home/user/.pi/agent",
         sessionManager,
-        model: {
-          ...TERRA_MODEL,
-          provider: catalogProvider,
-          model,
-          baseUrl: provider.baseUrl,
-          api,
-          ...(serviceTier === undefined ? {} : { serviceTier }),
-        },
+        model: await materializePiAgentModelConfig({
+          config: piModelConfigSchema.parse({
+            provider: catalogProvider,
+            model,
+            baseUrl: provider.baseUrl,
+            ...(api === undefined ? {} : { api }),
+            apiKeyEnv: "OPENAI_API_KEY",
+            credentialSecretName: "OPENAI_API_KEY",
+            thinkingLevel: TERRA_MODEL.thinkingLevel,
+            ...(serviceTier === undefined ? {} : { serviceTier }),
+          }),
+          target: "sandbox-firewall",
+          resolveCredential: () => {
+            return TERRA_MODEL.apiKey;
+          },
+        }),
         appendSystemPrompt: null,
         resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
       });
@@ -1311,7 +1331,6 @@ describe("official Pi AgentSession runtime", () => {
           ...(selectedModel === "deepseek-v4-flash"
             ? {}
             : { thinkingLevel: "max" as const }),
-          api: "openai-responses",
           dialect: "openai-responses",
           requestHeaders,
         },
