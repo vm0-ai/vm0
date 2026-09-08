@@ -365,7 +365,6 @@ function buildOrgConnectUrl(
   slackUserId: string,
   channelId: string,
   threadTs: string | undefined,
-  publicBrand: PublicBrand,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   if (channelId) {
@@ -730,7 +729,6 @@ const postSlackAgentAdmissionNotice$ = command(
         args.slackUserId,
         args.channelId,
         args.channelType === "dm" ? threadTs : undefined,
-        args.installation.publicBrand,
       );
       await postSlackUserNotice({
         client,
@@ -739,10 +737,7 @@ const postSlackAgentAdmissionNotice$ = command(
         slackUserId: args.slackUserId,
         threadTs,
         text: "Please connect your account first",
-        blocks: buildLoginPromptMessage(
-          connectUrl,
-          args.installation.publicBrand,
-        ),
+        blocks: buildLoginPromptMessage(connectUrl),
       });
       return;
     }
@@ -1106,13 +1101,7 @@ const refreshOrgAppHome$ = command(
           publicBrand: installation.publicBrand,
           botUserId: installation.botUserId,
           isLinked: false,
-          loginUrl: buildOrgConnectUrl(
-            workspaceId,
-            slackUserId,
-            "",
-            undefined,
-            installation.publicBrand,
-          ),
+          loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, "", undefined),
         }),
       );
       return;
@@ -1410,9 +1399,7 @@ export const handleSlackCommands$ = command(
             payload.user_id,
             payload.channel_id,
             undefined,
-            installation.publicBrand,
           ),
-          installation.publicBrand,
         ),
       );
     }
@@ -1450,9 +1437,7 @@ export const handleSlackCommands$ = command(
             payload.user_id,
             payload.channel_id,
             undefined,
-            installation.publicBrand,
           ),
-          installation.publicBrand,
         ),
       );
     }

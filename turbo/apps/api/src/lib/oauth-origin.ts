@@ -55,7 +55,7 @@ function isTrustedWebOrigin(origin: string): boolean {
   return isTrustedOrigin(origin, "www");
 }
 
-export function getTrustedOAuthWebOrigin(request: Request): string | null {
+function getTrustedOAuthWebOrigin(request: Request): string | null {
   const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
   return webOrigin && isTrustedWebOrigin(webOrigin)
     ? new URL(webOrigin).origin

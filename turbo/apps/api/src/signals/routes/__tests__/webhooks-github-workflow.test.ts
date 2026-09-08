@@ -648,13 +648,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       }
 
       const deliveryId = `delivery-${randomUUID()}`;
-      const webhookPublicBrand: PublicBrand =
-        testCase.event === "pull_request" ? "okou" : "vm0";
       const response = await postGithubWebhook({
         event: testCase.event,
         deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
-        publicBrand: webhookPublicBrand,
+        publicBrand: "okou",
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
       await flushWaitUntilForTest();

@@ -753,7 +753,6 @@ type BindTeamsInstallationResult =
 
 function buildTeamsWelcomeCard(
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): TeamsAdaptiveCard {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const mentionName = teamsBotDisplayName(installation.botName);
@@ -861,7 +860,7 @@ async function notifyTeamsConnect(
       conversationId,
       tenantId: args.tenantId,
       text: `You're connected to ${PUBLIC_BRAND_PRESENTATION.assistantName}!`,
-      card: buildTeamsWelcomeCard(args.installation, args.publicBrand),
+      card: buildTeamsWelcomeCard(args.installation),
     },
     signal,
   );

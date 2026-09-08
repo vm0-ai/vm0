@@ -141,7 +141,6 @@ function onboardingComplete(orgId: string): Computed<Promise<boolean>> {
 function defaultAgentInfo(
   orgId: string,
   composeId: string,
-  publicBrand: PublicBrand,
 ): Computed<Promise<DefaultAgentInfo | null>> {
   return computed(async (get): Promise<DefaultAgentInfo | null> => {
     const db = get(db$);
@@ -193,7 +192,6 @@ function defaultAgentInfo(
 
 export function onboardingStatus(
   auth: AuthContext,
-  publicBrand: PublicBrand,
 ): Computed<Promise<OnboardingStatusResponse>> {
   return computed(async (get): Promise<OnboardingStatusResponse> => {
     if (!auth.orgId) {
@@ -214,7 +212,7 @@ export function onboardingStatus(
     const agentId = await get(defaultAgentId(auth.orgId));
     const complete = await get(onboardingComplete(auth.orgId));
     const defaultAgent = agentId
-      ? await get(defaultAgentInfo(auth.orgId, agentId, publicBrand))
+      ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
     return {

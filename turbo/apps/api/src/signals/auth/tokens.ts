@@ -4,10 +4,6 @@ import {
   CAPABILITIES,
   Capability,
 } from "@okouai/api-contracts/contracts/capabilities";
-import {
-  publicBrandSchema,
-  type PublicBrand,
-} from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";

@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -27,7 +26,6 @@ import {
   feishuOAuthAppCallbackUrl,
 } from "../services/feishu-config";
 import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const REDIRECT_STATUS = 307;
 
@@ -38,10 +36,7 @@ function redirect(url: string): Response {
   });
 }
 
-function worksRedirect(
-  params: Readonly<Record<string, string>>,
-  publicBrand: PublicBrand,
-): Response {
+function worksRedirect(params: Readonly<Record<string, string>>): Response {
   return redirect(`${env("APP_URL")}/works?${new URLSearchParams(params)}`);
 }
 
@@ -157,39 +152,24 @@ const startFeishuAccountOAuth$ = command(
   },
 );
 
-function legacyConnectResult(
-  result: FeishuConnectResult,
-  publicBrand: PublicBrand,
-): Response {
+function legacyConnectResult(result: FeishuConnectResult): Response {
   switch (result.kind) {
     case "invalid": {
-      return worksRedirect(
-        { feishuError: "Invalid or expired connect link" },
-        publicBrand,
-      );
+      return worksRedirect({ feishuError: "Invalid or expired connect link" });
     }
     case "installation_not_found": {
-      return worksRedirect(
-        { feishuError: "Feishu installation not found" },
-        publicBrand,
-      );
+      return worksRedirect({ feishuError: "Feishu installation not found" });
     }
     case "setup_incomplete": {
-      return worksRedirect(
-        {
-          feishuError: "Finish setting up this Feishu bot before connecting",
-        },
-        publicBrand,
-      );
+      return worksRedirect({
+        feishuError: "Finish setting up this Feishu bot before connecting",
+      });
     }
     case "wrong_organization": {
-      return worksRedirect(
-        {
-          feishuError:
-            "Switch to the organization connected to this Feishu tenant",
-        },
-        publicBrand,
-      );
+      return worksRedirect({
+        feishuError:
+          "Switch to the organization connected to this Feishu tenant",
+      });
     }
     case "success": {
       return redirect(result.authorizationUrl);
@@ -199,7 +179,6 @@ function legacyConnectResult(
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = PUBLIC_BRAND;
   const auth = await set(requiredAuthContext$, {}, signal);
   if ("status" in auth) {
     const signIn = new URL("/sign-in", env("APP_URL"));
@@ -209,19 +188,12 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(feishuBrowserConnectContract.connect));
   const { installationId, openId, chatId, ts, sig } = query;
   if (!installationId || !openId || !chatId || ts === undefined || !sig) {
-    return worksRedirect(
-      { feishuError: "Invalid or expired connect link" },
-      publicBrand,
-    );
+    return worksRedirect({ feishuError: "Invalid or expired connect link" });
   }
   if (!auth.orgId) {
-    return worksRedirect(
-      {
-        feishuError:
-          "Switch to the organization connected to this Feishu tenant",
-      },
-      publicBrand,
-    );
+    return worksRedirect({
+      feishuError: "Switch to the organization connected to this Feishu tenant",
+    });
   }
   const result = await set(
     startFeishuAccountOAuth$,
@@ -236,7 +208,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  return legacyConnectResult(result, publicBrand);
+  return legacyConnectResult(result);
 });
 
 const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {

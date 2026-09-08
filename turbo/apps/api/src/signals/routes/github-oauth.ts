@@ -48,7 +48,6 @@ import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { OFFICIAL_GITHUB_PUBLIC_BRAND } from "../../lib/github-official-app";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
@@ -281,7 +280,6 @@ type GithubSetupUserConnectionResolution =
 
 function githubSetupUserConnectionError(
   message: string,
-  publicBrand: PublicBrand,
 ): GithubSetupUserConnectionResolution {
   return { ok: false, response: worksErrorRedirect(message) };
 }
@@ -527,7 +525,6 @@ const connectGithubUserAfterSetup$ = command(
         );
         return githubSetupUserConnectionError(
           "GitHub App OAuth is not configured",
-          args.state.publicBrand,
         );
       }
 
@@ -542,10 +539,7 @@ const connectGithubUserAfterSetup$ = command(
       const resolvedMethod = await resolveGithubOauthMethod(resolver);
       signal.throwIfAborted();
       if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
-        return githubSetupUserConnectionError(
-          "GitHub OAuth is not available",
-          args.state.publicBrand,
-        );
+        return githubSetupUserConnectionError("GitHub OAuth is not available");
       }
       const oauthRequestedScopes =
         args.state.oauthRequestedScopes ??
@@ -577,7 +571,6 @@ const connectGithubUserAfterSetup$ = command(
         });
         return githubSetupUserConnectionError(
           errorMessageFromUnknown(tokenResult.error),
-          args.state.publicBrand,
         );
       }
       const { accessToken, scopes, userInfo } = tokenResult.value;
@@ -605,7 +598,6 @@ const connectGithubUserAfterSetup$ = command(
       if (!connectorConnected) {
         return githubSetupUserConnectionError(
           "Connector account could not be selected",
-          args.state.publicBrand,
         );
       }
 
@@ -623,7 +615,6 @@ const connectGithubUserAfterSetup$ = command(
       if (!githubUserId) {
         return githubSetupUserConnectionError(
           "This GitHub account is already linked to the installation",
-          args.state.publicBrand,
         );
       }
 
@@ -637,10 +628,7 @@ const connectGithubUserAfterSetup$ = command(
   },
 );
 
-function githubSetupCompleteRedirect(
-  connected: boolean,
-  publicBrand: PublicBrand,
-): Response {
+function githubSetupCompleteRedirect(connected: boolean): Response {
   if (connected) {
     return redirectResponse(appUrl("/workflows"));
   }
@@ -692,10 +680,7 @@ const connectExistingGithubInstallation$ = command(
       signal,
     );
     return connection.ok
-      ? githubSetupCompleteRedirect(
-          connection.connected,
-          args.state.publicBrand,
-        )
+      ? githubSetupCompleteRedirect(connection.connected)
       : connection.response;
   },
 );
@@ -1067,10 +1052,7 @@ const completeGithubAppInstallationCallback$ = command(
       signal,
     );
     return connection.ok
-      ? githubSetupCompleteRedirect(
-          connection.connected,
-          args.state.publicBrand,
-        )
+      ? githubSetupCompleteRedirect(connection.connected)
       : connection.response;
   },
 );

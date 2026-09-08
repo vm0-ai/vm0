@@ -248,7 +248,7 @@ function chatRunRequired(
   );
 }
 
-function browserReclaiming(publicBrand: PublicBrand) {
+function browserReclaiming() {
   return conflict(
     `${PUBLIC_BRAND_PRESENTATION.assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
     "BROWSER_STOPPING",
@@ -298,10 +298,7 @@ async function providerCall<T>(
     : providerFailure(result.error);
 }
 
-function browserViewerUrl(
-  chatThreadId: string,
-  publicBrand: PublicBrand,
-): string {
+function browserViewerUrl(chatThreadId: string): string {
   return `${env("APP_URL")}/browsers/${chatThreadId}`;
 }
 
@@ -319,7 +316,7 @@ function publicBrowser(
     threadId: row.chatThreadId,
     name: row.name,
     status: row.status,
-    viewerUrl: browserViewerUrl(row.chatThreadId, presentation.publicBrand),
+    viewerUrl: browserViewerUrl(row.chatThreadId),
     liveUrl: presentation.liveUrl,
     screenshotUrl: presentation.screenshotUrl,
     proxyCountryCode: row.proxyCountryCode,
@@ -2024,7 +2021,7 @@ async function claimBrowserForResume(
           "BROWSER_STARTING",
         );
       }
-      return browserReclaiming(context.publicBrand);
+      return browserReclaiming();
     }
     const current = await loadCurrentBrowser(tx, context);
     if (!current) {
@@ -2085,7 +2082,7 @@ const reuseLiveThreadBrowser$ = command(
               "The managed browser is already starting",
               "BROWSER_STARTING",
             )
-          : browserReclaiming(args.context.publicBrand),
+          : browserReclaiming(),
       };
     }
     const inspected = await set(

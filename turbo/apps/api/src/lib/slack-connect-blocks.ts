@@ -24,7 +24,7 @@ interface AppHomeViewOptions {
   readonly botUserId: string;
 }
 
-function appHomeIntroBlocks(publicBrand: PublicBrand): SlackAnyBlock[] {
+function appHomeIntroBlocks(): SlackAnyBlock[] {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
@@ -148,7 +148,6 @@ function appHomeAgentBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
 }
 
 function appHomeHelpBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
-  const publicBrand = options.publicBrand;
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const botMention = officialSlackBotMention(options.botUserId);
   return [
@@ -176,7 +175,7 @@ function appHomeHelpBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
   ];
 }
 
-function disconnectAccountBlock(publicBrand: PublicBrand): SlackKnownBlock {
+function disconnectAccountBlock(): SlackKnownBlock {
   const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "section",
@@ -209,7 +208,7 @@ function disconnectAccountBlock(publicBrand: PublicBrand): SlackKnownBlock {
 }
 
 export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
-  const blocks = appHomeIntroBlocks(options.publicBrand);
+  const blocks = appHomeIntroBlocks();
 
   if (!options.isLinked) {
     return {
@@ -225,7 +224,7 @@ export function buildAppHomeView(options: AppHomeViewOptions): SlackView {
     { type: "divider" },
     ...appHomeHelpBlocks(options),
     { type: "divider" },
-    disconnectAccountBlock(options.publicBrand),
+    disconnectAccountBlock(),
   );
 
   return {

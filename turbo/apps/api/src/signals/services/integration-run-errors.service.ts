@@ -7,12 +7,12 @@ import { db$ } from "../external/db";
 import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
-function addCreditsUrl(publicBrand: PublicBrand): string {
+function addCreditsUrl(): string {
   const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=credits`;
 }
 
-function comparePlansUrl(publicBrand: PublicBrand): string {
+function comparePlansUrl(): string {
   const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=plans`;
 }
@@ -50,8 +50,8 @@ export const formatIntegrationRunError$ = command(
       insufficientCredits: {
         canManageBilling: membership?.role === "admin",
         ...(canBuyCredits
-          ? { addCreditsUrl: addCreditsUrl(args.publicBrand) }
-          : { comparePlansUrl: comparePlansUrl(args.publicBrand) }),
+          ? { addCreditsUrl: addCreditsUrl() }
+          : { comparePlansUrl: comparePlansUrl() }),
       },
     });
   },

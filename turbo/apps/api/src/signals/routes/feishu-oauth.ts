@@ -129,10 +129,7 @@ function settingsUrl(params: Readonly<Record<string, string>>): string {
   return url.toString();
 }
 
-function settingsRedirect(
-  params: Readonly<Record<string, string>>,
-  publicBrand: PublicBrand,
-): Response {
+function settingsRedirect(params: Readonly<Record<string, string>>): Response {
   return redirectResponse(settingsUrl(params));
 }
 
@@ -630,12 +627,9 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     return jsonErrorResponse("Feishu bot not found");
   }
   if (!installation.setupCompletedAt) {
-    return settingsRedirect(
-      {
-        error: "Finish setting up this Feishu bot before connecting.",
-      },
-      state.publicBrand,
-    );
+    return settingsRedirect({
+      error: "Finish setting up this Feishu bot before connecting.",
+    });
   }
   const connectorId = await set(
     ensureFeishuCustomConnector$,

@@ -1,7 +1,10 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND,
+  PUBLIC_BRAND_PRESENTATION,
+} from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
@@ -340,10 +343,9 @@ export function buildAgentPhoneConnectUrl(params: {
   readonly agentphoneAgentId: string;
   readonly channel: AgentPhoneChannel;
   readonly secret: string;
-  readonly publicBrand?: PublicBrand;
 }): string {
   const timestamp = Math.floor(now() / 1000);
-  const publicBrand = params.publicBrand ?? "vm0";
+  const publicBrand = PUBLIC_BRAND;
   const phoneHandle = normalizeAgentPhoneHandle(
     params.phoneHandle,
     params.channel,
@@ -1052,17 +1054,13 @@ async function refreshTypingIfSupported(
   );
 }
 
-function formatConnectPrompt(
-  event: AgentPhoneMessageEvent,
-  publicBrand: PublicBrand,
-): string {
+function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
   const { brandName } = PUBLIC_BRAND_PRESENTATION;
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
     secret: env("SECRETS_ENCRYPTION_KEY"),
     channel: event.channel,
-    publicBrand,
   });
 
   return [
@@ -1078,7 +1076,7 @@ function formatConnectPrompt(
   ].join("\n");
 }
 
-function formatHelpMessage(publicBrand: PublicBrand): string {
+function formatHelpMessage(): string {
   const { brandName } = PUBLIC_BRAND_PRESENTATION;
   return [
     `${brandName} text message commands`,
@@ -1095,11 +1093,10 @@ function formatHelpMessage(publicBrand: PublicBrand): string {
 
 async function sendConnectPrompt(
   event: AgentPhoneMessageEvent,
-  publicBrand: PublicBrand,
   options: { readonly slashCommand: boolean } | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const body = formatConnectPrompt(event, publicBrand);
+  const body = formatConnectPrompt(event);
   await sendAgentPhoneText(
     event,
     options?.slashCommand
@@ -1176,12 +1173,7 @@ async function handleConnectCommand(
     );
     return;
   }
-  await sendConnectPrompt(
-    args.event,
-    args.publicBrand,
-    { slashCommand: true },
-    signal,
-  );
+  await sendConnectPrompt(args.event, { slashCommand: true }, signal);
 }
 
 async function handleDisconnectCommand(
@@ -1224,12 +1216,7 @@ async function handleNewSessionCommand(
   signal: AbortSignal,
 ): Promise<void> {
   if (!args.userLink) {
-    await sendConnectPrompt(
-      args.event,
-      args.publicBrand,
-      { slashCommand: true },
-      signal,
-    );
+    await sendConnectPrompt(args.event, { slashCommand: true }, signal);
     return;
   }
 
@@ -1481,19 +1468,14 @@ const dispatchAgentPhoneCommand$ = command(
       case "help": {
         await sendAgentPhoneSlashCommandText(
           args.event,
-          formatHelpMessage(args.publicBrand),
+          formatHelpMessage(),
           signal,
         );
         return true;
       }
       case "model": {
         if (!args.userLink) {
-          await sendConnectPrompt(
-            args.event,
-            args.publicBrand,
-            { slashCommand: true },
-            signal,
-          );
+          await sendConnectPrompt(args.event, { slashCommand: true }, signal);
           return true;
         }
         await set(
@@ -1819,12 +1801,7 @@ export const handleAgentPhoneMessage$ = command(
         return;
       }
 
-      await sendConnectPrompt(
-        params.event,
-        params.publicBrand,
-        undefined,
-        signal,
-      );
+      await sendConnectPrompt(params.event, undefined, signal);
       return;
     }
 

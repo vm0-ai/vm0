@@ -95,9 +95,9 @@ test("An organization admin can start guided Feishu bot setup", async () => {
     "href",
     "https://static.okou.io/platform/views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
   );
-  expect(iconDownload).toHaveAttribute("download", "vm0-feishu-app-icon.png");
+  expect(iconDownload).toHaveAttribute("download", "okou-feishu-app-icon.png");
   expect(
-    screen.getByRole("img", { name: "Optional VM0 app icon" }),
+    screen.getByRole("img", { name: "Optional Okou app icon" }),
   ).toHaveAttribute(
     "src",
     "https://static.okou.io/platform/views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",

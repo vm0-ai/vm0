@@ -1139,10 +1139,10 @@ describe("POST /api/image-io/generate", () => {
       creditsCharged: 50,
       billingCategory: "output_image.medium.standard",
       billingQuantity: 1,
-      url: expect.stringMatching(/^https:\/\/cdn\.vm7\.io\/artifacts\//u),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\//u),
     });
     expect(putObjectInput().Metadata).toMatchObject({
-      "public-brand": "vm0",
+      "public-brand": "okou",
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const billingStatus = await accept(
@@ -2816,7 +2816,7 @@ describe("POST /api/image-io/generate", () => {
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),
-      "public-brand": "vm0",
+      "public-brand": "okou",
       "user-id": encodeURIComponent(fixture.userId),
     });
     expect(putInput.ContentType).toBe("image/jpeg");

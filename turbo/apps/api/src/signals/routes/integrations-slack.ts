@@ -179,11 +179,7 @@ function contractErrorResponse(
   };
 }
 
-function buildConnectUrl(
-  workspaceId: string,
-  slackUserId: string,
-  publicBrand: PublicBrand,
-): string {
+function buildConnectUrl(workspaceId: string, slackUserId: string): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
 }
@@ -222,11 +218,7 @@ function buildDisconnectedAppHomeView(args: {
           {
             type: "button",
             text: { type: "plain_text", text: "Connect" },
-            url: buildConnectUrl(
-              args.workspaceId,
-              args.slackUserId,
-              args.publicBrand,
-            ),
+            url: buildConnectUrl(args.workspaceId, args.slackUserId),
             action_id: "home_login_prompt",
             style: "primary",
           },
@@ -236,7 +228,7 @@ function buildDisconnectedAppHomeView(args: {
   };
 }
 
-function buildUninstalledAppHomeView(publicBrand: PublicBrand): SlackView {
+function buildUninstalledAppHomeView(): SlackView {
   const { assistantName, brandName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "home",
@@ -343,7 +335,7 @@ const uninstallSlackIntegration$ = command(
           }),
         ),
       );
-      const view = buildUninstalledAppHomeView(args.publicBrand);
+      const view = buildUninstalledAppHomeView();
       await Promise.allSettled(
         connections.map((connection) => {
           return client.publishAppHome(connection.slackUserId, view);

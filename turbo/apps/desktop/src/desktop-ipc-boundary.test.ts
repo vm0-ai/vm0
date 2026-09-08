@@ -439,7 +439,7 @@ describe("Desktop IPC boundary", () => {
     installDesktopAuthIpc(api, {
       rendererUrl,
       authWindow: new DesktopAuthWindow({
-        authOrigin: "https://app.vm0.ai",
+        authOrigin: "https://app.okou.ai",
         partition: "persist:desktop-test",
         windowOptions: () => ({}),
         openExternal: () => {},

@@ -702,7 +702,7 @@ describe("Teams chat callbacks", () => {
       teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
       teamsServiceUrl: teams.fixture.serviceUrl,
       teamsAppId: teams.fixture.teamsAppId,
-      teamsPublicBrand: "vm0",
+      teamsPublicBrand: "okou",
       teamsSenderUserId: teams.fixture.teamsUserId,
       teamsSenderDisplayName: "Ada Lovelace",
       teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,

@@ -15,7 +15,6 @@ import { request$ } from "../context/hono";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
-import { OFFICIAL_GITHUB_PUBLIC_BRAND } from "../../lib/github-official-app";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import {
   buildGithubAppInstallUrl,

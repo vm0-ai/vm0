@@ -16,7 +16,6 @@ import { lockCanonicalAgentMutation } from "../services/agent-mutation-lock.serv
 import { writeAgentInstructionsStorage$ } from "../services/agent-instructions-storage.service";
 import { agentInstructions } from "../services/agent-instructions.service";
 import type { RouteEntry } from "../route-entry";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const agentReadAuth = {
   requireOrganization: true,
@@ -53,7 +52,6 @@ const updateAgentInstructionsBody$ = bodyResultOf(
 const updateAgentInstructionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = PUBLIC_BRAND;
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(agentInstructionsContract.update));
     const body = await get(updateAgentInstructionsBody$);
@@ -141,7 +139,7 @@ const updateAgentInstructionsInner$ = command(
 
     return {
       status: 200 as const,
-      body: agentResponse(result.agent, publicBrand),
+      body: agentResponse(result.agent),
     };
   },
 );

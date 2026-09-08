@@ -8,15 +8,13 @@ import type { RouteEntry } from "../route-entry";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import { onboardingStatus } from "../services/onboarding.service";
 import { tapError } from "../utils";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("onboarding-status.route");
 
 const getOnboardingStatusInner$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
     const auth = get(authContext$);
-    const publicBrand = PUBLIC_BRAND;
-    const body = await get(onboardingStatus(auth, publicBrand));
+    const body = await get(onboardingStatus(auth));
     signal.throwIfAborted();
 
     if (auth.orgId && body.isAdmin && !body.hasDefaultAgent) {
@@ -36,7 +34,7 @@ const getOnboardingStatusInner$ = command(
       signal.throwIfAborted();
 
       if (bootstrapResult !== undefined) {
-        const repairedBody = await get(onboardingStatus(auth, publicBrand));
+        const repairedBody = await get(onboardingStatus(auth));
         signal.throwIfAborted();
         return {
           status: 200 as const,

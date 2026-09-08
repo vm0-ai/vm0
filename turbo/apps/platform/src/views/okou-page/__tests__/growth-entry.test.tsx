@@ -170,7 +170,7 @@ test("An admin can choose another connection channel", async () => {
   await setupPage({ context, path: growthChatPath() });
 
   const primaryEntry = await waitFor(() => {
-    return actionNamed("button", "Add Zero in Slack");
+    return actionNamed("button", "Add Okou in Slack");
   });
   const moreActions = await waitFor(() => {
     return actionNamed("button", "More actions");
@@ -181,7 +181,7 @@ test("An admin can choose another connection channel", async () => {
   click(moreActions);
 
   const menu = await screen.findByRole("menu");
-  const slack = menuItemContaining(menu, "Add Zero in Slack");
+  const slack = menuItemContaining(menu, "Add Okou in Slack");
   expect(slack).toBeVisible();
   expect(slack).toHaveTextContent("Connect");
   expect(within(menu).getByText("Telegram and phone")).toBeVisible();
@@ -198,7 +198,7 @@ test("An admin can choose another connection channel", async () => {
   ).resolves.toBeVisible();
 });
 
-test("An admin is guided to add Zero to Slack first", async () => {
+test("An admin is guided to add Okou to Slack first", async () => {
   configureGrowthPage(context, {
     role: "admin",
     slack: slackStatus({
@@ -210,7 +210,7 @@ test("An admin is guided to add Zero to Slack first", async () => {
   await setupPage({ context, path: growthChatPath() });
 
   const addToSlack = await waitFor(() => {
-    return actionNamed("button", "Add Zero in Slack");
+    return actionNamed("button", "Add Okou in Slack");
   });
   expect(addToSlack).toBeVisible();
 
@@ -315,7 +315,7 @@ test("The growth menu reflects installed Slack and offers invitations", async ()
   click(moreActions);
 
   const menu = await screen.findByRole("menu");
-  const slack = menuItemContaining(menu, "Zero is in Slack");
+  const slack = menuItemContaining(menu, "Okou is in Slack");
   expect(slack).toBeVisible();
   expect(slack).not.toHaveTextContent("Connect");
   const invite = actionNamed("menuitem", "Invite humans 🤝", menu);
@@ -346,7 +346,7 @@ test("A non-admin does not see the workspace growth entry", async () => {
 
   expect(
     queryAllByRoleFast("button").find((candidate) => {
-      return normalizedText(candidate) === "Add Zero in Slack";
+      return normalizedText(candidate) === "Add Okou in Slack";
     }),
   ).toBeUndefined();
   expect(

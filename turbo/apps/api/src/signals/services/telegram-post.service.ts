@@ -326,10 +326,7 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildTelegramWebhookUrl(
-  telegramBotId: string,
-  publicBrand: PublicBrand,
-): string {
+function buildTelegramWebhookUrl(telegramBotId: string): string {
   return `${webUrl()}/api/telegram/webhook/${telegramBotId}`;
 }
 
@@ -480,7 +477,7 @@ async function configureTelegramBot(
     (async () => {
       await setWebhook(
         args.botToken,
-        buildTelegramWebhookUrl(args.telegramBotId, args.publicBrand),
+        buildTelegramWebhookUrl(args.telegramBotId),
         args.webhookSecret,
       );
       return true;
@@ -795,10 +792,7 @@ export const registerTelegramBot$ = command(
   },
 );
 
-function resolveProbeOrigin(
-  origin: string | undefined,
-  publicBrand: PublicBrand,
-): string {
+function resolveProbeOrigin(origin: string | undefined): string {
   const brandedOrigin = new URL(env("APP_URL")).origin;
   if (!origin) {
     return brandedOrigin;
@@ -877,7 +871,7 @@ export const setupTelegramStatus$ = command(
 
     const domainConfigured = await checkTelegramDomain(
       botId,
-      resolveProbeOrigin(bodyResult.data.origin, args.publicBrand),
+      resolveProbeOrigin(bodyResult.data.origin),
     );
     signal.throwIfAborted();
 

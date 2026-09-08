@@ -146,6 +146,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
+import { buildVideoRunOptionsPrompt } from "../../lib/video-run-options-prompt";
 import {
   additionalVolumesForRun,
   authorizedUserPresentationTemplateIds,
@@ -3344,9 +3345,14 @@ function buildCreateAgentRunArgs(params: {
     builtInModelRuntimeRoute,
     codexServiceTier,
   } = prepared.runConfiguration;
+  const videoRunOptionsPrompt = buildVideoRunOptionsPrompt(
+    prepared.videoRunOptions,
+  );
+  const agentPrompt = videoRunOptionsPrompt
+    ? `${videoRunOptionsPrompt}\n\n${prepared.body.agentPrompt}`
+    : prepared.body.agentPrompt;
   const webChatSessionPromptContext: WebChatSessionPromptContext = {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
-    videoRunOptions: prepared.videoRunOptions,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
     triggerSource: prepared.triggerSource,
@@ -3387,7 +3393,7 @@ function buildCreateAgentRunArgs(params: {
       },
     ],
     body: {
-      prompt: prepared.body.agentPrompt,
+      prompt: agentPrompt,
       agentId: args.body.agentId,
       ...(providerAdmission.effectiveModelProvider
         ? {

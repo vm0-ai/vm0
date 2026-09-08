@@ -384,21 +384,12 @@ jobs:
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          # Zero and Okou must stay installable side by side so an existing
-          # Zero installation can adopt Okou. Only Okou is packaged now, so
-          # compare the packaged identity against the Zero identity that an
-          # explicit Zero-product build would use.
-          identities="apps/desktop/src/desktop-identities.json"
-          zero_bundle_id="$(jq -er '.zero.production.bundleId' "$identities")"
-          okou_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist")
-          if [ "$zero_bundle_id" = "$okou_bundle_id" ]; then
-            echo "Zero and Okou should remain installable side by side: bundle identifiers collide"
-            exit 1
-          fi
-          if [ "$(jq -er '.zero.production.userDataDirectoryName' "$identities")" = "$(jq -er '.okou.production.userDataDirectoryName' "$identities")" ]; then
-            echo "Zero and Okou should remain installable side by side: user data directories collide"
-            exit 1
-          fi
+          jq -e '.okou.production.userDataDirectoryName == "Okou"
+            and .okou.development.userDataDirectoryName == "Okou Dev"' \
+            apps/desktop/src/desktop-identities.json >/dev/null
+          for asset in tray-iconTemplate.png tray-iconTemplate@2x.png tray-iconDisabled.png tray-iconDisabled@2x.png tray-iconRunning.png tray-iconRunning@2x.png; do
+            cmp -s "apps/desktop/assets/$asset" "$app_dir/Contents/Resources/app/assets/$asset"
+          done
 
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/MacOS/Okou"
           unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/icon.icns"

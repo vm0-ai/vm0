@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
@@ -69,13 +68,10 @@ export async function loadFeishuInstallationConfig(
 
 /**
  * The event subscription URL an operator registers in their own Feishu Open
- * Platform app. The hostname carries the installation's product brand while
+ * Platform app. The configured callback origin determines the hostname;
  * the path and installation ID remain provider-compatible.
  */
-export function feishuCallbackUrl(
-  installationId: string,
-  publicBrand: PublicBrand,
-): string {
+export function feishuCallbackUrl(installationId: string): string {
   return new URL(
     `/api/webhooks/feishu/events/${encodeURIComponent(installationId)}`,
     env("FEISHU_CALLBACK_BASE_URL"),
@@ -100,8 +96,8 @@ export function feishuOAuthAppCallbackUrl(): string {
 }
 
 /**
- * Historical VM0 app callback URI used by the legacy signed-state completion
- * path. Keep this URI and its historical routes while VM0 remains supported.
+ * App callback URI used by the legacy signed-state completion path.
+ * The signed state format remains compatible with historical states.
  */
 export function legacyFeishuOAuthAppCallbackUrl(): string {
   return new URL("/connectors/feishu/callback", env("APP_URL")).toString();

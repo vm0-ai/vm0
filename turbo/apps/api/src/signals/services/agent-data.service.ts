@@ -17,22 +17,19 @@ import { agentDisplayName } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
 
-export function agentResponse(
-  row: {
-    readonly agentId: string;
-    readonly defaultAgentId: string | null;
-    readonly owner: string;
-    readonly displayName: string | null;
-    readonly description: string | null;
-    readonly sound: string | null;
-    readonly avatarUrl: string | null;
-    readonly modelProviderId: string | null;
-    readonly selectedModel: string | null;
-    readonly preferPersonalProvider: boolean;
-    readonly visibility: "public" | "private";
-  },
-  publicBrand: PublicBrand,
-): AgentResponse {
+export function agentResponse(row: {
+  readonly agentId: string;
+  readonly defaultAgentId: string | null;
+  readonly owner: string;
+  readonly displayName: string | null;
+  readonly description: string | null;
+  readonly sound: string | null;
+  readonly avatarUrl: string | null;
+  readonly modelProviderId: string | null;
+  readonly selectedModel: string | null;
+  readonly preferPersonalProvider: boolean;
+  readonly visibility: "public" | "private";
+}): AgentResponse {
   return {
     agentId: row.agentId,
     ownerId: row.owner,
@@ -88,7 +85,6 @@ export function agentExists(args: {
 export function agentList(
   orgId: string,
   userId: string,
-  publicBrand: PublicBrand,
 ): Computed<Promise<readonly AgentResponse[]>> {
   return computed(async (get): Promise<readonly AgentResponse[]> => {
     const rows = await get(db$)
@@ -111,7 +107,7 @@ export function agentList(
       .orderBy(desc(agents.updatedAt));
 
     return rows.map((row) => {
-      return agentResponse(row, publicBrand);
+      return agentResponse(row);
     });
   });
 }
@@ -148,7 +144,7 @@ export function agentDetail(args: {
       )
       .limit(1);
 
-    return row ? agentResponse(row, args.publicBrand) : null;
+    return row ? agentResponse(row) : null;
   });
 }
 

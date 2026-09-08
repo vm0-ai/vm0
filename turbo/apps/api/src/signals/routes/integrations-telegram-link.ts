@@ -321,7 +321,7 @@ const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const linkOfficialInner$ = command(
   async (
-    { get, set },
+    { set },
     args: { readonly auth: OrganizationAuth; readonly body: TelegramLinkBody },
     signal: AbortSignal,
   ) => {
@@ -440,7 +440,7 @@ const linkOfficialInner$ = command(
 
 const linkCustomWithTelegramAuth$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;
@@ -448,7 +448,6 @@ const linkCustomWithTelegramAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand = PUBLIC_BRAND;
     const telegramAuth = args.body.telegramAuth;
     if (!telegramAuth) {
       return missingAuthMethodResponse();
@@ -482,7 +481,7 @@ const linkCustomWithTelegramAuth$ = command(
 
 const linkCustomWithConnectSignature$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly auth: OrganizationAuth;
       readonly body: TelegramLinkBody;

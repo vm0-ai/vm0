@@ -8,6 +8,25 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.566.4](https://github.com/vm0-ai/vm0/compare/api-v1.566.3...api-v1.566.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** handle DataForSEO SERP no-search-results responses ([#32499](https://github.com/vm0-ai/vm0/issues/32499)) ([2e64976](https://github.com/vm0-ai/vm0/commit/2e64976033a5e939248ff14af401f2ac715591e0))
+* **connectors:** route quickbooks and stripe oauth callbacks to okou ([#32498](https://github.com/vm0-ai/vm0/issues/32498)) ([6a33845](https://github.com/vm0-ai/vm0/commit/6a338453a20c7bd268b0cae75093c9ee6d7e0ef0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.2
+    * @okouai/connectors bumped to 3.8.2
+    * @okouai/core bumped to 8.634.4
+    * @okouai/db bumped to 1.245.13
+    * @okouai/pi-agent-runtime bumped to 1.21.22
+
 ## [1.566.3](https://github.com/vm0-ai/vm0/compare/api-v1.566.2...api-v1.566.3) (2026-09-08)
 
 

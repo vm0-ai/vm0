@@ -46,12 +46,12 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly canManageOrgModelProviders?: boolean;
 }
 
-function buildModelProvidersUrl(publicBrand: PublicBrand): string {
+function buildModelProvidersUrl(): string {
   const appUrl = env("APP_URL");
   return `${appUrl}/?settings=model`;
 }
 
-function buildPersonalModelProvidersUrl(publicBrand: PublicBrand): string {
+function buildPersonalModelProvidersUrl(): string {
   const appUrl = env("APP_URL");
   return `${appUrl}/?settings=model`;
 }
@@ -68,9 +68,9 @@ function buildClaudeCodeCredentialRecoveryUrl(params: {
     params.modelProviderType === "claude-code-oauth-token" &&
     params.modelProviderCredentialScope === "member"
   ) {
-    return buildPersonalModelProvidersUrl(params.publicBrand);
+    return buildPersonalModelProvidersUrl();
   }
-  return buildModelProvidersUrl(params.publicBrand);
+  return buildModelProvidersUrl();
 }
 
 function isProRequiredRunError(message: string): boolean {

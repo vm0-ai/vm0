@@ -1,5 +1,4 @@
 import type { ConnectorAuthMethodRuntimeConfig } from "@okouai/connectors/connector-config";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { buildConnectorOpenIdAuthAuthorizationUrlWithMethod } from "@okouai/connectors/auth-providers";
 import type { AuthUrlResult } from "@okouai/connectors/auth-providers/provider-flow-types";
 
@@ -29,7 +28,6 @@ export function prepareConnectorOpenIdAuthStartWithMethod(args: {
   readonly connectorSlug: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly origin: string;
-  readonly publicBrand: PublicBrand;
 }): PrepareResolvedConnectorOpenIdAuthStartResult {
   if (args.method.grant.kind !== "openid-auth") {
     throw new Error("OpenID auth method required");

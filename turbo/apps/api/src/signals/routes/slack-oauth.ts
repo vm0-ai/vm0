@@ -29,11 +29,7 @@ import {
 } from "../services/slack-connect.service";
 import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
-import {
-  getOAuthApiOrigin,
-  getOAuthWebOrigin,
-  getTrustedOAuthWebOrigin,
-} from "../../lib/oauth-origin";
+import { getOAuthApiOrigin, getOAuthWebOrigin } from "../../lib/oauth-origin";
 import { OFFICIAL_SLACK_PUBLIC_BRAND } from "../../lib/slack-official-app";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
@@ -709,7 +705,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const query = get(queryOf(slackOauthContract.callback));
   const parsedState = parseOAuthState(query.state);
   const state = parsedState?.state ?? null;
-  const redirectBrand = state?.publicBrand ?? PUBLIC_BRAND;
 
   if (query.error) {
     return failedRedirect(query.error);

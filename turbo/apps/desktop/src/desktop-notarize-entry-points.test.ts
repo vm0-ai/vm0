@@ -410,15 +410,12 @@ function runPackagedAppHelper(
   credentialCase: CredentialCase,
   options: {
     readonly appName?: string;
-    readonly product?: string;
+    readonly extraArguments?: readonly string[];
     readonly signingIdentity?: SigningIdentityInput;
   } = {},
 ): EntryPointResult {
   const harness = createTestHarness();
-  const appPath = join(
-    harness.directory,
-    options.appName ?? "Zero Computer Use.app",
-  );
+  const appPath = join(harness.directory, options.appName ?? "Okou.app");
   mkdirSync(appPath, { recursive: true });
   const environment = baseEnvironment(harness);
   environment.TEST_EXPECTED_APP_PATH = appPath;
@@ -450,8 +447,7 @@ function runPackagedAppHelper(
       packagedAppScriptPath,
       "--app",
       appPath,
-      "--product",
-      options.product ?? "zero",
+      ...(options.extraArguments ?? []),
     ],
     {
       cwd: desktopDirectory,
@@ -729,23 +725,19 @@ describe("packaged Desktop signing and notarization entry point", () => {
     expect(result.process.status === 1).toBe(true);
     expect(result.trace).toBe("");
     expect(
-      result.process.stderr.includes(
-        "Expected a Zero Computer Use.app directory",
-      ),
+      result.process.stderr.includes("Expected a Okou.app directory"),
     ).toBe(true);
     expectNoSensitiveValueDisclosure(result);
   });
 
-  it("preserves product validation before external side effects", () => {
+  it("rejects unknown options before external side effects", () => {
     const result = runPackagedAppHelper("canonical-only", {
-      product: "unexpected",
+      extraArguments: ["--unexpected", "value"],
     });
     expect(result.process.status === 1).toBe(true);
     expect(result.trace).toBe("");
     expect(
-      result.process.stderr.includes(
-        "Usage: sign-and-notarize-packaged-app.mjs",
-      ),
+      result.process.stderr.includes("Unknown argument: --unexpected"),
     ).toBe(true);
     expectNoSensitiveValueDisclosure(result);
   });

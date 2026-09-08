@@ -319,7 +319,6 @@ function renderTemplate(
     case "official-automation-result": {
       const rendered = renderOfficialAutomationResultEmail(
         template.props,
-        EMAIL_PUBLIC_BRAND,
         officialAutomationResultUnsubscribeUrl(headers),
       );
       if (rendered.fallback) {

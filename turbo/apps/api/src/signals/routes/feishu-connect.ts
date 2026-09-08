@@ -1,7 +1,6 @@
 import { command, computed } from "ccstate";
 import { eq } from "drizzle-orm";
 import { feishuConnectContract } from "@okouai/api-contracts/contracts/feishu-connect";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import {
@@ -60,7 +59,7 @@ const feishuIntegrationEnabled$ = computed(async (get) => {
   return isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, context);
 });
 
-function appIdInUse(publicBrand: PublicBrand) {
+function appIdInUse() {
   return conflict(
     `This Feishu App ID is already registered in ${PUBLIC_BRAND_PRESENTATION.brandName}`,
   );
@@ -87,7 +86,6 @@ const checkAppId$ = computed(async (get) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -98,7 +96,7 @@ const checkAppId$ = computed(async (get) => {
     .where(eq(feishuOrgInstallations.appId, query.appId))
     .limit(1);
   return installation
-    ? appIdInUse(publicBrand)
+    ? appIdInUse()
     : { status: 200 as const, body: { available: true as const } };
 });
 
@@ -151,7 +149,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
   if (result.kind === "app_in_use") {
-    return appIdInUse(publicBrand);
+    return appIdInUse();
   }
   if (result.kind === "installation_exists") {
     return conflict("This workspace already has a Feishu bot");

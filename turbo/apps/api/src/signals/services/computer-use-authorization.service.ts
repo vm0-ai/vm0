@@ -95,10 +95,7 @@ function isUuid(value: string): boolean {
   );
 }
 
-function authorizationUrl(
-  requestToken: string,
-  publicBrand: PublicBrand,
-): string {
+function authorizationUrl(requestToken: string): string {
   return `${env("APP_URL")}/computer-use/authorize/${encodeURIComponent(
     requestToken,
   )}`;
@@ -461,7 +458,7 @@ export const createComputerUseAuthorizationRequest$ = command(
 
     return {
       status: "created",
-      authorizationUrl: authorizationUrl(requestToken, args.publicBrand),
+      authorizationUrl: authorizationUrl(requestToken),
       source: scope.source,
       expiresAt: expiresAt.toISOString(),
     };

@@ -6280,14 +6280,8 @@ describe("CHAT-02: push notification gating", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     chatCallbacks.enableVapid();
-    const vm0Endpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "vm0",
-    );
-    const okouEndpoint = await chatCallbacks.registerPushSubscription(
-      actor,
-      "okou",
-    );
+    const vm0Endpoint = await chatCallbacks.registerPushSubscription(actor);
+    const okouEndpoint = await chatCallbacks.registerPushSubscription(actor);
 
     const run = await startChatRun(actor, {
       agentId,

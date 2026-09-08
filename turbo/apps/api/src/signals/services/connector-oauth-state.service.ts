@@ -1,5 +1,4 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 

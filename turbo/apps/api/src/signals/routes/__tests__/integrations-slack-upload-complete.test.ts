@@ -1241,7 +1241,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
           put.bucket === "test-user-artifacts" &&
           /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key) &&
           put.contentType === "image/jpeg" &&
-          put.metadata?.["public-brand"] === "vm0"
+          put.metadata?.["public-brand"] === "okou"
         );
       }),
     ).toBeTruthy();
@@ -1255,7 +1255,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(files[0]).toMatchObject({
       id: fileId,
       previewImageUrl: expect.stringMatching(
-        /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+        /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.jpg$/u,
       ),
     });
   });

@@ -389,7 +389,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (currentLink) {
-    return connectConflict("vm0-org-linked", publicBrand);
+    return connectConflict("vm0-org-linked");
   }
 
   const [existingPhoneLink] = await readDb
@@ -400,7 +400,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (existingPhoneLink) {
-    return connectConflict("phone-handle-linked", publicBrand);
+    return connectConflict("phone-handle-linked");
   }
 
   const connectUrl = buildAgentPhoneConnectUrl({
@@ -408,7 +408,6 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     agentphoneAgentId,
     channel: APPS_API_CONNECT_CHANNEL,
     secret: env("SECRETS_ENCRYPTION_KEY"),
-    publicBrand,
   });
 
   const cooldownKeys = agentPhoneCooldownKeys({
@@ -467,7 +466,7 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-function connectConflict(reason: LinkConflictReason, publicBrand: PublicBrand) {
+function connectConflict(reason: LinkConflictReason) {
   const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const message =
     reason === "phone-handle-linked"
@@ -526,7 +525,7 @@ const connectAgentPhone$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return connectConflict(result.reason, flowPublicBrand);
+      return connectConflict(result.reason);
     }
 
     await publishAgentPhoneUserChanged(auth.userId);

@@ -417,10 +417,8 @@ async function requestRawSlackIngress(
   path: SlackIngressPath,
   body: string,
   headers: SlackSignatureHeaders,
-  publicBrand: PublicBrand,
 ): Promise<SlackIngressResponse> {
-  const origin =
-    publicBrand === "okou" ? "https://api.okou.ai" : "https://api.okou.ai";
+  const origin = "https://api.okou.ai";
   const contentType = path.endsWith("/events")
     ? "application/json"
     : "application/x-www-form-urlencoded";
@@ -471,22 +469,18 @@ async function requestRawAgentPhoneWebhook(
     readonly "x-webhook-event"?: string;
     readonly "x-webhook-id"?: string;
   },
-  publicBrand: PublicBrand,
 ): Promise<AgentPhoneWebhookResponse> {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(
-    `${publicBrand === "okou" ? "https://api.okou.ai" : "https://api.okou.ai"}/api/agentphone/webhook`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  }).request(`${"https://api.okou.ai"}/api/agentphone/webhook`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -664,10 +658,7 @@ export function createBddIntegrationApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
-        baseUrl:
-          publicBrand === "okou"
-            ? "https://api.okou.ai"
-            : "https://api.okou.ai",
+        baseUrl: "https://api.okou.ai",
         context,
         routes: githubOauthRoutes,
       })(githubOauthContract);
@@ -689,10 +680,7 @@ export function createBddIntegrationApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
-        baseUrl:
-          publicBrand === "okou"
-            ? "https://api.okou.ai"
-            : "https://api.okou.ai",
+        baseUrl: "https://api.okou.ai",
         context,
         routes: githubOauthRoutes,
       })(githubOauthContract);
@@ -714,9 +702,7 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
       publicBrand: PublicBrand = "vm0",
-      baseUrl = publicBrand === "okou"
-        ? "https://api.okou.ai"
-        : "https://api.okou.ai",
+      baseUrl = "https://api.okou.ai",
     ) {
       const client = setupApp({
         baseUrl,
@@ -1122,7 +1108,6 @@ export function createBddIntegrationApi(context: TestContext) {
     async postSlackEvent(
       teamId: string,
       event: Record<string, unknown>,
-      publicBrand: PublicBrand = "okou",
     ): Promise<unknown> {
       const body = JSON.stringify({
         type: "event_callback",
@@ -1136,7 +1121,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/events",
           body,
           signedSlackHeaders(body),
-          publicBrand,
         ),
         [200],
       );
@@ -1151,7 +1135,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/commands",
           body,
           signedSlackHeaders(body),
-          args.publicBrand ?? "okou",
         ),
         [200],
       );
@@ -1160,7 +1143,6 @@ export function createBddIntegrationApi(context: TestContext) {
 
     async postSlackInteractive(
       payload: Record<string, unknown>,
-      publicBrand: PublicBrand = "okou",
     ): Promise<unknown> {
       const body = new URLSearchParams({
         payload: JSON.stringify(payload),
@@ -1171,7 +1153,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/interactive",
           body,
           signedSlackHeaders(body),
-          publicBrand,
         ),
         [200],
       );
@@ -1310,7 +1291,6 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly SlackIngressStatus[],
-      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1318,7 +1298,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/events",
           body,
           headers,
-          publicBrand,
         ),
         statuses,
       );
@@ -1328,7 +1307,6 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly (200 | 400 | 401 | 503)[],
-      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1336,7 +1314,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/commands",
           body,
           headers,
-          publicBrand,
         ),
         statuses,
       );
@@ -1346,7 +1323,6 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: SlackSignatureHeaders,
       statuses: readonly (200 | 400 | 401 | 503)[],
-      publicBrand: PublicBrand = "okou",
     ) {
       return await accept(
         requestRawSlackIngress(
@@ -1354,7 +1330,6 @@ export function createBddIntegrationApi(context: TestContext) {
           "/api/webhooks/slack/interactive",
           body,
           headers,
-          publicBrand,
         ),
         statuses,
       );
@@ -1802,10 +1777,9 @@ export function createBddIntegrationApi(context: TestContext) {
         readonly "x-webhook-id"?: string;
       },
       statuses: readonly (200 | 400 | 401 | 404)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       return await accept(
-        requestRawAgentPhoneWebhook(context, body, headers, publicBrand),
+        requestRawAgentPhoneWebhook(context, body, headers),
         statuses,
       );
     },

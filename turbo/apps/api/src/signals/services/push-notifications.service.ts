@@ -16,7 +16,7 @@ interface PushNotification {
   readonly url: string;
 }
 
-function notificationUrl(pathOrUrl: string, publicBrand: "vm0" | "okou") {
+function notificationUrl(pathOrUrl: string) {
   if (/^https?:\/\//u.test(pathOrUrl)) {
     return pathOrUrl;
   }
@@ -54,7 +54,7 @@ export async function sendUserPushNotifications(args: {
         ...args.notification,
         title:
           args.notification.title ?? PUBLIC_BRAND_PRESENTATION.assistantName,
-        url: notificationUrl(args.notification.url, subscription.publicBrand),
+        url: notificationUrl(args.notification.url),
       });
       const result = await settle(
         webpush.sendNotification(

@@ -172,7 +172,6 @@ async function getPrimaryUserEmail(
 function buildSlackConnectUrl(
   workspaceId: string,
   slackUserId: string,
-  publicBrand: PublicBrand,
 ): string {
   const params = new URLSearchParams({ w: workspaceId, u: slackUserId });
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
@@ -211,7 +210,6 @@ async function refreshSlackAppHome(args: {
         loginUrl: buildSlackConnectUrl(
           args.installation.slackWorkspaceId,
           args.slackUserId,
-          args.publicBrand,
         ),
       }),
     );

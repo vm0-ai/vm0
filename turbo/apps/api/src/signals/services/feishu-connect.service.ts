@@ -133,7 +133,7 @@ function toFeishuInstallationStatus(
     appId: installation.appId,
     botName: installation.botName,
     botAvatarUrl: installation.botAvatarUrl,
-    callbackUrl: feishuCallbackUrl(installation.id, installation.publicBrand),
+    callbackUrl: feishuCallbackUrl(installation.id),
     oauthRedirectUrl: feishuOAuthAppCallbackUrl(),
     oauthScopes: [...FEISHU_OAUTH_SCOPES],
     connectUrl: installation.setupCompletedAt
@@ -141,7 +141,6 @@ function toFeishuInstallationStatus(
           installationId: installation.id,
           orgId: args.orgId,
           userId: args.userId,
-          publicBrand: installation.publicBrand,
         })
       : null,
     callbackVerified: Boolean(installation.callbackVerifiedAt),

@@ -84,7 +84,6 @@ describe("auth tokens", () => {
       orgId: "org_okou",
       runId: "run_okou",
       capabilities: ["file:write"],
-      publicBrand: "vm0",
     });
   });
 
@@ -94,7 +93,6 @@ describe("auth tokens", () => {
     expect(okouToken).toMatch(/^vm0_sandbox_/u);
     expect(decodeOkouTokenPayloadForTest(okouToken)).toMatchObject({
       scope: "okou",
-      publicBrand: "vm0",
     });
     expect(verifyOkouToken(okouToken)).toMatchObject({
       userId: "user_okou",
@@ -173,7 +171,6 @@ describe("auth tokens", () => {
       orgId: "org_okou",
       runId: "run_okou",
       capabilities: ["file:read", "file:write"],
-      publicBrand: "vm0",
     });
   });
 

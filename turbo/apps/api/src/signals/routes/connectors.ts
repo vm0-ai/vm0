@@ -59,7 +59,6 @@ import {
 } from "./connector-openid-auth-start";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
-import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -418,7 +417,6 @@ const startConnectorOauthInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = PUBLIC_BRAND;
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
     if (!auth.orgId) {
@@ -468,13 +466,11 @@ const startConnectorOauthInner$ = command(
       method,
       connectorSlug: resolved.connectorSlug,
       callbackTarget: bodyResult.data.callbackTarget,
-      publicBrand,
     });
     const prepared = prepareConnectorAuthCodeStartWithMethod({
       method,
       redirectUri,
       readEnv: optionalEnv,
-      publicBrand,
     });
     if (!prepared.ok) {
       return internalServerError(`${connectorSlug} auth client not configured`);
@@ -551,7 +547,6 @@ const startConnectorOpenIdInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = PUBLIC_BRAND;
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
 
@@ -603,7 +598,6 @@ const startConnectorOpenIdInner$ = command(
         request,
         method: resolved.method,
       }),
-      publicBrand,
     });
     const authResult = await buildConnectorOpenIdAuthUrlWithMethod({
       connectorSlug: resolved.connectorSlug,

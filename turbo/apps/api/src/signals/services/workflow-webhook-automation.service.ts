@@ -68,10 +68,7 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function workflowWebhookUrlForToken(
-  token: string,
-  publicBrand: PublicBrand,
-): string {
+function workflowWebhookUrlForToken(token: string): string {
   const baseUrl = webUrl();
   return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
@@ -153,10 +150,7 @@ export async function buildWorkflowWebhookSummaryFields(
   return {
     ...(args.webhookToken
       ? {
-          webhookUrl: workflowWebhookUrlForToken(
-            args.webhookToken,
-            args.publicBrand,
-          ),
+          webhookUrl: workflowWebhookUrlForToken(args.webhookToken),
         }
       : {}),
     secretLastFour: webhook.secretLastFour,
@@ -194,7 +188,7 @@ export async function revealWorkflowWebhookSecretFields(
     decryptWorkflowWebhookSecret(webhook.encryptedSecret, context),
   ]);
   return {
-    webhookUrl: workflowWebhookUrlForToken(token, args.publicBrand),
+    webhookUrl: workflowWebhookUrlForToken(token),
     webhookSecret: secret,
   };
 }

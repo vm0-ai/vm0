@@ -92,7 +92,7 @@ function buildTeamsLoginPromptCard(args: {
   };
 }
 
-function queueUrl(publicBrand: PublicBrand): string {
+function queueUrl(): string {
   return `${env("APP_URL")}/?queue=1`;
 }
 
@@ -145,10 +145,7 @@ type TeamsInstallWelcomeActivity = Extract<
 >;
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
-function dispatchReplyContent(
-  dispatch: TeamsDispatchReplySource,
-  publicBrand: PublicBrand,
-): {
+function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
   readonly replyText: string | null;
   readonly card?: TeamsAdaptiveCard;
 } {
@@ -168,7 +165,7 @@ function dispatchReplyContent(
     };
   }
   if (dispatch.kind === "queued") {
-    const url = queueUrl(publicBrand);
+    const url = queueUrl();
     return {
       replyText: buildTeamsQueueText(url),
       card: buildTeamsQueueCard({ url }),
@@ -207,7 +204,6 @@ function buildTeamsInstallWelcomeMention(
 function buildTeamsInstallWelcomeContent(
   activity: TeamsInstallWelcomeActivity,
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): {
   readonly text: string;
   readonly entities?: readonly TeamsMentionEntity[];
@@ -216,7 +212,7 @@ function buildTeamsInstallWelcomeContent(
   const botName = teamsBotDisplayName(installation.botName);
   const mention = buildTeamsInstallWelcomeMention(activity, botName);
   if (!mention) {
-    return { text: teamsWelcomeText(installation, publicBrand) };
+    return { text: teamsWelcomeText(installation) };
   }
 
   return {
@@ -251,7 +247,6 @@ const sendTeamsInstallWelcome$ = command(
     const welcome = buildTeamsInstallWelcomeContent(
       welcomeActivity,
       args.installation,
-      args.publicBrand,
     );
     const reply = await sendTeamsMessage(
       {
@@ -301,10 +296,7 @@ const dispatchTeamsMessageAndReply$ = command(
     );
     signal.throwIfAborted();
 
-    const { replyText, card } = dispatchReplyContent(
-      dispatch,
-      args.publicBrand,
-    );
+    const { replyText, card } = dispatchReplyContent(dispatch);
     if (!replyText) {
       return;
     }
