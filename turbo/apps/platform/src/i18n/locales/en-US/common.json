@@ -1004,6 +1004,20 @@
       "copyLinkFailed": "Failed to copy link",
       "downloadFailed": "Download failed",
       "linkCopied": "Link copied"
+    },
+    "sharing": {
+      "loading": "Loading sharing settings…",
+      "private": "Only you",
+      "public": "Anyone with the link",
+      "organization": "Members of {{name}}",
+      "shareOrganization": "Share to organization",
+      "sharePublic": "Share to Public",
+      "copy": "Copy existing link",
+      "stop": "Stop sharing",
+      "sharedVersion": "Shared version {{version}}",
+      "selectedVersion": "Share selected version {{version}}",
+      "expiry": "Previously opened copies may remain accessible for up to 15 minutes.",
+      "unavailable": "This artifact is unavailable or you do not have access."
     }
   },
   "auth": {

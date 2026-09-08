@@ -117,6 +117,7 @@ export interface ClerkOrganizationsApi {
   getOrganizationMembershipList(
     params: {
       organizationId: string;
+      userId?: string[];
       limit?: number;
       offset?: number;
     },

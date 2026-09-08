@@ -46,7 +46,7 @@ export const setupAttachmentUrlRefresh$ = command(
 
 const AUTHENTICATED_FILE_PATH = "/api/web/download-file";
 
-function isAuthenticatedAttachmentUrl(url: string): boolean {
+export function isAuthenticatedAttachmentUrl(url: string): boolean {
   if (!URL.canParse(url)) {
     return false;
   }

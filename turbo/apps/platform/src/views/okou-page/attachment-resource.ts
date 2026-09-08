@@ -21,12 +21,3 @@ export function useAttachmentUrls(url: string): AttachmentUrls | undefined {
 export function useResolvedAttachmentUrl(url: string): string | null {
   return useAttachmentUrls(url)?.resourceUrl ?? null;
 }
-
-/**
- * Resolves the URL that keeps working for whoever receives it, or null when
- * there is none to offer yet. A public CDN URL resolves to itself; a private
- * artifact has no share URL until it has been explicitly published.
- */
-export function useAttachmentShareUrl(url: string): string | null {
-  return useAttachmentUrls(url)?.shareUrl ?? null;
-}

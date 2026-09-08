@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import worker from "./index";
+import { fetchWorker } from "./test-helpers";
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
 const deploymentId = "00000000-0000-4000-8000-000000000009";
@@ -83,7 +84,7 @@ describe("private HTML preview gateway", () => {
   it("serves every bundled resource and navigation with a deployment credential, without cookies", async () => {
     const { env, files } = fixture();
     for (const [path, [body, contentType]] of Object.entries(files)) {
-      const response = await worker.fetch(new Request(`${origin}${path}`), env);
+      const response = await fetchWorker(new Request(`${origin}${path}`), env);
       expect(response.status).toBe(200);
       expect(response.headers.get("Content-Type")).toBe(contentType);
       expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -94,14 +95,14 @@ describe("private HTML preview gateway", () => {
       expect(response.headers.has("Set-Cookie")).toBe(false);
       expect(await response.text()).toBe(body);
     }
-    const navigation = await worker.fetch(
+    const navigation = await fetchWorker(
       new Request(`${origin}/nested/route`, {
         headers: { Accept: "text/html" },
       }),
       env,
     );
     expect(await navigation.text()).toBe(files["/index.html"][0]);
-    const missingAsset = await worker.fetch(
+    const missingAsset = await fetchWorker(
       new Request(`${origin}/assets/missing.js`, {
         headers: { Accept: "*/*" },
       }),
@@ -109,7 +110,7 @@ describe("private HTML preview gateway", () => {
     );
     expect(missingAsset.status).toBe(404);
     expect(missingAsset.headers.get("cache-control")).toBe("private, no-store");
-    const head = await worker.fetch(
+    const head = await fetchWorker(
       new Request(`${origin}/index.html`, { method: "HEAD" }),
       env,
     );
@@ -119,7 +120,7 @@ describe("private HTML preview gateway", () => {
 
   it("rechecks an expired credential before bytes even after a successful request", async () => {
     const { env, objects, reads, grant } = fixture();
-    const first = await worker.fetch(
+    const first = await fetchWorker(
       new Request(`${origin}/assets/site.css`),
       env,
     );
@@ -138,7 +139,7 @@ describe("private HTML preview gateway", () => {
       "/nested/route",
       "/download.csv",
     ]) {
-      const denied = await worker.fetch(
+      const denied = await fetchWorker(
         new Request(`${origin}${path}`, {
           headers: { "If-None-Match": '"private-test"' },
         }),
@@ -164,7 +165,7 @@ describe("private HTML preview gateway", () => {
     async (invalid) => {
       const { env, objects, reads, grant } = fixture();
       objects.set(grantKey, JSON.stringify({ ...grant, ...invalid }));
-      const response = await worker.fetch(new Request(`${origin}/`), env);
+      const response = await fetchWorker(new Request(`${origin}/`), env);
       expect(response.status).toBe(404);
       expect(reads).toEqual([grantKey]);
     },
@@ -180,7 +181,7 @@ describe("private HTML preview gateway", () => {
       `https://pv-${token}.sites.vm0.io/`,
       `${origin}/../private-sites/okou/other/index.html`,
     ]) {
-      const response = await worker.fetch(new Request(url), env);
+      const response = await fetchWorker(new Request(url), env);
       expect(response.status).toBe(404);
       expect(await response.text()).not.toContain("Private report");
     }
@@ -191,7 +192,7 @@ describe("private HTML preview gateway", () => {
     async (stored) => {
       const { env, objects, reads } = fixture();
       objects.set(grantKey, stored);
-      const response = await worker.fetch(new Request(`${origin}/`), env);
+      const response = await fetchWorker(new Request(`${origin}/`), env);
       expect(response.status).toBe(404);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(reads).toEqual([grantKey]);
@@ -224,7 +225,7 @@ describe("private HTML preview gateway", () => {
         spaFallback: true,
       }),
     );
-    const response = await worker.fetch(new Request(`${origin}/`), env);
+    const response = await fetchWorker(new Request(`${origin}/`), env);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("<h1>Existing public report</h1>");
   });
@@ -251,7 +252,7 @@ describe("private HTML preview gateway", () => {
     );
     for (const hostname of ["private-report", `dpl-${deploymentId}`]) {
       expect(
-        (await worker.fetch(new Request(`https://${hostname}.okou.app/`), env))
+        (await fetchWorker(new Request(`https://${hostname}.okou.app/`), env))
           .status,
       ).toBe(404);
     }
