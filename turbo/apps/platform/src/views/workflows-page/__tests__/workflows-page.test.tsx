@@ -4010,17 +4010,22 @@ test("Bound a permanent Calendar warning and retry status without another OAuth"
   const workflow = calendarRecoveryWorkflow();
   const reconnect = mockCalendarReconnect(workflow);
   mockNow(new Date("2026-09-08T06:00:00Z"), context.signal);
+  const requestBudgetReached = context.mocks.deferred<void>();
   let oauthCompleted = false;
   let statusReads = 0;
   context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
     if (oauthCompleted) {
       statusReads++;
+      if (statusReads === 10) {
+        requestBudgetReached.resolve();
+      }
     }
     return respond(200, publicWorkflowDetail(workflow));
   });
   await reconnect.open();
   oauthCompleted = true;
   reconnect.complete();
+  await requestBudgetReached.promise;
   const recovery = await expectUnconfirmedCalendarRecovery();
   // The request ceiling is part of the recovery contract, not a cache detail.
   expect(statusReads).toBe(10);
@@ -4197,8 +4202,22 @@ test("Do not recover the target Calendar automation by reconnecting another acco
     googleCalendarWorkflowAutomation({ id: "healthy-other-calendar" }),
   );
   const reconnect = mockCalendarReconnect(workflow, "work");
+  const requestBudgetReached = context.mocks.deferred<void>();
+  let oauthCompleted = false;
+  let statusReads = 0;
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    if (oauthCompleted) {
+      statusReads++;
+      if (statusReads === 10) {
+        requestBudgetReached.resolve();
+      }
+    }
+    return respond(200, publicWorkflowDetail(workflow));
+  });
   await reconnect.open();
+  oauthCompleted = true;
   reconnect.complete();
+  await requestBudgetReached.promise;
   await expectUnconfirmedCalendarRecovery();
   expect(
     screen.getByText(
