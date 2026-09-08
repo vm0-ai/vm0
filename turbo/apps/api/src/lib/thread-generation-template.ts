@@ -35,7 +35,6 @@ function noGenerationTemplates(): ResolvedThreadGenerationTemplates {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
-  readonly presentationTemplatesEnabled: boolean;
   /**
    * Private template row ids whose packages the run being built will mount.
    * Required rather than optional so every caller states what its run carries.
@@ -43,7 +42,6 @@ export function resolveThreadGenerationTemplatePrompt(args: {
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }): ResolvedThreadGenerationTemplates {
   const options = {
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds: args.mountedUserPresentationTemplateIds,
   };
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {

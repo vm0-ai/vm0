@@ -3071,7 +3071,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly presentationTemplatesEnabled: boolean;
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
@@ -3082,7 +3081,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
       return resolveThreadGenerationTemplatePrompt({
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
-        presentationTemplatesEnabled: args.presentationTemplatesEnabled,
         mountedUserPresentationTemplateIds:
           args.mountedUserPresentationTemplateIds,
       });
@@ -3109,7 +3107,6 @@ async function resolveQueuedMessageTemplateContext(args: {
   readonly userMessageProjection: Parameters<
     typeof resolveQueuedMessageGenerationTemplatePrompt
   >[0]["userMessageProjection"];
-  readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<{
   readonly generationTemplatePrompt: string;
   readonly generationTemplateIdentities: readonly GenerationTemplateIdentity[];
@@ -3127,10 +3124,6 @@ async function resolveQueuedMessageTemplateContext(args: {
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
-      presentationTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PresentationTemplates,
-        args.featureSwitchContext,
-      ),
       mountedUserPresentationTemplateIds,
     });
   return {
@@ -3269,7 +3262,6 @@ async function buildCreateQueuedChatRunInput(
     userId: args.userId,
     input: args,
     userMessageProjection,
-    featureSwitchContext,
   });
   const computerUseHostGrant =
     await resolveQueuedMessageComputerUseHostGrant(args);

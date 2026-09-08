@@ -455,7 +455,6 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   /**
    * Carried whole so downstream checks can read it without reloading the
    * switches this request already read.
@@ -1073,10 +1072,6 @@ async function resolveNormalSendFeatureSwitches(
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
     codexFastModeEnabled: isCodexFastModeEnabled(context),
-    presentationTemplatesEnabled: isFeatureEnabled(
-      FeatureSwitchKey.PresentationTemplates,
-      context,
-    ),
     featureSwitchContext: context,
   };
 }
@@ -1087,7 +1082,6 @@ async function resolveNormalSendFeatureSwitches(
  */
 function resolveSelectedTemplateContext(
   runtimeBody: RuntimeNormalSendBody,
-  featureSwitches: NormalSendFeatureSwitches,
   mountedUserPresentationTemplateIds: readonly string[],
 ): {
   readonly generationTemplatePrompt: string;
@@ -1097,7 +1091,6 @@ function resolveSelectedTemplateContext(
   const resolved = resolveThreadGenerationTemplatePrompt({
     explicit: runtimeBody.primaryTemplate,
     explicitTemplates: runtimeBody.templates,
-    presentationTemplatesEnabled: featureSwitches.presentationTemplatesEnabled,
     mountedUserPresentationTemplateIds,
   });
   return {
@@ -1121,19 +1114,15 @@ async function validateGenerationTemplatePrompt(
   db: Db,
   args: { readonly orgId: string; readonly userId: string },
   generationTemplates: readonly GenerationTemplateRequest[],
-  featureSwitches: NormalSendFeatureSwitches,
 ): Promise<NormalSendFailure | AuthorizedGenerationTemplates> {
   if (generationTemplates.length === 0) {
     return { userPresentationTemplateIds: [] };
   }
   // Syntax first: every selection this message names is a candidate mount, so
-  // the builder can reject a malformed or switched-off private id here without
-  // the database having been consulted yet.
+  // the builder can reject a malformed private id before consulting the database.
   const selectedIds = selectedUserPresentationTemplateIds(generationTemplates);
   for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template, {
-      presentationTemplatesEnabled:
-        featureSwitches.presentationTemplatesEnabled,
       mountedUserPresentationTemplateIds: selectedIds,
     });
     if (validation.status === "invalid") {
@@ -2712,7 +2701,6 @@ const prepareNormalSend$ = command(
       db,
       args,
       runtimeBody.templates,
-      featureSwitches,
     );
     signal.throwIfAborted();
     if ("status" in authorizedTemplates) {
@@ -2761,7 +2749,6 @@ const prepareNormalSend$ = command(
 
     const templateContext = resolveSelectedTemplateContext(
       runtimeBody,
-      featureSwitches,
       authorizedTemplates.userPresentationTemplateIds,
     );
     const persistedExplicitSelection = await persistTimedExplicitSelections(

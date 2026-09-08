@@ -433,7 +433,6 @@ function buildAgentToolsPrompt(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
   return [
@@ -445,9 +444,7 @@ function buildAgentToolsPrompt(args: {
     "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow automations: `okou workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
-    ...(args.presentationTemplatesEnabled
-      ? [`- ${presentationTemplateSkillInstruction()}`]
-      : []),
+    `- ${presentationTemplateSkillInstruction()}`,
     ...(args.introVideoEnabled
       ? [
           "- Intro-video creation: read and follow the `intro-video` skill for requests from the Create an intro video flow.",
@@ -576,7 +573,6 @@ function buildAppendSystemPrompt(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
@@ -589,7 +585,6 @@ function buildAppendSystemPrompt(args: {
       bankingEnabled: args.bankingEnabled,
       slackReadEnabled: args.slackReadEnabled,
       introVideoEnabled: args.introVideoEnabled,
-      presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildProgressiveArtifactPreviewPrompt({
       triggerSource: args.triggerSource,
@@ -771,7 +766,6 @@ function createRunBody(args: {
   readonly bankingEnabled: boolean;
   readonly slackReadEnabled: boolean;
   readonly introVideoEnabled: boolean;
-  readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
@@ -784,7 +778,6 @@ function createRunBody(args: {
     bankingEnabled: args.bankingEnabled,
     slackReadEnabled: args.slackReadEnabled,
     introVideoEnabled: args.introVideoEnabled,
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     progressiveArtifactPreviewEnabled: args.progressiveArtifactPreviewEnabled,
   });
   return {
@@ -994,10 +987,6 @@ function buildCreateAgentRunArgs(args: {
         args.featureSwitchContext,
       ),
       introVideoEnabled,
-      presentationTemplatesEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PresentationTemplates,
-        args.featureSwitchContext,
-      ),
       progressiveArtifactPreviewEnabled: isFeatureEnabled(
         FeatureSwitchKey.ProgressiveArtifactPreview,
         args.featureSwitchContext,

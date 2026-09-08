@@ -36,7 +36,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import {
   importPresentationTemplateDeck$,
-  presentationTemplateImportEnabled$,
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
@@ -5860,16 +5859,13 @@ function PptTemplateGrid({
   onImported: () => void;
   signals: ComposerSignals;
 }) {
-  const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
   const importedTemplateItems =
     useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {importEnabled ? (
-        <PptImportCard signals={signals} onImported={onImported} />
-      ) : null}
+      <PptImportCard signals={signals} onImported={onImported} />
       {importedTemplateItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard

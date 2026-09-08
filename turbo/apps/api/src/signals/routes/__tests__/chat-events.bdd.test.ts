@@ -22146,10 +22146,6 @@ describe("CHAT-02: generation templates and attachments", () => {
 
   it("rejects a private presentation template the caller cannot read", async () => {
     const actor = bdd.user();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Private template selection requires an organization");
-    }
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(actor, {
       displayName: "Private template agent",
@@ -22162,32 +22158,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "presentation",
       selection: { templateId },
     };
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PresentationTemplates]: false },
-    );
-
-    const switchedOff = await chat.requestSendEvent(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "use my own deck",
-        userMessage: userMessageWithTemplate("use my own deck", selection),
-      },
-      [400],
-    );
-    expectApiError(switchedOff.body);
-    // While the switch is off the private namespace does not exist at all, so
-    // the id is not a template this API knows about.
-    expect(switchedOff.body.error.message).toBe("Unknown generation template");
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PresentationTemplates]: true },
-    );
 
     const rejected = await chat.requestSendEvent(
       actor,

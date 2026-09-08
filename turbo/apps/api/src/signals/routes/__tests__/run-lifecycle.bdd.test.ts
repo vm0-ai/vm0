@@ -1705,41 +1705,18 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
-  it("names the deck guide in the agent tools prompt only once presentation templates are on", async () => {
+  it("names the deck guide in the agent tools prompt", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: false,
-    });
-
-    // The guide is not a mounted skill, so the prompt is the only thing that
-    // tells a run where to pull it. Off, it must stay out of every run.
-    const gatedOff = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "turn this deck into a template",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      "skill:presentation-reverse-template",
-    );
-
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.PresentationTemplates]: true,
-    });
-
-    const gatedOn = await api.createRun(actor, {
-      agentId,
-      prompt: "turn this deck into a template",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou resource pull skill:presentation-reverse-template --dir ./generated/resources",
     );

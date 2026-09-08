@@ -3,8 +3,6 @@ import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -21,7 +19,6 @@ import {
 } from "./chat-user-message.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 type ChatEventContextType = NonNullable<
   (typeof chatEvents.$inferSelect)["contextType"]
@@ -185,11 +182,6 @@ export async function materializePendingActiveInputPrompts(
   signal: AbortSignal,
 ): Promise<Map<string, MaterializedActiveInputPrompt> | null> {
   const prompts = new Map<string, MaterializedActiveInputPrompt>();
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    auth.orgId,
-    auth.userId,
-  );
   signal.throwIfAborted();
   for (const event of candidates) {
     if (
@@ -213,10 +205,6 @@ export async function materializePendingActiveInputPrompts(
         },
         orgId: auth.orgId,
         userId: auth.userId,
-        presentationTemplatesEnabled: isFeatureEnabled(
-          FeatureSwitchKey.PresentationTemplates,
-          featureSwitchContext,
-        ),
       }),
     );
     signal.throwIfAborted();
@@ -283,7 +271,6 @@ async function materializeActiveInputPrompt(
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
-    readonly presentationTemplatesEnabled: boolean;
   },
 ): Promise<MaterializedActiveInputPrompt> {
   const userMessage = requiredUserMessageForEvent(
@@ -303,7 +290,6 @@ async function materializeActiveInputPrompt(
   const generationTemplates = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
-    presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     // Steered into a run that is already executing, whose volumes were fixed
     // when it was created. There is no package to point the agent at, so a
     // private template contributes no guidance rather than a dangling path.

@@ -18,7 +18,6 @@ import {
 } from "./chat-composer-test-helpers.ts";
 import {
   AGENT_ID,
-  TEMPLATE_FEATURES,
   THREAD_ID,
   context,
   createUploadedTemplate,
@@ -146,7 +145,6 @@ test("A closed composer does not load uploaded template covers", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await waitFor(() => {
@@ -180,7 +178,6 @@ test("Use an uploaded presentation template", async () => {
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -245,7 +242,6 @@ test("Keep the loaded slide visible during rapid preview navigation", async () =
     context,
     path: `/agents/${AGENT_ID}/chat`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -324,7 +320,6 @@ test("Keep uploaded-template browsing stable during changes", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   const picker = await openTemplatePicker(user, "Presentation");
@@ -423,7 +418,6 @@ test("Keep workspace template availability current", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.okou.ai",
-    featureSwitches: TEMPLATE_FEATURES,
   });
 
   await openTemplatePicker(user, "Presentation");

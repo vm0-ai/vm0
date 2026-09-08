@@ -33,8 +33,6 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 export { AGENT_ID, THREAD_ID, context };
 
-export const TEMPLATE_FEATURES = { presentationTemplates: true } as const;
-
 interface TemplateChatCapture {
   readonly sentMessages: UserMessageDocument[];
   readonly selectedTemplates: GenerationTemplateRequest[];

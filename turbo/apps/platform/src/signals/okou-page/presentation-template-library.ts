@@ -24,7 +24,6 @@ import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { createDeferredPromise, onRef, setLoop } from "../utils.ts";
-import { presentationTemplateImportEnabled$ } from "./presentation-template-import.ts";
 
 export type { PresentationTemplateDetail, PresentationTemplateSummary };
 
@@ -67,17 +66,9 @@ interface CachedImportedPresentationTemplateCatalog {
 /**
  * The decks this workspace member can use. Their own decks come first, then
  * decks other members made visible to the workspace.
- *
- * Answering with an empty catalog while the switch is off is not a fallback for
- * a failed request: the route replies `403` to a caller without the switch, and
- * `accept` would surface that as an error toast on a dialog the user opened to
- * browse built-in templates.
  */
 const importedPresentationTemplateCatalog$ = computed(
   async (get): Promise<ImportedPresentationTemplateCatalog> => {
-    if (!get(presentationTemplateImportEnabled$)) {
-      return { templates: [], loadedAtMs: now() };
-    }
     // Attach realtime before the baseline fetch so an update cannot be lost
     // between loading the catalog and starting its subscription.
     await get(presentationTemplatesRealtimeReady$).promise;
@@ -117,7 +108,7 @@ const refreshPresentationTemplatesFromRealtime$ = command(
 export const subscribePresentationTemplatesChanged$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const realtimeReady = get(presentationTemplatesRealtimeReady$);
-    const subscriptions = [
+    await Promise.all([
       set(
         setAblyLoop$,
         {
@@ -133,25 +124,17 @@ export const subscribePresentationTemplatesChanged$ = command(
         },
         signal,
       ),
-    ];
-    // The workspace channel belongs to a non-GA feature. Keeping it behind the
-    // same switch means a new app never attaches that channel to an older
-    // user-only token for users who cannot use presentation templates.
-    if (get(presentationTemplateImportEnabled$)) {
-      subscriptions.push(
-        set(
-          setAblyLoop$,
-          {
-            scope: "org",
-            topic: "presentationTemplatesChanged",
-            loopCommand$: refreshPresentationTemplatesFromRealtime$,
-            options: { runOnForegroundCatchUp: false },
-          },
-          signal,
-        ),
-      );
-    }
-    await Promise.all(subscriptions);
+      set(
+        setAblyLoop$,
+        {
+          scope: "org",
+          topic: "presentationTemplatesChanged",
+          loopCommand$: refreshPresentationTemplatesFromRealtime$,
+          options: { runOnForegroundCatchUp: false },
+        },
+        signal,
+      ),
+    ]);
   },
 );
 
