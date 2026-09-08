@@ -192,6 +192,7 @@ import { writeDb$, type Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
+import { piModelConfigObservation } from "../../lib/pi-model-config-observation";
 import { generateOkouToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
@@ -2517,7 +2518,7 @@ async function builtInModelProviderEnvironment(
       const baseUrl = environment.OPENAI_BASE_URL;
       if (!baseUrl) {
         throw new Error(
-          `Missing OPENAI_BASE_URL for VM0 Codex provider ${route.providerType}`,
+          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
         );
       }
       codexRuntimeConfig = {
@@ -6748,6 +6749,10 @@ function buildRunContextSnapshot(args: {
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     sessionId: cliAgentSessionId,
     cliAgentType: storedContext.cliAgentType,
+    ...piModelConfigObservation(
+      storedContext.cliAgentType,
+      storedContext.piModelConfig,
+    ),
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: executionFirewallsToAxiomEntries(storedContext.firewalls),
@@ -9498,13 +9503,19 @@ async function prepareRunRuntimeContext(
       ...args,
       orgId: args.createArgs.orgId,
     }),
-    resolvePreparedThreadConnectorSelections(
-      {
-        db: args.db,
-        createArgs: args.createArgs,
-        connectorScope: args.connectorScope,
+    args.timing.measure(
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "nested",
+      () => {
+        return resolvePreparedThreadConnectorSelections(
+          {
+            db: args.db,
+            createArgs: args.createArgs,
+            connectorScope: args.connectorScope,
+          },
+          signal,
+        );
       },
-      signal,
     ),
     resolvePreparedRunModelProvider(args, signal),
   ]);
@@ -9671,26 +9682,32 @@ async function connectorCatalogSelectionForRun(args: {
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<RunConnectorCatalogSelection> {
-  if (isEmptyRunConnectorScope(args.connectorScope)) {
-    return { kind: "empty" };
-  }
-  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
-    return {
-      kind: "scoped",
-      selection: args.preloadedConnectorCatalogSnapshot,
-    };
-  }
-  const metadataConnectorSlugs =
-    await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
-      orgId: args.orgId,
-      customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
-    });
-  const selection = await loadConnectorRuntimeSelection(args.db, {
-    timing: args.timing,
-    requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-    metadataConnectorSlugs,
-  });
-  return { kind: "scoped", selection };
+  return await args.timing.measure(
+    "api_dispatch_prepare_context_select_connector_catalog",
+    "nested",
+    async () => {
+      if (isEmptyRunConnectorScope(args.connectorScope)) {
+        return { kind: "empty" };
+      }
+      if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+        return {
+          kind: "scoped",
+          selection: args.preloadedConnectorCatalogSnapshot,
+        };
+      }
+      const metadataConnectorSlugs =
+        await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
+          orgId: args.orgId,
+          customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+        });
+      const selection = await loadConnectorRuntimeSelection(args.db, {
+        timing: args.timing,
+        requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+        metadataConnectorSlugs,
+      });
+      return { kind: "scoped", selection };
+    },
+  );
 }
 
 function prepareRunOutputMetadata(args: {

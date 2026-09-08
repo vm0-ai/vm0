@@ -34,9 +34,9 @@ const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "OKOU_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const API_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
-    "VM0 API response body exceeds the configured limit";
+    "API response body exceeds the configured limit";
 const API_ERROR_RESPONSE_BODY_TOO_LARGE_DIAGNOSTIC: &str =
-    "VM0 API error response body exceeds the configured limit";
+    "API error response body exceeds the configured limit";
 
 enum ResponseBodyCollectionError {
     TooLarge,

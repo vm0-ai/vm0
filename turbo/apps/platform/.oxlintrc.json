@@ -43,13 +43,6 @@
                 "allowTypeImports": true,
                 "name": "react"
               }
-            ],
-            "patterns": [
-              {
-                "group": ["**/fetch", "**/fetch.ts"],
-                "importNames": ["fetch$"],
-                "message": "Use apiClient$ from api-client.ts instead of raw fetch$. Only exception: FormData uploads (ts-rest cannot handle multipart)."
-              }
             ]
           }
         ]
@@ -112,45 +105,9 @@
       }
     },
     {
-      "files": ["custom-eslint/**/*.*"],
-      "rules": {
-        "new-cap": "allow",
-        "max-lines-per-function": ["allow"],
-        "complexity": "allow"
-      }
-    },
-    {
       "files": ["src/signals/log.ts"],
       "rules": {
         "no-console": "allow"
-      }
-    },
-    {
-      "files": [
-        "src/signals/okou-page/chat-draft.ts",
-        "src/signals/voice-io/voice-io-tts.ts",
-        "src/signals/voice-io/voice-io-stt.ts"
-      ],
-      "rules": {
-        "no-restricted-imports": [
-          "deny",
-          {
-            "paths": [
-              {
-                "allowImportNames": ["createElement"],
-                "allowTypeImports": true,
-                "name": "react"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["src/signals/__tests__/fetch.test.ts"],
-      "rules": {
-        "first": "allow",
-        "jest/no-untyped-mock-factory": "allow"
       }
     }
   ],
@@ -230,14 +187,14 @@
     "no-duplicates": "deny",
     "no-dynamic-require": "deny",
     "no-else-return": "deny",
-    "no-empty": "deny",
+    "no-empty": "error",
     "no-empty-interface": "deny",
     "no-empty-named-blocks": "deny",
     "no-empty-object-type": "deny",
     "no-eq-null": "deny",
     "no-explicit-any": "deny",
     "no-extend-native": "deny",
-    "no-fallthrough": "deny",
+    "no-fallthrough": "error",
     "no-import-type-side-effects": "deny",
     "no-inferrable-types": "deny",
     "no-lonely-if": "deny",
@@ -342,9 +299,9 @@
     "prefer-optional-catch-binding": "deny",
     "prefer-promise-reject-errors": "deny",
     "prefer-reflect-apply": "deny",
-    "prefer-rest-params": "deny",
+    "prefer-rest-params": "error",
     "prefer-set-has": "deny",
-    "prefer-spread": "deny",
+    "prefer-spread": "error",
     "prefer-string-raw": "deny",
     "prefer-string-trim-start-end": "deny",
     "prefer-structured-clone": "deny",
@@ -358,14 +315,10 @@
     "@typescript-eslint/no-unsafe-function-type": "error",
     "complexity": "error",
     "no-case-declarations": "error",
-    "no-empty": "error",
-    "no-fallthrough": "error",
     "no-prototype-builtins": "error",
     "no-regex-spaces": "error",
     "no-var": "error",
     "prefer-const": "error",
-    "prefer-rest-params": "error",
-    "prefer-spread": "error",
     "react/display-name": "error",
     "react/jsx-key": "error",
     "react/jsx-no-comment-textnodes": "error",

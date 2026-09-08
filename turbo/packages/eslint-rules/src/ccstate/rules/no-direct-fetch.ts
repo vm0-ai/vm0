@@ -1,19 +1,23 @@
 /**
  * ESLint rule: no-direct-fetch
  *
- * Disallows direct usage of `fetch$`. All API calls should use `apiClient$`
- * which provides type-safe request/response handling via typed contracts.
+ * API calls use `apiClient$` and typed contracts. Public assets and presigned
+ * transfers use the credential-free resource transport. Native fetch is only
+ * permitted at that transport's definition site.
  *
  * Good:
  *   const client = get(apiClient$)(someContract);
  *   const result = await client.doSomething();
  *
  * Bad:
- *   const fetchFn = get(fetch$);
- *   await fetchFn("/api/chat/events", { method: "POST" });
+ *   await fetch("/api/chat/events", { method: "POST" });
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ASTUtils,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
 
 export default createRule({
@@ -23,38 +27,48 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow direct usage of fetch$ — use apiClient$ for type-safe API calls instead",
+        "Require typed API clients or the resource transport instead of native fetch",
     },
     schema: [],
     messages: {
-      noDirectFetch:
-        "Do not use fetch$ directly. Use apiClient$ from signals/api-client.ts for type-safe API calls instead.",
+      noNativeFetch:
+        "Use apiClient$ for API calls or fetchResource for public assets and presigned transfers. Do not use native fetch directly.",
     },
   },
   create(context) {
     return {
       Identifier(node: TSESTree.Identifier) {
-        if (node.name !== "fetch$") {
-          return;
+        if (node.name === "fetch") {
+          const scope = context.sourceCode.getScope(node);
+          const reference = scope.references.find(
+            (entry) => entry.identifier === node,
+          );
+          if (reference) {
+            const variable = ASTUtils.findVariable(scope, node);
+            if (!variable || variable.defs.length === 0) {
+              context.report({ node, messageId: "noNativeFetch" });
+            }
+          }
         }
-
-        // Allow the definition of fetch$ itself (e.g. `export const fetch$ = ...`)
+      },
+      MemberExpression(node: TSESTree.MemberExpression) {
         if (
-          node.parent.type === AST_NODE_TYPES.VariableDeclarator &&
-          node.parent.id === node
+          node.object.type !== AST_NODE_TYPES.Identifier ||
+          !["globalThis", "window", "self"].includes(node.object.name)
         ) {
           return;
         }
-
-        // Allow import specifiers (e.g. `import { fetch$ } from ...`)
-        if (node.parent.type === AST_NODE_TYPES.ImportSpecifier) {
-          return;
+        const name = node.computed
+          ? node.property.type === AST_NODE_TYPES.Literal && node.property.value
+          : node.property.type === AST_NODE_TYPES.Identifier &&
+            node.property.name;
+        const variable = ASTUtils.findVariable(
+          context.sourceCode.getScope(node),
+          node.object,
+        );
+        if (name === "fetch" && (!variable || variable.defs.length === 0)) {
+          context.report({ node, messageId: "noNativeFetch" });
         }
-
-        context.report({
-          node,
-          messageId: "noDirectFetch",
-        });
       },
     };
   },

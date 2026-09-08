@@ -282,7 +282,7 @@ async fn run(runtime: GuestRuntime) -> i32 {
     );
 
     // Lifecycle: Header
-    log_info!(LOG_TAG, "▶ VM0 Sandbox {}", runtime.config.run_id);
+    log_info!(LOG_TAG, "▶ Okou Sandbox {}", runtime.config.run_id);
 
     // Lifecycle: Initialization
     log_info!(LOG_TAG, "▷ Initialization");

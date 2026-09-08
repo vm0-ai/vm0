@@ -1,3 +1,4 @@
+import { rootSignal$ } from "../root-signal.ts";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import {
@@ -161,7 +162,7 @@ export function createThreadSidebarSignals(
     if (!isTextPreviewKind(preview.kind)) {
       throw new Error("Selected artifact is not a text preview");
     }
-    return fetchPreviewText(preview.url);
+    return fetchPreviewText(preview.url, get(rootSignal$));
   });
   const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
     selectedArtifactText$,

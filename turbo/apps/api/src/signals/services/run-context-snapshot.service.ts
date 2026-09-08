@@ -10,6 +10,7 @@ import {
   type NetworkPolicies,
 } from "@okouai/connectors/firewall-types";
 import { z } from "zod";
+import type { PiModelConfigObservation } from "../../lib/pi-model-config-observation";
 
 type UnknownRecord = Record<string, unknown>;
 type NetworkPolicy = NetworkPolicies[string];
@@ -83,18 +84,21 @@ type RunContextAxiomFirewall =
   | RunContextBuiltinFirewall
   | RunContextAxiomInlineFirewall;
 
+// Pi observations are creation-time only: missing historical fields mean
+// unobserved, not absent legacy api. They never enter RunContextResponse.
 export type RunContextAxiomSnapshot = Omit<
   RunContextResponse,
   "vars" | "environment" | "firewalls" | "networkPolicies" | "featureFlags"
-> & {
-  readonly _time: string;
-  readonly userId: string;
-  readonly cliAgentType?: string;
-  readonly environmentEntries: readonly RunContextEnvironmentEntry[];
-  readonly firewalls: readonly RunContextAxiomFirewall[];
-  readonly networkPolicyEntries: readonly RunContextNetworkPolicyEntry[];
-  readonly featureFlagEntries: readonly RunContextFeatureFlagEntry[];
-};
+> &
+  Partial<PiModelConfigObservation> & {
+    readonly _time: string;
+    readonly userId: string;
+    readonly cliAgentType?: string;
+    readonly environmentEntries: readonly RunContextEnvironmentEntry[];
+    readonly firewalls: readonly RunContextAxiomFirewall[];
+    readonly networkPolicyEntries: readonly RunContextNetworkPolicyEntry[];
+    readonly featureFlagEntries: readonly RunContextFeatureFlagEntry[];
+  };
 
 interface NormalizedRunContextSnapshot {
   readonly runId?: string;

@@ -115,7 +115,6 @@ describe("Pi agent credential resolution", () => {
         model: "gpt-5.6-terra",
         serviceTier: "priority",
         dialect: "openai-responses",
-        api: "openai-responses",
         transport: "sse",
         apiKey:
           target === "direct"
@@ -125,35 +124,45 @@ describe("Pi agent credential resolution", () => {
     },
   );
 
-  it("materializes legacy routes as public Responses", async () => {
-    const config = piModelConfigSchema.parse({
-      provider: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-5.6-terra",
-      api: "openai-codex-responses",
-      apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: "OPENAI_API_KEY",
-    });
+  it.each([
+    undefined,
+    "openai-responses",
+    "openai-completions",
+    "openai-codex-responses",
+  ] as const)(
+    "materializes legacy %s routes as public Responses",
+    async (api) => {
+      const config = piModelConfigSchema.parse({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        ...(api === undefined ? {} : { api }),
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      });
 
-    await expect(
-      materializePiAgentModelConfig({
-        config,
-        target: "direct",
-        resolveCredential(binding) {
-          expect(binding).toMatchObject({
-            kind: "api-key",
-            environment: "OPENAI_API_KEY",
-            secretName: "OPENAI_API_KEY",
-          });
-          return "legacy-key";
-        },
-      }),
-    ).resolves.toMatchObject({
-      api: "openai-responses",
-      dialect: "openai-responses",
-      apiKey: "legacy-key",
-    });
-  });
+      await expect(
+        materializePiAgentModelConfig({
+          config,
+          target: "direct",
+          resolveCredential(binding) {
+            expect(binding).toMatchObject({
+              kind: "api-key",
+              environment: "OPENAI_API_KEY",
+              secretName: "OPENAI_API_KEY",
+            });
+            return "legacy-key";
+          },
+        }),
+      ).resolves.toStrictEqual({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.6-terra",
+        dialect: "openai-responses",
+        apiKey: "legacy-key",
+      });
+    },
+  );
 
   it.each([2, 3] as const)(
     "materializes exact subscription bindings from generation %s",
@@ -202,7 +211,6 @@ describe("Pi agent credential resolution", () => {
         baseUrl: "https://chatgpt.com/backend-api",
         model: "gpt-5.6-terra",
         thinkingLevel: "low",
-        api: "openai-codex-responses",
         ...(schemaVersion === 3 ? { serviceTier: "fast" } : {}),
         dialect: "openai-codex-responses",
         transport: "sse",

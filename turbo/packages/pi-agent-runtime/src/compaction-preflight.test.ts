@@ -19,7 +19,6 @@ function terraModel() {
     baseUrl: "https://api.openai.test/v1",
     apiKey: "test-key",
     model: "gpt-5.6-terra",
-    api: "openai-responses",
     dialect: "openai-responses",
   });
   if (!model) {

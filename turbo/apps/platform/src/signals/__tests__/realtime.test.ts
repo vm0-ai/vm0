@@ -28,7 +28,7 @@ import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-si
 import { testContext } from "./test-helpers.ts";
 import { now } from "../../lib/time.ts";
 import { subscribePresentationTemplatesChanged$ } from "../okou-page/presentation-template-library.ts";
-import { detach, Reason } from "../utils.ts";
+import { createChildAbortController, detach, Reason } from "../utils.ts";
 import type { SharedDatabaseBridge } from "../../shared-database/bridge.ts";
 import type {
   ComputedKey,
@@ -107,15 +107,7 @@ async function setupAuthAndRealtime(): Promise<void> {
 }
 
 function testSubscriber(): AbortController {
-  const controller = new AbortController();
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      controller.abort(context.signal.reason);
-    },
-    { once: true },
-  );
-  return controller;
+  return createChildAbortController(context.signal);
 }
 
 interface SharedWorkerRealtimeSubscription {

@@ -1,5 +1,5 @@
 import type { Data, Element, ElementContent, Root, RootContent } from "hast";
-import { marked, Renderer, type Token, type Tokens } from "marked";
+import { marked, Marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -17,6 +17,7 @@ import {
   rehypeMermaid,
 } from "../rehype-mermaid.ts";
 import { findHexRgbColors } from "./hex-rgb-color.ts";
+import { createMarkdownMathContext } from "./math.ts";
 import { rehypeRewriteHandle } from "./uiw-nodes.ts";
 
 /**
@@ -51,6 +52,8 @@ declare module "hast" {
 type MarkdownCard = NonNullable<Data["card"]>;
 
 interface MarkdownParseOptions {
+  /** Recognize only explicit Agent-message math delimiters. */
+  readonly math?: boolean;
   /**
    * Replace closed ```mermaid fences with diagram marker nodes. Only surfaces
    * whose trees are prepared by a command enable this — the command resolves
@@ -457,7 +460,9 @@ export function parseMarkdownTree(
   source: string,
   options: MarkdownParseOptions,
 ): Root {
-  const html = marked.parse(source, {
+  const math = options.math ? createMarkdownMathContext() : undefined;
+  const parser = math ? new Marked(math.extension) : marked;
+  const html = parser.parse(source, {
     async: false,
     renderer: options.mermaid ? createMarkedRenderer() : null,
   });
@@ -466,5 +471,7 @@ export function parseMarkdownTree(
     children: [{ type: "raw", value: html }],
   };
   const processor = unified().use(rehypeRaw).use(rehypePlugins(options));
-  return postProcess(processor.runSync(tree, source));
+  const parsed = processor.runSync(tree, source);
+  math?.embed(parsed);
+  return postProcess(parsed);
 }

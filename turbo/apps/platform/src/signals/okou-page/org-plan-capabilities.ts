@@ -11,6 +11,7 @@ export interface OrgPlanCapabilities {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly memberInviteUsagePackRequired: boolean;
+  readonly showUsagePack: boolean;
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
@@ -26,6 +27,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: false,
     canBuyCredits: true,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
@@ -37,6 +39,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: false,
     canBuyCredits: false,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
@@ -48,6 +51,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: false,
     canBuyCredits: false,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     // Preserve the model picker behavior of browsers talking to an older API.
@@ -61,6 +65,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: false,
     canBuyCredits: true,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -72,6 +77,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: true,
     canBuyCredits: true,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -83,6 +89,7 @@ const LEGACY_TIER_CAPABILITIES: Readonly<
     canBuyConcurrency: true,
     canBuyCredits: true,
     memberInviteUsagePackRequired: false,
+    showUsagePack: false,
     memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
@@ -102,6 +109,7 @@ export function orgPlanCapabilitiesFromBilling(
     memberInviteUsagePackRequired:
       billing.memberInviteUsagePackRequired ??
       fallback.memberInviteUsagePackRequired,
+    showUsagePack: billing.showUsagePack === true,
     memberInvitationAllowed:
       billing.memberInvitationAllowed ?? fallback.memberInvitationAllowed,
     autoRechargeAllowed:

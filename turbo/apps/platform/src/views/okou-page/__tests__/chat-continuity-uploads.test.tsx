@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
+import { CLIENT_TYPE_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import { expect, test } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
@@ -86,8 +87,20 @@ test("Attach supported files by picker or drag and drop", async () => {
     threads: [thread],
   });
   const contentTypes = new Map<string, string>();
+  const transferCredentials: {
+    credentials: RequestCredentials;
+    authorization: string | null;
+    clientType: string | null;
+    previewBypass: string | null;
+  }[] = [];
   installSimpleUploads(9, contentTypes);
-  context.mocks.http.put("https://uploads.vm7.test/9/*", () => {
+  context.mocks.http.put("https://uploads.vm7.test/9/*", ({ request }) => {
+    transferCredentials.push({
+      credentials: request.credentials,
+      authorization: request.headers.get("Authorization"),
+      clientType: request.headers.get(CLIENT_TYPE_HEADER),
+      previewBypass: request.headers.get("X-Vercel-Protection-Bypass"),
+    });
     return new HttpResponse(null, { status: 200 });
   });
 
@@ -107,6 +120,20 @@ test("Attach supported files by picker or drag and drop", async () => {
   });
   expect(contentTypes.get("release-notes.md")).toBe("text/markdown");
   expect(contentTypes.get("sample.uncommon")).toBe("application/octet-stream");
+  expect(transferCredentials).toStrictEqual([
+    {
+      credentials: "omit",
+      authorization: null,
+      clientType: null,
+      previewBypass: null,
+    },
+    {
+      credentials: "omit",
+      authorization: null,
+      clientType: null,
+      previewBypass: null,
+    },
+  ]);
 
   const dropped = new File(["drop"], "dropped.txt", { type: "text/plain" });
   const oversized = new File(["too large"], "archive.iso", {

@@ -13,7 +13,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   browserSessionInstances,
   browserSessionResizeStates,
-  browserSessionScreenshotDeletions,
   browserSessionScreenshots,
   browserSessionTabSnapshots,
   browserSessions,
@@ -46,7 +45,7 @@ import {
   publishChatThreadMessageCreatedSafely,
 } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { deleteS3Objects, putImmutableS3Object } from "../external/s3";
+import { putImmutableS3Object } from "../external/s3";
 import { settle, settleIncludingAbort, tapError } from "../utils";
 import {
   BrowserUseProviderError,
@@ -865,81 +864,30 @@ const captureAndStoreBrowserScreenshot$ = command(
     );
     signal.throwIfAborted();
 
-    const persisted = await settle(
-      db.transaction(async (tx) => {
-        await lockBrowserThread(tx, browser.chatThreadId);
-        const [previous] = await tx
-          .select({ objectKey: browserSessionScreenshots.objectKey })
-          .from(browserSessionScreenshots)
-          .where(
-            eq(browserSessionScreenshots.chatThreadId, browser.chatThreadId),
-          )
-          .limit(1);
-        await tx
-          .insert(browserSessionScreenshots)
-          .values({
-            chatThreadId: browser.chatThreadId,
+    await db.transaction(async (tx) => {
+      await lockBrowserThread(tx, browser.chatThreadId);
+      await tx
+        .insert(browserSessionScreenshots)
+        .values({
+          chatThreadId: browser.chatThreadId,
+          objectKey: artifact.key,
+          url: artifact.url,
+        })
+        .onConflictDoUpdate({
+          target: browserSessionScreenshots.chatThreadId,
+          set: {
             objectKey: artifact.key,
             url: artifact.url,
-          })
-          .onConflictDoUpdate({
-            target: browserSessionScreenshots.chatThreadId,
-            set: {
-              objectKey: artifact.key,
-              url: artifact.url,
-              updatedAt: nowDate(),
-            },
-          });
-        if (previous && previous.objectKey !== artifact.key) {
-          await tx
-            .insert(browserSessionScreenshotDeletions)
-            .values({
-              objectKey: previous.objectKey,
-              chatThreadId: browser.chatThreadId,
-            })
-            .onConflictDoNothing({
-              target: browserSessionScreenshotDeletions.objectKey,
-            });
-        }
-        return previous?.objectKey ?? null;
-      }),
-      signal,
-    );
-    if (!persisted.ok) {
-      await tapError(get(deleteS3Objects(bucket, [artifact.key])));
-      signal.throwIfAborted();
-      throw persisted.error;
-    }
+            updatedAt: nowDate(),
+          },
+        });
+    });
+    signal.throwIfAborted();
 
     await publishBrowserSessionChangedSafely(browser.userId, {
       threadId: browser.chatThreadId,
     });
     signal.throwIfAborted();
-    const previousObjectKey = persisted.value;
-    if (previousObjectKey !== null && previousObjectKey !== artifact.key) {
-      await tapError(
-        (async () => {
-          await get(deleteS3Objects(bucket, [previousObjectKey]));
-          signal.throwIfAborted();
-          await db
-            .delete(browserSessionScreenshotDeletions)
-            .where(
-              eq(
-                browserSessionScreenshotDeletions.objectKey,
-                previousObjectKey,
-              ),
-            );
-        })(),
-        (error) => {
-          L.warn("Managed browser queued screenshot cleanup failed", {
-            chatThreadId: browser.chatThreadId,
-            objectKey: previousObjectKey,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
   },
 );
 
@@ -2972,27 +2920,9 @@ async function claimExpiredInactiveBrowser(
     }
 
     if (screenshotSchemaReady) {
-      const [screenshot] = await tx
-        .select({ objectKey: browserSessionScreenshots.objectKey })
-        .from(browserSessionScreenshots)
-        .where(eq(browserSessionScreenshots.chatThreadId, target.chatThreadId))
-        .limit(1);
-      if (screenshot) {
-        await tx
-          .insert(browserSessionScreenshotDeletions)
-          .values({
-            objectKey: screenshot.objectKey,
-            chatThreadId: target.chatThreadId,
-          })
-          .onConflictDoNothing({
-            target: browserSessionScreenshotDeletions.objectKey,
-          });
-        await tx
-          .delete(browserSessionScreenshots)
-          .where(
-            eq(browserSessionScreenshots.chatThreadId, target.chatThreadId),
-          );
-      }
+      await tx
+        .delete(browserSessionScreenshots)
+        .where(eq(browserSessionScreenshots.chatThreadId, target.chatThreadId));
     }
     await tx
       .delete(browserSessionTabSnapshots)
@@ -3362,7 +3292,6 @@ async function reconcileOrphanedBrowserProfiles(
 
 async function reconcileOrphanedBrowserScreenshots(
   db: Db,
-  deleteObjects: (keys: readonly string[]) => Promise<void>,
   limit: number,
   chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
@@ -3397,21 +3326,14 @@ async function reconcileOrphanedBrowserScreenshots(
   let errors = 0;
   for (const screenshot of screenshots) {
     const result = await settleIncludingAbort(
-      (async () => {
-        await deleteObjects([screenshot.objectKey]);
-        signal.throwIfAborted();
-        await db
-          .delete(browserSessionScreenshots)
-          .where(
-            and(
-              eq(
-                browserSessionScreenshots.chatThreadId,
-                screenshot.chatThreadId,
-              ),
-              eq(browserSessionScreenshots.objectKey, screenshot.objectKey),
-            ),
-          );
-      })(),
+      db
+        .delete(browserSessionScreenshots)
+        .where(
+          and(
+            eq(browserSessionScreenshots.chatThreadId, screenshot.chatThreadId),
+            eq(browserSessionScreenshots.objectKey, screenshot.objectKey),
+          ),
+        ),
     );
     signal.throwIfAborted();
     if (result.ok) {
@@ -3426,64 +3348,6 @@ async function reconcileOrphanedBrowserScreenshots(
     }
   }
   return { checked: screenshots.length, cleaned, errors };
-}
-
-async function reconcileQueuedBrowserScreenshotDeletions(
-  db: Db,
-  deleteObjects: (keys: readonly string[]) => Promise<void>,
-  limit: number,
-  chatThreadIds: readonly string[] | null,
-  signal: AbortSignal,
-): Promise<{
-  readonly checked: number;
-  readonly cleaned: number;
-  readonly errors: number;
-}> {
-  const deletions = await db
-    .select({
-      chatThreadId: browserSessionScreenshotDeletions.chatThreadId,
-      objectKey: browserSessionScreenshotDeletions.objectKey,
-    })
-    .from(browserSessionScreenshotDeletions)
-    .where(
-      chatThreadIds === null
-        ? undefined
-        : inArray(
-            browserSessionScreenshotDeletions.chatThreadId,
-            chatThreadIds,
-          ),
-    )
-    .orderBy(browserSessionScreenshotDeletions.createdAt)
-    .limit(limit);
-  signal.throwIfAborted();
-
-  let cleaned = 0;
-  let errors = 0;
-  for (const deletion of deletions) {
-    const result = await settleIncludingAbort(
-      (async () => {
-        await deleteObjects([deletion.objectKey]);
-        signal.throwIfAborted();
-        await db
-          .delete(browserSessionScreenshotDeletions)
-          .where(
-            eq(browserSessionScreenshotDeletions.objectKey, deletion.objectKey),
-          );
-      })(),
-    );
-    signal.throwIfAborted();
-    if (result.ok) {
-      cleaned += 1;
-    } else {
-      errors += 1;
-      L.warn("Managed browser queued screenshot reconciliation failed", {
-        chatThreadId: deletion.chatThreadId,
-        objectKey: deletion.objectKey,
-        error: result.error,
-      });
-    }
-  }
-  return { checked: deletions.length, cleaned, errors };
 }
 
 const reconcileBrowserInstance$ = command(
@@ -3556,7 +3420,7 @@ const reconcileBrowserInstance$ = command(
 
 const reconcileBrowsersWithScope$ = command(
   async (
-    { get, set },
+    { set },
     chatThreadIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<BrowserReconcileResult> => {
@@ -3628,22 +3492,9 @@ const reconcileBrowsersWithScope$ = command(
       chatThreadIds,
       signal,
     );
-    const deleteScreenshotObjects = async (keys: readonly string[]) => {
-      await get(deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), keys));
-    };
-    const queuedScreenshotCleanup = screenshotSchemaReady
-      ? await reconcileQueuedBrowserScreenshotDeletions(
-          db,
-          deleteScreenshotObjects,
-          RECONCILE_BATCH_SIZE,
-          chatThreadIds,
-          signal,
-        )
-      : { checked: 0, cleaned: 0, errors: 0 };
     const orphanedScreenshotCleanup = screenshotSchemaReady
       ? await reconcileOrphanedBrowserScreenshots(
           db,
-          deleteScreenshotObjects,
           RECONCILE_BATCH_SIZE,
           chatThreadIds,
           signal,
@@ -3657,20 +3508,17 @@ const reconcileBrowsersWithScope$ = command(
         expiredBrowserCleanup.checked +
         expiredInstanceCleanup.checked +
         profileCleanup.checked +
-        queuedScreenshotCleanup.checked +
         orphanedScreenshotCleanup.checked,
       stopped:
         stopped +
         expiredBrowserCleanup.cleaned +
         expiredInstanceCleanup.cleaned +
         profileCleanup.cleaned +
-        queuedScreenshotCleanup.cleaned +
         orphanedScreenshotCleanup.cleaned,
       errors:
         errors +
         expiredBrowserCleanup.errors +
         profileCleanup.errors +
-        queuedScreenshotCleanup.errors +
         orphanedScreenshotCleanup.errors,
       healthy,
     };

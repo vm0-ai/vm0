@@ -505,6 +505,7 @@ test("Show a member’s latest package credits in the account menu", async () =>
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
+      showUsagePack: true,
       credits: 12_500,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",

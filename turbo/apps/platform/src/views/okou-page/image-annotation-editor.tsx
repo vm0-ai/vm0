@@ -21,13 +21,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@okouai/ui/components/ui/tooltip";
-import { cn } from "@okouai/ui";
+import { cn, Kbd, KbdGroup } from "@okouai/ui";
 import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ANNOTATION_INKS,
   ANNOTATION_RESIZE_EDGES,
+  markBounds,
   markOrdinal,
   nextMarkOrdinal,
+  type AnnotationArrowEnd,
   type AnnotationDrag,
   type AnnotationInk,
   type AnnotationPoint,
@@ -67,6 +69,108 @@ const TOOL_SHORTCUTS: Readonly<Record<string, AnnotationTool | undefined>> = {
   d: "pen",
   t: "text",
 };
+
+/** The letter shown on each tool's tooltip, so the binding is discoverable. */
+const TOOL_KEYS: Readonly<Record<AnnotationTool, string>> = {
+  box: "B",
+  arrow: "A",
+  pen: "D",
+  text: "T",
+};
+
+/** Zoom direction per key, with `0` meaning "back to fit". */
+const ZOOM_SHORTCUTS: Readonly<Record<string, 1 | -1 | 0 | undefined>> = {
+  "=": 1,
+  "+": 1,
+  "-": -1,
+  _: -1,
+  0: 0,
+};
+
+/** One arrow key, one direction. */
+const NUDGE_KEYS: Readonly<
+  Record<string, { x: number; y: number } | undefined>
+> = {
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+};
+
+/**
+ * Nudge distance in normalized units — roughly 4px and 20px on a 1000px-wide
+ * image. The marks are stored against the image rather than the screen, so a
+ * step in pixels would move a mark further on a small image than a large one.
+ */
+const NUDGE_STEP = 0.004;
+const NUDGE_STEP_COARSE = 0.02;
+
+/** A shortcut taken with Cmd/Ctrl held, which a note being typed cannot claim. */
+type ChordAction =
+  | { kind: "undo" }
+  | { kind: "redo" }
+  | { kind: "commit" }
+  | { kind: "zoom"; direction: 1 | -1 }
+  | { kind: "zoomReset" };
+
+/** A shortcut taken on its own, which only applies when nothing has the caret. */
+type BareAction =
+  | { kind: "remove" }
+  | { kind: "nudge"; x: number; y: number }
+  | { kind: "ink"; ink: AnnotationInk }
+  | { kind: "tool"; tool: AnnotationTool };
+
+function resolveChord(event: KeyboardEvent): ChordAction | null {
+  if (!event.metaKey && !event.ctrlKey) {
+    return null;
+  }
+  if (event.key.toLowerCase() === "z") {
+    return event.shiftKey ? { kind: "redo" } : { kind: "undo" };
+  }
+  if (event.key === "Enter") {
+    return { kind: "commit" };
+  }
+  // The zoom buttons had no keys at all. These are the bindings every viewer
+  // already trains people to try, and the modifier keeps them clear of a note.
+  const zoom = ZOOM_SHORTCUTS[event.key];
+  if (zoom === undefined) {
+    return null;
+  }
+  return zoom === 0 ? { kind: "zoomReset" } : { kind: "zoom", direction: zoom };
+}
+
+function resolveBareKey(event: KeyboardEvent): BareAction | null {
+  if (event.key === "Delete" || event.key === "Backspace") {
+    return { kind: "remove" };
+  }
+  // Placing a mark by dragging is accurate to whatever the hand did; the arrow
+  // keys are how it gets from close to right. Shift covers distance, the bare
+  // key covers the last few pixels.
+  const nudge = NUDGE_KEYS[event.key];
+  if (nudge) {
+    const step = event.shiftKey ? NUDGE_STEP_COARSE : NUDGE_STEP;
+    return { kind: "nudge", x: nudge.x * step, y: nudge.y * step };
+  }
+  // The ink swatches are five buttons in a fixed order, so the digits are
+  // already their names. With a mark open this recolours it, which is exactly
+  // what pressing the swatch does.
+  const ink = ANNOTATION_INKS[Number.parseInt(event.key, 10) - 1];
+  if (ink !== undefined) {
+    return { kind: "ink", ink };
+  }
+  const tool = TOOL_SHORTCUTS[event.key.toLowerCase()];
+  return tool ? { kind: "tool", tool } : null;
+}
+
+/** A shortcut must never steal a keystroke aimed at a note being written. */
+function isTyping(): boolean {
+  const active = document.activeElement;
+  return (
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    (active instanceof HTMLElement && active.isContentEditable)
+  );
+}
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -310,7 +414,12 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
                 </Button>
               }
             />
-            <TooltipContent>{toolLabel(candidate)}</TooltipContent>
+            <TooltipContent>
+              <KbdGroup>
+                {toolLabel(candidate)}
+                <Kbd>{TOOL_KEYS[candidate]}</Kbd>
+              </KbdGroup>
+            </TooltipContent>
           </Tooltip>
         );
       })}
@@ -376,6 +485,17 @@ function MarkNotePopover({
             setNote(mark.id, event.target.value);
           }}
           onKeyDown={(event) => {
+            // Enter is how a one-line field is finished everywhere else, and
+            // the note had no way to be committed from the keyboard at all —
+            // the only exit was clicking off it or pressing Escape. The text is
+            // already saved on every keystroke, so this only puts the caret
+            // away. Cmd/Ctrl+Enter is left alone: the global handler reads it
+            // as "attach the whole annotation".
+            if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
+              event.preventDefault();
+              deselect(null);
+              return;
+            }
             // Backspace edits the text. Once the field is empty the next press
             // dismisses the note — deleting the mark from here would be a
             // surprise, so that stays on the bin button alone.
@@ -561,6 +681,10 @@ function KeyboardShortcuts({
   const removeSelected = useSet(signals.removeSelectedAnnotationMark$);
   const selectMark = useSet(signals.selectAnnotationMark$);
   const setTool = useSet(signals.setAnnotationTool$);
+  const setInk = useSet(signals.setAnnotationInk$);
+  const nudgeMark = useSet(signals.nudgeAnnotationMark$);
+  const zoomBy = useSet(signals.zoomAnnotation$);
+  const resetZoom = useSet(signals.resetAnnotationZoom$);
   const undo = useSet(signals.undoAnnotation$);
   const redo = useSet(signals.redoAnnotation$);
   const close = useSet(signals.closeAnnotationEditor$);
@@ -574,6 +698,50 @@ function KeyboardShortcuts({
   const pageSignal = useGet(pageSignal$);
   let cleanup: (() => void) | null = null;
 
+  const runChord = (action: ChordAction) => {
+    switch (action.kind) {
+      case "undo": {
+        undo();
+        return;
+      }
+      case "redo": {
+        redo();
+        return;
+      }
+      case "commit": {
+        detach(commit(pageSignal), Reason.DomCallback);
+        return;
+      }
+      case "zoom": {
+        zoomBy(action.direction);
+        return;
+      }
+      case "zoomReset": {
+        resetZoom();
+      }
+    }
+  };
+
+  const runBareKey = (action: BareAction) => {
+    switch (action.kind) {
+      case "remove": {
+        removeSelected();
+        return;
+      }
+      case "nudge": {
+        nudgeMark(action.x, action.y);
+        return;
+      }
+      case "ink": {
+        setInk(action.ink);
+        return;
+      }
+      case "tool": {
+        setTool(action.tool);
+      }
+    }
+  };
+
   return (
     <span
       ref={(node) => {
@@ -583,27 +751,10 @@ function KeyboardShortcuts({
           return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-          const active = document.activeElement;
-          const typing =
-            active instanceof HTMLInputElement ||
-            active instanceof HTMLTextAreaElement ||
-            (active instanceof HTMLElement && active.isContentEditable);
-
-          if (
-            (event.metaKey || event.ctrlKey) &&
-            event.key.toLowerCase() === "z"
-          ) {
+          const chord = resolveChord(event);
+          if (chord) {
             event.preventDefault();
-            if (event.shiftKey) {
-              redo();
-            } else {
-              undo();
-            }
-            return;
-          }
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            detach(commit(pageSignal), Reason.DomCallback);
+            runChord(chord);
             return;
           }
           if (event.key === "Escape") {
@@ -617,18 +768,13 @@ function KeyboardShortcuts({
             }
             return;
           }
-          if (typing) {
+          if (isTyping()) {
             return;
           }
-          if (event.key === "Delete" || event.key === "Backspace") {
+          const bare = resolveBareKey(event);
+          if (bare) {
             event.preventDefault();
-            removeSelected();
-            return;
-          }
-          const shortcut = TOOL_SHORTCUTS[event.key.toLowerCase()];
-          if (shortcut) {
-            event.preventDefault();
-            setTool(shortcut);
+            runBareKey(bare);
           }
         };
         document.addEventListener("keydown", onKeyDown, true);
@@ -649,6 +795,7 @@ interface StrokeHandlers {
     applyDrag: (
       drag: AnnotationDrag,
       rect: { x: number; y: number; width: number; height: number },
+      point: AnnotationPoint,
     ) => void,
   ) => void;
   onPointerUp: () => void;
@@ -732,7 +879,7 @@ function useStrokeHandlers(signals: ImageAnnotationSignals): StrokeHandlers {
         return;
       }
       if (drag) {
-        applyDrag(drag, draggedRect(drag, point));
+        applyDrag(drag, draggedRect(drag, point), point);
         return;
       }
       if (!stroke) {
@@ -767,6 +914,14 @@ function useStrokeHandlers(signals: ImageAnnotationSignals): StrokeHandlers {
 
 type ResizeCorner = AnnotationResizeEdge;
 
+/**
+ * The box a drag works against.
+ *
+ * An arrow and a freehand stroke get their bounding box rather than `null`:
+ * they cannot be resized, but a move is expressed as "put this box there", and
+ * returning nothing here is what used to make `grabMark` bail out before the
+ * drag even started — so a stroke could be clicked and then not moved.
+ */
 function rectOf(mark: ImageAnnotationMark) {
   if (mark.shape === "box") {
     return mark.rect;
@@ -774,7 +929,7 @@ function rectOf(mark: ImageAnnotationMark) {
   if (mark.shape === "text") {
     return { x: mark.at.x, y: mark.at.y, width: 0, height: 0 };
   }
-  return null;
+  return markBounds(mark);
 }
 
 function cornerCursor(corner: ResizeCorner): string {
@@ -811,6 +966,78 @@ function handleAnchor(corner: ResizeCorner): { fx: number; fy: number } {
   const fx = corner.includes("l") ? 0 : corner.includes("r") ? 1 : 0.5;
   const fy = corner.includes("t") ? 0 : corner.includes("b") ? 1 : 0.5;
   return { fx, fy };
+}
+
+/** The dot every grip is drawn as, so all three kinds read as one control. */
+const GRIP_CLASS =
+  "absolute -ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-full border border-border bg-background shadow-sm";
+
+/**
+ * The two ends of a selected arrow.
+ *
+ * An arrow is not resized by a box — it is aimed — so its grips sit on the tail
+ * and the tip and each one carries that end to the pointer. Dragging the tip is
+ * what changes the direction; dragging the shaft between them moves the whole
+ * arrow without changing where it points.
+ */
+function ArrowEndpointHandles({
+  mark,
+  onGrab,
+}: {
+  mark: ImageAnnotationMark;
+  onGrab: (
+    endpoint: AnnotationArrowEnd,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
+}) {
+  if (mark.shape !== "arrow") {
+    return null;
+  }
+
+  return (
+    <>
+      {(["from", "to"] as const).map((endpoint) => {
+        const point = mark[endpoint];
+        return (
+          <span
+            key={endpoint}
+            role="presentation"
+            onPointerDown={(event) => {
+              onGrab(endpoint, event);
+            }}
+            style={{ left: percent(point.x), top: percent(point.y) }}
+            className={cn(GRIP_CLASS, "cursor-grab")}
+            data-testid={`annotation-handle-${endpoint}`}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * What "selected" looks like on a freehand stroke.
+ *
+ * A stroke has no rectangle and no ends worth grabbing, so there is nothing for
+ * grips to sit on and no state left to show. A dashed box around its extent is
+ * the whole affordance: it says which stroke the ink swatch, the note and
+ * Delete are now aimed at. It must not take the pointer — the band around the
+ * stroke itself is what the drag is grabbed by.
+ */
+function PenSelectionOutline({ mark }: { mark: ImageAnnotationMark }) {
+  const bounds = markBounds(mark);
+  return (
+    <span
+      style={{
+        left: percent(bounds.x),
+        top: percent(bounds.y),
+        width: percent(bounds.width),
+        height: percent(bounds.height),
+      }}
+      className="pointer-events-none absolute -m-1 rounded-md border border-dashed border-muted-foreground/70 p-1"
+      data-testid="annotation-pen-outline"
+    />
+  );
 }
 
 /**
@@ -859,9 +1086,7 @@ function ResizeHandles({
               cornerCursor(corner),
               horizontal && "-mt-[5px] h-2.5 -translate-x-1/2",
               vertical && "-ml-[5px] w-2.5 -translate-y-1/2",
-              !horizontal &&
-                !vertical &&
-                "-ml-[5px] -mt-[5px] h-2.5 w-2.5 rounded-full border border-border bg-background shadow-sm",
+              !horizontal && !vertical && GRIP_CLASS,
             )}
             data-testid={`annotation-handle-${corner}`}
           />
@@ -907,6 +1132,40 @@ function NoteLayer({
   );
 }
 
+/**
+ * What the selected mark shows, which depends on what it can be reshaped into.
+ *
+ * A box has eight grips, an arrow has its two ends, and a stroke has neither —
+ * so it gets an outline instead of nothing at all, which is what "selected"
+ * used to look like on one.
+ */
+function SelectionLayer({
+  mark,
+  onGrabEndpoint,
+  onGrabHandle,
+}: {
+  readonly mark: ImageAnnotationMark | undefined;
+  readonly onGrabEndpoint: (
+    endpoint: AnnotationArrowEnd,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
+  readonly onGrabHandle: (
+    corner: ResizeCorner,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
+}) {
+  if (!mark) {
+    return null;
+  }
+  if (mark.shape === "arrow") {
+    return <ArrowEndpointHandles mark={mark} onGrab={onGrabEndpoint} />;
+  }
+  if (mark.shape === "pen") {
+    return <PenSelectionOutline mark={mark} />;
+  }
+  return <ResizeHandles mark={mark} onGrab={onGrabHandle} />;
+}
+
 /** Starts a resize from whichever grip was grabbed on the selected mark. */
 function useGrabHandle(
   signals: ImageAnnotationSignals,
@@ -940,6 +1199,38 @@ function useGrabHandle(
   };
 }
 
+/** Starts an arrow re-aim from the tail or the tip. */
+function useGrabEndpoint(
+  signals: ImageAnnotationSignals,
+  selectedMark: ImageAnnotationMark | undefined,
+): (
+  endpoint: AnnotationArrowEnd,
+  event: ReactPointerEvent<HTMLElement>,
+) => void {
+  const surface = useGet(signals.annotationSurface$);
+  const beginDrag = useSet(signals.setAnnotationDrag$);
+
+  return (endpoint, event) => {
+    event.stopPropagation();
+    const bounds = surface?.getBoundingClientRect();
+    if (!selectedMark || !bounds || bounds.width === 0) {
+      return;
+    }
+    beginDrag({
+      markId: selectedMark.id,
+      mode: "endpoint",
+      endpoint,
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      // An endpoint drag reads the pointer directly, so it has no start box to
+      // measure against. The field is on the record for move and resize.
+      startRect: { x: 0, y: 0, width: 0, height: 0 },
+    });
+  };
+}
+
 function EditorStage({
   filename,
   signals,
@@ -959,6 +1250,7 @@ function EditorStage({
   const selectMark = useSet(signals.selectAnnotationMark$);
   const bindSurface = useSet(signals.bindAnnotationSurface$);
   const moveRect = useSet(signals.moveAnnotationMarkRect$);
+  const moveArrowEnd = useSet(signals.moveAnnotationArrowEnd$);
   const handlers = useStrokeHandlers(signals);
 
   const box = surface?.getBoundingClientRect();
@@ -977,19 +1269,25 @@ function EditorStage({
     return mark.id === openMarkId;
   });
   const grabHandle = useGrabHandle(signals, selectedMark);
+  const grabEndpoint = useGrabEndpoint(signals, selectedMark);
 
-  // A drag only ever moves or resizes a MARK now; a note follows the mark it
-  // belongs to and is never dragged (see `NoteLayer`).
+  // A drag only ever moves, resizes or re-aims a MARK now; a note follows the
+  // mark it belongs to and is never dragged (see `NoteLayer`).
   const applyDrag = (
     drag: AnnotationDrag,
     rect: { x: number; y: number; width: number; height: number },
+    point: AnnotationPoint,
   ) => {
+    if (drag.mode === "endpoint" && drag.endpoint) {
+      moveArrowEnd(drag.markId, drag.endpoint, point);
+      return;
+    }
     moveRect(drag.markId, rect);
   };
 
   const grabMark = (
     mark: ImageAnnotationMark,
-    event: ReactPointerEvent<HTMLElement>,
+    event: ReactPointerEvent<Element>,
   ) => {
     event.stopPropagation();
     selectMark(mark.id);
@@ -1052,9 +1350,11 @@ function EditorStage({
             );
           })}
           <NoteLayer marks={annotation.marks} signals={signals} />
-          {selectedMark && (
-            <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
-          )}
+          <SelectionLayer
+            mark={selectedMark}
+            onGrabEndpoint={grabEndpoint}
+            onGrabHandle={grabHandle}
+          />
           {openMark && <MarkNotePopover mark={openMark} signals={signals} />}
           {preview && (
             <MarkShape

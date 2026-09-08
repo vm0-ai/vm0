@@ -1,3 +1,4 @@
+import { fetchResource } from "../lib/resource-fetch.ts";
 import {
   chatThreadsContract,
   chatThreadEventsContract,
@@ -157,13 +158,21 @@ function isRecoverableChatIdbTransactionError(error: unknown): boolean {
   );
 }
 
+function logDataKeyError(
+  dataKey: ScopedSharedDatabaseDataKey,
+  operation: string,
+  error: unknown,
+): void {
+  L.debug(operation, { ...dataKeyDiagnosticDetails(dataKey), error });
+}
+
 function reportDataKeyError(
   dataKey: ScopedSharedDatabaseDataKey,
   operation: string,
   error: unknown,
 ): void {
+  logDataKeyError(dataKey, operation, error);
   if (isAbortError(error)) {
-    L.debug(operation, { ...dataKeyDiagnosticDetails(dataKey), error });
     return;
   }
   const details = dataKeyDiagnosticDetails(dataKey);
@@ -180,7 +189,6 @@ function reportDataKeyError(
     },
     user: { id: dataKey.userId },
   });
-  L.debug(operation, { ...details, error });
   captureSentryLogError("SharedDatabaseWorker", [
     operation,
     error,
@@ -339,7 +347,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!cachedCursorsResult.ok) {
-      reportDataKeyError(
+      logDataKeyError(
         diagnosticDataKey,
         "indexeddb.chat-event-cursors.read.error",
         cachedCursorsResult.error,
@@ -494,7 +502,7 @@ export class SharedDatabaseWorkerRuntime {
       if (!firstWrite) {
         throw new Error("ChatEvent batch write diagnostic is missing");
       }
-      reportDataKeyError(
+      logDataKeyError(
         firstWrite.dataKey,
         "indexeddb.chat-event-batch.write.error",
         written.error,
@@ -560,7 +568,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!cleared.ok) {
-      reportDataKeyError(
+      logDataKeyError(
         dataKey,
         "indexeddb.chat-event.clear.error",
         cleared.error,
@@ -642,7 +650,7 @@ export class SharedDatabaseWorkerRuntime {
       ? cachedCursorResult.value
       : null;
     if (!cachedCursorResult.ok) {
-      reportDataKeyError(
+      logDataKeyError(
         dataKey,
         "indexeddb.chat-event-cursor.read.error",
         cachedCursorResult.error,
@@ -712,7 +720,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!written.ok) {
-      reportDataKeyError(
+      logDataKeyError(
         dataKey,
         "indexeddb.chat-event.write.error",
         written.error,
@@ -816,7 +824,7 @@ export class SharedDatabaseWorkerRuntime {
     if (snapshot.status !== 200) {
       throw new SharedDatabaseHttpError(snapshot.status);
     }
-    const response = await fetch(snapshot.body.url, { signal });
+    const response = await fetchResource(snapshot.body.url, {}, signal);
     if (!response.ok) {
       throw new SharedDatabaseHttpError(response.status);
     }
@@ -916,7 +924,7 @@ export class SharedDatabaseWorkerRuntime {
         signal,
       );
       if (!written.ok) {
-        reportDataKeyError(
+        logDataKeyError(
           dataKey,
           "indexeddb.chat-thread-event.write.error",
           written.error,
@@ -1059,11 +1067,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!result.ok) {
-      reportDataKeyError(
-        dataKey,
-        "indexeddb.chat-event.read.error",
-        result.error,
-      );
+      logDataKeyError(dataKey, "indexeddb.chat-event.read.error", result.error);
       return [];
     }
     return result.value;
@@ -1087,7 +1091,7 @@ export class SharedDatabaseWorkerRuntime {
       signal,
     );
     if (!result.ok) {
-      reportDataKeyError(
+      logDataKeyError(
         dataKey,
         "indexeddb.chat-thread-event.read.error",
         result.error,

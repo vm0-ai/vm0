@@ -5,6 +5,7 @@ use super::super::support::{
     seed_workspace_cache_state, shutdown, test_profiles, two_profiles, wait_budget_count,
     wait_idle_pool_len,
 };
+use super::blank_session_history::history_context;
 
 use crate::paths::RunnerPaths;
 use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
@@ -324,8 +325,18 @@ async fn blank_backed_run_becomes_exact_reuse_and_wins_over_refilled_blank() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let history = b"{\"type\":\"init\"}\n";
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history");
+            then.status(200).body(history);
+        })
+        .await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let calls = Arc::clone(&overrides);
     overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
@@ -340,12 +351,9 @@ async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
     let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, "session-blank-unpark-failure")),
-    );
+    let mut context = history_context(run_id, server.url("/history"), history);
+    context.reuse_key = Some("session-blank-unpark-failure".into());
+    push_job(&env, run_id, "vm0/default", Some(context));
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
@@ -359,6 +367,7 @@ async fn blank_unpark_failure_falls_back_without_changing_cold_attribution() {
     assert_eq!(calls.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
+    history_mock.assert_calls_async(1).await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -670,8 +679,18 @@ async fn workspace_cache_hit_takes_priority_over_compatible_blank_inventory() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn claimed_workspace_cache_metadata_takes_priority_over_reserved_blank() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let history = b"{\"type\":\"init\"}\n";
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history");
+            then.status(200).body(history);
+        })
+        .await;
     let mut profiles = test_profiles();
     profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
     let (mut config, env) = mock_run_config(profiles, 16, 32_768, 8);
@@ -700,7 +719,7 @@ async fn claimed_workspace_cache_metadata_takes_priority_over_reserved_blank() {
     let blank_sandbox_id = idle_pool.lock().await.status_snapshot().blank_sandboxes[0].sandbox_id;
 
     let run_id = RunId::new_v4();
-    let mut context = context_with_session(run_id, "claimed-workspace-priority-session");
+    let mut context = history_context(run_id, server.url("/history"), history);
     context.reuse_key = Some(reuse_key.into());
     env.provider.set_claim_result(run_id, Some(context));
     env.handle
@@ -722,4 +741,5 @@ async fn claimed_workspace_cache_metadata_takes_priority_over_reserved_blank() {
     assert_ne!(completion.sandbox_id, Some(blank_sandbox_id));
 
     shutdown(&env, run_handle).await;
+    history_mock.assert_calls_async(1).await;
 }
