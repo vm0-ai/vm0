@@ -38,8 +38,10 @@ async function expectLogo(page: Page): Promise<void> {
   await expect(logo).toHaveCSS("height", "20px");
   // Clerk's root is block on desktop and flex on mobile by default. Outside
   // branding needs an explicit column so its DS gap applies at both widths.
-  await expect(page.locator(".cl-rootBox")).toHaveCSS("display", "flex");
-  await expect(page.locator(".cl-rootBox")).toHaveCSS("row-gap", "20px");
+  // Google One Tap has a second Clerk root; only the auth form owns this gap.
+  const root = page.locator(".okou-clerk-root");
+  await expect(root).toHaveCSS("display", "flex");
+  await expect(root).toHaveCSS("row-gap", "20px");
   await expect
     .poll(async () => {
       const brand = await logo.boundingBox();

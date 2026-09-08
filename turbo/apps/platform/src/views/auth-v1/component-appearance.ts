@@ -38,7 +38,7 @@ const authV1SocialActionClass = cn(
 // OTP slots are visual divs, not shared Input components. Clerk's accessible
 // textbox owns typing, paste and retry; these public state attributes paint it.
 const authV1OtpInputClass =
-  "relative flex size-9 items-center justify-center rounded-lg border border-border bg-input p-0 text-center text-base font-medium text-foreground shadow-none data-[focus-within=true]:border-ring data-[focus-within=true]:ring-[3px] data-[focus-within=true]:ring-ring/10 aria-invalid:border-destructive data-[focus-within=true]:aria-invalid:border-destructive";
+  "relative flex size-9 items-center justify-center rounded-lg border border-border bg-input p-0 text-center text-base font-medium text-foreground shadow-none data-[focus-within=true]:border-primary data-[focus-within=true]:ring-[3px] data-[focus-within=true]:ring-primary/10 aria-invalid:border-destructive data-[focus-within=true]:aria-invalid:border-destructive";
 // Only the visual base is shared. Clerk retains its native checked/disabled
 // state and ::before indicator, while Base UI retains its own state contract.
 const authV1CheckboxInputClass = cn(
