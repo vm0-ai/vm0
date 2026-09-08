@@ -7,6 +7,19 @@ def quantiles:
      p95: $v[(length * 0.95 | ceil) - 1],
      p99: $v[(length * 0.99 | ceil) - 1]};
 
+def parse_phases:
+  if . == "" then null else
+    fromjson
+    | ["cleanup_us", "containment_us", "io_setup_us", "join_us",
+       "prepare_spawn_us", "wait_us"] as $coarse
+    | ($coarse + ["prepare_us", "spawn_us"] | sort) as $refined
+    | if type != "object" then error("phase diagnostics must be an object")
+      elif (keys != $coarse and keys != $refined)
+        or any(.[]; type != "number" or . < 0) then
+        error("phase diagnostics must contain the complete nonnegative numeric phase set")
+      else . end
+  end;
+
 def summarize_group:
   . as $group
   | {shape: .[0].shape, phase: .[0].phase,
@@ -16,7 +29,7 @@ def summarize_group:
                      "outer_minus_guest_ms", "guest_minus_inner_ms"]
        | map(. as $key | {key: $key, value: ($group | map(.[$key]) | quantiles)})
        | from_entries),
-     phases_us: ($group | map(select(.diagnostic != "") | .diagnostic | fromjson)
+     phases_us: ($group | map(.phase_timings | select(. != null))
        | if length == 0 then null else
            . as $phases | .[0] | keys
            | map(. as $key | {key: $key, value: ($phases | map(.[$key]) | quantiles)})
@@ -43,6 +56,7 @@ map(select(.kind == "storage_probe")) as $outer
   else . end
 | [range(0; 324) as $i
    | $outer[$i] + {inner_ms: $inner[$i].duration_ms}
+   | . + {phase_timings: (.diagnostic | parse_phases)}
    | . + {outer_ms: (.outer_us / 1000),
           outer_minus_inner_ms: (.outer_us / 1000 - .inner_ms),
           outer_minus_guest_ms: (.outer_us / 1000 - .guest_ms),

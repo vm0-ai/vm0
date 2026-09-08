@@ -29,6 +29,12 @@ fixture | jq -s -f "$summary" | jq -e '
       and .milliseconds.outer_ms == {p50: 2.049, p90: 2.089, p95: 2.094, p99: 2.098}
       and .milliseconds.outer_minus_inner_ms == .milliseconds.outer_ms] | all)' >/dev/null
 
+fixture | jq 'if .kind == "storage_probe" then
+  .diagnostic = ({cleanup_us: 10, containment_us: 20, io_setup_us: 30,
+    join_us: 40, prepare_spawn_us: 50, wait_us: 60} | tojson) else . end' \
+  | jq -s -f "$summary" | jq -e '
+    [.groups[] | .phase_samples == .count and .phases_us.wait_us.p90 == 60] | all' >/dev/null
+
 reject() {
   local mutation=$1
   if fixture | jq -s "$mutation | .[]" | jq -s -f "$summary" >/dev/null 2>&1; then
@@ -45,6 +51,10 @@ reject '.[324].duration_ms = null'
 reject '.[324].success = false'
 reject '.[1].index = 1'
 reject '.[0].diagnostic = "malformed"'
+reject '.[0].diagnostic = "{\"spawn_us\":null}"'
+reject '.[0].diagnostic = "{}"'
+reject '.[0].diagnostic = "[]"'
+reject '.[0].diagnostic = ({cleanup_us: 10, containment_us: 20, io_setup_us: 30, join_us: 40, prepare_spawn_us: 50, wait_us: "60"} | tojson)'
 reject '.[0:647]'
 
 echo 'PASS: complete-pair quantiles and invalid-evidence rejection'
