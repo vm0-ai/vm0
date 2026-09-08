@@ -109,6 +109,46 @@ test("Create a configured host with write-only credentials, then edit without re
   });
 });
 
+test.each(["Display name", "Public hostname or IP address", "SSH username"])(
+  "Whitespace-only %s is rejected visibly before submission and can be corrected",
+  async (label) => {
+    let hosts: SshConnectionResponse[] = [];
+    let creates = 0;
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: hosts });
+    });
+    context.mocks.api(sshConnectionsContract.create, ({ respond }) => {
+      creates++;
+      hosts = [base];
+      return respond(201, base);
+    });
+    await page();
+    click(
+      await waitFor(() => {
+        return getAction("button", "Add host");
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Display name"), "Deployment");
+    await fill(
+      within(dialog).getByLabelText("Public hostname or IP address"),
+      "ssh.example.com",
+    );
+    await fill(within(dialog).getByLabelText("SSH username"), "deploy");
+    await fill(within(dialog).getByLabelText("Private key"), "test-key");
+    const field = within(dialog).getByLabelText(label);
+    await fill(field, "   ");
+    click(getAction("button", "Save", dialog));
+    expect(field).toBeInvalid();
+    expect(creates).toBe(0);
+    expect(dialog).toBeInTheDocument();
+    await fill(field, "valid");
+    click(getAction("button", "Save", dialog));
+    await screen.findByText("Configured · connectivity not tested");
+    expect(creates).toBe(1);
+  },
+);
+
 test("Credential replacement is explicit and fields clear before the request finishes and on close", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [base] });

@@ -47,6 +47,7 @@ function EndpointFields({
         <Input
           name="displayName"
           required
+          pattern=".*\S.*"
           maxLength={SSH_DISPLAY_NAME_MAX_LENGTH}
           defaultValue={connection?.displayName}
         />
@@ -58,6 +59,7 @@ function EndpointFields({
         <Input
           name="host"
           required
+          pattern=".*\S.*"
           maxLength={SSH_HOST_MAX_LENGTH}
           defaultValue={connection?.host}
         />
@@ -82,6 +84,7 @@ function EndpointFields({
         <Input
           name="username"
           required
+          pattern=".*\S.*"
           maxLength={SSH_USERNAME_MAX_LENGTH}
           defaultValue={connection?.username}
         />

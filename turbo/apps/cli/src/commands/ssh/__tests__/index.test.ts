@@ -18,6 +18,7 @@ vi.mock("node:child_process", async (importOriginal) => {
         expect(options).toEqual({ stdio: ["pipe", "pipe", "pipe"] });
         const script = `
       let request = '';
+      process.stdin.setEncoding('utf8');
       process.stdin.on('data', chunk => request += chunk);
       process.stdin.on('end', () => {
         process.send(request);
@@ -208,6 +209,38 @@ describe("okou ssh command", () => {
     },
   );
 
+  it.each([
+    { connectionId: "ssh.example.com", command: "true" },
+    { connectionId: id, command: "" },
+    { connectionId: id, command: "a".repeat(65537) },
+    { connectionId: id, command: "界".repeat(21846) },
+  ])(
+    "rejects invalid request input %# before starting the helper",
+    async ({ connectionId, command }) => {
+      await expect(
+        sshCommand.parseAsync(
+          ["exec", connectionId, "--command", command, "--json"],
+          {
+            from: "user",
+          },
+        ),
+      ).rejects.toThrow("CLI exit");
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts exactly 65536 UTF-8 command bytes without truncating the request", async () => {
+    const command = "界".repeat(21845) + "a";
+    await sshCommand.parseAsync(["exec", id, "--command", command, "--json"], {
+      from: "user",
+    });
+    expect(helper.requests).toHaveLength(1);
+    expect(JSON.parse(helper.requests[0]!)).toMatchObject({
+      params: { command },
+    });
+    expect(process.exitCode).toBe(0);
+  });
+
   it("preserves binary streams and typed remote signal", async () => {
     const stdout = Buffer.from([0, 255, 13, 10]);
     const stderr = Buffer.from([128, 1]);
@@ -299,6 +332,23 @@ describe("okou ssh command", () => {
       delivery: "unknown",
     });
     expect(process.exitCode).toBe(1);
+  });
+
+  it("preserves an unknown-method rejection without fallback or replay", async () => {
+    helper.exit = 1;
+    response({
+      type: "error",
+      code: "unknown_method",
+      delivery: "not_dispatched",
+    });
+    await execute();
+    expect(result()).toMatchObject({
+      type: "rpc_error",
+      code: "unknown_method",
+      delivery: "not_dispatched",
+    });
+    expect(process.exitCode).toBe(1);
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 
   it.each([
