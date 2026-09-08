@@ -56,17 +56,15 @@ async function expectPasswordControlFits(
   expect(trailingSpace - button.width).toBeGreaterThanOrEqual(4);
 }
 
-async function enterCode(page: Page, code: string): Promise<void> {
-  const inputs = page.locator(".cl-otpCodeFieldInput");
-  await expect(inputs).toHaveCount(6);
-  // Clear through the inputs so a retry cannot observe the previous error.
-  for (const input of await inputs.all()) {
-    await input.fill("");
-  }
-  await expect(page.locator(".cl-otpCodeFieldErrorText:visible")).toHaveCount(
-    0,
-  );
-  await inputs.first().pressSequentially(code);
+async function enterInvalidCode(page: Page, code: string): Promise<void> {
+  // Clerk's six visible slots are not inputs. The accessible textbox owns
+  // typing/paste and resets after a rejected attempt. Wait for that visible
+  // reset so retries cannot pass by observing the previous error.
+  const input = page.getByRole("textbox", { name: "Enter verification code" });
+  await expect(input).toHaveValue("");
+  await input.fill(code);
+  await expect(input).toHaveValue(code);
+  await expect(input).toHaveValue("");
 }
 
 for (const device of [
@@ -134,7 +132,7 @@ for (const device of [
       const error = page.locator(".cl-otpCodeFieldErrorText:visible");
       const resend = page.locator(".cl-formResendCodeLink");
       await expect(inputs).toBeVisible();
-      await enterCode(page, "000000");
+      await enterInvalidCode(page, "000000");
       await expect(error).not.toBeEmpty();
       await expectSeparated(inputs, error);
       await expectSeparated(error, resend);
@@ -142,7 +140,7 @@ for (const device of [
       await page.setViewportSize({ width: 375, height: 812 });
       await expectSeparated(inputs, error);
       await expectSeparated(error, resend);
-      await enterCode(page, "000001");
+      await enterInvalidCode(page, "000001");
       await expect(error).not.toBeEmpty();
       await expectSeparated(inputs, error);
       await expectSeparated(error, resend);
