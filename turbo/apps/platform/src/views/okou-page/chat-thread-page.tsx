@@ -3920,7 +3920,11 @@ function RunWorkSectionRow({
     CHAT_THREAD_RESPONSE_LINE_CLASS,
   );
   return (
-    <div data-chat-run-work className="flex min-h-9 items-center">
+    <div
+      data-chat-run-work
+      data-chat-selection-actions-disabled
+      className="flex min-h-9 items-center"
+    >
       {collapsible ? (
         <Button
           type="button"

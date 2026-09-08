@@ -39,6 +39,8 @@ import {
 const FEEDBACK_SOURCE_SELECTOR =
   ".okou-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const SELECTION_ACTIONS_DISABLED_SELECTOR =
+  "[data-chat-selection-actions-disabled]";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
 const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
@@ -156,6 +158,9 @@ function closestExpandedFeedbackSource(node: Node | null): Element | null {
     return null;
   }
   const element = node instanceof Element ? node : node.parentElement;
+  if (element?.closest(SELECTION_ACTIONS_DISABLED_SELECTOR)) {
+    return null;
+  }
   return (
     element?.closest(ASSISTANT_GROUP_SELECTOR) ??
     element?.closest("[data-feedback-source]") ??
