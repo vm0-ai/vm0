@@ -14,6 +14,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createRouteMocks } from "./helpers/route-test";
 import { mockStripeClient } from "../../external/stripe-client";
+import { createDeferredPromise } from "../../utils";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import {
   testUsagePackSubscriptionStateContract,
@@ -1367,6 +1368,135 @@ describe("usage pack subscription Stripe lifecycle", () => {
 
     expect(state.org).toMatchObject({ tier: "pro", credits: 0 });
     expect(state.grants).toHaveLength(2);
+  });
+
+  it.each([0, 5000])(
+    "preserves a first-upgrade balance of %i and does not waive later renewal debt",
+    async (credits) => {
+      const fixture = await seedUsagePackLifecycle(
+        [{ userId: `user_${randomUUID()}`, usagePackUsd: 20 }],
+        "pro",
+        credits,
+      );
+      const firstUpgrade = await fulfillFirstUsagePackInvoice(fixture);
+
+      expect(firstUpgrade.org).toMatchObject({ tier: "pro", credits });
+      expect(firstUpgrade.grants).toHaveLength(2);
+      expect(firstUpgrade.fulfillmentInvoiceIds).toHaveLength(1);
+
+      await seedOrgMetadata({
+        orgId: fixture.orgId,
+        tier: "pro",
+        credits: -3000,
+      });
+      const paidPeriod = period(30);
+      const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+        stripeSubscription(fixture, paidPeriod, quantities),
+      );
+      await postStripeEvent(
+        stripeEvent(
+          "invoice.paid",
+          paidInvoice(fixture, {
+            invoiceId: `in_${randomUUID()}`,
+            paidPeriod,
+            quantities,
+          }),
+        ),
+        200,
+      );
+
+      const renewed = await readUsagePackState(fixture);
+      expect(renewed.org).toMatchObject({ tier: "pro", credits: -3000 });
+      expect(renewed.grants).toHaveLength(4);
+      expect(renewed.fulfillmentInvoiceIds).toHaveLength(2);
+    },
+  );
+
+  it("fulfills concurrent first invoices once and preserves new debt when the invoice is replayed", async () => {
+    const fixture = await seedUsagePackLifecycle(
+      [{ userId: `user_${randomUUID()}`, usagePackUsd: 20 }],
+      "pro",
+      -5000,
+    );
+    const paidPeriod = period(0);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const invoice = paidInvoice(fixture, {
+      invoiceId: `in_${randomUUID()}`,
+      paidPeriod,
+      quantities,
+    });
+    const bothRequestsStarted = createDeferredPromise<void>(context.signal);
+    let startedRequests = 0;
+    context.mocks.stripe.subscriptions.retrieve.mockImplementation(async () => {
+      startedRequests += 1;
+      if (startedRequests === 2) {
+        bothRequestsStarted.resolve(undefined);
+      }
+      await bothRequestsStarted.promise;
+      return stripeSubscription(fixture, paidPeriod, quantities);
+    });
+
+    await Promise.all([
+      postStripeEvent(stripeEvent("invoice.paid", invoice), 200),
+      postStripeEvent(stripeEvent("invoice.paid", invoice), 200),
+    ]);
+
+    const fulfilled = await readUsagePackState(fixture);
+    expect(fulfilled.org).toMatchObject({ tier: "pro", credits: 0 });
+    expect(fulfilled.grants).toHaveLength(2);
+    expect(fulfilled.fulfillmentInvoiceIds).toStrictEqual([invoice.id]);
+
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "pro",
+      credits: -3000,
+    });
+    await postStripeEvent(stripeEvent("invoice.paid", invoice), 200);
+
+    const replayed = await readUsagePackState(fixture);
+    expect(replayed.org).toMatchObject({ tier: "pro", credits: -3000 });
+    expect(replayed.grants).toStrictEqual(fulfilled.grants);
+    expect(replayed.fulfillmentInvoiceIds).toStrictEqual([invoice.id]);
+  });
+
+  it("rolls back debt forgiveness and grants when the subscription cannot be persisted", async () => {
+    const fixture = await seedUsagePackLifecycle(
+      [{ userId: `user_${randomUUID()}`, usagePackUsd: 20 }],
+      "pro",
+      -5000,
+    );
+    const paidPeriod = period(0);
+    const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
+    const invoice = paidInvoice(fixture, {
+      invoiceId: `in_${randomUUID()}`,
+      paidPeriod,
+      quantities,
+    });
+    // An oversized provider status fails during plan persistence, after the
+    // debt waiver and member grant writes have executed in the transaction.
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture, paidPeriod, quantities, {
+        status: "invalid_subscription_status_from_stripe",
+      }),
+    );
+    const beforePayment = await readUsagePackState(fixture);
+
+    await postStripeEvent(stripeEvent("invoice.paid", invoice), 500);
+
+    await expect(readUsagePackState(fixture)).resolves.toStrictEqual(
+      beforePayment,
+    );
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture, paidPeriod, quantities),
+    );
+    await postStripeEvent(stripeEvent("invoice.paid", invoice), 200);
+
+    const retried = await readUsagePackState(fixture);
+    expect(retried.org).toMatchObject({ tier: "pro", credits: 0 });
+    expect(retried.grants).toHaveLength(2);
+    expect(retried.fulfillmentInvoiceIds).toStrictEqual([invoice.id]);
   });
 
   it.each(["credit_purchase", "auto_recharge"])(
