@@ -9,11 +9,13 @@ export const connectorConnectionPending$ = computed((get) => {
   return get(pendingConnections$).size > 0;
 });
 
+export const connectorConnectionProgressActive$ = computed((get) => {
+  return get(connectorConnectionPending$) && !get(progressDismissed$);
+});
+
 export const connectorConnectionProgressVisible$ = computed((get) => {
   return (
-    get(connectorConnectionPending$) &&
-    !get(progressDismissed$) &&
-    get(connectionDialogs$) === 0
+    get(connectorConnectionProgressActive$) && get(connectionDialogs$) === 0
   );
 });
 

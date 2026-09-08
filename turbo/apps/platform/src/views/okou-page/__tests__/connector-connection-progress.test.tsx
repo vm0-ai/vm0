@@ -238,6 +238,7 @@ test.each([
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
+      expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
       expect(within(naming).getByLabelText("Account name")).toHaveFocus();
     });
     click(getConnectorAction("button", "Skip", naming));
@@ -438,6 +439,7 @@ test.each(["http", "mcp", "automatic"] as const)(
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: PROGRESS })).toBeNull();
+      expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
       expect(within(naming).getByLabelText("Account name")).toHaveFocus();
     });
   },

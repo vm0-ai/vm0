@@ -29,7 +29,7 @@ import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
-  connectorConnectionPending$,
+  connectorConnectionProgressActive$,
   dismissConnectorConnectionProgress$,
   registerConnectorConnectionDialog$,
 } from "../../signals/connector-connection-progress.ts";
@@ -1296,7 +1296,7 @@ function ArtifactPreviewDialogContent({
   const dialogElement = useSet(lightboxDialogElement$);
   const completeDialogExit = useSet(completeLightboxDialogExit$);
   const registerConnectionDialog = useSet(registerConnectorConnectionDialog$);
-  const connectionPending = useGet(connectorConnectionPending$);
+  const connectionProgressActive = useGet(connectorConnectionProgressActive$);
   const closeWithAnimation = useCloseArtifactPreview();
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
@@ -1335,7 +1335,7 @@ function ArtifactPreviewDialogContent({
           capture
           considerFocus={false}
           navigation={
-            !connectionPending && preview.kind === "image"
+            !connectionProgressActive && preview.kind === "image"
               ? imageNavigation
               : undefined
           }
@@ -1370,7 +1370,7 @@ function ArtifactPreviewDialogContent({
                 {subtitle}
               </div>
             </div>
-            {connectionPending ? (
+            {connectionProgressActive ? (
               <ArtifactPreviewCloseButton />
             ) : (
               <ArtifactPreviewDialogActions
@@ -1381,7 +1381,7 @@ function ArtifactPreviewDialogContent({
             )}
           </div>
           <div className="min-h-0 flex-1 bg-background">
-            {connectionPending ? (
+            {connectionProgressActive ? (
               <div className="flex h-full items-center justify-center p-6">
                 <ConnectorConnectionStatus />
               </div>

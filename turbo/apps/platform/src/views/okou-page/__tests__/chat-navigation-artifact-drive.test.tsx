@@ -352,7 +352,10 @@ async function openDriveArtifactMenu(
   });
   click(buttonNamed("Download artifact", artifactPreview()));
   await waitFor(() => {
-    expect(roleItemNamed("menuitem", actionName)).toBeEnabled();
+    expect(roleItemNamed("menuitem", actionName)).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 }
 
@@ -512,6 +515,71 @@ test("Sync with the artifact's ready Drive account when the default needs attent
   await expectSyncedPreview();
 });
 
+test("Keep a reopened artifact usable after dismissing Drive OAuth progress", async () => {
+  useWideScreen();
+  const popup = installAuthorizationPopup();
+  const syncing = context.mocks.deferred<void>();
+  const sync = context.mocks.deferred<void>();
+  const drive = installDriveMocks(context, "not-connected", {
+    waitForSync: () => {
+      syncing.resolve();
+      return sync.promise;
+    },
+  });
+  await setupPage({
+    context,
+    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+    host: "app.vm0.ai",
+  });
+  click(await findNamedLink("Drive preview"));
+  const preview = await screen.findByRole("dialog", {
+    name: "drive-report.pdf preview",
+  });
+  click(buttonNamed("Download options", preview));
+  await waitFor(() => {
+    expect(
+      roleItemNamed("menuitem", "Connect Google Drive"),
+    ).not.toHaveAttribute("aria-disabled", "true");
+  });
+  click(roleItemNamed("menuitem", "Connect Google Drive"));
+  await expect(within(preview).findByRole("status")).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(popup.location.href).toBe(AUTHORIZATION_URL);
+  });
+  drive.completeAuthorization();
+  await syncing.promise;
+  click(buttonNamed("Close", preview));
+  await waitFor(() => {
+    expect(screen.queryAllByRole("dialog", { hidden: true })).toHaveLength(0);
+  });
+
+  click(await findNamedLink("Drive preview"));
+  const reopened = await screen.findByRole("dialog", {
+    name: "drive-report.pdf preview",
+  });
+  await waitFor(() => {
+    expect(buttonNamed("Download options", reopened)).toBeEnabled();
+  });
+  expect(within(reopened).queryByRole("status")).toBeNull();
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(popup.window.closed).toBeFalsy();
+  click(buttonNamed("Download options", reopened));
+  await waitFor(() => {
+    expect(roleItemNamed("menuitem", "Connect Google Drive")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  await userEvent.setup().keyboard("{Escape}");
+
+  sync.resolve();
+  await expect(
+    screen.findByText("Synced to Google Drive"),
+  ).resolves.toBeVisible();
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(buttonNamed("Download options", reopened)).toBeEnabled();
+});
+
 test.each([
   { state: "not-connected", dismiss: null },
   { state: "reconnect-required", dismiss: null },
@@ -542,7 +610,9 @@ test.each([
     });
     click(buttonNamed("Download options", preview));
     await waitFor(() => {
-      expect(roleItemNamed("menuitem", "Connect Google Drive")).toBeEnabled();
+      expect(
+        roleItemNamed("menuitem", "Connect Google Drive"),
+      ).not.toHaveAttribute("aria-disabled", "true");
     });
     click(roleItemNamed("menuitem", "Connect Google Drive"));
     await expect(

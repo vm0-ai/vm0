@@ -3,7 +3,7 @@ import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
-  connectorConnectionPending$,
+  connectorConnectionProgressActive$,
   registerConnectorConnectionDialog$,
 } from "../../signals/connector-connection-progress.ts";
 
@@ -31,10 +31,14 @@ export function ConnectorConnectionDialogBody({
   readonly interactive?: boolean;
 }) {
   const register = useSet(registerConnectorConnectionDialog$);
-  const pending = useGet(connectorConnectionPending$);
+  const progressActive = useGet(connectorConnectionProgressActive$);
   return (
     <div ref={register}>
-      {pending && !interactive ? <ConnectorConnectionStatus /> : children}
+      {progressActive && !interactive ? (
+        <ConnectorConnectionStatus />
+      ) : (
+        children
+      )}
     </div>
   );
 }
