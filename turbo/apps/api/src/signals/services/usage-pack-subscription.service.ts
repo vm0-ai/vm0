@@ -5,6 +5,7 @@ import {
   type UsagePackPurchasePreviewResponse,
   type UsagePackUsd,
 } from "@okouai/api-contracts/contracts/billing";
+import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import {
   USAGE_PACK_ALLOCATION_STATUSES,
@@ -2994,11 +2995,27 @@ async function createUsagePackMemberGrants(
   }
 }
 
-async function clearNegativeOrgCreditsForFirstUsagePackUpgrade(
+async function clearNegativeOrgCreditsForFirstPaidUpgrade(
   tx: WriteTx,
   subscription: UsagePackSubscriptionRow,
   invoiceId: string,
 ): Promise<void> {
+  // Free onboarding grants also store an idempotency key in stripeInvoiceId.
+  const priorPaidCreditGrant = tx
+    .select({ id: creditExpiresRecord.id })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, subscription.orgId),
+        isNotNull(creditExpiresRecord.stripeInvoiceId),
+        inArray(creditExpiresRecord.source, [
+          "subscription_renewal",
+          "credit_purchase",
+          "auto_recharge",
+          "one_time_purchase",
+        ]),
+      ),
+    );
   const priorFulfillment = tx
     .select({
       stripeInvoiceId: usagePackInvoiceFulfillments.stripeInvoiceId,
@@ -3019,6 +3036,8 @@ async function clearNegativeOrgCreditsForFirstUsagePackUpgrade(
       and(
         eq(orgMetadata.orgId, subscription.orgId),
         lt(orgMetadata.credits, 0),
+        isNull(orgMetadata.lastProcessedInvoiceId),
+        notExists(priorPaidCreditGrant),
         notExists(priorFulfillment),
       ),
     )
@@ -3026,7 +3045,7 @@ async function clearNegativeOrgCreditsForFirstUsagePackUpgrade(
   if (cleared.length === 0) {
     return;
   }
-  L.debug("negative organization credits cleared on first usage pack upgrade", {
+  L.debug("negative organization credits cleared on first paid upgrade", {
     invoiceId,
     orgId: subscription.orgId,
     usagePackSubscriptionId: subscription.id,
@@ -3231,7 +3250,7 @@ async function commitUsagePackFulfillmentTransaction(
   }
 
   await requireCurrentFulfillmentAllocations(tx, lockedSubscription, args);
-  await clearNegativeOrgCreditsForFirstUsagePackUpgrade(
+  await clearNegativeOrgCreditsForFirstPaidUpgrade(
     tx,
     lockedSubscription,
     args.invoice.id,

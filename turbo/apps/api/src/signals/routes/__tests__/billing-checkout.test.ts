@@ -5185,6 +5185,44 @@ describe("legacy subscription usage pack migration", () => {
     expect(persisted.subscriptionCount).toBe(0);
   });
 
+  it("preserves negative legacy credits when the first usage pack migration invoice is paid", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "pro",
+      orgId: `org_migration_debt_${randomUUID()}`,
+    });
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 4000,
+      amountPaidCents: 4000,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "pro",
+      credits: -5000,
+    });
+
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+
+    const state = await readUsagePackState(fixture.orgId, preview.migrationId);
+    expect(state.org).toMatchObject({ tier: "pro", credits: -5000 });
+    expect(state.migrations).toContainEqual(
+      expect.objectContaining({ id: preview.migrationId, status: "completed" }),
+    );
+    expect(state.grants).toHaveLength(2);
+  });
+
   it("schedules a legacy Pro-to-Team conversion at the billing boundary", async () => {
     const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
     const stripe = mockMigrationStripe({
