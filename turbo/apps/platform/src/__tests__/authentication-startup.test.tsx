@@ -9,6 +9,7 @@ import { queryAllByRoleFast, setupPage, startPage } from "./page-helper.ts";
 import frFRCommon from "../i18n/locales/fr-FR/common.json";
 import frFRCommonUrl from "../i18n/locales/fr-FR/common.json?url";
 import { testContext } from "../signals/__tests__/test-helpers.ts";
+import { createChildAbortController } from "../signals/utils.ts";
 
 const context = testContext();
 
@@ -109,11 +110,11 @@ test.each(["setupPage", "startPage"])(
   "%s does not report cancelled authentication startup as ready",
   async (entryPoint) => {
     const clerkLoad = context.mocks.clerk().runtimePending();
-    const controller = new AbortController();
+    const controller = createChildAbortController(context.signal);
     const options = {
       context: {
         ...context,
-        signal: AbortSignal.any([context.signal, controller.signal]),
+        signal: controller.signal,
       },
       host: "app.okou.ai",
       path: "/agents",
@@ -143,8 +144,8 @@ test("Cancelled locale startup does not adopt a replacement lifetime", async () 
     await localeResponse.promise;
     return HttpResponse.json(frFRCommon);
   });
-  const controller = new AbortController();
-  let currentSignal = AbortSignal.any([context.signal, controller.signal]);
+  const controller = createChildAbortController(context.signal);
+  let currentSignal = controller.signal;
   const startup = startPage({
     context: {
       ...context,

@@ -9498,13 +9498,19 @@ async function prepareRunRuntimeContext(
       ...args,
       orgId: args.createArgs.orgId,
     }),
-    resolvePreparedThreadConnectorSelections(
-      {
-        db: args.db,
-        createArgs: args.createArgs,
-        connectorScope: args.connectorScope,
+    args.timing.measure(
+      "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      "nested",
+      () => {
+        return resolvePreparedThreadConnectorSelections(
+          {
+            db: args.db,
+            createArgs: args.createArgs,
+            connectorScope: args.connectorScope,
+          },
+          signal,
+        );
       },
-      signal,
     ),
     resolvePreparedRunModelProvider(args, signal),
   ]);
@@ -9671,26 +9677,32 @@ async function connectorCatalogSelectionForRun(args: {
   readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<RunConnectorCatalogSelection> {
-  if (isEmptyRunConnectorScope(args.connectorScope)) {
-    return { kind: "empty" };
-  }
-  if (args.preloadedConnectorCatalogSnapshot !== undefined) {
-    return {
-      kind: "scoped",
-      selection: args.preloadedConnectorCatalogSnapshot,
-    };
-  }
-  const metadataConnectorSlugs =
-    await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
-      orgId: args.orgId,
-      customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
-    });
-  const selection = await loadConnectorRuntimeSelection(args.db, {
-    timing: args.timing,
-    requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
-    metadataConnectorSlugs,
-  });
-  return { kind: "scoped", selection };
+  return await args.timing.measure(
+    "api_dispatch_prepare_context_select_connector_catalog",
+    "nested",
+    async () => {
+      if (isEmptyRunConnectorScope(args.connectorScope)) {
+        return { kind: "empty" };
+      }
+      if (args.preloadedConnectorCatalogSnapshot !== undefined) {
+        return {
+          kind: "scoped",
+          selection: args.preloadedConnectorCatalogSnapshot,
+        };
+      }
+      const metadataConnectorSlugs =
+        await loadCustomConnectorPermissionBundleDependencySlugs(args.db, {
+          orgId: args.orgId,
+          customConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+        });
+      const selection = await loadConnectorRuntimeSelection(args.db, {
+        timing: args.timing,
+        requestedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
+        metadataConnectorSlugs,
+      });
+      return { kind: "scoped", selection };
+    },
+  );
 }
 
 function prepareRunOutputMetadata(args: {

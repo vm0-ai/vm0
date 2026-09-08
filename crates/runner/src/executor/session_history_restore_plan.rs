@@ -3,9 +3,10 @@
 //! Discovery builds a [`SessionHistoryRestorePlan`] after it knows whether an
 //! idle sandbox was reused and which session-history identity, if any, was
 //! parked with it. For a valid hash-backed resume, reuse can either select a
-//! verified skip or start remote materialization early. A fresh sandbox instead
-//! defers remote work so workspace preparation can first probe a matching
-//! cached sidecar.
+//! verified skip or start remote materialization early. A confirmed blank also
+//! starts remote work early without acquiring exact-reuse semantics. A fresh
+//! sandbox instead defers remote work so workspace preparation can first probe
+//! a matching cached sidecar.
 //!
 //! Fresh-workspace preparation resolves
 //! [`SessionHistoryRestorePlan::DeferredHashBacked`] into
@@ -36,6 +37,7 @@ use super::session_history_download::{SessionHistoryMaterializer, SessionHistory
 use super::telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
 use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
 use crate::http::HttpClient;
+use crate::idle_pool::IdleSandboxKind;
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
@@ -50,7 +52,7 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 /// it is discovered and recorded while consuming a verified-skip plan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionHistoryRestoreFallback {
-    /// No idle sandbox was reused for the run.
+    /// No exact-session sandbox was reused; this also includes confirmed blanks.
     NonReuse,
     /// The reused idle sandbox had no parked session-history identity.
     MissingIdleIdentity,
@@ -167,6 +169,8 @@ pub(crate) struct SessionHistoryRestorePlanInput<'a> {
     pub(crate) context: &'a ExecutionContext,
     pub(crate) cancel: CancellationToken,
     pub(crate) reuse_result: SandboxReuseResult,
+    /// Actual resource kind after selection and successful unpark, not a reservation.
+    pub(crate) idle_kind: Option<IdleSandboxKind>,
     pub(crate) restored_identity: Option<&'a RestoredSessionIdentity>,
     pub(crate) pre_spawn_timing: &'a mut RunnerPreSpawnTiming,
     pub(crate) probe: Option<&'a SessionHistoryProbe>,
@@ -176,8 +180,9 @@ pub(crate) struct SessionHistoryRestorePlanInput<'a> {
 ///
 /// Absent or non-hash-backed resume state uses the ordinary `Default` path. A
 /// reused sandbox can select `SkipVerified` or start a `Prestarted`
-/// materializer. Non-reuse produces `DeferredHashBacked` so fresh-workspace
-/// preparation gets the first opportunity to use a matching local sidecar.
+/// materializer. A confirmed blank also prestarts without changing its non-exact
+/// reuse attribution. Fresh preparation produces `DeferredHashBacked` so a
+/// matching local workspace sidecar gets the first opportunity.
 pub(crate) fn build_session_history_restore_plan(
     input: SessionHistoryRestorePlanInput<'_>,
 ) -> SessionHistoryRestorePlan {
@@ -187,6 +192,7 @@ pub(crate) fn build_session_history_restore_plan(
         context,
         cancel,
         reuse_result,
+        idle_kind,
         restored_identity,
         pre_spawn_timing,
         probe,
@@ -241,7 +247,7 @@ pub(crate) fn build_session_history_restore_plan(
         | SandboxReuseResult::UnparkFailed => Some(SessionHistoryRestoreFallback::NonReuse),
     };
 
-    if reuse_result != SandboxReuseResult::Reused {
+    if reuse_result != SandboxReuseResult::Reused && idle_kind != Some(IdleSandboxKind::Blank) {
         return SessionHistoryRestorePlan::DeferredHashBacked { fallback };
     }
 
@@ -367,6 +373,8 @@ mod tests {
             context,
             cancel: CancellationToken::new(),
             reuse_result,
+            idle_kind: (reuse_result == SandboxReuseResult::Reused)
+                .then_some(IdleSandboxKind::Exact),
             restored_identity,
             pre_spawn_timing: &mut pre_spawn_timing,
             probe: None,

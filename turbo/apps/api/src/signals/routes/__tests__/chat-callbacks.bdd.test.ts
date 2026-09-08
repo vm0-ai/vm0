@@ -2361,6 +2361,27 @@ Goal CLI:
 - Complete: \`okou goal complete\``);
     expect(appendSystemPrompt).not.toContain("okou goal pause");
 
+    const goalTimingEvents = timingEventsForAction(
+      sandboxOperationEventsForRun(second.runId),
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    );
+    expect(goalTimingEvents).toStrictEqual([
+      expect.objectContaining({
+        run_id: second.runId,
+        span_kind: "nested",
+        duration_ms: expect.any(Number),
+        run_preparation_retry_count: "0",
+      }),
+    ]);
+    for (const event of goalTimingEvents) {
+      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
+      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
+      expect(JSON.stringify(event)).not.toContain(goalBrief);
+      expect(JSON.stringify(event)).not.toContain(first.threadId);
+      expect(JSON.stringify(event)).not.toContain(actor.userId);
+    }
+
     await api.requestCancelRun(actor, second.runId, [200]);
     await waitForRunStatus(actor, second.runId, "cancelled");
     await flushWaitUntilForTest();

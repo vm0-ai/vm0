@@ -1,3 +1,4 @@
+import { fetchResource } from "../lib/resource-fetch.ts";
 import { enUS } from "@clerk/localizations/en-US";
 import { command, state } from "ccstate";
 import deDEUrl from "./clerk-localizations/de-DE.json?url";
@@ -82,9 +83,10 @@ async function fetchClerkLocalization(
   locale: NonDefaultLocale,
   signal?: AbortSignal,
 ): Promise<ClerkLocalization> {
-  const response = await fetch(
+  const response = await fetchResource(
     new URL(clerkLocalizationUrl(locale), location.href),
-    { signal },
+    {},
+    signal,
   );
   if (!response.ok) {
     throw new Error(

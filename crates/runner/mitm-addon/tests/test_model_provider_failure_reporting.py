@@ -662,6 +662,8 @@ def test_executor_submission_failure_reclaims_capacity(
     real_flow,
     model_provider_failure_api,
 ):
+    _enqueue_provider_unavailable(real_flow, tmp_path / "submit-initialized.jsonl")
+    model_provider_failure.drain_reports_for_tests()
     proxy_log_path = tmp_path / "submit-failed.jsonl"
     with patch.object(
         ThreadPoolExecutor,
@@ -670,7 +672,7 @@ def test_executor_submission_failure_reclaims_capacity(
     ):
         flow = _enqueue_provider_unavailable(real_flow, proxy_log_path)
 
-    assert model_provider_failure_api.request_count == 0
+    assert model_provider_failure_api.request_count == 1
     _assert_single_report_omission(
         proxy_log_path,
         flow_id=flow.id,
@@ -681,6 +683,74 @@ def test_executor_submission_failure_reclaims_capacity(
         tmp_path / "submit-failed-recovery.jsonl",
         model_provider_failure_api,
     )
+
+
+@pytest.mark.parametrize("started_workers", [0, 2], ids=["cold", "partial"])
+@pytest.mark.parametrize("shutdown_before_recovery", [False, True], ids=["recover", "shutdown"])
+def test_worker_start_failure_drops_reports_and_recovers_capacity(
+    tmp_path,
+    real_flow,
+    model_provider_failure_api,
+    started_workers,
+    shutdown_before_recovery,
+):
+    _restart_reporter_after_callbacks(model_provider_failure_api)
+    proxy_log_path = tmp_path / "worker-start-failed.jsonl"
+    original_start = threading.Thread.start
+    started_threads: list[threading.Thread] = []
+    failed_starts = 0
+
+    def start_with_reporter_failure(thread: threading.Thread) -> None:
+        nonlocal failed_starts
+        if thread.name.startswith("model-provider-failure_"):
+            if thread.name == f"model-provider-failure_{started_workers}":
+                failed_starts += 1
+                raise RuntimeError("can't start new thread")
+            started_threads.append(thread)
+        original_start(thread)
+
+    try:
+        with patch.object(threading.Thread, "start", start_with_reporter_failure):
+            flows = []
+            for index in range(_REPORT_CAPACITY + _REPORT_WORKERS):
+                flow = _make_flow(real_flow, proxy_log_path, response_status=503)
+                flow.metadata[metadata_keys.SANDBOX_RUN_ID] = f"run-start-failed-{index}"
+                model_provider_failure.admit_flow(flow)
+                mitm_addon.responseheaders(flow)
+                flows.append(flow)
+
+        assert failed_starts == len(flows)
+        assert all(not thread.is_alive() for thread in started_threads)
+        assert model_provider_failure_api.request_count == 0
+        model_provider_failure.drain_reports_for_tests(timeout=0)
+
+        if shutdown_before_recovery:
+            _restart_reporter_after_callbacks(model_provider_failure_api)
+
+        _enqueue_provider_unavailable(real_flow, tmp_path / "worker-start-recovered.jsonl")
+        model_provider_failure.drain_reports_for_tests()
+        _restart_reporter_after_callbacks(model_provider_failure_api)
+
+        [request] = model_provider_failure_api.requests
+        assert request.path == "/api/runners/runs/run-model-failure/model-provider-failures"
+        assert request.json_body() == {"failureKind": "provider_unavailable"}
+        omissions = _report_omissions(proxy_log_path)
+        assert len(omissions) == len(flows)
+        assert {entry["flow_id"] for entry in omissions} == {flow.id for flow in flows}
+        assert {entry["run_id"] for entry in omissions} == {
+            f"run-start-failed-{index}" for index in range(len(flows))
+        }
+        assert all(entry["reason"] == "worker_start_failed" for entry in omissions)
+        _assert_full_report_capacity(
+            real_flow,
+            tmp_path / "worker-start-capacity.jsonl",
+            model_provider_failure_api,
+        )
+    finally:
+        _restart_reporter_after_callbacks(model_provider_failure_api)
+        for thread in started_threads:
+            thread.join(timeout=1)
+            assert not thread.is_alive()
 
 
 def test_shutdown_cancels_queued_reports(

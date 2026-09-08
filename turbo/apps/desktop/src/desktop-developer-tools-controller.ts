@@ -26,7 +26,7 @@ function featureSwitchEnabledFromBody(value: unknown, key: string): boolean {
 interface DeveloperToolsControllerOptions {
   readonly getSessionAuthority: () => object | null;
   /**
-   * Session-authenticated fetch of the zero feature-switches endpoint
+   * Session-authenticated fetch of the feature-switches endpoint
    * (`getAuthSession().fetchWithSessionAuth(...)` in production).
    */
   readonly fetchFeatureSwitches: () => Promise<Response>;

@@ -14,7 +14,7 @@ ruleTester.run("no-test-after-each", rule, {
       code: `context.signal.addEventListener("abort", cleanup, { once: true });`,
     },
     {
-      code: `context.track(subscription);`,
+      code: `await load(context.signal);`,
     },
   ],
   invalid: [

@@ -11,6 +11,23 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.863.1](https://github.com/vm0-ai/vm0/compare/app-v0.863.0...app-v0.863.1) (2026-09-08)
+
+
+### Refactoring
+
+* **naming:** neutralize private constants and refresh developer branding ([#32619](https://github.com/vm0-ai/vm0/issues/32619)) ([9eb06e3](https://github.com/vm0-ai/vm0/commit/9eb06e348ade35a05771dff4209e0cb75ac6d6b8)), closes [#32601](https://github.com/vm0-ai/vm0/issues/32601)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.2
+    * @okouai/connectors bumped to 3.8.4
+    * @okouai/core bumped to 8.635.2
+    * @okouai/ui bumped to 1.6.2
+
 ## [0.863.0](https://github.com/vm0-ai/vm0/compare/app-v0.862.8...app-v0.863.0) (2026-09-08)
 
 
