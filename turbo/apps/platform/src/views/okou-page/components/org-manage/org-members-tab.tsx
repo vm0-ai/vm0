@@ -940,13 +940,21 @@ function UsagePackCell({
 }) {
   const { i18n, t } = useTranslation();
   if (!allocation) {
-    return <div className="text-[13px] text-muted-foreground">—</div>;
+    return (
+      <div className="text-[13px] text-muted-foreground">
+        {t(($) => {
+          return $.billing.plans.usagePacks.free;
+        })}
+      </div>
+    );
   }
 
   const pendingChange = allocation.pendingChange;
   const downgradeTarget =
-    pendingChange?.kind === "downgrade" && pendingChange.status !== "previewed"
-      ? pendingChange.targetUsagePackUsd
+    (pendingChange?.kind === "downgrade" ||
+      pendingChange?.kind === "removal") &&
+    pendingChange.status !== "previewed"
+      ? (pendingChange.targetUsagePackUsd ?? 0)
       : null;
   const effectiveAt =
     pendingChange?.effectiveAt ??
@@ -961,7 +969,12 @@ function UsagePackCell({
               return $.billing.plans.usagePacks.management.downgradesToDate;
             },
             {
-              package: formatUsd(downgradeTarget, 0),
+              package:
+                downgradeTarget === 0
+                  ? t(($) => {
+                      return $.billing.plans.usagePacks.free;
+                    })
+                  : formatUsd(downgradeTarget, 0),
               date: formatBillingDate(
                 effectiveAt,
                 i18n.resolvedLanguage ?? i18n.language,
@@ -972,7 +985,14 @@ function UsagePackCell({
             ($) => {
               return $.billing.plans.usagePacks.management.downgradesToPeriod;
             },
-            { package: formatUsd(downgradeTarget, 0) },
+            {
+              package:
+                downgradeTarget === 0
+                  ? t(($) => {
+                      return $.billing.plans.usagePacks.free;
+                    })
+                  : formatUsd(downgradeTarget, 0),
+            },
           );
 
   return (

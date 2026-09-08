@@ -132,7 +132,7 @@ describe("GET /api/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
-    expect(response.body.memberInvitationAllowed).toBeFalsy();
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
@@ -449,7 +449,7 @@ describe("GET /api/billing/status", () => {
     expect(response.body.tier).toBe("pro");
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
-    expect(response.body.memberInviteUsagePackRequired).toBeTruthy();
+    expect(response.body.memberInviteUsagePackRequired).toBeFalsy();
     expect(response.body.showUsagePack).toBeFalsy();
     expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
@@ -503,7 +503,7 @@ describe("GET /api/billing/status", () => {
       [200],
     );
     expect(initialResponse.body.canBuyCredits).toBeFalsy();
-    expect(initialResponse.body.memberInvitationAllowed).toBeFalsy();
+    expect(initialResponse.body.memberInvitationAllowed).toBeTruthy();
 
     await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
 

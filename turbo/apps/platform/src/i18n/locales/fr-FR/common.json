@@ -1506,6 +1506,7 @@
         "configurePackages": "Configurer les forfaits des membres",
         "credits": "Crédits",
         "currentMember": "Membre actuel",
+        "free": "Gratuit",
         "management": {
           "comparison": "Comparaison de l’abonnement actuel et du nouveau",
           "comparisonDescription": "Votre abonnement actuel et cette sélection, côte à côte",
@@ -1526,7 +1527,7 @@
           "scheduledFor": "Prévu pour le {{date}}",
           "today": "Aujourd’hui"
         },
-        "memberExclusive": "Un forfait par membre. Tout dépassement utilise des crédits à l’usage.",
+        "memberExclusive": "Les forfaits des membres sont facultatifs. Tout dépassement utilise des crédits à la consommation.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
         "migration": {
@@ -1537,7 +1538,7 @@
           "error": "Impossible de migrer cet abonnement. Actualisez la page et réessayez.",
           "invoice": "Voir la facture",
           "processing": "Planification de la conversion avec Stripe.",
-          "ready": "Choisissez un forfait mensuel obligatoire pour chaque membre et chaque invitation en attente.",
+          "ready": "Choisissez Gratuit ou un forfait mensuel pour chaque membre et invitation en attente.",
           "review": "Vérifier la conversion",
           "reviewDescription": "Comparez le forfait historique actuel au nouveau forfait récurrent avant de planifier la conversion.",
           "reviewTitle": "Vérifier la conversion du forfait",
@@ -1547,7 +1548,7 @@
         },
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
-        "packagePerMemberNote": "Chaque membre a besoin d'un pack. Vous les choisissez à l'étape suivante.",
+        "packagePerMemberNote": "À la prochaine étape, choisissez Gratuit ou un forfait payant pour chaque membre.",
         "packCredits": "{{credits}} crédits",
         "packCreditsDiscount": "{{credits}} crédits · {{discount}} % de remise",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",

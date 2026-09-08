@@ -688,7 +688,10 @@ function usagePackItemPeriod(subscription: UsagePackChangeSubscriptionInput): {
   readonly end: number;
 } {
   const usagePackItems = subscription.items.data.filter((item) => {
-    return usagePackUsdForKnownPriceId(item.price.id) !== null;
+    return (
+      isUsagePackPlanPriceId(item.price.id) ||
+      usagePackUsdForKnownPriceId(item.price.id) !== null
+    );
   });
   const first = usagePackItems[0];
   const start = first?.current_period_start;
@@ -950,6 +953,7 @@ export async function getUsagePackManagement(
   );
   return {
     tier: context.subscription.tier,
+    supportsFreeMembers: true,
     currentPeriodEnd:
       context.subscription.currentPeriodEnd?.toISOString() ?? null,
     ...(supportsMemberAdditions ? { supportsMemberAdditions: true } : {}),

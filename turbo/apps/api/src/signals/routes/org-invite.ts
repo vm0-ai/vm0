@@ -213,14 +213,6 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   if (!capabilities?.memberInvitationAllowed) {
     return memberInvitationUpgradeRequired;
   }
-  if (capabilities.memberInviteUsagePackRequired) {
-    if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
-      return providerUnavailable("Usage pack invitations are not ready");
-    }
-    return conflict(
-      "A usage pack must be purchased before inviting this member",
-    );
-  }
 
   // Clerk side effect: sends the invitation email server-side.
   const client = get(clerk$);

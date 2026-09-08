@@ -1482,6 +1482,7 @@
         "configurePackages": "구성원 패키지 설정",
         "credits": "크레딧",
         "currentMember": "현재 구성원",
+        "free": "무료",
         "management": {
           "comparison": "현재 및 새 구독 비교",
           "comparisonDescription": "현재 구독과 이번 선택을 나란히 비교",
@@ -1502,7 +1503,7 @@
           "scheduledFor": "{{date}}에 변경 예정",
           "today": "오늘"
         },
-        "memberExclusive": "구성원당 하나의 패키지가 제공됩니다. 초과 사용량에는 종량제 크레딧이 사용됩니다.",
+        "memberExclusive": "멤버 패키지는 선택 사항입니다. 초과 사용량에는 종량제 크레딧이 사용됩니다.",
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
         "migration": {
@@ -1513,7 +1514,7 @@
           "error": "이 구독을 마이그레이션하지 못했습니다. 페이지를 새로고침한 후 다시 시도하세요.",
           "invoice": "청구서 보기",
           "processing": "Stripe에서 전환을 예약하고 있습니다.",
-          "ready": "각 구성원과 대기 중인 초대에 필수 월간 패키지를 하나씩 선택하세요.",
+          "ready": "각 멤버와 초대 대기 사용자에게 무료 또는 월간 패키지를 선택하세요.",
           "review": "전환 검토",
           "reviewDescription": "전환을 예약하기 전에 현재 기존 플랜과 새로운 정기 플랜을 비교하세요.",
           "reviewTitle": "플랜 전환 검토",
@@ -1523,7 +1524,7 @@
         },
         "monthlyTotal": "월간 합계",
         "orderSummary": "주문 요약",
-        "packagePerMemberNote": "모든 멤버에게 패키지가 필요합니다. 다음 단계에서 멤버별로 선택합니다.",
+        "packagePerMemberNote": "다음 단계에서 각 멤버의 무료 또는 유료 패키지를 선택하세요.",
         "packCredits": "{{credits}} 크레딧",
         "packCreditsDiscount": "{{credits}} 크레딧 · {{discount}}% 할인",
         "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",

@@ -1506,6 +1506,7 @@
         "configurePackages": "Configurar pacotes dos membros",
         "credits": "Créditos",
         "currentMember": "Membro atual",
+        "free": "Grátis",
         "management": {
           "comparison": "Comparação entre a assinatura atual e a nova",
           "comparisonDescription": "Sua assinatura atual e esta seleção, lado a lado",
@@ -1526,7 +1527,7 @@
           "scheduledFor": "Agendado para {{date}}",
           "today": "Hoje"
         },
-        "memberExclusive": "Um pacote por membro. Qualquer uso excedente utiliza créditos pagos conforme o uso.",
+        "memberExclusive": "Os pacotes dos membros são opcionais. O uso excedente utiliza créditos pré-pagos.",
         "memberPackages": "Pacotes dos membros",
         "memberUsage": "Uso do membro",
         "migration": {
@@ -1537,7 +1538,7 @@
           "error": "Não foi possível migrar esta assinatura. Atualize a página e tente novamente.",
           "invoice": "Ver fatura",
           "processing": "Agendando a conversão com a Stripe.",
-          "ready": "Escolha um pacote mensal obrigatório para cada membro e convite pendente.",
+          "ready": "Escolha Grátis ou um pacote mensal para cada membro e convite pendente.",
           "review": "Revisar conversão",
           "reviewDescription": "Compare o plano legado atual com o novo plano recorrente antes de agendar a conversão.",
           "reviewTitle": "Revisar conversão do plano",
@@ -1547,7 +1548,7 @@
         },
         "monthlyTotal": "Total mensal",
         "orderSummary": "Resumo do pedido",
-        "packagePerMemberNote": "Cada membro precisa de um pacote. Você escolhe na próxima etapa.",
+        "packagePerMemberNote": "Na próxima etapa, escolha Grátis ou um pacote pago para cada membro.",
         "packCredits": "{{credits}} créditos",
         "packCreditsDiscount": "{{credits}} créditos · {{discount}}% de desconto",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}}% de desconto",

@@ -494,42 +494,54 @@ test("Keep People package controls restricted to administrators", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("Invite a member without a package when packages are not required", async () => {
-  const entitlement = false;
-  mockMembersStory();
-  mockMemberInviteEntitlement(entitlement);
+test.each(["free", "limited-free-1", "pro", "team"])(
+  "Invite a member without purchasing a package on %s",
+  async (tier) => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(
+      false,
+      { tier, allowed: true },
+      {
+        hasSubscription: tier === "pro" || tier === "team",
+      },
+    );
 
-  await setupPage({
-    context,
-    path: "/?settings=people",
-  });
-  await waitFor(() => {
-    expect(screen.getByRole("heading", { name: "People" })).toBeInTheDocument();
-  });
-  click(buttonByText("Add member"));
-  const inviteDialog = await screen.findByRole("dialog", {
-    name: "Invite member",
-  });
-  await fill(
-    within(inviteDialog).getByPlaceholderText("email@example.com"),
-    "legacy.invitee@example.com",
-  );
-  const send = buttonByText("Send invitation", inviteDialog);
-  await waitFor(() => {
-    expect(send).toBeEnabled();
-  });
-  expect(
-    within(inviteDialog).queryByText("Member packages"),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
-  click(send);
+    await setupPage({
+      context,
+      path: "/?settings=people",
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "People" }),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Add member"));
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Invite member",
+    });
+    await fill(
+      within(inviteDialog).getByPlaceholderText("email@example.com"),
+      "legacy.invitee@example.com",
+    );
+    const send = buttonByText("Send invitation", inviteDialog);
+    await waitFor(() => {
+      expect(send).toBeEnabled();
+    });
+    expect(
+      within(inviteDialog).queryByText("Member packages"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+    click(send);
 
-  await waitFor(() => {
-    expect(screen.getByText("legacy.invitee@example.com")).toBeInTheDocument();
-  });
-});
+    await waitFor(() => {
+      expect(
+        screen.getByText("legacy.invitee@example.com"),
+      ).toBeInTheDocument();
+    });
+  },
+);
 
-test("Choose a plan before inviting a member who needs a package", async () => {
+test("Preserve invitation restrictions reported by an older API", async () => {
   mockMembersStory();
   mockMemberInviteEntitlement(false, {
     tier: "limited-free-1",

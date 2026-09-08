@@ -229,6 +229,7 @@ const usagePackCatalogItemSchema = z.object({
 
 const usagePackCatalogResponseSchema = z.object({
   usagePacks: z.array(usagePackCatalogItemSchema),
+  supportsFreeMembers: z.boolean().optional(),
 });
 
 const usagePackCreditBalanceSchema = z.object({
@@ -260,7 +261,8 @@ const usagePackCreditsResponseSchema = usagePackCreditBalanceSchema.extend({
 
 const memberUsagePackSchema = z.object({
   memberId: z.string().min(1),
-  usagePackUsd: usagePackUsdSchema,
+  // Free members have no paid allocation or Stripe usage pack item.
+  usagePackUsd: z.union([z.literal(0), usagePackUsdSchema]),
 });
 export type MemberUsagePack = z.infer<typeof memberUsagePackSchema>;
 export type UsagePackCatalogItem = z.infer<typeof usagePackCatalogItemSchema>;
@@ -303,6 +305,7 @@ const usagePackManagementResponseSchema = z.object({
   tier: z.enum(["pro", "team"]),
   currentPeriodEnd: z.iso.datetime().nullable(),
   supportsMemberAdditions: z.boolean().optional(),
+  supportsFreeMembers: z.boolean().optional(),
   allocations: z.array(managedUsagePackAllocationSchema),
 });
 
@@ -389,7 +392,7 @@ export type UsagePackSubscriptionChangePreviewResponse = z.infer<
 
 export const usagePackMigrationConfigurationSchema = z.object({
   tier: z.enum(["pro", "team"]),
-  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  memberUsagePacks: z.array(memberUsagePackSchema).max(1000),
   recurringAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
 });
@@ -421,9 +424,9 @@ const usagePackMigrationPreviewResponseSchema = z.object({
   nextRecurringAmountCents: z.number().int().nonnegative(),
   recurringDifferenceCents: z.number().int(),
   currency: z.string().length(3),
-  purchasedCredits: z.number().int().positive(),
-  bonusCredits: z.number().int().positive(),
-  totalCredits: z.number().int().positive(),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+  totalCredits: z.number().int().nonnegative(),
   effectiveAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
 });
@@ -877,6 +880,9 @@ export const billingUsagePackMigrationContract = c.router({
     method: "GET",
     path: "/api/billing/usage-pack-migration",
     headers: authHeadersSchema,
+    query: z
+      .object({ supportsFreeMembers: z.literal("true").optional() })
+      .optional(),
     responses: {
       200: usagePackMigrationStateResponseSchema,
       401: apiErrorSchema,

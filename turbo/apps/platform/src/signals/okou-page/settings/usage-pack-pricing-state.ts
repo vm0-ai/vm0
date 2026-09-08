@@ -6,6 +6,8 @@ import {
   type UsagePackManagementResponse,
   type UsagePackSubscriptionChangePreviewResponse,
   type UsagePackUsd,
+  type MemberUsagePack,
+  type UsagePackCatalogItem,
 } from "@okouai/api-contracts/contracts/billing";
 
 import { onRef } from "../../utils.ts";
@@ -14,15 +16,27 @@ export const MINIMUM_USAGE_PACK_USD = USAGE_PACKS_USD[0];
 
 export type { UsagePackUsd };
 export type UsagePackPlanTier = "pro" | "team";
-export type MemberUsageSelection = UsagePackUsd;
+export type MemberUsageSelection = MemberUsagePack["usagePackUsd"];
+export type MemberUsagePackOption = Omit<
+  UsagePackCatalogItem,
+  "usagePackUsd"
+> & {
+  readonly usagePackUsd: MemberUsageSelection;
+};
 
 type ManagedUsagePackAllocation =
   UsagePackManagementResponse["allocations"][number];
 
 export function managedUsagePackSelection(
   allocation: ManagedUsagePackAllocation,
-): UsagePackUsd {
+): MemberUsageSelection {
   const pendingChange = allocation.pendingChange;
+  if (
+    pendingChange?.kind === "removal" &&
+    pendingChange.status === "scheduled"
+  ) {
+    return 0;
+  }
   return pendingChange?.kind === "downgrade" &&
     pendingChange.status === "scheduled" &&
     pendingChange.targetUsagePackUsd !== null

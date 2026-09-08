@@ -1483,6 +1483,7 @@
         "configurePackages": "Configure member packages",
         "credits": "Credits",
         "currentMember": "Current member",
+        "free": "Free",
         "management": {
           "comparison": "Current and new subscription comparison",
           "comparisonDescription": "Your current subscription and this selection, side by side",
@@ -1503,7 +1504,7 @@
           "scheduledFor": "Scheduled for {{date}}",
           "today": "Today"
         },
-        "memberExclusive": "One package per member. Any overage uses pay-as-you-go credits.",
+        "memberExclusive": "Member packages are optional. Any overage uses pay-as-you-go credits.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
         "migration": {
@@ -1514,7 +1515,7 @@
           "error": "Could not migrate this subscription. Refresh and try again.",
           "invoice": "View invoice",
           "processing": "Scheduling the conversion with Stripe.",
-          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "ready": "Choose Free or a monthly package for each member and pending invitation.",
           "review": "Review conversion",
           "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
           "reviewTitle": "Review plan conversion",
@@ -1524,7 +1525,7 @@
         },
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
-        "packagePerMemberNote": "Every member needs a package. You pick each member's package in the next step.",
+        "packagePerMemberNote": "Choose Free or a paid package for each member in the next step.",
         "packCredits": "{{credits}} credits",
         "packCreditsDiscount": "{{credits}} credits · {{discount}}% off",
         "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",

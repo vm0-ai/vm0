@@ -613,7 +613,9 @@ function billingStatusResponse(args: {
     canBuyConcurrency: args.canBuyConcurrency,
     concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
-    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
+    // Keep the field for loaded browsers until the invitation purchase UI is
+    // retired. New invitations start without a paid member allocation.
+    memberInviteUsagePackRequired: false,
     showUsagePack: args.showUsagePack,
     memberInvitationAllowed: args.memberInvitationAllowed,
     autoRechargeAllowed: args.autoRechargeAllowed,

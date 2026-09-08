@@ -1506,6 +1506,7 @@
         "configurePackages": "Configurar paquetes de miembros",
         "credits": "Créditos",
         "currentMember": "Miembro actual",
+        "free": "Gratis",
         "management": {
           "comparison": "Comparación de la suscripción actual y la nueva",
           "comparisonDescription": "Tu suscripción actual y esta selección, una al lado de la otra",
@@ -1526,7 +1527,7 @@
           "scheduledFor": "Programado para el {{date}}",
           "today": "Hoy"
         },
-        "memberExclusive": "Un paquete por miembro. Cualquier uso adicional se cobra con créditos de pago por uso.",
+        "memberExclusive": "Los paquetes de miembros son opcionales. El consumo adicional usa créditos de pago por uso.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
         "migration": {
@@ -1537,7 +1538,7 @@
           "error": "No se pudo migrar esta suscripción. Actualiza la página e inténtalo de nuevo.",
           "invoice": "Ver factura",
           "processing": "Programando la conversión con Stripe.",
-          "ready": "Elige un paquete mensual obligatorio para cada miembro e invitación pendiente.",
+          "ready": "Elige Gratis o un paquete mensual para cada miembro e invitación pendiente.",
           "review": "Revisar conversión",
           "reviewDescription": "Compara el plan heredado actual con el nuevo plan recurrente antes de programar la conversión.",
           "reviewTitle": "Revisar conversión del plan",
@@ -1547,7 +1548,7 @@
         },
         "monthlyTotal": "Total mensual",
         "orderSummary": "Resumen del pedido",
-        "packagePerMemberNote": "Cada miembro necesita un paquete. Los eliges en el paso siguiente.",
+        "packagePerMemberNote": "En el siguiente paso, elige Gratis o un paquete de pago para cada miembro.",
         "packCredits": "{{credits}} créditos",
         "packCreditsDiscount": "{{credits}} créditos · {{discount}} % de descuento",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",

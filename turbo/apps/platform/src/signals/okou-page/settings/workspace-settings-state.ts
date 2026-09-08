@@ -340,7 +340,7 @@ export const memberUsagePackManagement$ = computed((get) => {
       return null;
     }
     const billing = await get(billingStatusAsync$);
-    if (billing.memberInviteUsagePackRequired !== true) {
+    if (!billing.hasSubscription) {
       return null;
     }
     return await get(usagePackManagementAsync$);

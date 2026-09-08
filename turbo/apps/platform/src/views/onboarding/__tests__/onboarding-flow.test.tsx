@@ -9,6 +9,7 @@ import {
 import {
   billingCheckoutContract,
   billingUsagePackCheckoutContract,
+  type MemberUsagePack,
 } from "@okouai/api-contracts/contracts/billing";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
@@ -1186,10 +1187,7 @@ test("Video onboarding offers Pro with an initial usage pack", async () => {
   let usagePackCheckoutBody:
     | {
         readonly tier: "pro" | "team";
-        readonly memberUsagePacks: readonly {
-          readonly memberId: string;
-          readonly usagePackUsd: 20 | 50 | 100 | 200;
-        }[];
+        readonly memberUsagePacks: readonly MemberUsagePack[];
       }
     | undefined;
   context.mocks.api(

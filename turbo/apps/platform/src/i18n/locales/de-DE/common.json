@@ -1483,6 +1483,7 @@
         "configurePackages": "Mitgliederpakete konfigurieren",
         "credits": "Credits",
         "currentMember": "Aktuelles Mitglied",
+        "free": "Kostenlos",
         "management": {
           "comparison": "Vergleich des aktuellen und neuen Abonnements",
           "comparisonDescription": "Ihr aktuelles Abonnement und diese Auswahl im direkten Vergleich",
@@ -1503,7 +1504,7 @@
           "scheduledFor": "Geplant für {{date}}",
           "today": "Heute"
         },
-        "memberExclusive": "Ein Paket pro Mitglied. Jede Mehrnutzung wird über nutzungsabhängige Credits abgerechnet.",
+        "memberExclusive": "Mitgliederpakete sind optional. Mehrverbrauch wird mit nutzungsbasierten Guthaben abgerechnet.",
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
         "migration": {
@@ -1514,7 +1515,7 @@
           "error": "Dieses Abonnement konnte nicht migriert werden. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
           "invoice": "Rechnung anzeigen",
           "processing": "Die Umstellung wird bei Stripe geplant.",
-          "ready": "Wählen Sie für jedes Mitglied und jede ausstehende Einladung ein erforderliches monatliches Paket.",
+          "ready": "Wähle Kostenlos oder ein monatliches Paket für jedes Mitglied und jede ausstehende Einladung.",
           "review": "Umstellung prüfen",
           "reviewDescription": "Vergleichen Sie den aktuellen Legacy-Plan mit dem neuen wiederkehrenden Plan, bevor Sie die Umstellung planen.",
           "reviewTitle": "Planumstellung prüfen",
@@ -1524,7 +1525,7 @@
         },
         "monthlyTotal": "Monatliche Gesamtkosten",
         "orderSummary": "Bestellübersicht",
-        "packagePerMemberNote": "Jedes Mitglied braucht ein Paket. Die Pakete wählst du im nächsten Schritt.",
+        "packagePerMemberNote": "Wähle im nächsten Schritt Kostenlos oder ein kostenpflichtiges Paket für jedes Mitglied.",
         "packCredits": "{{credits}} Credits",
         "packCreditsDiscount": "{{credits}} Credits · {{discount}}% Rabatt",
         "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",

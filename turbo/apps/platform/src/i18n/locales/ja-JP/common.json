@@ -1482,6 +1482,7 @@
         "configurePackages": "メンバーパッケージを設定",
         "credits": "クレジット",
         "currentMember": "現在のメンバー",
+        "free": "無料",
         "management": {
           "comparison": "現在と新しいサブスクリプションの比較",
           "comparisonDescription": "現在のサブスクリプションと今回の選択を並べて比較",
@@ -1502,7 +1503,7 @@
           "scheduledFor": "{{date}}に変更予定",
           "today": "本日"
         },
-        "memberExclusive": "メンバー1人につき1パッケージです。超過分には従量課金クレジットが使用されます。",
+        "memberExclusive": "メンバーパッケージは任意です。超過分には従量課金クレジットが使用されます。",
         "memberPackages": "メンバーパッケージ",
         "memberUsage": "メンバーの利用設定",
         "migration": {
@@ -1513,7 +1514,7 @@
           "error": "このサブスクリプションを移行できませんでした。ページを更新してもう一度お試しください。",
           "invoice": "請求書を表示",
           "processing": "Stripe で切り替えを予約しています。",
-          "ready": "各メンバーと保留中の招待に必須の月額パッケージを選択してください。",
+          "ready": "各メンバーと招待中のユーザーに、無料プランまたは月額パッケージを選択してください。",
           "review": "切り替え内容を確認",
           "reviewDescription": "切り替えを予約する前に、現在の旧プランと新しい月額プランを比較します。",
           "reviewTitle": "プラン切り替えを確認",
@@ -1523,7 +1524,7 @@
         },
         "monthlyTotal": "月額合計",
         "orderSummary": "注文内容",
-        "packagePerMemberNote": "メンバーごとにパッケージが必要です。次のステップで各メンバーのパッケージを選びます。",
+        "packagePerMemberNote": "次のステップで、各メンバーの無料プランまたは有料パッケージを選択します。",
         "packCredits": "{{credits}} クレジット",
         "packCreditsDiscount": "{{credits}} クレジット · {{discount}}% オフ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
