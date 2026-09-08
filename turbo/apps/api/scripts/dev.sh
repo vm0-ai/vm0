@@ -144,7 +144,7 @@ default_tunnel_hostname() {
 
   email="$(git -C "$REPO_ROOT" config user.email 2>/dev/null || true)"
   domain="${email##*@}"
-  if [[ "$domain" != "vm0.ai" ]]; then
+  if [[ "$domain" != "okou.ai" ]]; then
     return 0
   fi
 

@@ -441,12 +441,6 @@ unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
   raise "runner bootstrap must wait for the token artifact"
 end
 bootstrap_steps = bootstrap.fetch("steps")
-legacy_provider_writer = bootstrap_steps.find do |step|
-  step.fetch("run", "").match?(/defaultProviderType:\s*"vm0"/)
-end
-if legacy_provider_writer
-  raise "runner bootstrap policy writers must not emit the legacy vm0 provider discriminator"
-end
 unless bootstrap_steps.any? do |step|
     step["uses"]&.start_with?("actions/checkout@")
   end

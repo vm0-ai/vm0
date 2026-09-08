@@ -1,7 +1,7 @@
 # Provision Runner Host Dependencies
 #
 # Idempotent playbook that installs all system-level dependencies required by
-# the VM0 runner on runner hosts. Safe to run repeatedly — all tasks use
+# the Okou runner on runner hosts. Safe to run repeatedly — all tasks use
 # idempotent operations (apt state=present, group append, file metadata convergence).
 #
 # Usage:

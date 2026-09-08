@@ -56,14 +56,14 @@ for the transport and rollout contract.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write
+https://app.okou.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write)
+[Review permission](https://app.okou.ai/agents/c0000000-0000-4000-a000-000000000001/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
 
-Absolute URLs must use an allowed VM0 platform origin. Relative paths resolve
+Absolute URLs must use an allowed Okou platform origin. Relative paths resolve
 against the configured platform origin. A URL becomes a card only when its path
 and required parameters match a card parser exactly. Unrecognized links remain
 ordinary Markdown. Recognized connector and permission actions are different:
@@ -85,7 +85,7 @@ Current link-backed card patterns include:
 - platform artifact URLs such as legacy `/f/...` and `/artifacts/.../.../...`
   paths, plus hosted site URLs that support a preview. Flat V2 artifact
   paths such as `/artifacts/97ngzkxdyn.mp4` require a complete URL with an
-  allowed VM0 origin.
+  allowed Okou origin.
 
 Recognized billing-plan links render as rich upgrade cards.
 

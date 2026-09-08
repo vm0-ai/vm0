@@ -428,11 +428,10 @@ async function installationForWebhook(
 
 function buildOfficialSlackHelpMessage(args: {
   readonly installation: SlackInstallation | undefined;
-  readonly publicBrand: PublicBrand;
   readonly canSwitch: boolean;
   readonly canModel: boolean;
 }): SlackAnyBlock[] {
-  return buildHelpMessage(args.publicBrand, {
+  return buildHelpMessage({
     canSwitch: args.canSwitch,
     canModel: args.canModel,
     botUserId: args.installation?.botUserId,
@@ -1098,7 +1097,6 @@ const refreshOrgAppHome$ = command(
       await client.publishAppHome(
         slackUserId,
         buildAppHomeView({
-          publicBrand: installation.publicBrand,
           botUserId: installation.botUserId,
           isLinked: false,
           loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, "", undefined),
@@ -1159,7 +1157,6 @@ const refreshOrgAppHome$ = command(
     await client.publishAppHome(
       slackUserId,
       buildAppHomeView({
-        publicBrand: installation.publicBrand,
         botUserId: installation.botUserId,
         isLinked: true,
         userId: connection.userId,
@@ -1368,7 +1365,6 @@ export const handleSlackCommands$ = command(
       return ephemeral(
         buildOfficialSlackHelpMessage({
           installation,
-          publicBrand,
           canSwitch: canSwitchAgents,
           canModel: await canModel(),
         }),
@@ -1457,7 +1453,6 @@ export const handleSlackCommands$ = command(
     return ephemeral(
       buildOfficialSlackHelpMessage({
         installation,
-        publicBrand,
         canSwitch: canSwitchAgents,
         canModel: await canModel(),
       }),

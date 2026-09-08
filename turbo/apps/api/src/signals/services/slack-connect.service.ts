@@ -1,5 +1,4 @@
 import { command, computed, type Computed } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
@@ -183,7 +182,6 @@ async function refreshSlackAppHome(args: {
   readonly client: SlackClient;
   readonly installation: SlackInstallation;
   readonly slackUserId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<void> {
   const [connection] = await args.db
     .select()
@@ -203,7 +201,6 @@ async function refreshSlackAppHome(args: {
     await args.client.publishAppHome(
       args.slackUserId,
       buildAppHomeView({
-        publicBrand: args.publicBrand,
         botUserId: args.installation.botUserId,
         appUrl: env("APP_URL"),
         isLinked: false,
@@ -247,7 +244,6 @@ async function refreshSlackAppHome(args: {
   await args.client.publishAppHome(
     args.slackUserId,
     buildAppHomeView({
-      publicBrand: args.publicBrand,
       botUserId: args.installation.botUserId,
       appUrl: env("APP_URL"),
       isLinked: true,
@@ -474,7 +470,6 @@ export const notifySlackConnect$ = command(
       readonly channelId?: string;
       readonly threadTs?: string;
       readonly pendingPrompt?: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -560,7 +555,6 @@ export const notifySlackConnect$ = command(
       client,
       installation: args.installation,
       slackUserId: args.slackUserId,
-      publicBrand: args.publicBrand,
     });
     signal.throwIfAborted();
   },

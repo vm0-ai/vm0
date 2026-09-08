@@ -714,8 +714,8 @@ describe("Feishu integration", () => {
   beforeEach(() => {
     oauthUserOpenId = "ou_oauth_user";
     mockEnv("APP_URL", APP_ORIGIN);
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.test");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.test");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.test");
     mockEnv("FEISHU_CALLBACK_BASE_URL", FEISHU_CALLBACK_ORIGIN);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -1364,7 +1364,7 @@ describe("Feishu integration", () => {
   });
 
   it("uses the public callback origin and accepts plaintext URL verification without an Encrypt Key", async () => {
-    const callbackOrigin = "https://tunnel-feishu.vm0.test";
+    const callbackOrigin = "https://tunnel-feishu.okou.test";
     mockEnv("FEISHU_CALLBACK_BASE_URL", callbackOrigin);
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
@@ -1488,25 +1488,14 @@ describe("Feishu integration", () => {
     expect(secondSetup.body.error.message).toBe(
       "This workspace already has a Feishu bot",
     );
-    const vm0Conflict = await accept(
+    const conflict = await accept(
       client.checkAppId({
         headers: { authorization: "Bearer clerk-session" },
         query: { appId: firstAppId },
       }),
       [409],
     );
-    expect(vm0Conflict.body.error.message).toBe(
-      "This Feishu App ID is already registered in Okou",
-    );
-    const okouConflict = await accept(
-      client.checkAppId({
-        headers: { authorization: "Bearer clerk-session" },
-        extraHeaders: { origin: "https://app.okou.ai" },
-        query: { appId: firstAppId },
-      }),
-      [409],
-    );
-    expect(okouConflict.body.error.message).toBe(
+    expect(conflict.body.error.message).toBe(
       "This Feishu App ID is already registered in Okou",
     );
     await accept(
@@ -2356,15 +2345,15 @@ describe("Feishu integration", () => {
     if (!connectUrl) {
       throw new Error("Expected Feishu status to return an OAuth connect URL");
     }
-    const vm0SignedState = requireValue(
+    const signedState = requireValue(
       new URL(connectUrl).searchParams.get("state"),
       "Expected signed Feishu connect state",
     );
-    const [vm0EncodedState] = vm0SignedState.split(".");
+    const [encodedState] = signedState.split(".");
     expect(
-      JSON.parse(Buffer.from(vm0EncodedState ?? "", "base64url").toString()),
+      JSON.parse(Buffer.from(encodedState ?? "", "base64url").toString()),
     ).toMatchObject({ publicBrand: "okou" });
-    expect(new URL(connectUrl).origin).toBe("https://api.vm0.test");
+    expect(new URL(connectUrl).origin).toBe("https://api.okou.test");
 
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,

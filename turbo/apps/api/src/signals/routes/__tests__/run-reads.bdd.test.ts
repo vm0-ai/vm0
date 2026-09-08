@@ -51,6 +51,7 @@ import {
 // unicorn/text-encoding-identifier-case.
 const UTF8_ENCODING = ["utf", "8"].join("-");
 const HOUR_MS = 60 * 60 * 1000;
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -1692,25 +1693,11 @@ describe("RUN-01: direct run admission boundaries", () => {
 
     mockEnv("ENV", "production");
     mockOptionalEnv("VERCEL_ENV", "preview");
-    const uncachedGate = await reads.requestCreateDirectRun(
-      actor,
-      {
-        agentId: compose.agentId,
-        prompt: "capture without a cached email",
-        captureNetworkBodies: true,
-      },
-      [403],
-    );
-    expectApiError(uncachedGate.body);
-    expect(uncachedGate.body.error.message).toContain("internal accounts");
-
-    // auth-me caches the caller email; a non-vm0 address still fails the gate.
-    await bdd.readMe(actor);
     const externalGate = await reads.requestCreateDirectRun(
       actor,
       {
         agentId: compose.agentId,
-        prompt: "capture with an external email",
+        prompt: "capture from a non-staff organization",
         captureNetworkBodies: true,
       },
       [403],
@@ -1718,26 +1705,24 @@ describe("RUN-01: direct run admission boundaries", () => {
     expectApiError(externalGate.body);
     expect(externalGate.body.error.message).toContain("internal accounts");
 
-    const internal = bdd.user({
-      orgId: actor.orgId,
-      email: `bdd-${randomUUID().slice(0, 8)}@vm0.ai`,
-    });
-    await bdd.readMe(internal);
+    const staff = bdd.user({ orgId: STAFF_ORG_ID });
+    await api.grantProEntitlement(staff);
+    const staffAgent = await createClaudeAgent(staff, "bdd-staff-capture");
     const allowed = await reads.requestCreateDirectRun(
-      internal,
+      staff,
       {
-        agentId: compose.agentId,
-        prompt: "capture from an internal account",
+        agentId: staffAgent.agentId,
+        prompt: "capture from a staff organization",
         captureNetworkBodies: true,
       },
       [201],
     );
     if (allowed.status !== 201) {
-      throw new Error("Expected the internal capture run create to succeed");
+      throw new Error("Expected the staff capture run create to succeed");
     }
     const captureClaim = await api.claimRunnerJob(allowed.body.runId);
     expect(captureClaim.captureNetworkBodies).toBeTruthy();
-    await api.requestCancelRun(internal, allowed.body.runId, [200]);
+    await api.requestCancelRun(staff, allowed.body.runId, [200]);
   });
 });
 

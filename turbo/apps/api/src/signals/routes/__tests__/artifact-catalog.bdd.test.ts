@@ -1079,7 +1079,7 @@ describe("GET /api/artifacts/catalog", () => {
     expect(new Set(collected).size).toBe(created.length);
   }, 180_000);
 
-  it("keeps a workflow run artifact under the owning vm0 user", async () => {
+  it("keeps a workflow run artifact under the owning Okou user", async () => {
     const owner = await catalogActor("Artifact catalog workflow owner");
     const run = await api.createDirectRun(owner.actor, {
       agentId: owner.agentId,

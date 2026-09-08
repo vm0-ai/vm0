@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { officialWorkflowReconciliationWork } from "@okouai/db/schema/official-workflow-catalog";
 import { workflows } from "@okouai/db/schema/workflow";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 import { and, asc, eq, gt, lte, or } from "drizzle-orm";
 
@@ -259,7 +260,7 @@ async function processClaimedWork(
       orgId: installation.orgId,
       member: { userId: installation.ownerUserId, role: "member" },
       workflowId: installation.id,
-      publicBrand: "vm0",
+      publicBrand: PUBLIC_BRAND,
       activeDefinitionOnly: true,
     });
     signal.throwIfAborted();

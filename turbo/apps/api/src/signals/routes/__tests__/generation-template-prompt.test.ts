@@ -72,7 +72,7 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.status).toBe("invalid");
   });
 
-  it("builds direct-HTML presentation guidance with the VM0 image batch command", () => {
+  it("builds direct-HTML presentation guidance with the Okou image batch command", () => {
     const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
 
     const result = buildGenerationTemplatePrompt({

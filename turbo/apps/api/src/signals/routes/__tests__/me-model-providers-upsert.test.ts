@@ -10,7 +10,7 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
-import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { mockNow, now } from "../../../lib/time";
 import { createRouteMocks } from "./helpers/route-test";
@@ -295,25 +295,6 @@ describe("POST /api/me/model-providers (upsert)", () => {
         message: 'Provider "anthropic-api-key" not found',
       },
     });
-  });
-
-  it("rejects the exact vm0 provider discriminator", async () => {
-    const fixture = uniqueOrgUser("zmmp-okou-rejected");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await setupRawAppRequest({
-      context,
-      routes: personalModelProvidersMainTestRoutes,
-    })("/api/me/model-providers", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ type: "vm0" }),
-    });
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
   });
 
   it("returns 404 for openai-api-key", async () => {

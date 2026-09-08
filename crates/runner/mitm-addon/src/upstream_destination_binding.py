@@ -1,6 +1,6 @@
 """Bind trusted authorities to concrete upstream destinations.
 
-This module records the upstream endpoint selected before VM0 API allow traffic
+This module records the upstream endpoint selected before Okou API allow traffic
 or connector credential injection can proceed. Bindings are keyed by mitmproxy
 server connection id and associated with client connection id so connection
 reuse can fall back to earlier bindings from the same client.
@@ -47,7 +47,7 @@ __all__ = (
     "server_binding_original_address",
 )
 
-# `api_allow` authorizes VM0 API traffic. `connector_auth` authorizes ordinary
+# `api_allow` authorizes Okou API traffic. `connector_auth` authorizes ordinary
 # upstream credential injection for connector firewalls.
 BindingKind = Literal["api_allow", "connector_auth"]
 

@@ -25,7 +25,7 @@ const categories: readonly Category[] = [
       {
         id: "daily-standup-report",
         prompt:
-          "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #all-vm0",
+          "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #team-updates",
         connectorSlugs: ["github", "sentry", "axiom", "plausible", "slack"],
       },
       {

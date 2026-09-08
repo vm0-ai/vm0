@@ -532,7 +532,6 @@ interface ChatCallbackDependencies {
       readonly userId: string;
       readonly code: string;
       readonly message: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -559,7 +558,6 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly userId: string;
       readonly orgId: string;
-      readonly publicBrand: PublicBrand;
       readonly target: FeishuDeliveryTarget;
       readonly chatEventId: string;
     },
@@ -3475,7 +3473,6 @@ async function handleWebQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3519,7 +3516,6 @@ async function handleFeishuQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3551,7 +3547,6 @@ async function handleFeishuQueuedMessageAdmissionFailure(
         chatThreadId: args.failure.threadId,
         userId: args.failure.userId,
         orgId: args.failure.orgId,
-        publicBrand: args.failure.publicBrand,
         target: args.failure.feishuDelivery,
         chatEventId: failed.assistantEventId,
       },
@@ -3590,7 +3585,6 @@ async function handleSlackQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3657,7 +3651,6 @@ async function handleTeamsQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3719,7 +3712,6 @@ async function handleTelegramQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3781,7 +3773,6 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );
@@ -3844,7 +3835,6 @@ async function handleGitHubQueuedMessageAdmissionFailure(
       userId: args.failure.userId,
       code: args.failure.error.code,
       message: args.failure.error.message,
-      publicBrand: args.failure.publicBrand,
     },
     signal,
   );

@@ -6,7 +6,7 @@
 # Usage: scripts/tunnel.sh <port>
 # Example: TUNNEL_URL=$(scripts/tunnel.sh 3000)
 #
-# If git email is @vm0.ai, creates a named tunnel with fixed domain:
+# If git email is @okou.ai, creates a named tunnel with fixed domain:
 #   tunnel-<username>-<hostname>-<service>.vm7.ai
 # Port-to-service mapping: 3000=www, 3001=api, 3002=app, 3042=marketing
 # Otherwise, creates an anonymous quick tunnel:
@@ -93,7 +93,7 @@ else
   EMAIL=$(git config user.email 2>/dev/null || true)
   DOMAIN="${EMAIL##*@}"
 
-  if [[ "$DOMAIN" == "vm0.ai" ]]; then
+  if [[ "$DOMAIN" == "okou.ai" ]]; then
     MODE="named"
     USERNAME="${EMAIL%%@*}"
     MACHINE_HOSTNAME=$(bash "$(dirname "$0")/cn.sh")

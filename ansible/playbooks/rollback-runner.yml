@@ -1,4 +1,4 @@
-# Rollback VM0 Runner (Rust) — Downgrade to a Previously-Deployed Version
+# Rollback Okou Runner (Rust) — Downgrade to a Previously-Deployed Version
 #
 # This playbook switches a host from its currently-active runner version to a
 # target version. The target version's per-version bin dir and config are
@@ -64,7 +64,7 @@
 #       Rollback does not run the newer `--warm-rootfs-cache` path because the
 #       target rollback binary may predate that flag.
 
-- name: Rollback VM0 Runner
+- name: Rollback Okou Runner
   hosts: all
   become: true
 

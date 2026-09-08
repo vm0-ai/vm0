@@ -234,7 +234,6 @@ async function deliverClaimedSlackChatCallback(
         userId: run.userId,
         runId: args.callback.runId,
         agentId: run.agentId,
-        publicBrand: payload.publicBrand,
         replyToMention:
           mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
         getFeatureOverrides: () => {

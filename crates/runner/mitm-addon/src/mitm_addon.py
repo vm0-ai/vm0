@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mitmproxy addon for VM0 runner-level network proxy.
+mitmproxy addon for the Okou runner-level network proxy.
 
 This addon runs on the runner HOST (not inside sandboxes) and:
 1. Intercepts all HTTPS requests from sandboxes
@@ -188,8 +188,8 @@ def load(loader: Loader) -> None:
     loader.add_option(
         name="vm0_api_url",
         typespec=str,
-        default="https://www.vm0.ai",
-        help="VM0 API URL for proxy endpoint",
+        default="https://api.okou.ai",
+        help="Okou API URL for proxy endpoint",
     )
     loader.add_option(
         name="vm0_proxy_registry_path",

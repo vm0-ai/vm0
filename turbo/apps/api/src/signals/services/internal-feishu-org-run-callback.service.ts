@@ -242,7 +242,6 @@ async function handleFeishuCallback(
       userId: run.userId,
       runId: args.callback.runId,
       agentId: payload.agentId ?? run.agentId,
-      publicBrand,
       defaultAgentId: installation.defaultAgentId ?? undefined,
       getFeatureOverrides: args.getFeatureOverrides,
     },
@@ -255,7 +254,6 @@ async function handleFeishuCallback(
       : (output ?? "Task completed successfully.");
   const responseMessage = buildFeishuAgentResponseMessage({
     text: responseText,
-    publicBrand,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });

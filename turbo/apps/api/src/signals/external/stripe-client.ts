@@ -1179,7 +1179,7 @@ export function constructStripeBillingWebhookEvent(
   }
 }
 
-const PAYMENT_METHOD_PORTAL_CONFIGURATION_NAME = "VM0 payment methods";
+const PAYMENT_METHOD_PORTAL_CONFIGURATION_NAME = "Okou payment methods";
 const PAYMENT_METHOD_PORTAL_CONFIGURATION_IDEMPOTENCY_KEY =
   "vm0-payment-method-portal-v1";
 const PAYMENT_METHOD_PORTAL_METADATA = {

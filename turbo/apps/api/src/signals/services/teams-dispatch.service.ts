@@ -109,8 +109,8 @@ type TeamsConnection = typeof teamsOrgConnections.$inferSelect;
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
 
 function teamsIdentity(installation: TeamsInstallation | null | undefined): {
-  readonly assistantName: "Zero" | "Okou";
-  readonly brandName: "VM0" | "Okou";
+  readonly assistantName: "Okou";
+  readonly brandName: "Okou";
   readonly botName: string;
 } {
   const presentation = PUBLIC_BRAND_PRESENTATION;

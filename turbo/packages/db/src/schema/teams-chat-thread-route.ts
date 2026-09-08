@@ -12,7 +12,7 @@ import { teamsOrgConnections } from "./teams-org-connection";
 
 /**
  * Stable mapping from one Teams user's view of a Teams reply thread to the
- * canonical VM0 chat thread that owns its queue and session chain.
+ * canonical Okou chat thread that owns its queue and session chain.
  */
 export const teamsChatThreadRoutes = pgTable(
   "teams_chat_thread_routes",

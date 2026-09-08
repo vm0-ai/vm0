@@ -71,9 +71,9 @@ explicit QA checkpoints on the final PR's exact preview SHA:
 3. Let a real email verification expire by provider wall clock and confirm the
    recovery flow. Entry-point integration tests cover the provider error
    boundary, while CI uses the real API for successful completion only.
-4. Verify VM0 branding on `app.vm0.ai`. PR app previews resolve to the Okou
-   preview domain, so Okou branding is automated while the VM0 production-host
-   boundary is a read-only live check.
+4. Verify Okou branding on `app.okou.ai`. PR app previews cover the same
+   presentation on the preview domain, while the production-host boundary
+   remains a read-only live check.
 5. Confirm forced-organization continuation on a session for which Clerk emits
    `currentTask: choose-organization`. The backend fixture creates multiple
    memberships and the suite fully asserts the chooser when the development

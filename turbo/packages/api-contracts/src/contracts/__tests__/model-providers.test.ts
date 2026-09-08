@@ -1570,21 +1570,11 @@ describe("built-in provider discriminator contract", () => {
     updatedAt: "2026-08-26T00:00:00.000Z",
   } as const;
 
-  it("recognizes only the canonical built-in discriminator", () => {
+  it("recognizes the canonical built-in discriminator", () => {
     expect(isBuiltInModelProviderType("built-in")).toBe(true);
-    for (const other of [
-      "vm0",
-      "anthropic-api-key",
-      "VM0",
-      "",
-      null,
-      undefined,
-    ]) {
-      expect(isBuiltInModelProviderType(other)).toBe(false);
-    }
   });
 
-  it("accepts built-in and rejects exact vm0 in read contracts", () => {
+  it("accepts built-in in read contracts", () => {
     expect(modelProviderTypeSchema.parse("built-in")).toBe("built-in");
     expect(modelProviderResponseSchema.parse(providerResponse).type).toBe(
       "built-in",
@@ -1592,23 +1582,9 @@ describe("built-in provider discriminator contract", () => {
     expect(orgModelPolicySchema.parse(policyResponse).defaultProviderType).toBe(
       "built-in",
     );
-
-    expect(modelProviderTypeSchema.safeParse("vm0").success).toBe(false);
-    expect(
-      modelProviderResponseSchema.safeParse({
-        ...providerResponse,
-        type: "vm0",
-      }).success,
-    ).toBe(false);
-    expect(
-      orgModelPolicySchema.safeParse({
-        ...policyResponse,
-        defaultProviderType: "vm0",
-      }).success,
-    ).toBe(false);
   });
 
-  it("accepts built-in and rejects exact vm0 in write contracts", () => {
+  it("accepts built-in in write contracts", () => {
     expect(modelProviderWriteTypeSchema.parse("built-in")).toBe("built-in");
     expect(
       upsertModelProviderRequestSchema.parse({ type: "built-in" }).type,
@@ -1631,26 +1607,10 @@ describe("built-in provider discriminator contract", () => {
         defaultProviderType: "built-in",
       }).defaultProviderType,
     ).toBe("built-in");
-
-    expect(modelProviderWriteTypeSchema.safeParse("vm0").success).toBe(false);
-    expect(
-      upsertModelProviderRequestSchema.safeParse({ type: "vm0" }).success,
-    ).toBe(false);
-    expect(
-      modelProvidersByTypeContract.delete.pathParams.safeParse({ type: "vm0" })
-        .success,
-    ).toBe(false);
-    expect(
-      updateOrgModelPolicySchema.safeParse({
-        ...policy,
-        defaultProviderType: "vm0",
-      }).success,
-    ).toBe(false);
   });
 
-  it("exposes built-in exactly once without a legacy config or firewall", () => {
+  it("exposes built-in exactly once without a firewall", () => {
     expect(MODEL_PROVIDER_TYPES).toHaveProperty("built-in");
-    expect(MODEL_PROVIDER_TYPES).not.toHaveProperty("vm0");
     expect(getFrameworkForType("built-in")).toBe("claude-code");
     expect(getModelProviderPresentationLabel("built-in")).toBe(
       "Built-in model",
@@ -1661,7 +1621,6 @@ describe("built-in provider discriminator contract", () => {
     );
     expect(getSecretNameForType("built-in")).toBeUndefined();
     expect(getModelProviderFirewall("anthropic-api-key")).toBeDefined();
-    expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("vm0");
     expect(MODEL_PROVIDER_FIREWALL_CONFIGS).not.toHaveProperty("built-in");
 
     const selectable = getSelectableProviderTypes();
@@ -1670,9 +1629,7 @@ describe("built-in provider discriminator contract", () => {
         return type === "built-in";
       }),
     ).toHaveLength(1);
-    expect(selectable).not.toContain("vm0");
     expect(getProvidersForModel("gpt-5.6-sol")).toContain("built-in");
-    expect(getProvidersForModel("gpt-5.6-sol")).not.toContain("vm0");
   });
 
   it("emits the canonical writer value from default policy seeds", () => {

@@ -94,6 +94,7 @@ import {
   isFeatureEnabled,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
+import { isStaffOrg } from "@okouai/core/staff-org";
 import {
   DEFAULT_IMAGE_MODEL_ENV,
   IMAGE_MODEL_CONFIGS,
@@ -149,7 +150,6 @@ import {
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@okouai/db/schema/secret";
-import { userCache } from "@okouai/db/schema/user-cache";
 import { builtInModelKeys } from "@okouai/db/schema/built-in-model-key";
 import { variables } from "@okouai/db/schema/variable";
 import type { PersistedStorageMount } from "@okouai/db/types";
@@ -6204,22 +6204,15 @@ function resolveAgentExecution(
   );
 }
 
-async function enforceCaptureNetworkBodiesGate(
-  db: Db,
-  userId: string,
+function enforceCaptureNetworkBodiesGate(
+  orgId: string,
   captureNetworkBodies: boolean | undefined,
-): Promise<CreateRunErrorResult | null> {
+): CreateRunErrorResult | null {
   if (!captureNetworkBodies || env("ENV") !== "production") {
     return null;
   }
 
-  const [cachedUser] = await db
-    .select({ email: userCache.email })
-    .from(userCache)
-    .where(eq(userCache.userId, userId))
-    .limit(1);
-
-  if (!cachedUser?.email.endsWith("@vm0.ai")) {
+  if (!isStaffOrg(orgId)) {
     return forbidden("captureNetworkBodies is restricted to internal accounts");
   }
   return null;
@@ -9899,12 +9892,10 @@ function prepareRunContext(
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
       const initialBody = initialRunBody(args);
-      const captureGate = await enforceCaptureNetworkBodiesGate(
-        db,
-        args.userId,
+      const captureGate = enforceCaptureNetworkBodiesGate(
+        args.orgId,
         initialBody.captureNetworkBodies,
       );
-      signal.throwIfAborted();
       if (captureGate) {
         return captureGate;
       }

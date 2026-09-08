@@ -72,7 +72,7 @@ export const integrationsAgentPhoneContract = c.router({
       401: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Link the authenticated VM0 user to an AgentPhone phone handle",
+    summary: "Link the authenticated Okou user to an AgentPhone phone handle",
   },
   webhook: {
     method: "POST",

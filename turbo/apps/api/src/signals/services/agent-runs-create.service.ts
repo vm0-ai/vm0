@@ -569,7 +569,6 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 
 function buildAppendSystemPrompt(args: {
   readonly agent: AgentRunRecord;
-  readonly publicBrand: PublicBrand | undefined;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
@@ -656,11 +655,8 @@ function buildAgentRunPlatformEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
-  readonly publicBrand: PublicBrand | undefined;
 }): Record<string, string> {
   return {
-    // A run source that supplies no presentation brand is a VM0 run by
-    // contract; this does not derive brand identity from token scope.
     OKOU_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
     // Chat-mode automation (and web) runs carry their thread id so the
@@ -765,7 +761,6 @@ function createRunBody(args: {
   readonly userInfo: UserInfo;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource | undefined;
-  readonly publicBrand: PublicBrand | undefined;
   readonly appendSystemPrompt: string | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
@@ -777,7 +772,6 @@ function createRunBody(args: {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
     agent: args.agent,
-    publicBrand: args.publicBrand,
     userInfo: args.userInfo,
     triggerSource,
     cloudBrowserEnabled: args.cloudBrowserEnabled,
@@ -982,7 +976,6 @@ function buildCreateAgentRunArgs(args: {
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
-      publicBrand: command.publicBrand,
       appendSystemPrompt: command.appendSystemPrompt,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: isFeatureEnabled(
@@ -1025,7 +1018,6 @@ function buildCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
-      publicBrand: command.publicBrand,
     }),
     callbacks: command.callbacks,
     includeOkouTokenSecret: true,

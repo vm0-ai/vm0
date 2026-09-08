@@ -214,7 +214,7 @@ pub struct ProxyConfig {
     pub runtime_dir: PathBuf,
     /// Exclusive lock serializing owners of proxy runtime state.
     pub runtime_lock_path: PathBuf,
-    /// VM0 API URL passed to the addon (optional).
+    /// Okou API URL passed to the addon (optional).
     pub api_url: Option<String>,
     /// Runner-runtime client session id passed to the addon for vm0 API requests.
     pub client_session_id: String,

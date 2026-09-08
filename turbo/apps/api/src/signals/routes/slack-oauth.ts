@@ -342,7 +342,6 @@ const notifyAfterConnect$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly pendingPrompt: string | null;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): void => {
@@ -356,7 +355,6 @@ const notifyAfterConnect$ = command(
               slackUserId: args.slackUserId,
               orgId: args.orgId,
               userId: args.userId,
-              publicBrand: args.publicBrand,
               ...(args.pendingPrompt
                 ? { pendingPrompt: args.pendingPrompt }
                 : {}),
@@ -429,7 +427,6 @@ const handlePlatformInstall$ = command(
         orgId: args.state.orgId,
         userId: args.state.userId,
         pendingPrompt: args.state.prompt,
-        publicBrand: args.state.publicBrand,
       },
       signal,
     );
@@ -682,7 +679,6 @@ const handleConnectCallback$ = command(
         orgId: args.state.orgId,
         userId: args.state.userId,
         pendingPrompt: args.state.prompt,
-        publicBrand: args.state.publicBrand,
       },
       signal,
     );
