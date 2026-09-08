@@ -219,61 +219,22 @@
       (function () {
         var hostname = location.hostname.toLowerCase();
         var production =
-          hostname === "vm0.ai" ||
-          hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai" ||
-          hostname.endsWith(".okou.ai");
+          hostname === "okou.ai" || hostname.endsWith(".okou.ai");
         var publishableKey = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
-        // Keep this decision in sync with
-        // src/lib/clerk-production-topology.ts: only an explicit rollback
-        // value selects the pre-cutover topology, and everything else fails
-        // closed to the deployed one.
-        var productionPrimaryAppDomain =
-          "__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__" === "app.vm0.ai"
-            ? "app.vm0.ai"
-            : "app.okou.ai";
-        var okouPrimary = productionPrimaryAppDomain === "app.okou.ai";
-        var satelliteDomain = null;
-        if (
-          production &&
-          okouPrimary &&
-          isDomainOrSubdomain(hostname, "vm0.ai")
-        ) {
-          satelliteDomain = "vm0.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app.okou.ai")
-        ) {
-          satelliteDomain = "app.okou.ai";
-        }
-        var satellite = satelliteDomain !== null;
-        var authOrigin = satellite
-          ? "https://" + productionPrimaryAppDomain
-          : location.origin;
+        var authOrigin = location.origin;
         var loadOptions = {
           afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
           signInUrl: new URL("/sign-in", authOrigin).toString(),
           signUpUrl: new URL("/sign-up", authOrigin).toString(),
         };
-        if (satellite) {
-          loadOptions.isSatellite = true;
-          loadOptions.satelliteAutoSync = true;
-        }
 
         var bootstrap = {
-          domain: satelliteDomain || undefined,
           loadOptions: loadOptions,
-          productionPrimaryAppDomain: productionPrimaryAppDomain,
           publishableKey: publishableKey,
         };
         window.__okouClerkBootstrap = bootstrap;
-
-        function isDomainOrSubdomain(value, domain) {
-          return value === domain || value.endsWith("." + domain);
-        }
 
         function startClerk() {
           var clerk = window.Clerk;
@@ -310,9 +271,6 @@
         if (!script) throw new Error("Clerk core script is unavailable");
         script.dataset.clerkJsScript = "";
         script.dataset.clerkPublishableKey = publishableKey;
-        if (satellite) {
-          script.dataset.clerkDomain = satelliteDomain;
-        }
         script.onerror = function () {
           script.remove();
         };

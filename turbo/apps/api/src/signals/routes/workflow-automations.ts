@@ -4,7 +4,6 @@ import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/wor
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import { db$ } from "../external/db";
 import {
   AUTONOMY_BUDGET_EXHAUSTED_MESSAGE,
@@ -37,6 +36,7 @@ import {
   type AutomationResult,
 } from "../services/workflow-automation.service";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const workflowAutomationReadAuth = {
   requireOrganization: true,
@@ -183,7 +183,7 @@ const createAutomationInner$ = command(
     const result = await set(
       createWorkflowAutomation$,
       { ...bodyResult.data, ...automationInputBase },
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+      PUBLIC_BRAND,
       signal,
     );
     signal.throwIfAborted();
@@ -222,8 +222,7 @@ const revealWebhookSecretInner$ = computed(async (get) => {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
     automationId: params.id,
-    publicBrand:
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+    publicBrand: PUBLIC_BRAND,
   });
   if (!secret) {
     return notFound("Workflow webhook automation not found");
@@ -361,8 +360,7 @@ const runAutomationInner$ = command(
         member: memberFromAuth(auth),
         automationId: params.id,
         ...(auth.tokenType === "agent" ? { sourceRunId: auth.runId } : {}),
-        publicBrand:
-          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
       },
       signal,
     );

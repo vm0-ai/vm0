@@ -8,7 +8,7 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { logger } from "../../lib/log";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import {
@@ -31,6 +31,7 @@ import {
   type FeishuPromptFile,
 } from "./feishu-dispatch.service";
 import { publishFeishuOrgChanged } from "./feishu-realtime.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("FeishuWebhooks");
 
@@ -354,7 +355,7 @@ async function admitInboundFeishuMessage(
 export const handleFeishuEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const request = get(request$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const params = get(pathParamsOf(feishuEventsContract.post));
     const db = set(writeDb$);
     const config = await loadFeishuInstallationConfig(

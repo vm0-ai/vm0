@@ -3,7 +3,6 @@ import { integrationsSlackUploadInitContract } from "@okouai/api-contracts/contr
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { createSlackClient } from "../external/slack-message-client";
 import { MAX_SLACK_FILE_SIZE_BYTES } from "../external/slack-file-fetcher";
@@ -12,6 +11,7 @@ import { slackOrgInstallation } from "../services/slack-data.service";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const noInstallation = Object.freeze({
   status: 404 as const,
@@ -65,8 +65,7 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         contentType,
         size: body.length,
         checksumSha256: body.canonical.checksumSha256,
-        publicBrand:
-          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
         destination: {
           channelId: body.canonical.channel,
           ...(body.canonical.threadTs

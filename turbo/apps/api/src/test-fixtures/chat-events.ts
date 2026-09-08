@@ -109,6 +109,7 @@ interface ChatEventContextFixture {
   readonly workflowName: string | null;
   readonly automationEventType: string | null;
   readonly automationEventPayload: JsonObject | null;
+  readonly automationPublicBrand: PublicBrand | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
   readonly slackBotUserId: string | null;
@@ -208,6 +209,7 @@ export async function readChatEventContextFixture(
       workflowName: chatAutomationContext.workflowName,
       automationEventType: chatAutomationContext.eventType,
       automationEventPayload: chatAutomationContext.eventPayload,
+      automationPublicBrand: chatAutomationContext.publicBrand,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
       slackBotUserId: chatSlackContext.botUserId,

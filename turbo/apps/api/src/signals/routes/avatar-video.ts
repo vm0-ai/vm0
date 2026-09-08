@@ -7,7 +7,6 @@ import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contract
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
@@ -39,6 +38,7 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const generateBody$ = bodyResultOf(avatarVideoContract.generate);
 const avatarsQuery$ = queryOf(avatarVideoContract.avatars);
@@ -197,8 +197,7 @@ const postGenerateInner$ = command(
       generationId,
     );
     signal.throwIfAborted();
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const admission = await set(
       startRunBuiltInAdmission$,
       { runId, kind: "video" },

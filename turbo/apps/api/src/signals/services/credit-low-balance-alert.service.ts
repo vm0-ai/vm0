@@ -5,7 +5,6 @@ import { orgCache } from "@okouai/db/schema/org-cache";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { users } from "@okouai/db/schema/user";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -35,7 +34,7 @@ export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 
 const L = logger("CreditLowBalanceAlert");
 function billingCreditsUrl(): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), EMAIL_PUBLIC_BRAND)}/?settings=billing&billingView=credits`;
+  return `${env("APP_URL")}/?settings=billing&billingView=credits`;
 }
 
 export interface CreditLowBalanceAlertArgs {

@@ -434,7 +434,7 @@ test("Connect and authorize a manual MCP connector", async () => {
     featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
   });
 
-  const heading = await screen.findByText("Zero needs DeepWiki to proceed");
+  const heading = await screen.findByText("Okou needs DeepWiki to proceed");
   expect(heading).toBeInTheDocument();
   click(getButtonByText("Connect"));
   const dialog = await screen.findByRole("dialog", {
@@ -520,7 +520,7 @@ test("Let an MCP server discover authentication from a directed connection", asy
   });
 
   await expect(
-    screen.findByText("Zero needs Discovery MCP to proceed"),
+    screen.findByText("Okou needs Discovery MCP to proceed"),
   ).resolves.toBeVisible();
   click(getButtonByText("Connect"));
   const dialog = await screen.findByRole("dialog", {
@@ -685,7 +685,7 @@ test("Connect and authorize a custom OAuth connector", async () => {
     path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
   });
 
-  const heading = await screen.findByText("Zero needs Acme OAuth to proceed");
+  const heading = await screen.findByText("Okou needs Acme OAuth to proceed");
   expect(heading).toBeInTheDocument();
   click(getButtonByText("Connect"));
   await screen.findByRole("dialog", { name: "Connect Acme OAuth" });
@@ -868,7 +868,7 @@ test("Preserve existing agent permissions after connecting custom OAuth", async 
     path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
   });
 
-  await screen.findByText("Zero needs Acme Permissioned OAuth to proceed");
+  await screen.findByText("Okou needs Acme Permissioned OAuth to proceed");
   click(getButtonByText("Connect"));
   await screen.findByRole("dialog", {
     name: "Connect Acme Permissioned OAuth",
@@ -938,7 +938,7 @@ test("Start public OAuth from a directed connection link", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByText("Zero needs Public GitHub to proceed"),
+      screen.getByText("Okou needs Public GitHub to proceed"),
     ).toBeInTheDocument();
   });
   click(getButtonByText("Connect"));
@@ -1013,7 +1013,7 @@ test("Connect a no-auth connector and continue the originating chat", async () =
 
   await waitFor(() => {
     expect(
-      screen.getByText("Zero needs Public Stripe to proceed"),
+      screen.getByText("Okou needs Public Stripe to proceed"),
     ).toBeInTheDocument();
   });
   click(getButtonByText("Connect"));
@@ -1065,7 +1065,7 @@ test("Complete OpenID and continue the originating chat", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByText("Zero needs Public Steam to proceed"),
+      screen.getByText("Okou needs Public Steam to proceed"),
     ).toBeInTheDocument();
   });
   click(getButtonByText("Connect"));
@@ -1223,7 +1223,7 @@ test("Connect a manual grant and continue the originating chat", async () => {
 
   await waitFor(() => {
     expect(
-      screen.getByText("Zero needs Public Axiom to proceed"),
+      screen.getByText("Okou needs Public Axiom to proceed"),
     ).toBeInTheDocument();
   });
   click(getButtonByText("Connect"));

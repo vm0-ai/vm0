@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -54,13 +53,9 @@ function buildSlackInstallUrl(args: {
   if (!clientId) {
     return null;
   }
-  const url = new URL(
-    "/api/slack/oauth/install",
-    apiUrlForPublicBrand(args.apiOrigin, args.publicBrand),
-  );
+  const url = new URL("/api/slack/oauth/install", args.apiOrigin);
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
-  url.searchParams.set("publicBrand", args.publicBrand);
   if (args.reinstall) {
     url.searchParams.set("reinstall", "1");
   }
@@ -77,13 +72,9 @@ function buildSlackConnectUrl(args: {
   if (!clientId) {
     return null;
   }
-  const url = new URL(
-    "/api/slack/oauth/connect",
-    apiUrlForPublicBrand(args.apiOrigin, args.publicBrand),
-  );
+  const url = new URL("/api/slack/oauth/connect", args.apiOrigin);
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
-  url.searchParams.set("publicBrand", args.publicBrand);
   return url.toString();
 }
 

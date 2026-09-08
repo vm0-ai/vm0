@@ -15,7 +15,7 @@ import {
   RUN_THREAD_ID,
 } from "./chat-capability-test-helpers.ts";
 
-const APP_ORIGIN = "https://app.vm0.ai";
+const APP_ORIGIN = "https://app.okou.ai";
 
 export const CONNECTOR_CONNECTION_ID = "e0000000-0000-4000-a000-000000000901";
 export const CUSTOM_CONNECTOR_ID = "e0000000-0000-4000-a000-000000000902";

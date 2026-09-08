@@ -67,7 +67,7 @@ stubTestWebUrlEnvironment("http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv(
   "CLI_PKG_URL",
-  "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+  "https://static.okou.io/okou-cli/test-commit/package.tgz",
 );
 vi.stubEnv("RESEND_API_KEY", "test-resend-key");
 vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test");

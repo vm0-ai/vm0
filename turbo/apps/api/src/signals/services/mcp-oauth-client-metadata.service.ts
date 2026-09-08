@@ -1,9 +1,5 @@
 import type { OAuthClientMetadata } from "@modelcontextprotocol/client";
 import type { OkouMcpOAuthClientMetadata } from "@okouai/api-contracts/contracts/mcp-oauth";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
@@ -15,8 +11,8 @@ const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
 export function okouMcpOAuthClientMetadata(
   request: Request,
 ): OkouMcpOAuthClientMetadata & OAuthClientMetadata {
-  const apiOrigin = apiUrlForPublicBrand(getOAuthApiOrigin(request), "okou");
-  const appOrigin = appUrlForPublicBrand(env("APP_URL"), "okou");
+  const apiOrigin = getOAuthApiOrigin(request);
+  const appOrigin = env("APP_URL");
   const metadata: OkouMcpOAuthClientMetadata & OAuthClientMetadata = {
     client_id: new URL(
       OKOU_MCP_OAUTH_CLIENT_METADATA_PATH,

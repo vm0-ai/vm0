@@ -113,7 +113,7 @@ test("Find and choose an avatar template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -191,7 +191,7 @@ test("Preview and choose a video template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -226,7 +226,7 @@ test("Open plans from a gated video template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -254,7 +254,7 @@ test("Preview and send a website template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 

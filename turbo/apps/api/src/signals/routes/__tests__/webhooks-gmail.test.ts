@@ -68,7 +68,7 @@ const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
-const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
+const GMAIL_AUDIENCE = "https://api.okou.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GMAIL_WORKSPACE_MODEL = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;

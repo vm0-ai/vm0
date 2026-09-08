@@ -42,7 +42,7 @@ test("Returning from concurrency checkout confirms purchased capacity", async ()
   await setupPage({
     context,
     path: "/agents?concurrency=purchased",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(
@@ -73,7 +73,7 @@ test("A confirmed subscription reports the paid conversion", async () => {
   await setupPage({
     context,
     path: "/agents?billing=team&billing_session_id=cs_paid_subscription",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(
@@ -175,7 +175,7 @@ test("A confirmed usage-pack purchase reports the paid conversion", async () => 
   await setupPage({
     context,
     path: "/agents?settings=billing&billingView=plans",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const plansDialog = await screen.findByRole("dialog", {

@@ -13,7 +13,6 @@ import {
   userExportStatus,
 } from "../services/user-export.service";
 import { tapError } from "../utils";
-import { publicBrand$ } from "../context/hono";
 
 const log = logger("route:user-export");
 
@@ -27,12 +26,11 @@ const getUserExportInner$ = computed(async (get) => {
 const postUserExportInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
     signal.throwIfAborted();
 
     const result = await set(
       startUserExport$,
-      { userId: auth.userId, orgId: auth.orgId, publicBrand },
+      { userId: auth.userId, orgId: auth.orgId },
       signal,
     );
     signal.throwIfAborted();
@@ -59,7 +57,6 @@ const postUserExportInner$ = command(
               jobId: result.jobId,
               userId: auth.userId,
               orgId: auth.orgId,
-              publicBrand: result.publicBrand,
             },
             backgroundSignal,
           ),

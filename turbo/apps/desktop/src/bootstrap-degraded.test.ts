@@ -74,7 +74,7 @@ async function enterDegradedMode(error: unknown): Promise<void> {
   const { enterDegradedDesktopMode } = await import("./bootstrap-degraded");
   enterDegradedDesktopMode({
     config: resolveDesktopConfig(),
-    apiBaseUrl: "https://api.vm0.ai",
+    apiBaseUrl: "https://api.okou.ai",
     error,
   });
   await vi.waitFor(() => {
@@ -110,7 +110,7 @@ describe("enterDegradedDesktopMode", () => {
     const { enterDegradedDesktopMode } = await import("./bootstrap-degraded");
     enterDegradedDesktopMode({
       config: resolveDesktopConfig(),
-      apiBaseUrl: "https://api.vm0.ai",
+      apiBaseUrl: "https://api.okou.ai",
       error: new Error("boom"),
     });
 
@@ -123,7 +123,7 @@ describe("enterDegradedDesktopMode", () => {
     await enterDegradedMode(new Error("boom"));
 
     expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledWith({
-      url: `https://api.vm0.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/${process.arch}/RELEASES.json`,
+      url: `https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/${process.arch}/RELEASES.json`,
       serverType: "json",
     });
     const dialogOptions = mocks.dialog.showMessageBox.mock.calls[0]?.[0];

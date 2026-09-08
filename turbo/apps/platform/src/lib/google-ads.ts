@@ -1,4 +1,4 @@
-import { isPlatformProductionHostname } from "@okouai/core/platform-service-origin";
+import { isOkouProductionHostname } from "@okouai/core/platform-service-origin";
 import { nowDate } from "./time.ts";
 
 const GOOGLE_TAG_SCRIPT_URL =
@@ -30,7 +30,7 @@ function createGoogleTagArguments(
 }
 
 export function initGoogleAds(): void {
-  if (!isPlatformProductionHostname(window.location.hostname)) {
+  if (!isOkouProductionHostname(window.location.hostname)) {
     return;
   }
 

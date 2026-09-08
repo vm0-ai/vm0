@@ -42,7 +42,7 @@ beforeEach(() => {
     data: { id: `resend-${randomUUID()}` },
     error: null,
   });
-  mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
+  mockEnv("RESEND_FROM_DOMAIN", "okou.io");
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });
 

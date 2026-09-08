@@ -28,11 +28,6 @@ import {
   type SharedWorkerTestTransport,
 } from "../shared-database/test-bridge.ts";
 import type { ChatThreadEventQueryResult } from "../shared-database/data-key.ts";
-import {
-  resolveClerkProductionSatelliteDomain,
-  resolveClerkProductionTopology,
-  type ClerkProductionPrimaryAppDomain,
-} from "../lib/clerk-production-topology.ts";
 import { resolvePlatformRuntimeConfig } from "../lib/platform-host.ts";
 import {
   DEFAULT_LOCALE,
@@ -112,13 +107,10 @@ interface SetupPageOptions {
   readonly path: string;
   readonly host?: string;
   /**
-   * Clerk primary app domain, injected the way the deployed HTML injects it.
-   * Defaults to the primary app domain these page tests were written against,
-   * where `app.vm0.ai` owns primary authentication and `app.okou.ai` is the
-   * satellite. Pass `null` to omit the bootstrap object entirely, which is
-   * what a build that lost the injected value produces.
+   * Pass `null` to omit the Clerk bootstrap object entirely, which is what a
+   * page that never ran the inline bootstrap produces.
    */
-  readonly primaryAppDomain?: ClerkProductionPrimaryAppDomain | null;
+  readonly clerkBootstrap?: null;
   readonly locale?: SupportedLocale;
   readonly auth?: SetupPageAuth;
   readonly debugLoggers?: string[];
@@ -191,37 +183,24 @@ function initialPageUrl(path: string, host: string): URL {
   return new URL(path, `${protocol}://${host}`);
 }
 
-// Mirrors the inline Clerk bootstrap in index.html, which publishes the
-// injected primary app domain and the load options derived from it before the
-// app module runs.
+// Mirrors the inline Clerk bootstrap in index.html, which publishes the load
+// options before the app module runs.
 function installClerkBootstrap(
   pageUrl: URL,
-  requestedPrimaryAppDomain: ClerkProductionPrimaryAppDomain | null | undefined,
+  requestedBootstrap: null | undefined,
   signal: AbortSignal,
 ): void {
   // A test that installs its own bootstrap owns the whole object.
-  if (requestedPrimaryAppDomain === null || window.__okouClerkBootstrap) {
+  if (requestedBootstrap === null || window.__okouClerkBootstrap) {
     return;
   }
-  const primaryAppDomain = requestedPrimaryAppDomain ?? "app.vm0.ai";
-  const satelliteDomain = resolveClerkProductionSatelliteDomain(
-    pageUrl.hostname,
-    primaryAppDomain,
-  );
-  const authOrigin = satelliteDomain
-    ? resolveClerkProductionTopology(primaryAppDomain).primaryAppOrigin
-    : pageUrl.origin;
+  const authOrigin = pageUrl.origin;
   window.__okouClerkBootstrap = {
-    domain: satelliteDomain ?? undefined,
     loadOptions: {
       afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
-      ...(satelliteDomain
-        ? { isSatellite: true, satelliteAutoSync: true }
-        : {}),
       signInUrl: new URL("/sign-in", authOrigin).toString(),
       signUpUrl: new URL("/sign-up", authOrigin).toString(),
     },
-    productionPrimaryAppDomain: primaryAppDomain,
     // The page selects the publishable key by hostname. Read the same source
     // the app reads so the two never disagree for a preview host.
     publishableKey: resolvePlatformRuntimeConfig().clerkPublishableKey,
@@ -286,7 +265,7 @@ async function setupPageAsync(
   const initialUrl = initialPageUrl(options.path, options.host ?? "localhost");
   mocks.browser.url(initialUrl.toString());
   createPushStateMock(signal, initialUrl);
-  installClerkBootstrap(initialUrl, options.primaryAppDomain, signal);
+  installClerkBootstrap(initialUrl, options.clerkBootstrap, signal);
 
   if (options.debugLoggers) {
     store.set(

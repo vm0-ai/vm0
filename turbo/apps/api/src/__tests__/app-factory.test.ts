@@ -635,12 +635,12 @@ describe("createApp", () => {
   describe("not found", () => {
     it.each([
       [
-        "/sign-in?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
-        "https://pr-123-app.vm6.ai/sign-in?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
+        "/sign-in?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
+        "https://pr-123-app.vm6.ai/sign-in?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
       ],
       [
-        "/sign-up/verify?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
-        "https://pr-123-app.vm6.ai/sign-up/verify?redirect_url=https%3A%2F%2Fwww.vm0.ai%2Fconnect",
+        "/sign-up/verify?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
+        "https://pr-123-app.vm6.ai/sign-up/verify?redirect_url=https%3A%2F%2Fwww.okou.ai%2Fconnect",
       ],
     ])("redirects %s to the configured app origin", async (path, expected) => {
       mockEnv("APP_URL", "https://pr-123-app.vm6.ai");
@@ -658,15 +658,15 @@ describe("createApp", () => {
     it.each([
       [
         "https://api.okou.ai",
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
         "/sign-in?redirect_url=%2Fchats",
         "https://app.okou.ai/sign-in?redirect_url=%2Fchats",
       ],
       [
-        "https://api.vm0.ai",
+        "https://api.okou.ai",
         "https://app.okou.ai",
         "/sign-up/verify?redirect_url=%2Fonboarding",
-        "https://app.vm0.ai/sign-up/verify?redirect_url=%2Fonboarding",
+        "https://app.okou.ai/sign-up/verify?redirect_url=%2Fonboarding",
       ],
     ])(
       "redirects auth requests on %s to its matching app domain",
@@ -835,12 +835,12 @@ describe("createApp", () => {
       });
       const response = await app.request("/health", {
         method: "GET",
-        headers: { origin: "https://app.vm0.ai" },
+        headers: { origin: "https://app.okou.ai" },
       });
 
       expect(response.status).toBe(200);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
       );
       expect(response.headers.get("access-control-allow-credentials")).toBe(
         "true",
@@ -922,7 +922,7 @@ describe("createApp", () => {
       const response = await app.request("/api/chat-threads", {
         method: "OPTIONS",
         headers: {
-          origin: "https://app.vm0.ai",
+          origin: "https://app.okou.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
             "authorization,x-client-version,x-client-type,x-client-product,x-client-session-id,x-client-request-id,x-chat-event-schema-version",
@@ -931,7 +931,7 @@ describe("createApp", () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get("access-control-allow-origin")).toBe(
-        "https://app.vm0.ai",
+        "https://app.okou.ai",
       );
       expect(response.headers.get("access-control-allow-methods")).toContain(
         "GET",

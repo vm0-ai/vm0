@@ -835,8 +835,8 @@ describe("POST /api/billing/downgrade", () => {
     const periodEnd = 1_785_401_751;
     const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
     const okouFallbackReturnUrl = "https://app.okou.ai";
-    const vm0FallbackReturnUrl = "https://app.vm0.ai";
-    const explicitReturnUrl = "https://app.vm0.ai/settings?settings=billing";
+    const vm0FallbackReturnUrl = "https://app.okou.ai";
+    const explicitReturnUrl = "https://app.okou.ai/settings?settings=billing";
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -849,7 +849,7 @@ describe("POST /api/billing/downgrade", () => {
         context.signal,
       ),
     );
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -925,7 +925,7 @@ describe("POST /api/billing/downgrade", () => {
       client.create({
         body: { targetTier: "pro" },
         headers: { authorization: "Bearer clerk-session" },
-        extraHeaders: { origin: "https://app.vm0.ai" },
+        extraHeaders: { origin: "https://app.okou.ai" },
       }),
       [200],
     );

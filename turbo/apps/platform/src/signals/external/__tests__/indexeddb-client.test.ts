@@ -1,4 +1,4 @@
-// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+// @vitest-environment-options {"url":"https://app.okou.ai/"}
 
 import { openDB, type DBSchema } from "idb";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";

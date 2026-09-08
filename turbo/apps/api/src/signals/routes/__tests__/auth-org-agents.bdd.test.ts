@@ -235,7 +235,7 @@ describe("AUTH-03", () => {
 
 describe("ORG-01 and ORG-02", () => {
   it("projects direct invitation redirects by request brand", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const admin = api.user();
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
@@ -255,7 +255,7 @@ describe("ORG-01 and ORG-02", () => {
       emailAddress: vm0Email,
       inviterUserId: admin.userId,
       role: "org:member",
-      redirectUrl: "https://app.vm0.ai",
+      redirectUrl: "https://app.okou.ai",
     });
 
     const okouEmail = `okou-invite-${shortId()}@example.test`;

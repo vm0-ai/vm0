@@ -102,7 +102,7 @@ test("An invitation accepted for another account offers account switching", asyn
   click(actionByName("button", "Switch account"));
 
   const dialog = await screen.findByRole("dialog", {
-    name: "Sign in to VM0",
+    name: "Sign in to Okou",
   });
   const emailAddress = within(dialog).getByLabelText("Email address");
   expect(emailAddress).toBeVisible();
@@ -128,7 +128,7 @@ test("An invitation requiring a password continues without exposing the ticket",
   await setupPage({
     context,
     path: `/sign-in?${params.toString()}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
   });
 

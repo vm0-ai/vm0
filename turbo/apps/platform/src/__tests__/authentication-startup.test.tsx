@@ -13,9 +13,9 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const PRIMARY_LOAD_OPTIONS = {
-  afterSignOutUrl: "https://app.vm0.ai/sign-in",
-  signInUrl: "https://app.vm0.ai/sign-in",
-  signUpUrl: "https://app.vm0.ai/sign-up",
+  afterSignOutUrl: "https://app.okou.ai/sign-in",
+  signInUrl: "https://app.okou.ai/sign-in",
+  signUpUrl: "https://app.okou.ai/sign-up",
 } as const;
 
 async function waitForReadySignIn(): Promise<void> {
@@ -33,7 +33,6 @@ function installEarlyBootstrap(options: {
   const bootstrap: NonNullable<Window["__okouClerkBootstrap"]> = {
     loadOptions: PRIMARY_LOAD_OPTIONS,
     loaded: options.loaded,
-    productionPrimaryAppDomain: "app.vm0.ai",
     publishableKey: "test_production_key",
   };
   if (options.clerk) {
@@ -63,7 +62,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
 
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
 
@@ -86,7 +85,7 @@ test("Authentication is ready before Platform content becomes interactive", asyn
 test("The SharedWorker owns realtime when its feature switch is enabled", async () => {
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
     featureSwitches: {
       [FeatureSwitchKey.SharedWorkerRealtime]: true,
@@ -116,7 +115,7 @@ test.each(["setupPage", "startPage"])(
         ...context,
         signal: AbortSignal.any([context.signal, controller.signal]),
       },
-      host: "app.vm0.ai",
+      host: "app.okou.ai",
       path: "/agents",
     };
     const pageReady =
@@ -153,7 +152,7 @@ test("Cancelled locale startup does not adopt a replacement lifetime", async () 
         return currentSignal;
       },
     },
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
     locale: "fr-FR",
   });
@@ -180,7 +179,7 @@ test("Authentication startup is reused without a duplicate load", async () => {
 
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
 
@@ -203,7 +202,7 @@ test("Authentication startup retries after an early failure", async () => {
 
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
@@ -235,7 +234,7 @@ test("Startup onboarding follows the current account and workspace", async () =>
   const clerk = context.mocks.clerk();
   const pageReady = setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/agents",
   });
   await statusRequested.promise;
@@ -256,11 +255,11 @@ test("Startup onboarding follows the current account and workspace", async () =>
   ).not.toBeInTheDocument();
 });
 
-test("VM0 production uses production authentication", async () => {
+test("Okou production uses production authentication", async () => {
   const clerk = context.mocks.clerk();
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
@@ -286,30 +285,19 @@ test("Authorized preview hosts use preview authentication", async () => {
   ]);
 });
 
-test("Okou lookalike hosts do not use production authentication", async () => {
-  const clerk = context.mocks.clerk();
-  await setupPage({
-    context,
-    host: "okou.ai.evil.example",
-    path: "/sign-in",
-    auth: null,
-  });
-  await waitForReadySignIn();
-  expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
-  ]);
-});
-
-test("VM0 lookalike hosts do not use production authentication", async () => {
-  const clerk = context.mocks.clerk();
-  await setupPage({
-    context,
-    host: "app.vm0.ai.evil.example",
-    path: "/sign-in",
-    auth: null,
-  });
-  await waitForReadySignIn();
-  expect(clerk.resourceRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_preview_key" },
-  ]);
-});
+test.each(["okou.ai.evil.example", "app.okou.ai.evil.example"])(
+  "Okou lookalike host %s does not use production authentication",
+  async (host) => {
+    const clerk = context.mocks.clerk();
+    await setupPage({
+      context,
+      host,
+      path: "/sign-in",
+      auth: null,
+    });
+    await waitForReadySignIn();
+    expect(clerk.resourceRequests).toStrictEqual([
+      { domain: undefined, publishableKey: "test_preview_key" },
+    ]);
+  },
+);
