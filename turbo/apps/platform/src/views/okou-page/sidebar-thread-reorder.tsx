@@ -62,7 +62,7 @@ export function ThreadPinMoveMenuItems({
           return detach(move(signals.threadId, -1, signal), Reason.DomCallback);
         }}
       >
-        <ArrowUp />
+        <ArrowUp size={16} className="mr-2" />
         {t(($) => {
           return $.chat.sidebar.movePinUp;
         })}
@@ -72,7 +72,7 @@ export function ThreadPinMoveMenuItems({
           return detach(move(signals.threadId, 1, signal), Reason.DomCallback);
         }}
       >
-        <ArrowDown />
+        <ArrowDown size={16} className="mr-2" />
         {t(($) => {
           return $.chat.sidebar.movePinDown;
         })}
