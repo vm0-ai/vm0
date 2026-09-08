@@ -10,9 +10,9 @@ use crate::error::{RunnerError, RunnerResult};
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
-/// Webhook delivery drain is handled before SIGTERM; this only bounds
-/// mitmproxy's own graceful process exit.
-const STOP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Usage webhook drain is handled before SIGTERM. Leave room for the addon's
+/// ten-second model-provider report drain, final JSONL flush, and process exit.
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Owns the direct PyInstaller bootloader, its process group, and the private
 /// directory containing its one-file extraction.

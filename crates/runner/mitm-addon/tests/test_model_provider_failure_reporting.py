@@ -458,7 +458,7 @@ def test_connection_report_http_failure_preserves_source_and_reclaims_capacity(
     assert request.method == "POST"
     assert request.path == "/api/runners/runs/run-model-failure/model-provider-failures"
     assert request.header("authorization") == f"Bearer {id(model_provider_failure_api)}"
-    assert request_timeouts == [3]
+    assert request_timeouts == [10]
     _assert_single_reclaimed_report_slot(
         real_flow,
         tmp_path / "connection-http-error-recovery.jsonl",

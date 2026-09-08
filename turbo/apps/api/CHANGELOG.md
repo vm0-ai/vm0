@@ -8,6 +8,35 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.567.0](https://github.com/vm0-ai/vm0/compare/api-v1.566.4...api-v1.567.0) (2026-09-08)
+
+
+### Features
+
+* **pi:** route sol and luna with correct first-turn billing ([#32518](https://github.com/vm0-ai/vm0/issues/32518)) ([1ca1499](https://github.com/vm0-ai/vm0/commit/1ca1499be6c86b0a3faeb0d5e4bbf4f55c01e787))
+
+
+### Bug Fixes
+
+* include video options in agent prompts ([#32409](https://github.com/vm0-ai/vm0/issues/32409)) ([569314c](https://github.com/vm0-ai/vm0/commit/569314c1dba5f7a0aaa01cf9f42b3bc0f4cdc1ab))
+* **pi:** hand slash input to native sandbox execution ([#32509](https://github.com/vm0-ai/vm0/issues/32509)) ([0a07340](https://github.com/vm0-ai/vm0/commit/0a073409de8a9fdd5ced97fc52cfae3e1129d430)), closes [#32453](https://github.com/vm0-ai/vm0/issues/32453)
+
+
+### Refactoring
+
+* **api:** prepare official workflow queue readers for canonical contexts ([#32533](https://github.com/vm0-ai/vm0/issues/32533)) ([81f3a47](https://github.com/vm0-ai/vm0/commit/81f3a47ffb1a59f7f3e38900c0ea94f1190fd2f2))
+* **chat:** remove video model rollout fallbacks ([#32363](https://github.com/vm0-ai/vm0/issues/32363)) ([d23807b](https://github.com/vm0-ai/vm0/commit/d23807b1b0913312306777c23a7342c67b050487))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.3
+    * @okouai/core bumped to 8.634.5
+    * @okouai/db bumped to 1.245.14
+    * @okouai/pi-agent-runtime bumped to 1.22.0
+
 ## [1.566.4](https://github.com/vm0-ai/vm0/compare/api-v1.566.3...api-v1.566.4) (2026-09-08)
 
 

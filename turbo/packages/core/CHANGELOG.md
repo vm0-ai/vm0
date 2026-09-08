@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.634.5](https://github.com/vm0-ai/vm0/compare/core-v8.634.4...core-v8.634.5) (2026-09-08)
+
+
+### Refactoring
+
+* **chat:** remove video model rollout fallbacks ([#32363](https://github.com/vm0-ai/vm0/issues/32363)) ([d23807b](https://github.com/vm0-ai/vm0/commit/d23807b1b0913312306777c23a7342c67b050487))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.3
+
 ## [8.634.4](https://github.com/vm0-ai/vm0/compare/core-v8.634.3...core-v8.634.4) (2026-09-08)
 
 

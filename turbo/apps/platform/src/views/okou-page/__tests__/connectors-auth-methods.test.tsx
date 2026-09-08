@@ -26,6 +26,7 @@ import {
   getConnectorAction,
   getConnectorCard,
   getConnectorIcon,
+  getConnectorSwitch,
   listAgent,
   mockConnectors,
   mockPublicConnectorStatus,
@@ -197,9 +198,7 @@ test("Add an AWS account with an external code", async () => {
   context.mocks.data.agents([
     listAgent("c0000000-0000-4000-a000-000000000002", "Research Agent"),
   ]);
-  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledConnectorSlugs: [] });
-  });
+  mockAgentConnectorAccess("aws");
   const authWindow = createAuthWindow();
   const browserOpen = context.mocks.browser.open(authWindow);
   context.mocks.api(
@@ -262,7 +261,7 @@ test("Add an AWS account with an external code", async () => {
   ).resolves.toBeInTheDocument();
   expect(
     getConnectorAction("button", "Manage AWS access", awsCard),
-  ).toHaveTextContent("Add access");
+  ).toHaveTextContent("Used by Research Agent");
   expect(
     screen.queryByText("You've successfully connected with AWS!"),
   ).toBeNull();
@@ -271,6 +270,11 @@ test("Add an AWS account with an external code", async () => {
 test("Add an account through OpenID", async () => {
   const slug = "server-authored-steam";
   mockConnectors(context, []);
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent("c0000000-0000-4000-a000-000000000002", "Research"),
+  ]);
+  mockAgentConnectorAccess(slug);
   mockPublicConnectorStatus(context, [
     publicStatusItem({
       connectorSlug: slug,
@@ -319,6 +323,13 @@ test("Add an account through OpenID", async () => {
       "https://openid.test/partner-steam/authorize",
     );
   });
+  storeConnectedConnector(slug, "partner-openid");
+  context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  await waitFor(() => {
+    expect(
+      getConnectorAction("button", "Manage Partner Steam access"),
+    ).toHaveTextContent("Used by 2 agents");
+  });
 });
 
 test("Choose a credential-free method among multiple connection methods", async () => {
@@ -364,7 +375,7 @@ test("Choose a credential-free method among multiple connection methods", async 
   });
 });
 
-test("Keep agent access independent after a manual connection", async () => {
+test("Authorize visible agents only for the first manual account", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
@@ -386,10 +397,13 @@ test("Keep agent access independent after a manual connection", async () => {
       ],
     }),
   ]);
+  let connectedAccount: ConnectorResponse | undefined;
   context.mocks.api(
     connectorManualGrantContract.connect,
     ({ body, respond }) => {
-      return respond(200, storeConnectedConnector("axiom", body.authMethod));
+      expect(body.authorizeAgent ?? false).toBe(!connectedAccount);
+      connectedAccount = storeConnectedConnector("axiom", body.authMethod);
+      return respond(200, connectedAccount);
     },
   );
   mockAgentConnectorAccess("axiom");
@@ -424,13 +438,63 @@ test("Keep agent access independent after a manual connection", async () => {
         "Manage Public Axiom access",
         getConnectorCard("Public Axiom"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+  click(getConnectorAction("button", "Manage Public Axiom access"));
+  const access = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom access",
+  });
+  click(getConnectorSwitch("Revoke Public Axiom access for Zero", access));
+  await waitFor(() => {
+    expect(
+      getConnectorSwitch("Authorize Public Axiom access for Zero", access),
+    ).not.toBeChecked();
+  });
+  click(getConnectorAction("button", "Close", access));
+  click(getConnectorAction("button", "Manage Public Axiom accounts"));
+  const manager = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom accounts",
+  });
+  click(getConnectorAction("button", "Add account", manager));
+  const addition = await screen.findByRole("dialog", { name: "Public Axiom" });
+  await fill(
+    within(addition).getByPlaceholderText("public-xaat"),
+    "second-token",
+  );
+  click(getConnectorAction("button", "Save", addition));
+  const secondNaming = await screen.findByRole("dialog", {
+    name: "Name your Public Axiom account",
+  });
+  click(getConnectorAction("button", "Skip", secondNaming));
+  await waitFor(() => {
+    expect(
+      getConnectorAction("button", "Manage Public Axiom access"),
+    ).toHaveTextContent("Used by Research Agent");
+  });
+  click(getConnectorAction("button", "Manage Public Axiom access"));
+  const updatedAccess = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom access",
+  });
+  expect(
+    getConnectorSwitch("Authorize Public Axiom access for Zero", updatedAccess),
+  ).not.toBeChecked();
+  expect(
+    getConnectorSwitch(
+      "Revoke Public Axiom access for Research Agent",
+      updatedAccess,
+    ),
+  ).toBeChecked();
 });
 
 test("Connect through device authorization", async () => {
   mockConnectors(context, []);
+  context.mocks.data.agents([
+    listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
+    listAgent("c0000000-0000-4000-a000-000000000002", "Research"),
+  ]);
+  mockAgentConnectorAccess("base44");
   mockPublicConnectorStatus(context, [
     publicStatusItem({
       connectorSlug: "base44",
@@ -478,6 +542,9 @@ test("Connect through device authorization", async () => {
     expect(
       within(getConnectorCard("Base44")).getByText("mock-base44"),
     ).toBeInTheDocument();
+    expect(
+      getConnectorAction("button", "Manage Base44 access"),
+    ).toHaveTextContent("Used by 2 agents");
   });
 });
 
@@ -552,7 +619,7 @@ test("Enable a connector that needs no credentials", async () => {
   context.mocks.api(
     connectorNoAuthGrantContract.connect,
     ({ body, respond }) => {
-      expect(body.authorizeAgent).toBeFalsy();
+      expect(body.authorizeAgent).toBeTruthy();
       return respond(200, storeConnectedConnector("stripe", body.authMethod));
     },
   );
@@ -585,7 +652,7 @@ test("Enable a connector that needs no credentials", async () => {
         "Manage Public Stripe access",
         getConnectorCard("Public Stripe"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
   expect(browserOpen.calls).toHaveLength(0);
   expect(screen.queryByText(/You've successfully connected with/u)).toBeNull();
@@ -741,7 +808,7 @@ test("Complete OAuth only after the selected connector changes", async () => {
         "Manage Public Stripe access",
         getConnectorCard("Public Stripe"),
       ),
-    ).toHaveTextContent("Add access");
+    ).toHaveTextContent("Used by 2 agents");
   });
 });
 
@@ -862,7 +929,7 @@ test("Optionally name a newly added credential-free account", async () => {
     expect(getConnectorCard("Public Stripe")).toHaveTextContent("API key");
   });
   expect(submittedAccount).toStrictEqual({ intent: "add" });
-  expect(submittedAuthorizeAgent).toBeUndefined();
+  expect(submittedAuthorizeAgent).toBeTruthy();
 });
 
 test("Retry device authorization after a provider error", async () => {
@@ -1236,6 +1303,52 @@ test("Show an OAuth startup failure in the provider window", async () => {
     expect(authWindow.location.href).toContain("stripe-error.svg");
     expect(authWindow.closed).toBeFalsy();
   });
+});
+
+test("Retry external-code startup after an account-count lookup fails", async () => {
+  mockConnectors(context, []);
+  let summariesAvailable = true;
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return summariesAvailable
+      ? respond(200, { summaries: [] })
+      : respond(500, {
+          error: { message: "Account list unavailable", code: "UNAVAILABLE" },
+        });
+  });
+  await setupPage({ context, path: "/connectors?keywords=aws" });
+  click(
+    await waitFor(() => {
+      return getConnectorAction("button", "Connect AWS");
+    }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "AWS" });
+
+  summariesAvailable = false;
+  click(getConnectorAction("button", "Start AWS sign-in", dialog));
+
+  await expect(
+    screen.findByText("Account list unavailable"),
+  ).resolves.toBeInTheDocument();
+  const retry = await waitFor(() => {
+    const button = getConnectorAction("button", "Start AWS sign-in", dialog);
+    expect(button).toBeEnabled();
+    return button;
+  });
+  expect(
+    within(dialog).queryByTestId("connector-external-code-input"),
+  ).toBeNull();
+
+  summariesAvailable = true;
+  click(retry);
+  await fill(
+    await within(dialog).findByTestId("connector-external-code-input"),
+    "AWS-CODE",
+  );
+  click(within(dialog).getByTestId("connector-external-code-complete"));
+
+  await expect(
+    screen.findByRole("dialog", { name: "Name your AWS account" }),
+  ).resolves.toBeInTheDocument();
 });
 
 test("Recover from external-code connection errors", async () => {

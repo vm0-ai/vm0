@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -94,6 +95,55 @@ function viewAgentProfileLinks(): HTMLElement[] {
   return queryAllByRoleFast("link").filter((link) => {
     return link.getAttribute("aria-label") === "View agent profile";
   });
+}
+
+async function desktopRenderedStyle(
+  element: HTMLElement,
+  signal: AbortSignal,
+): Promise<CSSStyleDeclaration> {
+  const chatContainer = element.closest<HTMLElement>("main");
+  if (!chatContainer) {
+    throw new Error("Expected the response inside the chat container");
+  }
+
+  const compiler = await compile(
+    "@theme inline { --spacing: 4px; } @tailwind utilities;",
+  );
+  let renderedCss = compiler.build([
+    ...chatContainer.classList,
+    ...element.classList,
+  ]);
+
+  // happy-dom does not evaluate container queries, group :is/:where selectors,
+  // logical padding, or CSS length arithmetic. Lower those browser semantics
+  // after compiling the production classes so assertions observe desktop layout.
+  renderedCss = renderedCss
+    .replace(/@container \(width >= 900px\) \{\n([\s\S]*?)\n\}/gu, "$1")
+    .replace(
+      /(\.[^\s,{]+):is\(:where\((\.[^)]+)\)(\[[^\]]+\]) \*\)/gu,
+      "$2$3 $1",
+    )
+    .replace(
+      /padding-block: ([^;]+);/gu,
+      "padding-top: $1; padding-bottom: $1;",
+    )
+    .replace(/calc\(4px \* ([\d.]+)\)/gu, (_, multiplier: string) => {
+      return `${String(Number(multiplier) * 4)}px`;
+    })
+    .replaceAll("calc((2.25rem - 1lh) / 2)", "5.25px");
+
+  const styleElement = document.createElement("style");
+  styleElement.textContent = renderedCss;
+  document.head.append(styleElement);
+  signal.addEventListener(
+    "abort",
+    () => {
+      styleElement.remove();
+    },
+    { once: true },
+  );
+
+  return getComputedStyle(element);
 }
 
 test("Browse completed work by conversation phase", async () => {
@@ -583,6 +633,104 @@ test("Do not render result actions while waiting for assistant output", async ()
     document.querySelector('[data-testid="chat-event-actions"]'),
   ).toBeNull();
 });
+
+test.each([false, true])(
+  "Gate legacy waiting response spacing with work folding enabled=%s",
+  async (runWorkFoldingEnabled) => {
+    installRunChat({
+      activeRunIds: [RUN_A],
+      chatEvents: [
+        promptEvent({
+          id: "waiting-spacing-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare a response",
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+      },
+    });
+
+    await readyChat();
+    const thinking = document.querySelector<HTMLElement>(
+      "[data-thinking-indicator]",
+    );
+    const body = thinking?.querySelector<HTMLElement>(
+      ".okou-chat-bubble-assistant",
+    );
+    if (!body) {
+      throw new Error("Expected the waiting response body");
+    }
+    const style = await desktopRenderedStyle(body, context.signal);
+    expect({
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+    }).toStrictEqual(
+      runWorkFoldingEnabled
+        ? { paddingTop: "0px", paddingBottom: "0px" }
+        : { paddingTop: "16px", paddingBottom: "16px" },
+    );
+  },
+);
+
+test.each([false, true])(
+  "Gate legacy first-line spacing with work folding enabled=%s",
+  async (runWorkFoldingEnabled) => {
+    installRunChat({
+      chatEvents: [
+        promptEvent({
+          id: "response-spacing-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare a response",
+        }),
+        assistantEvent({
+          id: "response-spacing-result",
+          runId: RUN_A,
+          seqId: 2,
+          text: "The response is ready",
+        }),
+        completedEvent({
+          id: "response-spacing-terminal",
+          runId: RUN_A,
+          seqId: 3,
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+      },
+    });
+
+    await readyChat();
+    const body = screen
+      .getByText("The response is ready")
+      .closest<HTMLElement>(".okou-chat-bubble-assistant");
+    if (!body) {
+      throw new Error("Expected the assistant response body");
+    }
+    const style = await desktopRenderedStyle(body, context.signal);
+    expect({
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+      minHeight: style.minHeight,
+    }).toStrictEqual(
+      runWorkFoldingEnabled
+        ? { paddingTop: "5.25px", paddingBottom: "5.25px", minHeight: "36px" }
+        : { paddingTop: "10px", paddingBottom: "5.25px", minHeight: "36px" },
+    );
+  },
+);
 
 test("Render result actions after a run completes", async () => {
   installRunChat({
