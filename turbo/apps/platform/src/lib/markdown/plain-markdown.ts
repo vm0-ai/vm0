@@ -19,7 +19,7 @@ export function createPlainMarkdownTree(
     source.trim() !== source ||
     source.includes("\r") ||
     INLINE_RICH_SYNTAX.test(source) ||
-    (options.mathEnabled && source.includes("$")) ||
+    (options.mathEnabled && source.includes("$$")) ||
     AUTOLINK.test(source)
   ) {
     return null;

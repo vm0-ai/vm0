@@ -1,11 +1,9 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import {
   setRealtimeDegradedNotifier$,
@@ -23,11 +21,9 @@ import {
 
 const runAppRealtimeDaemons$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (get(featureSwitch$)[FeatureSwitchKey.SharedWorkerRealtime] ?? false) {
-      await get(bridgeConnected$);
-      signal.throwIfAborted();
-      set(setSharedWorkerRealtimeBridge$, get(installedSharedDatabaseBridge$));
-    }
+    await get(bridgeConnected$);
+    signal.throwIfAborted();
+    set(setSharedWorkerRealtimeBridge$, get(installedSharedDatabaseBridge$));
     await set(setupRealtime$, signal);
     signal.throwIfAborted();
     await Promise.all([

@@ -85,6 +85,13 @@
       "when": 1788778360911,
       "tag": "1089_nice_the_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 1090,
+      "version": "7",
+      "when": 1788854007814,
+      "tag": "1090_show_usage_pack",
+      "breakpoints": true
     }
   ]
 }

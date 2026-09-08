@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn readiness_log_inspection_uses_attempt_offset_and_fixed_hostname() {
+    async fn readiness_log_inspection_observes_current_attempt_query_and_result() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
         let old_row = readiness_log_row(DNS_READINESS_HOSTNAME, "query");
@@ -514,6 +514,75 @@ mod tests {
 
         assert!(observation.query_observed);
         assert!(observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_ignores_previous_attempt_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let old_rows = [
+            readiness_log_row(DNS_READINESS_HOSTNAME, "query"),
+            readiness_log_row(DNS_READINESS_HOSTNAME, "config"),
+        ]
+        .join("\n");
+        tokio::fs::write(&path, format!("{old_rows}\n"))
+            .await
+            .unwrap();
+        let start_offset = tokio::fs::metadata(&path).await.unwrap().len();
+        let mut file = tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .await
+            .unwrap();
+        file.write_all(b"{}\n").await.unwrap();
+        file.flush().await.unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, start_offset).await;
+
+        assert!(!observation.query_observed);
+        assert!(!observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_ignores_unrelated_hostname_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let rows = [
+            readiness_log_row("unrelated.example", "query"),
+            readiness_log_row("unrelated.example", "config"),
+        ]
+        .join("\n");
+        tokio::fs::write(&path, format!("{rows}\n")).await.unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, 0).await;
+
+        assert!(!observation.query_observed);
+        assert!(!observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_ignores_non_dns_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let rows = ["query", "config"].map(|event| {
+            serde_json::json!({
+                "type": "http",
+                "host": DNS_READINESS_HOSTNAME,
+                "dns_event": event,
+            })
+            .to_string()
+        });
+        tokio::fs::write(&path, format!("{}\n", rows.join("\n")))
+            .await
+            .unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, 0).await;
+
+        assert!(!observation.query_observed);
+        assert!(!observation.result_observed);
         assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
     }
 

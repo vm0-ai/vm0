@@ -217,7 +217,7 @@ test("Keep the work boundary and elapsed time stable through steer delivery and 
   expect.soft(workSummary(NEXT_RESULT)).toHaveTextContent("Worked for 8s");
 });
 
-test("Keep separate history previews, artifacts and actions on both sides of a steer in the same run", async () => {
+test("Keep separate histories, artifacts and actions on both sides of a steer in the same run", async () => {
   const oldHistory = [
     "Started the API review",
     "Checked the dependency graph",
@@ -288,19 +288,18 @@ test("Keep separate history previews, artifacts and actions on both sides of a s
   const nextGroup = assistantGroup(NEXT_RESULT);
   expect(previousGroup).not.toBe(nextGroup);
   expect(previousGroup).toContainElement(relatedArtifacts);
-  const oldPreviews = previousGroup.querySelectorAll(
-    "[data-chat-run-work-preview]",
-  );
-  expect(oldPreviews).toHaveLength(3);
-  for (const [index, text] of oldHistory.slice(-3).entries()) {
-    expect(oldPreviews[index]).toHaveTextContent(text);
+  expect(
+    previousGroup.querySelector("[data-chat-run-work-history-list]"),
+  ).toBeNull();
+  for (const text of oldHistory) {
+    expect(screen.queryByText(text)).toBeNull();
   }
-  const newPreviews = nextGroup.querySelectorAll(
-    "[data-chat-run-work-preview]",
-  );
-  expect(newPreviews).toHaveLength(1);
-  expect(newPreviews[0]).toHaveTextContent("Checked the token validation path");
-  expect(screen.queryByText("Started the API review")).toBeNull();
+  const nextHistory = screen.getByText("Checked the token validation path");
+  expect(nextHistory).toBeVisible();
+  expect(
+    nextHistory.closest("[data-chat-run-work-history-list]"),
+  ).toBeVisible();
+  expect(queryButton("Expand work history", nextGroup)).toBeNull();
   expect(queryButton("Copy message", mainResult(NEXT_RESULT))).toBeVisible();
   expect(screen.getAllByTestId("chat-event-actions")).toHaveLength(2);
   expect(nextGroup).not.toContainElement(relatedArtifacts);

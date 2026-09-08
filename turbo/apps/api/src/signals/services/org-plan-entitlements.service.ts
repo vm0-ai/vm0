@@ -95,6 +95,9 @@ export async function upsertOrgPlanEntitlement(
   );
   const memberInviteUsagePackRequired =
     args.memberInviteUsagePackRequired ?? false;
+  const showUsagePack =
+    (args.tier === "pro" || args.tier === "team") &&
+    memberInviteUsagePackRequired;
   const values = {
     orgId: args.orgId,
     planKey: args.tier,
@@ -105,6 +108,7 @@ export async function upsertOrgPlanEntitlement(
     canBuyConcurrency: limits.canBuyConcurrency,
     canBuyCredits: limits.canBuyCredits,
     memberInviteUsagePackRequired,
+    showUsagePack,
     memberInvitationAllowed: limits.memberInvitationAllowed,
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
@@ -137,6 +141,7 @@ export async function upsertOrgPlanEntitlement(
         canBuyConcurrency: values.canBuyConcurrency,
         canBuyCredits: values.canBuyCredits,
         memberInviteUsagePackRequired,
+        showUsagePack,
         memberInvitationAllowed: limits.memberInvitationAllowed,
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,

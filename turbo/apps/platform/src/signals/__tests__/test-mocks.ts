@@ -187,7 +187,7 @@ interface ImageDimensionsMockValue {
   height: number;
 }
 
-type ImageDimensionsMockResult = ImageDimensionsMockValue | null;
+type ImageDimensionsMockResult = ImageDimensionsMockValue | null | "pending";
 
 interface ImageDimensionsMock {
   readonly createdUrls: string[];
@@ -548,6 +548,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([language]);
+      },
+      languages: (languages: readonly string[]): void => {
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([...languages]);
       },
       visibilityState: (
         visibilityState: DocumentVisibilityState,
@@ -1348,19 +1352,32 @@ function mockImageDimensions(
   class TestImage extends EventTarget {
     naturalWidth = 0;
     naturalHeight = 0;
+    private source: string | undefined;
 
-    set src(_value: string) {
+    set src(value: string) {
+      this.source = value;
       const result =
         pendingResults.length > 1
           ? pendingResults.shift()
           : (pendingResults[0] ?? null);
+      if (result === "pending") {
+        return;
+      }
       if (result) {
         this.naturalWidth = result.width;
         this.naturalHeight = result.height;
       }
       queueMicrotask(() => {
-        this.dispatchEvent(new Event(result ? "load" : "error"));
+        if (this.source) {
+          this.dispatchEvent(new Event(result ? "load" : "error"));
+        }
       });
+    }
+
+    removeAttribute(name: string): void {
+      if (name === "src") {
+        this.source = undefined;
+      }
     }
   }
 

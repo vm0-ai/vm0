@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import {
+  PI_MEMORY_CITATION_OPEN,
+  PI_MEMORY_CITATION_CLOSE,
+  projectPiMemoryCitationText,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 
 interface RollbackWireFixture {
   readonly baselineCommit: string;
@@ -110,6 +115,34 @@ const fixture = JSON.parse(
 ) as RollbackWireFixture;
 
 describe("new Pi Guest to old API rollback privacy", () => {
+  it("preserves escaped examples in old activity, chat and callback consumers", () => {
+    const projection = projectPiMemoryCitationText(
+      `explain \`${PI_MEMORY_CITATION_OPEN}\` suffix ${PI_MEMORY_CITATION_OPEN}<citation_entries>private.md:1-1|note=[private note]</citation_entries>${PI_MEMORY_CITATION_CLOSE}`,
+    );
+    const visible = projection.visibleText;
+    const rollback = executeRollbackBaseline({
+      ...recordOf(fixture.wirePayload),
+      events: [
+        {
+          type: "assistant",
+          sequenceNumber: 0,
+          message: { content: [{ type: "text", text: visible }] },
+        },
+        { type: "result", sequenceNumber: 1, result: visible },
+      ],
+    });
+    expect(visible).toBe(
+      `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix `,
+    );
+    expect(rollback.chatProjection).toStrictEqual([{ content: visible }]);
+    expect(rollback.callback).toBe(visible);
+    const serialized = JSON.stringify(rollback);
+    expect(serialized).not.toContain("private.md");
+    expect(serialized).not.toContain("private note");
+    expect(serialized).not.toContain(PI_MEMORY_CITATION_OPEN);
+    expect(serialized).toContain("suffix");
+  });
+
   it("strips the exact private sidecar before every baseline consumer", () => {
     expect(fixture.baselineCommit).toBe(
       "e5cbf8b3fff605d41581d511fc890a6d87a9bdbe",

@@ -7,7 +7,7 @@
 //!
 //! Naming conventions:
 //! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
-//! - "agent log" = AI agent (Claude Code) stdout output
+//! - "agent log" = best-effort local agent-event log with backend-specific JSONL representation
 //! - "metrics" = periodic CPU/memory/disk snapshots
 //! - "sandbox ops" = operation timing records (defined in guest-telemetry, re-exported here)
 //! - runtime-file paths are scoped to the current run ID
@@ -217,12 +217,17 @@ impl GuestPaths {
 
     /// Return the `logs/agent.jsonl` path.
     ///
-    /// This best-effort JSONL stream contains the AI agent's local stdout
-    /// transcript. This accessor returns a borrowed `&str` and only derives the
-    /// path; it does not create, validate, or otherwise access the file. See
-    /// the canonical [agent log path helper][agent_log_file] for the shared
-    /// runtime layout.
+    /// This best-effort local agent-event log uses a backend-specific JSONL
+    /// representation. The Codex app-server backend writes normalized
+    /// compatibility events and may include synthesized events such as
+    /// `thread.started`; it does not store raw app-server JSON-RPC stdout. See
+    /// the [Codex normalization policy] for the mapping rules.
     ///
+    /// This accessor returns a borrowed `&str` and only derives the path; it
+    /// does not create, validate, or otherwise access the file. See the canonical
+    /// [agent log path helper][agent_log_file] for the shared runtime layout.
+    ///
+    /// [Codex normalization policy]: https://github.com/vm0-ai/vm0/blob/main/crates/guest-agent/src/cli/codex_app_server_events.rs
     /// [agent_log_file]: guest_contracts::runtime_paths::agent_log_file
     pub fn agent_log_file(&self) -> &str {
         &self.agent_log_file

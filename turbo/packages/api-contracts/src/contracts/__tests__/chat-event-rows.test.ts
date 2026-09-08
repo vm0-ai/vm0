@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
+import {
+  PI_MEMORY_CITATION_OPEN,
+  PI_MEMORY_CITATION_CLOSE,
+} from "../pi-memory-citations";
 import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
@@ -235,6 +239,22 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
       eventType: "output.message",
       content: "visible",
     });
+  });
+
+  it("repeatedly projects historical literal examples without mutating rows or leaking private bodies", () => {
+    const content = `explain \`${PI_MEMORY_CITATION_OPEN}\` suffix${PI_MEMORY_CITATION_OPEN}private path and note${PI_MEMORY_CITATION_CLOSE}`;
+    const row = canonicalRow({ payload: { content } });
+    const before = JSON.stringify(row);
+    const expected = `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix`;
+    let projected = chatEventFromRow(row);
+    expect(projected.content).toBe(expected);
+    for (let i = 0; i < 3; i++) {
+      projected = chatEventFromRow(
+        canonicalRow({ payload: { content: projected.content } }),
+      );
+      expect(projected.content).toBe(expected);
+    }
+    expect(JSON.stringify(row)).toBe(before);
   });
 
   it("reads canonical usage and error payloads", () => {

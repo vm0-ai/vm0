@@ -2,6 +2,10 @@ import { zstdDecompressSync } from "node:zlib";
 import { createServer, type ServerResponse } from "node:http";
 
 import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
+import {
+  PI_MEMORY_CITATION_OPEN,
+  PI_MEMORY_CITATION_CLOSE,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 import { materializePiAgentModelConfig } from "./credential";
 import {
   fauxAssistantMessage,
@@ -236,7 +240,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}/v1`,
           apiKey: "test-key",
           model: "gpt-5.6-terra",
-          api: "openai-responses",
           dialect: "openai-responses",
           thinkingLevel: "low",
         },
@@ -402,7 +405,11 @@ describe("Pi API facade", () => {
         let sessionJsonl: string | undefined;
         const runTurn = async (
           serviceTier: "priority" | "fast" | undefined,
-          api: "openai-completions" | "openai-codex-responses",
+          api:
+            | "openai-completions"
+            | "openai-codex-responses"
+            | "openai-responses"
+            | undefined,
         ) => {
           const result = await runPiApiFirstTurn({
             cwd: "/home/user/workspace",
@@ -443,16 +450,22 @@ describe("Pi API facade", () => {
                         : "opaque-access-token";
                     },
                   })
-                : {
-                    provider: "openai",
-                    baseUrl: `http://127.0.0.1:${address.port}/v1`,
-                    apiKey: "test-key",
-                    model: "gpt-5.6-terra",
-                    api,
-                    dialect: "openai-responses",
-                    thinkingLevel: "low",
-                    ...(serviceTier ? { serviceTier } : {}),
-                  },
+                : await materializePiAgentModelConfig({
+                    config: piModelConfigSchema.parse({
+                      provider: "openai",
+                      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+                      model: "gpt-5.6-terra",
+                      ...(api === undefined ? {} : { api }),
+                      apiKeyEnv: "OPENAI_API_KEY",
+                      credentialSecretName: "OPENAI_API_KEY",
+                      thinkingLevel: "low",
+                      ...(serviceTier ? { serviceTier } : {}),
+                    }),
+                    target: "direct",
+                    resolveCredential: () => {
+                      return "test-key";
+                    },
+                  }),
             resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
             ownership: createPiApiFirstTurnOwnership(),
           });
@@ -464,18 +477,17 @@ describe("Pi API facade", () => {
           route === "native" ? "fast" : "priority",
           "openai-codex-responses",
         );
-        const standardReturnResult = await runTurn(
-          undefined,
-          "openai-completions",
-        );
+        const standardReturnResult = await runTurn(undefined, undefined);
+        const publicResult = await runTurn(undefined, "openai-responses");
 
-        expect(providerRequests).toHaveLength(3);
+        expect(providerRequests).toHaveLength(4);
         if (route === "native") {
           expect(
             providerRequests.map((request) => {
               return request.accountId;
             }),
           ).toEqual([
+            "exact-account-id",
             "exact-account-id",
             "exact-account-id",
             "exact-account-id",
@@ -503,6 +515,10 @@ describe("Pi API facade", () => {
           },
         });
         expect(providerRequests[2]?.body).not.toHaveProperty("service_tier");
+        expect(providerRequests[3]?.body).not.toHaveProperty("service_tier");
+        expect(publicResult.assistantMessage.content).toStrictEqual([
+          { type: "text", text: "Terra API-first answer" },
+        ]);
         expect(
           inspectPiSessionJsonl(standardReturnResult.sessionJsonl),
         ).toMatchObject({
@@ -590,7 +606,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}`,
           apiKey: "test-key",
           model: "deepseek-v4-flash",
-          api: "openai-completions",
           dialect: "openai-responses",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
@@ -686,7 +701,6 @@ describe("Pi API facade", () => {
               baseUrl: `http://127.0.0.1:${address.port}/v1`,
               apiKey: "test-key",
               model: "openai/gpt-5.6-terra",
-              api: "openai-responses",
               dialect: "openai-responses",
               thinkingLevel: "low",
               serviceTier: "priority",
@@ -849,7 +863,6 @@ describe("Pi API facade", () => {
           baseUrl: `http://127.0.0.1:${address.port}/v1`,
           apiKey: "test-key",
           model: "openai/gpt-5.6-terra",
-          api: "openai-responses",
           dialect: "openai-responses",
           thinkingLevel: "low",
         },
@@ -926,7 +939,6 @@ describe("Pi API facade", () => {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "test-key",
       model: "gpt-5.6-terra",
-      api: "openai-responses",
       dialect: "openai-responses",
     });
     if (!resolvedModel) {
@@ -973,7 +985,6 @@ describe("Pi API facade", () => {
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "test-key",
       model: "gpt-5.6-terra",
-      api: "openai-responses" as const,
       dialect: "openai-responses" as const,
       thinkingLevel: "low" as const,
     };
@@ -1120,6 +1131,56 @@ describe("Pi API facade", () => {
     const exported = projectPiSessionJsonlForExport(canonical);
     expect(exported).not.toContain("<oai-mem-citation>");
     expect(exported).toContain('"errorMessage":"provider failed"');
+    expect(session.toJsonl()).toBe(canonical);
+  });
+
+  it("preserves split delimiter examples through API-first and immutable session export", () => {
+    const literal = `explain \`${PI_MEMORY_CITATION_OPEN}\` suffix`;
+    const hidden = `${PI_MEMORY_CITATION_OPEN}<citation_entries>private.md:1-1|note=[private note]</citation_entries>${PI_MEMORY_CITATION_CLOSE}`;
+    const expected = `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix`;
+    const native = fauxAssistantMessage([
+      { type: "text", text: literal.slice(0, 14) },
+      { type: "text", text: literal.slice(14) + hidden },
+    ]);
+    const projected = projectPiApiAssistantMessage(native);
+    expect(
+      projected.content
+        .filter((block) => {
+          return block.type === "text";
+        })
+        .map((block) => {
+          return block.text;
+        })
+        .join(""),
+    ).toBe(expected);
+    expect(projected.memoryCitation?.entries).toEqual([
+      { path: "private.md", lineStart: 1, lineEnd: 1, note: "private note" },
+    ]);
+    const session = MemoryPiSession.create({
+      cwd: "/workspace",
+      id: SESSION_ID,
+    });
+    session.appendMessage(native);
+    const canonical = session.toJsonl();
+    const exported = projectPiSessionJsonlForExport(canonical);
+    const exportedText = MemoryPiSession.fromJsonl(exported)
+      .buildSessionContext()
+      .messages.flatMap((message) => {
+        return message.role === "assistant"
+          ? message.content
+              .filter((block) => {
+                return block.type === "text";
+              })
+              .map((block) => {
+                return block.text;
+              })
+          : [];
+      })
+      .join("");
+    expect(exportedText).toBe(expected);
+    expect(exported).not.toContain("private.md");
+    expect(exported).not.toContain("private note");
+    expect(projectPiSessionJsonlForExport(exported)).toBe(exported);
     expect(session.toJsonl()).toBe(canonical);
   });
 

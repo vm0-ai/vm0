@@ -100,7 +100,7 @@ export function getCustomConnectorSkillName(
 }
 
 /**
- * Reserved name of the per-user memory storage that Zero auto-injects into
+ * Reserved name of the per-user memory storage that Okou auto-injects into
  * every agent run. It is owned by the user and mounted into the sandbox at a
  * framework-specific path.
  */

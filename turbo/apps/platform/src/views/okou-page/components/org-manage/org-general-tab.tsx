@@ -86,7 +86,7 @@ function ProfileSection({
     if (!modalSignal) {
       return;
     }
-    const dimensions = await readImageDimensions(file);
+    const dimensions = await readImageDimensions(file, modalSignal);
     modalSignal.throwIfAborted();
     if (!dimensions) {
       toast.error(

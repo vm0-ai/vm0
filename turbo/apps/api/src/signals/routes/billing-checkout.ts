@@ -1792,14 +1792,29 @@ const checkoutCompleteAuthed$ = command(
       );
     }
 
-    const conversion =
-      result.status === "completed"
-        ? googleAdsPaidConversion(result.paidInvoice)
-        : undefined;
+    if (result.status === "pending") {
+      return { status: 200 as const, body: { completed: false } };
+    }
+
+    if (result.status === "paid_invoice_ready") {
+      const reconciledOrgId = await set(
+        reconcilePaidStripeInvoice$,
+        result.paidInvoice,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (reconciledOrgId !== auth.orgId) {
+        throw new Error(
+          `Paid Checkout invoice ${result.paidInvoice.id} did not reconcile to org ${auth.orgId}`,
+        );
+      }
+    }
+
+    const conversion = googleAdsPaidConversion(result.paidInvoice);
     return {
       status: 200 as const,
       body: {
-        completed: result.status === "completed",
+        completed: true,
         ...(conversion ? { googleAdsConversion: conversion } : {}),
       },
     };

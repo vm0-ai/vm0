@@ -1,10 +1,12 @@
 use std::future::Future;
+use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 use tracing::warn;
 
 use super::super::error::{NetworkError, Result};
-use super::host::NetnsLifecycleOps;
+use super::host::{NetnsLifecycleOps, PoolIndexLock};
 use super::types::{NamespaceDeleteOutcome, NetnsInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -127,19 +129,30 @@ impl CreationNotifier {
 pub(super) fn spawn_creation_worker<F>(
     id: PendingId,
     kind: NetnsKind,
+    index_lock: Arc<PoolIndexLock>,
     notifier: CreationNotifier,
     future: F,
-) where
+) -> JoinHandle<()>
+where
     F: Future<Output = Result<NetnsInfo>> + Send + 'static,
 {
-    let worker = tokio::spawn(future);
+    // The worker can outlive both the pool and a cancelled completion reporter.
+    // Keep its index reserved through creation and creation-error cleanup.
+    let worker_lock = Arc::clone(&index_lock);
+    let worker = tokio::spawn(async move {
+        let _index_lock = worker_lock;
+        future.await
+    });
     tokio::spawn(async move {
+        // Failed completion delivery may delete the namespace after the worker
+        // has finished, so the reporter needs its own ownership through cleanup.
+        let _index_lock = index_lock;
         let result = match worker.await {
             Ok(result) => result,
             Err(error) => Err(join_error_to_creation_error(error, kind)),
         };
         notifier.send(CreationCompletion { id, kind, result }).await;
-    });
+    })
 }
 
 fn join_error_to_creation_error(error: tokio::task::JoinError, kind: NetnsKind) -> NetworkError {

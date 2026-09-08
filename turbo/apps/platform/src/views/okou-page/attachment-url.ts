@@ -1,3 +1,4 @@
+import { fetchResource } from "../../lib/resource-fetch.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { rewritePlatformHostname } from "@okouai/core/platform-service-origin";
 
@@ -227,11 +228,11 @@ async function fetchBlobForDownload(
   // cross-origin anchor navigation, which would open images instead.
   // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
   try {
-    const res = await fetch(fetchUrl, {
-      cache: "reload",
-      mode: "cors",
+    const res = await fetchResource(
+      fetchUrl,
+      { cache: "reload", mode: "cors" },
       signal,
-    });
+    );
     if (!res.ok) {
       throw new Error(`fetch failed: ${String(res.status)}`);
     }

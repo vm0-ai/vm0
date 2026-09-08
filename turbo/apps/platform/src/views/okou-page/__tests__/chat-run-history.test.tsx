@@ -1,14 +1,10 @@
 import { screen } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
   cancelledEvent,
@@ -95,55 +91,6 @@ function viewAgentProfileLinks(): HTMLElement[] {
   return queryAllByRoleFast("link").filter((link) => {
     return link.getAttribute("aria-label") === "View agent profile";
   });
-}
-
-async function desktopRenderedStyle(
-  element: HTMLElement,
-  signal: AbortSignal,
-): Promise<CSSStyleDeclaration> {
-  const chatContainer = element.closest<HTMLElement>("main");
-  if (!chatContainer) {
-    throw new Error("Expected the response inside the chat container");
-  }
-
-  const compiler = await compile(
-    "@theme inline { --spacing: 4px; } @tailwind utilities;",
-  );
-  let renderedCss = compiler.build([
-    ...chatContainer.classList,
-    ...element.classList,
-  ]);
-
-  // happy-dom does not evaluate container queries, group :is/:where selectors,
-  // logical padding, or CSS length arithmetic. Lower those browser semantics
-  // after compiling the production classes so assertions observe desktop layout.
-  renderedCss = renderedCss
-    .replace(/@container \(width >= 900px\) \{\n([\s\S]*?)\n\}/gu, "$1")
-    .replace(
-      /(\.[^\s,{]+):is\(:where\((\.[^)]+)\)(\[[^\]]+\]) \*\)/gu,
-      "$2$3 $1",
-    )
-    .replace(
-      /padding-block: ([^;]+);/gu,
-      "padding-top: $1; padding-bottom: $1;",
-    )
-    .replace(/calc\(4px \* ([\d.]+)\)/gu, (_, multiplier: string) => {
-      return `${String(Number(multiplier) * 4)}px`;
-    })
-    .replaceAll("calc((2.25rem - 1lh) / 2)", "5.25px");
-
-  const styleElement = document.createElement("style");
-  styleElement.textContent = renderedCss;
-  document.head.append(styleElement);
-  signal.addEventListener(
-    "abort",
-    () => {
-      styleElement.remove();
-    },
-    { once: true },
-  );
-
-  return getComputedStyle(element);
 }
 
 test("Browse completed work by conversation phase", async () => {
@@ -256,16 +203,10 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
-  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
-  await expect(
-    screen.findByText("Collected requirements"),
-  ).resolves.toBeVisible();
+  expect(screen.getByText("Collected requirements")).toBeVisible();
   expect(screen.getByText("Compared rollback options")).toBeVisible();
+  expect(screen.getByText("Checked launch dependencies")).toBeVisible();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -273,16 +214,7 @@ test("Browse completed work by conversation phase", async () => {
     "Include rollback steps",
     "Phase one final plan",
   );
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
-
-  await expect(
-    screen.findByText("Checked launch dependencies"),
-  ).resolves.toBeVisible();
   expect(screen.getByLabelText("Credit usage 7")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
   expect(screen.getByText("Plan phase two")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
@@ -343,7 +275,7 @@ test.each([
     expect(main).toBeVisible();
 
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
     expect(assistantGroupFor(main)).toContainElement(thinking);
 
@@ -480,7 +412,7 @@ test.each([
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
   },
 );
@@ -566,7 +498,7 @@ test.each(finalOutputDocuments)(
     const main = await find();
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
-    expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
+    expect(screen.getByText("Earlier output belongs in history")).toBeVisible();
     expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",
@@ -633,104 +565,6 @@ test("Do not render result actions while waiting for assistant output", async ()
     document.querySelector('[data-testid="chat-event-actions"]'),
   ).toBeNull();
 });
-
-test.each([false, true])(
-  "Gate legacy waiting response spacing with work folding enabled=%s",
-  async (runWorkFoldingEnabled) => {
-    installRunChat({
-      activeRunIds: [RUN_A],
-      chatEvents: [
-        promptEvent({
-          id: "waiting-spacing-user",
-          runId: RUN_A,
-          seqId: 1,
-          text: "Prepare a response",
-        }),
-      ],
-    });
-
-    await setupPage({
-      context,
-      path: RUN_PATH,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
-      },
-    });
-
-    await readyChat();
-    const thinking = document.querySelector<HTMLElement>(
-      "[data-thinking-indicator]",
-    );
-    const body = thinking?.querySelector<HTMLElement>(
-      ".okou-chat-bubble-assistant",
-    );
-    if (!body) {
-      throw new Error("Expected the waiting response body");
-    }
-    const style = await desktopRenderedStyle(body, context.signal);
-    expect({
-      paddingTop: style.paddingTop,
-      paddingBottom: style.paddingBottom,
-    }).toStrictEqual(
-      runWorkFoldingEnabled
-        ? { paddingTop: "0px", paddingBottom: "0px" }
-        : { paddingTop: "16px", paddingBottom: "16px" },
-    );
-  },
-);
-
-test.each([false, true])(
-  "Gate legacy first-line spacing with work folding enabled=%s",
-  async (runWorkFoldingEnabled) => {
-    installRunChat({
-      chatEvents: [
-        promptEvent({
-          id: "response-spacing-user",
-          runId: RUN_A,
-          seqId: 1,
-          text: "Prepare a response",
-        }),
-        assistantEvent({
-          id: "response-spacing-result",
-          runId: RUN_A,
-          seqId: 2,
-          text: "The response is ready",
-        }),
-        completedEvent({
-          id: "response-spacing-terminal",
-          runId: RUN_A,
-          seqId: 3,
-        }),
-      ],
-    });
-
-    await setupPage({
-      context,
-      path: RUN_PATH,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
-      },
-    });
-
-    await readyChat();
-    const body = screen
-      .getByText("The response is ready")
-      .closest<HTMLElement>(".okou-chat-bubble-assistant");
-    if (!body) {
-      throw new Error("Expected the assistant response body");
-    }
-    const style = await desktopRenderedStyle(body, context.signal);
-    expect({
-      paddingTop: style.paddingTop,
-      paddingBottom: style.paddingBottom,
-      minHeight: style.minHeight,
-    }).toStrictEqual(
-      runWorkFoldingEnabled
-        ? { paddingTop: "5.25px", paddingBottom: "5.25px", minHeight: "36px" }
-        : { paddingTop: "10px", paddingBottom: "5.25px", minHeight: "36px" },
-    );
-  },
-);
 
 test("Render result actions after a run completes", async () => {
   installRunChat({
