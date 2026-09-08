@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -326,6 +326,12 @@ test("Composer attachments show a clear upload lifecycle", async () => {
 });
 
 test("Saved image annotations return with the draft", async () => {
+  vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
+    1600,
+  );
+  vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(
+    900,
+  );
   const annotation = boxAnnotation([
     { id: "saved-mark", ordinal: 1, note: "Align this edge" },
   ]);
@@ -349,6 +355,8 @@ test("Saved image annotations return with the draft", async () => {
   click(await findNamedButton("Open image preview for saved-layout.png"));
 
   const markLayer = await screen.findByTestId("annotation-mark-layer");
-  expect(markLayer).toBeVisible();
-  expect(within(markLayer).getByText("1")).toBeVisible();
+  await waitFor(() => {
+    expect(markLayer).toBeVisible();
+    expect(within(markLayer).getByText("1")).toBeVisible();
+  });
 });
