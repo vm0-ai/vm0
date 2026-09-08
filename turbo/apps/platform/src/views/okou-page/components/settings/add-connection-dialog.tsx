@@ -66,6 +66,8 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 import { i18n } from "../../../../i18n/index.ts";
+import { dismissConnectorConnectionProgress$ } from "../../../../signals/connector-connection-progress.ts";
+import { ConnectorConnectionDialogBody } from "../../../components/connector-connection-dialog-body.tsx";
 import type {
   ConnectorAccountConnectMode,
   ConnectorAccountMutationOptions,
@@ -1522,6 +1524,7 @@ export function ConnectModal({
   const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
 
   const selectedConnectorSlug = item.slug;
 
@@ -1550,6 +1553,7 @@ export function ConnectModal({
           return;
         }
         if (!open) {
+          dismissProgress();
           clearConnectorOAuthDeviceAuth();
           clearConnectorExternalCode();
           onClose();
@@ -1572,20 +1576,28 @@ export function ConnectModal({
           </p>
         )}
 
-        <ConnectModalContent
-          item={item}
-          agentId={agentId}
-          authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
-          accountOptions={accountOptions}
-          accountMode={accountMode}
-          reconnectAuthMethod={reconnectAuthMethod}
-          onSuccess={async (connectionId) => {
-            await onSuccess?.(connectionId);
-            clearConnectorOAuthDeviceAuth();
-            clearConnectorExternalCode();
-            onClose();
-          }}
-        />
+        <ConnectorConnectionDialogBody
+          interactive={
+            connectorOAuthDeviceAuthState.status === "pending" ||
+            connectorOAuthDeviceAuthState.status === "polling" ||
+            connectorExternalCodeState.status === "pending"
+          }
+        >
+          <ConnectModalContent
+            item={item}
+            agentId={agentId}
+            authorizeVisibleAgentsOnConnect={authorizeVisibleAgentsOnConnect}
+            accountOptions={accountOptions}
+            accountMode={accountMode}
+            reconnectAuthMethod={reconnectAuthMethod}
+            onSuccess={async (connectionId) => {
+              await onSuccess?.(connectionId);
+              clearConnectorOAuthDeviceAuth();
+              clearConnectorExternalCode();
+              onClose();
+            }}
+          />
+        </ConnectorConnectionDialogBody>
       </DialogContent>
     </Dialog>
   );

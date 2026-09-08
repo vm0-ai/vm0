@@ -18,7 +18,11 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
+import {
+  connectorConnectionPending$,
+  dismissConnectorConnectionProgress$,
+} from "../../../../signals/connector-connection-progress.ts";
+import { ConnectorConnectionDialogBody } from "../../../components/connector-connection-dialog-body.tsx";
 import {
   closeCustomConnectorDialog$,
   connectCustomConnectorAuthorization$,
@@ -334,6 +338,19 @@ function CustomConnectorConnectForm({
   );
 }
 
+function useCloseCustomConnectorDialog(onClose: (() => void) | undefined) {
+  const resetForm = useSet(resetCustomConnectorConnectInput$);
+  const closeDialog = useSet(closeCustomConnectorDialog$);
+  return () => {
+    resetForm();
+    if (onClose) {
+      onClose();
+    } else {
+      closeDialog();
+    }
+  };
+}
+
 export function CustomConnectorConnectDialog({
   connector,
   agentId,
@@ -345,14 +362,14 @@ export function CustomConnectorConnectDialog({
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
   const setField = useSet(setCustomConnectorConnectField$);
-  const resetForm = useSet(resetCustomConnectorConnectInput$);
-  const closeDialog = useSet(closeCustomConnectorDialog$);
+  const close = useCloseCustomConnectorDialog(onClose);
   const {
     submitting: connectionSubmitting,
     submitDeclaredValues,
     submitAuthorizationMode,
   } = useCustomConnectorConnectionSubmitters(agentId, accountOptions);
   const pending = useGet(connectorConnectionPending$);
+  const dismissProgress = useSet(dismissConnectorConnectionProgress$);
   const submitting = connectionSubmitting || pending;
   const signal = useGet(pageSignal$);
   const authorization =
@@ -381,15 +398,6 @@ export function CustomConnectorConnectDialog({
     connector.fields.length === 1 &&
     connector.fields[0]?.kind === "secret";
 
-  const close = () => {
-    resetForm();
-    if (onClose) {
-      onClose();
-    } else {
-      closeDialog();
-    }
-  };
-
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) {
@@ -416,7 +424,10 @@ export function CustomConnectorConnectDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && close();
+        if (!open) {
+          dismissProgress();
+          close();
+        }
       }}
     >
       <DialogContent
@@ -450,16 +461,18 @@ export function CustomConnectorConnectDialog({
             })}
           </p>
         )}
-        <CustomConnectorConnectForm
-          connector={connector}
-          accountMode={accountMode}
-          values={form.values}
-          setField={setField}
-          submitting={submitting}
-          canSubmit={canSubmit}
-          close={close}
-          onSubmit={onSubmit}
-        />
+        <ConnectorConnectionDialogBody>
+          <CustomConnectorConnectForm
+            connector={connector}
+            accountMode={accountMode}
+            values={form.values}
+            setField={setField}
+            submitting={submitting}
+            canSubmit={canSubmit}
+            close={close}
+            onSubmit={onSubmit}
+          />
+        </ConnectorConnectionDialogBody>
       </DialogContent>
     </Dialog>
   );

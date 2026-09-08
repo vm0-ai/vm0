@@ -256,7 +256,9 @@ const finishConnectorAccountConnectionCommand$ = command(
 );
 
 export const finishConnectorAccountConnection$ =
-  withConnectorConnectionProgress(finishConnectorAccountConnectionCommand$);
+  withConnectorConnectionProgress(finishConnectorAccountConnectionCommand$, {
+    continuation: true,
+  });
 
 interface ConnectorAccountRenameDraft {
   readonly account: ConnectorAccountConnection;

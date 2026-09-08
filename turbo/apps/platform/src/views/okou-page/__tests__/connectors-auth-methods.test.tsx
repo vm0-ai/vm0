@@ -234,9 +234,8 @@ test("Add an AWS account with an external code", async () => {
   click(within(dialog).getByTestId("connector-external-code-complete"));
 
   await permissionsStarted.promise;
-  await expect(
-    screen.findByText("Connecting your account"),
-  ).resolves.toBeVisible();
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "AWS" })).toBeVisible();
   expect(
     within(dialog).getByTestId("connector-external-code-complete"),
   ).toBeDisabled();
@@ -530,6 +529,7 @@ test("Connect through device authorization", async () => {
     screen.findByTestId("connector-oauth-device-code"),
   ).resolves.toHaveTextContent("OKOU-DEVICE");
   const approvalDialog = await screen.findByRole("dialog", { name: "Base44" });
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
   expect(
     screen.queryByRole("dialog", { name: "Connecting your account" }),
   ).toBeNull();
@@ -771,7 +771,7 @@ test("Complete OAuth only after the selected connector changes", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Public Stripe" });
   click(getConnectorAction("button", "Connect", dialog));
   await expect(
-    within(dialog).findByText("Connecting..."),
+    within(dialog).findByRole("status"),
   ).resolves.toBeInTheDocument();
   await waitFor(() => {
     expect(authWindow.location.href).toBe(
@@ -783,7 +783,7 @@ test("Complete OAuth only after the selected connector changes", async () => {
   authWindow.close();
 
   await waitFor(() => {
-    expect(within(dialog).queryByText("Connecting...")).not.toBeInTheDocument();
+    expect(getConnectorAction("button", "Connect", dialog)).toBeEnabled();
   });
   await waitFor(() => {
     const stripeCard = getConnectorCard("Public Stripe");
@@ -798,7 +798,7 @@ test("Complete OAuth only after the selected connector changes", async () => {
   context.mocks.browser.open(authWindow);
   click(getConnectorAction("button", "Connect", dialog));
   await expect(
-    within(dialog).findByText("Connecting..."),
+    within(dialog).findByRole("status"),
   ).resolves.toBeInTheDocument();
   await waitFor(() => {
     expect(authWindow.location.href).toBe(

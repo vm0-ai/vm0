@@ -1,23 +1,59 @@
 import { command, computed, state, type Command } from "ccstate";
-import { withCleanup } from "./utils.ts";
+import { onRef, withCleanup } from "./utils.ts";
 
 const pendingConnections$ = state<ReadonlySet<symbol>>(new Set());
+const progressDismissed$ = state(false);
+const connectionDialogs$ = state(0);
 
 export const connectorConnectionPending$ = computed((get) => {
   return get(pendingConnections$).size > 0;
 });
 
+export const connectorConnectionProgressVisible$ = computed((get) => {
+  return (
+    get(connectorConnectionPending$) &&
+    !get(progressDismissed$) &&
+    get(connectionDialogs$) === 0
+  );
+});
+
+export const dismissConnectorConnectionProgress$ = command(({ set }) => {
+  set(progressDismissed$, true);
+});
+
+/** Existing connection dialogs own their feedback until they unmount. */
+export const registerConnectorConnectionDialog$ = onRef(
+  command(({ set }, _element: HTMLElement, signal: AbortSignal) => {
+    set(connectionDialogs$, (count) => {
+      return count + 1;
+    });
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(connectionDialogs$, (count) => {
+          return count - 1;
+        });
+      },
+      { once: true },
+    );
+  }),
+);
+
 /** Keep feedback visible through nested connection commands and continuations. */
 export function withConnectorConnectionProgress<T, Args extends unknown[]>(
   source$: Command<Promise<T>, [...Args, AbortSignal]>,
+  { continuation = false }: { readonly continuation?: boolean } = {},
 ): Command<Promise<T>, [...Args, AbortSignal]> {
   const tracked$ = command(
     async (
-      { set },
+      { get, set },
       args: [...Args, AbortSignal],
       signal: AbortSignal,
     ): Promise<T> => {
       signal.throwIfAborted();
+      if (!continuation && !get(connectorConnectionPending$)) {
+        set(progressDismissed$, false);
+      }
       const invocation = Symbol();
       set(pendingConnections$, (pending) => {
         return new Set([...pending, invocation]);

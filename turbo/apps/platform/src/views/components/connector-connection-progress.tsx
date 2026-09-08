@@ -1,47 +1,46 @@
-import { useGet } from "ccstate-react";
-import { Loader2 } from "lucide-react";
+import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
-import { connectorConnectionPending$ } from "../../signals/connector-connection-progress.ts";
-import { connectorOAuthDeviceAuthState$ } from "../../signals/okou-page/settings/connectors.ts";
+import {
+  connectorConnectionProgressVisible$,
+  dismissConnectorConnectionProgress$,
+} from "../../signals/connector-connection-progress.ts";
+import { ConnectorConnectionStatus } from "./connector-connection-dialog-body.tsx";
 
 export function ConnectorConnectionProgress() {
-  const pending = useGet(connectorConnectionPending$);
-  const deviceAuth = useGet(connectorOAuthDeviceAuthState$);
+  const visible = useGet(connectorConnectionProgressVisible$);
+  const dismiss = useSet(dismissConnectorConnectionProgress$);
   const { t } = useTranslation();
-  // The device dialog must remain usable for copying the code and opening approval.
-  const deviceAuthorizationVisible =
-    deviceAuth.status === "pending" || deviceAuth.status === "polling";
 
   return (
     <Dialog
-      open={pending && !deviceAuthorizationVisible}
-      onOpenChange={(_open, eventDetails) => {
-        eventDetails.cancel();
+      open={visible}
+      onOpenChange={(open) => {
+        if (!open) {
+          dismiss();
+        }
       }}
     >
-      <DialogContent className="max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="max-w-md"
+        aria-describedby={undefined}
+        closeLabel={t(($) => {
+          return $.connectors.actions.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {
               return $.connectors.connectionProgress.title;
             })}
           </DialogTitle>
-          <DialogDescription>
-            {t(($) => {
-              return $.connectors.connectionProgress.description;
-            })}
-          </DialogDescription>
         </DialogHeader>
-        <div className="flex justify-center py-6" aria-hidden="true">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <ConnectorConnectionStatus />
       </DialogContent>
     </Dialog>
   );
