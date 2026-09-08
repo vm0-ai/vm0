@@ -7,7 +7,6 @@ import {
   Check,
   LayoutTemplate,
   Search,
-  Sparkles,
   UserRound,
   UserRoundX,
   Volume2,
@@ -349,30 +348,12 @@ function StylePicker({ signals }: PickerProps) {
   return (
     <>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
-        <h3 className="sr-only">
-          {t(($) => {
-            return $.chat.explainerVideo.chooseStyle;
-          })}
-        </h3>
         <div className="flex min-w-0 items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-pressed={style?.kind === "auto"}
-            onClick={() => {
-              setStyle({ kind: "auto" });
-            }}
-            className={cn(
-              "gap-2 border-border px-2.5 text-xs",
-              style?.kind === "auto" && "border-primary bg-gray-50",
-            )}
-          >
-            <Sparkles size={14} />
+          <h3 className="text-xs font-medium">
             {t(($) => {
-              return $.chat.introVideo.style.auto;
+              return $.chat.explainerVideo.chooseStyle;
             })}
-          </Button>
+          </h3>
           {catalog.state === "hasData" && (
             <span className="text-xs text-muted-foreground">
               {items.length}
