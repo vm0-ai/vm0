@@ -324,8 +324,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@okou.ai",
     description:
       "Offer desktop passage actions for selections anywhere within one assistant reply.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@okou.ai",
