@@ -1211,6 +1211,142 @@ describe("sandbox Pi agent loop", () => {
     }
   }, 20_000);
 
+  it.each([
+    {
+      name: "mounted skill",
+      prompt: "/skill:handoff-skill first  argument\nsecond line",
+      expandsSkill: true,
+    },
+    {
+      name: "whitespace before a skill",
+      prompt: " \n\t/skill:handoff-skill first  argument\nsecond line",
+      expandsSkill: false,
+    },
+    {
+      name: "unknown slash input",
+      prompt: "/unknown-command first  argument\nsecond line",
+      expandsSkill: false,
+    },
+    {
+      name: "absolute path",
+      prompt: "/home/user/workspace/report.txt first  argument\nsecond line",
+      expandsSkill: false,
+    },
+  ])(
+    "processes $name through native sandbox-first AgentSession on fresh and resumed H0",
+    async ({ prompt, expandsSkill }) => {
+      const root = await mkdtemp(join(tmpdir(), "okou-pi-native-input-"));
+      const provider = await ProviderHarness.start();
+      const skillDir = join(root, ".pi", "agent", "skills", "handoff-skill");
+      const skillFile = join(skillDir, "SKILL.md");
+      const skillBody = "Use the mounted handoff skill body for this request.";
+      let h0 = MemoryPiSession.create({ cwd: root, id: SESSION_ID }).toJsonl();
+      let baseSessionSha256: string | null = null;
+      let host: RpcHost | undefined;
+      let handoffServer: Server | undefined;
+      try {
+        // Use the existing user-skill discovery root, without settings,
+        // extensions, templates, or a replacement resource loader.
+        await mkdir(skillDir, { recursive: true });
+        await writeFile(
+          skillFile,
+          `---\nname: handoff-skill\ndescription: Exercises native mounted skill expansion.\n---\n${skillBody}\n`,
+        );
+        const expectedInput = expandsSkill
+          ? `<skill name="handoff-skill" location="${skillFile}">\nReferences are relative to ${skillDir}.\n\n${skillBody}\n</skill>\n\nfirst  argument\nsecond line`
+          : prompt;
+        for (const turn of [1, 2]) {
+          const started = await startOwnershipTransferHost({
+            root,
+            jsonl: h0,
+            mode: "sandbox-first",
+            baseSessionSha256,
+            providerBaseUrl: provider.baseUrl,
+            model: "openrouter-terra",
+          });
+          host = started.host;
+          handoffServer = started.handoffServer;
+          const state = await host.state(`native-input-state-${turn}`);
+          expect(state).toMatchObject({
+            sessionId: SESSION_ID,
+            messageCount: (turn - 1) * 2,
+          });
+          expect(host.records[0]).toStrictEqual({
+            type: "vm0_pi_api_first_turn_boundary",
+            schemaVersion: 2,
+            sandboxEventSequenceStart: 4,
+            ownershipTransferMode: "sandbox-first",
+          });
+          const installed = await readFile(String(state.sessionFile), "utf8");
+          // Native startup adds model/thinking metadata to a fresh header.
+          // Resumed H0 is already configured and must remain byte-for-byte intact.
+          if (turn === 1) {
+            expect(installed.startsWith(h0)).toBe(true);
+          } else {
+            expect(installed).toBe(h0);
+          }
+
+          host.send({
+            id: `native-input-${turn}`,
+            type: "prompt",
+            message: prompt,
+          });
+          const request = await provider.nextRequest();
+          expect(request.body).not.toHaveProperty("service_tier");
+          expect(request.body).toMatchObject({
+            input: expect.arrayContaining([
+              expect.objectContaining({
+                role: "user",
+                content: [{ type: "input_text", text: expectedInput }],
+              }),
+            ]),
+          });
+          request.respond(`native input complete ${turn}`);
+          await host.waitFor((record) => {
+            return record.type === "agent_settled";
+          });
+          expect(
+            host.records.filter((record) => {
+              return record.type === "agent_settled";
+            }),
+          ).toHaveLength(1);
+          await host.close();
+          host = undefined;
+          await closeServer(handoffServer);
+          handoffServer = undefined;
+
+          h0 = await readFile(String(state.sessionFile), "utf8");
+          const persisted = MemoryPiSession.fromJsonl(h0);
+          expect(persisted.getSessionId()).toBe(SESSION_ID);
+          expect(persisted.isSettledCheckpoint()).toBe(true);
+          const messages = persisted.buildSessionContext().messages;
+          expect(messages).toHaveLength(turn * 2);
+          expect(
+            messages.filter((message) => {
+              return message.role === "user";
+            }),
+          ).toStrictEqual(
+            Array.from({ length: turn }, () => {
+              return expect.objectContaining({
+                content: [{ type: "text", text: expectedInput }],
+              });
+            }),
+          );
+          expect(provider.requests).toHaveLength(turn);
+          baseSessionSha256 = createHash("sha256").update(h0).digest("hex");
+        }
+      } finally {
+        await host?.terminate();
+        if (handoffServer) {
+          await closeServer(handoffServer);
+        }
+        await provider.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   it("keeps OpenRouter priority on an official AgentSession retry", async () => {
     const root = await mkdtemp(join(tmpdir(), "okou-pi-retry-rpc-"));
     const prompt = "retry this sandbox-owned prompt exactly once";
