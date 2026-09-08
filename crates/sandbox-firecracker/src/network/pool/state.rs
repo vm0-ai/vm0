@@ -149,8 +149,8 @@ struct NetnsPoolState {
     ops: NetnsLifecycleOps,
     #[cfg(test)]
     acquire_waiting_notify: Option<Arc<tokio::sync::Notify>>,
-    /// Held for the lifetime of the pool to reserve the pool index.
-    _lock: PoolIndexLock,
+    /// Shared with creation workers and reporters until their cleanup finishes.
+    index_lock: Arc<PoolIndexLock>,
 }
 
 impl NetnsPoolState {
@@ -184,7 +184,7 @@ impl NetnsPoolState {
             default_iface: "test0".into(),
             ops: NetnsLifecycleOps::trusted_for_test(),
             acquire_waiting_notify: None,
-            _lock: lock,
+            index_lock: Arc::new(lock),
         }
     }
 
@@ -254,7 +254,7 @@ impl NetnsPoolState {
             ops: NetnsLifecycleOps::default(),
             #[cfg(test)]
             acquire_waiting_notify: None,
-            _lock: lock,
+            index_lock: Arc::new(lock),
         };
 
         // Pre-warm the buffer. Warm-up starts at ns_index 0, so
@@ -443,6 +443,7 @@ impl NetnsPoolState {
         spawn_creation_worker(
             id,
             kind,
+            Arc::clone(&self.index_lock),
             self.creation_notifier(),
             create_namespace_with_readiness(
                 create_single_namespace(pool_index, ns_index, default_iface, proxy_port, dns_port),
@@ -460,7 +461,13 @@ impl NetnsPoolState {
     {
         let id = self.reserve_pending_id();
         self.pending_plain.insert(id);
-        spawn_creation_worker(id, NetnsKind::Plain, self.creation_notifier(), future);
+        spawn_creation_worker(
+            id,
+            NetnsKind::Plain,
+            Arc::clone(&self.index_lock),
+            self.creation_notifier(),
+            future,
+        );
     }
 
     #[cfg(test)]
@@ -481,6 +488,7 @@ impl NetnsPoolState {
         spawn_creation_worker(
             id,
             NetnsKind::Proxy,
+            Arc::clone(&self.index_lock),
             self.creation_notifier(),
             create_namespace_with_readiness(future, readiness, self.ops.clone()),
         );
@@ -1123,6 +1131,8 @@ impl NetnsPool {
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
     /// pool index before creating new namespaces.
+    /// Cancelling initialization keeps the index reserved until outstanding
+    /// creation tasks and their cleanup finish.
     ///
     /// A pool configured with both proxy and DNS ports remains non-acquirable
     /// until [`Self::activate_dns_readiness`] succeeds after the DNS service
@@ -1354,6 +1364,21 @@ mod tests {
             Ok(value) => value,
             Err(_) => panic!("test synchronization timed out waiting for {phase}"),
         }
+    }
+
+    async fn wait_for_pool_index_reuse(locks: &LockPaths, expected: u32) -> PoolIndexLock {
+        wait_for_sync("pool index to become reusable", async {
+            loop {
+                let (index, lock) = acquire_pool_lock(locks).unwrap();
+                if index == expected {
+                    return lock;
+                }
+                drop(lock);
+                // Close-only flocks can briefly survive in unrelated fork/exec children.
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
     }
 
     async fn blocking_plain_creation(
@@ -2292,32 +2317,168 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dropped_pool_deletes_late_pending_creation() {
-        let release = Arc::new(tokio::sync::Notify::new());
-        let CountedLifecycle {
+    async fn cancelled_warmup_retains_pool_index_through_late_cleanup() {
+        for kind in [NetnsKind::Plain, NetnsKind::Proxy] {
+            let dir = tempfile::tempdir().unwrap();
+            let locks = LockPaths::with_dir(dir.path().to_path_buf());
+            let (index, lock) = acquire_pool_lock(&locks).unwrap();
+            let entered = Arc::new(tokio::sync::Notify::new());
+            let release = Arc::new(tokio::sync::Notify::new());
+            let BlockingDeleteLifecycle {
+                ops,
+                entered: cleanup_entered,
+                release: cleanup_release,
+                delete_count,
+            } = first_delete_blocks_lifecycle();
+            let mut pool = NetnsPoolState::inactive_for_test();
+            pool.pool_index = index;
+            pool.index_lock = Arc::new(lock);
+            pool.ops = ops;
+            let creation =
+                blocking_plain_creation("late-ns", Arc::clone(&entered), Arc::clone(&release));
+            match kind {
+                NetnsKind::Plain => pool.spawn_plain_creation_for_test(creation),
+                NetnsKind::Proxy => pool.spawn_proxy_creation_for_test(creation),
+            }
+            {
+                let warmup = async move { pool.drain_initial_warmup().await };
+                tokio::pin!(warmup);
+                tokio::select! {
+                    biased;
+                    _ = &mut warmup => panic!("warmup finished before creation was released"),
+                    _ = wait_for_sync("warmup creation to start", entered.notified()) => {}
+                }
+                let (other_index, _other_lock) = acquire_pool_lock(&locks).unwrap();
+                assert_ne!(other_index, index);
+                // Cancelling the constructor drops its local pool state.
+            }
+
+            let (replacement_index, _replacement_lock) = acquire_pool_lock(&locks).unwrap();
+            assert_ne!(replacement_index, index, "creation still owns this index");
+            release.notify_one();
+            wait_for_sync(
+                "late completion cleanup to start",
+                cleanup_entered.notified(),
+            )
+            .await;
+            let (during_cleanup_index, _during_cleanup_lock) = acquire_pool_lock(&locks).unwrap();
+            assert_ne!(
+                during_cleanup_index, index,
+                "late cleanup still owns this index"
+            );
+
+            cleanup_release.notify_one();
+            let _reused_lock = wait_for_pool_index_reuse(&locks, index).await;
+            assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn dropped_pool_retains_pool_index_through_creation_error_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+        let (index, lock) = acquire_pool_lock(&locks).unwrap();
+        let FirstDeleteBlocksLifecycle {
             ops,
-            delete_count: deleted,
-            ..
-        } = counted_deleted_lifecycle();
+            entered,
+            release,
+            flush_count,
+            delete_count,
+        } = first_untrusted_delete_blocks_then_deleted_lifecycle();
         let mut pool = NetnsPoolState::inactive_for_test();
+        pool.pool_index = index;
+        pool.index_lock = Arc::new(lock);
         pool.ops = ops;
+        // The real creation wrapper deletes after a failed conntrack reset,
+        // before the worker returns its error to the completion reporter.
+        pool.spawn_proxy_creation_for_test(async { Ok(test_info("failed-ns")) });
+        let pool = NetnsPoolHandle::from_state_for_test(pool);
+        let last_handle = pool.clone();
+        drop(pool);
+        wait_for_sync("creation error cleanup to start", entered.notified()).await;
+        drop(last_handle);
+
+        let (replacement_index, _replacement_lock) = acquire_pool_lock(&locks).unwrap();
+        assert_ne!(
+            replacement_index, index,
+            "worker cleanup still owns this index"
+        );
+        release.notify_one();
+        let _reused_lock = wait_for_pool_index_reuse(&locks, index).await;
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dropped_pool_releases_pool_index_after_creation_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+        let (index, lock) = acquire_pool_lock(&locks).unwrap();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.pool_index = index;
+        pool.index_lock = Arc::new(lock);
         pool.spawn_plain_creation_for_test({
+            let entered = Arc::clone(&entered);
             let release = Arc::clone(&release);
             async move {
+                entered.notify_one();
                 release.notified().await;
-                Ok(test_info("late-ns"))
+                panic!("synthetic namespace creation panic");
             }
         });
+        wait_for_sync("panicking creation to start", entered.notified()).await;
+        drop(NetnsPoolHandle::from_state_for_test(pool));
 
-        drop(pool);
+        let (replacement_index, _replacement_lock) = acquire_pool_lock(&locks).unwrap();
+        assert_ne!(replacement_index, index, "creation has not panicked yet");
         release.notify_one();
+        let _reused_lock = wait_for_pool_index_reuse(&locks, index).await;
+    }
 
-        wait_for_sync("late namespace deletion after pool drop", async {
-            while deleted.load(Ordering::SeqCst) == 0 {
-                tokio::task::yield_now().await;
-            }
-        })
+    #[tokio::test]
+    async fn cancelled_reporter_keeps_pool_index_while_worker_cleans_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks = LockPaths::with_dir(dir.path().to_path_buf());
+        let (index, lock) = acquire_pool_lock(&locks).unwrap();
+        let FirstDeleteBlocksLifecycle {
+            ops,
+            entered,
+            release,
+            delete_count,
+            ..
+        } = first_untrusted_delete_blocks_then_deleted_lifecycle();
+        let mut pool = NetnsPoolState::inactive_for_test();
+        pool.pool_index = index;
+        pool.index_lock = Arc::new(lock);
+        let reporter = spawn_creation_worker(
+            PendingId(0),
+            NetnsKind::Proxy,
+            Arc::clone(&pool.index_lock),
+            pool.creation_notifier(),
+            create_namespace_with_readiness(async { Ok(test_info("failed-ns")) }, None, ops),
+        );
+        wait_for_sync(
+            "worker cleanup before reporter cancellation",
+            entered.notified(),
+        )
         .await;
+        reporter.abort();
+        let error = wait_for_sync("reporter cancellation", reporter)
+            .await
+            .unwrap_err();
+        assert!(error.is_cancelled());
+        drop(pool);
+
+        let (replacement_index, _replacement_lock) = acquire_pool_lock(&locks).unwrap();
+        assert_ne!(
+            replacement_index, index,
+            "detached worker still owns this index"
+        );
+        release.notify_one();
+        let _reused_lock = wait_for_pool_index_reuse(&locks, index).await;
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
