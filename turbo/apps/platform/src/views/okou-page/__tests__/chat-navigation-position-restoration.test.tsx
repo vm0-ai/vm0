@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -698,9 +697,6 @@ test("Preserve the reading position while entering and leaving sharing mode", as
     context,
     host: APP_HOST,
     path: `/chats/${SHARING_THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.SharedThreadSharing]: true,
-    },
   });
 
   const targetText = "Shareable message 3";

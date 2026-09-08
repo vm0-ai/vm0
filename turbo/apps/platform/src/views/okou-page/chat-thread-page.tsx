@@ -695,9 +695,6 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const startSharing = useSet(thread.sharing.start$);
   const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-
   if (sharingPhase !== "idle") {
     return (
       <header className={CHAT_THREAD_HEADER_CLASS}>
@@ -732,38 +729,36 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     <header className={CHAT_THREAD_HEADER_CLASS}>
       <ChatThreadHeaderTitle thread={thread} />
       <div className="flex items-center gap-0.5">
-        {sharingEnabled ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    detach(
-                      startSharing(pageSignal),
-                      Reason.DomCallback,
-                      "start shared thread selection",
-                    );
-                  }}
-                  variant="quiet"
-                  size="icon-sm"
-                  iconSize="md"
-                  className="shrink-0 duration-150"
-                  aria-label={t(($) => {
-                    return $.chat.sharing.start;
-                  })}
-                >
-                  <Share2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(($) => {
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  detach(
+                    startSharing(pageSignal),
+                    Reason.DomCallback,
+                    "start shared thread selection",
+                  );
+                }}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0 duration-150"
+                aria-label={t(($) => {
                   return $.chat.sharing.start;
                 })}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+              >
+                <Share2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.sharing.start;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
