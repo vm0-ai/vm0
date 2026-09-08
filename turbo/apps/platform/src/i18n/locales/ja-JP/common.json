@@ -2237,6 +2237,9 @@
       "keepGoingAt": "続ける · {{timestamp}}",
       "modelChangedTo": "モデルを{{model}}に変更しました",
       "queueEllipsis": "行列...",
+      "relatedArtifactCount_one": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifactCount_other": "{{formattedCount}} 個のアーティファクト",
+      "relatedArtifacts": "関連するアーティファクト",
       "selectedModelAppliesAfterCurrentRun": "選択した{{model}}モデルはこの実行後に適用されます",
       "thinking": {
         "assembling": "部品を組み立て中...",

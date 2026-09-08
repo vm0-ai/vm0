@@ -20,10 +20,7 @@ import {
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
-import {
-  agentDisplayNameForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
+import { agentDisplayName } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -294,20 +291,14 @@ function forbidden(message: string) {
   };
 }
 
-function buildAgentIdentityPrompt(
-  agent: AgentRunRecord,
-  publicBrand: PublicBrand | undefined,
-): string | null {
+function buildAgentIdentityPrompt(agent: AgentRunRecord): string | null {
   const parts: string[] = [];
 
-  const displayName = publicBrand
-    ? agentDisplayNameForPublicBrand({
-        agentId: agent.id,
-        defaultAgentId: agent.defaultAgentId,
-        displayName: agent.displayName,
-        publicBrand,
-      })
-    : agent.displayName;
+  const displayName = agentDisplayName({
+    agentId: agent.id,
+    defaultAgentId: agent.defaultAgentId,
+    displayName: agent.displayName,
+  });
   if (displayName) {
     parts.push(`Your name is ${displayName}.`);
   }
@@ -588,7 +579,7 @@ function buildAppendSystemPrompt(args: {
   readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }): string {
-  const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
+  const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
     buildExecutionTimeLimitPrompt(),
@@ -670,10 +661,7 @@ function buildAgentRunPlatformEnvironment(args: {
   return {
     // A run source that supplies no presentation brand is a VM0 run by
     // contract; this does not derive brand identity from token scope.
-    OKOU_APP_URL: appUrlForPublicBrand(
-      env("APP_URL"),
-      args.publicBrand ?? "vm0",
-    ),
+    OKOU_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create

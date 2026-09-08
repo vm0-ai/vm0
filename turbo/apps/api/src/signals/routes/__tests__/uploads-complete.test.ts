@@ -223,7 +223,7 @@ describe("POST /api/uploads/complete", () => {
       contentType: "application/pdf",
       size: 17,
     });
-    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    const key = `artifacts${new URL(prepared.url).pathname}`;
     fixture.objectStore.addObject({
       bucket: "test-user-artifacts",
       key,
@@ -246,7 +246,7 @@ describe("POST /api/uploads/complete", () => {
       filename: "财务 报告.pdf",
       contentType: "application/pdf",
       size: 17,
-      url: prepared.url,
+      url: `https://cdn.vm7.io/${key}`,
     });
     if ("error" in response.body) {
       throw new Error("Expected the upload to complete successfully");
@@ -261,7 +261,7 @@ describe("POST /api/uploads/complete", () => {
       contentType: "application/pdf",
       size: 17,
     });
-    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    const key = `artifacts${new URL(prepared.url).pathname}`;
     fixture.objectStore.addObject({
       bucket: "test-user-artifacts",
       key,
@@ -295,7 +295,7 @@ describe("POST /api/uploads/complete", () => {
       contentType: "application/pdf",
       size: 17,
     });
-    const key = new URL(prepared.url).pathname.replace(/^\/+/, "");
+    const key = `artifacts${new URL(prepared.url).pathname}`;
     fixture.objectStore.addObject({
       bucket: "test-user-artifacts",
       key,
@@ -339,7 +339,7 @@ describe("POST /api/uploads/complete", () => {
       contentType: "application/pdf",
       size: 17,
     });
-    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    const key = `artifacts${new URL(prepared.url).pathname}`;
     fixture.objectStore.addObject({
       bucket: "test-user-artifacts",
       key,

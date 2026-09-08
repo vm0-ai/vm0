@@ -7,7 +7,6 @@ import type {
 } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -326,8 +325,8 @@ function customTelegramBot(args: {
   });
 }
 
-function telegramLoginOrigin(publicBrand: PublicBrand): string {
-  return new URL(appUrlForPublicBrand(env("APP_URL"), publicBrand)).origin;
+function telegramLoginOrigin(): string {
+  return new URL(env("APP_URL")).origin;
 }
 
 function customTelegramBotStatus(args: {
@@ -353,7 +352,7 @@ function customTelegramBotStatus(args: {
       ),
       checkTelegramDomain(
         args.installation.telegramBotId,
-        telegramLoginOrigin(args.publicBrand),
+        telegramLoginOrigin(),
       ),
     ]);
 
@@ -373,10 +372,7 @@ function officialTelegramBotStatus(args: {
       get(buildOfficialTelegramBot(args)),
       get(telegramEnvironment({ agent: official.agent, ...args })),
       config.botId
-        ? checkTelegramDomain(
-            config.botId,
-            telegramLoginOrigin(args.publicBrand),
-          )
+        ? checkTelegramDomain(config.botId, telegramLoginOrigin())
         : Promise.resolve(false),
     ]);
 
@@ -450,11 +446,8 @@ type TelegramLinkStatusResult =
       };
     };
 
-function resolveTelegramLoginOrigin(
-  originParam: string | undefined,
-  publicBrand: PublicBrand,
-): string {
-  const brandedOrigin = telegramLoginOrigin(publicBrand);
+function resolveTelegramLoginOrigin(originParam: string | undefined): string {
+  const brandedOrigin = telegramLoginOrigin();
   if (!originParam) {
     return brandedOrigin;
   }
@@ -493,10 +486,7 @@ export function telegramIntegrationLinkStatus(args: {
 }): Computed<Promise<TelegramLinkStatusResult>> {
   return computed(async (get): Promise<TelegramLinkStatusResult> => {
     const db = get(db$);
-    const telegramLoginOrigin = resolveTelegramLoginOrigin(
-      args.origin,
-      args.publicBrand,
-    );
+    const telegramLoginOrigin = resolveTelegramLoginOrigin(args.origin);
 
     if (args.botId === OFFICIAL_TELEGRAM_BOT_ID) {
       const userLink = await get(officialUserLink(args));

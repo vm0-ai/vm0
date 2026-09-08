@@ -5,7 +5,6 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { browserAuthorizationRequests } from "@okouai/db/schema/browser-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -57,11 +56,8 @@ function isUuid(value: string): boolean {
   );
 }
 
-function authorizationUrl(
-  requestToken: string,
-  publicBrand: PublicBrand,
-): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/browser/authorize/${encodeURIComponent(
+function authorizationUrl(requestToken: string): string {
+  return `${env("APP_URL")}/browser/authorize/${encodeURIComponent(
     requestToken,
   )}`;
 }
@@ -170,7 +166,7 @@ export const createBrowserAuthorizationRequest$ = command(
 
     return {
       status: "created",
-      authorizationUrl: authorizationUrl(requestToken, args.publicBrand),
+      authorizationUrl: authorizationUrl(requestToken),
       expiresAt: expiresAt.toISOString(),
     };
   },

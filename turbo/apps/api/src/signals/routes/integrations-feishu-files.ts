@@ -17,7 +17,6 @@ import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import {
   downloadFeishuMessageResource,
@@ -41,6 +40,7 @@ import { feishuOrgCallbackPayloadSchema } from "../services/feishu-org-callback-
 import { recordFeishuUploadedFile$ } from "../services/run-uploaded-files.service";
 import type { RouteEntry } from "../route-entry";
 import { safeUriComponentDecode, settle } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const DOWNLOAD_MAX_BYTES = 100 * 1024 * 1024;
 const PUT_URL_TTL_SECONDS = 3600;
@@ -407,8 +407,7 @@ const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       filename: bodyResult.data.filename,
-      publicBrand:
-        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     },
     signal,
   );

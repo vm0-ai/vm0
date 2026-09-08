@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
 
-import { clerk$, resolveClerkSatelliteConfig } from "../auth.ts";
+import { clerk$ } from "../auth.ts";
 import { replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { settle, withCleanup } from "../utils.ts";
-import type { AuthV2Navigation, AuthV2RouteMode } from "./navigation.ts";
+import type { AuthV2RouteMode } from "./navigation.ts";
 
 interface AuthInvitation {
   readonly mode: AuthV2RouteMode;
@@ -101,34 +101,5 @@ export const redeemAuthV2Invitation$ = command(
     });
     set(redeemInFlight$, request);
     return await request;
-  },
-);
-
-export const navigateInvitationToPrimary$ = command(
-  async ({ get }, navigation: AuthV2Navigation, signal: AbortSignal) => {
-    const invitation = get(authV2Invitation$);
-    if (!invitation || !resolveClerkSatelliteConfig()) {
-      return false;
-    }
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    const url = new URL(
-      invitation.mode === "sign-in"
-        ? clerk.buildSignInUrl({
-            redirectUrl: navigation.completionRedirectUrl,
-          })
-        : clerk.buildSignUpUrl({
-            redirectUrl: navigation.completionRedirectUrl,
-          }),
-      location.href,
-    );
-    url.searchParams.set(
-      "__clerk_status",
-      invitation.mode === "sign-in" ? "sign_in" : "sign_up",
-    );
-    url.searchParams.set("__clerk_ticket", invitation.ticket);
-    await clerk.navigate(url.toString());
-    signal.throwIfAborted();
-    return true;
   },
 );

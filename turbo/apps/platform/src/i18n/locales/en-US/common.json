@@ -2240,6 +2240,9 @@
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
+      "relatedArtifactCount_one": "{{formattedCount}} artifact",
+      "relatedArtifactCount_other": "{{formattedCount}} artifacts",
+      "relatedArtifacts": "Related artifacts",
       "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",

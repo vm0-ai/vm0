@@ -253,7 +253,7 @@ describe("okou mail", () => {
           return HttpResponse.json(
             {
               mailDraftId: MAIL_DRAFT_ID,
-              mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+              mailDraftUrl: `https://app.okou.ai/mail/drafts/${MAIL_DRAFT_ID}`,
             },
             { status: 200 },
           );
@@ -266,7 +266,7 @@ describe("okou mail", () => {
     expect(mockConsoleLog).toHaveBeenCalledOnce();
     expect(mockConsoleLog).toHaveBeenCalledWith(
       expect.stringContaining(
-        `Example reply:\n\nYour email draft is ready to review and send.\n\nhttps://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+        `Example reply:\n\nYour email draft is ready to review and send.\n\nhttps://app.okou.ai/mail/drafts/${MAIL_DRAFT_ID}`,
       ),
     );
   });
@@ -277,7 +277,7 @@ describe("okou mail", () => {
         return HttpResponse.json(
           {
             mailDraftId: MAIL_DRAFT_ID,
-            mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}?source=gmail`,
+            mailDraftUrl: `https://app.okou.ai/mail/drafts/${MAIL_DRAFT_ID}?source=gmail`,
           },
           { status: 200 },
         );

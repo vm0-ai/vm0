@@ -2175,7 +2175,7 @@ describe("POST /api/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on a first-party www.vm0.ai origin", async () => {
+  it("accepts successUrl on a first-party www.okou.ai origin", async () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -2194,8 +2194,8 @@ describe("POST /api/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://www.vm0.ai/billing?billing=pro",
-          cancelUrl: "https://www.vm0.ai/billing?billing=canceled",
+          successUrl: "https://www.okou.ai/billing?billing=pro",
+          cancelUrl: "https://www.okou.ai/billing?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -13315,7 +13315,7 @@ describe("usage pack allocation management", () => {
   });
 
   it("recovers a saved-card invitation from a transient post-payment Clerk rate limit", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockNow(new Date("2035-05-15T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
@@ -13372,13 +13372,6 @@ describe("usage pack allocation management", () => {
       role: "member" as const,
       usagePackUsd: 20 as const,
     };
-    const vm0Preview = await accept(
-      client.previewPurchase({
-        headers: { authorization: "Bearer clerk-session" },
-        body: previewBody,
-      }),
-      [200],
-    );
     const preview = await accept(
       client.previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -13387,7 +13380,6 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
-    expect(preview.body.purchaseId).not.toBe(vm0Preview.body.purchaseId);
     expect(preview.body).toStrictEqual({
       purchaseId: expect.any(String),
       usagePackUsd: 20,

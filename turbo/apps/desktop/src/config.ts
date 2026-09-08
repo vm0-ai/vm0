@@ -162,11 +162,7 @@ function environmentForPlatformUrl(
   platformUrl: URL,
   hasExplicitUrl: boolean,
 ): DesktopEnvironment {
-  if (
-    !hasExplicitUrl ||
-    platformUrl.hostname === "app.vm0.ai" ||
-    platformUrl.hostname === "app.okou.ai"
-  ) {
+  if (!hasExplicitUrl || platformUrl.hostname === "app.okou.ai") {
     return "production";
   }
   if (platformUrl.hostname === "staging-app.omby.ai") {

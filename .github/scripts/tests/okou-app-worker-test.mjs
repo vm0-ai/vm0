@@ -278,7 +278,6 @@ const builtIndexTemplate = indexTemplate
     "%VITE_CLERK_PUBLISHABLE_KEY_PROD%",
     productionClerkPublishableKey,
   )
-  .replaceAll("__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.okou.ai")
   .replaceAll("__OKOU_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
 const embeddedIndexTemplate = builtIndexTemplate
   .replace(

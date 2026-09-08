@@ -23,7 +23,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
   KnownRunFailureReason,
   RunFailureReasonToken,
@@ -905,7 +904,6 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly publicBrand?: PublicBrand;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
@@ -928,7 +926,6 @@ function expectCanonicalOkouRunEnvironment(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
-    publicBrand: args.publicBrand ?? "vm0",
     capabilities: expect.any(Array),
     iat: expect.any(Number),
     exp: expect.any(Number),
@@ -10856,9 +10853,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replaceAll("-", "").slice(0, 8);
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",
@@ -13284,9 +13281,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   });
 
   it("synthesizes bearer auth for Automatic MCP accounts resolved to OAuth", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       initialExpiresIn: 3600,
@@ -15346,37 +15343,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: agent runner context, queue promotion, and skills", () => {
-  it.each([
-    { publicBrand: "vm0", staticDomain: "static.vm0.io" },
-    { publicBrand: "okou", staticDomain: "static.okou.io" },
-  ] satisfies readonly {
-    readonly publicBrand: PublicBrand;
-    readonly staticDomain: string;
-  }[])(
-    "uses the $publicBrand commit-addressed Okou CLI distribution",
-    async ({ publicBrand, staticDomain }) => {
-      const api = createRunsApi(context);
-      const { actor, agentId, runnerGroup } = await entitledRunActor();
-      const r2Run = await api.createRun(
-        actor,
-        {
-          agentId,
-          prompt: "use the default Okou CLI",
-          modelProvider: "anthropic-api-key",
-        },
-        publicBrand,
-      );
-      await api.heartbeatRunner(runnerGroup);
-      const r2Claim = await api.claimRunnerJob(r2Run.runId);
-      expect(r2Claim.appendSystemPrompt ?? "").toContain(
-        `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
-      );
-      expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
-        `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
-      );
-      await api.requestCancelRun(actor, r2Run.runId, [200]);
-    },
-  );
+  it("uses the configured commit-addressed Okou CLI distribution", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the default Okou CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
+    );
+    expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
+      "https://static.okou.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
 
   it("keeps direct-run execution config isolated from product execution", async () => {
     const appUrl = "https://app.writer-stop.example.test";
@@ -15715,7 +15699,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_APP_URL: appUrl,
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.platformEnvironment.OKOU_TOKEN,
-      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+      CLI_PKG_URL: "https://static.okou.io/okou-cli/test-commit/package.tgz",
     });
     for (const key of Object.keys(claim.platformEnvironment)) {
       expect(claim.environment).not.toHaveProperty(key);

@@ -1101,13 +1101,13 @@ test("Open personal Settings and manage account security from the production sat
     expect(settingsDialog).toContainElement(activeElement as HTMLElement);
   });
 
-  const satelliteProfileLink = linkByText("Manage");
-  expect(satelliteProfileLink).toHaveAttribute(
+  const profileLink = linkByText("Manage");
+  expect(profileLink).toHaveAttribute(
     "href",
-    "https://accounts.vm0.ai/user",
+    "https://accounts.example.test/user",
   );
-  expect(satelliteProfileLink).toHaveAttribute("target", "_blank");
-  expect(satelliteProfileLink).toHaveAttribute("rel", "noreferrer");
+  expect(profileLink).toHaveAttribute("target", "_blank");
+  expect(profileLink).toHaveAttribute("rel", "noreferrer");
 });
 
 test("Toggle network-body capture in Debug settings", async () => {
@@ -1639,7 +1639,7 @@ test("Sign out from the account menu", async () => {
       expect.objectContaining({
         sessionId: "test-session-id",
         redirectUrl: expect.stringMatching(
-          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)(?=.*__clerk_synced%3Dfalse)/,
+          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)/,
         ),
       }),
     );

@@ -166,7 +166,7 @@ function requestTokenFromUrl(authorizationUrl: string): string {
 
 describe("FILE-03 desktop computer-use runtime", () => {
   it("creates a delegated authorization link and applies the selected host to the chat thread", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
     const run = await seedAgentRun({ actor, triggerSource: "web" });
@@ -189,7 +189,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       bearer: legacyToken,
     });
     expect(new URL(legacyCreated.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const token = computerUseToken({
       userId: actor.userId,

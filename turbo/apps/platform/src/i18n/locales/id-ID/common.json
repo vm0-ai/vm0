@@ -2237,6 +2237,9 @@
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefak",
+      "relatedArtifactCount_other": "{{formattedCount}} artefak",
+      "relatedArtifacts": "Artefak terkait",
       "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",

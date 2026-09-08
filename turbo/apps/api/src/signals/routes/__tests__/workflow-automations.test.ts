@@ -129,7 +129,7 @@ const GMAIL_EMAIL = "workflow-user@example.com";
 const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
 const GOOGLE_FORMS_TOPIC_NAME = "projects/vm0-ai-488909/topics/forms-events";
 const GOOGLE_FORMS_PUSH_AUDIENCE =
-  "https://api.vm0.ai/api/webhooks/google-forms";
+  "https://api.okou.ai/api/webhooks/google-forms";
 const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScGoogleFormsAutomationTest";
@@ -393,7 +393,7 @@ function configureGoogleCalendarWatchMock(args?: {
   };
   const calendarIds = args?.calendarIds ?? [args?.calendarId ?? "primary"];
   const accessTokens = args?.accessTokens ?? ["calendar-access-token"];
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
@@ -415,7 +415,7 @@ function configureGoogleCalendarWatchMock(args?: {
         };
         expect(body).toMatchObject({
           type: "web_hook",
-          address: "https://api.vm0.ai/api/webhooks/google-calendar",
+          address: "https://api.okou.ai/api/webhooks/google-calendar",
           params: { ttl: "604800" },
         });
         expect(body.id).toBeTruthy();
@@ -1378,8 +1378,8 @@ describe("okou workflow automations", () => {
     });
   });
 
-  it("projects webhook URLs by request and run brand without rotating credentials", async () => {
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+  it("uses configured webhook URLs for tokens with or without legacy brand claims", async () => {
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
@@ -1403,45 +1403,27 @@ describe("okou workflow automations", () => {
 
     const sourceRun = await runs.createRun(actor, {
       agentId,
-      prompt: "project webhook credentials by run brand",
+      prompt: "read configured webhook credentials",
       modelProvider: "anthropic-api-key",
     });
-    const brandCases = [
-      {
-        publicBrand: "okou" as const,
-        origin: "https://app.vm0.ai",
-        hostname: "api.okou.ai",
-      },
-      {
-        publicBrand: "vm0" as const,
-        origin: "https://app.okou.ai",
-        hostname: "api.vm0.ai",
-      },
-      {
-        publicBrand: undefined,
-        origin: "https://app.okou.ai",
-        hostname: "api.vm0.ai",
-      },
-    ];
 
-    for (const brandCase of brandCases) {
+    for (const legacyBrand of [undefined, "vm0", "okou"] as const) {
       const token = runs.okouTokenForRunWithCapabilities(
         actor,
         sourceRun.runId,
         ["agent:write"],
-        brandCase.publicBrand,
+        legacyBrand,
       );
       const revealed = await accept(
         automationsClient().revealWebhookSecret({
           headers: { authorization: `Bearer ${token}` },
-          extraHeaders: { origin: brandCase.origin },
           params: { id: created.body.id },
           body: undefined,
         }),
         [200],
       );
       const revealedUrl = new URL(revealed.body.webhookUrl);
-      expect(revealedUrl.hostname).toBe(brandCase.hostname);
+      expect(revealedUrl.hostname).toBe("api.okou.ai");
       expect(revealedUrl.pathname).toBe(createdUrl.pathname);
       expect(revealed.body.webhookSecret).toBe(created.body.webhookSecret);
     }
@@ -2333,7 +2315,7 @@ describe("okou workflow automations", () => {
     );
   });
 
-  it("projects inaccessible Notion page errors by request brand", async () => {
+  it("reports an inaccessible Notion page with Okou branding", async () => {
     const scenario = await setupFixture();
     await connectNotion(scenario);
     server.use(
@@ -2342,34 +2324,28 @@ describe("okou workflow automations", () => {
       }),
     );
 
-    for (const [origin, assistantName] of [
-      [undefined, "Zero"],
-      ["https://app.okou.ai", "Okou"],
-    ] as const) {
-      const rejected = await accept(
-        automationsClient().create({
-          headers: authHeaders(),
-          ...(origin ? { extraHeaders: { origin } } : {}),
-          params: { workflowId: scenario.workflowId },
-          body: {
-            kind: "event",
-            eventType: "notion-child-page-created",
-            eventConfig: {
-              provider: "notion",
-              event: "child_page_created",
-              parentPageUrl: NOTION_PARENT_PAGE_URL,
-            },
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl: NOTION_PARENT_PAGE_URL,
           },
-        }),
-        [400],
-      );
-      expect(rejected.body.error.message).toBe(
-        `${assistantName} cannot access this Notion page`,
-      );
-    }
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Okou cannot access this Notion page",
+    );
   });
 
-  it("projects inaccessible Notion database errors by request brand", async () => {
+  it("reports an inaccessible Notion database with Okou branding", async () => {
     const scenario = await setupFixture();
     await connectNotion(scenario);
     server.use(
@@ -2381,31 +2357,25 @@ describe("okou workflow automations", () => {
       }),
     );
 
-    for (const [origin, assistantName] of [
-      [undefined, "Zero"],
-      ["https://app.okou.ai", "Okou"],
-    ] as const) {
-      const rejected = await accept(
-        automationsClient().create({
-          headers: authHeaders(),
-          ...(origin ? { extraHeaders: { origin } } : {}),
-          params: { workflowId: scenario.workflowId },
-          body: {
-            kind: "event",
-            eventType: "notion-database-item-created",
-            eventConfig: {
-              provider: "notion",
-              event: "database_item_created",
-              databaseUrl: NOTION_DATABASE_URL,
-            },
+    const rejected = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-database-item-created",
+          eventConfig: {
+            provider: "notion",
+            event: "database_item_created",
+            databaseUrl: NOTION_DATABASE_URL,
           },
-        }),
-        [400],
-      );
-      expect(rejected.body.error.message).toBe(
-        `${assistantName} cannot access this Notion database`,
-      );
-    }
+        },
+      }),
+      [400],
+    );
+    expect(rejected.body.error.message).toBe(
+      "Okou cannot access this Notion database",
+    );
   });
 
   it("creates Notion child page automations by validating and storing the parent page", async () => {
@@ -4266,7 +4236,7 @@ describe("okou workflow automations", () => {
   });
 
   it("self-heals a renamed primary Calendar target without crossing accounts", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const legacyCalendarId = "legacy-primary@example.com";
     const firstAccessToken = "renamed-primary-first-token";
     const secondAccessToken = "renamed-primary-second-token";
@@ -4500,7 +4470,7 @@ describe("okou workflow automations", () => {
   });
 
   it("does not remap a shared Calendar when provider resources differ", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const sharedCalendarId = "shared-calendar@example.com";
     const accessToken = "shared-calendar-token";
     let watchCalls = 0;
@@ -4657,7 +4627,7 @@ describe("okou workflow automations", () => {
   });
 
   it("suspends an unavailable primary Calendar once and recovers before resuming", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const accessToken = "primary-action-required-token";
     const accountEmail = "primary-action-required@example.com";
     const resourceId = "primary-action-required-resource";
@@ -4897,7 +4867,7 @@ describe("okou workflow automations", () => {
   });
 
   it("keeps transient Calendar renewal failures retryable", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const accessToken = "transient-calendar-token";
     let watchCalls = 0;
     let exactTargetProbes = 0;

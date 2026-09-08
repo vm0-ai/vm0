@@ -682,7 +682,7 @@ test("Distinguish workflow tokens from text inside URLs", async () => {
 
   const user = userEvent.setup();
   const editor = await findComposerEditor();
-  const url = "https://www.vm0.ai/en/use-cases/pr-review";
+  const url = "https://www.okou.ai/en/use-cases/pr-review";
   await user.click(editor);
   await user.keyboard(url);
 

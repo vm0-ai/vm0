@@ -7,6 +7,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { insertLegacyHostedSiteFixture } from "../../../test-fixtures/hosted-sites";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
@@ -88,7 +89,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(first.publicSlug).toBe(site);
     expect(second.publicSlug).toBe(site);
     expect(first.url).toBe(second.url);
-    expect(first.url).toBe(`https://${site}.zero-sites.test`);
+    expect(first.url).toBe(`http://${site}.okou-public-sites.test`);
     expect(first.aliasUrl).toBe(first.url);
     expect(second.aliasUrl).toBe(second.url);
     expect(first.deploymentVersion).toBe(1);
@@ -130,13 +131,13 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       expect.arrayContaining([
         `${versionPrefix}/1/manifest.json`,
         `${versionPrefix}/2/manifest.json`,
-        `sites/deployments/${first.deploymentId}.json`,
-        `sites/deployments/${second.deploymentId}.json`,
+        `sites/brands/okou/deployments/${first.deploymentId}.json`,
+        `sites/brands/okou/deployments/${second.deploymentId}.json`,
       ]),
     );
     expect(
       capture.puts.filter((put) => {
-        return put.key === `sites/${site}/active.json`;
+        return put.key === `sites/brands/okou/${site}/active.json`;
       }),
     ).toHaveLength(1);
 
@@ -218,7 +219,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     ]);
   });
 
-  it("uses the creation brand for hosted-site URLs and isolates Okou pointers [HOST-A]", async () => {
+  it("preserves historical hosted-site domains and creates new sites on Okou [HOST-A]", async () => {
     mockEnv("OKOU_PUBLIC_HOST_DOMAIN", "okou.app");
     mockEnv("ZERO_HOST_DOMAIN", "sites.vm0.io");
     mockEnv("OKOU_HOST_SCHEME", "https");
@@ -240,14 +241,24 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       spaFallback: false,
       files: [hostedTextFile("/index.html", "<main>VM0 site</main>")],
     };
-    const createdOnVm0 = await api.prepareHostedSite(actor, vm0Body, "vm0");
-    const redeployedFromOkou = await api.prepareHostedSite(
-      actor,
-      vm0Body,
-      "okou",
-    );
+    // The current API cannot create a VM0 site. Reproduce the stored identity
+    // so redeployment still exercises the historical domain and pointer path.
+    const legacySiteId = await insertLegacyHostedSiteFixture({
+      orgId: actor.orgId,
+      userId: actor.userId,
+      site: vm0Site,
+    });
+    const createdOnVm0 = await api.prepareHostedSite(actor, vm0Body);
+    expect(createdOnVm0.siteId).toBe(legacySiteId);
+    const redeployedFromOkou = await api.prepareHostedSite(actor, vm0Body);
 
     expect(createdOnVm0.url).toBe(`https://${vm0Site}.sites.vm0.io`);
+    await api.completeHostedSite(actor, redeployedFromOkou.deploymentId);
+    expect(capture.puts).toContainEqual(
+      expect.objectContaining({
+        key: `sites/${vm0Site}/active.json`,
+      }),
+    );
     expect(redeployedFromOkou).toMatchObject({
       siteId: createdOnVm0.siteId,
       url: createdOnVm0.url,
@@ -255,14 +266,10 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     });
 
     const browserOkouSite = `bdd-browser-okou-${randomUUID().slice(0, 8)}`;
-    const createdOnOkou = await api.prepareHostedSite(
-      actor,
-      {
-        ...vm0Body,
-        site: browserOkouSite,
-      },
-      "okou",
-    );
+    const createdOnOkou = await api.prepareHostedSite(actor, {
+      ...vm0Body,
+      site: browserOkouSite,
+    });
     expect(createdOnOkou.url).toBe(`https://${browserOkouSite}.okou.app`);
 
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
@@ -277,7 +284,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       actor,
       randomUUID(),
       ["host:write"],
-      "okou",
     );
     const okouSite = `bdd-okou-brand-${randomUUID().slice(0, 8)}`;
     const createdWithOkouToken = await api.prepareHostedSite(
@@ -288,7 +294,6 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         spaFallback: false,
         files: [hostedTextFile("/index.html", "<main>Okou site</main>")],
       },
-      "vm0",
     );
     expect(createdWithOkouToken.url).toBe(`https://${okouSite}.okou.app`);
     expect(createdWithOkouToken.artifactUrl).toBe(

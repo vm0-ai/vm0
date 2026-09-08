@@ -690,6 +690,291 @@ describe("official Pi AgentSession runtime", () => {
     },
   );
 
+  it.each(
+    GPT_MODELS.flatMap((selectedModel) => {
+      return ["x-api-key", "Authorization"].map((headerName) => {
+        return { selectedModel, headerName };
+      });
+    }),
+  )(
+    "preserves custom $selectedModel $headerName across standard, Fast, standard API and real Sandbox handoffs",
+    async ({ selectedModel, headerName }) => {
+      const cwd = await mkdtemp(join(tmpdir(), "pi-custom-fast-"));
+      onTestFinished(async () => {
+        await rm(cwd, { recursive: true, force: true });
+      });
+      const toolFile = join(cwd, "executions.txt");
+      await writeFile(toolFile, "turn0", "utf8");
+      const provider = await startResponsesProvider(
+        (response, requestNumber) => {
+          if (requestNumber % 3 === 1) {
+            responsesToolSse(response, {
+              callId: `call_custom_${requestNumber}`,
+              name: "edit",
+              arguments: {
+                path: toolFile,
+                edits: [
+                  {
+                    oldText: `turn${Math.floor((requestNumber - 1) / 3)}`,
+                    newText: `turn${Math.floor((requestNumber - 1) / 3) + 1}`,
+                  },
+                ],
+              },
+            });
+          } else {
+            responsesTextSse(
+              response,
+              `custom Sandbox answer ${requestNumber}`,
+            );
+          }
+        },
+      );
+      onTestFinished(async () => {
+        await provider.close();
+      });
+      const sessionId = randomUUID();
+      const sessionFile = join(cwd, "session.jsonl");
+      const upstreamModel = `company-${selectedModel}-production`;
+      let sessionJsonl: string | undefined;
+      let turns = 0;
+      for (const tier of [undefined, "priority", undefined] as const) {
+        const config = {
+          provider: "openai" as const,
+          api: "openai-responses" as const,
+          baseUrl: provider.baseUrl.replace(/\/v1$/, "/custom/v1"),
+          model: upstreamModel,
+          catalogModel: selectedModel,
+          thinkingLevel: "max" as const,
+          ...(tier === undefined ? {} : { serviceTier: tier }),
+          apiKeyEnv: "OPENAI_API_KEY" as const,
+          credentialSecretName: "OKOU_MODEL_PROVIDER_API_KEY",
+          credentialHeader: {
+            name: headerName,
+            valueTemplate: "Key {{secret}}",
+          },
+        };
+        const direct = await materializePiAgentModelConfig({
+          target: "direct",
+          config,
+          resolveCredential() {
+            return "custom-secret";
+          },
+        });
+        const sandbox = await materializePiAgentModelConfig({
+          target: "sandbox-firewall",
+          config,
+          resolveCredential() {
+            return "opaque-custom-credential";
+          },
+        });
+        expect(direct.catalogModel).toBe(selectedModel);
+        expect(sandbox.catalogModel).toBe(selectedModel);
+        const start = provider.requests.length;
+        const firstTurn = await runPiApiFirstTurn({
+          ownership: createPiApiFirstTurnOwnership(),
+          cwd,
+          agentDir: join(cwd, ".pi"),
+          sessionId,
+          sessionJsonl,
+          prompt: `run custom turn ${turns}`,
+          appendSystemPrompt: null,
+          model: direct,
+          resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+        });
+        expect(firstTurn.handoffRequired).toBe(true);
+        expect(provider.requests).toHaveLength(start + 1);
+        await writeFile(sessionFile, firstTurn.sessionJsonl, "utf8");
+        const sessionManager = SessionManager.open(sessionFile);
+        const created = await createPiAgentSessionForRuntime({
+          cwd,
+          agentDir: join(cwd, ".pi"),
+          sessionManager,
+          model: sandbox,
+          appendSystemPrompt: null,
+          resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+        });
+        try {
+          await resumePiApiFirstTurn(created.session);
+          await created.session.prompt(
+            "continue the same custom Sandbox session",
+          );
+          turns += 1;
+          const toolResults = created.session.messages.filter((message) => {
+            return message.role === "toolResult";
+          });
+          expect(toolResults).toHaveLength(turns);
+          for (const result of toolResults) {
+            expect(result).toMatchObject({ toolName: "edit", isError: false });
+          }
+          expect(await readFile(toolFile, "utf8")).toBe(`turn${turns}`);
+          expect(provider.requests).toHaveLength(start + 3);
+          for (const [index, request] of provider.requests
+            .slice(start)
+            .entries()) {
+            const header =
+              index === 0 ? "Key custom-secret" : "opaque-custom-credential";
+            expect(request).toMatchObject({
+              url: "/custom/v1/responses",
+              authorization:
+                headerName === "Authorization" ? header : undefined,
+              apiKey: headerName === "x-api-key" ? header : undefined,
+              accountId: undefined,
+              body: {
+                model: upstreamModel,
+                stream: true,
+                store: false,
+                reasoning: { effort: "max" },
+              },
+            });
+            if (tier === undefined) {
+              expect(request.body).not.toHaveProperty("service_tier");
+            } else {
+              expect(request.body).toMatchObject({ service_tier: "priority" });
+            }
+            expect(request.body).not.toHaveProperty("previous_response_id");
+            if (index > 0) {
+              expect(request.body).toMatchObject({
+                input: expect.arrayContaining([
+                  expect.objectContaining({
+                    type: "function_call_output",
+                    call_id: `call_custom_${start + 1}`,
+                    output: expect.stringContaining(toolFile),
+                  }),
+                ]),
+              });
+            }
+          }
+          expect(sessionManager.getSessionId()).toBe(sessionId);
+          expect(created.session.messages.at(-1)).toMatchObject({
+            stopReason: "stop",
+          });
+        } finally {
+          created.session.dispose();
+        }
+        sessionJsonl = await readFile(sessionFile, "utf8");
+        expect(sessionJsonl).not.toMatch(
+          /serviceTier|service_tier|custom-secret|opaque-custom/,
+        );
+      }
+      expect(provider.requests).toHaveLength(9);
+    },
+  );
+
+  it.each(
+    GPT_MODELS.flatMap((selectedModel) => {
+      return [400, 401].map((status) => {
+        return { selectedModel, status };
+      });
+    }),
+  )(
+    "surfaces custom $selectedModel priority/credential rejection $status after a real tool without replay",
+    async ({ selectedModel, status }) => {
+      const cwd = await mkdtemp(join(tmpdir(), "pi-custom-rejection-"));
+      onTestFinished(async () => {
+        await rm(cwd, { recursive: true, force: true });
+      });
+      const toolFile = join(cwd, "executions.txt");
+      await writeFile(toolFile, "turn0", "utf8");
+      const provider = await startResponsesProvider(
+        (response, requestNumber) => {
+          if (requestNumber === 1) {
+            responsesToolSse(response, {
+              callId: "call_custom_rejection",
+              name: "edit",
+              arguments: {
+                path: toolFile,
+                edits: [{ oldText: "turn0", newText: "turn1" }],
+              },
+            });
+          } else {
+            response.writeHead(status, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({
+                error: {
+                  code:
+                    status === 400
+                      ? "unsupported_service_tier"
+                      : "invalid_api_key",
+                  message:
+                    "custom gateway rejected the requested priority credential",
+                },
+              }),
+            );
+          }
+        },
+      );
+      onTestFinished(async () => {
+        await provider.close();
+      });
+      const model = await materializePiAgentModelConfig({
+        target: "sandbox-firewall",
+        config: {
+          provider: "openai",
+          baseUrl: provider.baseUrl,
+          model: `company-${selectedModel}-production`,
+          catalogModel: selectedModel,
+          thinkingLevel: "max",
+          serviceTier: "priority",
+          apiKeyEnv: "OPENAI_API_KEY",
+          credentialSecretName: "OKOU_MODEL_PROVIDER_API_KEY",
+          credentialHeader: {
+            name: "x-api-key",
+            valueTemplate: "Key {{secret}}",
+          },
+        },
+        resolveCredential() {
+          return "opaque-custom-credential";
+        },
+      });
+      const firstTurn = await runPiApiFirstTurn({
+        ownership: createPiApiFirstTurnOwnership(),
+        cwd,
+        agentDir: join(cwd, ".pi"),
+        sessionId: randomUUID(),
+        prompt: "execute once and surface gateway rejection",
+        appendSystemPrompt: null,
+        model,
+        resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+      });
+      expect(firstTurn.handoffRequired).toBe(true);
+      const sessionFile = join(cwd, "session.jsonl");
+      await writeFile(sessionFile, firstTurn.sessionJsonl, "utf8");
+      const created = await createPiAgentSessionForRuntime({
+        cwd,
+        agentDir: join(cwd, ".pi"),
+        sessionManager: SessionManager.open(sessionFile),
+        model,
+        appendSystemPrompt: null,
+        resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+      });
+      try {
+        await resumePiApiFirstTurn(created.session);
+        expect(created.session.messages.at(-1)).toMatchObject({
+          role: "assistant",
+          stopReason: "error",
+          errorMessage: expect.stringContaining("custom gateway rejected"),
+        });
+        expect(await readFile(toolFile, "utf8")).toBe("turn1");
+        expect(
+          created.session.messages.filter((message) => {
+            return message.role === "toolResult";
+          }),
+        ).toMatchObject([{ toolName: "edit", isError: false }]);
+        expect(provider.requests).toHaveLength(2);
+        for (const request of provider.requests) {
+          expect(request).toMatchObject({
+            url: "/v1/responses",
+            authorization: undefined,
+            apiKey: "opaque-custom-credential",
+            body: { model: model.model, service_tier: "priority" },
+          });
+        }
+      } finally {
+        created.session.dispose();
+      }
+    },
+  );
+
   it("registers one stable memory schema fixture only for valid V2 epochs", async () => {
     const content = "# Frozen memory\n\nExact API epoch.";
     const v1 = await registeredToolSchemas(EMPTY_RESOURCE_SNAPSHOT);

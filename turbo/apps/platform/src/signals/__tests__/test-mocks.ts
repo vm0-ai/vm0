@@ -253,6 +253,29 @@ type OmitFirst<T extends readonly unknown[]> = T extends readonly [
   ? Rest
   : never;
 
+/**
+ * Every page test now runs on an okou.ai host, where the theme preference is
+ * persisted in a cookie. happy-dom keeps cookies for the whole file, so clear
+ * them whenever a test navigates to a new page.
+ */
+function clearBrowserCookies(): void {
+  const domainAttributes = new Set<string>([""]);
+  const labels = window.location.hostname.split(".");
+  for (let index = 0; index < labels.length - 1; index += 1) {
+    domainAttributes.add(`; Domain=.${labels.slice(index).join(".")}`);
+  }
+  for (const entry of document.cookie.split(";")) {
+    const name = entry.split("=")[0]?.trim();
+    if (!name) {
+      continue;
+    }
+    for (const domainAttribute of domainAttributes) {
+      // oxlint-disable-next-line unicorn/no-document-cookie -- expiring a cookie requires the document setter.
+      document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure${domainAttribute}`;
+    }
+  }
+}
+
 export function createTestMocks(getSignal: () => AbortSignal) {
   let originalBrowserUrl: string | null = null;
   let ownedApiOriginMarker: HTMLMetaElement | null = null;
@@ -378,6 +401,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           });
         }
         window.location.href = url;
+        clearBrowserCookies();
         ownedApiOriginMarker?.remove();
         ownedApiOriginMarker = null;
 
@@ -1515,9 +1539,6 @@ function productionApiOriginForUrl(url: string): string | null {
   const hostname = new URL(url, window.location.href).hostname;
   if (hostname === "app.okou.ai") {
     return "https://api.okou.ai";
-  }
-  if (hostname === "app.vm0.ai") {
-    return "https://api.vm0.ai";
   }
   return null;
 }
