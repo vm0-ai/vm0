@@ -36,7 +36,9 @@
 
   .cl-footerAction__signIn .okou-clerk-footer-link,
   .cl-footerAction__signUp .okou-clerk-footer-link {
-    @apply underline underline-offset-4 hover:underline;
+    /* Keep the short navigation action together while the adjacent sentence
+     * reflows. Do not prevent wrapping of legal links or passkey actions. */
+    @apply shrink-0 whitespace-nowrap underline underline-offset-4 hover:underline;
   }
 
   .okou-clerk-button[data-variant="outline"],

@@ -113,6 +113,60 @@ async function enterInvalidCode(page: Page, code: string): Promise<void> {
   await expect(input).toHaveValue("");
 }
 
+for (const theme of ["light", "dark"] as const) {
+  test.describe(`narrow footer ${theme}`, () => {
+    test.use({
+      colorScheme: theme,
+      isMobile: true,
+      hasTouch: true,
+      viewport: { width: 320, height: 568 },
+    });
+
+    for (const route of [
+      { path: "/v1/sign-up", action: "Sign in", target: "/v1/sign-in" },
+      { path: "/v1/sign-in", action: "Sign up", target: "/v1/sign-up" },
+    ] as const) {
+      test(`${route.path} keeps its footer action on one line and keyboard reachable`, async ({
+        page,
+      }) => {
+        await openAuth(page, route.path, theme);
+        const action = page.getByRole("link", {
+          exact: true,
+          name: route.action,
+        });
+
+        for (const width of [320, 390]) {
+          await page.setViewportSize({ width, height: 568 });
+          await action.scrollIntoViewIfNeeded();
+          // Check rendered geometry, not the presence of a nowrap class.
+          await expect(action).toHaveCSS("height", "20px");
+          const fits = await action.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            return (
+              box.left >= 0 &&
+              box.right <= document.documentElement.clientWidth &&
+              document.documentElement.scrollWidth <=
+                document.documentElement.clientWidth
+            );
+          });
+          expect(fits).toBe(true);
+        }
+
+        await action.focus();
+        await page.keyboard.press("Shift+Tab");
+        await expect(action).not.toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(action).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(page).toHaveURL(new RegExp(`${route.target}(?:\\?.*)?$`));
+        await expect(
+          page.getByLabel("Email address", { exact: true }),
+        ).toBeVisible();
+      });
+    }
+  });
+}
+
 for (const device of [
   { name: "desktop light", theme: "light", width: 1440, height: 900 },
   { name: "mobile dark", theme: "dark", width: 390, height: 844 },
