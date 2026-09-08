@@ -1378,7 +1378,7 @@ describe("okou workflow automations", () => {
     });
   });
 
-  it("uses configured webhook URLs for tokens with or without legacy brand claims", async () => {
+  it("uses configured webhook URLs for agent run tokens", async () => {
     mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
@@ -1407,26 +1407,21 @@ describe("okou workflow automations", () => {
       modelProvider: "anthropic-api-key",
     });
 
-    for (const legacyBrand of [undefined, "vm0", "okou"] as const) {
-      const token = runs.okouTokenForRunWithCapabilities(
-        actor,
-        sourceRun.runId,
-        ["agent:write"],
-        legacyBrand,
-      );
-      const revealed = await accept(
-        automationsClient().revealWebhookSecret({
-          headers: { authorization: `Bearer ${token}` },
-          params: { id: created.body.id },
-          body: undefined,
-        }),
-        [200],
-      );
-      const revealedUrl = new URL(revealed.body.webhookUrl);
-      expect(revealedUrl.hostname).toBe("api.okou.ai");
-      expect(revealedUrl.pathname).toBe(createdUrl.pathname);
-      expect(revealed.body.webhookSecret).toBe(created.body.webhookSecret);
-    }
+    const token = runs.okouTokenForRunWithCapabilities(actor, sourceRun.runId, [
+      "agent:write",
+    ]);
+    const revealed = await accept(
+      automationsClient().revealWebhookSecret({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    const revealedUrl = new URL(revealed.body.webhookUrl);
+    expect(revealedUrl.hostname).toBe("api.okou.ai");
+    expect(revealedUrl.pathname).toBe(createdUrl.pathname);
+    expect(revealed.body.webhookSecret).toBe(created.body.webhookSecret);
   });
 
   it("rejects webhook re-enable for Pro", async () => {

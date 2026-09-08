@@ -801,7 +801,6 @@ export function createRunsApi(
       actor: ApiTestUser,
       runId: string,
       capabilities: readonly Capability[],
-      publicBrand?: PublicBrand,
     ): string {
       if (!actor.orgId) {
         throw new Error("Agent run tokens require an org-scoped actor");
@@ -813,7 +812,6 @@ export function createRunsApi(
         orgId: actor.orgId,
         runId,
         capabilities: [...capabilities],
-        ...(publicBrand === undefined ? {} : { publicBrand }),
         iat: seconds,
         exp: seconds + 3600,
       });

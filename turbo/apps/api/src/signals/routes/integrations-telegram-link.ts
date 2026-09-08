@@ -131,7 +131,6 @@ function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
 
 function officialLinkConflictResponse(
   reason: LinkOfficialTelegramUserConflictReason,
-  publicBrand: PublicBrand,
   botUsername: string,
 ) {
   const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
@@ -367,11 +366,7 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(
-          result.reason,
-          publicBrand,
-          config.botUsername,
-        );
+        return officialLinkConflictResponse(result.reason, config.botUsername);
       }
 
       return linkSuccessResponse(config.botUsername, telegramUserId);
@@ -414,11 +409,7 @@ const linkOfficialInner$ = command(
       signal.throwIfAborted();
 
       if (!result.ok) {
-        return officialLinkConflictResponse(
-          result.reason,
-          publicBrand,
-          config.botUsername,
-        );
+        return officialLinkConflictResponse(result.reason, config.botUsername);
       }
 
       sendConnectSuccessMessage({

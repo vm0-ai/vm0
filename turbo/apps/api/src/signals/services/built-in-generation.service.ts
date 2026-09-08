@@ -195,9 +195,9 @@ export function readBuiltInGenerationRequestInternal(
 }
 
 export function builtInGenerationPublicBrand(request: unknown): PublicBrand {
-  // Old API writers can omit publicBrand during the observed ~102-minute
-  // rollout window. Their jobs can then run for up to one hour. Remove after
-  // both windows close; tracked by #28449. Invalid present values throw above.
+  // Historical pre-brand requests retain their VM0 artifact identity. This
+  // is permanent read compatibility per #28449; current writers set publicBrand.
+  // Invalid present values throw above.
   return readBuiltInGenerationRequestInternal(request).publicBrand ?? "vm0";
 }
 

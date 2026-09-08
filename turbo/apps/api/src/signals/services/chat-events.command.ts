@@ -3079,7 +3079,6 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
 async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
   const appUrl = env("APP_URL");
@@ -3189,14 +3188,12 @@ async function appendInsufficientCreditsEvents(params: {
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
   readonly touchThreadSort: boolean;
   readonly queueFirstEventId?: string;
 }): Promise<CreatedChatEventResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
-    publicBrand: params.publicBrand,
   });
   if (params.queueFirstEventId) {
     return appendQueueFirstInsufficientCreditsEvents({
@@ -3568,7 +3565,6 @@ const createNormalChatRun$ = command(
         body: prepared.body,
         userId: args.userId,
         orgId: args.orgId,
-        publicBrand: args.publicBrand,
         touchThreadSort: shouldTouchThreadSortFromNormalSend(
           args.agentRunPreCreateSource,
           prepared.thread.isNewThread,

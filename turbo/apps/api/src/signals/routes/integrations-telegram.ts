@@ -289,8 +289,7 @@ const registerTelegramBotInner$ = command(
 const setupTelegramStatusInner$ = command(
   ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = PUBLIC_BRAND;
-    return set(setupTelegramStatus$, { auth, publicBrand }, signal);
+    return set(setupTelegramStatus$, { auth }, signal);
   },
 );
 

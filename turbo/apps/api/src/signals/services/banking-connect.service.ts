@@ -195,7 +195,7 @@ async function createTestingCustomer(
       method: "POST",
       body: {
         username: deterministicCustomerUsername(owner),
-        firstName: "Zero",
+        firstName: "Okou",
         lastName: "Banking",
       },
     },

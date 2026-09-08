@@ -1837,12 +1837,10 @@ const runAgentForTeams$ = command(
 function connectNotice(
   activity: TeamsMessageActivity,
   installation: TeamsInstallation | null,
-  publicBrand: PublicBrand,
 ): TeamsMessageDispatchResult {
   const { assistantName } = teamsIdentity(installation);
   const connectUrl = buildTeamsConnectUrlForActivity({
     activity,
-    publicBrand,
     installation,
   });
   return {
@@ -1885,7 +1883,6 @@ function unboundInstallationNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation | null;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
@@ -1900,7 +1897,7 @@ function unboundInstallationNotice(args: {
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 function missingConnectionNotice(args: {
@@ -1908,7 +1905,6 @@ function missingConnectionNotice(args: {
   readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
-  readonly publicBrand: PublicBrand;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({
@@ -1920,7 +1916,7 @@ function missingConnectionNotice(args: {
   if (args.isGreeting) {
     return greetingNotice(args.installation);
   }
-  return connectNotice(args.activity, args.installation, args.publicBrand);
+  return connectNotice(args.activity, args.installation);
 }
 
 interface ConnectedCommandBeforeComposeArgs {
@@ -2326,7 +2322,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
     const boundInstallation: BoundTeamsInstallation = {
@@ -2348,7 +2343,6 @@ export const dispatchTeamsMessageToAgent$ = command(
         isGreeting,
         activity,
         installation,
-        publicBrand: args.publicBrand,
       });
     }
 

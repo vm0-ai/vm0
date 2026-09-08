@@ -846,7 +846,6 @@ const connectGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
     const query = get(queryOf(githubOauthContract.connect));
-    const publicBrand = PUBLIC_BRAND;
     const auth = await set(
       requiredAuthContext$,
       { requireOrganization: true },
@@ -936,7 +935,6 @@ const connectGithubUserOauth$ = command(
         userId: auth.userId,
         orgId,
         origin,
-        publicBrand,
         authMethodId: resolvedMethod.authMethodId,
         method: resolvedMethod.method,
         readEnv: optionalEnv,

@@ -133,14 +133,12 @@ const getSlackEnvironment$ = computed(
 
 const getSlackStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
   const status = await get(
     slackOrgStatus({
       apiOrigin: getOAuthApiOrigin(get(request$).raw),
       orgId: auth.orgId,
       userId: auth.userId,
       orgRole: auth.orgRole,
-      publicBrand,
     }),
   );
 

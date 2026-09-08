@@ -447,7 +447,6 @@ const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
       activity: normalized.activity,
       connectUrl: buildTeamsConnectUrlForActivity({
         activity: normalized.activity,
-        publicBrand,
         installation,
       }),
     },

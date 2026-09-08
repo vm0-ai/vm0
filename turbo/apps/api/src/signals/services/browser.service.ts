@@ -237,7 +237,6 @@ function conflict(message: string, code = "BROWSER_CONFLICT") {
 }
 
 function chatRunRequired(
-  publicBrand: PublicBrand,
   code: "BROWSER_RUN_REQUIRED" | "BROWSER_CHAT_THREAD_REQUIRED",
 ) {
   return serviceError(
@@ -942,7 +941,7 @@ async function resolveRunContext(
   actor: BrowserActor,
 ): Promise<BrowserServiceResult<BrowserRunContext>> {
   if (!actor.runId) {
-    return chatRunRequired(actor.publicBrand, "BROWSER_RUN_REQUIRED");
+    return chatRunRequired("BROWSER_RUN_REQUIRED");
   }
   const [run] = await db
     .select({
@@ -962,7 +961,7 @@ async function resolveRunContext(
     )
     .limit(1);
   if (!run?.chatThreadId) {
-    return chatRunRequired(actor.publicBrand, "BROWSER_CHAT_THREAD_REQUIRED");
+    return chatRunRequired("BROWSER_CHAT_THREAD_REQUIRED");
   }
   if (isTerminalRunStatus(run.status)) {
     return conflict("The chat run already ended", "BROWSER_RUN_ENDED");
