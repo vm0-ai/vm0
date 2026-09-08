@@ -6952,6 +6952,7 @@ function CustomConnectorCatalogCard({
   const { t } = useTranslation();
   return (
     <button
+      data-slot="connector-card"
       type="button"
       aria-label={t(
         ($) => {

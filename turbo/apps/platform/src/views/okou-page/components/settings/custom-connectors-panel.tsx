@@ -229,6 +229,7 @@ function CustomConnectorActivationCard({
   const { t } = useTranslation();
   return (
     <div
+      data-slot="connector-card"
       className={surfaceVariants({
         interactive: canActivate,
         className: "relative flex flex-col",
