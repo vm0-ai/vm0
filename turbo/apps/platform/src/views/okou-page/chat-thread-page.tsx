@@ -8238,7 +8238,7 @@ function RelatedArtifactRow({ card }: { readonly card: RelatedArtifactCard }) {
       title={card.signals.url}
       data-chat-run-related-artifact-url={card.signals.url}
       onClick={() => {
-        openArtifact(card);
+        openArtifact(card, "lightbox");
       }}
     >
       <RelatedArtifactIcon kind={card.signals.kind} />
