@@ -1,11 +1,15 @@
 import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   accountSummary,
   builtinConnector,
@@ -398,6 +402,96 @@ test("Choose which connector account a chat uses", async () => {
     ).toBeVisible();
   });
 });
+
+test.each([
+  { label: "GitHub", explicit: true },
+  { label: "DeepWiki", explicit: false },
+])(
+  "Dismiss the $label account chooser only on parent-list scroll",
+  async ({ label, explicit }) => {
+    const user = userEvent.setup({ delay: null });
+    const builtinAccounts = githubAccounts(7);
+    const customAccounts = builtinAccounts.map((account, index) => {
+      return {
+        ...account,
+        id: `f0000000-0000-4000-a000-${(index + 101).toString().padStart(12, "0")}`,
+        target: deepWikiTarget(),
+      };
+    });
+    installComposerConnectorFixture({
+      catalog: [builtinConnector({ slug: GITHUB_SLUG, label: "GitHub" })],
+      builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
+      customConnectors: [
+        mcpConnector({
+          id: DEEPWIKI_CONNECTOR_ID,
+          slug: "deepwiki",
+          displayName: "DeepWiki",
+          connected: true,
+        }),
+      ],
+      customAuthorizations: {
+        [SCOUT_AGENT_ID]: [
+          { customConnectorId: DEEPWIKI_CONNECTOR_ID, permissionNames: [] },
+        ],
+      },
+      accountSummaries: [
+        accountSummary(githubTarget(), builtinAccounts),
+        accountSummary(deepWikiTarget(), customAccounts),
+      ],
+      accounts: [...builtinAccounts, ...customAccounts],
+      threadSelections: {
+        [SCOUT_THREAD_ID]: [
+          { target: githubTarget(), connectionId: builtinAccounts[1]!.id },
+        ],
+      },
+      threadId: SCOUT_THREAD_ID,
+    });
+
+    await setupPage({
+      context,
+      path: `/chats/${SCOUT_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+    await loadComposer();
+    await openConnectors(user);
+    const accountLabel = `${label} · ${explicit ? "Selected account: Personal" : "Using default account: Work"}`;
+    const chooser = await openAccountChooser(user, accountLabel);
+    const choices = within(chooser).getByRole("radiogroup", { name: label });
+    await expect(within(choices).findByText("Research")).resolves.toBeVisible();
+
+    fireEvent.scroll(choices);
+    expect(chooser).toBeVisible();
+    const connectorList = screen.getByRole("list", { name: "Connectors" });
+    fireEvent.scroll(connectorList);
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Account for this chat")).toBeNull();
+    });
+    expect(queryFastControl("button", "Add connectors")).toBeVisible();
+    expect(screen.getByLabelText(`Remove ${label}`)).toBeChecked();
+    const accountButton = await findFastControl("button", accountLabel);
+    expect(accountButton).toBeVisible();
+
+    fireEvent.scroll(connectorList);
+    await user.hover(accountButton);
+    expect(screen.queryByLabelText("Account for this chat")).toBeNull();
+    const reopened = await openAccountChooser(user, accountLabel);
+    expect(
+      queryAllByRoleFast("radio", reopened).find((radio) => {
+        return radio.getAttribute("aria-checked") === "true";
+      }),
+    ).toHaveTextContent(explicit ? "Personal" : "Use default");
+
+    fireEvent.scroll(connectorList);
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Account for this chat")).toBeNull();
+    });
+    accountButton.focus();
+    await user.keyboard("{Enter}");
+    await expect(
+      screen.findByLabelText("Account for this chat"),
+    ).resolves.toBeVisible();
+  },
+);
 
 test("Keep connector access synchronized across split chats for the same agent", async () => {
   const user = userEvent.setup({ delay: null });

@@ -8273,6 +8273,11 @@ function ConnectorsPopoverButton({
                   return $.chat.connectors.title;
                 })}
                 className="flex max-h-64 min-h-0 flex-1 flex-col overflow-y-auto"
+                onScroll={() => {
+                  if (accountMenuOpen) {
+                    closeAccountMenu();
+                  }
+                }}
               >
                 {visibleConnectors.map((item) => {
                   if (item.kind === "custom") {
