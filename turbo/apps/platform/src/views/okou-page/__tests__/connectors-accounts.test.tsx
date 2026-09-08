@@ -739,6 +739,7 @@ test("Reconnect the selected non-default account", async () => {
   let submitted: unknown;
   context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
     submitted = body.account;
+    expect(body.authorizeAgent).not.toBeTruthy();
     return respond(200, {
       connectionId: personal.id,
       authorizationUrl: "https://oauth.test/stripe/authorize",
@@ -818,7 +819,7 @@ test("Reconnect the selected non-default account", async () => {
   ).not.toBeInTheDocument();
   expect(
     getConnectorAction("button", "Manage Stripe access"),
-  ).toHaveTextContent("Used by 2 agents");
+  ).toHaveTextContent("Add access");
   click(getConnectorAction("button", "Manage Stripe accounts"));
   const reopenedManager = await screen.findByRole("dialog", {
     name: "Manage Stripe accounts",

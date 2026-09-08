@@ -26,6 +26,7 @@ import {
   getConnectorAction,
   getConnectorCard,
   getConnectorIcon,
+  getConnectorSwitch,
   listAgent,
   mockConnectors,
   mockPublicConnectorStatus,
@@ -374,7 +375,7 @@ test("Choose a credential-free method among multiple connection methods", async 
   });
 });
 
-test("Authorize all visible agents after a manual connection", async () => {
+test("Authorize visible agents only for the first manual account", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
@@ -396,10 +397,13 @@ test("Authorize all visible agents after a manual connection", async () => {
       ],
     }),
   ]);
+  let connectedAccount: ConnectorResponse | undefined;
   context.mocks.api(
     connectorManualGrantContract.connect,
     ({ body, respond }) => {
-      return respond(200, storeConnectedConnector("axiom", body.authMethod));
+      expect(body.authorizeAgent ?? false).toBe(!connectedAccount);
+      connectedAccount = storeConnectedConnector("axiom", body.authMethod);
+      return respond(200, connectedAccount);
     },
   );
   mockAgentConnectorAccess("axiom");
@@ -437,6 +441,51 @@ test("Authorize all visible agents after a manual connection", async () => {
     ).toHaveTextContent("Used by 2 agents");
   });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+  click(getConnectorAction("button", "Manage Public Axiom access"));
+  const access = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom access",
+  });
+  click(getConnectorSwitch("Revoke Public Axiom access for Zero", access));
+  await waitFor(() => {
+    expect(
+      getConnectorSwitch("Authorize Public Axiom access for Zero", access),
+    ).not.toBeChecked();
+  });
+  click(getConnectorAction("button", "Close", access));
+  click(getConnectorAction("button", "Manage Public Axiom accounts"));
+  const manager = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom accounts",
+  });
+  click(getConnectorAction("button", "Add account", manager));
+  const addition = await screen.findByRole("dialog", { name: "Public Axiom" });
+  await fill(
+    within(addition).getByPlaceholderText("public-xaat"),
+    "second-token",
+  );
+  click(getConnectorAction("button", "Save", addition));
+  const secondNaming = await screen.findByRole("dialog", {
+    name: "Name your Public Axiom account",
+  });
+  click(getConnectorAction("button", "Skip", secondNaming));
+  await waitFor(() => {
+    expect(
+      getConnectorAction("button", "Manage Public Axiom access"),
+    ).toHaveTextContent("Used by Research Agent");
+  });
+  click(getConnectorAction("button", "Manage Public Axiom access"));
+  const updatedAccess = await screen.findByRole("dialog", {
+    name: "Manage Public Axiom access",
+  });
+  expect(
+    getConnectorSwitch("Authorize Public Axiom access for Zero", updatedAccess),
+  ).not.toBeChecked();
+  expect(
+    getConnectorSwitch(
+      "Revoke Public Axiom access for Research Agent",
+      updatedAccess,
+    ),
+  ).toBeChecked();
 });
 
 test("Connect through device authorization", async () => {

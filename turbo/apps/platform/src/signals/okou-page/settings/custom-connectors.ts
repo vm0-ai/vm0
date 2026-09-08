@@ -387,6 +387,16 @@ const setCustomConnectorValuesForTarget$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     const createClient = get(apiClient$);
+    const initialAccountVersion =
+      args.authorizationTarget.kind === "visible-agents" &&
+      args.account.intent === "add"
+        ? await readConnectorAccountMutationVersion(
+            createClient,
+            { kind: "custom", customConnectorId: args.id },
+            args.account,
+            signal,
+          )
+        : undefined;
     const client = createClient(customConnectorValuesContract);
     const result = await accept(
       client.set({
@@ -409,24 +419,15 @@ const setCustomConnectorValuesForTarget$ = command(
         connectionId: null,
       };
     }
-    let targetAuthorized: boolean;
-    if (connector.permissionBundleRef) {
-      targetAuthorized = await set(
-        isCustomConnectorAuthorizedForTarget$,
-        { connectorId: connector.id, target: args.authorizationTarget },
-        signal,
-      );
-    } else {
-      await set(
-        authorizeCustomConnectorForTarget$,
-        {
-          connectorId: connector.id,
-          target: args.authorizationTarget,
-        },
-        signal,
-      );
-      targetAuthorized = true;
-    }
+    const targetAuthorized = await set(
+      authorizeCompletedCustomConnectorTarget$,
+      {
+        connector,
+        target: args.authorizationTarget,
+        initialAccountVersion,
+      },
+      signal,
+    );
     signal.throwIfAborted();
     toast.success(
       i18n.t(($) => {
@@ -602,10 +603,19 @@ const authorizeCompletedCustomConnectorTarget$ = command(
     args: {
       readonly connector: CustomConnectorResponse | undefined;
       readonly target: CustomConnectorAuthorizationTarget;
+      readonly initialAccountVersion:
+        | ConnectorAccountMutationVersion
+        | undefined;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
     if (!args.connector?.connected) {
+      return false;
+    }
+    if (
+      args.target.kind === "visible-agents" &&
+      args.initialAccountVersion !== 0
+    ) {
       return false;
     }
     if (!args.connector.permissionBundleRef) {
@@ -645,7 +655,6 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
     let navigated = false;
     let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
     let initialDefaultUpdatedAt: string | null | undefined;
-    let expectedConnectionId: string | null = null;
     const startResult = await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
@@ -656,14 +665,16 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
               return connector.id === args.id;
             })?.connectedAccountUpdatedAt ?? null;
         }
-        initialAccountVersion = !args.useDefaultConnectorProjection
-          ? await readConnectorAccountMutationVersion(
-              createClient,
-              { kind: "custom", customConnectorId: args.id },
-              args.account,
-              signal,
-            )
-          : undefined;
+        initialAccountVersion =
+          !args.useDefaultConnectorProjection ||
+          args.authorizationTarget.kind === "visible-agents"
+            ? await readConnectorAccountMutationVersion(
+                createClient,
+                { kind: "custom", customConnectorId: args.id },
+                args.account,
+                signal,
+              )
+            : undefined;
         const client = createClient(customConnectorOAuth2Contract, {
           apiBase: "api",
         });
@@ -679,7 +690,6 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
         if (result.body.result === "connected") {
           return result.body;
         }
-        expectedConnectionId = result.body.connectionId ?? null;
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;
         return result.body;
@@ -698,6 +708,7 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
         {
           connector: startResult.connector,
           target: args.authorizationTarget,
+          initialAccountVersion,
         },
         signal,
       );
@@ -726,7 +737,7 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
         createClient: get(apiClient$),
         connector,
         target: args,
-        expectedConnectionId,
+        expectedConnectionId: startResult.connectionId ?? null,
         initialAccountVersion,
         initialDefaultUpdatedAt,
       },
@@ -744,6 +755,7 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
       {
         connector,
         target: args.authorizationTarget,
+        initialAccountVersion,
       },
       signal,
     );
