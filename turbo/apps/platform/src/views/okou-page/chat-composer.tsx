@@ -4744,7 +4744,10 @@ function PptImportCard({
         />
       </span>
       <span
-        className={cn(TEMPLATE_TILE_CAPTION, compact && "flex-col gap-0.5")}
+        className={cn(
+          TEMPLATE_TILE_CAPTION,
+          compact && "flex-col items-stretch gap-0.5",
+        )}
       >
         <span className={TEMPLATE_TILE_NAME}>{label}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
@@ -5933,7 +5936,7 @@ export function ComposerPresentationRecommendations({
         return $.chat.taskChips.presentationTemplates;
       })}
     >
-      <div className="grid min-w-0 grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-3">
         <PptImportCard
           signals={signals}
           compact
