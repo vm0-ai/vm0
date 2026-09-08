@@ -2367,6 +2367,173 @@
       "startWithPrompt": "Créer",
       "templates": "Modèles"
     },
+    "taskChips": {
+      "chooseTask": "Choisir une tâche",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Créer une invitation d’anniversaire",
+            "prompt": "Créer une invitation d’anniversaire"
+          },
+          "brandCharacter": {
+            "label": "Créer un personnage pour ma marque",
+            "prompt": "Créer un personnage pour ma marque"
+          },
+          "businessLogo": {
+            "label": "Créer un logo pour mon entreprise",
+            "prompt": "Créer un logo pour mon entreprise"
+          },
+          "cafeMenu": {
+            "label": "Créer un menu pour mon café",
+            "prompt": "Créer un menu pour mon café"
+          },
+          "eventPoster": {
+            "label": "Créer une affiche pour mon événement",
+            "prompt": "Créer une affiche pour mon événement"
+          },
+          "finishedSketch": {
+            "label": "Transformer mon croquis en visuel final",
+            "prompt": "Transformer mon croquis en visuel final"
+          },
+          "greetingCard": {
+            "label": "Créer une carte personnelle",
+            "prompt": "Créer une carte personnelle"
+          },
+          "headshot": {
+            "label": "Créer un portrait professionnel",
+            "prompt": "Créer un portrait professionnel"
+          },
+          "infographic": {
+            "label": "Transformer une idée en infographie",
+            "prompt": "Transformer une idée en infographie"
+          },
+          "newsletterCover": {
+            "label": "Créer une couverture pour ma newsletter",
+            "prompt": "Créer une couverture pour ma newsletter"
+          },
+          "packaging": {
+            "label": "Explorer des emballages pour mon produit",
+            "prompt": "Explorer des emballages pour mon produit"
+          },
+          "photoLighting": {
+            "label": "Améliorer l’éclairage de ma photo",
+            "prompt": "Améliorer l’éclairage de ma photo"
+          },
+          "presentationVisual": {
+            "label": "Créer un visuel pour ma présentation",
+            "prompt": "Créer un visuel pour ma présentation"
+          },
+          "productScene": {
+            "label": "Placer mon produit dans un nouveau décor",
+            "prompt": "Placer mon produit dans un nouveau décor"
+          },
+          "profileBanner": {
+            "label": "Renouveler ma bannière de profil",
+            "prompt": "Renouveler ma bannière de profil"
+          },
+          "roomDesign": {
+            "label": "Essayer un nouveau style pour ma pièce",
+            "prompt": "Essayer un nouveau style pour ma pièce"
+          },
+          "storePhoto": {
+            "label": "Préparer une photo pour ma boutique",
+            "prompt": "Préparer une photo pour ma boutique"
+          },
+          "websiteImage": {
+            "label": "Créer une image pour mon site",
+            "prompt": "Créer une image pour mon site"
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "Suivre l’actualité utile à mon entreprise",
+            "prompt": "Suivre l’actualité utile à mon entreprise"
+          },
+          "competitorUpdates": {
+            "label": "Suivre les nouveautés de mes concurrents",
+            "prompt": "Suivre les nouveautés de mes concurrents"
+          },
+          "crmUpdates": {
+            "label": "Garder mon CRM à jour",
+            "prompt": "Garder mon CRM à jour"
+          },
+          "customerFeedback": {
+            "label": "Repérer les tendances des retours clients",
+            "prompt": "Repérer les tendances des retours clients"
+          },
+          "customerReviews": {
+            "label": "Suivre les nouveaux avis clients",
+            "prompt": "Suivre les nouveaux avis clients"
+          },
+          "emailDrafts": {
+            "label": "Rédiger des brouillons de réponses aux e-mails importants",
+            "prompt": "Rédiger des brouillons de réponses aux e-mails importants"
+          },
+          "fileOrganization": {
+            "label": "Organiser les nouveaux fichiers à leur arrivée",
+            "prompt": "Organiser les nouveaux fichiers à leur arrivée"
+          },
+          "invoices": {
+            "label": "Rassembler les factures de mes e-mails",
+            "prompt": "Rassembler les factures de mes e-mails"
+          },
+          "leadFollowUp": {
+            "label": "Relancer les prospects que je risque d’oublier",
+            "prompt": "Relancer les prospects que je risque d’oublier"
+          },
+          "meetingActions": {
+            "label": "Transformer les notes de réunion en actions",
+            "prompt": "Transformer les notes de réunion en actions"
+          },
+          "meetingPrep": {
+            "label": "Préparer les réunions de demain",
+            "prompt": "Préparer les réunions de demain"
+          },
+          "mondayPriorities": {
+            "label": "Préparer mes priorités du lundi",
+            "prompt": "Préparer mes priorités du lundi"
+          },
+          "projectDelays": {
+            "label": "Repérer les projets qui prennent du retard",
+            "prompt": "Repérer les projets qui prennent du retard"
+          },
+          "readingDigest": {
+            "label": "Créer une sélection hebdomadaire de lectures",
+            "prompt": "Créer une sélection hebdomadaire de lectures"
+          },
+          "salesSummary": {
+            "label": "Obtenir mon bilan hebdomadaire des ventes",
+            "prompt": "Obtenir mon bilan hebdomadaire des ventes"
+          },
+          "socialDrafts": {
+            "label": "Rédiger des publications sociales à partir de mes nouvelles",
+            "prompt": "Rédiger des publications sociales à partir de mes nouvelles"
+          },
+          "supportThemes": {
+            "label": "Résumer les thèmes du support chaque jour",
+            "prompt": "Résumer les thèmes du support chaque jour"
+          },
+          "teamUpdates": {
+            "label": "Rassembler les nouvelles pour mon équipe",
+            "prompt": "Rassembler les nouvelles pour mon équipe"
+          }
+        }
+      },
+      "ideasLabel": "Idées pour démarrer",
+      "label": "Tâches pour démarrer",
+      "more": "Plus",
+      "moreIdeas": "Autres idées",
+      "moreTemplates": "Autres modèles",
+      "presentationTemplates": "Modèles de présentation",
+      "tasks": {
+        "image": "Image",
+        "presentation": "Diapositives",
+        "video": "Vidéo",
+        "workflow": "Workflow"
+      },
+      "website": "Site web",
+      "workflowTemplates": "Modèles de workflow"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

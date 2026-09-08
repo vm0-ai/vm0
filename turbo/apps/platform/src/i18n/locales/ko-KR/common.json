@@ -2319,6 +2319,173 @@
       "startWithPrompt": "만들기",
       "templates": "템플릿"
     },
+    "taskChips": {
+      "chooseTask": "작업 선택",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "생일 초대장 디자인하기",
+            "prompt": "생일 초대장 디자인하기"
+          },
+          "brandCharacter": {
+            "label": "브랜드 캐릭터 만들기",
+            "prompt": "브랜드 캐릭터 만들기"
+          },
+          "businessLogo": {
+            "label": "내 비즈니스 로고 만들기",
+            "prompt": "내 비즈니스 로고 만들기"
+          },
+          "cafeMenu": {
+            "label": "내 카페 메뉴 디자인하기",
+            "prompt": "내 카페 메뉴 디자인하기"
+          },
+          "eventPoster": {
+            "label": "내 행사 포스터 디자인하기",
+            "prompt": "내 행사 포스터 디자인하기"
+          },
+          "finishedSketch": {
+            "label": "스케치를 완성된 이미지로 만들기",
+            "prompt": "스케치를 완성된 이미지로 만들기"
+          },
+          "greetingCard": {
+            "label": "마음을 담은 카드 만들기",
+            "prompt": "마음을 담은 카드 만들기"
+          },
+          "headshot": {
+            "label": "업무용 프로필 사진 만들기",
+            "prompt": "업무용 프로필 사진 만들기"
+          },
+          "infographic": {
+            "label": "아이디어를 인포그래픽으로 만들기",
+            "prompt": "아이디어를 인포그래픽으로 만들기"
+          },
+          "newsletterCover": {
+            "label": "뉴스레터 표지 만들기",
+            "prompt": "뉴스레터 표지 만들기"
+          },
+          "packaging": {
+            "label": "제품 패키지 아이디어 살펴보기",
+            "prompt": "제품 패키지 아이디어 살펴보기"
+          },
+          "photoLighting": {
+            "label": "사진의 조명 개선하기",
+            "prompt": "사진의 조명 개선하기"
+          },
+          "presentationVisual": {
+            "label": "프레젠테이션용 시각 자료 만들기",
+            "prompt": "프레젠테이션용 시각 자료 만들기"
+          },
+          "productScene": {
+            "label": "내 제품을 새로운 장면에 배치하기",
+            "prompt": "내 제품을 새로운 장면에 배치하기"
+          },
+          "profileBanner": {
+            "label": "프로필 배너 새로 만들기",
+            "prompt": "프로필 배너 새로 만들기"
+          },
+          "roomDesign": {
+            "label": "내 방의 새로운 스타일 살펴보기",
+            "prompt": "내 방의 새로운 스타일 살펴보기"
+          },
+          "storePhoto": {
+            "label": "쇼핑몰용 상품 사진 다듬기",
+            "prompt": "쇼핑몰용 상품 사진 다듬기"
+          },
+          "websiteImage": {
+            "label": "웹사이트 이미지 만들기",
+            "prompt": "웹사이트 이미지 만들기"
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "내 사업에 중요한 뉴스 확인하기",
+            "prompt": "내 사업에 중요한 뉴스 확인하기"
+          },
+          "competitorUpdates": {
+            "label": "경쟁사의 새 소식 확인하기",
+            "prompt": "경쟁사의 새 소식 확인하기"
+          },
+          "crmUpdates": {
+            "label": "CRM을 최신 상태로 유지하기",
+            "prompt": "CRM을 최신 상태로 유지하기"
+          },
+          "customerFeedback": {
+            "label": "고객 피드백에서 공통점 찾기",
+            "prompt": "고객 피드백에서 공통점 찾기"
+          },
+          "customerReviews": {
+            "label": "새 고객 리뷰 확인하기",
+            "prompt": "새 고객 리뷰 확인하기"
+          },
+          "emailDrafts": {
+            "label": "중요 이메일 답장 초안 작성하기",
+            "prompt": "중요 이메일 답장 초안 작성하기"
+          },
+          "fileOrganization": {
+            "label": "새 파일이 도착하면 정리하기",
+            "prompt": "새 파일이 도착하면 정리하기"
+          },
+          "invoices": {
+            "label": "이메일에서 청구서 모으기",
+            "prompt": "이메일에서 청구서 모으기"
+          },
+          "leadFollowUp": {
+            "label": "놓치기 쉬운 잠재 고객 후속 연락하기",
+            "prompt": "놓치기 쉬운 잠재 고객 후속 연락하기"
+          },
+          "meetingActions": {
+            "label": "회의록을 다음 할 일로 정리하기",
+            "prompt": "회의록을 다음 할 일로 정리하기"
+          },
+          "meetingPrep": {
+            "label": "내일 회의 준비하기",
+            "prompt": "내일 회의 준비하기"
+          },
+          "mondayPriorities": {
+            "label": "월요일 우선순위 정리하기",
+            "prompt": "월요일 우선순위 정리하기"
+          },
+          "projectDelays": {
+            "label": "진행이 늦어지는 프로젝트 찾기",
+            "prompt": "진행이 늦어지는 프로젝트 찾기"
+          },
+          "readingDigest": {
+            "label": "주간 읽을거리 요약 만들기",
+            "prompt": "주간 읽을거리 요약 만들기"
+          },
+          "salesSummary": {
+            "label": "주간 매출 요약 받기",
+            "prompt": "주간 매출 요약 받기"
+          },
+          "socialDrafts": {
+            "label": "내 소식으로 소셜 게시물 초안 만들기",
+            "prompt": "내 소식으로 소셜 게시물 초안 만들기"
+          },
+          "supportThemes": {
+            "label": "매일 고객 지원 주제 요약하기",
+            "prompt": "매일 고객 지원 주제 요약하기"
+          },
+          "teamUpdates": {
+            "label": "팀을 위한 진행 상황 모으기",
+            "prompt": "팀을 위한 진행 상황 모으기"
+          }
+        }
+      },
+      "ideasLabel": "시작 아이디어",
+      "label": "시작할 작업",
+      "more": "더 보기",
+      "moreIdeas": "다른 아이디어",
+      "moreTemplates": "더 많은 템플릿",
+      "presentationTemplates": "프레젠테이션 템플릿",
+      "tasks": {
+        "image": "이미지",
+        "presentation": "슬라이드",
+        "video": "동영상",
+        "workflow": "워크플로"
+      },
+      "website": "웹사이트",
+      "workflowTemplates": "워크플로 템플릿"
+    },
     "templates": {
       "categories": {
         "illustration": "일러스트",

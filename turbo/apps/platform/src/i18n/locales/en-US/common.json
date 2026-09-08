@@ -2323,6 +2323,173 @@
       "startWithPrompt": "Create",
       "templates": "Templates"
     },
+    "taskChips": {
+      "chooseTask": "Choose a task",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Design a birthday invitation",
+            "prompt": "Create a birthday invitation. Help me combine the name, date, location, and party theme in a personal design."
+          },
+          "brandCharacter": {
+            "label": "Create a character for my brand",
+            "prompt": "Create a character concept for my brand. Help me define its personality, appearance, and where it will be used."
+          },
+          "businessLogo": {
+            "label": "Create a logo for my business",
+            "prompt": "Help me create a logo concept for my business. Start with the business name, what it does, and the impression I want to make."
+          },
+          "cafeMenu": {
+            "label": "Design a menu for my café",
+            "prompt": "Design a menu visual for my café. Use the items, prices, and brand details I provide, with clear readable sections."
+          },
+          "eventPoster": {
+            "label": "Design a poster for my event",
+            "prompt": "Design a poster for my event. Help me put the event name, date, location, and main message into a clear visual."
+          },
+          "finishedSketch": {
+            "label": "Turn my sketch into a finished visual",
+            "prompt": "Turn my sketch into a finished visual. Keep its main idea and composition, and help me choose the final visual style."
+          },
+          "greetingCard": {
+            "label": "Make a personal greeting card",
+            "prompt": "Design a greeting card for someone I know. Help me choose a personal message and visual style for the occasion."
+          },
+          "headshot": {
+            "label": "Make a headshot for work",
+            "prompt": "Turn a photo of me into a professional headshot. Keep my identity recognizable and help me choose a natural background and lighting."
+          },
+          "infographic": {
+            "label": "Turn an idea into an infographic",
+            "prompt": "Turn my idea or information into an infographic. Help me choose a clear structure and use only the facts and numbers I provide."
+          },
+          "newsletterCover": {
+            "label": "Make a cover for my newsletter",
+            "prompt": "Create a cover image for my newsletter. Help me turn the issue topic into a clear visual that fits my audience."
+          },
+          "packaging": {
+            "label": "Explore packaging for my product",
+            "prompt": "Create a packaging concept for my product. Help me explore colors, layout, and visual direction using my product and brand details."
+          },
+          "photoLighting": {
+            "label": "Improve the light in my photo",
+            "prompt": "Improve the lighting in a photo I provide. Keep the subject and recognizable details intact, and aim for a natural result."
+          },
+          "presentationVisual": {
+            "label": "Make a visual for my presentation",
+            "prompt": "Create a visual that explains a key idea in my presentation. Help me make the idea easy to understand at a glance."
+          },
+          "productScene": {
+            "label": "Put my product in a new scene",
+            "prompt": "Put my product in a new scene. I will add a product photo; help me choose a setting while keeping the product itself consistent."
+          },
+          "profileBanner": {
+            "label": "Refresh my profile banner",
+            "prompt": "Create a profile banner that represents my work. Help me choose a message, style, and composition for the platform I use."
+          },
+          "roomDesign": {
+            "label": "Try a new look for my room",
+            "prompt": "Help me visualize a different look for my room from a photo. Keep the room layout recognizable and explore furniture, colors, and decor."
+          },
+          "storePhoto": {
+            "label": "Make a photo ready for my store",
+            "prompt": "Prepare a product photo for my online store. Keep the product accurate and help me choose a clean background, crop, and consistent lighting."
+          },
+          "websiteImage": {
+            "label": "Create an image for my website",
+            "prompt": "Create a main image for my website. Help me match the image to the business, audience, page layout, and main message."
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "Track news that matters to my business",
+            "prompt": "Help me follow the news and topics that matter to my business. Give me a concise digest with sources and practical implications."
+          },
+          "competitorUpdates": {
+            "label": "Keep up with competitor updates",
+            "prompt": "Help me keep up with important changes from competitors I choose. Summarize new products, pricing, and announcements with source links."
+          },
+          "crmUpdates": {
+            "label": "Keep my CRM up to date",
+            "prompt": "Help me keep my CRM records up to date from the conversations and sources I choose. Show which fields changed and where each update came from."
+          },
+          "customerFeedback": {
+            "label": "Find patterns in customer feedback",
+            "prompt": "Help me group customer feedback into recurring themes, specific examples, and possible next steps, using the sources I choose."
+          },
+          "customerReviews": {
+            "label": "Track new customer reviews",
+            "prompt": "Help me track new customer reviews from the public sources I choose and summarize praise, recurring concerns, and replies I could consider."
+          },
+          "emailDrafts": {
+            "label": "Draft replies to important emails",
+            "prompt": "Help me find important emails that need a response and prepare reply drafts for me to review and send."
+          },
+          "fileOrganization": {
+            "label": "Organize new files as they arrive",
+            "prompt": "Help me organize new files into the folders I choose, using clear naming and filing rules. Start by helping me define those rules."
+          },
+          "invoices": {
+            "label": "Collect invoices from my email",
+            "prompt": "Help me collect invoices from my email into one organized place, with a summary of the vendor, amount, and due date."
+          },
+          "leadFollowUp": {
+            "label": "Follow up with leads I might miss",
+            "prompt": "Help me keep track of leads that need a follow-up. Bring together the relevant conversations and prepare follow-up drafts for my review."
+          },
+          "meetingActions": {
+            "label": "Turn meeting notes into next steps",
+            "prompt": "Help me turn meeting notes into next steps, with an owner and due date when those details are present. Show me any details that still need a decision."
+          },
+          "meetingPrep": {
+            "label": "Prepare for tomorrow's meetings",
+            "prompt": "Help me prepare for tomorrow’s meetings with the people, context, and talking points that are useful for each conversation."
+          },
+          "mondayPriorities": {
+            "label": "Prepare my Monday priorities",
+            "prompt": "Help me prepare my Monday priorities from my calendar, tasks, and chosen project sources, with a short list of the work that matters most."
+          },
+          "projectDelays": {
+            "label": "Spot projects that are falling behind",
+            "prompt": "Help me identify projects that may be falling behind from the project source I choose, including overdue work, blockers, and next steps."
+          },
+          "readingDigest": {
+            "label": "Build a weekly reading digest",
+            "prompt": "Help me collect useful reading from the sources and topics I choose into a weekly digest with short summaries and links."
+          },
+          "salesSummary": {
+            "label": "Get my weekly sales summary",
+            "prompt": "Help me prepare a weekly sales summary from the data source I choose, with key numbers, changes, and items that need attention."
+          },
+          "socialDrafts": {
+            "label": "Draft social posts from my updates",
+            "prompt": "Help me turn my updates into social post drafts that fit my audience and voice. Keep the posts ready for my review before publishing."
+          },
+          "supportThemes": {
+            "label": "Summarize support themes each day",
+            "prompt": "Help me summarize support conversations into common themes, urgent issues, and follow-up items for each day."
+          },
+          "teamUpdates": {
+            "label": "Gather updates for my team",
+            "prompt": "Help me gather project updates into a concise team brief, including progress, blockers, and decisions needed."
+          }
+        }
+      },
+      "ideasLabel": "Ideas to get started",
+      "label": "Tasks to get started",
+      "more": "More",
+      "moreIdeas": "More ideas",
+      "moreTemplates": "More templates",
+      "presentationTemplates": "Presentation templates",
+      "tasks": {
+        "image": "Image",
+        "presentation": "Slides",
+        "video": "Video",
+        "workflow": "Workflow"
+      },
+      "website": "Website",
+      "workflowTemplates": "Workflow templates"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

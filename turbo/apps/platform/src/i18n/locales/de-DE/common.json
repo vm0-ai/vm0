@@ -2323,6 +2323,173 @@
       "startWithPrompt": "Erstellen",
       "templates": "Vorlagen"
     },
+    "taskChips": {
+      "chooseTask": "Aufgabe wählen",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Eine Geburtstagseinladung gestalten",
+            "prompt": "Eine Geburtstagseinladung gestalten"
+          },
+          "brandCharacter": {
+            "label": "Eine Figur für meine Marke entwickeln",
+            "prompt": "Eine Figur für meine Marke entwickeln"
+          },
+          "businessLogo": {
+            "label": "Ein Logo für mein Unternehmen erstellen",
+            "prompt": "Ein Logo für mein Unternehmen erstellen"
+          },
+          "cafeMenu": {
+            "label": "Eine Speisekarte für mein Café gestalten",
+            "prompt": "Eine Speisekarte für mein Café gestalten"
+          },
+          "eventPoster": {
+            "label": "Ein Plakat für meine Veranstaltung gestalten",
+            "prompt": "Ein Plakat für meine Veranstaltung gestalten"
+          },
+          "finishedSketch": {
+            "label": "Meine Skizze in ein fertiges Bild verwandeln",
+            "prompt": "Meine Skizze in ein fertiges Bild verwandeln"
+          },
+          "greetingCard": {
+            "label": "Eine persönliche Grußkarte gestalten",
+            "prompt": "Eine persönliche Grußkarte gestalten"
+          },
+          "headshot": {
+            "label": "Ein professionelles Porträt erstellen",
+            "prompt": "Ein professionelles Porträt erstellen"
+          },
+          "infographic": {
+            "label": "Eine Idee als Infografik darstellen",
+            "prompt": "Eine Idee als Infografik darstellen"
+          },
+          "newsletterCover": {
+            "label": "Ein Titelbild für meinen Newsletter erstellen",
+            "prompt": "Ein Titelbild für meinen Newsletter erstellen"
+          },
+          "packaging": {
+            "label": "Verpackungsideen für mein Produkt entwickeln",
+            "prompt": "Verpackungsideen für mein Produkt entwickeln"
+          },
+          "photoLighting": {
+            "label": "Die Beleuchtung meines Fotos verbessern",
+            "prompt": "Die Beleuchtung meines Fotos verbessern"
+          },
+          "presentationVisual": {
+            "label": "Eine Grafik für meine Präsentation erstellen",
+            "prompt": "Eine Grafik für meine Präsentation erstellen"
+          },
+          "productScene": {
+            "label": "Mein Produkt in eine neue Szene setzen",
+            "prompt": "Mein Produkt in eine neue Szene setzen"
+          },
+          "profileBanner": {
+            "label": "Mein Profilbanner erneuern",
+            "prompt": "Mein Profilbanner erneuern"
+          },
+          "roomDesign": {
+            "label": "Einen neuen Look für mein Zimmer ausprobieren",
+            "prompt": "Einen neuen Look für mein Zimmer ausprobieren"
+          },
+          "storePhoto": {
+            "label": "Ein Foto für meinen Shop aufbereiten",
+            "prompt": "Ein Foto für meinen Shop aufbereiten"
+          },
+          "websiteImage": {
+            "label": "Ein Bild für meine Website erstellen",
+            "prompt": "Ein Bild für meine Website erstellen"
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "Relevante Nachrichten für mein Unternehmen verfolgen",
+            "prompt": "Relevante Nachrichten für mein Unternehmen verfolgen"
+          },
+          "competitorUpdates": {
+            "label": "Neuigkeiten der Konkurrenz verfolgen",
+            "prompt": "Neuigkeiten der Konkurrenz verfolgen"
+          },
+          "crmUpdates": {
+            "label": "Mein CRM aktuell halten",
+            "prompt": "Mein CRM aktuell halten"
+          },
+          "customerFeedback": {
+            "label": "Muster im Kundenfeedback erkennen",
+            "prompt": "Muster im Kundenfeedback erkennen"
+          },
+          "customerReviews": {
+            "label": "Neue Kundenbewertungen verfolgen",
+            "prompt": "Neue Kundenbewertungen verfolgen"
+          },
+          "emailDrafts": {
+            "label": "Antworten auf wichtige E-Mails entwerfen",
+            "prompt": "Antworten auf wichtige E-Mails entwerfen"
+          },
+          "fileOrganization": {
+            "label": "Neue Dateien bei Eingang organisieren",
+            "prompt": "Neue Dateien bei Eingang organisieren"
+          },
+          "invoices": {
+            "label": "Rechnungen aus meinen E-Mails sammeln",
+            "prompt": "Rechnungen aus meinen E-Mails sammeln"
+          },
+          "leadFollowUp": {
+            "label": "Bei übersehenen Interessenten nachfassen",
+            "prompt": "Bei übersehenen Interessenten nachfassen"
+          },
+          "meetingActions": {
+            "label": "Aus Besprechungsnotizen nächste Schritte ableiten",
+            "prompt": "Aus Besprechungsnotizen nächste Schritte ableiten"
+          },
+          "meetingPrep": {
+            "label": "Die Besprechungen von morgen vorbereiten",
+            "prompt": "Die Besprechungen von morgen vorbereiten"
+          },
+          "mondayPriorities": {
+            "label": "Meine Prioritäten für Montag vorbereiten",
+            "prompt": "Meine Prioritäten für Montag vorbereiten"
+          },
+          "projectDelays": {
+            "label": "Verspätete Projekte erkennen",
+            "prompt": "Verspätete Projekte erkennen"
+          },
+          "readingDigest": {
+            "label": "Eine wöchentliche Leseübersicht erstellen",
+            "prompt": "Eine wöchentliche Leseübersicht erstellen"
+          },
+          "salesSummary": {
+            "label": "Meine wöchentliche Verkaufsübersicht erhalten",
+            "prompt": "Meine wöchentliche Verkaufsübersicht erhalten"
+          },
+          "socialDrafts": {
+            "label": "Social-Media-Beiträge aus meinen Neuigkeiten entwerfen",
+            "prompt": "Social-Media-Beiträge aus meinen Neuigkeiten entwerfen"
+          },
+          "supportThemes": {
+            "label": "Tägliche Supportthemen zusammenfassen",
+            "prompt": "Tägliche Supportthemen zusammenfassen"
+          },
+          "teamUpdates": {
+            "label": "Neuigkeiten für mein Team zusammenstellen",
+            "prompt": "Neuigkeiten für mein Team zusammenstellen"
+          }
+        }
+      },
+      "ideasLabel": "Ideen zum Einstieg",
+      "label": "Aufgaben zum Einstieg",
+      "more": "Mehr",
+      "moreIdeas": "Weitere Ideen",
+      "moreTemplates": "Weitere Vorlagen",
+      "presentationTemplates": "Präsentationsvorlagen",
+      "tasks": {
+        "image": "Bild",
+        "presentation": "Folien",
+        "video": "Video",
+        "workflow": "Workflow"
+      },
+      "website": "Website",
+      "workflowTemplates": "Workflow-Vorlagen"
+    },
     "templates": {
       "categories": {
         "illustration": "Illustration",

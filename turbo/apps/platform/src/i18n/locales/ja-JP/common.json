@@ -2319,6 +2319,173 @@
       "startWithPrompt": "作成",
       "templates": "テンプレート"
     },
+    "taskChips": {
+      "chooseTask": "タスクを選ぶ",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "誕生日の招待状をデザインする",
+            "prompt": "誕生日の招待状をデザインする"
+          },
+          "brandCharacter": {
+            "label": "ブランドのキャラクターを作る",
+            "prompt": "ブランドのキャラクターを作る"
+          },
+          "businessLogo": {
+            "label": "自分のビジネスのロゴを作る",
+            "prompt": "自分のビジネスのロゴを作る"
+          },
+          "cafeMenu": {
+            "label": "カフェのメニューをデザインする",
+            "prompt": "カフェのメニューをデザインする"
+          },
+          "eventPoster": {
+            "label": "イベントのポスターをデザインする",
+            "prompt": "イベントのポスターをデザインする"
+          },
+          "finishedSketch": {
+            "label": "スケッチを完成したビジュアルにする",
+            "prompt": "スケッチを完成したビジュアルにする"
+          },
+          "greetingCard": {
+            "label": "心のこもったグリーティングカードを作る",
+            "prompt": "心のこもったグリーティングカードを作る"
+          },
+          "headshot": {
+            "label": "仕事用のプロフィール写真を作る",
+            "prompt": "仕事用のプロフィール写真を作る"
+          },
+          "infographic": {
+            "label": "アイデアをインフォグラフィックにする",
+            "prompt": "アイデアをインフォグラフィックにする"
+          },
+          "newsletterCover": {
+            "label": "ニュースレターの表紙を作る",
+            "prompt": "ニュースレターの表紙を作る"
+          },
+          "packaging": {
+            "label": "商品のパッケージ案を考える",
+            "prompt": "商品のパッケージ案を考える"
+          },
+          "photoLighting": {
+            "label": "写真の明るさを改善する",
+            "prompt": "写真の明るさを改善する"
+          },
+          "presentationVisual": {
+            "label": "プレゼン用のビジュアルを作る",
+            "prompt": "プレゼン用のビジュアルを作る"
+          },
+          "productScene": {
+            "label": "商品を新しいシーンに配置する",
+            "prompt": "商品を新しいシーンに配置する"
+          },
+          "profileBanner": {
+            "label": "プロフィールのバナーを刷新する",
+            "prompt": "プロフィールのバナーを刷新する"
+          },
+          "roomDesign": {
+            "label": "部屋の新しい雰囲気を試す",
+            "prompt": "部屋の新しい雰囲気を試す"
+          },
+          "storePhoto": {
+            "label": "商品写真をオンラインストア向けに整える",
+            "prompt": "商品写真をオンラインストア向けに整える"
+          },
+          "websiteImage": {
+            "label": "ウェブサイトの画像を作る",
+            "prompt": "ウェブサイトの画像を作る"
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "自分の事業に関係するニュースを追う",
+            "prompt": "自分の事業に関係するニュースを追う"
+          },
+          "competitorUpdates": {
+            "label": "競合の最新情報を追う",
+            "prompt": "競合の最新情報を追う"
+          },
+          "crmUpdates": {
+            "label": "CRMを最新の状態に保つ",
+            "prompt": "CRMを最新の状態に保つ"
+          },
+          "customerFeedback": {
+            "label": "顧客の声から共通点を見つける",
+            "prompt": "顧客の声から共通点を見つける"
+          },
+          "customerReviews": {
+            "label": "新しい顧客レビューを追う",
+            "prompt": "新しい顧客レビューを追う"
+          },
+          "emailDrafts": {
+            "label": "重要なメールへの返信を下書きする",
+            "prompt": "重要なメールへの返信を下書きする"
+          },
+          "fileOrganization": {
+            "label": "届いた新しいファイルを整理する",
+            "prompt": "届いた新しいファイルを整理する"
+          },
+          "invoices": {
+            "label": "メールから請求書を集める",
+            "prompt": "メールから請求書を集める"
+          },
+          "leadFollowUp": {
+            "label": "見落としそうな見込み客をフォローする",
+            "prompt": "見落としそうな見込み客をフォローする"
+          },
+          "meetingActions": {
+            "label": "議事録を次のアクションにまとめる",
+            "prompt": "議事録を次のアクションにまとめる"
+          },
+          "meetingPrep": {
+            "label": "明日の会議の準備をする",
+            "prompt": "明日の会議の準備をする"
+          },
+          "mondayPriorities": {
+            "label": "月曜日の優先事項を整理する",
+            "prompt": "月曜日の優先事項を整理する"
+          },
+          "projectDelays": {
+            "label": "遅れているプロジェクトを見つける",
+            "prompt": "遅れているプロジェクトを見つける"
+          },
+          "readingDigest": {
+            "label": "毎週のおすすめ記事をまとめる",
+            "prompt": "毎週のおすすめ記事をまとめる"
+          },
+          "salesSummary": {
+            "label": "毎週の売上をまとめる",
+            "prompt": "毎週の売上をまとめる"
+          },
+          "socialDrafts": {
+            "label": "近況からSNS投稿を下書きする",
+            "prompt": "近況からSNS投稿を下書きする"
+          },
+          "supportThemes": {
+            "label": "サポートの話題を毎日まとめる",
+            "prompt": "サポートの話題を毎日まとめる"
+          },
+          "teamUpdates": {
+            "label": "チーム向けに進捗をまとめる",
+            "prompt": "チーム向けに進捗をまとめる"
+          }
+        }
+      },
+      "ideasLabel": "始めるためのアイデア",
+      "label": "タスクを始める",
+      "more": "その他",
+      "moreIdeas": "他のアイデア",
+      "moreTemplates": "他のテンプレート",
+      "presentationTemplates": "プレゼンテンプレート",
+      "tasks": {
+        "image": "画像",
+        "presentation": "スライド",
+        "video": "動画",
+        "workflow": "ワークフロー"
+      },
+      "website": "ウェブサイト",
+      "workflowTemplates": "ワークフローテンプレート"
+    },
     "templates": {
       "categories": {
         "illustration": "イラストレーション",

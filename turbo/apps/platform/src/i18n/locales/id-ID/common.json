@@ -2319,6 +2319,173 @@
       "startWithPrompt": "Buat",
       "templates": "Templat"
     },
+    "taskChips": {
+      "chooseTask": "Pilih tugas",
+      "ideas": {
+        "image": {
+          "birthdayInvitation": {
+            "label": "Desain undangan ulang tahun",
+            "prompt": "Desain undangan ulang tahun"
+          },
+          "brandCharacter": {
+            "label": "Buat karakter untuk merek saya",
+            "prompt": "Buat karakter untuk merek saya"
+          },
+          "businessLogo": {
+            "label": "Buat logo untuk bisnis saya",
+            "prompt": "Buat logo untuk bisnis saya"
+          },
+          "cafeMenu": {
+            "label": "Desain menu untuk kafe saya",
+            "prompt": "Desain menu untuk kafe saya"
+          },
+          "eventPoster": {
+            "label": "Desain poster untuk acara saya",
+            "prompt": "Desain poster untuk acara saya"
+          },
+          "finishedSketch": {
+            "label": "Ubah sketsa saya menjadi visual jadi",
+            "prompt": "Ubah sketsa saya menjadi visual jadi"
+          },
+          "greetingCard": {
+            "label": "Buat kartu ucapan pribadi",
+            "prompt": "Buat kartu ucapan pribadi"
+          },
+          "headshot": {
+            "label": "Buat foto profil profesional",
+            "prompt": "Buat foto profil profesional"
+          },
+          "infographic": {
+            "label": "Ubah ide menjadi infografik",
+            "prompt": "Ubah ide menjadi infografik"
+          },
+          "newsletterCover": {
+            "label": "Buat sampul untuk buletin saya",
+            "prompt": "Buat sampul untuk buletin saya"
+          },
+          "packaging": {
+            "label": "Jelajahi kemasan untuk produk saya",
+            "prompt": "Jelajahi kemasan untuk produk saya"
+          },
+          "photoLighting": {
+            "label": "Perbaiki pencahayaan foto saya",
+            "prompt": "Perbaiki pencahayaan foto saya"
+          },
+          "presentationVisual": {
+            "label": "Buat visual untuk presentasi saya",
+            "prompt": "Buat visual untuk presentasi saya"
+          },
+          "productScene": {
+            "label": "Tempatkan produk saya dalam suasana baru",
+            "prompt": "Tempatkan produk saya dalam suasana baru"
+          },
+          "profileBanner": {
+            "label": "Perbarui banner profil saya",
+            "prompt": "Perbarui banner profil saya"
+          },
+          "roomDesign": {
+            "label": "Coba tampilan baru untuk kamar saya",
+            "prompt": "Coba tampilan baru untuk kamar saya"
+          },
+          "storePhoto": {
+            "label": "Siapkan foto untuk toko saya",
+            "prompt": "Siapkan foto untuk toko saya"
+          },
+          "websiteImage": {
+            "label": "Buat gambar untuk situs saya",
+            "prompt": "Buat gambar untuk situs saya"
+          }
+        },
+        "workflow": {
+          "businessNews": {
+            "label": "Ikuti berita yang penting bagi bisnis saya",
+            "prompt": "Ikuti berita yang penting bagi bisnis saya"
+          },
+          "competitorUpdates": {
+            "label": "Ikuti kabar terbaru pesaing",
+            "prompt": "Ikuti kabar terbaru pesaing"
+          },
+          "crmUpdates": {
+            "label": "Perbarui data CRM saya",
+            "prompt": "Perbarui data CRM saya"
+          },
+          "customerFeedback": {
+            "label": "Temukan pola dalam masukan pelanggan",
+            "prompt": "Temukan pola dalam masukan pelanggan"
+          },
+          "customerReviews": {
+            "label": "Pantau ulasan pelanggan baru",
+            "prompt": "Pantau ulasan pelanggan baru"
+          },
+          "emailDrafts": {
+            "label": "Buat draf balasan email penting",
+            "prompt": "Buat draf balasan email penting"
+          },
+          "fileOrganization": {
+            "label": "Atur file baru saat masuk",
+            "prompt": "Atur file baru saat masuk"
+          },
+          "invoices": {
+            "label": "Kumpulkan faktur dari email saya",
+            "prompt": "Kumpulkan faktur dari email saya"
+          },
+          "leadFollowUp": {
+            "label": "Tindak lanjuti prospek yang mungkin terlewat",
+            "prompt": "Tindak lanjuti prospek yang mungkin terlewat"
+          },
+          "meetingActions": {
+            "label": "Ubah catatan rapat menjadi langkah berikutnya",
+            "prompt": "Ubah catatan rapat menjadi langkah berikutnya"
+          },
+          "meetingPrep": {
+            "label": "Persiapkan rapat besok",
+            "prompt": "Persiapkan rapat besok"
+          },
+          "mondayPriorities": {
+            "label": "Susun prioritas hari Senin saya",
+            "prompt": "Susun prioritas hari Senin saya"
+          },
+          "projectDelays": {
+            "label": "Temukan proyek yang tertinggal",
+            "prompt": "Temukan proyek yang tertinggal"
+          },
+          "readingDigest": {
+            "label": "Buat rangkuman bacaan mingguan",
+            "prompt": "Buat rangkuman bacaan mingguan"
+          },
+          "salesSummary": {
+            "label": "Dapatkan ringkasan penjualan mingguan",
+            "prompt": "Dapatkan ringkasan penjualan mingguan"
+          },
+          "socialDrafts": {
+            "label": "Buat draf unggahan sosial dari kabar saya",
+            "prompt": "Buat draf unggahan sosial dari kabar saya"
+          },
+          "supportThemes": {
+            "label": "Ringkas tema dukungan setiap hari",
+            "prompt": "Ringkas tema dukungan setiap hari"
+          },
+          "teamUpdates": {
+            "label": "Kumpulkan pembaruan untuk tim saya",
+            "prompt": "Kumpulkan pembaruan untuk tim saya"
+          }
+        }
+      },
+      "ideasLabel": "Ide untuk memulai",
+      "label": "Mulai tugas",
+      "more": "Lainnya",
+      "moreIdeas": "Ide lainnya",
+      "moreTemplates": "Template lainnya",
+      "presentationTemplates": "Template presentasi",
+      "tasks": {
+        "image": "Gambar",
+        "presentation": "Slide",
+        "video": "Video",
+        "workflow": "Alur kerja"
+      },
+      "website": "Situs web",
+      "workflowTemplates": "Template alur kerja"
+    },
     "templates": {
       "categories": {
         "illustration": "Ilustrasi",

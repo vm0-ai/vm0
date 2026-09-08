@@ -1,5 +1,9 @@
 import { stopAndTranscribe$ } from "../voice-io/voice-io-stt.ts";
 import {
+  createComposerTaskChipsSignals,
+  type ComposerTaskChipsSignals,
+} from "./composer-task-chips.ts";
+import {
   createComposerVoiceInputSignals,
   type ComposerVoiceInputSignals,
 } from "./composer-voice-input.ts";
@@ -261,6 +265,7 @@ interface ComposerTemplateSignals
 
 export interface ComposerSignals {
   readonly create: ComposerCreateSignals;
+  readonly taskChips: ComposerTaskChipsSignals;
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly voice: ComposerVoiceInputSignals;
@@ -606,6 +611,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     create,
+    taskChips: createComposerTaskChipsSignals(create),
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     voice,
     feedback: workflowComposer.feedback,
