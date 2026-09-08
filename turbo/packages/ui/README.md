@@ -1,6 +1,6 @@
 # @okouai/ui - Design System
 
-VM0's shared UI component library with a complete design system including components, colors, and utilities.
+Okou's shared UI component library with a complete design system including components, colors, and utilities.
 
 ## 📦 Package Overview
 
@@ -74,7 +74,7 @@ pre {
 
 ## 🎨 Icons
 
-VM0 uses **Lucide** for all UI iconography, providing a consistent and comprehensive icon set.
+Okou uses **Lucide** for all UI iconography, providing a consistent and comprehensive icon set.
 
 ### Installation
 
@@ -148,7 +148,7 @@ Follow these size guidelines:
 
 ### Base Color Palette
 
-VM0 uses a **Tailwind-style color scale system** with complete palettes:
+Okou uses a **Tailwind-style color scale system** with complete palettes:
 
 #### Primary (Orange Brand Color)
 
@@ -413,7 +413,7 @@ cn("bg-primary", isActive && "bg-primary-700"); // Conditional
 
 ### Installation
 
-This package is part of the VM0 monorepo and uses workspace protocol:
+This package is part of the Okou monorepo and uses workspace protocol:
 
 ```json
 {
@@ -696,6 +696,6 @@ When contributing to the design system:
 
 ---
 
-**Maintainer**: VM0 Team  
+**Maintainer**: Okou Team\
 **Version**: 0.0.0  
 **Last Updated**: January 2026

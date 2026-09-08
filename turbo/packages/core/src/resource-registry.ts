@@ -101,11 +101,11 @@ export interface ResourceCandidateSlice {
 
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
-const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
-const VM0_SKILLS_REF = "main";
+const SKILLS_REPO = "vm0-ai/vm0-skills";
+const SKILLS_REF = "main";
 const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
-  repo: VM0_SKILLS_REPO,
-  ref: VM0_SKILLS_REF,
+  repo: SKILLS_REPO,
+  ref: SKILLS_REF,
 } as const;
 
 export const RESOURCE_REGISTRY_VERSION = "v1";
@@ -202,8 +202,8 @@ function imageStyleArchiveSha256(slug: string): string {
 
 function imageStyleSource(slug: string): ResourceSourceRef {
   return {
-    repo: VM0_SKILLS_REPO,
-    ref: VM0_SKILLS_REF,
+    repo: SKILLS_REPO,
+    ref: SKILLS_REF,
     path: `illustration-template/${slug}`,
     archive: {
       type: "tar.gz",

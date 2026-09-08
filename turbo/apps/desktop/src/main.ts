@@ -148,7 +148,7 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.authUrl);
 const localRendererUrl = desktopRendererUrl();
 const localRecorderUrl = desktopRecorderUrl("bar");
-const ZERO_FEATURE_SWITCHES_PATH = "/api/feature-switches";
+const FEATURE_SWITCHES_PATH = "/api/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const SCREEN_RECORDING_POLL_INTERVAL_MS = 1000;
 const MAC_ACCESSIBILITY_SETTINGS_URL =
@@ -327,7 +327,7 @@ const developerTools = new DeveloperToolsController({
   getSessionAuthority: () => authSession?.getAuthority() ?? null,
   fetchFeatureSwitches: () =>
     getAuthSession().fetchWithSessionAuth(
-      new URL(ZERO_FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
+      new URL(FEATURE_SWITCHES_PATH, desktopApiBaseUrl),
     ),
   setFilesystemPluginFeatureEnabled: (enabled) => {
     filesystemPluginManager?.setFeatureEnabled(enabled);

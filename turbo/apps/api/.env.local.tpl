@@ -154,7 +154,7 @@ OKOU_FINANCE_APIDOJO_TOKEN=op://Development/APIDojo/RAPIDAPI_KEY
 OKOU_SEO_DATAFORSEO_LOGIN=op://Development/DataForSEO/LOGIN
 OKOU_SEO_DATAFORSEO_PASSWORD=op://Development/DataForSEO/PASSWORD
 
-# Optional: Zero Browser provider (Browser Use)
+# Optional: Managed browser provider (Browser Use)
 OKOU_BROWSER_USE_API_KEY=op://Development/browser-use/OKOU_BROWSER_USE_API_KEY
 
 # Optional: Steam Web API
@@ -297,7 +297,7 @@ GITHUB_APP_PRIVATE_KEY=op://Development/github/GITHUB_APP_PRIVATE_KEY
 GITHUB_APP_SLUG=op://Development/github/GITHUB_APP_SLUG
 GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
-# Optional: VM0 Built-in Model Provider API Keys
+# Optional: Built-in model provider API keys
 DEV_MODEL_ANTHROPIC_KEY=op://Development/anthropic/DEV_MODEL_ANTHROPIC_KEY
 DEV_MODEL_OPENAI_KEY=op://Development/openai/OPENAI_API_KEY
 DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
