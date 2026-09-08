@@ -90,6 +90,7 @@ import {
   agentMessageMathEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
+  initialFeatureSwitchHydration$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -2057,6 +2058,8 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       events: readonly ChatEvent[],
       signal: AbortSignal,
     ): Promise<void> => {
+      await get(initialFeatureSwitchHydration$);
+      signal.throwIfAborted();
       const current = get(internalEventTrees$);
       const { next, richPlans } = planEventTreeUpdates(
         events,
