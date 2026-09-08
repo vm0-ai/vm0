@@ -62,6 +62,7 @@ import {
   openCustomAccountConnectDialog$,
   openCustomAccountManager$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
 
 function connectsDirectlyWithAuthorization(
   connector: CustomConnectorResponse,
@@ -215,12 +216,14 @@ function CustomConnectorCardContent(props: CustomConnectorCardContentProps) {
 function CustomConnectorActivationCard({
   connectorLabel,
   canActivate,
+  connecting,
   managesAccounts,
   onActivate,
   children,
 }: {
   readonly connectorLabel: string;
   readonly canActivate: boolean;
+  readonly connecting: boolean;
   readonly managesAccounts: boolean;
   readonly onActivate: () => void;
   readonly children: ReactNode;
@@ -228,11 +231,12 @@ function CustomConnectorActivationCard({
   const { t } = useTranslation();
   return (
     <div
-      className={`okou-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
+      className={`okou-card relative flex flex-col ${canActivate && !connecting ? "cursor-pointer" : ""}`}
     >
       {canActivate ? (
         <button
           type="button"
+          disabled={connecting}
           aria-label={t(
             ($) => {
               return managesAccounts
@@ -241,7 +245,7 @@ function CustomConnectorActivationCard({
             },
             { connector: connectorLabel },
           )}
-          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-default"
           onClick={onActivate}
         />
       ) : null}
@@ -319,6 +323,7 @@ function CustomConnectorRow({
   accountSummaryStatus,
   onManageAccounts,
 }: CustomConnectorRowProps) {
+  const connecting = useGet(connectorConnectionPending$);
   const adminCanDelete = isAdmin;
   const mcpActionsEnabled = connector.kind === "http" || mcpEnabled;
   const connectionActionsEnabled = mcpActionsEnabled;
@@ -346,6 +351,7 @@ function CustomConnectorRow({
       <CustomConnectorActivationCard
         connectorLabel={connector.displayName}
         canActivate={canActivate}
+        connecting={connecting}
         managesAccounts={managesAccounts}
         onActivate={activate}
       >

@@ -18,6 +18,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
 import {
   closeCustomConnectorDialog$,
   connectCustomConnectorAuthorization$,
@@ -346,8 +347,13 @@ export function CustomConnectorConnectDialog({
   const setField = useSet(setCustomConnectorConnectField$);
   const resetForm = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const { submitting, submitDeclaredValues, submitAuthorizationMode } =
-    useCustomConnectorConnectionSubmitters(agentId, accountOptions);
+  const {
+    submitting: connectionSubmitting,
+    submitDeclaredValues,
+    submitAuthorizationMode,
+  } = useCustomConnectorConnectionSubmitters(agentId, accountOptions);
+  const pending = useGet(connectorConnectionPending$);
+  const submitting = connectionSubmitting || pending;
   const signal = useGet(pageSignal$);
   const authorization =
     connector.authMode === "oauth" || connector.authMode === "automatic";

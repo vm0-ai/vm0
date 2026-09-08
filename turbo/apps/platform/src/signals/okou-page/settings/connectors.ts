@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import { withConnectorConnectionProgress } from "../../connector-connection-progress.ts";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
@@ -1674,7 +1675,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
   },
 );
 
-export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
+const connectConnectorOAuthDeviceAuthAndSettleCommand$ = command(
   async (
     { set },
     args: {
@@ -1702,6 +1703,11 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
     }
   },
 );
+
+export const connectConnectorOAuthDeviceAuthAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthDeviceAuthAndSettleCommand$,
+  );
 
 // ---------------------------------------------------------------------------
 // External-code authorization flow state
@@ -1809,7 +1815,7 @@ export const openConnectorExternalCodeAuthorizationPage$ = command(
   },
 );
 
-export const connectConnectorExternalCode$ = command(
+const connectConnectorExternalCodeCommand$ = command(
   async (
     { get, set },
     args: ConnectConnectorExternalCodeParams,
@@ -1923,6 +1929,10 @@ export const connectConnectorExternalCode$ = command(
       },
     );
   },
+);
+
+export const connectConnectorExternalCode$ = withConnectorConnectionProgress(
+  connectConnectorExternalCodeCommand$,
 );
 
 const completeConnectorExternalCode$ = command(
@@ -2042,7 +2052,7 @@ const completeConnectorExternalCode$ = command(
   },
 );
 
-export const completeConnectorExternalCodeAndSettle$ = command(
+const completeConnectorExternalCodeAndSettleCommand$ = command(
   async (
     { set },
     args: CompleteConnectorExternalCodeParams & {
@@ -2065,6 +2075,11 @@ export const completeConnectorExternalCodeAndSettle$ = command(
     }
   },
 );
+
+export const completeConnectorExternalCodeAndSettle$ =
+  withConnectorConnectionProgress(
+    completeConnectorExternalCodeAndSettleCommand$,
+  );
 
 // ---------------------------------------------------------------------------
 // Standalone mode detection
@@ -2512,7 +2527,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
   },
 );
 
-export const connectConnectorOAuthAuthCode$ = command(
+const connectConnectorOAuthAuthCodeCommand$ = command(
   async (
     { get, set },
     connectorSlug: ConnectorSlug,
@@ -2598,11 +2613,15 @@ export const connectConnectorOAuthAuthCode$ = command(
   },
 );
 
+export const connectConnectorOAuthAuthCode$ = withConnectorConnectionProgress(
+  connectConnectorOAuthAuthCodeCommand$,
+);
+
 // ---------------------------------------------------------------------------
 // Connect via browser authorization, then run onSuccess callback.
 // ---------------------------------------------------------------------------
 
-export const connectConnectorOAuthAuthCodeAndSettle$ = command(
+const connectConnectorOAuthAuthCodeAndSettleCommand$ = command(
   async (
     { set },
     args: {
@@ -2626,3 +2645,8 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
     }
   },
 );
+
+export const connectConnectorOAuthAuthCodeAndSettle$ =
+  withConnectorConnectionProgress(
+    connectConnectorOAuthAuthCodeAndSettleCommand$,
+  );

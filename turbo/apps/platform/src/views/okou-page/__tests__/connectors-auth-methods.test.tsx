@@ -67,7 +67,11 @@ function storeConnectedConnector(
   return connector;
 }
 
-function mockAgentConnectorAccess(connectorSlug: ConnectorSlug): void {
+function mockAgentConnectorAccess(
+  connectorSlug: ConnectorSlug,
+  completion?: Promise<void>,
+  onRequest?: () => void,
+): void {
   const authorizedAgentIds = new Set<string>();
   context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
@@ -78,7 +82,7 @@ function mockAgentConnectorAccess(connectorSlug: ConnectorSlug): void {
   });
   context.mocks.api(
     userConnectorsContract.update,
-    ({ params, body, respond }) => {
+    async ({ params, body, respond }) => {
       if (body.enabledConnectorSlugs.includes(connectorSlug)) {
         if (body.operation === "add") {
           authorizedAgentIds.add(params.id);
@@ -86,6 +90,8 @@ function mockAgentConnectorAccess(connectorSlug: ConnectorSlug): void {
           authorizedAgentIds.delete(params.id);
         }
       }
+      onRequest?.();
+      await completion;
       return respond(200, {
         enabledConnectorSlugs: authorizedAgentIds.has(params.id)
           ? [connectorSlug]
@@ -168,11 +174,15 @@ async function openAwsWithCode(code: string): Promise<{
 }
 
 test("Add an AWS account with an external code", async () => {
+  const permissions = context.mocks.deferred<void>();
+  const permissionsStarted = context.mocks.deferred<void>();
   mockConnectors(context, []);
   context.mocks.data.agents([
     listAgent("c0000000-0000-4000-a000-000000000002", "Research Agent"),
   ]);
-  mockAgentConnectorAccess("aws");
+  mockAgentConnectorAccess("aws", permissions.promise, () => {
+    return permissionsStarted.resolve();
+  });
   const authWindow = createAuthWindow();
   const browserOpen = context.mocks.browser.open(authWindow);
   context.mocks.api(
@@ -222,9 +232,20 @@ test("Add an AWS account with an external code", async () => {
   );
   click(within(dialog).getByTestId("connector-external-code-complete"));
 
+  await permissionsStarted.promise;
+  await expect(
+    screen.findByText("Connecting your account"),
+  ).resolves.toBeVisible();
+  expect(
+    within(dialog).getByTestId("connector-external-code-complete"),
+  ).toBeDisabled();
+  permissions.resolve();
   await expect(screen.findByText("AWS connected")).resolves.toBeInTheDocument();
   const naming = await screen.findByRole("dialog", {
     name: "Name your AWS account",
+  });
+  await waitFor(() => {
+    return expect(screen.queryByText("Connecting your account")).toBeNull();
   });
   click(getConnectorAction("button", "Skip", naming));
 
@@ -462,12 +483,18 @@ test("Authorize visible agents only for the first manual account", async () => {
 });
 
 test("Connect through device authorization", async () => {
+  const permissions = context.mocks.deferred<void>();
+  const permissionsStarted = context.mocks.deferred<void>();
   mockConnectors(context, []);
   context.mocks.data.agents([
     listAgent("c0000000-0000-4000-a000-000000000001", "Default"),
     listAgent("c0000000-0000-4000-a000-000000000002", "Research"),
   ]);
-  mockAgentConnectorAccess("base44");
+  mockAgentConnectorAccess("base44", permissions.promise, () => {
+    if (!permissionsStarted.settled()) {
+      permissionsStarted.resolve();
+    }
+  });
   mockPublicConnectorStatus(context, [
     publicStatusItem({
       connectorSlug: "base44",
@@ -502,13 +529,21 @@ test("Connect through device authorization", async () => {
     screen.findByTestId("connector-oauth-device-code"),
   ).resolves.toHaveTextContent("OKOU-DEVICE");
   click(within(dialog).getByTestId("connector-oauth-device-open"));
+  await permissionsStarted.promise;
+  await waitFor(() => {
+    expect(screen.getByText("Connecting your account")).toBeVisible();
+  });
   expect(
     browserOpen.calls.some((call) => {
       return call.url?.includes("oauth.test/base44/device") ?? false;
     }),
   ).toBeTruthy();
+  permissions.resolve();
   const naming = await screen.findByRole("dialog", {
     name: "Name your Base44 account",
+  });
+  await waitFor(() => {
+    return expect(screen.queryByText("Connecting your account")).toBeNull();
   });
   click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
@@ -1209,6 +1244,9 @@ test("Keep OAuth startup safe across repeated actions and navigation", async () 
   click(connect);
   click(connect);
 
+  await expect(
+    screen.findByText("Connecting your account"),
+  ).resolves.toBeVisible();
   await waitFor(() => {
     expect(starts).toBe(1);
     expect(browserOpen.calls).toHaveLength(1);
@@ -1218,6 +1256,9 @@ test("Keep OAuth startup safe across repeated actions and navigation", async () 
 
   await waitFor(() => {
     return expect(authWindow.closed).toBeTruthy();
+  });
+  await waitFor(() => {
+    return expect(screen.queryByText("Connecting your account")).toBeNull();
   });
   startReady.resolve();
 });
@@ -1261,6 +1302,10 @@ test("Show an OAuth startup failure in the provider window", async () => {
     expect(authWindow.location.href).toContain("status=error");
     expect(authWindow.location.href).toContain("stripe-error.svg");
     expect(authWindow.closed).toBeFalsy();
+  });
+  await waitFor(() => {
+    expect(screen.queryByText("Connecting your account")).toBeNull();
+    expect(getConnectorAction("button", "Connect Public Stripe")).toBeEnabled();
   });
 });
 

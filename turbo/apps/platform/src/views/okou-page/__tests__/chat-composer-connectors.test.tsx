@@ -562,6 +562,14 @@ test("Use the shortest valid connector setup from chat", async () => {
   });
   expect(browserOpen.calls).toHaveLength(1);
   expect(screen.queryByRole("dialog", { name: "Google Analytics" })).toBeNull();
+  expect(screen.getByText("Connecting your account")).toBeVisible();
+  authWindow.close();
+  await waitFor(() => {
+    expect(screen.queryByText("Connecting your account")).toBeNull();
+  });
+  await expect(
+    findFastControl("button", "Connect Google Analytics", catalog),
+  ).resolves.toBeEnabled();
 });
 
 test("Respect integration-managed connector availability in chat", async () => {

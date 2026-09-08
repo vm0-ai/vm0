@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { withConnectorConnectionProgress } from "../../connector-connection-progress.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   customConnectorByIdContract,
@@ -637,7 +638,7 @@ const authorizeCompletedCustomConnectorTarget$ = command(
   },
 );
 
-const connectCustomConnectorAuthorizationForTarget$ = command(
+const connectCustomConnectorAuthorizationForTargetCommand$ = command(
   async (
     { get, set },
     args: CustomConnectorAuthorizationTargetArgs,
@@ -766,6 +767,11 @@ const connectCustomConnectorAuthorizationForTarget$ = command(
     };
   },
 );
+
+const connectCustomConnectorAuthorizationForTarget$ =
+  withConnectorConnectionProgress(
+    connectCustomConnectorAuthorizationForTargetCommand$,
+  );
 
 export const connectCustomConnectorAuthorization$ = command(
   async (
