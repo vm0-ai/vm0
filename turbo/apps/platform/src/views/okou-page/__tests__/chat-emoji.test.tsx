@@ -124,6 +124,7 @@ test("Change a thread icon from the mobile header and retain it on desktop", asy
     expect(
       screen.queryByRole("textbox", { name: "Search emoji" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Chat thread" })).toHaveFocus();
   });
 
   act(() => {
@@ -141,7 +142,7 @@ test.each([
   { from: "mobile", to: "desktop", desktop: false },
   { from: "desktop", to: "mobile", desktop: true },
 ])(
-  "Keep one open emoji picker when resizing from $from to $to",
+  "Keep one focused emoji picker when resizing from $from to $to",
   async ({ desktop }) => {
     const viewport = context.mocks.browser.matchMedia(desktop);
     await openEmojiPicker();
@@ -154,9 +155,9 @@ test.each([
       expect(
         screen.getByLabelText(desktop ? "Open menu" : "Open browser"),
       ).toBeInTheDocument();
-      expect(
-        screen.getAllByRole("textbox", { name: "Search emoji" }),
-      ).toHaveLength(1);
+      const searchInputs = screen.getAllByLabelText("Search emoji");
+      expect(searchInputs).toHaveLength(1);
+      expect(searchInputs[0]).toHaveFocus();
     });
     expect(screen.getAllByTestId("chat-thread-header-title")).toHaveLength(1);
     expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(

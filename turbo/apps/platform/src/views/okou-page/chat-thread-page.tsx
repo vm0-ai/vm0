@@ -869,6 +869,13 @@ function ChatThreadEmojiMenuButton({
             closeMenu();
           }
         }}
+        onOpenChangeComplete={(nextOpen) => {
+          if (!nextOpen) {
+            chatThreadContainerElement(threadId)?.focus({
+              preventScroll: true,
+            });
+          }
+        }}
       >
         <Tooltip>
           <TooltipTrigger asChild>
@@ -902,13 +909,7 @@ function ChatThreadEmojiMenuButton({
             })}
           </TooltipContent>
         </Tooltip>
-        <PopoverContent
-          align="start"
-          className="w-80 p-0"
-          finalFocus={() => {
-            return chatThreadContainerElement(threadId);
-          }}
-        >
+        <PopoverContent align="start" className="w-80 p-0" finalFocus={false}>
           <ChatThreadEmojiPicker
             hasEmoji={Boolean(emoji)}
             onSelect={selectEmoji}
