@@ -18,8 +18,8 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 import { chatThreadGetRoutes } from "../chat-threads-get";
 import { chatThreadPinOrderRoutes } from "../chat-threads-pin-order";
 import { chatThreadPinRoutes } from "../chat-threads-pin";
-import { cronCompactChatThreadSnapshotsContract } from "@okouai/api-contracts/contracts/cron";
-import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { testChatThreadSnapshotCompactionContract } from "@okouai/api-contracts/contracts/test-chat-thread-snapshot-compaction";
+import { testChatThreadSnapshotCompactionRoutes } from "../test-chat-thread-snapshot-compaction";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { comparePinnedThreads } from "@okouai/core/chat-thread-pin-order";
 
@@ -171,11 +171,13 @@ describe("pinned thread ordering", () => {
     ).toStrictEqual([fixture.threadId, second.id]);
     const compact = setupApp({
       context,
-      routes: cronCompactChatThreadSnapshotsRoutes,
-    })(cronCompactChatThreadSnapshotsContract);
+      routes: testChatThreadSnapshotCompactionRoutes,
+    })(testChatThreadSnapshotCompactionContract);
     await accept(
       compact.compact({
-        headers: { authorization: "Bearer test-cron-secret" },
+        body: {
+          scopes: [{ user_id: fixture.userId, org_id: fixture.orgId }],
+        },
       }),
       [200],
     );
