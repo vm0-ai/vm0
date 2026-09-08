@@ -1868,6 +1868,12 @@ describe("CHAT-02: completed chat callback", () => {
     );
     expect(warnings).toContain("Chat title persistence failed");
     expect(warnings).toContain("Failed to save run summary");
+    expect(auxiliaryResults(context)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ feature: "chat_title", outcome: "success" }),
+        expect.objectContaining({ feature: "run_summary", outcome: "success" }),
+      ]),
+    );
     expect(auxiliaryWarnings(context)).toStrictEqual([]);
     expect(
       auxiliaryResults(context).every((event) => {

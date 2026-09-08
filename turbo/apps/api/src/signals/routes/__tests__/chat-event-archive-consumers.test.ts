@@ -251,16 +251,20 @@ describe("archived chat event consumers", () => {
     ]);
   }, 60_000);
 
-  it("preserves user-requested shared-title failures outside auxiliary degradation", async () => {
+  it("preserves user-requested shared-title failures for archived selections", async () => {
     const fixture = await createArchiveFixture("sharing-provider-failure");
+    // Expired, physically removed events are historical state with no public
+    // write API. Reuse this archive harness, then observe the public share API.
     const eventId = await store.set(
       seedRetentionOutputEvent$,
       {
         chatThreadId: fixture.threadId,
         content: "A completed answer to share",
+        offsetMs: -180_000,
       },
       context.signal,
     );
+    await archiveAndRetain(fixture.threadId, [eventId]);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-sharing-key");
     chatCallbacks.mockOpenRouterCompletions(() => {
       return new HttpResponse(null, { status: 503 });
