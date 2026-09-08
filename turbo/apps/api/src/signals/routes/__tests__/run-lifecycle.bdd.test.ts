@@ -15886,6 +15886,30 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("explains supported connector discovery for service connections", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "connect a third-party service",
+      modelProvider: "anthropic-api-key",
+    });
+    const appendSystemPrompt =
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+    for (const connectorContext of [
+      "okou connector search <service-name>",
+      "searches every supported service",
+      "reports which matching connectors are available to the current run",
+      "provider credentials stay outside the sandbox",
+      "When a user wants to connect a third-party service, search for it first",
+    ]) {
+      expect(appendSystemPrompt).toContain(connectorContext);
+    }
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("advertises managed research tools for regular runs", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();

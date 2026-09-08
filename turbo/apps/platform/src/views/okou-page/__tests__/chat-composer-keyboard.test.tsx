@@ -13,6 +13,7 @@ import {
   findFastControl,
   installMessageExperienceChat,
   MESSAGE_EXPERIENCE_AGENT_ID,
+  queryFastControl,
 } from "./chat-message-experience-test-helpers.ts";
 
 const COMPOSER_PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -58,10 +59,7 @@ async function expectSentPrompt(prompt: string): Promise<void> {
 
 async function expectAgentWorking(): Promise<void> {
   await waitFor(() => {
-    const stop = queryAllByRoleFast("button").find((button) => {
-      return button.getAttribute("aria-label") === "Stop";
-    });
-    expect(stop).toBeVisible();
+    expect(queryFastControl("button", "Stop")).toBeVisible();
     expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
   });
 }

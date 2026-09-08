@@ -11,6 +11,34 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.864.0](https://github.com/vm0-ai/vm0/compare/app-v0.863.1...app-v0.864.0) (2026-09-08)
+
+
+### Features
+
+* add usage pack visibility for pro and team plans ([#32595](https://github.com/vm0-ai/vm0/issues/32595)) ([65ac051](https://github.com/vm0-ai/vm0/commit/65ac0518bde2310887470cb0874aeae06c0c0397))
+* **platform:** add okou locale fallbacks ([#31606](https://github.com/vm0-ai/vm0/issues/31606)) ([2c9c5f4](https://github.com/vm0-ai/vm0/commit/2c9c5f46687a8b7671f3d00e4371194714c30989))
+* **platform:** render agent message math ([#32362](https://github.com/vm0-ai/vm0/issues/32362)) ([e227a45](https://github.com/vm0-ai/vm0/commit/e227a458753ada578e5d51b40dc30f1fd496959f))
+
+
+### Bug Fixes
+
+* **platform:** align run work history presentation ([#32630](https://github.com/vm0-ai/vm0/issues/32630)) ([1f6b47a](https://github.com/vm0-ai/vm0/commit/1f6b47a97c9d2b6c82c4397efd125aa5bb951794))
+* **platform:** make annotation arrows and strokes editable ([#32624](https://github.com/vm0-ai/vm0/issues/32624)) ([cc207f9](https://github.com/vm0-ai/vm0/commit/cc207f98fdb1c6d5d82156d586bfcb6f49c931da))
+
+
+### Refactoring
+
+* remove shared worker realtime feature switch ([#32616](https://github.com/vm0-ai/vm0/issues/32616)) ([38cc9cf](https://github.com/vm0-ai/vm0/commit/38cc9cf1a2d19a3290c7b9fcc3500c8b5df14680))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.416.0
+    * @okouai/core bumped to 8.636.0
+
 ## [0.863.1](https://github.com/vm0-ai/vm0/compare/app-v0.863.0...app-v0.863.1) (2026-09-08)
 
 

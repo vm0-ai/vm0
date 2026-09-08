@@ -1,181 +1,61 @@
 # Bad Code Smells
 
-This document defines code quality issues and anti-patterns to identify during code reviews.
-
-**Note**: Testing-specific patterns and anti-patterns are in `docs/testing.md`.
+Project-specific production-code rules. For tests, use
+[Testing](testing.md); for a PR review, use [REVIEW.md](../REVIEW.md).
 
 ## 1. TypeScript `any` Type
 
-**PROHIBITION**: Zero tolerance for `any` types.
-
-```typescript
-// ❌ Bad: Using any
-const data: any = fetchData();
-
-// ✅ Good: Use unknown with type narrowing
-const data: unknown = fetchData();
-if (isValidData(data)) {
-  // Use data with proper type
-}
-
-// ✅ Good: Define proper interfaces
-interface UserData {
-  id: string;
-  name: string;
-}
-const data: UserData = fetchData();
-```
+Do not use `any`. Preserve inference where available and use `unknown` with
+validation or narrowing at an untrusted boundary. Assertions must not replace
+runtime validation or database decoding.
 
 ## 2. Lint/Type Suppressions
 
-**PROHIBITION**: Zero tolerance for suppression comments.
-
-**Prohibited comments**:
-
-- `// eslint-disable` or `/* eslint-disable */`
-- `// oxlint-disable` or `/* oxlint-disable */`
-- `// @ts-ignore`
-- `// @ts-nocheck`
-- `// @ts-expect-error`
-- `// prettier-ignore`
-
-**Prohibited plugins**:
-
-- `eslint-plugin-only-warn`
-
-**Always fix the root cause**:
-
-```typescript
-// ❌ Bad: Suppressing the warning
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const data: any = fetchData();
-
-// ✅ Good: Fix with proper typing
-const data: unknown = fetchData();
-if (isValidData(data)) {
-  // Use data with type narrowing
-}
-```
+Do not add suppression comments (`eslint-disable`, `oxlint-disable`,
+`@ts-ignore`, `@ts-nocheck`, `@ts-expect-error`, or `prettier-ignore`) or
+`eslint-plugin-only-warn`. Fix the underlying violation. Do not weaken rules to
+make a change pass. Assess existing configuration overrides in their actual
+scope and with their documented replacement enforcement.
 
 ## 3. Error Handling
 
-- Identify unnecessary try/catch blocks
-- Suggest fail-fast improvements
-- Flag over-engineered error handling
+Catch errors only at a boundary that meaningfully handles them. Remove redundant
+log-and-rethrow wrappers and fabricated defaults that hide a broken invariant.
+Preserve resource cleanup, domain-error responses, legitimate retry/recovery,
+best-effort operation ownership, per-item failure isolation, and security checks.
+
+Reference ownership follows the referenced entity's authority. An expected
+external miss is different from invalid input, a failed required operation, or
+a violated local invariant. Follow [externally managed references](externally-managed-references.md)
+and never let an unresolved reference grant capabilities or credentials.
 
 ## 4. Interface Changes
 
-- Document new/modified public interfaces
-- Highlight breaking changes
-- Review API design decisions
+Document changed public contracts and assess their consumers. Independent
+frontend, API, Runner, and database deployments require the old/new combinations
+in [deployment compatibility](deployment-compatibility.md). A TypeScript type
+change alone does not migrate stored data or already-running clients.
 
 ## 5. Dynamic Imports
 
-**PROHIBITION**: Zero tolerance for dynamic `import()` in production code - use static imports only.
-
-**Prohibited patterns:**
-
-- `await import("module")` - Use static `import` at file top instead
-- `import("module").then(...)` - Use static `import` at file top instead
-- Conditional imports like `if (condition) { await import(...) }` - Restructure code to use static imports
-
-**Why dynamic imports are harmful:**
-
-- Break tree-shaking and bundle optimization
-- Add unnecessary async complexity to synchronous operations
-- Make dependency analysis harder for tools
-- Increase code complexity without real benefits
-- Hide import errors until runtime instead of catching at build time
-
-**Always use static imports:**
-
-```typescript
-// ❌ Bad: Dynamic import adds unnecessary async
-async function generateToken() {
-  const crypto = await import("crypto");
-  return crypto.randomBytes(32).toString("base64url");
-}
-
-// ✅ Good: Static import at file top
-import { randomBytes } from "crypto";
-
-function generateToken() {
-  return randomBytes(32).toString("base64url");
-}
-
-// ❌ Bad: Dynamic import for "lazy loading"
-async function handleClick() {
-  const { RunService } = await import("./run-service");
-  await RunService.doSomething();
-}
-
-// ✅ Good: Static import
-import { RunService } from "./run-service";
-
-async function handleClick() {
-  await RunService.doSomething();
-}
-```
-
-**Rare exceptions (must be justified):**
-
-- Truly optional dependencies that may not exist (e.g., dev-only tools)
-- Route-based code splitting in Next.js (handled by framework automatically)
-- Testing utilities that need to be mocked (prefer static imports with mocking instead)
+Use static imports in production code. Optional development dependencies and
+framework-owned route splitting need an actual justified boundary; a generic
+claim about performance does not justify a new dynamic import. Prefer static
+imports in test utilities as well.
 
 ## 6. Hardcoded URLs and Configuration
 
-- Never hardcode URLs or environment-specific values
-- Use centralized configuration from `env()` function
-- Avoid hardcoded fallback URLs like `"https://vm7.ai"`
-- Server-side code should not use `NEXT_PUBLIC_` environment variables
-- All configuration should be environment-aware
+Use centralized `env()` configuration for environment-specific values and
+service origins. Do not invent fallback URLs or credentials. Server code should
+not read `NEXT_PUBLIC_` variables as its configuration contract.
 
-```typescript
-// ❌ Bad: Hardcoded URL
-const apiUrl = "https://api.vm7.ai";
+## 7. Fallback Patterns
 
-// ❌ Bad: Hardcoded with fallback
-const apiUrl = process.env.API_URL || "https://api.vm7.ai";
+The default is no fallback for a state that the owning contract already rules
+out. [Fallbacks](fallback.md) defines when removal is justified and when an
+explicitly bounded rollout fallback is required. Follow that document for PR
+fallback declarations, removal evidence, and tests for retired paths.
 
-// ✅ Good: Use centralized configuration
-const apiUrl = env().API_URL;
-
-// ✅ Good: Fail fast if missing
-if (!process.env.API_URL) {
-  throw new Error("API_URL not configured");
-}
-```
-
-## 7. Fallback Patterns - Fail Fast
-
-**PROHIBITION**: No fallback/recovery logic - errors should fail immediately and visibly.
-
-See `docs/fallback.md` for the full rules on compatibility fallbacks, feature-switched features, and negative tests against removed code.
-
-- Fallback patterns increase complexity and hide configuration problems
-- When critical dependencies are missing, throw errors instead of falling back
-
-```typescript
-// ❌ Bad: Fallback to another secret
-const jwtSecret =
-  process.env.JWT_SECRET || process.env.SOME_OTHER_SECRET || "default-secret";
-
-// ❌ Bad: Silent fallback behavior
-if (!config) {
-  config = getDefaultConfig(); // Hides misconfiguration
-}
-
-// ✅ Good: Fail fast with clear error
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) {
-  throw new Error("JWT_SECRET not configured");
-}
-```
-
-**Rationale:**
-
-- Fallbacks make debugging harder - you don't know which path was taken
-- Configuration errors should be caught during deployment, not hidden
-- Explicit failures are easier to fix than subtle wrong behavior
-- Less code paths = simpler code = easier to maintain
+These rules do not authorize removing meaningful recovery, fail-closed security,
+or expected external-reference handling described above. Determine the owner,
+failure class, and observable consequence before deleting a branch.

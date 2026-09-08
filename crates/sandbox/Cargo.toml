@@ -5,14 +5,14 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-serde = { workspace = true, features = ["derive"] }
-thiserror.workspace = true
-tokio = { workspace = true, features = ["sync", "io-util"] }
+serde = { workspace = true, features = ["derive", "std"] }
+thiserror = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["io-util", "sync"] }
 tokio-util = { workspace = true, features = ["rt"] }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid = { workspace = true, features = ["serde", "std", "v4"] }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["std"] }
 trybuild = { workspace = true }
 
 [lints]

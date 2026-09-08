@@ -4,27 +4,27 @@ version = "1.0.21"
 edition.workspace = true
 
 [dependencies]
-base64 = { workspace = true }
-futures-util = { workspace = true }
-reqwest = { workspace = true }
+base64 = { workspace = true, features = ["simd-unsafe", "std"] }
+futures-util = { workspace = true, features = ["async-await", "async-await-macro", "std"] }
+reqwest = { workspace = true, features = ["json", "rustls"] }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true, features = ["std"] }
+thiserror = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-tungstenite = { workspace = true, features = ["connect", "rustls-tls-native-roots"] }
 tokio-util = { workspace = true, features = ["rt"] }
-tracing = { workspace = true }
-url = { workspace = true }
+tracing = { workspace = true, features = ["attributes", "std"] }
+url = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 hmac = { workspace = true }
-httpmock = { workspace = true }
-proptest.workspace = true
-sha2 = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net", "io-util"] }
-tracing-subscriber = { workspace = true }
+httpmock = { workspace = true, features = ["cookies"] }
+proptest = { workspace = true, features = ["std"] }
+sha2 = { workspace = true, features = ["alloc", "oid"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "test-util"] }
+tracing-subscriber = { workspace = true, features = ["ansi", "fmt", "smallvec", "std", "tracing-log"] }
 tracing-test-support = { workspace = true }
 
 [[test]]

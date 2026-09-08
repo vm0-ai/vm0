@@ -1,4 +1,5 @@
 import Ably, { type CapabilityOp } from "ably";
+import type { RunnerSshInvalidate } from "@okouai/api-contracts/contracts/runner-ssh";
 import type {
   BrowserSessionChangedPayload,
   UserPreferenceChangedPayload,
@@ -382,6 +383,14 @@ export async function publishConnectorRuntimeSyncToRunnerGroup(
   L.debug(
     `Published connector runtime sync ${runId}/${target.kind} to runner-group:${group}`,
   );
+}
+
+export async function publishSshInvalidationToRunnerGroup(
+  group: string,
+  notification: RunnerSshInvalidate,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("ssh-authority-invalidated", notification);
 }
 
 export async function publishActiveInputToRunnerGroup(

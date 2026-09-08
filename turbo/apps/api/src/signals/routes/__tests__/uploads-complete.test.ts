@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { HeadObjectCommand } from "@aws-sdk/client-s3";
+import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { setupApp } from "../../../__tests__/test-helpers";
+import { featureSwitchesRoutes } from "../feature-switches";
+import { uploadsPrepareRoutes } from "../uploads-prepare";
+import { createRouteMocks } from "./helpers/route-test";
 
 import { describe, expect, it } from "vitest";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
@@ -148,6 +156,70 @@ function addUploadObject(
 }
 
 describe("POST /api/uploads/complete", () => {
+  it("records a private artifact from an agent run in the catalog with its authenticated URL", async () => {
+    const fixture = await createRunUploadFixture({ chatThread: true });
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    createRouteMocks(context).clerk.session(
+      fixture.actor.userId,
+      fixture.actor.orgId,
+    );
+    await accept(
+      setupApp({ context, routes: featureSwitchesRoutes })(
+        featureSwitchesContract,
+      ).update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { switches: { [FeatureSwitchKey.PrivateArtifacts]: true } },
+      }),
+      [200],
+    );
+    const prepared = await accept(
+      setupApp({ context, routes: uploadsPrepareRoutes })(
+        uploadsContract,
+      ).prepare({
+        headers: { authorization: fixture.bearer },
+        body: {
+          filename: "private-report.pdf",
+          contentType: "application/pdf",
+          size: 1234,
+          purpose: "artifact",
+        },
+      }),
+      [200],
+    );
+    context.mocks.s3.send.mockImplementation((command) => {
+      expect(command).toBeInstanceOf(HeadObjectCommand);
+      return Promise.resolve({
+        ContentLength: 1234,
+        ContentType: "application/pdf",
+      });
+    });
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.body.id },
+      [200],
+    );
+    expect(response.body).toMatchObject({
+      url: `https://api.vm0.ai/api/web/download-file?file_id=${prepared.body.id}&filename=private-report.pdf`,
+    });
+    const catalog = await chat.listArtifactCatalog(fixture.actor, {
+      kind: "file",
+    });
+    const artifact = catalog.artifacts.find((entry) => {
+      return entry.title === "private-report.pdf";
+    });
+    expect(artifact).toBeDefined();
+    if (!artifact) {
+      throw new Error("Private artifact missing from catalog");
+    }
+    const detail = await chat.getArtifactCatalogEntry(
+      fixture.actor,
+      artifact.id,
+    );
+    expect(detail).toMatchObject({
+      file: { url: prepared.body.url, filename: "private-report.pdf" },
+    });
+  });
+
   it("completes a run-scoped upload after the object exists", async () => {
     const fixture = await createRunUploadFixture();
     const fileId = randomUUID();

@@ -34,13 +34,15 @@ export function OfficeDocumentPreview({
     );
   }
 
-  // The Office viewer fetches the document server-side, so it needs the
-  // durable public URL rather than the browser-scoped presigned resource URL.
+  // Private documents give the viewer only the expiring resource URL.
+  // Historical public documents keep their existing viewer URL.
   return (
     <AutoFocusedArtifactIframe
       focusKey={focusKey}
       focusOnMount={focusOnMount}
-      src={officeDocumentViewerUrl(attachmentUrls.shareUrl)}
+      src={officeDocumentViewerUrl(
+        attachmentUrls.shareUrl ?? attachmentUrls.resourceUrl,
+      )}
       title={t(
         ($) => {
           return $.artifacts.preview.dialogLabel;
