@@ -607,6 +607,55 @@ test("Open a conversation at a linked message", async () => {
   expect(buttonNamed("Scroll to bottom")).toBeInTheDocument();
 });
 
+test.each([false, true])(
+  "Expand folded work when opening a linked message with run work folding %s",
+  async (runWorkFolding) => {
+    const resize = mockResizeObserver();
+    const linkedEventId = "folded-link-work-3";
+    const linkedText = "Linked work detail";
+    const events = conversationEvents("folded-link", "Linked")
+      .flatMap((event) => {
+        return event.id === "folded-link-assistant-3"
+          ? [{ ...event, id: linkedEventId, content: linkedText }, event]
+          : [event];
+      })
+      .map((event, index) => {
+        return {
+          ...event,
+          seqId: index + 1,
+          runGroupId:
+            event.runId === "folded-link-run-3" ||
+            event.runId === "folded-link-run-4"
+              ? "folded-link-group"
+              : undefined,
+        };
+      });
+    mockChatLifecycleWithoutBrowserSession({
+      threadId: DEEP_LINK_THREAD_ID,
+      threadTitle: "Linked folded conversation",
+      chatEvents: events,
+    });
+
+    await setupPage({
+      context,
+      host: APP_HOST,
+      path: `/chats/${DEEP_LINK_THREAD_ID}#event-${linkedEventId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFolding,
+      },
+    });
+
+    await waitForThreadMessage(DEEP_LINK_THREAD_ID, linkedText);
+    const geometry = installChatScrollGeometry(
+      threadContainer(DEEP_LINK_THREAD_ID),
+    );
+    resize.automationAll();
+
+    await expectReadingPosition(geometry, linkedText, 0);
+    expect(buttonNamed("Scroll to bottom")).toBeInTheDocument();
+  },
+);
+
 test("Open a conversation safely when a linked message is unavailable", async () => {
   const resize = mockResizeObserver();
   mockChatLifecycleWithoutBrowserSession({

@@ -7787,7 +7787,11 @@ function PagedRunWorkMessage({
 }) {
   const expandedIds = useGet(thread.timelineExpandedIds$);
   const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const expanded = expandedIds.has(event.id);
+  const scrollTargetEventId = useGet(
+    thread.threadScrollPosition$,
+  )?.targetEventId;
+  const expanded =
+    expandedIds.has(event.id) || scrollTargetEventId === event.id;
   return (
     <RunWorkMessage
       event={event}
