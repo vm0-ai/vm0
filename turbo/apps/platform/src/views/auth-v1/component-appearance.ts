@@ -52,9 +52,13 @@ const authV1SignOutCheckboxLabelClass = cn(
   authV1CheckboxLabelClass,
   "ms-1.5 min-w-0 flex-1 cursor-pointer p-0 text-left",
 );
+// Clerk owns the reveal state. Reserve the trailing control's space in both
+// states, and apply the shared Input's password typography only while hidden.
+const authV1PasswordInputClass =
+  "pe-10 [&[type=password]]:font-mono [&[type=password]]:tracking-wider placeholder:font-sans placeholder:tracking-normal";
 const authV1PasswordToggleClass = cn(
   buttonVariants({ size: "icon", variant: "ghost" }),
-  "p-0 text-foreground",
+  "inset-y-0 end-0 p-0 text-foreground before:inset-0",
 );
 const authV1IdentityPreviewEditClass = cn(
   buttonVariants({ size: "icon-2xs", variant: "quiet" }),
@@ -164,8 +168,10 @@ export function getAuthV1ComponentAppearance(
       formField: "gap-0",
       formFieldLabel: "text-sm font-medium leading-5 text-foreground",
       formFieldInput: cn(inputClassName, AUTH_FIELD_INPUT_CLASS, "shadow-none"),
-      formFieldInput__password:
-        "font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal",
+      formFieldInput__password: authV1PasswordInputClass,
+      formFieldInput__confirmPassword: authV1PasswordInputClass,
+      formFieldInput__currentPassword: authV1PasswordInputClass,
+      formFieldInput__newPassword: authV1PasswordInputClass,
       // Clerk renders this native checkbox through the generic formFieldInput
       // slot and paints its checked glyph with ::before. The shared padding
       // tokens and semantic checked-state utilities keep the public modifier
@@ -182,11 +188,10 @@ export function getAuthV1ComponentAppearance(
       // accessible name. Removing the inert control is the only supported way
       // to keep it out of the tab order; appearance cannot add an aria-label.
       formButtonReset: "hidden",
-      formFieldErrorText: cn(
-        AUTH_ERROR_ALERT_CLASS,
-        AUTH_ERROR_ALERT_TEXT_CLASS,
-        "mt-2",
-      ),
+      // Field feedback is text, not an Alert container. Clerk positions and
+      // measures it to allocate space below the input. Container positioning,
+      // borders, and padding break that contract, especially for OTP errors.
+      formFieldErrorText: AUTH_ERROR_ALERT_TEXT_CLASS,
       formFieldHintText: "mt-2 text-sm leading-5 text-muted-foreground",
       formFieldInfoText: "mt-2 text-sm leading-5 text-muted-foreground",
       formFieldSuccessText: "mt-2 text-sm leading-5 text-foreground",
@@ -205,11 +210,7 @@ export function getAuthV1ComponentAppearance(
       ),
       otpCodeFieldInputs: "gap-2",
       otpCodeFieldInput: authV1OtpInputClass,
-      otpCodeFieldErrorText: cn(
-        AUTH_ERROR_ALERT_CLASS,
-        AUTH_ERROR_ALERT_TEXT_CLASS,
-        "mt-2",
-      ),
+      otpCodeFieldErrorText: AUTH_ERROR_ALERT_TEXT_CLASS,
       alternativeMethods: "gap-2",
       alternativeMethodsBlockButton: cn(
         authV1OutlineActionClass,

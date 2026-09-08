@@ -92,13 +92,6 @@ test("Hosted auth uses Clerk's supported Tailwind customization surface", () => 
   expect(primaryActionClasses).toContain("okou-auth-action-text");
   expect(primaryActionClasses).toContain("border-0");
   expect(elementClasses(appearance, "formButtonReset")).toBe("hidden");
-  for (const key of ["formFieldErrorText", "otpCodeFieldErrorText"]) {
-    expect(elementClasses(appearance, key)).toContain(AUTH_ERROR_ALERT_CLASS);
-    expect(elementClasses(appearance, key)).toContain(
-      AUTH_ERROR_ALERT_TEXT_CLASS,
-    );
-    expect(elementClasses(appearance, key)).toContain("mt-2");
-  }
   expect(elementClasses(appearance, "alert")).toBe(AUTH_ERROR_ALERT_CLASS);
   expect(elementClasses(appearance, "alertText")).toBe(
     AUTH_ERROR_ALERT_TEXT_CLASS,
