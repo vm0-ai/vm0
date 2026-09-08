@@ -46,11 +46,14 @@ interface StoredObject {
   readonly key: string;
   readonly contentType: string;
   readonly size: number;
+  readonly metadata: Readonly<Record<string, string>>;
   body: Buffer;
 }
 
-const storedObjects = new Map<string, StoredObject>();
-let signedUrlSequence = 0;
+interface StorageFixture {
+  readonly store: (object: StoredObject) => void;
+  readonly has: (bucket: string, key: string) => boolean;
+}
 
 function objectIdentity(bucket: string, key: string): string {
   return `${bucket}\u0000${key}`;
@@ -69,58 +72,103 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-function storageMock(command: unknown): Promise<unknown> {
-  if (command instanceof ListObjectsV2Command) {
-    return Promise.resolve({ Contents: [] });
+function deleteObjectKeys(input: Record<string, unknown>): readonly string[] {
+  const deletion = input.Delete;
+  if (typeof deletion !== "object" || deletion === null) {
+    return [];
   }
-  const input = commandInput(command);
-  const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
-  const key = typeof input.Key === "string" ? input.Key : "";
-  const object = storedObjects.get(objectIdentity(bucket, key));
-  if (command instanceof HeadObjectCommand) {
-    if (!object) {
-      return Promise.reject(
-        Object.assign(new Error("Missing test object"), { name: "NotFound" }),
-      );
+  const objects = "Objects" in deletion ? deletion.Objects : undefined;
+  return Array.isArray(objects)
+    ? objects.flatMap((candidate) => {
+        return typeof candidate === "object" &&
+          candidate !== null &&
+          "Key" in candidate &&
+          typeof candidate.Key === "string"
+          ? [candidate.Key]
+          : [];
+      })
+    : [];
+}
+
+function installStorageFixture(): StorageFixture {
+  const storedObjects = new Map<string, StoredObject>();
+  let signedUrlSequence = 0;
+
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = commandInput(command);
+    if (command instanceof ListObjectsV2Command) {
+      const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
+      const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
+      return Promise.resolve({
+        Contents: [...storedObjects.values()].flatMap((object) => {
+          return object.bucket === bucket && object.key.startsWith(prefix)
+            ? [
+                {
+                  Key: object.key,
+                  Size: object.size,
+                  LastModified: new Date("2025-01-01T00:00:00.000Z"),
+                },
+              ]
+            : [];
+        }),
+      });
     }
-    return Promise.resolve({
-      ContentLength: object.size,
-      ContentType: object.contentType,
-      Metadata: { "artifact-id": object.id },
-    });
-  }
-  if (command instanceof GetObjectCommand) {
-    if (!object) {
-      return Promise.reject(
-        Object.assign(new Error("Missing test object"), { name: "NoSuchKey" }),
-      );
-    }
-    return Promise.resolve({
-      ContentLength: object.size,
-      ContentType: object.contentType,
-      Body: Readable.from([object.body]),
-    });
-  }
-  if (command instanceof DeleteObjectsCommand) {
-    const deletion = input.Delete;
-    if (typeof deletion === "object" && deletion !== null) {
-      const objects = "Objects" in deletion ? deletion.Objects : undefined;
-      if (Array.isArray(objects)) {
-        for (const candidate of objects) {
-          if (
-            typeof candidate === "object" &&
-            candidate !== null &&
-            "Key" in candidate &&
-            typeof candidate.Key === "string"
-          ) {
-            storedObjects.delete(objectIdentity(bucket, candidate.Key));
-          }
-        }
+    const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
+    const key = typeof input.Key === "string" ? input.Key : "";
+    const object = storedObjects.get(objectIdentity(bucket, key));
+    if (command instanceof HeadObjectCommand) {
+      if (!object) {
+        return Promise.reject(
+          Object.assign(new Error("Missing test object"), { name: "NotFound" }),
+        );
       }
+      return Promise.resolve({
+        ContentLength: object.size,
+        ContentType: object.contentType,
+        Metadata: object.metadata,
+      });
     }
-    return Promise.resolve({});
-  }
-  throw new Error(`Unexpected storage request: ${String(command)}`);
+    if (command instanceof GetObjectCommand) {
+      if (!object) {
+        return Promise.reject(
+          Object.assign(new Error("Missing test object"), {
+            name: "NoSuchKey",
+          }),
+        );
+      }
+      return Promise.resolve({
+        ContentLength: object.size,
+        ContentType: object.contentType,
+        Body: Readable.from([object.body]),
+      });
+    }
+    if (command instanceof DeleteObjectsCommand) {
+      for (const deletedKey of deleteObjectKeys(input)) {
+        storedObjects.delete(objectIdentity(bucket, deletedKey));
+      }
+      return Promise.resolve({});
+    }
+    throw new Error(`Unexpected storage request: ${String(command)}`);
+  });
+  context.mocks.s3.getSignedUrl.mockImplementation(
+    (_client: unknown, command: unknown) => {
+      signedUrlSequence += 1;
+      const input = commandInput(command);
+      const operation = "ContentType" in input ? "upload" : "preview";
+      return Promise.resolve(
+        `https://${operation}.example.test/access/${signedUrlSequence.toString()}?signature=test`,
+      );
+    },
+  );
+
+  return Object.freeze({
+    store: (object: StoredObject) => {
+      storedObjects.set(objectIdentity(object.bucket, object.key), object);
+    },
+    has: (bucket: string, key: string) => {
+      return storedObjects.has(objectIdentity(bucket, key));
+    },
+  });
 }
 
 function imageClient() {
@@ -163,6 +211,7 @@ async function prepareUpload(args: {
   readonly id: string;
   readonly bucket: string;
   readonly key: string;
+  readonly metadata: Readonly<Record<string, string>>;
 }> {
   const filename = args.filename ?? "reference.png";
   const contentType = args.contentType ?? "image/png";
@@ -181,16 +230,28 @@ async function prepareUpload(args: {
   if (!bucket || !key) {
     throw new Error("Prepared upload did not sign a bucket and key");
   }
-  return { id: prepared.body.id, bucket, key };
+  const rawMetadata = input.Metadata;
+  const metadata =
+    typeof rawMetadata === "object" && rawMetadata !== null
+      ? Object.fromEntries(
+          Object.entries(rawMetadata).flatMap(([name, value]) => {
+            return typeof value === "string" ? [[name, value]] : [];
+          }),
+        )
+      : {};
+  return { id: prepared.body.id, bucket, key, metadata };
 }
 
-async function completeUpload(args: {
-  readonly filename?: string;
-  readonly contentType?: string;
-  readonly size?: number;
-  readonly purpose?: "artifact" | "image-reference";
-  readonly body?: Buffer;
-}): Promise<StoredObject> {
+async function completeUpload(
+  storage: StorageFixture,
+  args: {
+    readonly filename?: string;
+    readonly contentType?: string;
+    readonly size?: number;
+    readonly purpose?: "artifact" | "image-reference";
+    readonly body?: Buffer;
+  },
+): Promise<StoredObject> {
   const contentType = args.contentType ?? "image/png";
   const body = args.body ?? validPng;
   const size = args.size ?? body.length;
@@ -201,7 +262,7 @@ async function completeUpload(args: {
     size,
     body,
   };
-  storedObjects.set(objectIdentity(object.bucket, object.key), object);
+  storage.store(object);
   await accept(
     uploadClient().complete({ headers, body: { id: prepared.id } }),
     [200],
@@ -224,20 +285,7 @@ async function createReference(
 }
 
 beforeEach(() => {
-  storedObjects.clear();
-  signedUrlSequence = 0;
   mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
-  context.mocks.s3.send.mockImplementation(storageMock);
-  context.mocks.s3.getSignedUrl.mockImplementation(
-    (_client: unknown, command: unknown) => {
-      signedUrlSequence += 1;
-      const input = commandInput(command);
-      const operation = "ContentType" in input ? "upload" : "preview";
-      return Promise.resolve(
-        `https://${operation}.example.test/access/${signedUrlSequence.toString()}?signature=test`,
-      );
-    },
-  );
 });
 
 describe("image reference catalog routes", () => {
@@ -245,6 +293,7 @@ describe("image reference catalog routes", () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const referenceId = randomUUID();
+    installStorageFixture();
     session(userId, orgId);
 
     const flags = await accept(featureClient().get({ headers }), [200]);
@@ -283,9 +332,11 @@ describe("image reference catalog routes", () => {
         },
       }),
     ]);
-    expect(responses.map(({ status }) => status)).toStrictEqual([
-      403, 403, 403, 403, 403, 403, 403,
-    ]);
+    expect(
+      responses.map(({ status }) => {
+        return status;
+      }),
+    ).toStrictEqual([403, 403, 403, 403, 403, 403, 403]);
 
     const ordinaryUpload = await accept(
       uploadClient().prepare({
@@ -298,13 +349,14 @@ describe("image reference catalog routes", () => {
       }),
       [200],
     );
-    expect(ordinaryUpload.body.id).toEqual(expect.any(String));
+    expect(ordinaryUpload.body.id).toStrictEqual(expect.any(String));
   });
 
   it("admits only ready same-owner private image bytes within the source limits", async () => {
     const userId = `user_${randomUUID()}`;
     const otherUserId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
+    const storage = installStorageFixture();
     session(userId, orgId);
     await enableReferenceImages();
 
@@ -346,7 +398,7 @@ describe("image reference catalog routes", () => {
       [400],
     );
 
-    const publicUpload = await completeUpload({});
+    const publicUpload = await completeUpload(storage, {});
     await accept(
       imageClient().create({
         headers,
@@ -359,7 +411,9 @@ describe("image reference catalog routes", () => {
       [400],
     );
 
-    const otherOwned = await completeUpload({ purpose: "image-reference" });
+    const otherOwned = await completeUpload(storage, {
+      purpose: "image-reference",
+    });
     session(otherUserId, orgId, "org:member");
     await accept(
       imageClient().create({
@@ -374,7 +428,9 @@ describe("image reference catalog routes", () => {
     );
 
     session(userId, orgId);
-    const spoofed = await completeUpload({ purpose: "image-reference" });
+    const spoofed = await completeUpload(storage, {
+      purpose: "image-reference",
+    });
     const jpegHeader = Buffer.from([
       0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01,
       0x01, 0x11, 0x00, 0xff, 0xd9,
@@ -396,7 +452,9 @@ describe("image reference catalog routes", () => {
     );
     expect(mismatch.body.error.message).toContain("content type");
 
-    const invalid = await completeUpload({ purpose: "image-reference" });
+    const invalid = await completeUpload(storage, {
+      purpose: "image-reference",
+    });
     invalid.body = Buffer.alloc(invalid.size);
     const invalidResponse = await accept(
       imageClient().create({
@@ -412,7 +470,7 @@ describe("image reference catalog routes", () => {
     expect(invalidResponse.body.error.message).toContain("not a valid");
 
     await setSwitches({ [FeatureSwitchKey.PrivateArtifacts]: true });
-    const oversized = await completeUpload({
+    const oversized = await completeUpload(storage, {
       purpose: "artifact",
       size: MAX_IMAGE_REFERENCE_SOURCE_BYTES + 1,
     });
@@ -429,7 +487,9 @@ describe("image reference catalog routes", () => {
     );
     expect(oversizedResponse.body.error.message).toContain("bytes or smaller");
 
-    const valid = await completeUpload({ purpose: "image-reference" });
+    const valid = await completeUpload(storage, {
+      purpose: "image-reference",
+    });
     const created = await createReference(valid.id);
     expect(created.body).toMatchObject({
       title: "Campaign hero",
@@ -437,6 +497,7 @@ describe("image reference catalog routes", () => {
       width: 1,
       height: 1,
       visibility: "private",
+      creator: { userId, displayName: null, imageUrl: null },
       canManage: true,
       canModerate: false,
     });
@@ -468,9 +529,12 @@ describe("image reference catalog routes", () => {
     const otherOrgUserId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
+    const storage = installStorageFixture();
     session(ownerUserId, orgId);
     await enableReferenceImages();
-    const source = await completeUpload({ purpose: "image-reference" });
+    const source = await completeUpload(storage, {
+      purpose: "image-reference",
+    });
 
     context.mocks.ably.channelGet.mockClear();
     context.mocks.ably.publish.mockClear();
@@ -607,9 +671,7 @@ describe("image reference catalog routes", () => {
       [204],
     );
     expect(deleted.body).toBeUndefined();
-    expect(storedObjects.has(objectIdentity(source.bucket, source.key))).toBe(
-      false,
-    );
+    expect(storage.has(source.bucket, source.key)).toBeFalsy();
     await accept(
       imageClient().get({ headers, params: { referenceId } }),
       [404],
@@ -660,8 +722,10 @@ describe("image reference catalog routes", () => {
         }),
       }),
     ]);
-    expect(responses.map(({ status }) => status)).toStrictEqual([
-      400, 400, 400,
-    ]);
+    expect(
+      responses.map(({ status }) => {
+        return status;
+      }),
+    ).toStrictEqual([400, 400, 400]);
   });
 });

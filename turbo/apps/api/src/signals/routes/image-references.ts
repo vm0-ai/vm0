@@ -5,8 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/image-references";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { imageReferences } from "@okouai/db/schema/image-reference";
-import { and, eq, or } from "drizzle-orm";
 import { command, computed } from "ccstate";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -14,7 +12,7 @@ import { nowDate } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { db$, writeDb$ } from "../external/db";
+import { db$ } from "../external/db";
 import {
   publishImageReferencesChangedForOrgSafely,
   publishImageReferencesChangedForUserSafely,
@@ -31,6 +29,7 @@ import {
 } from "../services/image-reference-data.service";
 import { createImageReference$ } from "../services/image-reference-create.service";
 import { deleteImageReference$ } from "../services/image-reference-delete.service";
+import { updateImageReference$ } from "../services/image-reference-update.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { privateArtifactsBucket } from "../services/private-artifact-storage.service";
 import type { RouteEntry } from "../route-entry";
@@ -300,92 +299,17 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const mutation = await set(writeDb$).transaction(async (tx) => {
-    const [previous] = await tx
-      .select({
-        ownerUserId: imageReferences.ownerUserId,
-        visibility: imageReferences.visibility,
-      })
-      .from(imageReferences)
-      .where(
-        and(
-          eq(imageReferences.id, params.referenceId),
-          eq(imageReferences.orgId, auth.orgId),
-          or(
-            eq(imageReferences.ownerUserId, auth.userId),
-            eq(imageReferences.visibility, "public"),
-          ),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!previous) {
-      return null;
-    }
-
-    const currentTime = nowDate();
-    if (previous.ownerUserId === auth.userId) {
-      const [updated] = await tx
-        .update(imageReferences)
-        .set({
-          title: bodyResult.data.title,
-          visibility: bodyResult.data.visibility,
-          updatedBy: auth.userId,
-          updatedAt: currentTime,
-        })
-        .where(
-          and(
-            eq(imageReferences.id, params.referenceId),
-            eq(imageReferences.orgId, auth.orgId),
-            eq(imageReferences.ownerUserId, auth.userId),
-          ),
-        )
-        .returning({ visibility: imageReferences.visibility });
-      if (!updated) {
-        throw new Error(`Image reference disappeared: ${params.referenceId}`);
-      }
-      return {
-        kind: "owner" as const,
-        ownerUserId: previous.ownerUserId,
-        previousVisibility: previous.visibility,
-        visibility: updated.visibility,
-      };
-    }
-
-    if (
-      auth.orgRole !== "admin" ||
-      bodyResult.data.title !== undefined ||
-      bodyResult.data.visibility !== "private" ||
-      previous.visibility !== "public"
-    ) {
-      return null;
-    }
-    const [updated] = await tx
-      .update(imageReferences)
-      .set({
-        visibility: "private",
-        updatedBy: auth.userId,
-        updatedAt: currentTime,
-      })
-      .where(
-        and(
-          eq(imageReferences.id, params.referenceId),
-          eq(imageReferences.orgId, auth.orgId),
-          eq(imageReferences.ownerUserId, previous.ownerUserId),
-          eq(imageReferences.visibility, "public"),
-        ),
-      )
-      .returning({ id: imageReferences.id });
-    if (!updated) {
-      throw new Error(`Image reference disappeared: ${params.referenceId}`);
-    }
-    return {
-      kind: "moderated" as const,
-      ownerUserId: previous.ownerUserId,
-      previousVisibility: previous.visibility,
-      visibility: "private" as const,
-    };
-  });
+  const mutation = await set(
+    updateImageReference$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      isOrgAdmin: auth.orgRole === "admin",
+      referenceId: params.referenceId,
+      body: bodyResult.data,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   if (!mutation) {
     return imageReferenceNotFound(params.referenceId);

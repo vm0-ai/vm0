@@ -15,6 +15,7 @@ import {
   downloadS3BufferWithMaxBytes,
   S3ObjectSizeLimitError,
   s3ObjectHead,
+  type S3ObjectHead,
 } from "../external/s3";
 import { settle } from "../utils";
 import { privateArtifactRecord } from "./private-artifact-storage.service";
@@ -23,6 +24,45 @@ type CreateImageReferenceResult =
   | { readonly kind: "created"; readonly referenceId: string }
   | { readonly kind: "conflict" }
   | { readonly kind: "rejected"; readonly message: string };
+
+type SourceCandidate = {
+  readonly id: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly accessLevel: string | null;
+  readonly materializationStatus: string | null;
+  readonly sizeBytes: number | null;
+  readonly contentType: string;
+  readonly bucket: string;
+  readonly key: string;
+};
+
+function isOwnedReadyPrivateSource(
+  source: SourceCandidate | null,
+  args: { readonly ownerUserId: string; readonly orgId: string },
+): source is SourceCandidate & { readonly sizeBytes: number } {
+  return (
+    source !== null &&
+    source.userId === args.ownerUserId &&
+    source.orgId === args.orgId &&
+    source.accessLevel === "private" &&
+    source.materializationStatus === "ready" &&
+    source.sizeBytes !== null
+  );
+}
+
+function storedObjectMetadataMatches(
+  source: SourceCandidate & { readonly sizeBytes: number },
+  head: Extract<S3ObjectHead, { readonly kind: "found" }>,
+): head is Extract<S3ObjectHead, { readonly kind: "found" }> & {
+  readonly contentLength: number;
+} {
+  return (
+    head.contentLength !== undefined &&
+    head.contentLength === source.sizeBytes &&
+    head.metadata["artifact-id"] === source.id
+  );
+}
 
 function invalidDimensions(width: number, height: number): boolean {
   return (
@@ -46,14 +86,7 @@ export const createImageReference$ = command(
   ): Promise<CreateImageReferenceResult> => {
     const source = await get(privateArtifactRecord(args.body.sourceFileId));
     signal.throwIfAborted();
-    if (
-      !source ||
-      source.userId !== args.ownerUserId ||
-      source.orgId !== args.orgId ||
-      source.accessLevel !== "private" ||
-      source.materializationStatus !== "ready" ||
-      source.sizeBytes === null
-    ) {
+    if (!isOwnedReadyPrivateSource(source, args)) {
       return { kind: "rejected", message: "Uploaded file not found" };
     }
 
@@ -71,11 +104,7 @@ export const createImageReference$ = command(
     if (head.kind === "missing") {
       return { kind: "rejected", message: "Uploaded file not found" };
     }
-    if (
-      head.contentLength === undefined ||
-      head.contentLength !== source.sizeBytes ||
-      head.metadata["artifact-id"] !== source.id
-    ) {
+    if (!storedObjectMetadataMatches(source, head)) {
       return {
         kind: "rejected",
         message: "Uploaded file metadata does not match the stored object",

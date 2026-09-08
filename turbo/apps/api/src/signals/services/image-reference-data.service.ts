@@ -8,6 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/image-references";
 import { imageReferences } from "@okouai/db/schema/image-reference";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
+import { userCache } from "@okouai/db/schema/user-cache";
 import { and, desc, eq, getTableColumns, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -20,12 +21,16 @@ type SelectedImageReferenceRow = typeof imageReferences.$inferSelect & {
   readonly sourceFilename: string | null;
   readonly sourceContentType: string | null;
   readonly sourceStorageKey: string | null;
+  readonly creatorDisplayName: string | null;
+  readonly creatorImageUrl: string | null;
 };
 
 export type ImageReferenceRow = typeof imageReferences.$inferSelect & {
   readonly sourceFilename: string;
   readonly sourceContentType: ImageReferenceContentType;
   readonly sourceStorageKey: string;
+  readonly creatorDisplayName: string | null;
+  readonly creatorImageUrl: string | null;
 };
 
 function isImageReferenceContentType(
@@ -101,6 +106,11 @@ export function imageReferenceResponse(args: {
     title: args.row.title,
     visibility: args.row.visibility,
     ownerUserId: args.row.ownerUserId,
+    creator: {
+      userId: args.row.ownerUserId,
+      displayName: args.row.creatorDisplayName,
+      imageUrl: args.row.creatorImageUrl,
+    },
     sourceFilename: args.row.sourceFilename,
     contentType: args.row.sourceContentType,
     width: args.row.width,
@@ -130,12 +140,15 @@ export async function loadAccessibleImageReference(
       sourceFilename: runUploadedFiles.filename,
       sourceContentType: runUploadedFiles.contentType,
       sourceStorageKey: runUploadedFiles.storageKey,
+      creatorDisplayName: userCache.name,
+      creatorImageUrl: userCache.imageUrl,
     })
     .from(imageReferences)
     .innerJoin(
       runUploadedFiles,
       eq(runUploadedFiles.id, imageReferences.sourceFileId),
     )
+    .leftJoin(userCache, eq(userCache.userId, imageReferences.ownerUserId))
     .where(
       and(
         eq(imageReferences.id, args.referenceId),
@@ -160,12 +173,15 @@ export async function listAccessibleImageReferences(
       sourceFilename: runUploadedFiles.filename,
       sourceContentType: runUploadedFiles.contentType,
       sourceStorageKey: runUploadedFiles.storageKey,
+      creatorDisplayName: userCache.name,
+      creatorImageUrl: userCache.imageUrl,
     })
     .from(imageReferences)
     .innerJoin(
       runUploadedFiles,
       eq(runUploadedFiles.id, imageReferences.sourceFileId),
     )
+    .leftJoin(userCache, eq(userCache.userId, imageReferences.ownerUserId))
     .where(
       and(
         eq(imageReferences.orgId, args.orgId),
@@ -200,12 +216,15 @@ export async function loadAccessibleImageReferencesById(
       sourceFilename: runUploadedFiles.filename,
       sourceContentType: runUploadedFiles.contentType,
       sourceStorageKey: runUploadedFiles.storageKey,
+      creatorDisplayName: userCache.name,
+      creatorImageUrl: userCache.imageUrl,
     })
     .from(imageReferences)
     .innerJoin(
       runUploadedFiles,
       eq(runUploadedFiles.id, imageReferences.sourceFileId),
     )
+    .leftJoin(userCache, eq(userCache.userId, imageReferences.ownerUserId))
     .where(
       and(
         inArray(imageReferences.id, [...new Set(args.referenceIds)]),

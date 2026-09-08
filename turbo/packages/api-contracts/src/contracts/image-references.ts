@@ -33,6 +33,13 @@ const imageReferenceSchema = z
     title: z.string().min(1).max(80),
     visibility: imageReferenceVisibilitySchema,
     ownerUserId: z.string().min(1),
+    creator: z
+      .object({
+        userId: z.string().min(1),
+        displayName: z.string().min(1).nullable(),
+        imageUrl: z.url().nullable(),
+      })
+      .strict(),
     sourceFilename: z.string().min(1),
     contentType: imageReferenceContentTypeSchema,
     width: z.number().int().positive().max(MAX_IMAGE_REFERENCE_DIMENSION),

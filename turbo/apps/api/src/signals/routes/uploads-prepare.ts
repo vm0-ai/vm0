@@ -16,7 +16,7 @@ import {
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { db$ } from "../external/db";
+import { db$, type ReadonlyDb } from "../external/db";
 import {
   abortMultipartS3Upload,
   createMultipartS3Upload,
@@ -33,6 +33,54 @@ import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUT_URL_TTL_SECONDS = 3600;
 const MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024;
+const imageReferencesDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Reference images are not enabled",
+      code: "FORBIDDEN" as const,
+    }),
+  }),
+});
+
+async function imageReferenceUploadRejection(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string | undefined;
+    readonly userId: string;
+    readonly purpose: "artifact" | "image-reference" | undefined;
+    readonly contentType: string;
+    readonly size: number;
+  },
+  signal: AbortSignal,
+) {
+  if (args.purpose !== "image-reference") {
+    return null;
+  }
+  if (!args.orgId) {
+    return badRequestMessage("Image reference uploads require an organization");
+  }
+  const featureContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+  if (!isFeatureEnabled(FeatureSwitchKey.ReferenceImages, featureContext)) {
+    return imageReferencesDisabled;
+  }
+  const acceptedContentTypes: readonly string[] = IMAGE_REFERENCE_CONTENT_TYPES;
+  if (!acceptedContentTypes.includes(args.contentType)) {
+    return badRequestMessage(
+      `Reference images must be one of: ${acceptedContentTypes.join(", ")}`,
+    );
+  }
+  return args.size > MAX_IMAGE_REFERENCE_SOURCE_BYTES
+    ? badRequestMessage(
+        `Reference images must be ${MAX_IMAGE_REFERENCE_SOURCE_BYTES.toString()} bytes or smaller`,
+      )
+    : null;
+}
 
 const prepareUploadInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -49,41 +97,19 @@ const prepareUploadInner$ = command(
       bodyResult.data.contentType,
     );
 
-    if (bodyResult.data.purpose === "image-reference") {
-      if (!auth.orgId) {
-        return badRequestMessage(
-          "Image reference uploads require an organization",
-        );
-      }
-      const featureContext = await loadUserFeatureSwitchContext(
-        get(db$),
-        auth.orgId,
-        auth.userId,
-      );
-      signal.throwIfAborted();
-      if (!isFeatureEnabled(FeatureSwitchKey.ReferenceImages, featureContext)) {
-        return {
-          status: 403 as const,
-          body: {
-            error: {
-              message: "Reference images are not enabled",
-              code: "FORBIDDEN" as const,
-            },
-          },
-        };
-      }
-      const acceptedContentTypes: readonly string[] =
-        IMAGE_REFERENCE_CONTENT_TYPES;
-      if (!acceptedContentTypes.includes(contentType)) {
-        return badRequestMessage(
-          `Reference images must be one of: ${acceptedContentTypes.join(", ")}`,
-        );
-      }
-      if (size > MAX_IMAGE_REFERENCE_SOURCE_BYTES) {
-        return badRequestMessage(
-          `Reference images must be ${MAX_IMAGE_REFERENCE_SOURCE_BYTES.toString()} bytes or smaller`,
-        );
-      }
+    const imageReferenceRejection = await imageReferenceUploadRejection(
+      get(db$),
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        purpose: bodyResult.data.purpose,
+        contentType,
+        size,
+      },
+      signal,
+    );
+    if (imageReferenceRejection) {
+      return imageReferenceRejection;
     }
 
     if (size > MAX_UPLOAD_SIZE_BYTES) {

@@ -9,9 +9,23 @@ interface ImageMetadata {
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
-const JPEG_START_OF_FRAME_MARKERS = new Set([
-  0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
-]);
+function isJpegStartOfFrameMarker(marker: number): boolean {
+  return (
+    marker === 0xc0 ||
+    marker === 0xc1 ||
+    marker === 0xc2 ||
+    marker === 0xc3 ||
+    marker === 0xc5 ||
+    marker === 0xc6 ||
+    marker === 0xc7 ||
+    marker === 0xc9 ||
+    marker === 0xca ||
+    marker === 0xcb ||
+    marker === 0xcd ||
+    marker === 0xce ||
+    marker === 0xcf
+  );
+}
 
 function pngMetadata(buffer: Buffer): ImageMetadata | null {
   if (
@@ -60,7 +74,7 @@ function jpegMetadata(buffer: Buffer): ImageMetadata | null {
     if (segmentLength < 2 || offset + segmentLength > buffer.length) {
       return null;
     }
-    if (JPEG_START_OF_FRAME_MARKERS.has(marker)) {
+    if (isJpegStartOfFrameMarker(marker)) {
       if (segmentLength < 8) {
         return null;
       }
@@ -135,8 +149,8 @@ function webpMetadata(buffer: Buffer): ImageMetadata | null {
     ) {
       return {
         contentType: "image/webp",
-        width: buffer.readUInt16LE(payloadOffset + 6) & 0x3fff,
-        height: buffer.readUInt16LE(payloadOffset + 8) & 0x3fff,
+        width: buffer.readUInt16LE(payloadOffset + 6) & 0x3f_ff,
+        height: buffer.readUInt16LE(payloadOffset + 8) & 0x3f_ff,
       };
     }
 
