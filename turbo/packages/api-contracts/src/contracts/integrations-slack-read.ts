@@ -69,7 +69,7 @@ const slackHistoryResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
-/** Organization bot reads, authorized by the slack:read run capability. */
+/** Reads shared by the connected Slack user and organization bot. */
 export const integrationsSlackReadContract = c.router({
   listChannels: {
     method: "GET",
@@ -85,7 +85,7 @@ export const integrationsSlackReadContract = c.router({
       429: slackReadErrorSchema,
       502: slackReadErrorSchema,
     },
-    summary: "List public channels and private channels visible to the bot",
+    summary: "List channels shared by the connected Slack user and bot",
   },
   history: {
     method: "GET",
@@ -101,7 +101,7 @@ export const integrationsSlackReadContract = c.router({
       429: slackReadErrorSchema,
       502: slackReadErrorSchema,
     },
-    summary: "Read one page of channel or bot direct-message history",
+    summary: "Read shared channel or bot direct-message history",
   },
 });
 
