@@ -31,7 +31,8 @@ cat > "${TMPDIR}/manifest.json" <<'JSON'
     "guest-state-restore": "f",
     "guest-tool-exec": "h",
     "runner-rpc-client": "i",
-    "guest-write-file": "g"
+    "guest-write-file": "g",
+    "guest-workspace-mount": "j"
   },
   "hosts": {
     "dev-1": {

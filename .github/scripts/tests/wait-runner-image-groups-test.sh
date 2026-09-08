@@ -140,7 +140,8 @@ make_manifest() {
         "guest-state-restore": "guest-state-restore-sha",
         "guest-tool-exec": "guest-tool-exec-sha",
         "runner-rpc-client": "runner-rpc-client-sha",
-        "guest-write-file": "guest-write-file-sha"
+        "guest-write-file": "guest-write-file-sha",
+        "guest-workspace-mount": "guest-workspace-mount-sha"
       },
       hosts: $hosts
     }' >"$file"

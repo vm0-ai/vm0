@@ -20,6 +20,14 @@ bounded-helper placement, or an arbitrary containment policy.
 
 ## Process Map
 
+The fixed workspace mount executable is `/sbin/guest-workspace-mount`. It performs
+path, block-device and visible-mount checks plus nonrecursive ownership repair
+directly, and launches only `/usr/bin/mount -t ext4` when a mount is needed. The
+typed startup operation and final reuse preparation select the same executable.
+Its mount child inherits the existing owned process group; timeouts, disconnects,
+output bounds and quiesce accounting are unchanged. The helper is part of the
+guest binary inventory, so changing it invalidates the rootfs and snapshot hash.
+
 | Process or operation                                                                                 | Class and selecting authority                                               | Input and trust boundary                                                                                                               | Placement and resource policy                                                                       | Completion and cleanup owner                                                                                                                                                        | Relationship to Agent start                                                                                                   |
 | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `guest-init` (PID 1)                                                                                 | Sandbox service selected by the guest image entry point                     | Fixed image program and boot configuration                                                                                             | Guest root; sandbox-lifetime VM policy                                                              | VM lifetime; PID 1 owns guest shutdown                                                                                                                                              | Required and serial before guest readiness                                                                                    |
