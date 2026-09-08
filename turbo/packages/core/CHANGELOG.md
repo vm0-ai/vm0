@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.634.1](https://github.com/vm0-ai/vm0/compare/core-v8.634.0...core-v8.634.1) (2026-09-08)
+
+
+### Refactoring
+
+* remove artifact link kind icon feature switch ([#32423](https://github.com/vm0-ai/vm0/issues/32423)) ([ceb9ffe](https://github.com/vm0-ai/vm0/commit/ceb9ffee01c289ece4cc0e2c08bb281cc78e6dba))
+
 ## [8.634.0](https://github.com/vm0-ai/vm0/compare/core-v8.633.1...core-v8.634.0) (2026-09-07)
 
 

@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.1](https://github.com/vm0-ai/vm0/compare/app-v0.862.0...app-v0.862.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align chat response icon rails ([#32412](https://github.com/vm0-ai/vm0/issues/32412)) ([9e30d72](https://github.com/vm0-ai/vm0/commit/9e30d72ee785027123dcf1694c6a6ad2d0fca004))
+* **platform:** align sidebar scrollbar with workspace edge ([#32400](https://github.com/vm0-ai/vm0/issues/32400)) ([03a305e](https://github.com/vm0-ai/vm0/commit/03a305e4cd2986d94634ad031db679d94418478b))
+
+
+### Refactoring
+
+* remove artifact link kind icon feature switch ([#32423](https://github.com/vm0-ai/vm0/issues/32423)) ([ceb9ffe](https://github.com/vm0-ai/vm0/commit/ceb9ffee01c289ece4cc0e2c08bb281cc78e6dba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.1
+
 ## [0.862.0](https://github.com/vm0-ai/vm0/compare/app-v0.861.0...app-v0.862.0) (2026-09-07)
 
 

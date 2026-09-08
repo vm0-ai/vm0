@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.2](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.1...app-worker-v1.5.2) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.1
+
 ## [1.5.1](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.0...app-worker-v1.5.1) (2026-09-07)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.5...runner-rs-v0.188.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** retain rootfs locks until worker teardown ([#32416](https://github.com/vm0-ai/vm0/issues/32416)) ([e71291a](https://github.com/vm0-ai/vm0/commit/e71291a1c1ab12b49c9704b4e50485782d40d6d0))
+
 ## [0.188.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.4...runner-rs-v0.188.5) (2026-09-07)
 
 
