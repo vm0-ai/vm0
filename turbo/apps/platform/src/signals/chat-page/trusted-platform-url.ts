@@ -61,10 +61,7 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
 
 export function isTrustedPlatformHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase();
-  if (
-    normalizedHostname === "app.vm0.ai" ||
-    normalizedHostname === "app.okou.ai"
-  ) {
+  if (normalizedHostname === "app.okou.ai") {
     return true;
   }
 

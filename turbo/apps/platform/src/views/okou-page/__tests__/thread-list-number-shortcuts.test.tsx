@@ -98,14 +98,16 @@ test.each([
         pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
       });
     });
-    const workspace = await installContinuityWorkspace(context, {
+    const remoteChatList = context.mocks.deferred<void>();
+    const workspace = installContinuityWorkspace(context, {
       caseId: 40,
       threads,
+      chatListRemoteGate: remoteChatList.promise,
     });
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
       featureSwitches,
     });
     await waitFor(() => {
@@ -123,6 +125,7 @@ test.each([
         "Thread 3",
       ]);
     });
+    expect(remoteChatList.settled()).toBeFalsy();
     const list = screen.getByTestId("chat-list-column");
     const user = userEvent.setup();
     await user.hover(sidebarThreadLinks()[0]!);
@@ -167,14 +170,14 @@ test("Cancel a short hold and clear hints on release, blur, and visibility loss"
   });
   const visibility = context.mocks.browser.visibilityState("visible");
   const thread = chatListThread(1, "Hold lifecycle");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 41,
     threads: [thread],
   });
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   await waitFor(() => {
@@ -212,14 +215,14 @@ test("Keep browser mode free of number shortcuts and react to display mode chang
   });
   const first = chatListThread(1, "Browser mode chat");
   const second = chatListThread(2, "Another chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 42,
     threads: [first, second],
   });
   await setupPage({
     context,
     path: `/chats/${first.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   await waitFor(() => {
@@ -296,7 +299,7 @@ test("Number filtered threads and give the search dialog priority over the list"
   });
   const first = chatListThread(1, "Unread target");
   const second = chatListThread(2, "Read target");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 43,
     threads: [first, second],
   });
@@ -308,7 +311,7 @@ test("Number filtered threads and give the search dialog priority over the list"
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   await waitFor(() => {

@@ -1,16 +1,12 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { teamsOauthContract } from "@okouai/api-contracts/contracts/teams-oauth";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { teamsBotDisplayName } from "../../lib/teams-official-app";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
@@ -23,6 +19,7 @@ import {
 import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("TeamsOAuth");
 const MICROSOFT_AUTHORIZATION_URL =
@@ -86,16 +83,13 @@ function jsonErrorResponse(error: string, status: number): Response {
   });
 }
 
-function appUrl(path: string, publicBrand: PublicBrand): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
+function appUrl(path: string): string {
+  return `${env("APP_URL")}${path}`;
 }
 
-function settingsErrorRedirect(
-  message: string,
-  publicBrand: PublicBrand,
-): Response {
+function settingsErrorRedirect(message: string): Response {
   return redirectResponse(
-    appUrl(`/settings/teams?error=${encodeURIComponent(message)}`, publicBrand),
+    appUrl(`/settings/teams?error=${encodeURIComponent(message)}`),
   );
 }
 
@@ -113,20 +107,14 @@ function settingsSuccessRedirect(args: {
     params.set("teamName", args.teamName);
   }
   params.set("botName", teamsBotDisplayName(args.botName));
-  return redirectResponse(
-    appUrl(`/settings/teams?${params.toString()}`, args.publicBrand),
-  );
+  return redirectResponse(appUrl(`/settings/teams?${params.toString()}`));
 }
 
-function teamsInstallRedirect(
-  tenantId: string,
-  publicBrand: PublicBrand,
-): Response {
+function teamsInstallRedirect(tenantId: string): Response {
   const installUrl = buildTeamsInstallUrl(tenantId);
   if (!installUrl) {
     return settingsErrorRedirect(
       "Microsoft Teams integration is not configured.",
-      publicBrand,
     );
   }
   return noStoreRedirect(installUrl);
@@ -173,8 +161,8 @@ function parseOAuthState(state: string | undefined): OAuthState | null {
  * the built-in connector callback that is already registered with every
  * provider.
  */
-function callbackRedirectUri(origin: string, publicBrand: PublicBrand): string {
-  return `${apiUrlForPublicBrand(origin, publicBrand)}/api/integrations/teams/oauth/callback`;
+function callbackRedirectUri(origin: string): string {
+  return `${origin}/api/integrations/teams/oauth/callback`;
 }
 
 function microsoftCredentials(): {
@@ -319,7 +307,7 @@ const resolveTeamsOauthStateAuth$ = command(
 
 const connectOauth$ = command(({ get }) => {
   const request = get(request$).raw;
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const origin = getOAuthApiOrigin(request);
   const credentials = microsoftCredentials();
   if (!credentials) {
@@ -337,7 +325,7 @@ const connectOauth$ = command(({ get }) => {
 
   // Record the redirect URI this authorization actually sends, so the token
   // exchange can repeat it instead of recomputing a value that may have moved.
-  const redirectUri = callbackRedirectUri(origin, publicBrand);
+  const redirectUri = callbackRedirectUri(origin);
   const stateObj: {
     orgId: string;
     userId: string;
@@ -376,24 +364,20 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const query = get(queryOf(teamsOauthContract.callback));
   const state = parseOAuthState(query.state);
-  const redirectBrand = state?.publicBrand ?? get(publicBrand$);
   if (query.error) {
-    return settingsErrorRedirect(
-      query.error_description ?? query.error,
-      redirectBrand,
-    );
+    return settingsErrorRedirect(query.error_description ?? query.error);
   }
   if (!query.code) {
     return jsonErrorResponse("Missing authorization code", 400);
   }
 
   if (!state?.orgId || !state.userId) {
-    return settingsErrorRedirect("Invalid connect state.", redirectBrand);
+    return settingsErrorRedirect("Invalid connect state.");
   }
 
   const auth = await set(resolveTeamsOauthStateAuth$, state, signal);
   if (!auth) {
-    return settingsErrorRedirect("Invalid connect state.", state.publicBrand);
+    return settingsErrorRedirect("Invalid connect state.");
   }
 
   const exchange = await tapError(
@@ -415,7 +399,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!exchange) {
     return settingsErrorRedirect(
       "Failed to connect Microsoft Teams account. Please try again.",
-      state.publicBrand,
     );
   }
 
@@ -439,7 +422,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
 
     if (prepared.kind !== "ok") {
-      return settingsErrorRedirect(prepared.message, state.publicBrand);
+      return settingsErrorRedirect(prepared.message);
     }
 
     await set(
@@ -449,11 +432,11 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
     signal.throwIfAborted();
 
-    return teamsInstallRedirect(exchange.tenantId, state.publicBrand);
+    return teamsInstallRedirect(exchange.tenantId);
   }
 
   if (result.kind === "forbidden") {
-    return settingsErrorRedirect(result.message, state.publicBrand);
+    return settingsErrorRedirect(result.message);
   }
 
   await set(
@@ -464,10 +447,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!isTeamsInstallationActive(result.installation)) {
-    return teamsInstallRedirect(
-      result.installation.teamsTenantId,
-      state.publicBrand,
-    );
+    return teamsInstallRedirect(result.installation.teamsTenantId);
   }
 
   return settingsSuccessRedirect({

@@ -3,7 +3,6 @@ import {
   buildSignupRedirectUrl,
   getAllowedAuthRedirectOriginsForCurrentPage,
   resolveAuthBrandContext,
-  resolveClerkSatelliteConfig,
   type AuthBrandContext,
 } from "../auth.ts";
 import {
@@ -12,14 +11,9 @@ import {
   type AuthV2RouteMode,
 } from "./navigation.ts";
 
-export type AuthV2SatelliteConfig = ReturnType<
-  typeof resolveClerkSatelliteConfig
->;
-
 export interface AuthV2PlatformContext {
   readonly authBrand: AuthBrandContext;
   readonly navigation: AuthV2Navigation;
-  readonly satelliteConfig: AuthV2SatelliteConfig;
 }
 
 interface ResolveAuthV2PlatformContextOptions {
@@ -45,11 +39,7 @@ export function resolveAuthV2PlatformContext(
       : signUpCompletionRedirectUrl;
 
   return {
-    authBrand: resolveAuthBrandContext(
-      authSearch,
-      authHash,
-      allowedRedirectOrigins,
-    ),
+    authBrand: resolveAuthBrandContext(),
     navigation: createAuthV2Navigation({
       authHash,
       authSearch,
@@ -57,6 +47,5 @@ export function resolveAuthV2PlatformContext(
       mode,
       signUpCompletionRedirectUrl,
     }),
-    satelliteConfig: resolveClerkSatelliteConfig(),
   };
 }

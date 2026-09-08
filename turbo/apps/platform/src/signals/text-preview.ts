@@ -1,3 +1,5 @@
+import { rootSignal$ } from "./root-signal.ts";
+import { fetchResource } from "../lib/resource-fetch.ts";
 import { computed, type Computed } from "ccstate";
 import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
@@ -52,10 +54,17 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export async function fetchPreviewText(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-  });
+export async function fetchPreviewText(
+  url: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const response = await fetchResource(
+    url,
+    {
+      headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+    },
+    signal,
+  );
   if (!response.ok) {
     throw new Error(`HTTP ${String(response.status)}`);
   }
@@ -72,7 +81,7 @@ export function createTextPreviewComputed(
     const resourceUrl = resourceUrl$
       ? await get(resourceUrl$)
       : (await get(get(pageAttachmentResourceUrlResolver$)(url))).resourceUrl;
-    return fetchPreviewText(resourceUrl);
+    return fetchPreviewText(resourceUrl, get(rootSignal$));
   });
 }
 

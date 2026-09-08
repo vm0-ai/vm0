@@ -569,7 +569,7 @@ describe("Desktop build configuration entry point", () => {
     const result = runBuildConfig({
       environment: {
         canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.vm0.ai",
+        canonicalPlatformUrl: "https://app.okou.ai",
       },
       productArgument: " okou ",
       platformArgument: " https://app.okou.ai ",
@@ -669,7 +669,7 @@ describe("installed Desktop configuration entry point", () => {
     const result = runInstalledConfig({
       environment: {
         canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.vm0.ai",
+        canonicalPlatformUrl: "https://app.okou.ai",
       },
       productArgument: " okou ",
       platformArgument: " https://app.okou.ai ",

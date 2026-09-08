@@ -407,7 +407,6 @@ export function AuthV2ContinuationCard({
   return (
     <AuthV2Shell
       announcement={heading.description}
-      authBrand={authBrand}
       cardFooter={
         state.status === "incomplete" ? (
           <OrganizationFooter

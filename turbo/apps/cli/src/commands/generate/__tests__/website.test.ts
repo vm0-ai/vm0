@@ -13,7 +13,7 @@ import { DEFAULT_IMAGE_MODEL_ENV } from "@okouai/core/image-model-catalog";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
-function buildRunToken(publicBrand?: "vm0" | "okou"): string {
+function buildRunToken(): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
@@ -24,23 +24,12 @@ function buildRunToken(publicBrand?: "vm0" | "okou"): string {
       orgId: "org_test",
       scope: "okou",
       capabilities: [],
-      ...(publicBrand === undefined ? {} : { publicBrand }),
       iat: 1,
       exp: 2,
     }),
   ).toString("base64url");
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
-
-const RUN_BRAND_CASES = [
-  { label: "legacy VM0", publicBrand: undefined, domain: "static.vm0.io" },
-  { label: "VM0", publicBrand: "vm0", domain: "static.vm0.io" },
-  { label: "Okou", publicBrand: "okou", domain: "static.okou.io" },
-] satisfies readonly {
-  readonly label: string;
-  readonly publicBrand: "vm0" | "okou" | undefined;
-  readonly domain: string;
-}[];
 
 describe("okou generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -119,23 +108,20 @@ describe("okou generate website command", () => {
     );
   });
 
-  it.each(RUN_BRAND_CASES)(
-    "uses the $label run brand for resource URLs",
-    async (testCase) => {
-      vi.stubEnv("OKOU_TOKEN", buildRunToken(testCase.publicBrand));
+  it("uses the Okou static host for resource URLs", async () => {
+    vi.stubEnv("OKOU_TOKEN", buildRunToken());
 
-      await generateCommand.parseAsync([
-        "node",
-        "cli",
-        "website",
-        "--prompt",
-        "brand-aware site",
-      ]);
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "brand-aware site",
+    ]);
 
-      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(stdout).toContain(`https://${testCase.domain}/html-resources/`);
-    },
-  );
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("https://static.okou.io/html-resources/");
+  });
 
   it("should emit the image batch workflow exactly once", async () => {
     await generateCommand.parseAsync([

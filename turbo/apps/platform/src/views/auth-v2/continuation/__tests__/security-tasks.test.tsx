@@ -49,8 +49,8 @@ function setupTask(task: string, mode = "sign-in") {
   };
   return setupPage({
     context,
-    host: "app.vm0.ai",
-    path: `/${mode}/tasks/${task}?redirect_url=${encodeURIComponent("https://app.vm0.ai/agents")}`,
+    host: "app.okou.ai",
+    path: `/${mode}/tasks/${task}?redirect_url=${encodeURIComponent("https://app.okou.ai/agents")}`,
     auth: {
       user: {
         id: "user_member",

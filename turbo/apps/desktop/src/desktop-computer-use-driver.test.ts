@@ -49,7 +49,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 const realChildProcess =
   await vi.importActual<typeof childProcess>("node:child_process");
 
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const server = setupServer();
 const cleanups: (() => Promise<void>)[] = [];
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

@@ -6,7 +6,6 @@ import {
   type VideoIoGenerateRequest,
 } from "@okouai/api-contracts/contracts/video-io-generate";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { VIDEO_MODEL_CONFIGS } from "@okouai/core/video-model-catalog";
 import {
   isVideoModelId,
@@ -17,7 +16,6 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { env } from "../../lib/env";
@@ -58,16 +56,9 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
-import type { AuthContext } from "../../types/auth";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const videoBody$ = bodyResultOf(videoIoGenerateContract.post);
-
-function resolveGenerationPublicBrand(
-  auth: AuthContext,
-  requestPublicBrand: PublicBrand,
-): PublicBrand {
-  return auth.tokenType === "agent" ? auth.publicBrand : requestPublicBrand;
-}
 
 async function loadRunVideoModel(
   db: ReadonlyDb,
@@ -485,7 +476,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const publicBrand = resolveGenerationPublicBrand(auth, get(publicBrand$));
+  const publicBrand = PUBLIC_BRAND;
   const runVideoModel = await loadDefaultRunVideoModel(db, runId, signal);
   // The run's model is a default, not an override: it applies only when the
   // request names no model of its own. A caller that asks for a specific model

@@ -40,29 +40,29 @@ function getButton({
 test("An iOS user can open or dismiss the install prompt", async () => {
   mockIOSSafari(false);
 
-  await setupPage({ context, path: "/", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/", host: "app.okou.ai" });
 
   await expect(
-    screen.findByText("Install Zero for a better experience"),
+    screen.findByText("Install Okou for a better experience"),
   ).resolves.toBeVisible();
   expect(getButton({ label: "Dismiss install banner" })).toBeEnabled();
   click(getButton({ label: "Install app" }));
 
-  const dialog = await screen.findByRole("dialog", { name: "Install Zero" });
+  const dialog = await screen.findByRole("dialog", { name: "Install Okou" });
   expect(
     within(dialog).getByText("In Safari, tap the Share button."),
   ).toBeVisible();
   expect(within(dialog).getByText("Choose Add to Home Screen.")).toBeVisible();
   click(getButton({ text: "Got it", container: dialog }));
   await waitFor(() => {
-    expect(screen.queryByRole("dialog", { name: "Install Zero" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Install Okou" })).toBeNull();
   });
 
   click(getButton({ label: "Dismiss install banner" }));
 
   await waitFor(() => {
     expect(
-      screen.queryByText("Install Zero for a better experience"),
+      screen.queryByText("Install Okou for a better experience"),
     ).toBeNull();
   });
 });
@@ -70,7 +70,7 @@ test("An iOS user can open or dismiss the install prompt", async () => {
 test("The standalone app hides the install banner", async () => {
   mockIOSSafari(true);
 
-  await setupPage({ context, path: "/", host: "app.vm0.ai" });
+  await setupPage({ context, path: "/", host: "app.okou.ai" });
 
   await waitFor(() => {
     const agentsLink = queryAllByRoleFast("link").find((candidate) => {
@@ -78,5 +78,5 @@ test("The standalone app hides the install banner", async () => {
     });
     expect(agentsLink).toHaveAttribute("href", "/agents");
   });
-  expect(screen.queryByText("Install Zero for a better experience")).toBeNull();
+  expect(screen.queryByText("Install Okou for a better experience")).toBeNull();
 });

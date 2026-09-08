@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
+import { CLIENT_TYPE_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import { expect, test } from "vitest";
 
 import { click, setupPage } from "../../../__tests__/page-helper.ts";
@@ -81,20 +82,32 @@ function sentFilenames(
 
 test("Attach supported files by picker or drag and drop", async () => {
   const thread = continuityThread(9, 1, "Attachment input methods");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 9,
     threads: [thread],
   });
   const contentTypes = new Map<string, string>();
+  const transferCredentials: {
+    credentials: RequestCredentials;
+    authorization: string | null;
+    clientType: string | null;
+    previewBypass: string | null;
+  }[] = [];
   installSimpleUploads(9, contentTypes);
-  context.mocks.http.put("https://uploads.vm7.test/9/*", () => {
+  context.mocks.http.put("https://uploads.vm7.test/9/*", ({ request }) => {
+    transferCredentials.push({
+      credentials: request.credentials,
+      authorization: request.headers.get("Authorization"),
+      clientType: request.headers.get(CLIENT_TYPE_HEADER),
+      previewBypass: request.headers.get("X-Vercel-Protection-Bypass"),
+    });
     return new HttpResponse(null, { status: 200 });
   });
 
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await messageComposer();
@@ -107,6 +120,20 @@ test("Attach supported files by picker or drag and drop", async () => {
   });
   expect(contentTypes.get("release-notes.md")).toBe("text/markdown");
   expect(contentTypes.get("sample.uncommon")).toBe("application/octet-stream");
+  expect(transferCredentials).toStrictEqual([
+    {
+      credentials: "omit",
+      authorization: null,
+      clientType: null,
+      previewBypass: null,
+    },
+    {
+      credentials: "omit",
+      authorization: null,
+      clientType: null,
+      previewBypass: null,
+    },
+  ]);
 
   const dropped = new File(["drop"], "dropped.txt", { type: "text/plain" });
   const oversized = new File(["too large"], "archive.iso", {
@@ -133,7 +160,7 @@ test("Attach supported files by picker or drag and drop", async () => {
 test("Keep a pending upload with the conversation that started it", async () => {
   const owner = continuityThread(10, 1, "Upload owner");
   const neighbor = continuityThread(10, 2, "Upload neighbor");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 10,
     threads: [owner, neighbor],
   });
@@ -147,7 +174,7 @@ test("Keep a pending upload with the conversation that started it", async () => 
   await setupPage({
     context,
     path: `/chats/${owner.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await messageComposer();
@@ -197,7 +224,7 @@ test("Keep a pending upload with the conversation that started it", async () => 
 
 test("Keep successful attachments after another upload fails", async () => {
   const thread = continuityThread(11, 1, "Partial upload result");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 11,
     threads: [thread],
   });
@@ -225,7 +252,7 @@ test("Keep successful attachments after another upload fails", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await messageComposer();
@@ -251,7 +278,7 @@ test("Keep successful attachments after another upload fails", async () => {
 
 test("Recover clearly from interruptions while uploading a large attachment", async () => {
   const thread = continuityThread(12, 1, "Large upload recovery");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 12,
     threads: [thread],
   });
@@ -302,7 +329,7 @@ test("Recover clearly from interruptions while uploading a large attachment", as
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await messageComposer();
@@ -332,7 +359,7 @@ test("Recover clearly from interruptions while uploading a large attachment", as
 
 test("Wait for an attachment upload before sending the draft", async () => {
   const thread = continuityThread(13, 1, "Wait for upload before send");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 13,
     threads: [thread],
   });
@@ -361,7 +388,7 @@ test("Wait for an attachment upload before sending the draft", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await messageComposer();

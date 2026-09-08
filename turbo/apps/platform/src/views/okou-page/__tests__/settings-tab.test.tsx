@@ -202,25 +202,6 @@ test("Keep rendering a legacy custom SVG avatar", async () => {
   ]);
 });
 
-test("Keep the saved legacy avatar editable when the composer is disabled", async () => {
-  prepareAgentProfile("svg:r3s2h4c1f5h");
-  await setupPage({
-    context,
-    path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: false },
-  });
-
-  click(await findCustomizeAvatarButton());
-
-  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-  expect(within(dialog).getByText("Angle")).toBeVisible();
-  expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 3)).toStrictEqual([
-    expect.stringContaining("/head-r3-s2.svg"),
-    expect.stringContaining("/face-r3-f5-h.svg"),
-    expect.stringContaining("/hair-r3-h4-c1.svg"),
-  ]);
-});
-
 test.each(["preset:0", "svg:r3s2h4c1f5h"])(
   "Replace legacy avatar %s with a composer avatar only after confirmation",
   async (avatarUrl) => {
@@ -228,7 +209,6 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}?tab=profile`,
-      featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
     });
 
     const legacyLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
@@ -237,7 +217,6 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
 
     const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
     expect(within(dialog).getByText("Face")).toBeVisible();
-    expect(within(dialog).queryByText("Angle")).not.toBeInTheDocument();
     expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 6)).toStrictEqual([
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
@@ -311,7 +290,6 @@ test("Cancel a pending avatar save and reopen an editable dialog", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
   click(await findCustomizeAvatarButton());
   const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
@@ -335,7 +313,6 @@ test("Offer avatar creation instead of editing when the agent has no avatar", as
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   await findAgentNameInput();
@@ -356,7 +333,6 @@ test("Load only the four head layers when neck and sweater are disabled", async 
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
     featureSwitches: {
-      [FeatureSwitchKey.AvatarComposerV2]: true,
       [FeatureSwitchKey.AvatarNeckSweater]: false,
     },
   });
@@ -379,7 +355,6 @@ test("Load the released neck and sweater layers by default", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   click(await findCreateCustomAvatarButton());
@@ -402,7 +377,6 @@ test("Keep every composer step and its edge options usable in one dialog", async
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
     featureSwitches: {
-      [FeatureSwitchKey.AvatarComposerV2]: true,
       [FeatureSwitchKey.AvatarNeckSweater]: true,
     },
   });
@@ -439,7 +413,6 @@ test("Keep incompatible hairstyle previews stable after selecting another style"
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
     featureSwitches: {
-      [FeatureSwitchKey.AvatarComposerV2]: true,
       [FeatureSwitchKey.AvatarNeckSweater]: true,
     },
   });
@@ -476,38 +449,12 @@ test("Keep incompatible hairstyle previews stable after selecting another style"
   }
 });
 
-test("Keep the legacy avatar editor available when its switch is disabled", async () => {
-  prepareAgentProfile(null);
-  await setupPage({
-    context,
-    path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: false },
-  });
-
-  click(await findCreateCustomAvatarButton());
-
-  const dialog = await screen.findByRole("dialog", {
-    name: "Give your agent a face",
-  });
-  expect(within(dialog).getByText("Angle")).toBeVisible();
-  expect(within(dialog).getByLabelText("Angle 1")).toBeVisible();
-  expect(within(dialog).queryByLabelText("Round")).not.toBeInTheDocument();
-  click(within(dialog).getByLabelText("Randomize avatar"));
-  click(within(dialog).getByText("Use this avatar"));
-
-  await waitFor(() => {
-    expect(screen.getByText("Profile saved")).toBeInTheDocument();
-  });
-  expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toHaveLength(3);
-});
-
 test("Create and save a composer avatar from the profile page", async () => {
   prepareAgentProfile(null);
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
     featureSwitches: {
-      [FeatureSwitchKey.AvatarComposerV2]: true,
       [FeatureSwitchKey.AvatarNeckSweater]: true,
     },
   });
@@ -599,7 +546,6 @@ test("Allow an org admin to update another user's public agent avatar", async ()
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}?tab=profile`,
-    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   click(await findCustomizeAvatarButton());

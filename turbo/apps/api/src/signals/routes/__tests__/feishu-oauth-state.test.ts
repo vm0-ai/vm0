@@ -13,7 +13,7 @@ const context = testContext();
 const NOW = Date.parse("2026-08-25T00:00:00.000Z");
 const NOW_SECONDS = Math.floor(NOW / 1000);
 const SECRET = "a".repeat(64);
-const REDIRECT_URI = "https://app.vm0.ai/connectors/feishu/callback";
+const REDIRECT_URI = "https://app.okou.ai/connectors/feishu/callback";
 
 function oauthClient() {
   return setupApp({ context, routes: feishuOauthRoutes })(feishuOauthContract);

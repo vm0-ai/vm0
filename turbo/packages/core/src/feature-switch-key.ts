@@ -35,8 +35,8 @@ export enum FeatureSwitchKey {
   OkouDebug = "_debug",
   SharedWorkerRealtime = "sharedWorkerRealtime",
   Banking = "banking",
+  SlackRead = "slackRead",
   Lab = "_lab",
-  NotionWorkflowAutomations = "notionWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   OfficialWorkflows = "officialWorkflows",
   MorningBrief = "morningBrief",
@@ -72,6 +72,5 @@ export enum FeatureSwitchKey {
   ComposerCreateCommands = "composerCreateCommands",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
-  AvatarComposerV2 = "avatarComposerV2",
   AvatarNeckSweater = "avatarNeckSweater",
 }

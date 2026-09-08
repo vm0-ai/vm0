@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.19.0...guest-control-client-v0.19.1) (2026-09-08)
+
+
+### Performance Improvements
+
+* **runner:** batch required connector context with agent private files ([#32545](https://github.com/vm0-ai/vm0/issues/32545)) ([a297e80](https://github.com/vm0-ai/vm0/commit/a297e80b989a3d11b3b26a5bc93939d69a996318))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.18.6...guest-control-client-v0.19.0) (2026-09-08)
 
 

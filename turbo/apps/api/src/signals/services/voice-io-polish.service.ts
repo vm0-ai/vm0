@@ -71,7 +71,7 @@ export const polishVoiceTranscript$ = command(
           { role: "user", content: JSON.stringify(body) },
         ],
         VOICE_IO_POLISH_MAX_TOKENS,
-        { reasoning: { effort: "none" }, temperature: 0 },
+        { reasoning: { effort: "low" }, temperature: 0 },
         requestSignal,
       ),
     );

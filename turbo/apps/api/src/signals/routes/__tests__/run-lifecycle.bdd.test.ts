@@ -23,7 +23,6 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type {
   KnownRunFailureReason,
   RunFailureReasonToken,
@@ -905,7 +904,6 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly runId: string;
-  readonly publicBrand?: PublicBrand;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
@@ -928,7 +926,6 @@ function expectCanonicalOkouRunEnvironment(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
-    publicBrand: args.publicBrand ?? "vm0",
     capabilities: expect.any(Array),
     iat: expect.any(Number),
     exp: expect.any(Number),
@@ -1946,6 +1943,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const processOrdinalBucket = expectApiProcessSnapshot(timingEvents);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        "api_dispatch_prepare_context_select_connector_catalog",
+        "api_dispatch_prepare_context_resolve_thread_connector_selections",
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    ]);
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_PHASE_ACTION_TYPES,
@@ -2990,11 +2998,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       accessToken: "x-projection-access",
       refreshToken: "x-projection-refresh",
     });
-    const createProjectedRun = async (prompt: string) => {
+    const createProjectedRun = async (
+      prompt: string,
+      connectorSlugs = ["x", "runtime-projection-unknown", "x"],
+    ) => {
       return await api.createDirectRun(actor, {
         ...agentBackedDirectRunBody({ agentId, prompt }),
         connectorScope: {
-          allowedConnectorSlugs: ["x", "runtime-projection-unknown", "x"],
+          allowedConnectorSlugs: connectorSlugs,
           allowedCustomConnectorIds: [],
         },
       });
@@ -3027,6 +3038,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       cacheOutcomes.filter((outcome) => {
         return outcome === "hit" || outcome === "in_flight";
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentLoads.filter((event) => {
+        return (
+          event.connector_catalog_projection_cache_observation === "reuse_1"
+        );
       }),
     ).toHaveLength(1);
     for (const load of concurrentLoads) {
@@ -3125,9 +3143,68 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         connector_catalog_runtime_selection_source: "projection",
         connector_catalog_projection_cache_outcome: "hit",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+
+    const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const rotatedRun = await createProjectedRun("observe catalog rotation", [
+      "x",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(rotatedRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, rotatedRun.runId, [200]);
+
+    const resetRun = await createProjectedRun(
+      "do not reuse old identity history",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(resetRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "not_in_recent_history",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, resetRun.runId, [200]);
+
+    mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
+    await installApiTestConnectorCatalog({
+      catalogVersion: rotatedVersion,
+      runtimeProjection: true,
+    });
+    const capabilityRun = await createProjectedRun(
+      "observe capability rotation",
+    );
+    expect(
+      singleApiDispatchEvent(
+        apiDispatchTimingEventsForRun(capabilityRun.runId),
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_projection_cache_observation: "identity_changed",
+        connector_catalog_projection_cache_outcome: "miss",
+      }),
+    );
+    await api.requestCancelRun(actor, capabilityRun.runId, [200]);
   });
 
   it("reuses current validator package authority", async () => {
@@ -3233,6 +3310,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         connector_catalog_projection_fallback_reason: "compatibility_not_ready",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).not.toHaveProperty("connector_catalog_projection_cache_observation");
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
@@ -3425,6 +3508,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, run.runId, [200]);
+
+    const repeatedRun = await api.createDirectRun(actor, {
+      ...agentBackedDirectRunBody({
+        agentId,
+        prompt: "repeat digest-mismatched projection",
+      }),
+      connectorScope: {
+        allowedConnectorSlugs: ["x"],
+        allowedCustomConnectorIds: [],
+      },
+    });
+    const repeatedEvents = apiDispatchTimingEventsForRun(repeatedRun.runId);
+    expectProjectionRowReadActionCounts(repeatedEvents, 1);
+    expect(
+      singleApiDispatchEvent(
+        repeatedEvents,
+        "api_dispatch_connector_catalog_load_runtime_snapshot",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_catalog_runtime_selection_source: "full_fallback",
+        connector_catalog_projection_cache_outcome: "miss",
+        connector_catalog_projection_cache_observation: "reuse_1",
+        connector_catalog_projection_fallback_reason: "digest_mismatch",
+      }),
+    );
+    await api.requestCancelRun(actor, repeatedRun.runId, [200]);
   });
 
   it.each([
@@ -10856,9 +10966,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replaceAll("-", "").slice(0, 8);
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",
@@ -12509,6 +12619,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         connector_catalog_projection_cache_outcome: "hit",
         connector_catalog_requested_connector_count_bucket: "0",
         connector_catalog_metadata_connector_count_bucket: "1",
+        connector_catalog_projection_cache_observation: "reuse_1",
       }),
     );
     const directClaim = await api.claimRunnerJob(directRun.runId);
@@ -13284,9 +13395,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   });
 
   it("synthesizes bearer auth for Automatic MCP accounts resolved to OAuth", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       initialExpiresIn: 3600,
@@ -15346,37 +15457,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 });
 
 describe("RUN-01: agent runner context, queue promotion, and skills", () => {
-  it.each([
-    { publicBrand: "vm0", staticDomain: "static.vm0.io" },
-    { publicBrand: "okou", staticDomain: "static.okou.io" },
-  ] satisfies readonly {
-    readonly publicBrand: PublicBrand;
-    readonly staticDomain: string;
-  }[])(
-    "uses the $publicBrand commit-addressed Okou CLI distribution",
-    async ({ publicBrand, staticDomain }) => {
-      const api = createRunsApi(context);
-      const { actor, agentId, runnerGroup } = await entitledRunActor();
-      const r2Run = await api.createRun(
-        actor,
-        {
-          agentId,
-          prompt: "use the default Okou CLI",
-          modelProvider: "anthropic-api-key",
-        },
-        publicBrand,
-      );
-      await api.heartbeatRunner(runnerGroup);
-      const r2Claim = await api.claimRunnerJob(r2Run.runId);
-      expect(r2Claim.appendSystemPrompt ?? "").toContain(
-        `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
-      );
-      expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
-        `https://${staticDomain}/okou-cli/test-commit/package.tgz`,
-      );
-      await api.requestCancelRun(actor, r2Run.runId, [200]);
-    },
-  );
+  it("uses the configured commit-addressed Okou CLI distribution", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const r2Run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the default Okou CLI",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const r2Claim = await api.claimRunnerJob(r2Run.runId);
+    expect(r2Claim.appendSystemPrompt ?? "").toContain(
+      `Run commands with: \`npx --yes --package="\${CLI_PKG_URL}" okou <command>\``,
+    );
+    expect(r2Claim.platformEnvironment.CLI_PKG_URL).toBe(
+      "https://static.okou.io/okou-cli/test-commit/package.tgz",
+    );
+    await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
 
   it("keeps direct-run execution config isolated from product execution", async () => {
     const appUrl = "https://app.writer-stop.example.test";
@@ -15715,7 +15813,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       OKOU_APP_URL: appUrl,
       OKOU_AGENT_ID: agent.agentId,
       OKOU_TOKEN: claim.platformEnvironment.OKOU_TOKEN,
-      CLI_PKG_URL: "https://static.vm0.io/okou-cli/test-commit/package.tgz",
+      CLI_PKG_URL: "https://static.okou.io/okou-cli/test-commit/package.tgz",
     });
     for (const key of Object.keys(claim.platformEnvironment)) {
       expect(claim.environment).not.toHaveProperty(key);
@@ -15911,6 +16009,34 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     );
 
     await api.requestCancelRun(actor, gatedOn.runId, [200]);
+  });
+
+  it("advertises Slack bot reads only while the feature is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    for (const enabled of [false, true]) {
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.SlackRead]: enabled,
+      });
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "read the channel's recent messages",
+        modelProvider: "anthropic-api-key",
+      });
+      const prompt =
+        (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+      if (enabled) {
+        expect(prompt).toContain("okou slack channel list --help");
+        expect(prompt).toContain("okou slack message history --help");
+      } else {
+        expect(prompt).not.toContain("okou slack message history --help");
+        expect(prompt).not.toContain("okou slack channel list --help");
+      }
+      expect(prompt).toContain("okou slack message send --help");
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
   });
 
   it("advertises connector account switching", async () => {

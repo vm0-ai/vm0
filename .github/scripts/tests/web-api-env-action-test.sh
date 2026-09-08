@@ -287,7 +287,7 @@ run_action() {
   local test_dir="$2"
   local input_app="${3:-api}"
   local input_environment="${4:-preview}"
-  local input_cli_pkg_url="${5-https://static.vm0.io/okou-cli/test-sha/package.tgz}"
+  local input_cli_pkg_url="${5-https://static.okou.io/okou-cli/test-sha/package.tgz}"
   local branded_config="${6:-canonical}"
   local github_app_vars_json="${7:-}"
   local github_app_secrets_json="${8:-}"
@@ -353,7 +353,7 @@ run_github_app_action() {
     "$test_dir" \
     api \
     preview \
-    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    "https://static.okou.io/okou-cli/test-sha/package.tgz" \
     canonical \
     "$repo_vars_json" \
     "$repo_secrets_json"
@@ -369,7 +369,7 @@ run_machine_secret_action() {
     "$test_dir" \
     "$input_app" \
     "$input_environment" \
-    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    "https://static.okou.io/okou-cli/test-sha/package.tgz" \
     canonical \
     "" \
     "" \
@@ -467,7 +467,7 @@ api_backend_url_explicit_output="$(
     "$api_backend_url_explicit_dir" \
     api \
     production \
-    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    "https://static.okou.io/okou-cli/test-sha/package.tgz" \
     canonical \
     "" \
     "" \
@@ -489,7 +489,7 @@ api_backend_url_absent_output="$(
     "$api_backend_url_absent_dir" \
     api \
     production \
-    "https://static.vm0.io/okou-cli/test-sha/package.tgz" \
+    "https://static.okou.io/okou-cli/test-sha/package.tgz" \
     canonical \
     "" \
     "" \
@@ -550,7 +550,7 @@ assert_api_backend_url_canonical "$success_env_file" "https://pr-123-api-backend
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_web_url_canonical "$success_env_file" "https://pr-123-www.vm0.test"
-assert_env_value "$success_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
+assert_env_value "$success_env_file" CLI_PKG_URL "https://static.okou.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
 assert_env_value "$success_env_file" OKOU_PRICE_PRO "price_test_pro"
@@ -601,7 +601,7 @@ assert_web_url_absent "$preview_web_env_file"
 
 empty_job_ref_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_job_ref_dir")
-empty_job_ref_output="$(run_action "$(build_doppler_secrets_json)" "$empty_job_ref_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" canonical "" "" "" 2>&1)"
+empty_job_ref_output="$(run_action "$(build_doppler_secrets_json)" "$empty_job_ref_dir" api preview "https://static.okou.io/okou-cli/test-sha/package.tgz" canonical "" "" "" 2>&1)"
 empty_job_ref_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_job_ref_dir}/github-output")"
 assert_contains "$empty_job_ref_output" "Rendered"
 assert_preview_job_ref_absent "$empty_job_ref_env_file"
@@ -611,7 +611,7 @@ assert_machine_secret_canonical "$empty_job_ref_env_file" "github-atom-machine-s
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")
-empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" empty 2>&1)"
+empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api preview "https://static.okou.io/okou-cli/test-sha/package.tgz" empty 2>&1)"
 empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_dir}/github-output")"
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
@@ -670,7 +670,7 @@ assert_web_url_canonical "$production_api_env_file" "https://pr-123-www.vm0.test
 assert_api_backend_url_canonical "$production_api_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
-assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
+assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.okou.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
 assert_machine_secret_canonical "$production_api_env_file" "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" JOGGAI_WEBHOOK_SECRET "github-joggai-webhook-secret"

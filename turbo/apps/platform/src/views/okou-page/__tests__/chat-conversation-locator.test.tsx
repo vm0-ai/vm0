@@ -412,7 +412,7 @@ test("A long conversation has a bounded, readable locator overview", async () =>
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.overview}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("Locator answer 16");
@@ -442,7 +442,7 @@ test("The conversation locator follows the work currently shown in the thread", 
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.folded}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 
@@ -494,7 +494,7 @@ test("The conversation locator follows folded goal continuation work", async () 
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.runWork}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
 
@@ -539,7 +539,7 @@ test("The conversation locator makes the pointed turn easy to identify", async (
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.highlight}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("Locator answer 16");
@@ -573,7 +573,7 @@ test("Selecting a locator marker jumps to that conversation turn", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.jump}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("Locator answer 16");
@@ -642,7 +642,7 @@ test("The conversation locator can page through older turns", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.page}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("Locator answer 16");

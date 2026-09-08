@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.1...host-worker-v1.2.2) (2026-09-08)
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
 ## [1.2.1](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.0...host-worker-v1.2.1) (2026-09-04)
 
 

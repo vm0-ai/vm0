@@ -312,7 +312,7 @@ describe("okou connector status command", () => {
     });
 
     it("uses the production app origin in authorization links", async () => {
-      const apiOrigin = "https://api.vm0.ai";
+      const apiOrigin = "https://api.okou.ai";
       vi.stubEnv("APP_URL", "https://unrelated.example.test");
       vi.stubEnv("OKOU_API_BACKEND_URL", apiOrigin);
       server.use(
@@ -334,7 +334,7 @@ describe("okou connector status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        `[Authorize github](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
+        `[Authorize github](https://app.okou.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
       );
     });
 

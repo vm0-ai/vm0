@@ -91,7 +91,7 @@ test("Share selected message groups as a public conversation snapshot", async ()
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: true },
   });
 
@@ -139,7 +139,7 @@ test("Share selected message groups as a public conversation snapshot", async ()
     name: "Shared conversation link",
   });
   expect(shareLink).toHaveValue(
-    `https://app.vm0.ai/share/threads/${SHARED_THREAD_ID}`,
+    `https://app.okou.ai/share/threads/${SHARED_THREAD_ID}`,
   );
   expect(within(answerGroup).getByRole("checkbox")).toBeChecked();
 });
@@ -149,7 +149,7 @@ test("Sharing controls are hidden when conversation sharing is unavailable", asy
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: false },
   });
 
@@ -191,7 +191,7 @@ test("A folded multi-message answer counts as one shared selection", async () =>
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: {
       [FeatureSwitchKey.ChatRunWorkFolding]: true,
       [FeatureSwitchKey.SharedThreadSharing]: true,
@@ -246,7 +246,7 @@ test("An oversized message group cannot be added to a shared snapshot", async ()
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: true },
   });
 

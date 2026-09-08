@@ -1002,7 +1002,7 @@ test("Find conversations by title in workspace search", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 
@@ -1846,7 +1846,7 @@ test("Open and use workspace search with the keyboard", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 
@@ -2882,7 +2882,7 @@ test("Show the three-column chat navigation and actions", async () => {
   const list = screen.getByTestId("chat-list-column");
   expect(within(list).getByText("Chat")).toBeInTheDocument();
   const searchButton = within(list).getByLabelText("Search workspace");
-  const chatThreadsTitle = within(list).getByText("Chats with Zero");
+  const chatThreadsTitle = within(list).getByText("Chats with Okou");
   if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
     throw new Error("Chat action headers not found");
   }

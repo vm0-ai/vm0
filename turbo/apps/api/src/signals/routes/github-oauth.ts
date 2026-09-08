@@ -5,10 +5,6 @@ import {
   type GithubOauthConnectQuery,
 } from "@okouai/api-contracts/contracts/github-oauth";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
 import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 import {
   exchangeGitHubCode,
@@ -17,7 +13,7 @@ import {
 
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
@@ -52,8 +48,8 @@ import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { upsertConnectorTokenConnection$ } from "../services/connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import { OFFICIAL_GITHUB_PUBLIC_BRAND } from "../../lib/github-official-app";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";
@@ -80,21 +76,18 @@ function jsonErrorResponse(error: string, status: number): Response {
   });
 }
 
-function appUrl(path: string, publicBrand: PublicBrand): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
+function appUrl(path: string): string {
+  return `${env("APP_URL")}${path}`;
 }
 
-function githubApiOrigin(request: Request, publicBrand: PublicBrand): string {
-  return apiUrlForPublicBrand(getOAuthApiOrigin(request), publicBrand);
+function githubApiOrigin(request: Request): string {
+  return getOAuthApiOrigin(request);
 }
 
-function githubAppSetupCallbackUri(
-  request: Request,
-  publicBrand: PublicBrand,
-): string {
+function githubAppSetupCallbackUri(request: Request): string {
   return new URL(
     "/api/github/app/setup/callback",
-    githubApiOrigin(request, publicBrand),
+    githubApiOrigin(request),
   ).toString();
 }
 
@@ -119,16 +112,13 @@ function replayPersistedGithubAppSetupCallback(args: {
   readonly publicBrand: PublicBrand;
 }): string | null {
   const requestOrigin = new URL(args.request.url).origin;
-  const apiOrigins = new Set([
-    githubApiOrigin(args.request, "vm0"),
-    githubApiOrigin(args.request, "okou"),
-  ]);
+  const apiOrigins = new Set([githubApiOrigin(args.request)]);
   if (!apiOrigins.has(requestOrigin)) {
     return null;
   }
   return replayGithubAppSetupCallbackAt(
     args.request,
-    githubAppSetupCallbackUri(args.request, args.publicBrand),
+    githubAppSetupCallbackUri(args.request),
   );
 }
 
@@ -228,12 +218,9 @@ function githubAppUserOauthCredentials():
   return { clientId, clientSecret };
 }
 
-function worksErrorRedirect(
-  message: string,
-  publicBrand: PublicBrand,
-): Response {
+function worksErrorRedirect(message: string): Response {
   return redirectResponse(
-    appUrl(`/works?error=${encodeURIComponent(message)}`, publicBrand),
+    appUrl(`/works?error=${encodeURIComponent(message)}`),
   );
 }
 
@@ -293,9 +280,8 @@ type GithubSetupUserConnectionResolution =
 
 function githubSetupUserConnectionError(
   message: string,
-  publicBrand: PublicBrand,
 ): GithubSetupUserConnectionResolution {
-  return { ok: false, response: worksErrorRedirect(message, publicBrand) };
+  return { ok: false, response: worksErrorRedirect(message) };
 }
 
 type GithubSetupUserConnectionArgs = {
@@ -370,7 +356,6 @@ async function resolveGithubCallbackState(args: {
       publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid OAuth state. Please try installing again from the Platform.",
-        "vm0",
       ),
     };
   }
@@ -386,7 +371,6 @@ async function resolveGithubCallbackState(args: {
       publicBrand: "vm0",
       response: worksErrorRedirect(
         "Invalid state signature. Please try installing again from the Platform.",
-        "vm0",
       ),
     };
   }
@@ -432,7 +416,7 @@ async function githubAppUpdateCallbackResponse(
   signal: AbortSignal,
 ): Promise<Response> {
   if (!args.usePersistedBrand || !args.installationId) {
-    return redirectResponse(appUrl("/workflows", args.fallbackPublicBrand));
+    return redirectResponse(appUrl("/workflows"));
   }
 
   const installation = await findGithubInstallationByInstallationId(
@@ -445,7 +429,7 @@ async function githubAppUpdateCallbackResponse(
   );
   signal.throwIfAborted();
   if (!installation) {
-    return redirectResponse(appUrl("/workflows", args.fallbackPublicBrand));
+    return redirectResponse(appUrl("/workflows"));
   }
 
   const replayUrl = replayPersistedGithubAppSetupCallback({
@@ -454,7 +438,7 @@ async function githubAppUpdateCallbackResponse(
   });
   return replayUrl
     ? noStoreRedirect(replayUrl)
-    : redirectResponse(appUrl("/workflows", installation.setupPublicBrand));
+    : redirectResponse(appUrl("/workflows"));
 }
 
 const resolveGithubCallbackAccess$ = command(
@@ -477,10 +461,7 @@ const resolveGithubCallbackAccess$ = command(
     ) {
       return {
         ok: false,
-        response: worksErrorRedirect(
-          GITHUB_INSTALL_ADMIN_REQUIRED,
-          args.state.publicBrand,
-        ),
+        response: worksErrorRedirect(GITHUB_INSTALL_ADMIN_REQUIRED),
       };
     }
 
@@ -544,7 +525,6 @@ const connectGithubUserAfterSetup$ = command(
         );
         return githubSetupUserConnectionError(
           "GitHub App OAuth is not configured",
-          args.state.publicBrand,
         );
       }
 
@@ -559,10 +539,7 @@ const connectGithubUserAfterSetup$ = command(
       const resolvedMethod = await resolveGithubOauthMethod(resolver);
       signal.throwIfAborted();
       if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
-        return githubSetupUserConnectionError(
-          "GitHub OAuth is not available",
-          args.state.publicBrand,
-        );
+        return githubSetupUserConnectionError("GitHub OAuth is not available");
       }
       const oauthRequestedScopes =
         args.state.oauthRequestedScopes ??
@@ -594,7 +571,6 @@ const connectGithubUserAfterSetup$ = command(
         });
         return githubSetupUserConnectionError(
           errorMessageFromUnknown(tokenResult.error),
-          args.state.publicBrand,
         );
       }
       const { accessToken, scopes, userInfo } = tokenResult.value;
@@ -622,7 +598,6 @@ const connectGithubUserAfterSetup$ = command(
       if (!connectorConnected) {
         return githubSetupUserConnectionError(
           "Connector account could not be selected",
-          args.state.publicBrand,
         );
       }
 
@@ -640,7 +615,6 @@ const connectGithubUserAfterSetup$ = command(
       if (!githubUserId) {
         return githubSetupUserConnectionError(
           "This GitHub account is already linked to the installation",
-          args.state.publicBrand,
         );
       }
 
@@ -654,14 +628,11 @@ const connectGithubUserAfterSetup$ = command(
   },
 );
 
-function githubSetupCompleteRedirect(
-  connected: boolean,
-  publicBrand: PublicBrand,
-): Response {
+function githubSetupCompleteRedirect(connected: boolean): Response {
   if (connected) {
-    return redirectResponse(appUrl("/workflows", publicBrand));
+    return redirectResponse(appUrl("/workflows"));
   }
-  return redirectResponse(appUrl("/workflows", publicBrand));
+  return redirectResponse(appUrl("/workflows"));
 }
 
 const connectExistingGithubInstallation$ = command(
@@ -709,10 +680,7 @@ const connectExistingGithubInstallation$ = command(
       signal,
     );
     return connection.ok
-      ? githubSetupCompleteRedirect(
-          connection.connected,
-          args.state.publicBrand,
-        )
+      ? githubSetupCompleteRedirect(connection.connected)
       : connection.response;
   },
 );
@@ -785,12 +753,9 @@ async function createActiveGithubInstallationFromCallback(
 const installGithubOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
-    const callbackOrigin = githubApiOrigin(request, publicBrand);
-    const providerCallbackOrigin = githubApiOrigin(
-      request,
-      OFFICIAL_GITHUB_PUBLIC_BRAND,
-    );
+    const publicBrand = PUBLIC_BRAND;
+    const callbackOrigin = githubApiOrigin(request);
+    const providerCallbackOrigin = githubApiOrigin(request);
     const appSlug = optionalEnv("GITHUB_APP_SLUG");
     if (!appSlug) {
       return jsonErrorResponse("GitHub App integration is not configured", 503);
@@ -810,7 +775,7 @@ const installGithubOauth$ = command(
         signal,
       ))
     ) {
-      return worksErrorRedirect(GITHUB_INSTALL_ADMIN_REQUIRED, publicBrand);
+      return worksErrorRedirect(GITHUB_INSTALL_ADMIN_REQUIRED);
     }
 
     if (appId && privateKey && userId) {
@@ -828,7 +793,7 @@ const installGithubOauth$ = command(
       signal.throwIfAborted();
 
       if (linkedFromLocal) {
-        return redirectResponse(appUrl("/workflows", publicBrand));
+        return redirectResponse(appUrl("/workflows"));
       }
 
       const linkedFromRemote = await tryLinkGithubFromRemoteInstallations(
@@ -847,7 +812,7 @@ const installGithubOauth$ = command(
       signal.throwIfAborted();
 
       if (linkedFromRemote) {
-        return redirectResponse(appUrl("/workflows", publicBrand));
+        return redirectResponse(appUrl("/workflows"));
       }
     }
 
@@ -876,21 +841,14 @@ const installGithubOauth$ = command(
   },
 );
 
-function invalidGithubConnectLinkRedirect(publicBrand: PublicBrand): Response {
+function invalidGithubConnectLinkRedirect(): Response {
   return worksErrorRedirect(
     "Invalid or expired GitHub connect link. Ask the bot for a new link.",
-    publicBrand,
   );
 }
 
-function signInRedirect(
-  requestUrl: string,
-  publicBrand: PublicBrand,
-): Response {
-  const signInUrl = new URL(
-    "/sign-in",
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  );
+function signInRedirect(requestUrl: string): Response {
+  const signInUrl = new URL("/sign-in", env("APP_URL"));
   signInUrl.searchParams.set("redirect_url", requestUrl);
   return redirectResponse(signInUrl.toString());
 }
@@ -899,7 +857,7 @@ const connectGithubUserOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$).raw;
     const query = get(queryOf(githubOauthContract.connect));
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const auth = await set(
       requiredAuthContext$,
       { requireOrganization: true },
@@ -908,17 +866,17 @@ const connectGithubUserOauth$ = command(
     signal.throwIfAborted();
     if ("status" in auth) {
       return auth.status === 401
-        ? signInRedirect(request.url, publicBrand)
-        : worksErrorRedirect(auth.body.error.message, publicBrand);
+        ? signInRedirect(request.url)
+        : worksErrorRedirect(auth.body.error.message);
     }
     if (!auth.orgId) {
-      return worksErrorRedirect("Explicit org context required", publicBrand);
+      return worksErrorRedirect("Explicit org context required");
     }
     const orgId = auth.orgId;
 
     if (hasGithubConnectSignatureQuery(query)) {
       if (!query.installation || !query.ghUser || !query.ts || !query.sig) {
-        return invalidGithubConnectLinkRedirect(publicBrand);
+        return invalidGithubConnectLinkRedirect();
       }
 
       if (
@@ -931,7 +889,7 @@ const connectGithubUserOauth$ = command(
           secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
         })
       ) {
-        return invalidGithubConnectLinkRedirect(publicBrand);
+        return invalidGithubConnectLinkRedirect();
       }
 
       const db = set(writeDb$);
@@ -948,7 +906,6 @@ const connectGithubUserOauth$ = command(
       if (!installation) {
         return worksErrorRedirect(
           "No GitHub installation found for this workspace",
-          publicBrand,
         );
       }
 
@@ -966,24 +923,23 @@ const connectGithubUserOauth$ = command(
       if (!githubUserId) {
         return worksErrorRedirect(
           "This GitHub account is already linked to the installation",
-          publicBrand,
         );
       }
 
       await publishUserSignal([auth.userId], "github:changed");
       signal.throwIfAborted();
 
-      return redirectResponse(appUrl("/workflows", publicBrand));
+      return redirectResponse(appUrl("/workflows"));
     }
 
-    const origin = githubApiOrigin(request, publicBrand);
+    const origin = githubApiOrigin(request);
     const db = set(writeDb$);
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolveGithubOauthMethodForNewAction(resolver);
     signal.throwIfAborted();
     if (!resolvedMethod) {
-      return worksErrorRedirect("GitHub OAuth is not available", publicBrand);
+      return worksErrorRedirect("GitHub OAuth is not available");
     }
     const authorizationUrl = await buildGithubUserConnectAuthorizationUrl(
       {
@@ -1001,7 +957,7 @@ const connectGithubUserOauth$ = command(
     signal.throwIfAborted();
 
     if (!authorizationUrl) {
-      return worksErrorRedirect("GitHub OAuth is not configured", publicBrand);
+      return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
     return noStoreRedirect(authorizationUrl);
@@ -1041,18 +997,12 @@ const completeGithubAppInstallationCallback$ = command(
     }
 
     if (args.query.setup_action === "request") {
-      return worksErrorRedirect(
-        GITHUB_INSTALL_GITHUB_ADMIN_REQUIRED,
-        args.state.publicBrand,
-      );
+      return worksErrorRedirect(GITHUB_INSTALL_GITHUB_ADMIN_REQUIRED);
     }
 
     const installationId = args.query.installation_id;
     if (!installationId) {
-      return worksErrorRedirect(
-        "Missing installation ID from GitHub",
-        args.state.publicBrand,
-      );
+      return worksErrorRedirect("Missing installation ID from GitHub");
     }
 
     const existingResponse = await set(
@@ -1071,10 +1021,7 @@ const completeGithubAppInstallationCallback$ = command(
     }
 
     if (access.orgAlreadyHasActiveInstallation) {
-      return worksErrorRedirect(
-        GITHUB_SINGLE_INSTALLATION_REQUIRED,
-        args.state.publicBrand,
-      );
+      return worksErrorRedirect(GITHUB_SINGLE_INSTALLATION_REQUIRED);
     }
 
     const installation = await createActiveGithubInstallationFromCallback(
@@ -1105,10 +1052,7 @@ const completeGithubAppInstallationCallback$ = command(
       signal,
     );
     return connection.ok
-      ? githubSetupCompleteRedirect(
-          connection.connected,
-          args.state.publicBrand,
-        )
+      ? githubSetupCompleteRedirect(connection.connected)
       : connection.response;
   },
 );
@@ -1137,16 +1081,12 @@ const callbackGithubOauth$ = command(
     const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
 
     if (!appId || !privateKey) {
-      return worksErrorRedirect(
-        "GitHub App integration is not configured",
-        callbackPublicBrand,
-      );
+      return worksErrorRedirect("GitHub App integration is not configured");
     }
 
     if (query.error) {
       return worksErrorRedirect(
         query.error_description || query.error || "GitHub authorization failed",
-        callbackPublicBrand,
       );
     }
     if (query.setup_action === "update") {
@@ -1171,7 +1111,6 @@ const callbackGithubOauth$ = command(
     if (!composeId) {
       return worksErrorRedirect(
         "Missing default agent. Please select an agent before connecting GitHub.",
-        state.publicBrand,
       );
     }
     return await set(

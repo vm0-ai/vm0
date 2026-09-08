@@ -30,7 +30,7 @@ type Unregister = (property: string) => void;
 
 const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_chat_engagement_telemetry_test");
-  window.location.href = "https://app.vm0.ai/";
+  window.location.href = "https://app.okou.ai/";
   return {
     posthog: {
       capture: vi.fn<Capture>(),

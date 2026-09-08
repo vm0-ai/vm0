@@ -3912,8 +3912,8 @@ describe("connector catalog valid lifecycle", () => {
   });
 
   it("executes an external OpenID grant with catalog-owned storage", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
     const release = buildRelease({
@@ -5702,7 +5702,7 @@ describe("connector catalog executable compatibility", () => {
   });
 
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "catalog-test-oauth-refresh",
     });
@@ -5918,7 +5918,7 @@ describe("connector catalog executable compatibility", () => {
     ]);
 
     const response = await requestOauthCallbackRaw(context, {
-      origin: "https://api.vm0.ai",
+      origin: "https://api.okou.ai",
       connectorSlug: "cloudflare",
       query: { code: "missing-state" },
     });

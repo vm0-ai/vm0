@@ -17,7 +17,7 @@ describe("connector/providers/resource-guru", () => {
     const url = buildResourceGuruAuthorizationUrl(
       authCodeGrantFixture(["users:read", "reports:read"]),
       "client-id",
-      "https://app.vm0.ai/oauth/callback",
+      "https://app.okou.ai/oauth/callback",
       "oauth-state",
     );
     const params = new URL(url).searchParams;
@@ -27,7 +27,7 @@ describe("connector/providers/resource-guru", () => {
     ).toBe(true);
     expect(params.get("client_id")).toBe("client-id");
     expect(params.get("redirect_uri")).toBe(
-      "https://app.vm0.ai/oauth/callback",
+      "https://app.okou.ai/oauth/callback",
     );
     expect(params.get("response_type")).toBe("code");
     expect(params.get("scope")).toBe("users:read reports:read");
@@ -43,7 +43,7 @@ describe("connector/providers/resource-guru", () => {
         expect(body.get("code")).toBe("authorization-code");
         expect(body.get("grant_type")).toBe("authorization_code");
         expect(body.get("redirect_uri")).toBe(
-          "https://app.vm0.ai/oauth/callback",
+          "https://app.okou.ai/oauth/callback",
         );
         return HttpResponse.json({
           access_token: "access-token",
@@ -71,7 +71,7 @@ describe("connector/providers/resource-guru", () => {
         "client-id",
         "client-secret",
         "authorization-code",
-        "https://app.vm0.ai/oauth/callback",
+        "https://app.okou.ai/oauth/callback",
       ),
     ).resolves.toEqual({
       accessToken: "access-token",

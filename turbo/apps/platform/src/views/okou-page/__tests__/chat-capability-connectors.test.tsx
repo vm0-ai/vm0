@@ -272,7 +272,7 @@ test("Connect banking, grant access, continue, and revoke it", async () => {
     return respond(200, status);
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const card = await screen.findByTestId("banking-action-card");
@@ -367,7 +367,7 @@ test("Connect and authorize a custom MCP connector", async () => {
 
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
   });
@@ -426,7 +426,7 @@ test("Connect a single available connector without an unnecessary chooser", asyn
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const card = await screen.findByTestId("connector-action-card");
@@ -483,7 +483,7 @@ test("Enable a single no-auth connector without an unnecessary dialog", async ()
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const card = await screen.findByTestId("connector-action-card");
@@ -522,7 +522,7 @@ test("Require an explicit permission selection for a custom connector", async ()
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const card = await screen.findByTestId("connector-action-card");
@@ -571,7 +571,7 @@ test("Preserve an existing custom connector permission during reconnection", asy
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const card = await screen.findByTestId("connector-action-card");
@@ -646,7 +646,7 @@ test("Reconnect an expired connector before resuming the task", async () => {
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   expect(
@@ -704,7 +704,7 @@ test("Share connector authorization across related action cards", async () => {
     sends,
   });
 
-  await setupPage({ context, host: "app.vm0.ai", path: RUN_PATH });
+  await setupPage({ context, host: "app.okou.ai", path: RUN_PATH });
 
   await readyChat();
   const cards = await screen.findAllByTestId("connector-action-card");

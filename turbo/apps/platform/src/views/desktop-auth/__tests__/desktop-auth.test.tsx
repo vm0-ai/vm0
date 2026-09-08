@@ -66,7 +66,6 @@ async function page(path: string, auth?: SetupPageAuth, host = "app.okou.ai") {
   await setupPage({
     context,
     host,
-    primaryAppDomain: "app.okou.ai",
     path,
     ...(auth === undefined ? {} : { auth }),
   });
@@ -153,7 +152,6 @@ test.each(["sign-in", "sign-up"])(
     await setupPage({
       context,
       host: "app.okou.ai",
-      primaryAppDomain: "app.okou.ai",
       path: `/${mode}?redirect_url=${encodeURIComponent(CALLBACK)}`,
       auth: null,
     });
@@ -370,7 +368,6 @@ test("ordinary Web organization switching still refreshes and navigates home", a
   await setupPage({
     context,
     host: "app.okou.ai",
-    primaryAppDomain: "app.okou.ai",
     path: "/agents",
   });
   await screen.findByRole("heading", { name: "Agents" });
@@ -644,8 +641,8 @@ test("cancellation after IPC starts discards its delayed acknowledgement", async
 
 test.each([
   ["app.okou.ai", "app.okou.ai"],
-  ["app.vm0.ai", "app.okou.ai"],
-  ["app.okou.ai", "app.vm0.ai"],
+  ["app.okou.ai", "app.okou.ai"],
+  ["app.okou.ai", "app.okou.ai"],
 ] as const)(
   "browser required organization task from %s to %s retains its scheme and cannot be preempted by the global watcher",
   async (host, callbackHost) => {
@@ -671,7 +668,6 @@ test.each([
     await setupPage({
       context,
       host,
-      primaryAppDomain: host,
       path: `/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent(destination)}`,
       auth: {
         organization: { activeOrg: null, memberships: [alpha, beta] },
@@ -721,7 +717,6 @@ test("protocol errors, navigation and telemetry do not capture credentials", asy
   await setupPage({
     context,
     host: "app.okou.ai",
-    primaryAppDomain: "app.okou.ai",
     path: `/desktop-auth/consume?code=${CODE}`,
     auth: null,
     debugLoggers: ["*"],
@@ -903,7 +898,6 @@ test("Desktop Auth v2 continuation works in browsers without URL.canParse", asyn
   await setupPage({
     context,
     host: "app.okou.ai",
-    primaryAppDomain: "app.okou.ai",
     path: `/sign-in?redirect_url=${encodeURIComponent(CALLBACK)}`,
     auth: null,
   });

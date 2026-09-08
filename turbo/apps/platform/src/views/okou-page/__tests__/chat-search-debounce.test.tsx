@@ -8,7 +8,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { installContinuityWorkspace } from "./chat-continuity-test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
-  cachedChatListEvents,
   chatListThread,
 } from "./chat-list-test-helpers.ts";
 
@@ -61,7 +60,7 @@ function installMessageSearch(threadId: string): string[] {
 test("Search messages only after the latest input settles", async () => {
   const thread = chatListThread(1, THREAD_TITLE);
   const remoteChatList = context.mocks.deferred<void>();
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 37,
     threads: [thread],
     chatListRemoteGate: remoteChatList.promise,
@@ -70,8 +69,7 @@ test("Search messages only after the latest input settles", async () => {
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
-    cachedChatThreadEvents: cachedChatListEvents(37, [thread]),
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const chatThreads = await screen.findByLabelText("Chat threads");
@@ -91,7 +89,7 @@ test("Search messages only after the latest input settles", async () => {
 test("Clearing or closing search discards a pending message search", async () => {
   const thread = chatListThread(1, THREAD_TITLE);
   const remoteChatList = context.mocks.deferred<void>();
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 38,
     threads: [thread],
     chatListRemoteGate: remoteChatList.promise,
@@ -100,8 +98,7 @@ test("Clearing or closing search discards a pending message search", async () =>
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
-    cachedChatThreadEvents: cachedChatListEvents(38, [thread]),
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const chatThreads = await screen.findByLabelText("Chat threads");

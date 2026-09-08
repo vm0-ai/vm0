@@ -54,7 +54,7 @@ public func targetWindowScreenshotFailureMessage(
     currentConsoleSessionUnavailable: Bool
 ) -> String {
     let label = targetWindowScreenshotFailureLabel(appName: appName, target: target)
-    let base = "Zero has Screen Recording permission, but macOS could not capture the selected \(label)."
+    let base = "Okou has Screen Recording permission, but macOS could not capture the selected \(label)."
     let retry = "Ask the user to bring that window to the current desktop, keep it visible and unminimized, then retry."
 
     if currentConsoleSessionUnavailable {
@@ -97,7 +97,7 @@ public func targetWindowScreenshotFailureMessage(
         return "\(base) macOS reports the selected window is not a normal app window layer. \(retry)"
     }
 
-    return "\(base) The window still exists and appears visible, so this is likely a transient WindowServer capture failure or a protected/rapidly changing window. Retry once; if it keeps happening, ask the user to restart Zero Desktop and keep the target window visible."
+    return "\(base) The window still exists and appears visible, so this is likely a transient WindowServer capture failure or a protected/rapidly changing window. Retry once; if it keeps happening, ask the user to restart Okou Desktop and keep the target window visible."
 }
 
 private func targetWindowScreenshotFailureLabel(

@@ -1171,6 +1171,15 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut telemetry = test_telemetry(&config, &ctx);
 
+    // Freeze the clock before the first attempt. Blocking work prevents Tokio
+    // from auto-advancing through deadlines while startup performs real I/O.
+    // Dropping the sender also releases the guard if an assertion panics.
+    let (clock_release, clock_wait) = std::sync::mpsc::channel::<()>();
+    let clock_guard = tokio::task::spawn_blocking(move || {
+        let _ = clock_wait.recv_timeout(Duration::from_secs(30));
+    });
+    tokio::time::pause();
+
     let run_task = tokio::spawn(async move {
         run_in_sandbox(
             &*sandbox,
@@ -1203,8 +1212,8 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
             .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
             .await
     );
-    tokio::time::pause();
     let mut previous_attempt_at = tokio::time::Instant::now();
+    drop(clock_release);
     for (index, expected_delay) in retry_delays.into_iter().enumerate() {
         assert!(
             overrides
@@ -1222,6 +1231,7 @@ async fn run_in_sandbox_retries_guest_backpressure_with_same_id() {
     }
 
     tokio::time::resume();
+    clock_guard.await.unwrap();
     wait_gate.notify_one();
     let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
         .await

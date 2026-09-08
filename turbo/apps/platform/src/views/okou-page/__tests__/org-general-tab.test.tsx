@@ -241,6 +241,25 @@ test("Reject invalid workspace logo files", async () => {
   });
 });
 
+test("Closing workspace settings releases a pending logo decode", async () => {
+  const images = context.mocks.browser.imageDimensions("pending");
+  context.mocks.data.org({ id: "org_1", name: "Acme", role: "admin" });
+  await openGeneralTab();
+
+  await userEvent.upload(
+    screen.getByLabelText("Upload logo"),
+    new File(["logo"], "pending-logo.png", { type: "image/png" }),
+  );
+  expect(images.createdUrls).toHaveLength(1);
+  expect(images.revokedUrls).toHaveLength(0);
+
+  click(screen.getByLabelText("Close"));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  expect(images.revokedUrls).toStrictEqual(images.createdUrls);
+});
+
 test("Explain the billing effects before deleting a workspace", async () => {
   context.mocks.data.org({
     id: "org_1",

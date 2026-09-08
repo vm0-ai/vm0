@@ -277,9 +277,9 @@ let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
   captchaEnabled: false,
   captchaWidgetType: null,
   legalConsentEnabled: false,
-  privacyPolicyUrl: "https://vm0.ai/privacy",
+  privacyPolicyUrl: "https://okou.ai/privacy",
   progressive: true,
-  termsUrl: "https://vm0.ai/terms",
+  termsUrl: "https://okou.ai/terms",
 };
 let internalMockedPasswordValidation: PasswordValidation = {
   complexity: {},
@@ -377,9 +377,9 @@ export function mockSignUpConfiguration(
       (configuration.captchaEnabled ? "smart" : null),
     legalConsentEnabled: configuration.legalConsentEnabled ?? false,
     privacyPolicyUrl:
-      configuration.privacyPolicyUrl ?? "https://vm0.ai/privacy",
+      configuration.privacyPolicyUrl ?? "https://okou.ai/privacy",
     progressive: configuration.progressive ?? true,
-    termsUrl: configuration.termsUrl ?? "https://vm0.ai/terms",
+    termsUrl: configuration.termsUrl ?? "https://okou.ai/terms",
   };
 }
 
@@ -1028,8 +1028,6 @@ const defaultBuildUserProfileUrlImpl = () => {
 
 export interface MockedClerkLoadOptions {
   afterSignOutUrl?: string;
-  isSatellite?: boolean;
-  satelliteAutoSync?: boolean;
   signInUrl?: string;
   signUpUrl?: string;
   touchSession?: boolean;
@@ -1056,9 +1054,6 @@ function defaultBuildAuthUrl(
     options?.redirectUrl ?? window.location.href,
     window.location.origin,
   );
-  if (internalMockedClerkLoadOptions.isSatellite) {
-    redirectUrl.searchParams.set("__clerk_synced", "false");
-  }
   // Clerk serializes redirect options into the auth route's fragment.
   const authHashParams = new URLSearchParams();
   authHashParams.set("redirect_url", redirectUrl.toString());

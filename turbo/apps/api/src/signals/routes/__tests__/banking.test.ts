@@ -716,7 +716,7 @@ describe("banking access request lifecycle", () => {
   });
 
   it("uses branded Mastercard redirect origins without changing the webhook origin", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockEnv(
       "FINICITY_WEBHOOK_BASE_URL",
       "https://public-api-tunnel.example.test",
@@ -738,8 +738,8 @@ describe("banking access request lifecycle", () => {
     );
     const brandCases = [
       {
-        origin: "https://app.vm0.ai",
-        redirectUri: "https://app.vm0.ai/banking/connect/return",
+        origin: "https://app.okou.ai",
+        redirectUri: "https://app.okou.ai/banking/connect/return",
       },
       {
         origin: "https://app.okou.ai",
@@ -932,35 +932,20 @@ describe("banking access request lifecycle", () => {
     expect(response.status).toBe(401);
   });
 
-  it.each([
-    {
-      apiOrigin: "https://api.vm0.ai",
-      assistantName: "Zero",
-      otherAssistantName: "Okou",
-    },
-    {
-      apiOrigin: "https://api.okou.ai",
-      assistantName: "Okou",
-      otherAssistantName: "Zero",
-    },
-  ] as const)(
-    "serves the $assistantName Finicity browser return from the API",
-    async ({ apiOrigin, assistantName, otherAssistantName }) => {
-      const response = await createApp({
-        signal: context.signal,
-        routes: bankingRoutes,
-      }).request(
-        `${apiOrigin}/api/banking/connect/return?reason=complete&code=200&reportData=null`,
-      );
+  it("serves the Okou Finicity browser return from the API", async () => {
+    const response = await createApp({
+      signal: context.signal,
+      routes: bankingRoutes,
+    }).request(
+      "https://api.okou.ai/api/banking/connect/return?reason=complete&code=200&reportData=null",
+    );
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe(
-        "text/html; charset=utf-8",
-      );
-      const html = await response.text();
-      expect(html).toContain(`<title>Return to ${assistantName}</title>`);
-      expect(html).toContain(`continue in ${assistantName} Chat.`);
-      expect(html).not.toContain(`Return to ${otherAssistantName}`);
-    },
-  );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "text/html; charset=utf-8",
+    );
+    const html = await response.text();
+    expect(html).toContain("<title>Return to Okou</title>");
+    expect(html).toContain("continue in Okou Chat.");
+  });
 });
