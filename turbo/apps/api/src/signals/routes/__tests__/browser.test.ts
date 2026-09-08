@@ -420,7 +420,7 @@ describe("okou browser route", () => {
     });
   });
 
-  it("uses the run token brand for browser access requested through the Okou API", async () => {
+  it("uses the configured app URL for browser authorization from run tokens", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const sent = await chat.requestSendEvent(

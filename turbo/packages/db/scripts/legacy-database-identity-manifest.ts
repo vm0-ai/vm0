@@ -75,7 +75,7 @@ const publicBrandDisposition = {
   drainEvidence:
     "Historical VM0 objects remain legitimate reads. Elapsed rollout time or zero recent writes does not establish that those objects are absent.",
   removalGate:
-    "Retain members needed by historical objects, including the permanent compatibility decision in #28449. Removing an individual member requires an explicit retirement decision and evidence that its stored values and supported readers are gone.",
+    "Retain members needed by historical objects, including the permanent compatibility decision in #28449. Removal requires an explicit retirement decision and verified zero dependencies from supported writers, stored objects, and readers for that member.",
 } as const satisfies ManifestDisposition;
 
 const desktopDisposition = {
