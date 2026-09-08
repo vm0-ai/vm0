@@ -36,6 +36,7 @@ interface DriverGeneration {
   leases: number;
   disposal: Promise<void> | null;
   permissionsReady: boolean;
+  permissionRead: Promise<ComputerUsePermissionState> | null;
 }
 
 export interface ComputerUseCommandSession {
@@ -156,6 +157,7 @@ export class ComputerUseDriverController {
         leases: 0,
         disposal: null,
         permissionsReady: false,
+        permissionRead: null,
       };
       this.onChange();
     }
@@ -187,7 +189,9 @@ export class ComputerUseDriverController {
         ...context.backend,
         getPermissions: () => this.readPermissions(context),
       });
-      return this.context === context && this.authorized(context)
+      return this.context === context &&
+        !this.permissionsPaused &&
+        this.authorized(context)
         ? result
         : null;
     } finally {
@@ -265,7 +269,20 @@ export class ComputerUseDriverController {
       : [];
   }
 
-  private async readPermissions(
+  private readPermissions(
+    context: DriverGeneration,
+  ): Promise<ComputerUsePermissionState> {
+    if (context.permissionRead) return context.permissionRead;
+    const read = this.readGenerationPermissions(context);
+    context.permissionRead = read;
+    const finish = () => {
+      if (context.permissionRead === read) context.permissionRead = null;
+    };
+    void read.then(finish, finish);
+    return read;
+  }
+
+  private async readGenerationPermissions(
     context: DriverGeneration,
   ): Promise<ComputerUsePermissionState> {
     try {
@@ -282,10 +299,12 @@ export class ComputerUseDriverController {
       this.onChange();
       return permissions;
     } catch (error) {
-      this.failure =
-        "Native driver permission check failed. Explicit recovery is required.";
       context.permissionsReady = false;
-      if (this.context === context) void this.forceRetire().catch(() => {});
+      if (this.context === context) {
+        this.failure =
+          "Native driver permission check failed. Explicit recovery is required.";
+        void this.forceRetire().catch(() => {});
+      }
       throw error;
     }
   }
