@@ -2465,6 +2465,7 @@ jobs:
 
   # Deploy runner start: start one service on the existing deterministic host
   # selection for runner-image-job-ref, matching the Crates Runner behavior lane.
+  # Retire the same service namespace on unselected hosts before reporting ready.
   # Shared image preparation and lifecycle locking still cover all hosts.
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
   deploy-runner-start:

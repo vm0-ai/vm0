@@ -38,20 +38,24 @@ if [ "$*" = "bash -s -- $BIN_DIR" ]; then
 fi
 
 printf '%s\t%s\n' "$host" "$*" >>"$MOCK_SERVICE_LOG"
+service_name=$(printf '%s\n' "$*" | sed -n "s/.*--name ['\"]*\\([a-z0-9-]*\\).*/\\1/p")
 case "$*" in
   "test -x ${BIN_DIR}/runner") ;;
   "sudo ${BIN_DIR}/runner config "*)
     printf '%s\n' "$*" >"${MOCK_REMOTE_ROOT}/${host}/config"
     ;;
   "sudo ${BIN_DIR}/runner service stop "*)
-    rm -f "${MOCK_REMOTE_ROOT}/${host}/service"
+    if [ "${MOCK_FAILURE:-none}" = retire ] && [ "$host" = x86-2 ]; then
+      exit 1
+    fi
+    rm -f "${MOCK_REMOTE_ROOT}/${host}/${service_name}"
     ;;
   "sudo rm -f ${RUNNER_DIR}/status.json") ;;
   "sudo ${BIN_DIR}/runner service start "*)
-    printf '%s\n' "$*" >"${MOCK_REMOTE_ROOT}/${host}/service"
+    printf '%s\n' "$*" >"${MOCK_REMOTE_ROOT}/${host}/${service_name}"
     ;;
   "sudo ${BIN_DIR}/runner service wait-running "*)
-    if [ "${MOCK_FAIL_READINESS:-false}" = true ]; then
+    if [ "${MOCK_FAILURE:-none}" = readiness ]; then
       exit 1
     fi
     echo 35
@@ -63,21 +67,30 @@ SH
 chmod +x "${tmp_dir}/bin/ssh"
 
 run_case() {
-  local case_name=$1 job_ref=$2 selected_host=$3 selected_index=$4 fail_readiness=$5
+  local case_name=$1 job_ref=$2 selected_host=$3 selected_index=$4 failure=$5
   local case_dir="${tmp_dir}/${case_name}"
-  mkdir -p "$case_dir"
-  local host
-  for host in arm-1 x86-1 x86-2; do
-    mkdir -p "${case_dir}/${host}"
-    printf 'existing-service\n' >"${case_dir}/${host}/service"
-  done
+  local service_ref=$job_ref current_event=pull_request
+  if [[ "$job_ref" == staging-* ]]; then
+    service_ref=staging
+    current_event=push
+  fi
+  local host host_index=0
+  if [ ! -d "$case_dir" ]; then
+    for host in arm-1 x86-1 x86-2; do
+      host_index=$((host_index + 1))
+      mkdir -p "${case_dir}/${host}"
+      printf 'existing-service\n' >"${case_dir}/${host}/${service_ref}-${host_index}"
+      printf 'unrelated-service\n' >"${case_dir}/${host}/pr-999-${host_index}"
+    done
+  fi
+  : >"${case_dir}/service.log"
 
   local status=0
   env \
     PATH="${tmp_dir}/bin:$PATH" \
     AWS_METAL_RUNNER_HOSTS=arm-1,x86-1,x86-2 \
     BIN_DIR="/var/lib/vm0-runner/bin/${job_ref}" \
-    CURRENT_EVENT=pull_request \
+    CURRENT_EVENT="$current_event" \
     CURRENT_RUN_ID=123 \
     DEFAULT_BRANCH=main \
     JOB_REF="$job_ref" \
@@ -88,48 +101,61 @@ run_case() {
     ROOTFS_HASH_MAP='{"arm-1":"rootfs-arm","x86-1":"rootfs-x86-1","x86-2":"rootfs-x86-2"}' \
     RUNNER_API_URL=https://api.example.test \
     RUNNER_DIR="/var/lib/vm0-runner/runners/${job_ref}" \
-    RUNNER_GROUP="vm0/development-${job_ref}" \
-    RUNNER_SERVICE_REF="$job_ref" \
+    RUNNER_GROUP="vm0/development-${service_ref}" \
+    RUNNER_SERVICE_REF="$service_ref" \
     RUNNER_SHA_MAP='{"aarch64-unknown-linux-musl":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","x86_64-unknown-linux-musl":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}' \
     SNAPSHOT_HASH_MAP='{"arm-1":"snapshot-arm","x86-1":"snapshot-x86-1","x86-2":"snapshot-x86-2"}' \
     VERCEL_BYPASS=test-bypass \
     MOCK_REMOTE_ROOT="$case_dir" \
     MOCK_SERVICE_LOG="${case_dir}/service.log" \
-    MOCK_FAIL_READINESS="$fail_readiness" \
+    MOCK_FAILURE="$failure" \
     bash "$script" >"${case_dir}/output" 2>&1 || status=$?
 
-  if [ "$fail_readiness" = true ]; then
-    [ "$status" -ne 0 ] || fail "${case_name}: failed readiness must fail deployment"
-    [ ! -f "${case_dir}/${selected_host}/service" ] ||
+  if [ "$failure" != none ]; then
+    [ "$status" -ne 0 ] || fail "${case_name}: ${failure} failure must fail deployment"
+    [ ! -f "${case_dir}/${selected_host}/${service_ref}-${selected_index}" ] ||
       fail "${case_name}: failed start left the selected service running"
   else
     if [ "$status" -ne 0 ]; then
       cat "${case_dir}/output" >&2
       fail "${case_name}: deployment failed"
     fi
-    grep -Fq -- "--name ${job_ref}-${selected_index}" "${case_dir}/${selected_host}/service" ||
+    grep -Fq -- "--name ${service_ref}-${selected_index}" "${case_dir}/${selected_host}/${service_ref}-${selected_index}" ||
       fail "${case_name}: selected service lost its original inventory index"
     grep -Fq -- "--hostname ${selected_host}" "${case_dir}/${selected_host}/config" ||
       fail "${case_name}: config does not use the selected host"
   fi
 
-  [ "$(cut -f1 "${case_dir}/service.log" | sort -u)" = "$selected_host" ] ||
-    fail "${case_name}: service operations reached an unselected host"
+  [ "$(awk '!/runner service stop / {print $1}' "${case_dir}/service.log" | sort -u)" = "$selected_host" ] ||
+    fail "${case_name}: start or readiness operations reached an unselected host"
   [ "$(grep -c 'runner service start ' "${case_dir}/service.log")" -eq 1 ] ||
     fail "${case_name}: deployment must start exactly one service"
-  grep -Fq -- "service wait-running --name ${job_ref}-${selected_index}" "${case_dir}/service.log" ||
+  grep -Fq -- "service wait-running --name ${service_ref}-${selected_index}" "${case_dir}/service.log" ||
     fail "${case_name}: readiness must use the selected service identity"
+  host_index=0
   for host in arm-1 x86-1 x86-2; do
+    host_index=$((host_index + 1))
+    [ "$(cat "${case_dir}/${host}/pr-999-${host_index}")" = unrelated-service ] ||
+      fail "${case_name}: deployment changed another PR's service"
     [ "$host" = "$selected_host" ] && continue
-    [ "$(cat "${case_dir}/${host}/service")" = existing-service ] ||
-      fail "${case_name}: deployment changed an unselected service"
+    if [ "$failure" = retire ] && [ "$host" = x86-2 ]; then
+      [ -f "${case_dir}/${host}/${service_ref}-${host_index}" ] ||
+        fail "${case_name}: fixture did not retain the failed retirement"
+    else
+      [ ! -f "${case_dir}/${host}/${service_ref}-${host_index}" ] ||
+        fail "${case_name}: unselected replica still serves the current namespace"
+    fi
   done
 }
 
 # These image refs select the same hosts as the existing Crates behavior lane.
-run_case x86 pr-1 x86-1 2 false
-run_case x86-rerun pr-1 x86-1 2 false
-run_case arm pr-2 arm-1 1 false
-run_case failed-start pr-9 x86-2 3 true
+run_case x86 pr-1 x86-1 2 none
+run_case x86 pr-1 x86-1 2 none
+run_case arm pr-2 arm-1 1 none
+run_case failed-start pr-9 x86-2 3 readiness
+run_case failed-retirement pr-1 x86-1 2 retire
+# A new staging image ref can select another host while service names stay fixed.
+run_case staging staging-000000000000 arm-1 1 none
+run_case staging staging-222222222222 x86-1 2 none
 
 echo "reconcile-and-start-runner-groups-test: ok"

@@ -45,6 +45,7 @@ done
 SELECTED_CONTEXT=$(AWS_METAL_RUNNER_HOSTS="$METAL_HOSTS" \
   "${SCRIPT_DIR}/runner-host-architecture-groups.sh" select-context "$JOB_REF")
 SELECTED_HOST=$(jq -r '.host' <<<"$SELECTED_CONTEXT")
+export SELECTED_HOST
 echo "Selected runner service host: ${SELECTED_HOST}"
 
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/runner-reconcile-start.XXXXXX")
@@ -103,7 +104,7 @@ read_host_capacity() {
   ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_SERVICE_SUFFIX} --timeout-secs 120"
 }
 
-start_on_host() {
+reconcile_service_on_host() {
   set -euo pipefail
 
   local HOST=$1
@@ -112,6 +113,16 @@ start_on_host() {
   local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
   local REMOTE="${METAL_USER}@${HOST}"
   local MC
+
+  # Retire the current service namespace on every host, including staging:
+  # its service names stay stable while image directories and selection change.
+  # shellcheck disable=SC2029
+  timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_SERVICE_SUFFIX}' --force --cleanup partial-start"
+  if [ "$HOST" != "$SELECTED_HOST" ]; then
+    echo "Retired unselected runner service ${RUNNER_SERVICE_SUFFIX} on ${HOST}"
+    return
+  fi
+
   echo "=== Starting runner service ${RUNNER_SERVICE_SUFFIX} on ${HOST} ==="
 
   local ROOTFS_HASH SNAPSHOT_HASH
@@ -143,8 +154,6 @@ start_on_host() {
     --api-url ${RUNNER_API_URL} \
     --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-  # shellcheck disable=SC2029
-  timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_SERVICE_SUFFIX}' --force --cleanup partial-start"
   # shellcheck disable=SC2029
   ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
@@ -271,15 +280,14 @@ cleanup_runner_start() {
 trap cleanup_runner_start EXIT
 trap 'request_runner_start_exit 130' INT
 trap 'request_runner_start_exit 143' TERM
-export -f read_host_capacity start_on_host
+export -f read_host_capacity reconcile_service_on_host
 HOST_INDEX=0
 for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
   HOST_INDEX=$((HOST_INDEX + 1))
   # Retain the original inventory index so reruns replace the existing service.
-  [ "$HOST" = "$SELECTED_HOST" ] || continue
   HOSTS+=("$HOST")
   RUNNER_START_RECORDING=1
-  setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" >"${LOG_DIR}/${HOST}.log" 2>&1 &
+  setsid bash -c 'reconcile_service_on_host "$@"' reconcile_service_on_host "$HOST" "$HOST_INDEX" >"${LOG_DIR}/${HOST}.log" 2>&1 &
   PIDS+=($!)
   PGIDS+=($!)
   RUNNER_START_RECORDING=0
@@ -291,7 +299,7 @@ for i in "${!PIDS[@]}"; do
   if ! wait "${PIDS[$i]}"; then
     check_runner_start_exit
     FAILED=1
-    echo "::error::Runner start failed on ${HOSTS[$i]}"
+    echo "::error::Runner service reconciliation failed on ${HOSTS[$i]}"
   fi
   check_runner_start_exit
   echo "=== ${HOSTS[$i]} ==="
