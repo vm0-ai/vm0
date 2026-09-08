@@ -27,7 +27,7 @@ function setupHistory(events: readonly MockChatEventInput[]): Promise<void> {
   return setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
   });
 }

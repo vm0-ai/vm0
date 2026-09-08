@@ -1,4 +1,3 @@
-import { RunWorkMessage } from "./run-work-message.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -40,6 +39,7 @@ import {
   ChartLine,
   Globe,
   Video,
+  File,
   Copy,
   Check,
   SwatchBook,
@@ -76,6 +76,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -117,6 +118,7 @@ import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
 import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
 import { i18n } from "../../i18n/index.ts";
+import { artifactFallbackSubtitle } from "./artifact-display.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -145,7 +147,10 @@ import {
 } from "./attachment-chips.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
-import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
+import type {
+  ArtifactKind,
+  ArtifactSignals,
+} from "../../signals/chat-page/artifact-card-signals.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
@@ -193,6 +198,7 @@ import {
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/okou-page/attachment-chips.ts";
+import { openMarkdownArtifact$ } from "../../signals/okou-page/markdown-artifact-preview.ts";
 import {
   writeToClipboard,
   type ChatClipboardAttachment,
@@ -688,9 +694,6 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const startSharing = useSet(thread.sharing.start$);
   const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-
   if (sharingPhase !== "idle") {
     return (
       <header className={CHAT_THREAD_HEADER_CLASS}>
@@ -725,38 +728,36 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     <header className={CHAT_THREAD_HEADER_CLASS}>
       <ChatThreadHeaderTitle thread={thread} />
       <div className="flex items-center gap-0.5">
-        {sharingEnabled ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    detach(
-                      startSharing(pageSignal),
-                      Reason.DomCallback,
-                      "start shared thread selection",
-                    );
-                  }}
-                  variant="quiet"
-                  size="icon-sm"
-                  iconSize="md"
-                  className="shrink-0 duration-150"
-                  aria-label={t(($) => {
-                    return $.chat.sharing.start;
-                  })}
-                >
-                  <Share2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(($) => {
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  detach(
+                    startSharing(pageSignal),
+                    Reason.DomCallback,
+                    "start shared thread selection",
+                  );
+                }}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0 duration-150"
+                aria-label={t(($) => {
                   return $.chat.sharing.start;
                 })}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+              >
+                <Share2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.sharing.start;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
@@ -3212,7 +3213,6 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   return (
     <main
       data-run-work-folding={runWorkFoldingEnabled || undefined}
-      data-run-work-folding-disabled={!runWorkFoldingEnabled || undefined}
       className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
     >
       <div
@@ -4942,17 +4942,12 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const donePhrase =
     useLastResolved(thread.donePhrase$) ??
     t(($) => {
       return $.chat.run.done.default;
     });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  if (runWorkFoldingEnabled && source === null) {
-    return null;
-  }
   const label =
     source && runFinishedAt
       ? t(
@@ -5032,7 +5027,7 @@ function WaitingForAssistantResponse({
           {runGroupFolds.map((fold) => {
             return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
           })}
-          <ChatAssistantMessageBody className="group-data-[run-work-folding-disabled]/chat:py-4">
+          <ChatAssistantMessageBody>
             <InlineThinkingRow
               blockStyle={blockStyle}
               isQueued={isQueued}
@@ -5142,8 +5137,6 @@ function ThinkingIndicator({
   inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
-  const runWorkFoldingEnabled =
-    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const spinnerEnabled =
     featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
@@ -5179,12 +5172,7 @@ function ThinkingIndicator({
         }
       : undefined;
 
-  if (
-    mode === null ||
-    (runWorkFoldingEnabled &&
-      mode === "finished" &&
-      recommendedFollowupSource === null)
-  ) {
+  if (mode === null) {
     return null;
   }
 
@@ -7526,19 +7514,6 @@ type PagedAssistantGroupProps = {
   readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
 
-function visibleRunIndicatorMode(
-  mode: Exclude<ThinkingIndicatorMode, null> | undefined,
-  recommendedFollowupSource: RecommendedFollowupSource | null,
-): Exclude<ThinkingIndicatorMode, null> | undefined {
-  if (mode === undefined) {
-    return undefined;
-  }
-  if (mode === "finished" && recommendedFollowupSource === null) {
-    return undefined;
-  }
-  return mode;
-}
-
 type PagedAssistantHistoryItem =
   | {
       readonly kind: "assistant";
@@ -7548,10 +7523,6 @@ type PagedAssistantHistoryItem =
       readonly kind: "model-change";
       readonly eventId: string;
       readonly change: RunModelChange;
-    }
-  | {
-      readonly kind: "run-work-message";
-      readonly event: EnrichedChatEvent;
     };
 
 type PagedAssistantTimelineItem =
@@ -7568,7 +7539,6 @@ type PagedAssistantTimelineItem =
   | {
       readonly kind: "run-work-main";
       readonly event: EnrichedChatEvent;
-      readonly artifactCards: RunWorkSectionControl["remainingArtifactCards"];
     };
 
 function assistantTimelineItems(
@@ -7590,7 +7560,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "run-work-message", event }]
+        ? [{ kind: "assistant", event }]
         : [];
     });
   });
@@ -7635,14 +7605,6 @@ function buildPagedAssistantTimeline({
     historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
     );
-  } else {
-    historyItems.push(
-      ...runWorkSection.previewMessages.map(
-        (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-message", event };
-        },
-      ),
-    );
   }
   historyItems.push(
     ...assistantTimelineItems(group.events.slice(0, anchorIndex)),
@@ -7653,7 +7615,6 @@ function buildPagedAssistantTimeline({
     items.push({
       kind: "run-work-main",
       event: anchorEvent,
-      artifactCards: runWorkSection.remainingArtifactCards,
     });
   }
   if (showAllHistory) {
@@ -7676,8 +7637,6 @@ function PagedAssistantTimeline({
   thread: ChatPanelSignals;
   mainActions?: ReactNode;
 }) {
-  let renderedAssistantItemCount = 0;
-
   return items.map((item) => {
     if (item.kind === "model-change") {
       return (
@@ -7726,17 +7685,6 @@ function PagedAssistantTimeline({
         </div>
       );
     }
-    if (item.kind === "run-work-message") {
-      return (
-        <PagedRunWorkMessage
-          key={item.event.id}
-          event={item.event}
-          thread={thread}
-        />
-      );
-    }
-    const legacyTopPadding = renderedAssistantItemCount === 0;
-    renderedAssistantItemCount += 1;
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7744,25 +7692,7 @@ function PagedAssistantTimeline({
           data-chat-run-work-main
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
         >
-          <PagedAssistantEventItem
-            event={item.event}
-            thread={thread}
-            legacyTopPadding={legacyTopPadding}
-          />
-          {item.artifactCards.length === 0 ? null : (
-            <div
-              data-chat-run-work-remaining-artifacts
-              className={CHAT_THREAD_RESPONSE_STACK_CLASS}
-            >
-              {item.artifactCards.map((card) => {
-                return (
-                  <div key={card.signals.url} className="okou-markdown-card">
-                    <MarkdownEventBody tree={card.tree} mediaPreview />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <PagedAssistantEventItem event={item.event} thread={thread} />
           {mainActions}
         </div>
       );
@@ -7772,33 +7702,9 @@ function PagedAssistantTimeline({
         key={item.event.id}
         event={item.event}
         thread={thread}
-        legacyTopPadding={legacyTopPadding}
       />
     );
   });
-}
-
-function PagedRunWorkMessage({
-  event,
-  thread,
-}: {
-  event: EnrichedChatEvent;
-  thread: ChatPanelSignals;
-}) {
-  const expandedIds = useGet(thread.timelineExpandedIds$);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const expanded = expandedIds.has(event.id);
-  return (
-    <RunWorkMessage
-      event={event}
-      expanded={expanded}
-      onToggle={() => {
-        toggleExpanded(event.id);
-      }}
-    >
-      <PagedAssistantEventItem event={event} thread={thread} compact />
-    </RunWorkMessage>
-  );
 }
 
 function PagedRunWorkAssistantContent({
@@ -7819,10 +7725,6 @@ function PagedRunWorkAssistantContent({
   | "runIndicatorMode"
   | "statusTailEvents"
 >) {
-  const recommendedFollowupSource =
-    useLastResolved(thread.recommendedFollowupSource$, {
-      equalityFn: equalRecommendedFollowupSources,
-    }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
     group: {
       ...group,
@@ -7839,16 +7741,13 @@ function PagedRunWorkAssistantContent({
         return event.id === runWorkSection.anchorEventId;
       })
     : undefined;
-  const visibleIndicatorMode = visibleRunIndicatorMode(
-    runIndicatorMode,
-    recommendedFollowupSource,
-  );
   const mainActions =
     mainEvent !== undefined ? (
       <PagedGroupActions
         group={group}
         content={mainEvent.content ?? ""}
         thread={thread}
+        relatedArtifacts={runWorkSection?.remainingArtifactCards}
         embedded
       />
     ) : undefined;
@@ -7860,8 +7759,7 @@ function PagedRunWorkAssistantContent({
         thread={thread}
         mainActions={mainActions}
       />
-      {(statusTailEvents?.length ?? 0) > 0 ||
-      visibleIndicatorMode !== undefined ? (
+      {(statusTailEvents?.length ?? 0) > 0 || runIndicatorMode !== undefined ? (
         <div
           data-chat-run-status-tail
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
@@ -7876,10 +7774,10 @@ function PagedRunWorkAssistantContent({
                 />
               );
             })
-          ) : visibleIndicatorMode !== undefined ? (
+          ) : runIndicatorMode !== undefined ? (
             <ThinkingIndicator
               thread={thread}
-              mode={visibleIndicatorMode}
+              mode={runIndicatorMode}
               runGroupFolds={[]}
               inAssistantGroup
             />
@@ -7981,13 +7879,9 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
-  compact = false,
-  legacyTopPadding = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  compact?: boolean;
-  legacyTopPadding?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7995,11 +7889,6 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
-        className={cn(
-          compact ? "py-1 text-[13px] leading-5" : undefined,
-          legacyTopPadding &&
-            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
-        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -8018,13 +7907,7 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={cn(
-          compact
-            ? "py-1 text-[13px] leading-5"
-            : CHAT_THREAD_RESPONSE_LINE_CLASS,
-          legacyTopPadding &&
-            "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
-        )}
+        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -8195,18 +8078,161 @@ function RunUsageChip({
   );
 }
 
+type RelatedArtifactCard =
+  RunWorkSectionControl["remainingArtifactCards"][number];
+
+function relatedArtifactDisplayName(card: RelatedArtifactCard): string {
+  const label = card.label?.trim();
+  if (label && label !== card.signals.url) {
+    return label;
+  }
+  const { filename, kind, url } = card.signals;
+  if (filename !== url || kind !== "html") {
+    return filename;
+  }
+  return URL.canParse(url) ? new URL(url).hostname || filename : filename;
+}
+
+function relatedArtifactHost(url: string): string | null {
+  return URL.canParse(url) ? new URL(url).hostname || null : null;
+}
+
+function RelatedArtifactIcon({ kind }: { readonly kind: ArtifactKind }) {
+  const Icon = kind === "image" ? Image : kind === "video" ? Video : File;
+  return (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover/artifact:text-foreground">
+      <Icon aria-hidden size={16} />
+    </span>
+  );
+}
+
+function RelatedArtifactRow({ card }: { readonly card: RelatedArtifactCard }) {
+  const { t } = useTranslation();
+  const openArtifact = useSet(openMarkdownArtifact$);
+  const name = relatedArtifactDisplayName(card);
+  const host = relatedArtifactHost(card.signals.url);
+  const kind = artifactFallbackSubtitle(
+    card.signals.kind,
+    card.signals.filename,
+  );
+  return (
+    <Button
+      type="button"
+      variant="quiet"
+      className="group/artifact h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-left font-normal"
+      aria-label={t(
+        ($) => {
+          return $.chat.attachments.previewFile;
+        },
+        { filename: name },
+      )}
+      title={card.signals.url}
+      data-chat-run-related-artifact-url={card.signals.url}
+      onClick={() => {
+        openArtifact(card, "lightbox");
+      }}
+    >
+      <RelatedArtifactIcon kind={card.signals.kind} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">
+          {name}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          {kind}
+          {host ? ` · ${host}` : ""}
+        </span>
+      </span>
+      <ChevronRight
+        aria-hidden
+        size={16}
+        className="shrink-0 text-muted-foreground/60"
+      />
+    </Button>
+  );
+}
+
+function RelatedArtifactsDialog({
+  cards,
+}: {
+  readonly cards: RunWorkSectionControl["remainingArtifactCards"];
+}) {
+  const { t } = useTranslation();
+  if (cards.length === 0) {
+    return null;
+  }
+  const title = t(($) => {
+    return $.chat.run.relatedArtifacts;
+  });
+  const formattedCount = formatAppNumber(cards.length);
+  const triggerLabel = t(
+    ($) => {
+      return $.chat.run.relatedArtifactCount;
+    },
+    {
+      count: cards.length,
+      formattedCount,
+    },
+  );
+  return (
+    <Dialog>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="quiet"
+                size="xs"
+                iconSize="md"
+                className="gap-1.5 px-2 text-xs text-muted-foreground/60 tabular-nums"
+                aria-label={triggerLabel}
+                data-testid="chat-run-related-artifacts-trigger"
+              >
+                <Package />
+                <span>{triggerLabel}</span>
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{title}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <DialogContent
+        aria-describedby={undefined}
+        className="!flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl"
+        data-testid="chat-run-related-artifacts-dialog"
+      >
+        <DialogHeader className="shrink-0 px-5 pb-4 pt-5 pr-12">
+          <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+            <span>{title}</span>
+            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gray-50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+              {formattedCount}
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/60 p-2">
+          {cards.map((card) => {
+            return <RelatedArtifactRow key={card.signals.url} card={card} />;
+          })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PagedGroupPrimaryActions({
   firstRunId,
   hasContent,
   usage,
   copied,
   onCopy,
+  relatedArtifacts,
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
   usage: ChatEventUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
+  relatedArtifacts?: RunWorkSectionControl["remainingArtifactCards"];
 }) {
   const { t } = useTranslation();
   const showActivityLogs = useGet(featureSwitch$)[FeatureSwitchKey.OkouDebug];
@@ -8274,6 +8300,9 @@ function PagedGroupPrimaryActions({
           </Tooltip>
         </TooltipProvider>
       )}
+      {relatedArtifacts ? (
+        <RelatedArtifactsDialog cards={relatedArtifacts} />
+      ) : null}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
   );
@@ -8283,11 +8312,13 @@ function PagedGroupActions({
   group,
   content,
   thread,
+  relatedArtifacts,
   embedded = false,
 }: {
   group: ChatEventGroup;
   content: string;
   thread: ChatPanelSignals;
+  relatedArtifacts?: RunWorkSectionControl["remainingArtifactCards"];
   embedded?: boolean;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -8323,6 +8354,7 @@ function PagedGroupActions({
         usage={usage}
         copied={copied}
         onCopy={handleCopy}
+        relatedArtifacts={relatedArtifacts}
       />
     </div>
   );

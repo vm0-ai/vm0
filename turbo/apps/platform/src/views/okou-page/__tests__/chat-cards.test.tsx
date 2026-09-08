@@ -12,7 +12,7 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000902";
-const CONNECTOR_URL = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
+const CONNECTOR_URL = `https://app.okou.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
 
 function assistantMessage(id: string, content: string) {
   return {
@@ -33,7 +33,7 @@ function setupChat(content: string): Promise<void> {
   return setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 }
 
@@ -72,9 +72,9 @@ test("A connector link becomes an action without losing surrounding prose", asyn
 
 test("Incomplete action links are shown as unavailable", async () => {
   const connectorWithoutAgent =
-    "https://app.vm0.ai/connectors/github/authorize";
+    "https://app.okou.ai/connectors/github/authorize";
   const bankingWithoutReason = new URL(
-    `https://app.vm0.ai/agents/${AGENT_ID}/banking`,
+    `https://app.okou.ai/agents/${AGENT_ID}/banking`,
   );
   bankingWithoutReason.searchParams.set("threadId", THREAD_ID);
   bankingWithoutReason.searchParams.set(
@@ -132,7 +132,7 @@ test("Ordinary or code links remain message content", async () => {
 
 test("A valid banking request becomes an action card", async () => {
   const reason = "Review quarterly subscription expenses";
-  const bankingUrl = new URL(`https://app.vm0.ai/agents/${AGENT_ID}/banking`);
+  const bankingUrl = new URL(`https://app.okou.ai/agents/${AGENT_ID}/banking`);
   bankingUrl.searchParams.set("reason", reason);
   bankingUrl.searchParams.set("threadId", THREAD_ID);
   bankingUrl.searchParams.set(

@@ -5,7 +5,6 @@ import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
@@ -22,6 +21,7 @@ import {
 import { connectorCatalogConnectionList } from "../services/connector-data.service";
 import { notFound, providerUnavailable } from "../../lib/error";
 import { settle } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const connectorCatalogAuth = {
   requireOrganization: true,
@@ -80,7 +80,7 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
   return {
     db: get(db$),
     featureStates: getAllFeatureStates(featureSwitchContext),
-    publicBrand: get(publicBrand$),
+    publicBrand: PUBLIC_BRAND,
   };
 });
 

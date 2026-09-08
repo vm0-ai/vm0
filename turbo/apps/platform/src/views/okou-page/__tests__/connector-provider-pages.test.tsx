@@ -88,7 +88,7 @@ function feishuConnectorStatus(): PublicConnectorCatalogStatusItem {
   return {
     slug: "lark",
     label: "Feishu",
-    description: "Connect Feishu to VM0.",
+    description: "Connect Feishu to Okou.",
     icon: { url: FEISHU_ICON_URL, invertInDarkMode: false },
     category: "communication",
     generation: [],
@@ -135,7 +135,7 @@ test("A user links GitHub for agent mentions", async () => {
   ).resolves.toBeInTheDocument();
   expect(
     screen.getByText(
-      "Link your VM0 account to @octo-dev so GitHub mentions can run your agents from issues and pull requests.",
+      "Link your Okou account to @octo-dev so GitHub mentions can run your agents from issues and pull requests.",
     ),
   ).toBeInTheDocument();
 

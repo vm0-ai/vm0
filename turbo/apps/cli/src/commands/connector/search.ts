@@ -16,6 +16,7 @@ import {
   isConnectorDiscoveryAuthorized,
   renderConnectorDiscoveryConnectedAsCell,
   type ConnectorDiscoveryDefinition,
+  type ConnectorDiscoveryItem,
 } from "./discovery";
 import { searchConnectorCatalog } from "./public-catalog";
 import {
@@ -24,7 +25,6 @@ import {
   type RunConnectorAccountLookup,
 } from "./run-account-context";
 
-const DEFAULT_LIMIT = 5;
 const EXACT_MATCH_THRESHOLD = 80;
 
 function parseLimit(raw: string): number {
@@ -39,34 +39,73 @@ function parseLimit(raw: string): number {
 function renderRunAccountCell(lookup: RunConnectorAccountLookup): string {
   switch (lookup.state) {
     case "available":
-      return lookup.metadata.connectionStatus === "reconnect-required"
-        ? chalk.yellow(`${lookup.label} (reconnect needed)`)
-        : lookup.label;
+      return lookup.label;
     case "metadata-unavailable":
-      return chalk.dim(
-        `${lookup.connectionId} (metadata unavailable or deleted)`,
-      );
+      return lookup.connectionId;
     case "not-admitted":
-      return chalk.dim("(not admitted for this run)");
     case "context-unavailable":
-      return chalk.dim("(run account unavailable)");
+      return chalk.dim("-");
   }
+}
+
+function renderRunAvailabilityCell(lookup: RunConnectorAccountLookup): string {
+  switch (lookup.state) {
+    case "available":
+      return lookup.metadata.connectionStatus === "reconnect-required"
+        ? chalk.yellow("no (reconnect needed)")
+        : chalk.green("yes");
+    case "metadata-unavailable":
+      return chalk.dim("no (metadata unavailable or deleted)");
+    case "not-admitted":
+      return chalk.dim("no (not admitted)");
+    case "context-unavailable":
+      return chalk.dim("unknown (run context unavailable)");
+  }
+}
+
+function renderCurrentAvailabilityCell(
+  connector: ConnectorDiscoveryItem,
+  agentContext: Awaited<
+    ReturnType<typeof resolveConnectorDiscoveryAgentContext>
+  >,
+): string {
+  if (connector.kind === "catalog") {
+    if (connector.catalogConnector.connectionStatus === "reconnect-required") {
+      return chalk.yellow("no (reconnect needed)");
+    }
+    if (!connector.catalogConnector.connected) {
+      return chalk.dim("no (not connected)");
+    }
+  } else if (!connector.customConnector.connected) {
+    return chalk.dim("no (not connected)");
+  }
+
+  if (
+    agentContext &&
+    !isConnectorDiscoveryAuthorized(connector, agentContext)
+  ) {
+    return chalk.dim("no (not authorized)");
+  }
+  return chalk.green("yes");
 }
 
 function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
   readonly connectors: readonly T[];
   readonly keyword: string;
-  readonly limit: number;
+  readonly limit: number | undefined;
+  readonly availabilityHeader: string;
+  readonly renderAvailability: (connector: T) => string;
   readonly accountHeader: string;
   readonly renderAccount: (connector: T) => string;
   readonly agentContext: Awaited<
     ReturnType<typeof resolveConnectorDiscoveryAgentContext>
   >;
 }): void {
+  const effectiveLimit = args.limit ?? args.connectors.length;
   const { results, total } = searchConnectorCatalog(
     args.connectors,
     args.keyword,
-    args.limit,
+    effectiveLimit,
   );
 
   if (results.length === 0) {
@@ -78,11 +117,16 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
   if (topScore < EXACT_MATCH_THRESHOLD) {
     console.log("No exact match. Showing closest:");
   }
-  if (total > args.limit) {
-    console.log(`Too many results (top ${args.limit} of ${total}):`);
-  }
+  console.log(
+    args.limit !== undefined && total > args.limit
+      ? `Supported connector matches: ${total}. Showing top ${args.limit}:`
+      : `Supported connector matches: ${total}.`,
+  );
 
   const connectorSlugHeader = "SLUG";
+  const availabilityCells = results.map((result) => {
+    return args.renderAvailability(result.connector);
+  });
   const accountCells = results.map((result) => {
     return args.renderAccount(result.connector);
   });
@@ -90,6 +134,12 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
     connectorSlugHeader.length,
     ...results.map((result) => {
       return result.connector.slug.length;
+    }),
+  );
+  const availabilityWidth = Math.max(
+    args.availabilityHeader.length,
+    ...availabilityCells.map((cell) => {
+      return stripAnsi(cell).length;
     }),
   );
   const accountWidth = Math.max(
@@ -101,6 +151,7 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
 
   const headerParts = [
     connectorSlugHeader.padEnd(connectorSlugWidth),
+    args.availabilityHeader.padEnd(availabilityWidth),
     args.accountHeader.padEnd(accountWidth),
   ];
   if (args.agentContext) {
@@ -112,6 +163,7 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
     const result = results[index]!;
     const parts = [
       result.connector.slug.padEnd(connectorSlugWidth),
+      padEndAnsi(availabilityCells[index]!, availabilityWidth),
       padEndAnsi(accountCells[index]!, accountWidth),
     ];
     if (args.agentContext) {
@@ -128,19 +180,18 @@ function printSearchResults<T extends ConnectorDiscoveryDefinition>(args: {
 export const searchCommand = new Command()
   .name("search")
   .description(
-    "Search connectors by slug, label, category, generation type, or tag",
+    "Search supported connectors by slug, label, category, generation type, or tag and show availability",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
   .option("--agent <id>", "Show per-agent authorization column")
   .option(
     "--limit <n>",
-    `Maximum number of results to display (default ${DEFAULT_LIMIT})`,
+    "Maximum number of results to display (default: all matches)",
     parseLimit,
-    DEFAULT_LIMIT,
   )
   .action(
     withErrorHandler(
-      async (keyword: string, options: { agent?: string; limit: number }) => {
+      async (keyword: string, options: { agent?: string; limit?: number }) => {
         const trimmed = keyword.trim();
         if (!trimmed) {
           throw new Error("Keyword cannot be empty.");
@@ -167,19 +218,30 @@ export const searchCommand = new Command()
               ] as const;
             }),
           );
+          const runAccountForConnector = (
+            connector: ConnectorDiscoveryDefinition,
+          ): RunConnectorAccountLookup => {
+            const lookup = lookupsByTarget.get(
+              connectorAccountTargetKey(connectorDiscoveryTarget(connector)),
+            );
+            if (!lookup) {
+              throw new Error("Missing run account lookup for connector");
+            }
+            return lookup;
+          };
           printSearchResults({
             connectors: definitions,
             keyword: trimmed,
             limit: options.limit,
+            availabilityHeader: "AVAILABLE THIS RUN",
+            renderAvailability: (connector) => {
+              return renderRunAvailabilityCell(
+                runAccountForConnector(connector),
+              );
+            },
             accountHeader: "ACCOUNT USED BY THIS RUN",
             renderAccount: (connector) => {
-              const lookup = lookupsByTarget.get(
-                connectorAccountTargetKey(connectorDiscoveryTarget(connector)),
-              );
-              if (!lookup) {
-                throw new Error("Missing run account lookup for connector");
-              }
-              return renderRunAccountCell(lookup);
+              return renderRunAccountCell(runAccountForConnector(connector));
             },
             agentContext,
           });
@@ -192,10 +254,18 @@ export const searchCommand = new Command()
             listCustomConnectors(),
             resolveConnectorDiscoveryAgentContext(options.agent),
           ]);
+        const discoveredConnectors = connectorDiscoveryItems(
+          connectors,
+          customConnectors,
+        );
         printSearchResults({
-          connectors: connectorDiscoveryItems(connectors, customConnectors),
+          connectors: discoveredConnectors,
           keyword: trimmed,
           limit: options.limit,
+          availabilityHeader: "AVAILABLE",
+          renderAvailability: (connector) => {
+            return renderCurrentAvailabilityCell(connector, agentContext);
+          },
           accountHeader: "CONNECTED AS",
           renderAccount: renderConnectorDiscoveryConnectedAsCell,
           agentContext,

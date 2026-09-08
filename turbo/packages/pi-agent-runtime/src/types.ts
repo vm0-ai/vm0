@@ -50,16 +50,6 @@ export interface PiAgentModelConfig {
   readonly accountId?: string;
   /** Route-owned transport policy. Codex subscriptions are SSE-only. */
   readonly transport?: PiAgentTransport;
-  /**
-   * Cross-version input only. New writers emit `openai-responses`; the runtime
-   * ignores absent or legacy values. Remove with #31085 after the previous API
-   * leaves the rollback window, the two-hour runner/Sandbox drain plus
-   * finalization completes, and no executable pre-cutover contexts remain.
-   */
-  readonly api?:
-    | "openai-completions"
-    | "openai-responses"
-    | "openai-codex-responses";
   /** Omitted by legacy launch payloads, which retain Pi's medium default. */
   readonly thinkingLevel?: PiAgentThinkingLevel;
   /**

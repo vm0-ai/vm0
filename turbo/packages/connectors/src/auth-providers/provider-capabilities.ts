@@ -45,7 +45,7 @@ interface ConnectorAuthProviderMethodRegistration {
   readonly contract: ConnectorAuthProviderMethodContract;
 }
 
-// This is VM0's executable compatibility contract, not connector catalog data.
+// This is Okou's executable compatibility contract, not connector catalog data.
 // Keep it limited to facts required to select and validate provider handlers.
 export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
   {

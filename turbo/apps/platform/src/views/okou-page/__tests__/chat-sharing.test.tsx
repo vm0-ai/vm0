@@ -1,4 +1,3 @@
-import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -91,8 +90,7 @@ test("Share selected message groups as a public conversation snapshot", async ()
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: true },
+    host: "app.okou.ai",
   });
 
   await screen.findByText(PROMPT);
@@ -139,23 +137,9 @@ test("Share selected message groups as a public conversation snapshot", async ()
     name: "Shared conversation link",
   });
   expect(shareLink).toHaveValue(
-    `https://app.vm0.ai/share/threads/${SHARED_THREAD_ID}`,
+    `https://app.okou.ai/share/threads/${SHARED_THREAD_ID}`,
   );
   expect(within(answerGroup).getByRole("checkbox")).toBeChecked();
-});
-
-test("Sharing controls are hidden when conversation sharing is unavailable", async () => {
-  mockConversation();
-  await setupPage({
-    context,
-    path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: false },
-  });
-
-  await screen.findByText(PROMPT);
-  expect(screen.getByText(ANSWER)).toBeVisible();
-  expect(buttonsNamed("Share messages")).toHaveLength(0);
 });
 
 test("A folded multi-message answer counts as one shared selection", async () => {
@@ -191,16 +175,15 @@ test("A folded multi-message answer counts as one shared selection", async () =>
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: {
       [FeatureSwitchKey.ChatRunWorkFolding]: true,
-      [FeatureSwitchKey.SharedThreadSharing]: true,
     },
   });
 
   await screen.findByText("Launch answer 3");
-  expect(queryMessageBody("Launch answer 1")).toBeNull();
-  expect(queryMessageBody("Launch answer 2")).toBeNull();
+  expect(screen.getByText("Launch answer 1")).toBeVisible();
+  expect(screen.getByText("Launch answer 2")).toBeVisible();
   await waitFor(() => {
     expect(buttonsNamed("Share messages").length).toBeGreaterThan(0);
   });
@@ -246,8 +229,7 @@ test("An oversized message group cannot be added to a shared snapshot", async ()
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: true },
+    host: "app.okou.ai",
   });
 
   await screen.findByText("A normal message remains available");

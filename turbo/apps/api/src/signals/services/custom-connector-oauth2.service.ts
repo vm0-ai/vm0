@@ -604,7 +604,7 @@ function prepareCustomOAuthStart(
   },
   args: StartCustomConnectorOAuth2Args,
 ): PreparedOAuthStart {
-  const state = generateConnectorOAuthState(args.publicBrand);
+  const state = generateConnectorOAuthState();
   const codeVerifier =
     connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
   return {
@@ -679,7 +679,7 @@ async function prepareAutomaticOAuthStart(
   if (preflightFailure) {
     return { ok: false as const, response: preflightFailure };
   }
-  const state = generateConnectorOAuthState("okou");
+  const state = generateConnectorOAuthState();
   const automatic = await settle(
     prepareCustomConnectorAutomaticOAuthAuthorization(
       {
@@ -1162,7 +1162,7 @@ export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
     if (!redirectUri) {
       throw new Error("Okou MCP OAuth callback is unavailable");
     }
-    const state = generateConnectorOAuthState("okou");
+    const state = generateConnectorOAuthState();
     const preparedResult = await settle(
       prepareCustomConnectorAutomaticOAuthReauthorization(
         {

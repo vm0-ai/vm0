@@ -8,7 +8,8 @@ import {
   userPreferencesContract,
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { expect, test } from "vitest";
+import { HttpResponse } from "msw";
+import { expect, test, vi } from "vitest";
 
 import {
   click,
@@ -16,12 +17,15 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { OKOU_LOCALE_COOKIE_NAME } from "../../../i18n/locale-fallback.ts";
+import frFRCommonUrl from "../../../i18n/locales/fr-FR/common.json?url";
 
 const context = testContext();
 
 async function openDialog(
   role: "admin" | "member" = "admin",
   section: "debug" | "general" | "model" | "preference" = "general",
+  host = "localhost",
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -38,6 +42,7 @@ async function openDialog(
   });
   await setupPage({
     context,
+    host,
     path: `/?settings=${section}`,
     featureSwitches:
       section === "debug" ? { [FeatureSwitchKey.OkouDebug]: true } : {},
@@ -192,9 +197,9 @@ test("Offer only languages supported by the workspace", async () => {
   expect(document.documentElement.lang).toBe("en-US");
 });
 
-test("Default to English when no language preference exists", async () => {
+test("Keep the VM0 workspace default in English", async () => {
   const submittedLocales: UserLocale[] = [];
-  document.documentElement.lang = "id-ID";
+  context.mocks.browser.languages(["id-ID"]);
   context.mocks.api(userPreferencesContract.get, ({ respond }) => {
     return respond(200, createPreferences(null));
   });
@@ -205,7 +210,7 @@ test("Default to English when no language preference exists", async () => {
     return respond(200, createPreferences(body.locale ?? null));
   });
 
-  await openDialog("admin", "preference");
+  await openDialog("admin", "preference", "app.vm0.ai");
 
   const languageSelect = await screen.findByRole("combobox", {
     name: "Language",
@@ -216,6 +221,126 @@ test("Default to English when no language preference exists", async () => {
     expect(languageSelect).toHaveTextContent("English");
     expect(document.documentElement.lang).toBe("en-US");
   });
+});
+
+test.each([
+  {
+    source: "browser",
+    cookie: null,
+    locale: "id-ID",
+    label: "Bahasa",
+    option: "Bahasa Indonesia",
+  },
+  {
+    source: "site cookie",
+    cookie: "v1.fr-FR",
+    locale: "fr-FR",
+    label: "Langue",
+    option: "Français",
+  },
+])(
+  "Persist the $source language when the workspace has no preference",
+  async (scenario) => {
+    let serverLocale: UserLocale | null = null;
+    context.mocks.browser.cookie(
+      scenario.cookie === null
+        ? ""
+        : `${OKOU_LOCALE_COOKIE_NAME}=${scenario.cookie}`,
+    );
+    context.mocks.browser.languages(["id-ID"]);
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale));
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        serverLocale = body.locale;
+      }
+      return respond(200, createPreferences(serverLocale));
+    });
+
+    await openDialog("admin", "preference", "app.okou.ai");
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: scenario.label,
+    });
+    await waitFor(() => {
+      expect(serverLocale).toBe(scenario.locale);
+      expect(languageSelect).toHaveTextContent(scenario.option);
+      expect(languageSelect).toBeEnabled();
+      expect(document.documentElement).toHaveAttribute("lang", scenario.locale);
+    });
+
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(serverLocale).toBe("en-US");
+      expect(document.documentElement).toHaveAttribute("lang", "en-US");
+      expect(
+        screen.getByRole("combobox", { name: "Language" }),
+      ).toHaveTextContent("English");
+    });
+  },
+);
+
+test("Persist English when an initial locale hint is outside the API handshake", async () => {
+  let serverLocale: UserLocale | null = null;
+  const submittedLocales: UserLocale[] = [];
+  const supportedLocales: UserLocale[] = ["en-US", "pt-BR"];
+  context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.fr-FR`);
+  context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+    return respond(200, createPreferences(serverLocale, supportedLocales));
+  });
+  context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+    if (body.locale !== undefined) {
+      submittedLocales.push(body.locale);
+      serverLocale = body.locale;
+    }
+    return respond(200, createPreferences(serverLocale, supportedLocales));
+  });
+
+  await openDialog("admin", "preference", "app.okou.ai");
+
+  await waitFor(() => {
+    expect(serverLocale).toBe("en-US");
+    expect(document.documentElement).toHaveAttribute("lang", "en-US");
+    expect(
+      screen.getByRole("combobox", { name: "Language" }),
+    ).toHaveTextContent("English");
+  });
+  expect(submittedLocales).not.toContain("fr-FR");
+});
+
+test("Keep settings usable and persist English when automatic locale assets fail", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  let serverLocale: UserLocale | null = null;
+  context.mocks.browser.languages(["fr-FR"]);
+  context.mocks.http.get(frFRCommonUrl, () => {
+    return new HttpResponse(null, { status: 503 });
+  });
+  context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+    return respond(200, createPreferences(serverLocale));
+  });
+  context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+    if (body.locale !== undefined) {
+      serverLocale = body.locale;
+    }
+    return respond(200, createPreferences(serverLocale));
+  });
+
+  await openDialog("admin", "preference", "app.okou.ai");
+
+  await waitFor(() => {
+    expect(serverLocale).toBe("en-US");
+    expect(
+      screen.getByRole("combobox", { name: "Language" }),
+    ).toHaveTextContent("English");
+  });
+  expect(document.documentElement).toHaveAttribute("lang", "en-US");
+  expect(consoleError).toHaveBeenCalledWith(
+    "[E][Locale]",
+    "Failed to apply locale fallback fr-FR; falling back to en-US",
+    expect.any(Error),
+  );
 });
 
 test("Select and persist a supported interface language", async () => {
@@ -302,18 +427,12 @@ test("Keep the selected language visible during a preference refresh", async () 
   });
 });
 
-test("Restore the saved workspace language", async () => {
-  document.documentElement.lang = "en-US";
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      document.documentElement.lang = "en-US";
-    },
-    { once: true },
-  );
+test("Use the saved workspace language ahead of locale hints", async () => {
+  context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.fr-FR`);
+  context.mocks.browser.languages(["de-DE"]);
   context.mocks.data.userPreferences(createPreferences("id-ID"));
 
-  await openDialog("admin", "preference");
+  await openDialog("admin", "preference", "app.okou.ai");
 
   const languageSelect = await screen.findByRole("combobox", {
     name: "Bahasa",

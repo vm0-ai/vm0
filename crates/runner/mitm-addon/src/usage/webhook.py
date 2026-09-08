@@ -3,8 +3,8 @@
 Background workers process usage reports in parallel; the runner
 first waits for the pending counters to drain, then ``done()`` flushes
 submitted futures during mitmproxy shutdown. Falls back to synchronous
-delivery if an executor has been shut down (drain/shutdown race) so
-reports are not silently lost.
+delivery if submission fails during shutdown or worker startup so reports
+are not silently lost. A worker and fallback share one delivery claim.
 """
 
 import json
@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 from collections.abc import Callable
 from concurrent.futures import Executor, ThreadPoolExecutor
+from functools import partial
 from typing import Literal
 
 import network_log_sanitization
@@ -345,8 +346,24 @@ def _post_admitted_webhook_with_retry(
     pending_report: PendingReportLease,
     delivery_outcome_callback: _DeliveryOutcomeCallback | None,
     release_capacity: Callable[[], None],
+    try_claim_delivery: Callable[[], bool],
+    *,
+    fallback_message: str | None = None,
 ) -> None:
+    if not try_claim_delivery():
+        return
+
+    delivery_started = False
     try:
+        if fallback_message is not None:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                fallback_message,
+                type=log_type,
+                url=url,
+            )
+        delivery_started = True
         _post_webhook_with_retry(
             url,
             bearer_credential,
@@ -357,7 +374,11 @@ def _post_admitted_webhook_with_retry(
             delivery_outcome_callback=delivery_outcome_callback,
         )
     finally:
-        release_capacity()
+        try:
+            if not delivery_started:
+                pending_report.release()
+        finally:
+            release_capacity()
 
 
 def enqueue_webhook_delivery(
@@ -373,15 +394,16 @@ def enqueue_webhook_delivery(
     The caller transfers ownership of ``payload`` to webhook delivery and
     must not mutate it after enqueue.
 
-    If the executor has already been shut down (drain/shutdown race),
-    falls back to synchronous delivery so the report is not silently lost.
+    If submission raises ``RuntimeError`` during shutdown or worker startup,
+    falls back to synchronous delivery unless a worker already claimed it.
+    A queued worker and the fallback cannot both deliver the same payload.
 
     When provided, ``delivery_outcome_callback`` is invoked exactly once for
     an admitted payload after delivery reaches a final ``success``,
     ``retryable_failure``, or ``permanent_failure`` outcome.  It is not
     invoked when admission returns ``False`` or when enqueueing fails before
     delivery ownership transfers.  Normal delivery invokes it on a webhook
-    executor worker; the executor-shutdown fallback invokes it synchronously
+    executor worker; the submission-failure fallback invokes it synchronously
     on the enqueueing thread.
 
     The callback runs before the pending-report lease and delivery-capacity
@@ -404,7 +426,7 @@ def enqueue_webhook_delivery(
         release_capacity=_release_delivery_capacity,
         pending_delivery_count=_pending_delivery_payload_count,
         saturation_label="usage delivery",
-        fallback_message="Webhook executor shut down, falling back to synchronous delivery",
+        fallback_message="Webhook submission failed, falling back to synchronous delivery",
     )
 
 
@@ -458,48 +480,41 @@ def _enqueue_webhook_delivery(
         raise
 
     pending_report = admit_pending_report()
+    claim_lock = threading.Lock()
+    claimed = False
+
+    def try_claim_delivery() -> bool:
+        nonlocal claimed
+        with claim_lock:
+            if claimed:
+                return False
+            claimed = True
+            return True
+
+    deliver = partial(
+        _post_admitted_webhook_with_retry,
+        url,
+        bearer_credential,
+        payload,
+        proxy_log_path,
+        log_type,
+        pending_report,
+        delivery_outcome_callback,
+        release_capacity,
+        try_claim_delivery,
+    )
     try:
-        executor.submit(
-            _post_admitted_webhook_with_retry,
-            url,
-            bearer_credential,
-            payload,
-            proxy_log_path,
-            log_type,
-            pending_report,
-            delivery_outcome_callback,
-            release_capacity,
-        )
+        executor.submit(deliver)
     except RuntimeError:
-        # Executor shut down (done() already called during drain).
-        fallback_started = False
-        try:
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                fallback_message,
-                type=log_type,
-                url=url,
-            )
-            fallback_started = True
-            _post_webhook_with_retry(
-                url,
-                bearer_credential,
-                payload,
-                proxy_log_path,
-                log_type,
-                pending_report,
-                delivery_outcome_callback=delivery_outcome_callback,
-            )
-        except Exception:
-            if not fallback_started:
-                pending_report.release()
-            raise
-        finally:
-            release_capacity()
+        # submit() can queue work before Thread.start() raises. Only one
+        # invocation may own delivery, its callback, and counter cleanup.
+        deliver(fallback_message=fallback_message)
     except Exception:
-        pending_report.release()
-        release_capacity()
+        if try_claim_delivery():
+            try:
+                pending_report.release()
+            finally:
+                release_capacity()
         raise
     return True
 

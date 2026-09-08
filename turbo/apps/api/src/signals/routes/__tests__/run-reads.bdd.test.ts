@@ -2742,6 +2742,8 @@ describe("RUN-04: agent run telemetry families", () => {
             runId,
             cliAgentType: "claude-code",
             sessionId: "bdd-session-1",
+            piModelConfigGeneration: "unknown",
+            piModelConfigLegacyApi: "unknown",
             environmentShadowClassification: "mixed_difference",
             environmentShadowLegacyOnlyCountBucket: "2_4",
             environmentShadowCandidateOnlyCountBucket: "1",
@@ -2910,6 +2912,8 @@ describe("RUN-04: agent run telemetry families", () => {
       "environmentShadowClassification",
     );
     expect(contextRead.body).not.toHaveProperty("agentExecutionAuthority");
+    expect(contextRead.body).not.toHaveProperty("piModelConfigGeneration");
+    expect(contextRead.body).not.toHaveProperty("piModelConfigLegacyApi");
     expect(contextRead.body).not.toHaveProperty(
       "agentExecutionAuthorityClassification",
     );

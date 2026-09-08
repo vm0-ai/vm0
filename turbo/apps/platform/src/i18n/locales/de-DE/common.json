@@ -1875,13 +1875,16 @@
       "agentSuggestions": "Agenten",
       "configureModel": "Modell konfigurieren",
       "create": {
-        "chooseStyle": "Stil wählen",
-        "chooseTemplate": "Vorlage wählen",
+        "addStyle": "Stil hinzufügen",
+        "addTemplate": "Vorlage hinzufügen",
+        "chooseType": "Typ auswählen",
+        "description": "Präsentationen, Videos und Bilder",
         "exit": "Erstellungsmodus verlassen",
         "image": "Bild erstellen",
         "imagePlaceholder": "Beschreibe das gewünschte Bild…",
         "presentation": "Präsentation erstellen",
         "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
+        "question": "Was möchtest du möglich machen?",
         "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
         "title": "Erstellen",
         "video": "Video erstellen",
@@ -2179,7 +2182,6 @@
     "run": {
       "automatedRun": "Automatisierte Ausführung",
       "collapseGroupedHistory": "Gruppierten Ausführungsverlauf einklappen",
-      "collapseHistoryMessage": "Nachricht im Arbeitsverlauf einklappen: {{message}}",
       "collapseWorkHistory": "Arbeitsverlauf einklappen",
       "creditUsage": "Credit-Nutzung",
       "done": {
@@ -2221,6 +2223,9 @@
       "keepGoingAt": "Fortsetzen · {{timestamp}}",
       "modelChangedTo": "Modell wurde auf {{model}} geändert",
       "queueEllipsis": "In Warteschlange...",
+      "relatedArtifactCount_one": "{{formattedCount}} Artefakt",
+      "relatedArtifactCount_other": "{{formattedCount}} Artefakte",
+      "relatedArtifacts": "Zugehörige Artefakte",
       "selectedModelAppliesAfterCurrentRun": "Ihr ausgewähltes {{model}}-Modell wird nach dieser Ausführung wirksam",
       "thinking": {
         "assembling": "Teile werden zusammengesetzt...",

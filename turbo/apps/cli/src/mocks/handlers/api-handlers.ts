@@ -227,7 +227,7 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/connectors", () => {
+  http.get("https://www.okou.ai/api/connectors", () => {
     return HttpResponse.json(
       {
         connectors: [],
@@ -244,13 +244,13 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
-  http.get("https://app.vm0.ai/api/connector-catalog", () => {
+  http.get("https://app.okou.ai/api/connector-catalog", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalog() },
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/connector-catalog", () => {
+  http.get("https://www.okou.ai/api/connector-catalog", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalog() },
       { status: 200 },
@@ -264,13 +264,13 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
-  http.get("https://app.vm0.ai/api/connector-catalog/status", () => {
+  http.get("https://app.okou.ai/api/connector-catalog/status", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/connector-catalog/status", () => {
+  http.get("https://www.okou.ai/api/connector-catalog/status", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalogStatus },
       { status: 200 },
@@ -289,7 +289,7 @@ export const apiHandlers = [
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/connectors/:connectorSlug/manual-grant",
+    "https://app.okou.ai/api/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
@@ -301,7 +301,7 @@ export const apiHandlers = [
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/connectors/:connectorSlug/manual-grant",
+    "https://www.okou.ai/api/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(

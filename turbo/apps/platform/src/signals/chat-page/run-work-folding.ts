@@ -42,7 +42,6 @@ export interface RunWorkSection {
   readonly stepCount: number;
   readonly hiddenGroups: ChatEventGroup[];
   readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
-  readonly previewMessages: readonly EnrichedChatEvent[];
   readonly remainingArtifactCards: readonly RunWorkArtifactCard[];
   readonly startTime: number;
   readonly endTime?: number;
@@ -51,7 +50,7 @@ export interface RunWorkSection {
 type RunWorkArtifactCard = Extract<
   MarkdownCardRef,
   { readonly kind: "artifact" }
-> & { readonly tree: Root };
+> & { readonly label?: string; readonly tree: Root };
 
 export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
@@ -108,6 +107,26 @@ function isRunWorkMessage(event: EnrichedChatEvent): boolean {
   return event.eventType === "output.message";
 }
 
+function artifactNodeText(node: Element): string {
+  return node.children
+    .map((child) => {
+      if (child.type === "text") {
+        return child.value;
+      }
+      return child.type === "element" ? artifactNodeText(child) : "";
+    })
+    .join("");
+}
+
+function artifactNodeLabel(node: Element): string | undefined {
+  const label =
+    node.tagName === "img" && typeof node.properties.alt === "string"
+      ? node.properties.alt
+      : artifactNodeText(node);
+  const normalized = label.trim().replace(/\s+/g, " ");
+  return normalized || undefined;
+}
+
 function artifactCardsInTree(
   tree: Root | undefined,
 ): readonly RunWorkArtifactCard[] {
@@ -117,8 +136,10 @@ function artifactCardsInTree(
   const cards: RunWorkArtifactCard[] = [];
   const visit = (node: Root | Element): void => {
     if (node.type === "element" && node.data?.card?.kind === "artifact") {
+      const label = artifactNodeLabel(node);
       cards.push({
         ...node.data.card,
+        ...(label === undefined ? {} : { label }),
         tree: { type: "root", children: [node] },
       });
       return;
@@ -626,7 +647,6 @@ function foldRunWorkGroup(
       stepCount,
       hiddenGroups: groupEventsByRole(hiddenEvents),
       hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
-      previewMessages: outputMessages.slice(-4, -1),
       remainingArtifactCards: remainingArtifactCards(outputMessages),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),

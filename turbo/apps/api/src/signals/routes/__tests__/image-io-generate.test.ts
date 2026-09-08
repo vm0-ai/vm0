@@ -1115,6 +1115,7 @@ describe("POST /api/image-io/generate", () => {
       "image",
       fixture.userId,
     );
+    // A persisted job without brand metadata retains its historical CDN identity.
     await removeBuiltInGenerationPublicBrandFixture(generationId);
     await postFalWebhook(app, observedRequestUrl, {
       images: [
@@ -2816,7 +2817,7 @@ describe("POST /api/image-io/generate", () => {
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),
-      "public-brand": "vm0",
+      "public-brand": "okou",
       "user-id": encodeURIComponent(fixture.userId),
     });
     expect(putInput.ContentType).toBe("image/jpeg");

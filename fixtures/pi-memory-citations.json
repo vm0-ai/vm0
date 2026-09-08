@@ -41,8 +41,18 @@
       ],
       "visibleText": "abc",
       "entries": [
-        { "path": "a.md", "lineStart": 1, "lineEnd": 1, "note": "one" },
-        { "path": "b.md", "lineStart": 3, "lineEnd": 5, "note": "two" }
+        {
+          "path": "a.md",
+          "lineStart": 1,
+          "lineEnd": 1,
+          "note": "one"
+        },
+        {
+          "path": "b.md",
+          "lineStart": 3,
+          "lineEnd": 5,
+          "note": "two"
+        }
       ],
       "rolloutIds": [
         "019c6e27-e55b-73d1-87d8-4e01f1f75043",
@@ -55,7 +65,14 @@
         "<oai-mem-citation><citation_entries>x:1-2|note=[n]</citation_entries></oai-mem-citation>"
       ],
       "visibleText": "",
-      "entries": [{ "path": "x", "lineStart": 1, "lineEnd": 2, "note": "n" }],
+      "entries": [
+        {
+          "path": "x",
+          "lineStart": 1,
+          "lineEnd": 2,
+          "note": "n"
+        }
+      ],
       "rolloutIds": []
     },
     {
@@ -64,7 +81,14 @@
         "visible<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries>"
       ],
       "visibleText": "visible",
-      "entries": [{ "path": "x", "lineStart": 1, "lineEnd": 1, "note": "n" }],
+      "entries": [
+        {
+          "path": "x",
+          "lineStart": 1,
+          "lineEnd": 1,
+          "note": "n"
+        }
+      ],
       "rolloutIds": []
     },
     {
@@ -80,7 +104,14 @@
         "a</oai-mem-citation>b<oai-mem-citation>outer<oai-mem-citation><citation_entries>x:1-1|note=[n]</citation_entries></oai-mem-citation>c</oai-mem-citation>d"
       ],
       "visibleText": "abcd",
-      "entries": [{ "path": "x", "lineStart": 1, "lineEnd": 1, "note": "n" }],
+      "entries": [
+        {
+          "path": "x",
+          "lineStart": 1,
+          "lineEnd": 1,
+          "note": "n"
+        }
+      ],
       "rolloutIds": []
     },
     {
@@ -96,7 +127,12 @@
           "lineEnd": 6,
           "note": "trimmed"
         },
-        { "path": "good", "lineStart": 7, "lineEnd": 8, "note": "ok" }
+        {
+          "path": "good",
+          "lineStart": 7,
+          "lineEnd": 8,
+          "note": "ok"
+        }
       ],
       "rolloutIds": ["019c6e27-e55b-73d1-87d8-4e01f1f75043"]
     },
@@ -107,7 +143,12 @@
       ],
       "visibleText": "ab",
       "entries": [
-        { "path": "first", "lineStart": 1, "lineEnd": 1, "note": "kept" }
+        {
+          "path": "first",
+          "lineStart": 1,
+          "lineEnd": 1,
+          "note": "kept"
+        }
       ],
       "rolloutIds": ["019c6e27-e55b-73d1-87d8-4e01f1f75043"]
     },
@@ -117,6 +158,138 @@
       "visibleText": "ab",
       "entries": [],
       "rolloutIds": []
+    }
+  ],
+  "literalCases": [
+    {
+      "name": "inline $OPEN 1",
+      "text": "解释 `$OPEN` suffix ✓",
+      "visibleText": "解释 `$ESCAPED_OPEN` suffix ✓"
+    },
+    {
+      "name": "inline $OPEN 2",
+      "text": "解释 ``$OPEN`` suffix ✓",
+      "visibleText": "解释 ``$ESCAPED_OPEN`` suffix ✓"
+    },
+    {
+      "name": "fence $OPEN ```",
+      "text": "before\n  ```text\n \t$OPEN \n\n ```\nsuffix ✓",
+      "visibleText": "before\n  ```text\n \t$ESCAPED_OPEN \n\n ```\nsuffix ✓"
+    },
+    {
+      "name": "fence $OPEN ~~~~",
+      "text": "before\n  ~~~~text\n \t$OPEN \n\n ~~~~\nsuffix ✓",
+      "visibleText": "before\n  ~~~~text\n \t$ESCAPED_OPEN \n\n ~~~~\nsuffix ✓"
+    },
+    {
+      "name": "fence $OPEN ````",
+      "text": "before\n  ````text\n \t$OPEN \n\n ````\nsuffix ✓",
+      "visibleText": "before\n  ````text\n \t$ESCAPED_OPEN \n\n ````\nsuffix ✓"
+    },
+    {
+      "name": "inline $CLOSE 1",
+      "text": "解释 `$CLOSE` suffix ✓",
+      "visibleText": "解释 `$ESCAPED_CLOSE` suffix ✓"
+    },
+    {
+      "name": "inline $CLOSE 2",
+      "text": "解释 ``$CLOSE`` suffix ✓",
+      "visibleText": "解释 ``$ESCAPED_CLOSE`` suffix ✓"
+    },
+    {
+      "name": "fence $CLOSE ```",
+      "text": "before\n  ```text\n \t$CLOSE \n\n ```\nsuffix ✓",
+      "visibleText": "before\n  ```text\n \t$ESCAPED_CLOSE \n\n ```\nsuffix ✓"
+    },
+    {
+      "name": "fence $CLOSE ~~~~",
+      "text": "before\n  ~~~~text\n \t$CLOSE \n\n ~~~~\nsuffix ✓",
+      "visibleText": "before\n  ~~~~text\n \t$ESCAPED_CLOSE \n\n ~~~~\nsuffix ✓"
+    },
+    {
+      "name": "fence $CLOSE ````",
+      "text": "before\n  ````text\n \t$CLOSE \n\n ````\nsuffix ✓",
+      "visibleText": "before\n  ````text\n \t$ESCAPED_CLOSE \n\n ````\nsuffix ✓"
+    },
+    {
+      "name": "inline eof",
+      "text": "a `$OPEN`",
+      "visibleText": "a `$ESCAPED_OPEN`"
+    },
+    {
+      "name": "fence eof",
+      "text": "~~~\n$OPEN\n~~~",
+      "visibleText": "~~~\n$ESCAPED_OPEN\n~~~"
+    },
+    {
+      "name": "inline real body",
+      "text": "a `$OPEN private/path secret note $CLOSE` suffix",
+      "visibleText": "a `` suffix"
+    },
+    {
+      "name": "fence real body",
+      "text": "a\n```\n$OPEN private/path secret note $CLOSE\n```\nsuffix",
+      "visibleText": "a\n```\n\n```\nsuffix"
+    },
+    {
+      "name": "larger code with nested ticks",
+      "text": "a ``some `$OPEN` body`` suffix",
+      "visibleText": "a ``some `"
+    },
+    {
+      "name": "unclosed span",
+      "text": "a `$OPEN suffix",
+      "visibleText": "a `"
+    },
+    {
+      "name": "unclosed fence",
+      "text": "a\n```\n$OPEN\nsuffix",
+      "visibleText": "a\n```\n"
+    },
+    {
+      "name": "mismatched inline close",
+      "text": "a ``$OPEN` suffix",
+      "visibleText": "a ``"
+    },
+    {
+      "name": "escaped inline opener",
+      "text": "a \\`$OPEN` suffix",
+      "visibleText": "a \\`"
+    },
+    {
+      "name": "ambiguous prose",
+      "text": "a $OPEN suffix",
+      "visibleText": "a "
+    },
+    {
+      "name": "real envelope with code body",
+      "text": "a $OPEN`secret`$CLOSE suffix",
+      "visibleText": "a  suffix"
+    },
+    {
+      "name": "adjacent real envelope",
+      "text": "a `$OPEN`$OPEN private/path secret note $CLOSE suffix",
+      "visibleText": "a `$ESCAPED_OPEN` suffix"
+    },
+    {
+      "name": "two examples",
+      "text": "a `$OPEN` and `$CLOSE` suffix",
+      "visibleText": "a `$ESCAPED_OPEN` and `$ESCAPED_CLOSE` suffix"
+    },
+    {
+      "name": "escaped idempotent",
+      "text": "a `$ESCAPED_OPEN` and `$ESCAPED_CLOSE` suffix",
+      "visibleText": "a `$ESCAPED_OPEN` and `$ESCAPED_CLOSE` suffix"
+    },
+    {
+      "name": "ordinary markdown",
+      "text": "a `hello` and ```code``` suffix",
+      "visibleText": "a `hello` and ```code``` suffix"
+    },
+    {
+      "name": "wide inline delimiter at line start",
+      "text": "```$OPEN``` suffix",
+      "visibleText": "```$ESCAPED_OPEN``` suffix"
     }
   ]
 }

@@ -5,11 +5,11 @@ import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { generatePresignedPutUrl, s3MetadataHeaders } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUT_URL_TTL_SECONDS = 3600;
 
@@ -30,8 +30,7 @@ const init$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       userId: auth.userId,
       filename: body.filename,
-      publicBrand:
-        auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     },
     signal,
   );

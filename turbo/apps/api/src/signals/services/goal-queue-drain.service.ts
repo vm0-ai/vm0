@@ -1,4 +1,5 @@
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
+import type { FeatureSwitchContext } from "@okouai/core";
 import { command } from "ccstate";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 
@@ -28,6 +29,7 @@ import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { resolvePersistedChatThreadModel } from "./chat-thread-model.service";
 import { normalizeGoalObjectiveBrief } from "./goal-objective-brief-normalization.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { shouldUsePiExecution } from "./pi-sandbox-config";
 import {
   modelProviderWriteTypeForLaunch,
   type ModelFirstPin,
@@ -89,6 +91,7 @@ type ModelContext =
       readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
+      readonly piExecution: boolean;
     }
   | {
       readonly ok: false;
@@ -234,7 +237,7 @@ function buildQueueFirstGoalRunInput(args: {
       modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
       selectedModel: modelPin.selectedModel,
     },
-    piExecution: false,
+    piExecution: args.modelContext.piExecution,
     dispatchFailedCallbacks: args.dispatchFailedCallbacks,
     timing: args.timing,
   };
@@ -242,7 +245,10 @@ function buildQueueFirstGoalRunInput(args: {
 
 async function resolveGoalThreadModelContext(
   args: ResolveGoalModelContextArgs,
-): Promise<GoalThreadModelContext> {
+): Promise<{
+  readonly threadModelContext: GoalThreadModelContext;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}> {
   const featureSwitchContext = await args.timing.measure(
     "api_dispatch_pre_create_agent_goal_drain_model_context_load_initial_feature_switches",
     "nested",
@@ -255,7 +261,7 @@ async function resolveGoalThreadModelContext(
     },
     args.timingDimensions,
   );
-  return await args.timing.measure(
+  const threadModelContext = await args.timing.measure(
     "api_dispatch_pre_create_agent_goal_drain_model_context_resolve_persisted_model_policy",
     "nested",
     async () => {
@@ -271,13 +277,15 @@ async function resolveGoalThreadModelContext(
     },
     args.timingDimensions,
   );
+  return { threadModelContext, featureSwitchContext };
 }
 
 async function resolveModelContext(
   args: ResolveGoalModelContextArgs,
   signal: AbortSignal,
 ): Promise<ModelContext> {
-  const threadModelContext = await resolveGoalThreadModelContext(args);
+  const { threadModelContext, featureSwitchContext } =
+    await resolveGoalThreadModelContext(args);
   signal.throwIfAborted();
   if ("status" in threadModelContext) {
     return {
@@ -337,13 +345,22 @@ async function resolveModelContext(
     };
   }
 
+  const piExecution = shouldUsePiExecution({
+    chatThreadId: args.goal.threadId,
+    modelProviderType: effectiveModelProvider,
+    selectedModel,
+    codexServiceTier: runCodexServiceTier,
+    builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
+    featureSwitchContext,
+  });
   return {
     ok: true,
     modelPin: pin,
     effectiveModelProvider,
     builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
-    cliAgentType: providerAdmission.cliAgentType,
+    cliAgentType: piExecution ? "pi" : providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
+    piExecution,
   };
 }
 

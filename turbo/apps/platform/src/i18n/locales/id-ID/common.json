@@ -1872,13 +1872,16 @@
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
       "create": {
-        "chooseStyle": "Pilih gaya",
-        "chooseTemplate": "Pilih templat",
+        "addStyle": "Tambahkan gaya",
+        "addTemplate": "Tambahkan templat",
+        "chooseType": "Pilih jenis",
+        "description": "Presentasi, video, dan gambar",
         "exit": "Keluar dari mode pembuatan",
         "image": "Buat gambar",
         "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
         "presentation": "Buat presentasi",
         "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
         "title": "Buat",
         "video": "Buat video",
@@ -2176,7 +2179,6 @@
     "run": {
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
-      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {
@@ -2218,6 +2220,9 @@
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefak",
+      "relatedArtifactCount_other": "{{formattedCount}} artefak",
+      "relatedArtifacts": "Artefak terkait",
       "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",

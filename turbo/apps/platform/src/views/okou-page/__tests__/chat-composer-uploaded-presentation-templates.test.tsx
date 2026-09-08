@@ -145,7 +145,7 @@ test("A closed composer does not load uploaded template covers", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -179,7 +179,7 @@ test("Use an uploaded presentation template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -244,7 +244,7 @@ test("Keep the loaded slide visible during rapid preview navigation", async () =
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -323,7 +323,7 @@ test("Keep uploaded-template browsing stable during changes", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -422,7 +422,7 @@ test("Keep workspace template availability current", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 

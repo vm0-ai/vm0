@@ -87,9 +87,9 @@ describe("GET /api/integrations/slack", () => {
     mockEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
     mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
     mockEnv("SECRETS_ENCRYPTION_KEY", "0".repeat(64));
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockEnv("OKOU_API_BACKEND_URL", undefined);
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
       ts: "mock.ts",
@@ -148,14 +148,14 @@ describe("GET /api/integrations/slack", () => {
     expect(response.body.connectUrl).not.toBeNull();
     const connectUrl = new URL(response.body.connectUrl!);
     expect(`${connectUrl.origin}${connectUrl.pathname}`).toBe(
-      "https://api.vm0.ai/api/slack/oauth/connect",
+      "https://api.okou.ai/api/slack/oauth/connect",
     );
     expect(connectUrl.searchParams.get("orgId")).toBe(orgId);
     expect(connectUrl.searchParams.get("userId")).toBe(userId);
-    expect(connectUrl.searchParams.get("publicBrand")).toBe("vm0");
+    expect(connectUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
-  it("returns VM0 install URLs on the API origin when Slack is not installed", async () => {
+  it("returns Okou install URLs on the API origin when Slack is not installed", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId, "org:admin");
@@ -174,11 +174,11 @@ describe("GET /api/integrations/slack", () => {
     expect(response.body.installUrl).not.toBeNull();
     const installUrl = new URL(response.body.installUrl!);
     expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
-      "https://api.vm0.ai/api/slack/oauth/install",
+      "https://api.okou.ai/api/slack/oauth/install",
     );
     expect(installUrl.searchParams.get("orgId")).toBe(orgId);
     expect(installUrl.searchParams.get("userId")).toBe(userId);
-    expect(installUrl.searchParams.get("publicBrand")).toBe("vm0");
+    expect(installUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns Okou install URLs on the Okou API origin", async () => {
@@ -203,7 +203,7 @@ describe("GET /api/integrations/slack", () => {
     expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
       "https://api.okou.ai/api/slack/oauth/install",
     );
-    expect(installUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(installUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns Okou connect URLs on the Okou API origin", async () => {
@@ -238,7 +238,7 @@ describe("GET /api/integrations/slack", () => {
     expect(`${connectUrl.origin}${connectUrl.pathname}`).toBe(
       "https://api.okou.ai/api/slack/oauth/connect",
     );
-    expect(connectUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(connectUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns workspace info for connected user", async () => {
@@ -470,10 +470,10 @@ describe("GET /api/integrations/slack", () => {
     expect(response.body.scopeMismatch).toBeTruthy();
     const reinstallUrl = new URL(response.body.reinstallUrl!);
     expect(`${reinstallUrl.origin}${reinstallUrl.pathname}`).toBe(
-      "https://api.vm0.ai/api/slack/oauth/install",
+      "https://api.okou.ai/api/slack/oauth/install",
     );
     expect(reinstallUrl.searchParams.get("reinstall")).toBe("1");
-    expect(reinstallUrl.searchParams.get("publicBrand")).toBe("vm0");
+    expect(reinstallUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("returns Okou reinstall URLs on the Okou API origin", async () => {
@@ -509,7 +509,7 @@ describe("GET /api/integrations/slack", () => {
       "https://api.okou.ai/api/slack/oauth/install",
     );
     expect(reinstallUrl.searchParams.get("reinstall")).toBe("1");
-    expect(reinstallUrl.searchParams.get("publicBrand")).toBe("okou");
+    expect(reinstallUrl.searchParams.get("publicBrand")).toBeNull();
   });
 
   it("treats null bot_scopes as mismatch (requires reinstall)", async () => {

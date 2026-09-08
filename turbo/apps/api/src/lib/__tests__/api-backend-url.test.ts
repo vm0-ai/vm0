@@ -35,9 +35,9 @@ describe("API backend URL", () => {
 describe("OAuth API origin", () => {
   it("keeps OAuth configured-origin normalization and sibling/web fallbacks", () => {
     const request = new Request("https://request.example.test/oauth");
-    configureApiBackendUrl("https://api.vm0.ai/configured/path");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    expect(getOAuthApiOrigin(request)).toBe("https://api.vm0.ai");
+    configureApiBackendUrl("https://api.okou.ai/configured/path");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    expect(getOAuthApiOrigin(request)).toBe("https://api.okou.ai");
 
     configureApiBackendUrl(undefined);
     mockEnv("OKOU_WEB_URL", "https://www.vm6.ai");

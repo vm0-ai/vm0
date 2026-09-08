@@ -13,12 +13,7 @@ import { env } from "./env";
 // Hono owns CORS for registered API routes directly. Their responses need
 // CORS headers here because they do not pass through a frontend proxy.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
-  new Set([
-    "https://www.vm0.ai",
-    "https://vm0.ai",
-    "https://okou.ai",
-    "https://app.vm7.ai:8443",
-  ]),
+  new Set(["https://okou.ai", "https://app.vm7.ai:8443"]),
 );
 const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
   /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
@@ -54,7 +49,7 @@ export function allowedCorsOrigin(origin: string | undefined): string | null {
     return null;
   }
 
-  if (hostname.endsWith(".vm0.ai") || hostname.endsWith(".okou.ai")) {
+  if (hostname.endsWith(".okou.ai")) {
     return normalizedOrigin;
   }
 

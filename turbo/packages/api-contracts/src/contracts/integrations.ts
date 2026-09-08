@@ -189,7 +189,7 @@ export type IntegrationsFeishuDownloadFileContract =
 /**
  * Integration Feishu file upload — init contract.
  *
- * The CLI uploads to temporary VM0 storage before the API forwards the bytes
+ * The CLI uploads to temporary storage before the API forwards the bytes
  * to Feishu with the organization bot's tenant token.
  */
 const feishuUploadInitBodySchema = z.object({
@@ -767,7 +767,7 @@ export type IntegrationsTelegramDownloadFileContract =
  * Integration Telegram file upload — init contract
  * POST /api/integrations/telegram/upload-file/init
  *
- * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * Requests a pre-signed upload URL for a temporary hosted file. The CLI
  * uploads the file body directly to R2, then the complete route asks Telegram
  * to fetch that file URL with the org-owned bot token.
  * Requires `telegram:write` capability (via OKOU_TOKEN).
@@ -848,7 +848,7 @@ export type IntegrationsTeamsDownloadFileContract =
  * Integration Microsoft Teams file upload — init contract
  * POST /api/integrations/teams/upload-file/init
  *
- * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * Requests a pre-signed upload URL for a temporary hosted file. The CLI
  * uploads the file body directly to R2, then the complete route sends a Teams
  * message with the file attachment and public file URL.
  * Requires `teams:write` capability (via OKOU_TOKEN).
@@ -1033,7 +1033,7 @@ export type IntegrationsGithubDownloadFileContract =
  * Integration GitHub file upload — init contract
  * POST /api/integrations/github/upload-file/init
  *
- * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * Requests a pre-signed upload URL for a temporary hosted file. The CLI
  * uploads the file body directly to R2, then the complete route posts the file
  * URL back to a GitHub issue or pull request comment.
  * Requires `github:write` capability (via OKOU_TOKEN).
@@ -1142,7 +1142,7 @@ export const integrationsGithubUploadCompleteContract = c.router({
  * Integration AgentPhone file upload — init contract
  * POST /api/integrations/phone/upload-file/init
  *
- * Requests a pre-signed upload URL for a VM0-hosted file. The CLI uploads the
+ * Requests a pre-signed upload URL for a hosted file. The CLI uploads the
  * file body directly to R2, then complete sends the public file URL through
  * AgentPhone.
  * Requires `phone:write` capability (via OKOU_TOKEN).

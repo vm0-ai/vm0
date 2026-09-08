@@ -358,7 +358,7 @@ export function materializeRunBootstrapContext(
       }
       case "feature_switch": {
         if (row.featureUserId === null || row.switches === null) {
-          throw new Error("Invalid Zero bootstrap metadata feature-switch row");
+          throw new Error("Invalid bootstrap metadata feature-switch row");
         }
         featureSwitchRows.push({
           userId: row.featureUserId,
@@ -368,16 +368,14 @@ export function materializeRunBootstrapContext(
       }
       case "builtin_connector": {
         if (row.name === null) {
-          throw new Error("Invalid Zero bootstrap metadata connector row");
+          throw new Error("Invalid bootstrap metadata connector row");
         }
         connectorRows.push({ connectorSlug: row.name });
         break;
       }
       case "custom_connector": {
         if (row.id === null || row.permissionNames === null) {
-          throw new Error(
-            "Invalid Zero bootstrap metadata custom connector row",
-          );
+          throw new Error("Invalid bootstrap metadata custom connector row");
         }
         customConnectorRows.push({
           customConnectorId: row.id,
@@ -395,9 +393,7 @@ export function materializeRunBootstrapContext(
       }
       case "permission_grant": {
         if (row.name === null || row.detail === null || row.action === null) {
-          throw new Error(
-            "Invalid Zero bootstrap metadata permission grant row",
-          );
+          throw new Error("Invalid bootstrap metadata permission grant row");
         }
         permissionGrants.push({
           connectorSlug: row.name,

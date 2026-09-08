@@ -29,7 +29,7 @@ function setupNewChat(
   return setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 }
 

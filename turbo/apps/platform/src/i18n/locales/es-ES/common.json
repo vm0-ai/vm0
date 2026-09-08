@@ -1904,13 +1904,16 @@
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
       "create": {
-        "chooseStyle": "Elegir estilo",
-        "chooseTemplate": "Elegir plantilla",
+        "addStyle": "Añadir estilo",
+        "addTemplate": "Añadir plantilla",
+        "chooseType": "Elige un tipo",
+        "description": "Presentaciones, vídeos e imágenes",
         "exit": "Salir del modo de creación",
         "image": "Crear imagen",
         "imagePlaceholder": "Describe la imagen que quieres crear…",
         "presentation": "Crear presentación",
         "presentationPlaceholder": "¿De qué trata tu presentación?",
+        "question": "¿Qué te gustaría hacer realidad?",
         "settingsAdjusted": "Se han ajustado algunas opciones de vídeo para este modelo",
         "title": "Crear",
         "video": "Crear vídeo",
@@ -2215,7 +2218,6 @@
     "run": {
       "automatedRun": "Ejecución automatizada",
       "collapseGroupedHistory": "Contraer el historial de ejecuciones agrupadas",
-      "collapseHistoryMessage": "Contraer mensaje del historial: {{message}}",
       "collapseWorkHistory": "Contraer el historial de trabajo",
       "creditUsage": "Consumo de créditos",
       "done": {
@@ -2263,6 +2265,10 @@
       "keepGoingAt": "Sigue adelante · {{timestamp}}",
       "modelChangedTo": "Modelo cambiado a {{model}}",
       "queueEllipsis": "cola...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefacto",
+      "relatedArtifactCount_many": "{{formattedCount}} artefactos",
+      "relatedArtifactCount_other": "{{formattedCount}} artefactos",
+      "relatedArtifacts": "Artefactos relacionados",
       "selectedModelAppliesAfterCurrentRun": "Tu modelo seleccionado {{model}} entrará en vigor después de esta ejecución",
       "thinking": {
         "assembling": "Ensamblando las piezas...",

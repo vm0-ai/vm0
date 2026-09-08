@@ -1,9 +1,6 @@
 import { createInstance, type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
-import {
-  resolveAssistantNameForHostname,
-  resolveBrandNameForHostname,
-} from "../signals/branding.ts";
+import { ASSISTANT_NAME, BRAND_NAME } from "../signals/branding.ts";
 import {
   DEFAULT_LOCALE,
   DEFAULT_NAMESPACE,
@@ -51,7 +48,6 @@ export async function initializeI18nWithResources(
   initial: InitialLocaleResources,
   signal?: AbortSignal,
 ): Promise<SupportedLocale> {
-  const hostname = location.hostname;
   signal?.throwIfAborted();
   await i18n.init({
     defaultNS: DEFAULT_NAMESPACE,
@@ -59,8 +55,8 @@ export async function initializeI18nWithResources(
     fallbackLng: DEFAULT_LOCALE,
     interpolation: {
       defaultVariables: {
-        assistantName: resolveAssistantNameForHostname(hostname),
-        brandName: resolveBrandNameForHostname(hostname),
+        assistantName: ASSISTANT_NAME,
+        brandName: BRAND_NAME,
       },
       escapeValue: false,
     },

@@ -1,3 +1,4 @@
+import { fetchResource } from "../lib/resource-fetch.ts";
 import {
   SUPPORTED_USER_LOCALES,
   type UserLocale,
@@ -100,7 +101,11 @@ async function loadLocaleResourceNamespace(
   namespace: "agents" | "common",
   signal?: AbortSignal,
 ): Promise<LocaleResourceNamespace> {
-  const response = await fetch(new URL(resourceUrl, location.href), { signal });
+  const response = await fetchResource(
+    new URL(resourceUrl, location.href),
+    {},
+    signal,
+  );
   if (!response.ok) {
     throw new Error(
       `Failed to load ${locale} ${namespace} locale resources (HTTP ${response.status})`,

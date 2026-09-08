@@ -51,6 +51,7 @@ function mockMembersStory(
     readonly email: string;
     readonly role: string;
   }) => void,
+  role: "admin" | "member" = "admin",
 ): {
   readonly addPendingInvitation: (
     invitation: NonNullable<OrgMembersResponse["pendingInvitations"]>[number],
@@ -58,7 +59,7 @@ function mockMembersStory(
 } {
   let response: OrgMembersResponse = {
     name: "Test Org",
-    role: "admin",
+    role,
     createdAt: "2026-01-01T00:00:00Z",
     members: [
       {
@@ -67,7 +68,7 @@ function mockMembersStory(
         firstName: "Alice",
         lastName: "Admin",
         imageUrl: "",
-        role: "admin",
+        role,
         joinedAt: "2026-01-01T00:00:00Z",
       },
       {
@@ -122,7 +123,7 @@ function mockMembersStory(
   context.mocks.data.org({
     id: "org_1",
     name: "Test Org",
-    role: "admin",
+    role,
   });
   context.mocks.api(orgMembersContract.members, ({ respond }) => {
     return respond(200, response);
@@ -236,6 +237,7 @@ function mockMemberInviteEntitlement(
 ): void {
   const response: BillingStatusResponse = {
     tier: invitation?.tier ?? "pro",
+    showUsagePack: required === true,
     ...(required === undefined
       ? {}
       : { memberInviteUsagePackRequired: required }),
@@ -419,6 +421,80 @@ test("Configure a member’s package from People", async () => {
       name: "Usage for Test User",
     }),
   ).toHaveTextContent("20,400 credits · 2% off");
+});
+
+test.each(["pro", "team"])(
+  "Configure an Atom %s plan before purchasing any packages",
+  async (tier) => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true, undefined, {
+      tier,
+      showUsagePack: true,
+      subscriptionStatus: "atom_grant",
+      hasSubscription: false,
+    });
+    mockUsagePackCatalog();
+    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "No usage pack subscription" },
+      });
+    });
+
+    await setupPage({ context, path: "/?settings=people" });
+
+    await expect(screen.findByText("Usage pack")).resolves.toBeVisible();
+    expect(within(rowByEmail("bob@example.com")).getByText("—")).toBeVisible();
+    const email = tier === "pro" ? "alice@example.com" : "bob@example.com";
+    click(screen.getByLabelText(`Actions for ${email}`));
+    click(menuItemByText("Configure member packages"));
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeVisible();
+    const plan = screen.getByRole("article", {
+      name: tier === "pro" ? "Pro plan" : "Team plan",
+    });
+    click(buttonByText("Manage", plan));
+    await expect(
+      screen.findByRole("group", { name: "Member usage" }),
+    ).resolves.toBeVisible();
+  },
+);
+
+test.each([false, undefined])(
+  "Hide People package controls when showUsagePack is %s, even with a subscription",
+  async (showUsagePack) => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true, undefined, { showUsagePack });
+    mockUsagePackManagement();
+
+    await setupPage({ context, path: "/?settings=people" });
+    await expect(screen.findByText("bob@example.com")).resolves.toBeVisible();
+    expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+    click(screen.getByLabelText("Actions for bob@example.com"));
+    expect(
+      queryAllByRoleFast("menuitem").some((item) => {
+        return item.textContent === "Configure member packages";
+      }),
+    ).toBeFalsy();
+  },
+);
+
+test("Keep People package controls restricted to administrators", async () => {
+  mockMembersStory(undefined, "member");
+  mockMemberInviteEntitlement(true);
+  mockUsagePackManagement();
+
+  await setupPage({ context, path: "/?settings=people" });
+  await expect(
+    screen.findByRole("heading", { name: "Preference" }),
+  ).resolves.toBeInTheDocument();
+  expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Actions for bob@example.com"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Actions for alice@example.com"),
+  ).not.toBeInTheDocument();
 });
 
 test("Invite a member without a package when packages are not required", async () => {

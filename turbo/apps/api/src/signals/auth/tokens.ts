@@ -4,10 +4,6 @@ import {
   CAPABILITIES,
   Capability,
 } from "@okouai/api-contracts/contracts/capabilities";
-import {
-  publicBrandSchema,
-  type PublicBrand,
-} from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { z } from "zod";
@@ -39,7 +35,6 @@ const AGENT_EXCLUDED_CAPABILITIES = [
 ] as const satisfies readonly Capability[];
 
 interface OkouTokenOptions {
-  readonly publicBrand?: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
@@ -80,9 +75,6 @@ const okouTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: agentCapabilitiesSchema,
-  // The public brand is presentation-only. Tokens from before this claim and
-  // intentionally unbranded callers keep the permanent VM0 presentation.
-  publicBrand: publicBrandSchema.optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
   customConnectorSourceIds: z
@@ -269,7 +261,6 @@ export function verifyOkouToken(token: string): AgentAuth | null {
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
     capabilities: parsed.data.capabilities,
-    publicBrand: parsed.data.publicBrand ?? "vm0",
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
@@ -365,7 +356,6 @@ function buildOkouTokenClaims(
     runId,
     orgId,
     capabilities,
-    publicBrand: options?.publicBrand ?? "vm0",
     ...(capabilities.includes("computer-use:write") &&
     options?.computerUseHostId
       ? { computerUseHostId: options.computerUseHostId }

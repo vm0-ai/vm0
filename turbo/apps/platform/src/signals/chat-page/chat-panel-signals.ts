@@ -190,8 +190,6 @@ export interface ChatPanelSignals {
   // -- Thread-owned utility sidebar -----------------------------------------
   readonly sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
-  readonly timelineExpandedIds$: Computed<Set<string>>;
-  readonly toggleTimelineExpanded$: Command<void, [string]>;
   readonly copiedEventId$: Computed<string | null>;
   readonly copyEvent$: Command<
     Promise<void>,

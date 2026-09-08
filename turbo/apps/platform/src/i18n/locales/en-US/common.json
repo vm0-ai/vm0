@@ -1875,13 +1875,16 @@
       "agentSuggestions": "Agents",
       "configureModel": "Configure model",
       "create": {
-        "chooseStyle": "Choose style",
-        "chooseTemplate": "Choose template",
+        "addStyle": "Add style",
+        "addTemplate": "Add template",
+        "chooseType": "Choose a type",
+        "description": "Presentations, videos, and images",
         "exit": "Exit create mode",
         "image": "Create image",
         "imagePlaceholder": "Describe the image you want to create…",
         "presentation": "Create presentation",
         "presentationPlaceholder": "What is your presentation about?",
+        "question": "What would you like to make happen?",
         "settingsAdjusted": "Some video settings were adjusted for this model",
         "title": "Create",
         "video": "Create video",
@@ -2179,7 +2182,6 @@
     "run": {
       "automatedRun": "Automated run",
       "collapseGroupedHistory": "Collapse grouped run history",
-      "collapseHistoryMessage": "Collapse history message: {{message}}",
       "collapseWorkHistory": "Collapse work history",
       "creditUsage": "Credit usage",
       "done": {
@@ -2221,6 +2223,9 @@
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
+      "relatedArtifactCount_one": "{{formattedCount}} artifact",
+      "relatedArtifactCount_other": "{{formattedCount}} artifacts",
+      "relatedArtifacts": "Related artifacts",
       "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",

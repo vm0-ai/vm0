@@ -1245,7 +1245,7 @@ def test_oversized_websocket_key_is_rejected_before_base64_decode(monkeypatch) -
 
     monkeypatch.setattr(mitm_addon.base64, "b64decode", fail_decode)
 
-    assert not mitm_addon._is_valid_websocket_key("A" * 25)
+    assert not mitm_addon._is_valid_websocket_key(b"A" * 25)
 
 
 async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(

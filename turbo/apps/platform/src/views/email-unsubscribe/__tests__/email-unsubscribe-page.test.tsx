@@ -69,7 +69,7 @@ test("A user can confirm email unsubscribe", async () => {
   ).resolves.toBeVisible();
   expect(
     screen.getByText(
-      "You will no longer receive system-initiated email notifications from VM0.",
+      "You will no longer receive system-initiated email notifications from Okou.",
     ),
   ).toBeVisible();
 });

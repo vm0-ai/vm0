@@ -250,6 +250,18 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
         model
     );
 
+    // Stored Gen1 payloads from before the writer cutoff remain readable.
+    for api in [
+        "openai-responses",
+        "openai-completions",
+        "openai-codex-responses",
+    ] {
+        let mut legacy_value = serde_json::to_value(&model).unwrap();
+        legacy_value["api"] = json!(api);
+        let legacy: PiModelConfig = serde_json::from_value(legacy_value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(legacy).unwrap(), legacy_value);
+    }
+
     let priority_model_value = json!({
         "provider": "openai",
         "baseUrl": "https://api.openai.com/v1",

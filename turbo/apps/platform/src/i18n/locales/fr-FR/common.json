@@ -1904,13 +1904,16 @@
       "agentSuggestions": "Agents",
       "configureModel": "Configurer le modèle",
       "create": {
-        "chooseStyle": "Choisir un style",
-        "chooseTemplate": "Choisir un modèle",
+        "addStyle": "Ajouter un style",
+        "addTemplate": "Ajouter un modèle",
+        "chooseType": "Choisissez un type",
+        "description": "Présentations, vidéos et images",
         "exit": "Quitter le mode création",
         "image": "Créer une image",
         "imagePlaceholder": "Décrivez l’image à créer…",
         "presentation": "Créer une présentation",
         "presentationPlaceholder": "Quel est le sujet de votre présentation ?",
+        "question": "Que souhaitez-vous réaliser ?",
         "settingsAdjusted": "Certains paramètres vidéo ont été adaptés à ce modèle",
         "title": "Créer",
         "video": "Créer une vidéo",
@@ -2215,7 +2218,6 @@
     "run": {
       "automatedRun": "Exécution automatisée",
       "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
-      "collapseHistoryMessage": "Réduire le message de l'historique : {{message}}",
       "collapseWorkHistory": "Réduire l'historique du travail",
       "creditUsage": "Utilisation du crédit",
       "done": {
@@ -2263,6 +2265,10 @@
       "keepGoingAt": "Continuez · {{timestamp}}",
       "modelChangedTo": "Le modèle a été changé en {{model}}",
       "queueEllipsis": "en file d'attente...",
+      "relatedArtifactCount_one": "{{formattedCount}} artefact",
+      "relatedArtifactCount_many": "{{formattedCount}} artefacts",
+      "relatedArtifactCount_other": "{{formattedCount}} artefacts",
+      "relatedArtifacts": "Artefacts associés",
       "selectedModelAppliesAfterCurrentRun": "Votre modèle sélectionné {{model}} entrera en vigueur après cette exécution",
       "thinking": {
         "assembling": "Assemblage des pièces...",

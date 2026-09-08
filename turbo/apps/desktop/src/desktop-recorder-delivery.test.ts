@@ -24,7 +24,7 @@ function createDependencies(
 ): RecorderDeliveryDependencies {
   let prepared = 0;
   return {
-    apiBaseUrl: "https://api.vm0.ai",
+    apiBaseUrl: "https://api.okou.ai",
     appUrl: "https://app.okou.ai",
     userId: "user_1",
     readFile: vi.fn(async () => new Blob([new Uint8Array([1, 2, 3, 4])])),

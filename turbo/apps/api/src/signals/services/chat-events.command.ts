@@ -18,7 +18,6 @@ import {
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import {
   chatEvents,
@@ -32,7 +31,6 @@ import { and, asc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
-import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -164,6 +162,7 @@ import {
   type TemplateUsageLogContext,
 } from "../../lib/template-usage-log";
 import type { GenerationTemplateIdentity } from "@okouai/core/generation-template-identity";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -3092,7 +3091,7 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   readonly publicBrand: PublicBrand;
 }): Promise<string> {
   const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), params.publicBrand);
+  const appUrl = env("APP_URL");
   const usageUrl = `${appUrl}/?settings=usage`;
   const billingUrl = `${appUrl}/?settings=billing&billingView=plans`;
   if (capabilities?.canBuyCredits !== true) {
@@ -3922,7 +3921,7 @@ export const handleSendChatEvent$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         apiStartTime,
-        publicBrand: get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
         timing,
       },
       signal,

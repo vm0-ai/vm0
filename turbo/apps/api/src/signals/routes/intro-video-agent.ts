@@ -34,6 +34,7 @@ import {
   submitIntroVideoAgentJob$,
 } from "../services/intro-video-agent.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const generateBody$ = bodyResultOf(introVideoAgentContract.generate);
 const statusParams$ = pathParamsOf(introVideoAgentContract.get);
@@ -223,7 +224,7 @@ const postGenerate$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId: auth.runId,
-      publicBrand: auth.publicBrand,
+      publicBrand: PUBLIC_BRAND,
       input,
       options: {
         ...input,

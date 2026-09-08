@@ -6,7 +6,6 @@ import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
@@ -285,5 +284,5 @@ export async function resolveAgentPhoneAuditLogsUrl(
   if (!enabled) {
     return undefined;
   }
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities/${encodeURIComponent(args.runId)}`;
+  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }

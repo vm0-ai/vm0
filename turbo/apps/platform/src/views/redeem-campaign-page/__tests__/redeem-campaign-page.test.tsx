@@ -29,7 +29,7 @@ test("A billing outage shows a temporary redemption error", async () => {
   await setupPage({
     context,
     path: "/redeem/summer-credits",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(
@@ -56,7 +56,7 @@ test("A non-admin cannot redeem workspace campaign credits", async () => {
   await setupPage({
     context,
     path: "/redeem/summer-credits",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(
@@ -80,7 +80,7 @@ test("A processing redemption confirms payment", async () => {
   await setupPage({
     context,
     path: "/redeem/summer-credits",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(screen.findByText("Payment received")).resolves.toBeVisible();
@@ -100,7 +100,7 @@ test("A ready credit campaign links to checkout", async () => {
   await setupPage({
     context,
     path: "/redeem/summer-credits",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(screen.findByText("Claim your credits")).resolves.toBeVisible();
@@ -116,7 +116,7 @@ test("A Stripe success return confirms credits immediately", async () => {
   await setupPage({
     context,
     path: "/redeem/summer-credits?stripe=success",
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await expect(screen.findByText("Payment successful")).resolves.toBeVisible();

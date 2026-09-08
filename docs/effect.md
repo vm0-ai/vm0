@@ -1,6 +1,6 @@
 # React Effects and ccstate Commands
 
-This guide defines where React and ccstate work should run in the VM0
+This guide defines where React and ccstate work should run in the Okou
 platform. It covers effects in the broad sense: any process that changes state
 outside the current calculation, performs I/O, acquires a resource, or depends
 on a lifecycle boundary.

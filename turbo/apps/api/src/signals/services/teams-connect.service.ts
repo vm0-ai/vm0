@@ -1,11 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { guaranteedConnectorProvidedBindingNames } from "@okouai/api-contracts/contracts/connector-schemas";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -145,7 +141,7 @@ function buildTeamsBrowserConnectUrl(args: {
   setOptionalParam(params, "threadId", args.threadId);
   setOptionalParam(params, "orgId", args.orgId);
   setOptionalParam(params, "botName", args.botName);
-  return `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/settings/teams?${params.toString()}`;
+  return `${env("APP_URL")}/settings/teams?${params.toString()}`;
 }
 
 function buildTeamsOauthConnectUrl(args: {
@@ -153,10 +149,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly userId: string;
   readonly publicBrand: PublicBrand;
 }): string {
-  const url = new URL(
-    "/api/teams/oauth/connect",
-    apiUrlForPublicBrand(internalApiBaseUrl(), args.publicBrand),
-  );
+  const url = new URL("/api/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
   return url.toString();
@@ -760,9 +753,8 @@ type BindTeamsInstallationResult =
 
 function buildTeamsWelcomeCard(
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): TeamsAdaptiveCard {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const mentionName = teamsBotDisplayName(installation.botName);
   return {
     type: "AdaptiveCard",
@@ -867,10 +859,8 @@ async function notifyTeamsConnect(
       serviceUrl: args.serviceUrl,
       conversationId,
       tenantId: args.tenantId,
-      text: `You're connected to ${
-        publicBrandPresentation(args.publicBrand).assistantName
-      }!`,
-      card: buildTeamsWelcomeCard(args.installation, args.publicBrand),
+      text: `You're connected to ${PUBLIC_BRAND_PRESENTATION.assistantName}!`,
+      card: buildTeamsWelcomeCard(args.installation),
     },
     signal,
   );

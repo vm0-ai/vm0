@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-subscriptions";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { z } from "zod";
 
 import { mockOptionalEnv } from "../../../../lib/env";
@@ -16,6 +15,7 @@ import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
+import { openRouterModelContractError } from "./openrouter-model-contract";
 import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -45,7 +45,10 @@ interface TruncatedOpenRouterCompletion {
   readonly finishReason: "length";
 }
 
-type OpenRouterCompletionResult = string | TruncatedOpenRouterCompletion;
+type OpenRouterCompletionResult =
+  | string
+  | TruncatedOpenRouterCompletion
+  | Response;
 
 interface StoredS3Object {
   readonly bucket: string;
@@ -233,10 +236,9 @@ export function createChatCallbacksApi(context: TestContext) {
     });
   }
 
-  function pushSubscriptionsClient(publicBrand: PublicBrand) {
+  function pushSubscriptionsClient() {
     return setupAppWithRoutes({
-      baseUrl:
-        publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+      baseUrl: "https://api.okou.ai",
       context,
       routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);
@@ -268,13 +270,10 @@ export function createChatCallbacksApi(context: TestContext) {
       };
     },
 
-    async registerPushSubscription(
-      actor: ApiTestUser,
-      publicBrand: PublicBrand = "vm0",
-    ): Promise<string> {
+    async registerPushSubscription(actor: ApiTestUser): Promise<string> {
       const endpoint = `https://push.example.test/send/${randomUUID()}`;
       await accept(
-        pushSubscriptionsClient(publicBrand).register({
+        pushSubscriptionsClient().register({
           headers: authenticate(context, actor),
           body: {
             endpoint,
@@ -325,7 +324,14 @@ export function createChatCallbacksApi(context: TestContext) {
           const body = openRouterCompletionBodySchema.parse(
             await request.json(),
           );
+          const contractError = openRouterModelContractError(body);
+          if (contractError) {
+            return contractError;
+          }
           const result = await handler(body);
+          if (result instanceof Response) {
+            return result;
+          }
           return HttpResponse.json({
             choices: [
               typeof result === "string"

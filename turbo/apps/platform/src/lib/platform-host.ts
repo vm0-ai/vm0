@@ -1,6 +1,5 @@
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
-  isPlatformProductionHostname,
+  isOkouProductionHostname,
   okouAppWorkerPreviewJobRef,
 } from "@okouai/core/platform-service-origin";
 
@@ -73,22 +72,12 @@ export function resolvePlatformServiceStatusConfig(
   hostname: string,
 ): PlatformServiceStatusConfig | null {
   const normalizedHostname = hostname.toLowerCase();
-  return normalizedHostname === "app.vm0.ai" ||
-    normalizedHostname === "app.okou.ai"
+  return normalizedHostname === "app.okou.ai"
     ? {
         issuesUrl: PRODUCTION_SERVICE_STATUS_ISSUES_URL,
         pageBaseUrl: PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL,
       }
     : null;
-}
-
-function resolvePlatformPublicBrand(
-  hostname: string | null,
-): PlatformPublicBrand {
-  if (!hostname) {
-    return "vm0";
-  }
-  return isOkouHostname(hostname) ? "okou" : "vm0";
 }
 
 export function resolvePlatformEnvironment(): PlatformEnvironment {
@@ -101,7 +90,7 @@ export function resolvePlatformEnvironment(): PlatformEnvironment {
     return "development";
   }
 
-  return isPlatformProductionHostname(hostname) ? "production" : "preview";
+  return isOkouProductionHostname(hostname) ? "production" : "preview";
 }
 
 function optionalBuildValue(value: unknown): string | null {
@@ -134,11 +123,9 @@ export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryC
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const clientTelemetryConfig = resolvePlatformClientTelemetryConfig();
   const { environment } = clientTelemetryConfig;
-  const publicBrand = resolvePlatformPublicBrand(browserHostname());
-  const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
-    "https://static.vm0.io",
-    publicBrand,
-  );
+  // Only okou.ai serves the app, so every page renders the Okou brand.
+  const publicBrand: PlatformPublicBrand = "okou";
+  const publicStaticAssetsBaseUrl = "https://static.okou.io";
 
   if (environment === "production") {
     return {

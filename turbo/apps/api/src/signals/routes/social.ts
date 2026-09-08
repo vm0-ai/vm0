@@ -11,11 +11,11 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 import { socialKitRequest$ } from "../services/social.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   createSocialKitDownload$,
   getSocialKitDownload$,
@@ -112,8 +112,7 @@ const createSocialKitDownloadInner$ = command(
     if (!bodyResult.ok) {
       return agentSafeResponse(auth, bodyResult.response);
     }
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const reconciliationSignal = AbortSignal.timeout(
       SOCIALKIT_RECONCILIATION_TIMEOUT_MS,
     );

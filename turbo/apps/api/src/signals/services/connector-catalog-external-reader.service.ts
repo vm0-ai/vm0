@@ -3,7 +3,6 @@ import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/cont
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -672,17 +671,13 @@ function effectiveConnectors(args: {
 
 function iconForCatalog(
   connector: ConnectorCatalogArtifactConnector,
-  publicBrand: PublicBrand,
 ): PublicConnectorCatalogIcon {
   const key = connector.icon.key;
   if (!isConnectorCatalogIconKey(key)) {
     throw new Error(`Invalid connector catalog icon key "${key}"`);
   }
   return {
-    url: staticUrlForPublicBrand(
-      `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
-      publicBrand,
-    ),
+    url: `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}
@@ -693,7 +688,6 @@ function iconForCatalog(
 function referenceMetadataForCatalog(
   catalog: AcceptedConnectorCatalogSnapshot,
   connectorSlugs: readonly string[],
-  publicBrand: PublicBrand,
 ): readonly ConnectorCatalogReferenceMetadata[] {
   const requestedSlugs = new Set(connectorSlugs);
   return catalog.artifact.connectors.flatMap((connector) => {
@@ -702,7 +696,7 @@ function referenceMetadataForCatalog(
           {
             connectorSlug: connector.slug,
             label: connector.label,
-            icon: iconForCatalog(connector, publicBrand),
+            icon: iconForCatalog(connector),
           },
         ]
       : [];
@@ -783,13 +777,12 @@ function authMethodDetailForCatalog(
 
 function connectorCatalogItem(
   effective: EffectiveConnector,
-  publicBrand: PublicBrand,
 ): PublicConnectorCatalogItem {
   return {
     slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
-    icon: iconForCatalog(effective.connector, publicBrand),
+    icon: iconForCatalog(effective.connector),
     category: effective.connector.category,
     generation: [...effective.connector.generation],
     tags: [...effective.connector.tags],
@@ -800,10 +793,9 @@ function connectorCatalogItem(
 
 function connectorCatalogDetail(
   effective: EffectiveConnector,
-  publicBrand: PublicBrand,
 ): PublicConnectorCatalogDetail {
   return {
-    ...connectorCatalogItem(effective, publicBrand),
+    ...connectorCatalogItem(effective),
     authMethods: effective.authMethods.map(authMethodDetailForCatalog),
   };
 }
@@ -811,13 +803,10 @@ function connectorCatalogDetail(
 export function getConnectorCatalogResolutionDetail(
   connector: ConnectorCatalogArtifactConnector,
 ): PublicConnectorCatalogDetail {
-  return connectorCatalogDetail(
-    {
-      connector,
-      authMethods: connector.authMethods,
-    },
-    "vm0",
-  );
+  return connectorCatalogDetail({
+    connector,
+    authMethods: connector.authMethods,
+  });
 }
 
 export function listAcceptedConnectorCatalogAvailableSlugs(args: {
@@ -918,7 +907,7 @@ function connectorCatalogStatusItem(args: {
   readonly connection: ConnectorCatalogConnection | null;
   readonly publicBrand: PublicBrand;
 }): PublicConnectorCatalogStatusItem {
-  const detail = connectorCatalogDetail(args.effective, args.publicBrand);
+  const detail = connectorCatalogDetail(args.effective);
   const response = args.connection?.response ?? null;
   const effectiveMethod = response
     ? args.effective.authMethods.find((method) => {
@@ -1025,7 +1014,7 @@ export async function listExternalPublicConnectorCatalog(
   });
   return {
     connectors: connectors.map((connector) => {
-      return connectorCatalogItem(connector, args.publicBrand);
+      return connectorCatalogItem(connector);
     }),
     categoryMetadata: categoryMetadataForConnectors(catalog, connectors),
   };
@@ -1226,7 +1215,6 @@ function connectorCatalogStatusRead(args: {
     referenceMetadata: referenceMetadataForCatalog(
       args.catalog,
       args.referenceConnectorSlugs,
-      args.publicBrand,
     ),
   };
 }
@@ -1252,7 +1240,7 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
   return {
     connectorSlug: entry.connector.slug,
     label: entry.connector.label,
-    icon: iconForCatalog(entry.connector, args.publicBrand),
+    icon: iconForCatalog(entry.connector),
     permissionCount: permissions.length,
     permissions: permissions.map((permission) => {
       return { ...permission };

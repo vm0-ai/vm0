@@ -6,8 +6,8 @@ import {
 } from "@okouai/api-contracts/contracts/teams-bot";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
 } from "@okouai/core/public-brand";
 
 import {
@@ -19,7 +19,7 @@ import { env } from "../../lib/env";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { logger } from "../../lib/log";
 import { teamsBotDisplayName } from "../../lib/teams-official-app";
-import { authorization$, publicBrand$, request$ } from "../context/hono";
+import { authorization$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
   sendTeamsMessage,
@@ -92,8 +92,8 @@ function buildTeamsLoginPromptCard(args: {
   };
 }
 
-function queueUrl(publicBrand: PublicBrand): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/?queue=1`;
+function queueUrl(): string {
+  return `${env("APP_URL")}/?queue=1`;
 }
 
 function buildTeamsQueueText(url: string): string {
@@ -145,10 +145,7 @@ type TeamsInstallWelcomeActivity = Extract<
 >;
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
-function dispatchReplyContent(
-  dispatch: TeamsDispatchReplySource,
-  publicBrand: PublicBrand,
-): {
+function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
   readonly replyText: string | null;
   readonly card?: TeamsAdaptiveCard;
 } {
@@ -168,7 +165,7 @@ function dispatchReplyContent(
     };
   }
   if (dispatch.kind === "queued") {
-    const url = queueUrl(publicBrand);
+    const url = queueUrl();
     return {
       replyText: buildTeamsQueueText(url),
       card: buildTeamsQueueCard({ url }),
@@ -207,16 +204,15 @@ function buildTeamsInstallWelcomeMention(
 function buildTeamsInstallWelcomeContent(
   activity: TeamsInstallWelcomeActivity,
   installation: TeamsInstallation,
-  publicBrand: PublicBrand,
 ): {
   readonly text: string;
   readonly entities?: readonly TeamsMentionEntity[];
 } {
-  const { brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   const botName = teamsBotDisplayName(installation.botName);
   const mention = buildTeamsInstallWelcomeMention(activity, botName);
   if (!mention) {
-    return { text: teamsWelcomeText(installation, publicBrand) };
+    return { text: teamsWelcomeText(installation) };
   }
 
   return {
@@ -251,7 +247,6 @@ const sendTeamsInstallWelcome$ = command(
     const welcome = buildTeamsInstallWelcomeContent(
       welcomeActivity,
       args.installation,
-      args.publicBrand,
     );
     const reply = await sendTeamsMessage(
       {
@@ -301,10 +296,7 @@ const dispatchTeamsMessageAndReply$ = command(
     );
     signal.throwIfAborted();
 
-    const { replyText, card } = dispatchReplyContent(
-      dispatch,
-      args.publicBrand,
-    );
+    const { replyText, card } = dispatchReplyContent(dispatch);
     if (!replyText) {
       return;
     }
@@ -336,7 +328,7 @@ const dispatchTeamsMessageAndReply$ = command(
 
 const handleTeamsBot$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const apiStartTime = now();
   const bodyText = await request.text();
   signal.throwIfAborted();

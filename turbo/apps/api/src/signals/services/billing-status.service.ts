@@ -135,6 +135,7 @@ interface BillingStatusResponse {
   concurrencyPurchaseReviewAvailable: boolean;
   canBuyCredits: boolean;
   memberInviteUsagePackRequired: boolean;
+  showUsagePack: boolean;
   memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -581,6 +582,7 @@ function billingStatusResponse(args: {
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
   memberInviteUsagePackRequired: boolean;
+  showUsagePack: boolean;
   memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -612,6 +614,7 @@ function billingStatusResponse(args: {
     concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
     memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
+    showUsagePack: args.showUsagePack,
     memberInvitationAllowed: args.memberInvitationAllowed,
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
@@ -767,6 +770,7 @@ export function orgBillingStatus(
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       memberInviteUsagePackRequired:
         memberInviteUsagePackRequired(capabilities),
+      showUsagePack: capabilities?.showUsagePack === true,
       memberInvitationAllowed: memberInvitationAllowed(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,

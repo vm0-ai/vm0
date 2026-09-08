@@ -1,4 +1,4 @@
-//! Content-free accounting from the private maintenance child, including failure.
+//! Content-free compatibility journal from the private maintenance child.
 
 use crate::{constants, error::AgentError, run_context::GuestRuntime};
 use api_contracts::generated::types::webhooks::agent::pi_memory_phase2::usage::Request;
@@ -11,7 +11,8 @@ fn invalid_usage() -> AgentError {
 }
 
 /// Forward the child's bounded private usage journal before terminal reporting.
-/// The API binds it to the immutable callback and deduplicates each attempt.
+/// The API validates its immutable private binding and acknowledges it; the
+/// runner proxy is the sole model-usage ledger writer, including on failure.
 pub async fn report_for_runtime(runtime: &GuestRuntime) -> Result<(), AgentError> {
     if !matches!(runtime.config.framework, crate::env::Framework::Pi)
         || runtime.config.pi_launch_config.is_empty()

@@ -86,7 +86,7 @@ test("Code-copy confirmations belong to the selected block", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const [firstBlock, secondBlock] = await waitFor(() => {
@@ -165,7 +165,7 @@ test("External links open safely in a new context", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("Example website");
@@ -224,7 +224,7 @@ test("Repeated rendering keeps rich message content stable", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const heading = await screen.findByRole("heading", {
@@ -293,7 +293,7 @@ test("A user can copy a code block", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const code = await waitFor(() => {

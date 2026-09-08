@@ -169,9 +169,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const phase = useGet(thread.sharing.phase$);
   const start = useSet(thread.sharing.start$);
   const pageSignal = useGet(pageSignal$);
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-  if (!enabled || phase !== "idle") {
+  if (phase !== "idle") {
     return null;
   }
   return (

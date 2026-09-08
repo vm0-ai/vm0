@@ -101,7 +101,7 @@ If a component only needs the most recently resolved value and does not need to 
 
 ```tsx
 // ✅ Only 1 render per Promise transition, and no flash back to undefined during loading
-const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
+const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Okou";
 ```
 
 Only use `useLoadable` / `useResolved` when the component **needs to react to the loading state** (e.g. to show a skeleton).

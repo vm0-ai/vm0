@@ -20,10 +20,7 @@ import {
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
-import {
-  agentDisplayNameForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
+import { agentDisplayName } from "@okouai/core/public-brand";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -294,20 +291,14 @@ function forbidden(message: string) {
   };
 }
 
-function buildAgentIdentityPrompt(
-  agent: AgentRunRecord,
-  publicBrand: PublicBrand | undefined,
-): string | null {
+function buildAgentIdentityPrompt(agent: AgentRunRecord): string | null {
   const parts: string[] = [];
 
-  const displayName = publicBrand
-    ? agentDisplayNameForPublicBrand({
-        agentId: agent.id,
-        defaultAgentId: agent.defaultAgentId,
-        displayName: agent.displayName,
-        publicBrand,
-      })
-    : agent.displayName;
+  const displayName = agentDisplayName({
+    agentId: agent.id,
+    defaultAgentId: agent.defaultAgentId,
+    displayName: agent.displayName,
+  });
   if (displayName) {
     parts.push(`Your name is ${displayName}.`);
   }
@@ -503,7 +494,7 @@ function buildAgentToolsPrompt(args: {
     "- Current weather, forecasts, and recent history: use `okou weather --help`.",
     "- Presentation page images: use `okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>` to render any presentation source to ordered `page-001.png` files at one fixed page size. PPT, PPTX, and PDF are rasterised through LibreOffice and Poppler; HTML pages, layout directories, and URLs are captured through a browser, one image per slide. It only writes local image files: it uploads nothing, publishes nothing, and is unrelated to `okou presentation-template publish`, so it is the right tool whenever page images are the goal, including deck-to-video work, review, and analysis. Prefer it over `pdftoppm`, `soffice`, or hand-driven `agent-browser` screenshot calls, because a screenshot of a page the browser never painted looks like a successful screenshot. Run `okou presentation screenshot --help` for the current interface.",
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
-    "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
+    "- Third-party services (GitHub, Slack, Notion, 100+ more) can be accessed through connectors. `okou connector search <service-name>` searches every supported service and reports which matching connectors are available to the current run. For supported services, connectors provide a smoother and safer experience: provider credentials stay outside the sandbox and are resolved at the network boundary. When a user wants to connect a third-party service, search for it first. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
     "- Connector accounts: inspect the current account with `okou connector status <slug> --json` and list alternatives with `okou connector account list <slug> --json`. Use only an exact `connectionId` returned by these commands; never invent an ID or reuse one from another connector.",
     "- Request one account switch in the current web chat with `okou connector account switch-request <slug> --connection-id <uuid> --callback-prompt <prompt>`. This changes only the current thread's override for future runs, not the current run or global default. Keep the callback prompt concise and do not include secrets because it is included in the URL. Share the returned link and end the turn; Okou starts the callback round only after the user confirms and the selection succeeds.",
     "- Custom connectors: when the user wants to add their own custom connector, run `okou connector custom -h` first and follow its guidance.",
@@ -588,7 +579,7 @@ function buildAppendSystemPrompt(args: {
   readonly presentationTemplatesEnabled: boolean;
   readonly progressiveArtifactPreviewEnabled: boolean;
 }): string {
-  const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
+  const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
     buildExecutionTimeLimitPrompt(),
@@ -670,10 +661,7 @@ function buildAgentRunPlatformEnvironment(args: {
   return {
     // A run source that supplies no presentation brand is a VM0 run by
     // contract; this does not derive brand identity from token scope.
-    OKOU_APP_URL: appUrlForPublicBrand(
-      env("APP_URL"),
-      args.publicBrand ?? "vm0",
-    ),
+    OKOU_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create
@@ -1195,10 +1183,16 @@ async function resolveThreadSessionForAgentRun(
       });
     },
   );
-  const pausedThreadGoalPrompt = await resolvePausedThreadGoalPrompt(db, {
-    orgId: input.command.auth.orgId,
-    threadId,
-  });
+  const pausedThreadGoalPrompt = await measureAgentRunPreCreate(
+    input.timing,
+    "api_dispatch_pre_create_agent_resolve_paused_thread_goal",
+    () => {
+      return resolvePausedThreadGoalPrompt(db, {
+        orgId: input.command.auth.orgId,
+        threadId,
+      });
+    },
+  );
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
   const sessionPrompt = webChatSessionPromptContext
     ? await measureAgentRunPreCreate(

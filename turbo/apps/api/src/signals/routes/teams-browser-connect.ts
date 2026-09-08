@@ -1,7 +1,5 @@
 import { command } from "ccstate";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { teamsBrowserConnectContract } from "@okouai/api-contracts/contracts/teams-browser-connect";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
 
@@ -9,7 +7,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { requiredAuthContext$ } from "../auth/auth-context";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
@@ -17,6 +15,7 @@ import {
   publishTeamsChanged$,
 } from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("TeamsBrowserConnect");
 const REDIRECT_STATUS = 307;
@@ -28,10 +27,8 @@ function redirectResponse(url: string): Response {
   });
 }
 
-function appRedirect(path: string, publicBrand: PublicBrand): Response {
-  return redirectResponse(
-    `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`,
-  );
+function appRedirect(path: string): Response {
+  return redirectResponse(`${env("APP_URL")}${path}`);
 }
 
 function teamsSettingsParams(
@@ -120,10 +117,9 @@ function teamsSettingsParams(
 function connectError(
   message: string,
   query: Parameters<typeof teamsSettingsParams>[0] = {},
-  publicBrand: PublicBrand = "vm0",
 ): Response {
   const params = teamsSettingsParams(query, { error: message });
-  return appRedirect(`/settings/teams?${params.toString()}`, publicBrand);
+  return appRedirect(`/settings/teams?${params.toString()}`);
 }
 
 function connectSuccess(
@@ -133,7 +129,6 @@ function connectSuccess(
     readonly teamsTeamName?: string | null;
     readonly botName?: string | null;
   },
-  publicBrand: PublicBrand,
 ): Response {
   const params = teamsSettingsParams(query, {
     status: "connected",
@@ -141,17 +136,11 @@ function connectSuccess(
     teamName: installation.teamsTeamName,
     botName: teamsBotDisplayName(installation.botName),
   });
-  return appRedirect(`/settings/teams?${params.toString()}`, publicBrand);
+  return appRedirect(`/settings/teams?${params.toString()}`);
 }
 
-function signInRedirect(
-  requestUrl: string,
-  publicBrand: PublicBrand,
-): Response {
-  const signInUrl = new URL(
-    "/sign-in",
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  );
+function signInRedirect(requestUrl: string): Response {
+  const signInUrl = new URL("/sign-in", env("APP_URL"));
   signInUrl.searchParams.set("redirect_url", requestUrl);
   return redirectResponse(signInUrl.toString());
 }
@@ -201,12 +190,12 @@ function resolveBrowserConnectOrgId(args: {
 
 const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const auth = await set(requiredAuthContext$, {}, signal);
   signal.throwIfAborted();
 
   if ("status" in auth) {
-    return signInRedirect(request.url, publicBrand);
+    return signInRedirect(request.url);
   }
 
   const query = get(queryOf(teamsBrowserConnectContract.connect));
@@ -215,7 +204,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const teamsAadObjectId = query.teamsAadObjectId;
 
   if (!tenantId || (!teamsUserId && !teamsAadObjectId)) {
-    return connectError(invalidConnectLinkMessage, query, publicBrand);
+    return connectError(invalidConnectLinkMessage, query);
   }
 
   const db = get(db$);
@@ -227,7 +216,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!installation) {
-    return connectError(installationNotFoundMessage, query, publicBrand);
+    return connectError(installationNotFoundMessage, query);
   }
 
   const orgResolution = resolveBrowserConnectOrgId({
@@ -238,7 +227,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
     installation,
   });
   if (orgResolution.kind === "error") {
-    return connectError(orgResolution.message, query, publicBrand);
+    return connectError(orgResolution.message, query);
   }
   const orgId = orgResolution.orgId;
 
@@ -269,17 +258,17 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (result.kind === "not_found") {
-    return connectError(result.message, query, publicBrand);
+    return connectError(result.message, query);
   }
 
   if (result.kind === "forbidden") {
-    return connectError(result.message, query, publicBrand);
+    return connectError(result.message, query);
   }
 
   await set(publishTeamsChanged$, { orgId, userIds: [auth.userId] }, signal);
   signal.throwIfAborted();
 
-  return connectSuccess(query, result.installation, publicBrand);
+  return connectSuccess(query, result.installation);
 });
 
 export const teamsBrowserConnectRoutes: readonly RouteEntry[] = [

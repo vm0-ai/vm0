@@ -12,7 +12,6 @@ export async function browserScreenshotSchemaAvailable(
     .select({
       available: sql`
         to_regclass('public.browser_session_screenshots') IS NOT NULL
-        AND to_regclass('public.browser_session_screenshot_deletions') IS NOT NULL
       `.mapWith(pgBooleanDecoder),
     })
     .from(sql`(SELECT 1) AS schema_probe`)

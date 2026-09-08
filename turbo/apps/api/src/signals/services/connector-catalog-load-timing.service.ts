@@ -24,6 +24,15 @@ type ConnectorRuntimeProjectionCacheOutcome =
   | "miss"
   | "in_flight"
   | "not_applicable";
+export type ConnectorRuntimeProjectionCacheObservation =
+  | "first_observation"
+  | "identity_changed"
+  | "not_in_recent_history"
+  | "reuse_1"
+  | "reuse_2"
+  | "reuse_3_4"
+  | "reuse_5_8"
+  | "reuse_9_16";
 type ConnectorRuntimeSelectionSource = "projection" | "full_fallback";
 type ConnectorRuntimeProjectionReadiness =
   | "ready"
@@ -196,6 +205,9 @@ export class ConnectorCatalogLoadTiming {
   private projectionCacheOutcome:
     | ConnectorRuntimeProjectionCacheOutcome
     | undefined;
+  private projectionCacheObservation:
+    | ConnectorRuntimeProjectionCacheObservation
+    | undefined;
   private runtimeSelectionSource: ConnectorRuntimeSelectionSource | undefined;
   private projectionFallbackReason:
     | ConnectorCatalogRuntimeProjectionFallbackReason
@@ -245,6 +257,12 @@ export class ConnectorCatalogLoadTiming {
     this.runtimeSelectionSource = args.source;
     this.projectionCacheOutcome = args.cacheOutcome;
     this.projectionFallbackReason = args.fallbackReason;
+  }
+
+  recordProjectionCacheObservation(
+    observation: ConnectorRuntimeProjectionCacheObservation,
+  ): void {
+    this.projectionCacheObservation = observation;
   }
 
   recordValidationResult(result: ConnectorCatalogValidationResult): void {
@@ -409,6 +427,12 @@ export class ConnectorCatalogLoadTiming {
         : {
             connector_catalog_projection_fallback_reason:
               this.projectionFallbackReason,
+          }),
+      ...(this.projectionCacheObservation === undefined
+        ? {}
+        : {
+            connector_catalog_projection_cache_observation:
+              this.projectionCacheObservation,
           }),
       ...(this.validationResult === undefined
         ? {}

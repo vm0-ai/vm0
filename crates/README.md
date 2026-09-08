@@ -102,6 +102,22 @@ binary overrides must use flags and environment keys matching the runner revisio
 - [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
   build, deploy, and validate architecture-specific runner artifacts.
 
+### Orphan sandbox termination
+
+`runner kill --sandbox <ID>` first asks the owning runner to terminate the
+sandbox. If that owner is gone, orphan termination validates the Firecracker
+process and workspace through a retained `/proc/<pid>` directory handle and
+signals the entire process group through that same kernel identity. A reused
+numeric PID or PGID cannot redirect the signal to a different process group.
+
+This orphan path requires Linux 6.9+ support for `pidfd_send_signal` with
+`PIDFD_SIGNAL_PROCESS_GROUP`, and the verified target must be the group leader.
+If the kernel or security policy rejects that operation, termination fails
+without falling back to numeric signaling or deleting the sandbox's resources.
+Inspect the reported error and host support before retrying. Normal termination
+through an owning runner still uses its owned child lifecycle and does not gain
+this new kernel requirement. `--run` targets do not fall back to orphan killing.
+
 ## nbd-cow Benchmark
 
 The `nbd-cow` benchmark compares NBD COW with dm-snapshot using fio workloads. It is an opt-in,

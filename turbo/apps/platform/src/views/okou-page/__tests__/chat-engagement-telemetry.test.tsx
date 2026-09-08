@@ -1,4 +1,3 @@
-import { queryMessageBody } from "./chat-event-test-helpers.ts";
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +29,7 @@ type Unregister = (property: string) => void;
 
 const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_chat_engagement_telemetry_test");
-  window.location.href = "https://app.vm0.ai/";
+  window.location.href = "https://app.okou.ai/";
   return {
     posthog: {
       capture: vi.fn<Capture>(),
@@ -121,7 +120,7 @@ describe("chat engagement telemetry", () => {
 
     const expandWork = await findWorkHistoryToggle("collapsed");
     expect(screen.getByText(/^Working for /)).toBeVisible();
-    expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
 
     click(expandWork);
 
@@ -135,7 +134,7 @@ describe("chat engagement telemetry", () => {
     click(getWorkHistoryToggle("expanded"));
 
     await waitFor(() => {
-      expect(queryMessageBody("Checking the launch brief.")).toBeNull();
+      expect(screen.queryByText("Checking the launch brief.")).toBeNull();
     });
     expect(capturedEvents("chat_work_history_expanded")).toHaveLength(1);
   });

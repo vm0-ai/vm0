@@ -1,3 +1,4 @@
+import { rootSignal$ } from "../root-signal.ts";
 import { command, computed } from "ccstate";
 import {
   artifactCatalogContract,
@@ -213,7 +214,7 @@ const selectedArtifactText$ = computed(async (get): Promise<string> => {
   if (!isTextPreviewKind(preview.kind)) {
     throw new Error("Selected artifact is not a text preview");
   }
-  return fetchPreviewText(preview.url);
+  return fetchPreviewText(preview.url, get(rootSignal$));
 });
 
 /**
