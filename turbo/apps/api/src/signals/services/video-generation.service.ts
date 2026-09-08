@@ -505,7 +505,7 @@ function readVideoProviderError(value: unknown): VideoProviderError | null {
       readProviderString(value, ["code", "error_code", "errorCode", "type"]);
     const param = readProviderString(source, ["param", "parameter"]);
     return {
-      message: param ? `${message} (${param})` : message,
+      message: redactPresignedUrls(param ? `${message} (${param})` : message),
       code: code ?? "VIDEO_GENERATION_FAILED",
     };
   }

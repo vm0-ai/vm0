@@ -12,8 +12,13 @@ import {
   imageIoGenerateResponseSchema,
 } from "@okouai/api-contracts/contracts/image-io-generate";
 import { voiceIoSpeechContract } from "@okouai/api-contracts/contracts/voice-io-speech";
+import { videoIoGenerateContract } from "@okouai/api-contracts/contracts/video-io-generate";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
-import { webhookBuiltInGenerationFalContract } from "@okouai/api-contracts/contracts/webhooks";
+import {
+  webhookBuiltInGenerationBytePlusContract,
+  webhookBuiltInGenerationFalContract,
+  webhookBuiltInGenerationMiniMaxContract,
+} from "@okouai/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
@@ -21,12 +26,14 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createUsagePricingFixture } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { imageIoGenerateRoutes } from "../image-io-generate";
 import { voiceIoSpeechRoutes } from "../voice-io-speech";
+import { videoIoGenerateRoutes } from "../video-io-generate";
 import { webFileUrlRoutes } from "../web-file-url";
 import { webDownloadRoutes } from "../web-download";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
@@ -104,6 +111,28 @@ async function createFixture(privateArtifacts: boolean) {
         unitPrice: 5,
         unitSize: 1,
       },
+      {
+        kind: "video",
+        provider: "dreamina-seedance-2-0-260128",
+        category: "output_video_tokens.480p_720p.no_video",
+        unitPrice: 8750,
+        unitSize: 1_000_000,
+      },
+      ...[
+        "output_video_seconds.768p",
+        "output_video_seconds.2k",
+        "input_video_seconds.768p",
+        "input_video_seconds.2k",
+        "input_image.additional",
+      ].map((category) => {
+        return {
+          kind: "video",
+          provider: "MiniMax-H3",
+          category,
+          unitPrice: 100,
+          unitSize: 1,
+        };
+      }),
     ],
   });
   onTestFinished(async () => {
@@ -119,6 +148,7 @@ async function createFixture(privateArtifacts: boolean) {
       ...webFileUrlRoutes,
       ...webDownloadRoutes,
       ...voiceIoSpeechRoutes,
+      ...videoIoGenerateRoutes,
     ],
   });
   return {
@@ -129,6 +159,51 @@ async function createFixture(privateArtifacts: boolean) {
 }
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
+
+async function enableVideoGeneration(fixture: Fixture) {
+  webhooks.configureStripeBillingEnv();
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+  const grantedAt = now();
+  const expiresAt = new Date(grantedAt + 7 * 24 * 60 * 60 * 1000);
+  await webhooks.postStripeEvent(
+    {
+      id: `evt_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: `in_${randomUUID()}`,
+          customer: `cus_${randomUUID()}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId: fixture.actor.orgId,
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: expiresAt.toISOString(),
+          },
+          parent: null,
+          lines: {
+            has_more: false,
+            data: [
+              {
+                id: `il_${randomUUID()}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: Math.floor(grantedAt / 1000),
+                  end: Math.floor(expiresAt.getTime() / 1000),
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      },
+    },
+    [200],
+  );
+}
 
 async function queueImage(fixture: Fixture, imageUrls?: readonly string[]) {
   mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
@@ -392,6 +467,120 @@ describe("managed artifact privacy", () => {
       signatureCount,
     );
   });
+
+  it.each([
+    { provider: "byteplus", privateArtifacts: false },
+    { provider: "byteplus", privateArtifacts: true },
+    { provider: "minimax", privateArtifacts: false },
+    { provider: "minimax", privateArtifacts: true },
+  ])(
+    "redacts private input signatures from $provider failure delivery (private output=$privateArtifacts)",
+    async ({ provider, privateArtifacts }) => {
+      const fixture = await createFixture(true);
+      await enableVideoGeneration(fixture);
+      const image = await completeImage(fixture, await queueImage(fixture));
+      await billing.updateFeatureSwitches(fixture.actor, {
+        [FeatureSwitchKey.PrivateArtifacts]: privateArtifacts,
+      });
+      let providerInput: unknown;
+      server.use(
+        http.post(
+          provider === "byteplus"
+            ? "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks"
+            : "https://api.minimax.io/v2/video_generation",
+          async ({ request }) => {
+            providerInput = await request.json();
+            return HttpResponse.json(
+              provider === "byteplus"
+                ? { id: randomUUID() }
+                : { task_id: randomUUID() },
+            );
+          },
+        ),
+      );
+      const queued = await accept(
+        fixture.api(videoIoGenerateContract).post({
+          headers,
+          body: {
+            prompt: "Animate the private reference",
+            model:
+              provider === "byteplus" ? "dreamina-seedance-2.0" : "minimax-h3",
+            duration: "5s",
+            imageUrls: [image.url],
+          },
+        }),
+        [202],
+      );
+      expect(JSON.stringify(providerInput)).toContain(signedReference);
+      if (
+        typeof providerInput !== "object" ||
+        providerInput === null ||
+        !("callback_url" in providerInput) ||
+        typeof providerInput.callback_url !== "string"
+      ) {
+        throw new Error("Expected provider callback URL");
+      }
+      const token = new URL(providerInput.callback_url).searchParams.get(
+        "token",
+      );
+      if (!token) {
+        throw new Error("Expected provider callback token");
+      }
+      const generationId = queued.body.generationId;
+      const error = {
+        code: "InputDownloadFailed",
+        message: `Could not download ${signedReference}`,
+      };
+      const callback = {
+        params: { generationId },
+        query: { token },
+        body: JSON.stringify(
+          provider === "byteplus"
+            ? { status: "failed", error }
+            : { task: { status: "failed", error } },
+        ),
+      };
+      await accept(
+        provider === "byteplus"
+          ? fixture.api(webhookBuiltInGenerationBytePlusContract).post(callback)
+          : fixture.api(webhookBuiltInGenerationMiniMaxContract).post(callback),
+        [200],
+      );
+      const status = await accept(
+        fixture.api(builtInGenerationContract).get({
+          headers,
+          params: { generationId },
+        }),
+        [200],
+      );
+      const expectedError = {
+        code: `${provider.toUpperCase()}_INPUT_DOWNLOAD_FAILED`,
+        message: `${provider === "byteplus" ? "BytePlus" : "MiniMax"} video generation failed: Could not download [redacted presigned URL]`,
+      };
+      expect(status.body).toMatchObject({
+        status: "failed",
+        error: expectedError,
+      });
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `built-in-generation:${generationId}`,
+        expect.objectContaining({ status: "failed", error: expectedError }),
+      );
+      expect(
+        JSON.stringify(context.mocks.ably.publish.mock.calls),
+      ).not.toContain(signedReference);
+      if (!privateArtifacts) {
+        mocks.clerk.session(`user_${randomUUID()}`, fixture.actor.orgId);
+        const otherViewer = await accept(
+          fixture.api(builtInGenerationContract).get({
+            headers,
+            params: { generationId },
+          }),
+          [200],
+        );
+        expect(otherViewer.body.error).toStrictEqual(expectedError);
+      }
+    },
+  );
 
   it("fails private completion without falling back to the public bucket when credentials are missing", async () => {
     const fixture = await createFixture(true);
