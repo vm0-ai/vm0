@@ -351,8 +351,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@okou.ai",
     description:
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   // Every artifact privacy slice in #32492 uses this same rollout switch.
   [FeatureSwitchKey.PrivateArtifacts]: {
