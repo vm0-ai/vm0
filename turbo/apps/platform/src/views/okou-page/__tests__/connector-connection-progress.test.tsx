@@ -18,7 +18,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { click, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   customConnector,
@@ -34,6 +34,19 @@ import {
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000051";
 const PROGRESS = "Connecting your account";
+
+function customOAuthConfig(): CustomConnectorOAuthConfig {
+  return {
+    providerAdapter: "standard",
+    clientId: "acme-client",
+    authorizationUrl: "https://oauth.acme.test/authorize",
+    tokenUrl: "https://oauth.acme.test/token",
+    tokenEndpointAuthMethod: "client_secret_post",
+    pkceMethod: "none",
+    scopes: ["search.read"],
+    authorizationParams: {},
+  };
+}
 
 function connectedAccount(
   target: ConnectorAccountTarget,
@@ -250,6 +263,125 @@ test.each([
   },
 );
 
+test.each([false, true])(
+  "Keep a later access dialog usable when a background connection finishes (existing dialog: %s)",
+  async (existing) => {
+    const account = connectedAccount({
+      kind: "builtin",
+      connectorSlug: "stripe",
+    });
+    let authorized = false;
+    const existingAccounts = mockConnectors(context, [
+      { connectorSlug: "axiom", authMethod: "api-token" },
+    ]);
+    mockPublicConnectorStatus(context, [
+      publicStatusItem({
+        connectorSlug: "stripe",
+        label: "Stripe",
+        singleAuthCodeAuthMethodId: existing ? null : "oauth",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+          ...(existing
+            ? [
+                {
+                  id: "api-token",
+                  label: "API token",
+                  description: null,
+                  grantKind: "manual" as const,
+                  manualFields: [],
+                  startOptions: [],
+                },
+              ]
+            : []),
+        ],
+      }),
+      publicStatusItem({
+        connectorSlug: "axiom",
+        label: "Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "API token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    const popup = authorizationWindow();
+    const authorizationUrl = "https://oauth.test/stripe/authorize";
+    context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
+      return respond(200, { authorizationUrl, connectionId: account.id });
+    });
+    context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+      return authorized
+        ? respond(200, account)
+        : respond(404, {
+            error: { code: "NOT_FOUND", message: "Not connected" },
+          });
+    });
+    await setupPage({ context, path: "/connectors" });
+    const connect = await waitFor(() => {
+      return getConnectorAction("button", "Connect Stripe");
+    });
+    click(connect);
+    if (existing) {
+      const chooser = await screen.findByRole("dialog", { name: "Stripe" });
+      click(getConnectorAction("button", "Connect", chooser));
+    }
+    const progress = await expectProgressDialog(existing ? "Stripe" : PROGRESS);
+    await waitFor(() => {
+      expect(popup.location.href).toBe(authorizationUrl);
+    });
+    await dismissProgress(progress, "Close");
+    expect(
+      getConnectorAction("button", "Manage Axiom accounts"),
+    ).toBeDisabled();
+    click(getConnectorAction("button", "Manage Axiom access"));
+    const axiom = await screen.findByRole("dialog", {
+      name: "Manage Axiom access",
+    });
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+
+    authorized = true;
+    context.mocks.data.connectors([
+      ...existingAccounts,
+      { ...account, slug: "stripe" },
+    ]);
+    popup.close();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Manage Stripe accounts")).toBeEnabled();
+    });
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+    expect(axiom).toBeVisible();
+    expect(
+      screen.queryByRole("dialog", { name: "Name your Stripe account" }),
+    ).toBeNull();
+
+    click(within(axiom).getByLabelText("Close"));
+    const naming = await screen.findByRole("dialog", {
+      name: "Name your Stripe account",
+    });
+    expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+    expect(within(naming).getByLabelText("Account name")).toHaveAttribute(
+      "placeholder",
+      "alice",
+    );
+    await waitFor(() => {
+      expect(within(naming).getByLabelText("Account name")).toHaveFocus();
+    });
+  },
+);
+
 test("Show progress for a new connection after dismissing the previous attempt", async () => {
   mockConnectors(context, []);
   mockPublicConnectorStatus(context, [
@@ -305,28 +437,18 @@ test("Show progress for a new connection after dismissing the previous attempt",
 test.each(["http", "mcp", "automatic"] as const)(
   "Keep custom %s progress after closing authorization and until naming is ready",
   async (kind) => {
-    const oauthConfig: CustomConnectorOAuthConfig = {
-      providerAdapter: "standard",
-      clientId: "acme-client",
-      authorizationUrl: "https://oauth.acme.test/authorize",
-      tokenUrl: "https://oauth.acme.test/token",
-      tokenEndpointAuthMethod: "client_secret_post",
-      pkceMethod: "none",
-      scopes: ["search.read"],
-      authorizationParams: {},
-    };
     let connector =
       kind === "http"
         ? customConnector({
             authMode: "oauth",
-            oauthConfig,
+            oauthConfig: customOAuthConfig(),
             fields: [],
             missingRequiredFields: ["oauth"],
           })
         : mcpCustomConnector({
             ...(kind === "automatic"
               ? { authMode: "automatic" }
-              : { authMode: "oauth", oauthConfig }),
+              : { authMode: "oauth", oauthConfig: customOAuthConfig() }),
             connected: false,
             fields: [],
             missingRequiredFields: ["oauth"],
@@ -444,3 +566,98 @@ test.each(["http", "mcp", "automatic"] as const)(
     });
   },
 );
+
+test("Finish custom OAuth without covering a new connector draft", async () => {
+  let connector = customConnector({
+    authMode: "oauth",
+    oauthConfig: customOAuthConfig(),
+    fields: [],
+    missingRequiredFields: ["oauth"],
+  });
+  const account = connectedAccount({
+    kind: "custom",
+    customConnectorId: connector.id,
+  });
+  let authorized = false;
+  context.mocks.data.org({ id: "org_1", name: "Test Org", role: "admin" });
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [connector] });
+  });
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: authorized
+        ? [
+            {
+              target: account.target,
+              accountCount: 1,
+              attentionCount: 0,
+              defaultConnection: account,
+            },
+          ]
+        : [],
+    });
+  });
+  context.mocks.api(connectorAccountsContract.connection, ({ respond }) => {
+    return authorized
+      ? respond(200, account)
+      : respond(404, {
+          error: { code: "NOT_FOUND", message: "Not connected" },
+        });
+  });
+  const popup = authorizationWindow();
+  const authorizationUrl = "https://oauth.test/custom/authorize";
+  context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
+    return respond(200, {
+      result: "authorization",
+      authorizationUrl,
+      connectionId: account.id,
+    });
+  });
+  await setupPage({ context, path: "/connectors?tab=custom" });
+  const connect = await waitFor(() => {
+    return getConnectorAction("button", `Connect ${connector.displayName}`);
+  });
+  click(connect);
+  const progress = await expectProgressDialog();
+  await waitFor(() => {
+    expect(popup.location.href).toBe(authorizationUrl);
+  });
+  await dismissProgress(progress, "Close");
+  click(getConnectorAction("button", "New connector"));
+  const draft = await screen.findByRole("dialog", {
+    name: "New custom connector",
+  });
+  await fill(within(draft).getByLabelText("Display name"), "Another API");
+
+  authorized = true;
+  connector = {
+    ...connector,
+    connected: true,
+    connectedAccountId: account.id,
+    missingRequiredFields: [],
+  };
+  popup.close();
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText(`Manage ${connector.displayName} accounts`),
+    ).toBeEnabled();
+  });
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  expect(within(draft).getByLabelText("Display name")).toHaveValue(
+    "Another API",
+  );
+  expect(
+    screen.queryByRole("dialog", {
+      name: `Name your ${connector.displayName} account`,
+    }),
+  ).toBeNull();
+
+  click(getConnectorAction("button", "Cancel", draft));
+  const naming = await screen.findByRole("dialog", {
+    name: `Name your ${connector.displayName} account`,
+  });
+  expect(screen.getAllByRole("dialog", { hidden: true })).toHaveLength(1);
+  await waitFor(() => {
+    expect(within(naming).getByLabelText("Account name")).toHaveFocus();
+  });
+});
