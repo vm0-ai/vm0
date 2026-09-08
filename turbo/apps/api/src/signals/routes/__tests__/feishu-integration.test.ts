@@ -3072,7 +3072,6 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(fixture.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.appendSystemPrompt).toContain("Your name is Okou.");
-    expect(claim.appendSystemPrompt).not.toContain("Your name is Zero.");
     outboundMessages = [];
     await completeRunSession({
       runId: run.id,

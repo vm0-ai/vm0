@@ -26,7 +26,6 @@ const API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.okou.ai";
 const APP_ORIGIN = "https://app.okou.ai";
 const OKOU_APP_ORIGIN = "https://app.okou.ai";
-const INSTALL_STATE = JSON.stringify({ publicBrand: "okou" });
 const OAUTH_STATE_SIGNING_KEY = randomBytes(32).toString("hex");
 
 interface SignedOAuthStatePayload {
@@ -80,6 +79,34 @@ function signedOAuthState(authorizationUrl: URL): {
       Buffer.from(encodedPayload, "base64url").toString(),
     ) as SignedOAuthStatePayload,
   };
+}
+
+async function signedStateFromStart(path: string): Promise<string> {
+  const start = await appRequest(path, { origin: API_ORIGIN });
+  const location = start.headers.get("location");
+  if (start.status !== 307 || !location) {
+    throw new Error(
+      `Expected a Slack OAuth start redirect, received ${start.status}`,
+    );
+  }
+  return signedOAuthState(new URL(location)).encoded;
+}
+
+function installStateFor(
+  query: Readonly<Record<string, string>> = {},
+): Promise<string> {
+  const search = new URLSearchParams(query).toString();
+  return signedStateFromStart(
+    `/api/slack/oauth/install${search ? `?${search}` : ""}`,
+  );
+}
+
+function connectStateFor(
+  query: Readonly<Record<string, string>>,
+): Promise<string> {
+  return signedStateFromStart(
+    `/api/slack/oauth/connect?${new URLSearchParams(query).toString()}`,
+  );
 }
 
 function mockOAuthSuccess(
@@ -629,40 +656,6 @@ describe("Slack OAuth API routes", () => {
       expect(slackMessages).toContain("<@B_TEST>");
     });
 
-    it("replays the configured web callback for unsigned legacy state", async () => {
-      const fixture = await track(
-        store.set(
-          seedSlackConnectOrg$,
-          { installationOrgId: null },
-          context.signal,
-        ),
-      );
-      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
-      await seedMembership(fixture.orgId, fixture.userId, "admin");
-      mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
-      const state = JSON.stringify({
-        orgId: fixture.orgId,
-        publicBrand: "vm0",
-        redirectUri: "https://evil.example/oauth/callback",
-        userId: fixture.userId,
-      });
-
-      const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
-        {
-          origin: API_ORIGIN,
-          headers: { "x-vm0-web-origin": WEB_ORIGIN },
-        },
-      );
-
-      expect(response.status).toBe(307);
-      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
-        expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
-        }),
-      );
-    });
-
     it("rejects a tampered signed redirect URI", async () => {
       const start = await appRequest("/api/slack/oauth/install", {
         origin: API_ORIGIN,
@@ -811,9 +804,8 @@ describe("Slack OAuth API routes", () => {
       await store.set(deleteSlackConnectOrg$, fixture, context.signal);
       await seedMembership(fixture.orgId, fixture.userId, "member");
       mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
       });
 
@@ -837,9 +829,8 @@ describe("Slack OAuth API routes", () => {
       );
       await store.set(deleteSlackConnectOrg$, fixture, context.signal);
       mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
       });
       context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
@@ -872,7 +863,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(await installStateFor())}`,
       );
 
       expect(response.status).toBe(307);
@@ -896,7 +887,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(await installStateFor())}`,
       );
 
       expect(response.status).toBe(307);
@@ -917,7 +908,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(await installStateFor())}`,
       );
 
       expect(response.status).toBe(307);
@@ -945,7 +936,7 @@ describe("Slack OAuth API routes", () => {
       });
 
       const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(INSTALL_STATE)}`,
+        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(await installStateFor())}`,
       );
 
       expect(response.status).toBe(307);
@@ -979,9 +970,8 @@ describe("Slack OAuth API routes", () => {
         accessToken: "xoxb-requesting-token",
         authedUserId: "U_REQUESTING",
       });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: requestingOrgId,
-        publicBrand: "okou",
         userId: requestingUserId,
       });
 
@@ -1026,9 +1016,8 @@ describe("Slack OAuth API routes", () => {
         authedUserId: fixture.slackUserId,
         scope: "chat:write,channels:read,users:read",
       });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
       });
 
@@ -1068,9 +1057,8 @@ describe("Slack OAuth API routes", () => {
       );
       await store.set(deleteSlackConnectOrg$, fixture, context.signal);
       await seedMembership(fixture.orgId, fixture.userId, "admin");
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
       });
       mockOAuthSuccess({
@@ -1112,9 +1100,8 @@ describe("Slack OAuth API routes", () => {
         teamId: fixture.slackWorkspaceId,
         authedUserId: fixture.slackUserId,
       });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
         prompt: "summarize my inbox",
       });
@@ -1142,9 +1129,8 @@ describe("Slack OAuth API routes", () => {
         teamId: fixture.slackWorkspaceId,
         authedUserId: fixture.slackUserId,
       });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
       });
 
@@ -1202,26 +1188,13 @@ describe("Slack OAuth API routes", () => {
       ).toBeFalsy();
     });
 
-    it("redirects invalid connect state to the Slack settings error path", async () => {
-      const state = JSON.stringify({ flow: "connect", publicBrand: "okou" });
-
-      const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
-      );
-
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toContain(
-        "/settings/slack?error=",
-      );
-      expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
-    });
-
     it("redirects connect flow OAuth exchange failures to the Slack settings error path", async () => {
-      const state = JSON.stringify({
-        orgId: "org_exchange_failure",
-        publicBrand: "okou",
-        userId: "user_exchange_failure",
-        flow: "connect",
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      const state = await connectStateFor({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
       });
       context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
         ok: false,
@@ -1241,12 +1214,14 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("redirects connect flow when no installation exists for the org", async () => {
-      const state = JSON.stringify({
-        orgId: "org_missing_installation",
-        publicBrand: "okou",
-        userId: "user_missing_installation",
-        flow: "connect",
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      const state = await connectStateFor({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
       });
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
       mockOAuthSuccess({ teamId: "T_MISSING", authedUserId: "U_MISSING" });
 
       const response = await appRequest(
@@ -1269,11 +1244,9 @@ describe("Slack OAuth API routes", () => {
         teamId: "T_DIFFERENT",
         authedUserId: fixture.slackUserId,
       });
-      const state = JSON.stringify({
+      const state = await connectStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
-        flow: "connect",
       });
 
       const response = await appRequest(
@@ -1297,11 +1270,10 @@ describe("Slack OAuth API routes", () => {
         teamId: fixture.slackWorkspaceId,
         authedUserId: fixture.slackUserId,
       });
-      const state = JSON.stringify({
+      const state = await installStateFor({
         orgId: fixture.orgId,
-        publicBrand: "okou",
         userId: fixture.userId,
-        reinstall: true,
+        reinstall: "1",
       });
 
       const response = await appRequest(

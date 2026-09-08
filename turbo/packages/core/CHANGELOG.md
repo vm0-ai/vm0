@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.638.0](https://github.com/vm0-ai/vm0/compare/core-v8.637.2...core-v8.638.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+* **artifacts:** keep managed generation private behind shared rollout switch ([#32687](https://github.com/vm0-ai/vm0/issues/32687)) ([71f6608](https://github.com/vm0-ai/vm0/commit/71f66085b5c5d01fafb47e7ab3379fac0ccfd113))
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+
 ## [8.637.2](https://github.com/vm0-ai/vm0/compare/core-v8.637.1...core-v8.637.2) (2026-09-08)
 
 

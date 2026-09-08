@@ -239,7 +239,6 @@ interface ForwardedInternalCallback {
 interface SlackAppInstallOptions {
   readonly teamId?: string;
   readonly installerSlackUserId?: string;
-  readonly publicBrand?: PublicBrand;
 }
 
 interface SlackAppInstallation {
@@ -275,6 +274,14 @@ function signedSlackHeaders(
       .update(`v0:${timestamp}:${body}`)
       .digest("hex")}`,
   };
+}
+
+function slackOauthStateFromRedirect(location: string | null): string {
+  const state = location ? new URL(location).searchParams.get("state") : null;
+  if (!state) {
+    throw new Error("Expected a signed Slack OAuth state in the redirect");
+  }
+  return state;
 }
 
 function slackCommandRequestBody(args: SlackCommandRequest): string {
@@ -1074,14 +1081,19 @@ export function createBddIntegrationApi(context: TestContext) {
       const client = setupApp({ context, routes: slackOauthRoutes })(
         slackOauthContract,
       );
+      const started = await accept(
+        client.install({
+          query: actor?.orgId
+            ? { orgId: actor.orgId, userId: actor.userId }
+            : {},
+        }),
+        [307],
+      );
       await accept(
         client.callback({
           query: {
             code: `bdd-install-${teamId}`,
-            state: JSON.stringify({
-              ...(actor ? { orgId: actor.orgId, userId: actor.userId } : {}),
-              publicBrand: options.publicBrand ?? "vm0",
-            }),
+            state: slackOauthStateFromRedirect(started.headers.get("location")),
           },
         }),
         [307],

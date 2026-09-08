@@ -8,6 +8,35 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.572.0](https://github.com/vm0-ai/vm0/compare/api-v1.571.2...api-v1.572.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+* **artifacts:** keep managed generation private behind shared rollout switch ([#32687](https://github.com/vm0-ai/vm0/issues/32687)) ([71f6608](https://github.com/vm0-ai/vm0/commit/71f66085b5c5d01fafb47e7ab3379fac0ccfd113))
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **runner:** attribute guest dns readiness attempts ([#32697](https://github.com/vm0-ai/vm0/issues/32697)) ([7558632](https://github.com/vm0-ai/vm0/commit/7558632c0eea9bded6c831fdba33a76c369677aa)), closes [#32445](https://github.com/vm0-ai/vm0/issues/32445)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#32723](https://github.com/vm0-ai/vm0/issues/32723)) ([e8f389c](https://github.com/vm0-ai/vm0/commit/e8f389c25626a4e7ad5b15d71435dcc492859e76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.0
+    * @okouai/core bumped to 8.638.0
+    * @okouai/db bumped to 1.247.0
+    * @okouai/pi-agent-runtime bumped to 1.23.5
+
 ## [1.571.2](https://github.com/vm0-ai/vm0/compare/api-v1.571.1...api-v1.571.2) (2026-09-08)
 
 

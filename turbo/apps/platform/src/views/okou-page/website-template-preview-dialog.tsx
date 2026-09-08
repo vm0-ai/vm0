@@ -7,9 +7,11 @@ import {
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
+import {
+  type WebsiteTemplateItem,
+  findWebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
-import { findWebsiteTemplateItem } from "../../lib/platform-template-items.ts";
 
 function WebsiteTemplatePreviewDialog({
   item,

@@ -169,8 +169,7 @@ products fail validation. An unconfigured local or CI build produces
 existing `Okou Dev` profile. Okou production builds package a runtime
 configuration containing
 `product: okou` and `https://app.okou.ai`. That app origin routes API calls to
-`api.okou.ai`, while Clerk and OAuth web flows remain canonical on
-`www.vm0.ai`.
+`api.okou.ai`, while Clerk and OAuth web flows use `app.okou.ai`.
 
 Okou is a separate macOS application identity. It can be installed beside
 Zero, stores Electron data under its explicit `Okou` data directory, and gets a

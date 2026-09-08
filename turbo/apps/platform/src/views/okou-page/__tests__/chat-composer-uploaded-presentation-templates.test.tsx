@@ -9,7 +9,7 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
-import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "../../../lib/platform-template-items.ts";
+import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
 import {
   buttonContainingText,
   expectTextBefore,

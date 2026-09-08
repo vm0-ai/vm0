@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.19...guest-agent-v0.86.20) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
 ## [0.86.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.18...guest-agent-v0.86.19) (2026-09-08)
 
 ## [0.86.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.17...guest-agent-v0.86.18) (2026-09-08)

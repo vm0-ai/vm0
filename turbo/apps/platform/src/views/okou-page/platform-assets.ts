@@ -1,8 +1,5 @@
 import { AVATAR_COMPOSER_ASSET_VERSION } from "@okouai/core/agent-avatar";
-import {
-  platformPublicStaticUrl,
-  platformStaticAssetUrl,
-} from "../../lib/static-assets.ts";
+import { platformStaticAssetUrl } from "../../lib/static-assets.ts";
 
 function pageAssetUrl(path: string): string {
   return platformStaticAssetUrl(`views/zero-page/${path.replace(/^\/+/u, "")}`);
@@ -32,9 +29,8 @@ export const emptyUsageImg = pageAssetUrl(
 export const emptySearchImg = pageAssetUrl(
   "assets/empty-search-b4e60a8e07b8.webp",
 );
-export const thinkingSpinnerImg = platformPublicStaticUrl(
-  "https://static.okou.io/public/okou-transparent.svg",
-);
+export const thinkingSpinnerImg =
+  "https://static.okou.io/public/okou-transparent.svg";
 export const computerUseIllustrationImg = pageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",
 );

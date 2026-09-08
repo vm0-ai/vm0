@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.81](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.80...session-history-selector-v0.3.81) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
 ## [0.3.80](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.79...session-history-selector-v0.3.80) (2026-09-08)
 
 ## [0.3.79](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.78...session-history-selector-v0.3.79) (2026-09-08)

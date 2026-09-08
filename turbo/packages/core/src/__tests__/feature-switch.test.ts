@@ -293,24 +293,16 @@ describe("getAllFeatureStates", () => {
 });
 
 describe("feature switch override filtering", () => {
-  it("keeps overrides for every registered switch", () => {
+  it("keeps registered overrides when the input also contains unknown keys", () => {
     const switches = Object.fromEntries(
       Object.values(FeatureSwitchKey).map((key) => {
         return [key, true];
       }),
     );
 
-    expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
-  });
-
-  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
-      filterFeatureSwitchOverrides({
-        piMemoryRecall: false,
-        piMemoryGeneration: false,
-        [FeatureSwitchKey.PiLoop]: true,
-      }),
-    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
+      filterFeatureSwitchOverrides({ ...switches, unknownFeature: true }),
+    ).toStrictEqual(switches);
   });
 });
 
