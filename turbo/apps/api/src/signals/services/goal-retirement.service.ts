@@ -26,7 +26,10 @@ export interface RetiredGoalRun {
 }
 
 /**
- * Temporary settlement for jobs captured before #32653's rollout cutoff.
+ * Temporary settlement for persisted jobs and outgoing API/runner/Pi contexts
+ * under #32653. Keep through their measured queue/execution/callback drain;
+ * remove only after outgoing writers quiesce, global pending Goal inputs and
+ * nonterminal Goal runs are empty, and rollback stays retirement-capable.
  * Lock order matches cancellation: Pi lifecycle -> run -> queue. Source and
  * status are checked under the same lock as cancellation; running work wins.
  * goalId is provenance only and must never classify a manual run as Goal work.

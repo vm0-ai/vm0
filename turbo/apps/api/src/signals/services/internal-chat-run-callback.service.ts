@@ -1912,10 +1912,13 @@ async function generateRecommendedFollowupsForCompletedRun(
   signal: AbortSignal,
 ): Promise<readonly ChatRecommendedFollowup[] | undefined> {
   signal.throwIfAborted();
-  const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
-    messages: args.followupContext,
-    threadId: args.threadId,
-  });
+  const suggestions = await generateChatThreadRecommendedFollowupsFromContext(
+    {
+      messages: args.followupContext,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   return suggestions.length > 0 ? suggestions : undefined;
 }
@@ -2153,18 +2156,17 @@ async function runCompletedChatCallbackSideEffects(
   const pushStep = (async () => {
     let summary: string | null = null;
     if (args.lastResultText) {
-      summary =
-        (await tapError(
-          generateChatNotificationSummary(args.run.prompt, args.lastResultText),
-          (error) => {
-            log.warn("Failed to generate notification summary", {
-              runId: args.runId,
-              error,
-            });
-          },
-        )) ?? null;
+      summary = await generateChatNotificationSummary(
+        {
+          prompt: args.run.prompt,
+          resultText: args.lastResultText,
+          runId: args.runId,
+        },
+        signal,
+      );
     }
 
+    signal.throwIfAborted();
     await sendUserPushNotifications({
       db: args.db,
       userId: args.chatThread.userId,

@@ -94,6 +94,7 @@ export const BAND_BASE_WIDTH_PX = 32;
 
 const GROUP_SELECTOR = '[data-role="user"], [data-role="assistant"]';
 const SCROLL_ANCHOR_SELECTOR = "[data-chat-scroll-anchor-event-id]";
+const RUN_WORK_MAIN_SCROLL_ANCHOR_SELECTOR = `[data-chat-run-work-main] ${SCROLL_ANCHOR_SELECTOR}`;
 
 export type LocatorRole = keyof typeof TICK_METRICS;
 
@@ -237,9 +238,13 @@ function readTurns(container: HTMLElement): DomTurn[] {
     if (rect.height === 0) {
       continue;
     }
+    // Expanded work history precedes the main result in the DOM, while the
+    // locator still represents the result as the assistant turn.
     const anchor = element.matches(SCROLL_ANCHOR_SELECTOR)
       ? element
-      : element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR);
+      : (element.querySelector<HTMLElement>(
+          RUN_WORK_MAIN_SCROLL_ANCHOR_SELECTOR,
+        ) ?? element.querySelector<HTMLElement>(SCROLL_ANCHOR_SELECTOR));
     const eventId = anchor?.dataset.chatScrollAnchorEventId;
     if (!eventId) {
       continue;

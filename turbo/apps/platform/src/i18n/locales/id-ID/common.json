@@ -1871,11 +1871,14 @@
       "create": {
         "addStyle": "Tambahkan gaya",
         "addTemplate": "Tambahkan templat",
+        "chooseType": "Pilih jenis",
+        "description": "Presentasi, video, dan gambar",
         "exit": "Keluar dari mode pembuatan",
         "image": "Buat gambar",
         "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
         "presentation": "Buat presentasi",
         "presentationPlaceholder": "Apa topik presentasi Anda?",
+        "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
         "title": "Buat",
         "video": "Buat video",
@@ -2195,7 +2198,6 @@
     "run": {
       "automatedRun": "Eksekusi otomatis",
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
-      "collapseHistoryMessage": "Ciutkan pesan riwayat: {{message}}",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
       "done": {

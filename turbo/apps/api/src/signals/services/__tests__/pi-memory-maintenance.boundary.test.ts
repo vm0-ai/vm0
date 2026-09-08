@@ -13,10 +13,7 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import {
-  CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  executionContextSchema,
-} from "@okouai/api-contracts/contracts/runners";
+import { executionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -55,6 +52,7 @@ import {
   PI_MEMORY_PHASE2_LEASE_DURATION_MS,
 } from "../pi-memory-phase2-job.service";
 import { executePiMemoryPhase2Work$ } from "../pi-memory-phase2-worker.service";
+import { PI_MEMORY_PHASE2_USAGE_DRAIN_MS } from "../pi-memory-phase2-usage.service";
 import {
   piMemoryPhase2MaintenanceCallbackPayloadSchema,
   handlePiMemoryPhase2MaintenanceCallback,
@@ -491,7 +489,8 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
   if (result.outcome !== "dispatched") {
     throw new Error("Maintenance dispatch failed");
   }
-  cleanup.runId = result.runId;
+  const runId = result.runId;
+  cleanup.runId = runId;
   const [maintenanceRunIdentity] = await db()
     .select({
       sessionId: agentRuns.sessionId,
@@ -627,6 +626,34 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
       process.kill(pid, "SIGKILL");
       response.destroy();
       return;
+    }
+    // This harness runs the real CLI/Guest but has no runner proxy. Model the
+    // proxy's HTTP ingress from the same provider response that fills the
+    // child's journal, so the full boundary catches cross-writer double billing.
+    if (fault !== "provider" || providerCount === 0) {
+      const proxyUsage = await app.request("/api/webhooks/agent/usage-event", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          runId,
+          events: [
+            { category: "tokens.input", quantity: 8 },
+            { category: "tokens.output", quantity: 5 },
+            { category: "tokens.cache_read", quantity: 2 },
+          ].map((entry) => {
+            return {
+              ...entry,
+              idempotencyKey: randomUUID(),
+              kind: "model",
+              provider: "gpt-5.6-terra",
+            };
+          }),
+        }),
+      });
+      expect(proxyUsage.status).toBe(200);
     }
     sse(response, providerCount++, fault === "provider");
     return;
@@ -929,7 +956,7 @@ async function assertUsageReplay(
         .every((entry) => {
           return (
             entry.quantity === quantity &&
-            entry.runId === null &&
+            entry.runId === run.runId &&
             entry.provider === "gpt-5.6-terra"
           );
         }),
@@ -1013,7 +1040,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
       expect(run.usage.length).toBeGreaterThan(0);
       expect(
         run.usage.every((entry) => {
-          return entry.runId === null;
+          return entry.runId === run.runId;
         }),
       ).toBeTruthy();
       await expect(
@@ -1185,7 +1212,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
           .where(
             eq(piMemoryPhase2Jobs.memoryStorageId, run.scope.memoryStorageId),
           );
-        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        mockNow(completedAt.getTime() + PI_MEMORY_PHASE2_USAGE_DRAIN_MS);
         const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
         expect(cleanupResult.threadlessRuns).toStrictEqual({
           discovered: 1,
@@ -1269,7 +1296,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
         if (!completedAt) {
           throw new Error("Cleanup no-diff run did not complete");
         }
-        mockNow(completedAt.getTime() + CANCELLATION_RECOVERY_STALE_AFTER_MS);
+        mockNow(completedAt.getTime() + PI_MEMORY_PHASE2_USAGE_DRAIN_MS);
         const cleanupResult = await cleanupMaintenanceRun(run.runId, run.scope);
         expect(cleanupResult.threadlessRuns).toStrictEqual({
           discovered: 1,
@@ -1320,7 +1347,7 @@ describe("private maintenance across CLI, Guest, generic checkpoint and real Pos
       );
       expect(
         run.usage.every((entry) => {
-          return entry.runId === null;
+          return entry.runId === run.runId;
         }),
       ).toBeTruthy();
       const [storage] = await db()

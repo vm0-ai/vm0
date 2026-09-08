@@ -710,7 +710,7 @@ describe("workflow queue", () => {
     ).toMatchObject([{ eventType: "control.revoke" }]);
   });
 
-  it("ignores a fresh automation outside the cutoff while selecting a stale goal", async () => {
+  it("leaves fresh automation queued while revoking a stale Goal input", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const goal = await createActiveGoalQueueEventFixture({

@@ -13,6 +13,7 @@ import {
   eq,
   exists,
   gte,
+  gt,
   inArray,
   isNotNull,
   isNull,
@@ -35,6 +36,11 @@ import {
   activePiMemoryPhase2MaintenanceRunCondition,
   lockPiMemoryPhase2MaintenanceCleanupProtection,
 } from "./pi-memory-phase2-maintenance.service";
+import {
+  loadPiMemoryPhase2UsageBinding,
+  PI_MEMORY_PHASE2_USAGE_DRAIN_MS,
+  PI_MEMORY_PHASE2_MODEL,
+} from "./pi-memory-phase2-usage.service";
 
 const L = logger("ThreadlessRunCleanup");
 
@@ -112,6 +118,9 @@ async function loadThreadlessRunCandidates(
   currentTime: Date,
 ): Promise<readonly ThreadlessRunCandidate[]> {
   const forwardCutoff = new Date(THREADLESS_RUN_FORWARD_CUTOFF_ISO);
+  const usageQuietBefore = new Date(
+    currentTime.getTime() - PI_MEMORY_PHASE2_USAGE_DRAIN_MS,
+  );
   return await db
     .select({
       runId: agentRuns.id,
@@ -143,6 +152,32 @@ async function loadThreadlessRunCandidates(
                 userId: agentRuns.userId,
                 currentTime,
               }),
+            ),
+        ),
+        // Do not let retained private billing contexts occupy the bounded
+        // sweep and starve ordinary threadless cleanup. Revalidate under lock.
+        notExists(
+          db
+            .select({ id: agentRunCallbacks.id })
+            .from(agentRunCallbacks)
+            .where(
+              and(
+                eq(agentRunCallbacks.runId, agentRuns.id),
+                eq(agentRunCallbacks.internalKind, "pi-memory:phase2"),
+                eq(
+                  sql`${agentRunCallbacks.payload}->>'orgId'`,
+                  agentRuns.orgId,
+                ),
+                eq(
+                  sql`${agentRunCallbacks.payload}->>'userId'`,
+                  agentRuns.userId,
+                ),
+                eq(agentRuns.triggerSource, "agent"),
+                eq(agentRuns.modelProvider, "built-in"),
+                eq(agentRuns.selectedModel, PI_MEMORY_PHASE2_MODEL),
+                eq(sql`${agentRuns.launchSnapshot}->>'framework'`, "pi"),
+                gt(agentRuns.completedAt, usageQuietBefore),
+              ),
             ),
         ),
         runIds === null ? undefined : inArray(agentRuns.id, runIds),
@@ -278,6 +313,14 @@ async function deleteIfStillEligible(
         orgId: candidate.orgId,
         userId: candidate.userId,
       })
+    ) {
+      return false;
+    }
+
+    if (
+      current.completedAt.getTime() >
+        nowDate().getTime() - PI_MEMORY_PHASE2_USAGE_DRAIN_MS &&
+      (await loadPiMemoryPhase2UsageBinding(tx, candidate))
     ) {
       return false;
     }

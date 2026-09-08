@@ -60,7 +60,6 @@ export async function admitGoalQueueEventFixture(
       eventType: "input.goal",
       content: null,
       contextType: "goal",
-      contextId: args.goalId,
       runId: null,
       runGroupId: args.goalId,
       userMessage: createUserMessageDocument({
