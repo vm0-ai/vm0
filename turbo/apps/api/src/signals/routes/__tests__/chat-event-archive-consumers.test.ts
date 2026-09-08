@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
+import { HttpResponse } from "msw";
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
@@ -38,6 +39,7 @@ import {
 } from "./helpers/fake-chat-event-r2";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRouteMocks } from "./helpers/route-test";
+import { auxiliaryResults } from "./helpers/auxiliary-generation";
 
 const context = testContext();
 const store = createStore();
@@ -248,6 +250,36 @@ describe("archived chat event consumers", () => {
       { role: "assistant", content: tailVisible },
     ]);
   }, 60_000);
+
+  it("preserves user-requested shared-title failures outside auxiliary degradation", async () => {
+    const fixture = await createArchiveFixture("sharing-provider-failure");
+    const eventId = await store.set(
+      seedRetentionOutputEvent$,
+      {
+        chatThreadId: fixture.threadId,
+        content: "A completed answer to share",
+      },
+      context.signal,
+    );
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-sharing-key");
+    chatCallbacks.mockOpenRouterCompletions(() => {
+      return new HttpResponse(null, { status: 503 });
+    });
+    const client = setupApp({
+      context,
+      routes: sharedThreadRoutes,
+      rethrowErrors: true,
+    })(sharedThreadsContract);
+    await expect(
+      client.create({
+        params: { threadId: fixture.threadId },
+        headers: authenticate(fixture.actor),
+        body: { eventIds: [eventId] },
+      }),
+    ).rejects.toMatchObject({ name: "OpenRouterRequestError", status: 503 });
+    await flushWaitUntilForTest();
+    expect(auxiliaryResults(context)).toStrictEqual([]);
+  });
 
   it("shares an archived selection while excluding archived revoked and invisible messages", async () => {
     const fixture = await createArchiveFixture("sharing");
