@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.5...desktop-v0.48.6) (2026-09-08)
+
+
+### Refactoring
+
+* **desktop:** retire explicit zero builds and local branding ([#32506](https://github.com/vm0-ai/vm0/issues/32506)) ([491d75e](https://github.com/vm0-ai/vm0/commit/491d75eb3c25436bdac620f7aaf4f7a8f9e528dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.3
+
 ## [0.48.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.4...desktop-v0.48.5) (2026-09-08)
 
 
