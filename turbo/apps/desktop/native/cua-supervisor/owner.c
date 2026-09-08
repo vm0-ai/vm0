@@ -62,8 +62,25 @@ static int members(void) {
 static int descendants_exited(void) {
 #ifdef __APPLE__
   pid_t pids[4096];
+  struct proc_bsdinfo snapshot[4096];
   errno = 0;
   int length = proc_listpgrppids(child, pids, sizeof(pids));
+  if (length < 0 || (length == 0 && errno != 0) ||
+      length >= (int)(sizeof(pids) / sizeof(pids[0]))) return 0;
+  int recorded = 0;
+  for (int i = 0; i < length; ++i) {
+    if (pids[i] == 0 || pids[i] == child) continue;
+    struct proc_bsdinfo *state = &snapshot[recorded];
+    if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, state, sizeof(*state)) !=
+        (int)sizeof(*state) || state->pbi_pid != (uint32_t)pids[i] ||
+        state->pbi_pgid != (uint32_t)child || state->pbi_status != SZOMB) return 0;
+    ++recorded;
+  }
+  // A fork already in progress may publish a child between enumeration and
+  // its parent's exit. Require a second, closed set of the same exited birth
+  // identities before removing the guardian. Any newly visible child keeps it.
+  errno = 0;
+  length = proc_listpgrppids(child, pids, sizeof(pids));
   if (length < 0 || (length == 0 && errno != 0) ||
       length >= (int)(sizeof(pids) / sizeof(pids[0]))) return 0;
   for (int i = 0; i < length; ++i) {
@@ -72,6 +89,13 @@ static int descendants_exited(void) {
     if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &state, sizeof(state)) !=
         (int)sizeof(state) || state.pbi_pid != (uint32_t)pids[i] ||
         state.pbi_pgid != (uint32_t)child || state.pbi_status != SZOMB) return 0;
+    int matched = 0;
+    for (int j = 0; j < recorded; ++j) {
+      if (state.pbi_pid == snapshot[j].pbi_pid &&
+          state.pbi_start_tvsec == snapshot[j].pbi_start_tvsec &&
+          state.pbi_start_tvusec == snapshot[j].pbi_start_tvusec) matched = 1;
+    }
+    if (!matched) return 0;
   }
   return 1;
 #else
