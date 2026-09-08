@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.21"
+version = "1.1.0"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -955,7 +955,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-mock"
-version = "0.21.137"
+version = "0.21.138"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -982,7 +982,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "codex-mock"
-version = "0.10.27"
+version = "0.10.28"
 dependencies = [
  "chrono",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.86.18"
+version = "0.86.19"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "api-contracts",
  "base64 0.23.1",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "guest-control-client"
-version = "0.19.2"
+version = "0.19.3"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -1747,14 +1747,14 @@ dependencies = [
 
 [[package]]
 name = "guest-control-proto"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "guest-control-server"
-version = "0.20.2"
+version = "0.20.3"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -1767,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "guest-control-tests"
-version = "0.10.2"
+version = "0.10.3"
 dependencies = [
  "guest-control-client",
  "guest-control-proto",
@@ -1782,7 +1782,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.243"
+version = "0.16.244"
 dependencies = [
  "guest-contracts",
  "guest-control-server",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "guest-state-restore"
-version = "0.3.9"
+version = "0.4.0"
 dependencies = [
  "libc",
  "tempfile",
@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "guest-storage-apply"
-version = "0.23.69"
+version = "0.23.70"
 dependencies = [
  "flate2",
  "guest-contracts",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "guest-telemetry"
-version = "0.3.65"
+version = "0.3.66"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1829,7 +1829,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.53"
+version = "0.1.54"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.143"
+version = "0.1.144"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -2588,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.85"
+version = "0.5.0"
 dependencies = [
  "bitvec",
  "libc",
@@ -3022,7 +3022,7 @@ dependencies = [
 
 [[package]]
 name = "process-control-ipc"
-version = "0.3.11"
+version = "0.4.0"
 dependencies = [
  "libc",
  "proptest",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.188.15"
+version = "0.188.16"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3426,7 +3426,7 @@ dependencies = [
 
 [[package]]
 name = "runner-rpc-client"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "libc",
  "runner-rpc-proto",
@@ -3437,7 +3437,7 @@ dependencies = [
 
 [[package]]
 name = "runner-rpc-proto"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3682,7 +3682,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.21.2"
+version = "0.22.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -3696,7 +3696,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-firecracker"
-version = "0.40.2"
+version = "0.40.3"
 dependencies = [
  "async-trait",
  "clap",
@@ -3729,7 +3729,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.10.24"
+version = "0.10.25"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3977,7 +3977,7 @@ dependencies = [
 
 [[package]]
 name = "session-history-selector"
-version = "0.3.79"
+version = "0.3.80"
 dependencies = [
  "guest-contracts",
  "proptest",
@@ -4679,7 +4679,7 @@ dependencies = [
 
 [[package]]
 name = "tracing-test-support"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",

@@ -1,6 +1,6 @@
 [package]
 name = "guest-tool-exec"
-version = "0.1.53"
+version = "0.1.54"
 edition.workspace = true
 description = "Explicit shell-tool cgroup launcher and runtime hook adapter for VM0 guests"
 

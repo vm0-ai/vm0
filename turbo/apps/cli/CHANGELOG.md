@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.317.4](https://github.com/vm0-ai/vm0/compare/cli-v9.317.3...cli-v9.317.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **pi:** upgrade the pinned runtime to 0.85.1 ([#32658](https://github.com/vm0-ai/vm0/issues/32658)) ([f035934](https://github.com/vm0-ai/vm0/commit/f0359345f201238d0339da86a23e88e177e4e3ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.417.0
+    * @okouai/core bumped to 8.637.0
+    * @okouai/pi-agent-runtime bumped to 1.23.3
+
 ## [9.317.3](https://github.com/vm0-ai/vm0/compare/cli-v9.317.2...cli-v9.317.3) (2026-09-08)
 
 

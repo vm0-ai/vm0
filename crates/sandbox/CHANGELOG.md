@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.2...sandbox-v0.22.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.21.1...sandbox-v0.21.2) (2026-09-07)
 
 

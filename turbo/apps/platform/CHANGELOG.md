@@ -11,6 +11,27 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.865.0](https://github.com/vm0-ai/vm0/compare/app-v0.864.0...app-v0.865.0) (2026-09-08)
+
+
+### Features
+
+* **app:** add creative and explainer video template categories ([#32613](https://github.com/vm0-ai/vm0/issues/32613)) ([9546d35](https://github.com/vm0-ai/vm0/commit/9546d35d6075efa635925c5ce37f54b3ef351032))
+
+
+### Bug Fixes
+
+* **platform:** align connector account rename controls ([#32679](https://github.com/vm0-ai/vm0/issues/32679)) ([edac9ff](https://github.com/vm0-ai/vm0/commit/edac9ffa0440d927c5bd64a9a43b93b0fdf07fd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.0
+    * @okouai/core bumped to 8.637.0
+    * @okouai/ui bumped to 1.6.3
+
 ## [0.864.0](https://github.com/vm0-ai/vm0/compare/app-v0.863.1...app-v0.864.0) (2026-09-08)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.637.0](https://github.com/vm0-ai/vm0/compare/core-v8.636.0...core-v8.637.0) (2026-09-08)
+
+
+### Features
+
+* **app:** add creative and explainer video template categories ([#32613](https://github.com/vm0-ai/vm0/issues/32613)) ([9546d35](https://github.com/vm0-ai/vm0/commit/9546d35d6075efa635925c5ce37f54b3ef351032))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.0
+
 ## [8.636.0](https://github.com/vm0-ai/vm0/compare/core-v8.635.2...core-v8.636.0) (2026-09-08)
 
 

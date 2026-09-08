@@ -8,6 +8,23 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.571.0](https://github.com/vm0-ai/vm0/compare/api-v1.570.0...api-v1.571.0) (2026-09-08)
+
+
+### Features
+
+* **app:** add creative and explainer video template categories ([#32613](https://github.com/vm0-ai/vm0/issues/32613)) ([9546d35](https://github.com/vm0-ai/vm0/commit/9546d35d6075efa635925c5ce37f54b3ef351032))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.0
+    * @okouai/core bumped to 8.637.0
+    * @okouai/db bumped to 1.246.1
+    * @okouai/pi-agent-runtime bumped to 1.23.3
+
 ## [1.570.0](https://github.com/vm0-ai/vm0/compare/api-v1.569.1...api-v1.570.0) (2026-09-08)
 
 
