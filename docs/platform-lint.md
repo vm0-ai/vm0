@@ -51,24 +51,22 @@ additional transient-error retries are disabled for that operation.
 
 Constructor permissions apply only at their definition files:
 
-| Owner                 | State               | Lifetime                               |
-| --------------------- | ------------------- | -------------------------------------- |
-| `signals/location.ts` | `LocationOverrides` | Browser location overrides             |
-| `signals/log.ts`      | `LoggerRegistry`    | Application logging registry           |
-| `signals/utils.ts`    | `PromiseTracker`    | Detached work collected only in Vitest |
+| Owner                 | State               | Lifetime                                |
+| --------------------- | ------------------- | --------------------------------------- |
+| `signals/location.ts` | `LocationOverrides` | Browser location overrides              |
+| `signals/log.ts`      | `LoggerRegistry`    | Application logging registry            |
+| `signals/utils.ts`    | `PromiseTracker`    | Private bookkeeping used only in Vitest |
 
-`PromiseTracker` joins detached DOM callbacks and deferred work at test teardown,
-after the test context aborts its root signal and before MSW removes handlers.
-It awaits the actual promises; it does not poll. A single map records each
-promise's reason and description and releases entries as they settle. Work
-detached during teardown is included in the same drain. Production does not
-collect promises. The former error-deduplication WeakSet had no writers and was
-removed.
+The existing shared test teardown owns `clearAllDetached()`; see
+[Test context and cleanup](./testing/app-testing.md#test-context-and-cleanup).
+It awaits detached work, including work registered during teardown, without
+timed polling. Production does not collect promises.
 
-`detach` intentionally has no Store argument: it is also used at browser and
-worker boundaries. Moving this registry into a page Store would miss those
-tasks. Keep this narrowly scoped test infrastructure until the detachment API
-has an explicit test-lifetime owner; do not permit the class in other modules.
+`PromiseTracker` and its instance are private to `signals/utils.ts`. They are
+internal bookkeeping for `detach()` and the same `clearAllDetached()` mechanism.
+Do not export the class or instance, expose its collection, or introduce another
+tracker for test cases. The constructor exception applies only to this private
+implementation.
 
 ## Retired configuration
 

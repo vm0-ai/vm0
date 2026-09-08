@@ -15,6 +15,7 @@ export enum Reason {
   Daemon = "daemon",
 }
 
+/** Private bookkeeping shared by detach() and clearAllDetached(). */
 class PromiseTracker {
   readonly collected = new Map<
     Promise<void>,
@@ -53,7 +54,7 @@ export function detach<T>(
   }
 }
 
-/** Drain detached work after its owning test lifetimes have been aborted. */
+/** Shared test setup drains detached work after testContext aborts its lifetimes. */
 export async function clearAllDetached(): Promise<void> {
   for (const [promise, { reason, description }] of tracker.collected) {
     L.debug(`Await promise: ${reason} ${description ?? ""}`);

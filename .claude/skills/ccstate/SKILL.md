@@ -567,10 +567,15 @@ But don't use `detach` to paper over orphaned signals. Fix the signal chain firs
 
 ### Test cleanup order matters
 
+This hook exists once in shared test setup; do not copy it into test files.
+`testContext` aborts the owning signal before the shared hook drains detached
+work. `PromiseTracker` is private bookkeeping inside the existing helpers and
+must not be exposed as a separate test API or duplicated in a test context.
+
 ```typescript
-// ✅ Correct: abort detached promises BEFORE removing MSW handlers
+// ✅ Shared setup: testContext has already aborted the owning signal
 afterEach(async () => {
-  await clearAllDetached(); // 1. abort & await all detached promises
+  await clearAllDetached(); // 1. await detached work
   server.resetHandlers(); // 2. then remove mock handlers
 });
 
