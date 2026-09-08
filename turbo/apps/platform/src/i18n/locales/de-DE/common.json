@@ -1989,13 +1989,11 @@
       "runCancelled": "Mitten im Gedanken pausiert – machen Sie jederzeit weiter."
     },
     "explainerVideo": {
-      "autoStyleDescription": "Finde einen Stil, der zu deinem Inhalt passt.",
       "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
       "avatarVoice": "Stimme des Avatars",
       "changeAvatar": "Avatar ändern",
       "chooseStyle": "Stil auswählen",
       "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
-      "description": "Stelle ein Produkt vor, erkläre eine Idee oder zeige einen Ablauf.",
       "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
       "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
       "searchAvatars": "Avatare suchen",
@@ -2035,7 +2033,6 @@
         "heading": "Avatar auswählen",
         "label": "Avatar",
         "none": "Kein Avatar",
-        "noneDescription": "Das Video ohne Präsentator erstellen",
         "previewLook": "Look {{name}} ansehen"
       },
       "catalog": {

@@ -203,7 +203,7 @@ function ConfigurationTabs({ signals }: PickerProps) {
       aria-label={t(($) => {
         return $.chat.explainerVideo.settings;
       })}
-      className="grid shrink-0 grid-cols-3 gap-2 border-b border-border px-4 pb-5 sm:px-6"
+      className="grid shrink-0 grid-cols-3 gap-1 border-b border-border px-4 py-2 sm:px-6 sm:pr-14"
     >
       {tabs.map(({ id, label, value, Icon, selected }, index) => {
         return (
@@ -211,7 +211,7 @@ function ConfigurationTabs({ signals }: PickerProps) {
             key={id}
             type="button"
             role="tab"
-            variant="outline"
+            variant="quiet"
             aria-label={label}
             aria-selected={tab === id}
             aria-controls="explainer-video-panel"
@@ -245,17 +245,17 @@ function ConfigurationTabs({ signals }: PickerProps) {
               }
             }}
             className={cn(
-              "relative h-16 min-w-0 justify-start gap-2 rounded-xl border-border p-3 text-left hover:bg-gray-50",
+              "relative h-10 min-w-0 justify-start gap-2 rounded-md px-2 py-1 text-left hover:bg-gray-50",
               tab === id &&
-                "border-input bg-gray-50 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-foreground",
+                "bg-gray-50 text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-foreground",
             )}
           >
             <Icon className="hidden shrink-0 text-muted-foreground sm:block" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium sm:text-sm">
+            <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-2">
+              <span className="block shrink-0 text-xs font-medium leading-4 sm:text-sm">
                 {label}
               </span>
-              <span className="mt-1 block truncate text-[10px] font-normal text-muted-foreground sm:text-xs">
+              <span className="block truncate text-[10px] font-normal leading-3 text-muted-foreground sm:text-xs">
                 {value}
               </span>
             </span>
@@ -289,7 +289,7 @@ function StyleTags({
       aria-label={t(($) => {
         return $.chat.introVideo.style.browseGroups;
       })}
-      className="flex shrink-0 flex-wrap gap-2 px-4 pb-4 sm:px-6"
+      className="flex shrink-0 flex-wrap gap-2 px-4 pb-3 sm:px-6"
     >
       {tags.map(({ id, label }) => {
         return (
@@ -348,17 +348,37 @@ function StylePicker({ signals }: PickerProps) {
     });
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6">
-        <h3 className="text-sm font-medium">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
+        <h3 className="sr-only">
           {t(($) => {
             return $.chat.explainerVideo.chooseStyle;
           })}
+        </h3>
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-pressed={style?.kind === "auto"}
+            onClick={() => {
+              setStyle({ kind: "auto" });
+            }}
+            className={cn(
+              "gap-2 border-border px-2.5 text-xs",
+              style?.kind === "auto" && "border-primary bg-gray-50",
+            )}
+          >
+            <Sparkles size={14} />
+            {t(($) => {
+              return $.chat.introVideo.style.auto;
+            })}
+          </Button>
           {catalog.state === "hasData" && (
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {items.length}
             </span>
           )}
-        </h3>
+        </div>
         <PickerSearch
           signals={signals}
           label={t(($) => {
@@ -373,21 +393,6 @@ function StylePicker({ signals }: PickerProps) {
         data-intro-video-catalog-scroll=""
         className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 sm:px-6"
       >
-        <div className="mb-4">
-          <PickerOption
-            title={t(($) => {
-              return $.chat.introVideo.style.auto;
-            })}
-            description={t(($) => {
-              return $.chat.explainerVideo.autoStyleDescription;
-            })}
-            icon={<Sparkles size={17} />}
-            selected={style?.kind === "auto"}
-            onSelect={() => {
-              setStyle({ kind: "auto" });
-            }}
-          />
-        </div>
         {catalog.state === "hasError" ? (
           <PickerMessage error onRetry={reload} />
         ) : catalog.state === "loading" ? (
@@ -445,12 +450,30 @@ function AvatarPicker({ signals }: PickerProps) {
     : [];
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-6">
-        <h3 className="text-sm font-medium">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
+        <h3 className="sr-only">
           {t(($) => {
             return $.chat.introVideo.avatar.heading;
           })}
         </h3>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={selection.kind === "none"}
+          onClick={() => {
+            setSelection({ kind: "none" });
+          }}
+          className={cn(
+            "gap-2 border-border px-2.5 text-xs",
+            selection.kind === "none" && "border-primary bg-gray-50",
+          )}
+        >
+          <UserRoundX size={14} />
+          {t(($) => {
+            return $.chat.introVideo.avatar.none;
+          })}
+        </Button>
         <PickerSearch
           signals={signals}
           label={t(($) => {
@@ -463,37 +486,6 @@ function AvatarPicker({ signals }: PickerProps) {
         className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 sm:px-6"
       >
         <div className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-3 xl:grid-cols-4">
-          <Button
-            type="button"
-            variant="outline"
-            aria-pressed={selection.kind === "none"}
-            onClick={() => {
-              setSelection({ kind: "none" });
-            }}
-            className={cn(
-              "h-auto min-h-52 flex-col gap-3 whitespace-normal rounded-xl border-border bg-gray-50 p-4 text-center",
-              selection.kind === "none" && "border-primary",
-            )}
-          >
-            <span className="grid size-12 place-items-center rounded-xl border border-border bg-card text-muted-foreground">
-              <UserRoundX size={24} />
-            </span>
-            <span className="text-sm">
-              {t(($) => {
-                return $.chat.introVideo.avatar.none;
-              })}
-            </span>
-            <span className="text-xs font-normal text-muted-foreground">
-              {t(($) => {
-                return $.chat.introVideo.avatar.noneDescription;
-              })}
-            </span>
-            {selection.kind === "none" && (
-              <span className="grid size-5 place-items-center rounded-full bg-primary text-primary-foreground">
-                <Check size={12} />
-              </span>
-            )}
-          </Button>
           {groups.map((group) => {
             return (
               <IntroVideoAvatarGroupCard
@@ -541,7 +533,7 @@ function VoicePicker({ signals }: PickerProps) {
   const setTab = useSet(signals.setTab$);
   return (
     <>
-      <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-4 sm:px-6">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-3 sm:px-6">
         <h3 className="text-sm font-medium">
           {t(($) => {
             return $.chat.introVideo.voice.heading;
@@ -646,18 +638,6 @@ export function ExplainerVideoPicker({
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="hidden shrink-0 px-4 pb-5 pr-14 pt-5 sm:block sm:px-6 sm:pr-14">
-        <h2 className="text-xl font-semibold">
-          {t(($) => {
-            return $.artifacts.templates.explainerVideo;
-          })}
-        </h2>
-        <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">
-          {t(($) => {
-            return $.chat.explainerVideo.description;
-          })}
-        </p>
-      </header>
       <ConfigurationTabs signals={signals} />
       <div
         id="explainer-video-panel"
@@ -673,7 +653,7 @@ export function ExplainerVideoPicker({
       >
         {panels[tab]}
       </div>
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-4 sm:px-6">
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-6">
         <p className="text-xs text-muted-foreground">
           {t(($) => {
             return !style && !voice

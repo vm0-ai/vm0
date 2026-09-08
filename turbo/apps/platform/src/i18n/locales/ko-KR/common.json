@@ -1986,13 +1986,11 @@
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
     "explainerVideo": {
-      "autoStyleDescription": "콘텐츠에 맞는 스타일을 선택합니다.",
       "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
       "avatarVoice": "아바타 음성",
       "changeAvatar": "아바타 변경",
       "chooseStyle": "스타일 선택",
       "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
-      "description": "제품을 소개하거나 아이디어와 과정을 알기 쉽게 설명하세요.",
       "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
       "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
       "searchAvatars": "아바타 검색",
@@ -2032,7 +2030,6 @@
         "heading": "아바타 선택",
         "label": "아바타",
         "none": "아바타 없음",
-        "noneDescription": "발표자 없이 영상 만들기",
         "previewLook": "{{name}} 모습 미리보기"
       },
       "catalog": {

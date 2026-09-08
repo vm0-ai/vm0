@@ -2019,13 +2019,11 @@
       "runCancelled": "In pausa a metà pensiero: riprendilo ogni volta."
     },
     "explainerVideo": {
-      "autoStyleDescription": "Trova uno stile adatto ai tuoi contenuti.",
       "autoVoiceDescription": "Trova una voce adatta ai tuoi contenuti.",
       "avatarVoice": "Voce dell’avatar",
       "changeAvatar": "Cambia avatar",
       "chooseStyle": "Scegli uno stile",
       "chooseStyleAndVoice": "Scegli uno stile e una voce.",
-      "description": "Presenta un prodotto, spiega un’idea o illustra un processo.",
       "noMatches": "Nessun risultato. Prova un’altra ricerca o categoria.",
       "ready": "Pronto all’uso. Aggiungi i tuoi contenuti nella chat.",
       "searchAvatars": "Cerca avatar",
@@ -2067,7 +2065,6 @@
         "heading": "Scegli un avatar",
         "label": "Avatar",
         "none": "Nessun avatar",
-        "noneDescription": "Crea il video senza presentatore",
         "previewLook": "Anteprima dell’aspetto {{name}}"
       },
       "catalog": {

@@ -1989,13 +1989,11 @@
       "runCancelled": "Paused mid-thought — pick it back up whenever."
     },
     "explainerVideo": {
-      "autoStyleDescription": "Find a style that fits your content.",
       "autoVoiceDescription": "Find a voice that fits your content.",
       "avatarVoice": "Avatar’s voice",
       "changeAvatar": "Change avatar",
       "chooseStyle": "Choose a style",
       "chooseStyleAndVoice": "Choose a style and a voice.",
-      "description": "Introduce a product, explain an idea, or walk through a process.",
       "noMatches": "No matches found. Try a different search or category.",
       "ready": "Ready to use. Add your content in the chat.",
       "searchAvatars": "Search avatars",
@@ -2035,7 +2033,6 @@
         "heading": "Choose an avatar",
         "label": "Avatar",
         "none": "No avatar",
-        "noneDescription": "Create the video without a presenter",
         "previewLook": "Preview look {{name}}"
       },
       "catalog": {

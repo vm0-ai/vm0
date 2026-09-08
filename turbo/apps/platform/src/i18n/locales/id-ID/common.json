@@ -1986,13 +1986,11 @@
       "runCancelled": "Tertunda di tengah pikiran — lanjutkan kapan saja."
     },
     "explainerVideo": {
-      "autoStyleDescription": "Temukan gaya yang cocok dengan konten Anda.",
       "autoVoiceDescription": "Temukan suara yang cocok dengan konten Anda.",
       "avatarVoice": "Suara avatar",
       "changeAvatar": "Ubah avatar",
       "chooseStyle": "Pilih gaya",
       "chooseStyleAndVoice": "Pilih gaya dan suara.",
-      "description": "Perkenalkan produk, jelaskan ide, atau tunjukkan suatu proses.",
       "noMatches": "Tidak ada hasil. Coba pencarian atau kategori lain.",
       "ready": "Siap digunakan. Tambahkan konten Anda di obrolan.",
       "searchAvatars": "Cari avatar",
@@ -2032,7 +2030,6 @@
         "heading": "Pilih avatar",
         "label": "Avatar",
         "none": "Tanpa avatar",
-        "noneDescription": "Buat video tanpa presenter",
         "previewLook": "Pratinjau tampilan {{name}}"
       },
       "catalog": {

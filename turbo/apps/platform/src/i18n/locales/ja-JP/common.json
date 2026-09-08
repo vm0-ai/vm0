@@ -1986,13 +1986,11 @@
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
     "explainerVideo": {
-      "autoStyleDescription": "コンテンツに合うスタイルを選びます。",
       "autoVoiceDescription": "コンテンツに合う音声を選びます。",
       "avatarVoice": "アバターの音声",
       "changeAvatar": "アバターを変更",
       "chooseStyle": "スタイルを選択",
       "chooseStyleAndVoice": "スタイルと音声を選択してください。",
-      "description": "製品を紹介し、アイデアや手順をわかりやすく伝えましょう。",
       "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
       "ready": "準備ができました。チャットにコンテンツを追加してください。",
       "searchAvatars": "アバターを検索",
@@ -2032,7 +2030,6 @@
         "heading": "アバターを選択",
         "label": "アバター",
         "none": "アバターなし",
-        "noneDescription": "プレゼンターなしで動画を作成",
         "previewLook": "{{name}} の外見をプレビュー"
       },
       "catalog": {
