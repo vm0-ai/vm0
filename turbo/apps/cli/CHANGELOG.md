@@ -1,5 +1,28 @@
 # Changelog
 
+## [9.318.0](https://github.com/vm0-ai/vm0/compare/cli-v9.317.6...cli-v9.318.0) (2026-09-08)
+
+
+### Features
+
+* **artifacts:** add private html hosting and isolated previews ([#32716](https://github.com/vm0-ai/vm0/issues/32716)) ([168c385](https://github.com/vm0-ai/vm0/commit/168c385c6bf192250fb42f46abff72e53e0e8aed))
+* **artifacts:** keep managed generation private behind shared rollout switch ([#32687](https://github.com/vm0-ai/vm0/issues/32687)) ([71f6608](https://github.com/vm0-ai/vm0/commit/71f66085b5c5d01fafb47e7ab3379fac0ccfd113))
+
+
+### Bug Fixes
+
+* **cli:** guide connector search through connection setup ([#32707](https://github.com/vm0-ai/vm0/issues/32707)) ([a6d147e](https://github.com/vm0-ai/vm0/commit/a6d147ebc33183ae6d38c65f45c85fee4f8aa52e))
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.418.0
+    * @okouai/core bumped to 8.638.0
+    * @okouai/pi-agent-runtime bumped to 1.23.5
+
 ## [9.317.6](https://github.com/vm0-ai/vm0/compare/cli-v9.317.5...cli-v9.317.6) (2026-09-08)
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.40.4](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.3...sandbox-firecracker-v0.40.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **runner:** attribute guest dns readiness attempts ([#32697](https://github.com/vm0-ai/vm0/issues/32697)) ([7558632](https://github.com/vm0-ai/vm0/commit/7558632c0eea9bded6c831fdba33a76c369677aa)), closes [#32445](https://github.com/vm0-ai/vm0/issues/32445)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+
 ## [0.40.3](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.2...sandbox-firecracker-v0.40.3) (2026-09-08)
 
 ## [0.40.2](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.1...sandbox-firecracker-v0.40.2) (2026-09-08)

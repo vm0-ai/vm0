@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.188.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.16...runner-rs-v0.188.17) (2026-09-08)
+
+
+### Bug Fixes
+
+* finish okou brand cleanup ([#32684](https://github.com/vm0-ai/vm0/issues/32684)) ([7d239a4](https://github.com/vm0-ai/vm0/commit/7d239a41a5dd6dd41ed7c22cd9e5dae566fc1925))
+* **runner:** attribute guest dns readiness attempts ([#32697](https://github.com/vm0-ai/vm0/issues/32697)) ([7558632](https://github.com/vm0-ai/vm0/commit/7558632c0eea9bded6c831fdba33a76c369677aa)), closes [#32445](https://github.com/vm0-ai/vm0/issues/32445)
+
+
+### Performance Improvements
+
+* **runner:** attribute guest connection startup phases ([#32705](https://github.com/vm0-ai/vm0/issues/32705)) ([176ca98](https://github.com/vm0-ai/vm0/commit/176ca98235eee2d021f23448aef8158d51ecb43f))
+* **runner:** reduce workspace mount helper process fanout ([#32704](https://github.com/vm0-ai/vm0/issues/32704)) ([6948274](https://github.com/vm0-ai/vm0/commit/69482746ed271dfbce548e7a32ec86869d144172))
+
 ## [0.188.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.15...runner-rs-v0.188.16) (2026-09-08)
 
 ## [0.188.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.14...runner-rs-v0.188.15) (2026-09-08)
