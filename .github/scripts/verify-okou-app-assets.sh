@@ -23,6 +23,7 @@ declare -a app_files=()
 declare -a vendor_files=()
 declare -a runtime_files=()
 declare -a worker_files=()
+declare -a clerk_ui_files=()
 find "$OKOU_APP_ASSETS_DIRECTORY" -type f -name '*.js' -print0 > "$layout_files"
 while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$OKOU_APP_ASSETS_DIRECTORY"/}"
@@ -30,6 +31,7 @@ while IFS= read -r -d '' source_path; do
     vendor-*.js) vendor_files+=("$relative_path") ;;
     rolldown-runtime-*.js) runtime_files+=("$relative_path") ;;
     shared-database-worker-*.js) worker_files+=("$relative_path") ;;
+    clerk-ui-*.js) clerk_ui_files+=("$relative_path") ;;
     *.js) app_files+=("$relative_path") ;;
   esac
 done < "$layout_files"
@@ -38,22 +40,25 @@ if ((
   ${#app_files[@]} != 1 ||
   ${#vendor_files[@]} != 1 ||
   ${#runtime_files[@]} != 1 ||
-  ${#worker_files[@]} != 1
+  ${#worker_files[@]} != 1 ||
+  ${#clerk_ui_files[@]} != 1
 )); then
-  echo "Expected exactly one app, vendor, Rolldown runtime, and SharedWorker JavaScript asset" >&2
-  printf 'app=%s vendor=%s runtime=%s worker=%s\n' \
+  echo "Expected exactly one app, vendor, Rolldown runtime, SharedWorker, and optional Clerk UI JavaScript asset" >&2
+  printf 'app=%s vendor=%s runtime=%s worker=%s clerk-ui=%s\n' \
     "${app_files[*]:-none}" \
     "${vendor_files[*]:-none}" \
     "${runtime_files[*]:-none}" \
-    "${worker_files[*]:-none}" >&2
+    "${worker_files[*]:-none}" \
+    "${clerk_ui_files[*]:-none}" >&2
   exit 1
 fi
 
-printf 'App bundle layout: app=%s vendor=%s runtime=%s worker=%s\n' \
+printf 'App bundle layout: app=%s vendor=%s runtime=%s worker=%s clerk-ui=%s\n' \
   "${app_files[0]}" \
   "${vendor_files[0]}" \
   "${runtime_files[0]}" \
-  "${worker_files[0]}"
+  "${worker_files[0]}" \
+  "${clerk_ui_files[0]}"
 
 verify_app_asset() {
   local source_path=$1

@@ -91,6 +91,11 @@ overrides:
   glob: ">=10.5.0"
   hono: 4.13.0
   ip-address: 10.4.0
+  # The installed Clerk UI's Solana peer permits this release and uses only
+  # its browser RPC client. 4.2/4.3 introduce stream-json@1 (GHSA-528h-pc64-c93x);
+  # stream-json@3.5 is not API-compatible. Keep the 4.1.3 server security fixes
+  # until jayson publishes a compatible parser update, then remove this pin.
+  "@solana/web3.js@1.98.4>jayson": 4.1.3
   "jayson>uuid": 11.1.1
   js-cookie: ">=3.0.7"
   js-yaml: 4.3.1
