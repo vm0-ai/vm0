@@ -3,6 +3,7 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import artifacts from "../cua/artifacts.json";
+import type { CuaProcessOwner } from "./cua-process-owner";
 import type {
   CuaDriver,
   EmbeddedCuaDriverHost,
@@ -12,6 +13,7 @@ import type {
 } from "@trycua/cua-driver";
 
 export interface CuaSdk {
+  readonly processOwner?: CuaProcessOwner;
   readonly standardPermissionMode: EmbeddedPermissionMode;
   readonly stoppedState: EmbeddedDriverHostState;
   createHost(
@@ -34,6 +36,10 @@ export interface CuaSdk {
 }
 
 let sdkLoadAttempted = false;
+
+export function recordCuaLaunch(): void {
+  sdkLoadAttempted = true;
+}
 
 export function assertCuaDormant(): void {
   if (sdkLoadAttempted)

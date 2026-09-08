@@ -61,6 +61,7 @@
         "forge.config.js",
         "vite.renderer.config.ts",
         "src/main.ts",
+        "src/cua-sdk-process.ts",
         "src/preload.ts",
         "src/renderer/main.tsx",
         "src/renderer/recorder/main.tsx",

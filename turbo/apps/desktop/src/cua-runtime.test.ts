@@ -343,6 +343,7 @@ describe("embedded CUA host lifecycle", () => {
     await expect(owner.start()).rejects.toThrow("retirement is unproven");
     expect(external.active.size).toBe(1);
     stop.resolve();
+    await expect.poll(() => owner.getState().cleanupPending).toBe(false);
     await owner.stop();
     expect(external.active.size).toBe(0);
     await owner.start();
@@ -519,6 +520,7 @@ describe("embedded CUA host lifecycle", () => {
     expect(external.clientDestroyed()).toBe(false);
     gate.resolve();
     await probe;
+    await expect.poll(() => owner.getState().cleanupPending).toBe(false);
     await owner.stop();
     expect(external.sessions.size).toBe(0);
     expect(external.active.size).toBe(0);

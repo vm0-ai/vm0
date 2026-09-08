@@ -6,7 +6,8 @@ const { packagedAppPaths } = require("./packaged-app-paths");
 const { resolveDesktopBuildConfig } = require("./desktop-build-config");
 const { readDesktopSmokeEvidence } = require("./desktop-smoke-evidence");
 
-const cuaProbe = process.argv.includes("--cua-probe");
+const forcedProbe = process.argv.includes("--cua-forced-probe");
+const cuaProbe = process.argv.includes("--cua-probe") || forcedProbe;
 const LAUNCH_TIMEOUT_MS = 60_000;
 const OUTPUT_LIMIT = 128 * 1024;
 
@@ -124,6 +125,7 @@ const child = spawn(executablePath, [], {
     OKOU_DESKTOP_SMOKE_TEST: "1",
     OKOU_DESKTOP_CUA_PROBE: cuaProbe ? "1" : "0",
     OKOU_DESKTOP_CUA_CAPTURE: "0",
+    OKOU_DESKTOP_CUA_FORCE_PROBE: forcedProbe ? "1" : "0",
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -170,9 +172,14 @@ child.on("close", (code, signal) => {
       stdout,
       cuaProbe,
       resolveDesktopBuildConfig().identity,
+      forcedProbe,
     );
     const report = {
-      kind: cuaProbe ? "embedded-lifecycle" : "dormant-startup",
+      kind: forcedProbe
+        ? "forced-embedded-lifecycle"
+        : cuaProbe
+          ? "embedded-lifecycle"
+          : "dormant-startup",
       processExit: { code, signal, timedOut, outputExceeded },
       evidence,
     };

@@ -77,3 +77,49 @@ The daemon fixture has a test-only self-expiry. The helper's deliberate
 leaving permanent processes; expiry is outside the five-second assertion and
 can never count as successful retirement. These fixtures neither reproduce the
 original native mutex race nor exercise user applications or permissions.
+
+## Product integration under the Draft fence
+
+The proof now compiles `native/cua-supervisor/{owner,guardian}.c`, the same
+lifecycle implementation shipped in `Resources/native`. The test-only guardian
+crash method is excluded from the packaged Node-API module. The production
+heartbeat lease is five seconds; main death also closes the lifetime pipe.
+
+`cua-sdk-process.js` is a separate bundled entry alongside those two binaries.
+It exclusively loads the verified upstream payload in `Resources/cua`; the
+upstream archive inventory and all three 0.23.2 pins stay unchanged. No system
+Node is needed at runtime. The guardian execs the bundled Electron binary in its
+existing RunAsNode mode and does not disclaim responsibility. The added nested
+native code uses the existing signing policy and entitlements.
+
+Main's `CuaProcessOwner` exposes only the fixed host/client/session lifecycle and
+existing adapter methods over a private mode-0700 Unix socket. Requests carry
+monotonic generation/request IDs and an absolute monotonic execution deadline.
+Both sides cap frames and pending work; malformed replies, foreign generations,
+disconnects and backpressure fail admission. The SDK MCP launcher environment is
+never forwarded. Cancellation is an RPC message: no main callback enters CUA.
+Quit, update and every driver retirement retain their shared cleanup fence until
+the native owner independently observes guardian exit and group emptiness.
+
+Each default, production-configuration and PR-preview package runs dormant
+startup, healthy public embedded lifecycle, and a separate forced lifecycle.
+The forced probe blocks actual helper execution with `Atomics.wait` before
+native stop and requires process exit, a responsive main heartbeat, and
+completion within the original five-second total budget. It is enabled only by
+the dedicated package probe entry, never by renderer or agent commands. Reports
+keep native graceful success distinct from proven forced reclamation.
+
+The pinned CUA macOS application launcher calls NSWorkspace for user apps;
+these launches are not forked SDK descendants. Its short-lived plist/process
+inspection children inherit the reserved group. The lifecycle proof does not
+operate a browser, recorder, plugin or user application.
+
+The macOS proof at PR head `c33c686aaef1437389cdcdd650daf3e7a39a3232`
+passed 25 cases in [run 34224326554](https://github.com/vm0-ai/vm0/actions/runs/34224326554).
+This includes actual CUA 0.23.2 healthy and pending-metadata cancellation stress,
+plus independent kqueue exits for observed processes. One stress case required
+force; it is not a demonstrated reproduction of the original native mutex race.
+The complete product integration and changed production source must pass again
+at the final head. Draft status remains until those gates pass. Developer ID
+attribution, TCC grant persistence and interactive user-Mac acceptance remain
+pending; the fixture and ad-hoc CI cannot establish them.

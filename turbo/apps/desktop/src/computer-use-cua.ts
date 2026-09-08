@@ -91,6 +91,7 @@ class CuaComputerUseBackend implements ComputerUseNativeBackend {
   private budget: ComputerUseCommandBudget | null = null;
   setCommandBudget = (budget: ComputerUseCommandBudget | null) => {
     this.budget = budget;
+    this.runtime.setCommandBudget(budget);
   };
   constructor(private readonly runtime: CuaEmbeddedRuntime) {}
 

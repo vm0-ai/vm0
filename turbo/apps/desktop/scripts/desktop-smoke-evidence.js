@@ -78,7 +78,7 @@ function runtimeState(state, generation, phase) {
 }
 
 /** Parse only the one bounded metadata record from the actual child process. */
-function readDesktopSmokeEvidence(stdout, cuaProbe, identity) {
+function readDesktopSmokeEvidence(stdout, cuaProbe, identity, forced = false) {
   const prefix = cuaProbe ? "[cua-probe] " : "[smoke-test] evidence ";
   const records = stdout
     .split(/\r?\n/)
@@ -116,7 +116,7 @@ function readDesktopSmokeEvidence(stdout, cuaProbe, identity) {
     evidence.electronVersion === packageMetadata.devDependencies.electron &&
       evidence.bundleId === identity.bundleId,
   );
-  if (cuaProbe) validateProbeEvidence(evidence, identity);
+  if (cuaProbe) validateProbeEvidence(evidence, identity, forced);
   else validateDormantEvidence(evidence, identity);
   return evidence;
 }
@@ -151,7 +151,7 @@ function validateDormantEvidence(evidence, identity) {
   requireEvidence(evidence.sdkLoadAttempted === false);
 }
 
-function validateProbeEvidence(evidence, identity) {
+function validateProbeEvidence(evidence, identity, forced) {
   requireEvidence(
     Number.isSafeInteger(evidence.generation) &&
       evidence.generation > 0 &&
@@ -200,14 +200,38 @@ function validateProbeEvidence(evidence, identity) {
     "exitCode",
     "hostStopped",
     "directoryRemoved",
+    "process",
   ]);
   requireEvidence(
     cleanup.generation === evidence.generation &&
       cleanup.exitObserved === true &&
-      cleanup.exitSuccess === true &&
-      cleanup.exitCode === 0 &&
-      cleanup.hostStopped === true &&
+      (forced
+        ? cleanup.exitSuccess === false && cleanup.exitCode === null
+        : cleanup.exitSuccess === true &&
+          cleanup.exitCode === 0 &&
+          cleanup.hostStopped === true) &&
       cleanup.directoryRemoved === true,
+  );
+  const owner = cleanup.process;
+  keys(owner, [
+    "guardianPid",
+    "guardianExitObserved",
+    "descendantsExited",
+    "forced",
+    "elapsedMs",
+    "heartbeatCount",
+  ]);
+  requireEvidence(
+    Number.isSafeInteger(owner.guardianPid) &&
+      owner.guardianPid > 0 &&
+      owner.guardianExitObserved === true &&
+      owner.descendantsExited === true &&
+      owner.forced === forced &&
+      Number.isFinite(owner.elapsedMs) &&
+      owner.elapsedMs >= 0 &&
+      owner.elapsedMs <= 5000 &&
+      Number.isSafeInteger(owner.heartbeatCount) &&
+      owner.heartbeatCount >= (forced ? 20 : 0),
   );
 }
 

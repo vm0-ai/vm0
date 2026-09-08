@@ -325,6 +325,11 @@ jobs:
           OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/default/probe.json
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
 
+      - name: Force blocked CUA cleanup in default-configuration artifact
+        env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/default/forced.json
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-forced-probe --signed
+
       - name: Upload unsigned default-configuration macOS artifact
         uses: actions/upload-artifact@v7
         with:
@@ -482,6 +487,13 @@ jobs:
           OKOU_DESKTOP_PRODUCT: okou
           OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
+
+      - name: Force blocked CUA cleanup in Okou production artifact
+        env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/production/forced.json
+          OKOU_DESKTOP_PRODUCT: okou
+          OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-forced-probe --signed
 
       - name: Upload unsigned Okou macOS artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -654,6 +666,13 @@ jobs:
           OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/preview/probe.json
           OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
+
+      - name: Force blocked CUA cleanup in PR preview artifact
+        if: github.event_name == 'pull_request'
+        env:
+          OKOU_DESKTOP_SMOKE_EVIDENCE_PATH: ${{ runner.temp }}/cua-evidence/preview/forced.json
+          OKOU_DESKTOP_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
+        run: node apps/desktop/scripts/smoke-test-packaged-app.js --cua-forced-probe --signed
 
       - name: Upload unsigned PR preview macOS artifact
         if: github.event_name == 'pull_request'
