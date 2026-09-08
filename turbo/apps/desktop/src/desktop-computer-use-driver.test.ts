@@ -533,6 +533,40 @@ const action: ComputerUseCommand = {
 };
 
 describe("production driver generation and admission wiring", () => {
+  it.each(["switch", "drain"] as const)(
+    "drains a healthy claimed action when %s cancels a concurrent permission refresh",
+    async (mode) => {
+      const app = desktop();
+      await app.controller.start();
+      const write = app.native.pause("keyboard.type_text");
+      const command = app.claim(action);
+      app.timers.run(5_000);
+      command.response.resolve();
+      await write.reached.promise;
+      const refresh = app.permissions.refreshComputerUsePermissionState();
+      const rejected = expect(refresh).rejects.toThrow();
+      const transition =
+        mode === "switch"
+          ? app.controller.transitionDriver(app.driverDefinition)
+          : app.controller.drainAndStop();
+      write.resume.resolve();
+      const completed = await command.completed.promise;
+      command.completeResponse.resolve();
+      await transition;
+      await rejected;
+      expect(completed).toMatchObject({ status: "succeeded" });
+      expect(app.events.indexOf("completion")).toBeLessThan(
+        app.events.indexOf("dispose:1"),
+      );
+      expect(app.driver.getCapabilities()).toEqual(
+        mode === "switch" ? SUPPORTED_COMPUTER_USE_CAPABILITIES : [],
+      );
+      expect(app.controller.getHostState().status).toBe(
+        mode === "switch" ? "online" : "offline",
+      );
+    },
+  );
+
   it("drains delayed claim, permission, action, capture and completion on the original generation while the host stays alive", async () => {
     const app = desktop();
     await app.controller.start();

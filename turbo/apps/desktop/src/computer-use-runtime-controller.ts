@@ -32,7 +32,7 @@ export interface ComputerUsePermissionRecoveryDiagnostic {
 
 interface PermissionRefresh {
   readonly promise: Promise<ComputerUsePermissionState | null>;
-  readonly cancel: () => void;
+  readonly cancel: (mode?: "retire" | "drain") => void;
   deadline: number;
 }
 
@@ -263,11 +263,15 @@ export class ComputerUseRuntimeController {
         COMPUTER_USE_NATIVE_PERMISSION_TIMEOUT_MS +
         this.transitionTimeoutMs,
       promise: Promise.race([Promise.resolve().then(work), aborted]),
-      cancel: () => {
+      cancel: (mode = "retire") => {
         if (cancelled) return;
         cancelled = true;
         rejectCancelled(new Error("Native permission query was cancelled"));
-        if (this.permissionRefresh === refresh && intent === this.intent) {
+        if (
+          mode === "retire" &&
+          this.permissionRefresh === refresh &&
+          intent === this.intent
+        ) {
           this.driver?.withdrawAdmission();
           void this.driver?.forceRetire().catch(() => {});
         }
@@ -597,13 +601,14 @@ export class ComputerUseRuntimeController {
 
   /** Serialized native replacement; it never changes host/plugin online state on success. */
   transitionDriver(driver: ComputerUseDriver): Promise<void> {
-    this.cancelPermissionRefresh();
+    // Supersede the probe; the replacement owner still drains healthy claims.
+    this.cancelPermissionRefresh("drain");
     return this.replaceDriver(driver);
   }
 
   /** The auth owner calls this synchronously when its session proof changes. */
-  cancelPermissionRefresh(): void {
-    this.permissionRefresh?.cancel();
+  cancelPermissionRefresh(mode: "retire" | "drain" = "retire"): void {
+    this.permissionRefresh?.cancel(mode);
     this.permissionRefresh = null;
   }
 
@@ -798,6 +803,7 @@ export class ComputerUseRuntimeController {
   async drainAndStop(): Promise<void> {
     this.runningRequested = false;
     this.manualStopRequested = true;
+    this.cancelPermissionRefresh("drain");
     this.supersede();
     await this.runtime?.drainAndStop();
     await this.detachRuntime();

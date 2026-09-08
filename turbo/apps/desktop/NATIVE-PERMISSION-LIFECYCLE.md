@@ -30,6 +30,12 @@ readiness for another waiter. New work under a new intent cannot share an old
 result. Explicit selection can perform its own authorized replacement after
 superseding the obsolete recovery.
 
+Graceful driver replacement and drain-and-stop cancel the probe's result while
+the existing host owner drains healthy claimed actions through completion
+reporting. They do not force-stop a healthy helper merely because a read was
+concurrent. Revoked authority, explicit query cancellation and expired budgets
+still withdraw readiness and force retirement; failed helpers remain poisoned.
+
 ## Bounds
 
 - A helper request retains its 60-second backstop. Swift's semaphore policy is
