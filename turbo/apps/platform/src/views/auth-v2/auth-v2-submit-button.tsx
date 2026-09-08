@@ -38,10 +38,7 @@ export function AuthV2SubmitButton({
     <Button
       aria-busy={busy}
       aria-label={label}
-      className={cn(
-        "w-full okou-auth-action-text",
-        AUTH_V2_PRIMARY_ACTION_CLASS,
-      )}
+      className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
       disabled={disabled}
       type="submit"
     >

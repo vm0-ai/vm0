@@ -16,15 +16,14 @@ export function getAuthV1ProviderAppearance(): Appearance {
 
 function clerkVariables(): Record<string, string> {
   return {
-    // Clerk's sign-up legal links consume this public variable and do not
-    // expose a dedicated appearance element. Filled controls retain the
-    // primary fill through their public component-level element classes.
-    colorPrimary: "hsl(var(--brand-text))",
+    // This token also colors filled controls (including Help and recovery).
+    // Text actions and legal links have a separate component-level adapter.
+    colorPrimary: "hsl(var(--primary))",
     colorBackground: "hsl(var(--card))",
     colorNeutral: "hsl(var(--foreground))",
     colorForeground: "hsl(var(--foreground))",
     colorMutedForeground: "hsl(var(--muted-foreground))",
-    colorPrimaryForeground: "hsl(var(--brand-text-foreground))",
+    colorPrimaryForeground: "hsl(var(--primary-foreground))",
     colorMuted: "hsl(var(--muted))",
     colorInput: "hsl(var(--input))",
     colorInputForeground: "hsl(var(--foreground))",

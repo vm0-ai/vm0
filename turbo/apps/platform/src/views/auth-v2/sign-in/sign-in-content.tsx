@@ -383,7 +383,7 @@ function IdentifierStep({
           <Button
             aria-busy={selectingFactorId === passkeyFactor.id}
             aria-label={signInFactorLabel(passkeyFactor, copy)}
-            className="w-full okou-auth-action-text"
+            className="w-full text-[13px]"
             disabled={operationPending}
             type="button"
             variant="outline"
@@ -679,10 +679,7 @@ function PasswordRecoveryStep({
         <Button
           aria-busy={selectingFactorId === resetFactor.id}
           aria-label={copy.passwordResetMethod}
-          className={cn(
-            "w-full okou-auth-action-text",
-            AUTH_V2_PRIMARY_ACTION_CLASS,
-          )}
+          className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
           disabled={selecting}
           type="button"
           onClick={() => {
@@ -771,10 +768,7 @@ function HelpStep({ copy, signals }: SignInStepProps) {
   return (
     <div className="flex flex-col gap-4">
       <Button
-        className={cn(
-          "w-full okou-auth-action-text",
-          AUTH_V2_PRIMARY_ACTION_CLASS,
-        )}
+        className={cn("w-full text-[13px]", AUTH_V2_PRIMARY_ACTION_CLASS)}
         asChild
       >
         <a href={copy.supportEmailHref}>

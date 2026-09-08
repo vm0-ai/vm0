@@ -13,7 +13,7 @@ export {
   CardContent,
   cardClassName,
 } from "./components/ui/card";
-export { Checkbox } from "./components/ui/checkbox";
+export { Checkbox, checkboxVisualClassName } from "./components/ui/checkbox";
 export { CopyButton, type CopyButtonProps } from "./components/ui/copy-button";
 export { Input, inputClassName } from "./components/ui/input";
 export { Kbd, KbdGroup } from "./components/ui/kbd";

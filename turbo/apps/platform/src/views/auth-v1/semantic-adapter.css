@@ -1,0 +1,48 @@
+/* Clerk owns markup and behavior. These classes are attached through public
+ * appearance.elements; variants select a control's semantics, never DOM depth.
+ * Keep the layer above Clerk and below element-specific Tailwind utilities. */
+@layer components {
+  /* Plain links use the readable text ramp, including legal links that have
+   * no dedicated Clerk element. Explicit action variants below retain their
+   * hierarchy. This also covers links in newly reachable auth states. */
+  .okou-clerk-root a {
+    @apply text-brand-text hover:text-brand-text-hover active:text-brand-text-hover;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .okou-clerk-button:is(
+      [data-variant="solid"],
+      [data-variant="bordered"]
+    )[data-color="primary"] {
+    @apply inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg border-0 bg-primary px-4 py-0 text-primary-foreground shadow-none;
+    @apply font-medium ring-offset-background transition-colors;
+    font-size: var(--text-action);
+    line-height: var(--text-action--line-height);
+    @apply hover:bg-primary-hover active:bg-primary-pressed;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .okou-clerk-footer-link {
+    @apply text-sm font-medium leading-5 text-brand-text no-underline hover:no-underline hover:text-brand-text-hover active:text-brand-text-hover;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background;
+  }
+
+  .cl-footerAction__signIn .okou-clerk-footer-link,
+  .cl-footerAction__signUp .okou-clerk-footer-link {
+    @apply underline underline-offset-4 hover:underline;
+  }
+
+  .okou-clerk-button[data-variant="outline"],
+  .cl-footerAction__usePasskey .okou-clerk-footer-link {
+    @apply h-9 gap-2 rounded-lg border border-border bg-background px-4 py-0 text-sm font-medium text-foreground shadow-none;
+    @apply ring-offset-background transition-colors hover:bg-state-hover active:bg-state-pressed;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  /* Style the actual passkey action, not its non-interactive footer wrapper. */
+  .cl-footerAction__usePasskey .okou-clerk-footer-link {
+    @apply inline-flex w-full items-center justify-center hover:text-foreground active:text-foreground;
+  }
+}

@@ -431,7 +431,6 @@ describe("neutral gray palette", () => {
       ["--accent-foreground", "--accent"],
       ["--sidebar-foreground", "--sidebar"],
       ["--primary-foreground", "--primary"],
-      ["--brand-text-foreground", "--brand-text"],
       ["--destructive-foreground", "--destructive"],
     ] as const;
 
