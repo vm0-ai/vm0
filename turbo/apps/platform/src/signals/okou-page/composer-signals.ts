@@ -550,7 +550,10 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const create = createComposerCreateSignals(workflowComposer, ui);
+  const create = createComposerCreateSignals(workflowComposer, ui, {
+    image: options.imageModel !== undefined,
+    video: options.videoModel !== undefined,
+  });
   const voice = createComposerVoiceInput(
     options,
     workflowComposer,
@@ -791,6 +794,7 @@ function createComposerPrimaryActionSignal(args: {
   readonly eventSignals: ReturnType<typeof createComposerChatEventSignals>;
   readonly workflowComposer: WorkflowComposerSignals;
   readonly voiceState$: ComposerVoiceInputSignals["state$"];
+  readonly choosingCreateType$: ComposerCreateSignals["choosing$"];
 }): Computed<Promise<ComposerPrimaryAction>> {
   const { options, eventSignals, workflowComposer } = args;
   const draft = options.draft.signals;
@@ -806,7 +810,8 @@ function createComposerPrimaryActionSignal(args: {
     const attachments = get(draft.attachments$);
     const hasContent =
       get(workflowComposer.hasInput$) || attachments.length > 0;
-    const canSend = uploadsReady && hasContent;
+    const canSend =
+      !get(args.choosingCreateType$) && uploadsReady && hasContent;
     const sending = await get(eventSignals.sending$);
     if (sending && !canSend) {
       return "stop";
@@ -850,6 +855,7 @@ function createComposerSubmissionSignals(
     eventSignals,
     workflowComposer,
     voiceState$,
+    choosingCreateType$: create.choosing$,
   });
   const submitCurrentInput$ = command(
     async (
