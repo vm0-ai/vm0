@@ -19,7 +19,7 @@ void app.whenReady().then(async () => {
     mode,
   ]);
   fs.writeFileSync(
-    `${socketPath}.main`,
+    `${socketPath}.main.tmp`,
     JSON.stringify({
       pid: process.pid,
       guardian,
@@ -27,6 +27,7 @@ void app.whenReady().then(async () => {
       node: process.versions.node,
     }),
   );
+  fs.renameSync(`${socketPath}.main.tmp`, `${socketPath}.main`);
   let beats = 0;
   const heartbeat = setInterval(() => {
     ++beats;
