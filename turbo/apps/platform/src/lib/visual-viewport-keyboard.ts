@@ -12,6 +12,7 @@ const LAYOUT_VIEWPORT_CHANGE_TOLERANCE_PX = 8;
 const VIEWPORT_SETTLE_DELAY_MS = 50;
 const VISUAL_VIEWPORT_RESIDUE_MIN_PX = 24;
 const VISUAL_VIEWPORT_RESIDUE_CONFIRM_DELAY_MS = 500;
+const VISUAL_VIEWPORT_RESIDUE_CONFIRM_ATTEMPTS = 3;
 const VISUAL_VIEWPORT_SCALE_TOLERANCE = 0.01;
 const CONTENTEDITABLE_SELECTOR =
   "[contenteditable]:not([contenteditable='false'])";
@@ -258,12 +259,10 @@ function createSettledCommit(
 }
 
 type VisualViewportResidueTracker = {
-  /** The keyboard session ended; the next settled sample decides. */
+  /** The keyboard session ended; the next settled sample starts a check. */
   markClosed(): void;
   /** A settled sample arrived while the keyboard is closed. */
   commit(): void;
-  /** A live sample arrived while the keyboard is closed. */
-  sync(): void;
   /** Stop tracking, for example because the keyboard reopened. */
   clear(): void;
 };
@@ -274,7 +273,8 @@ function createVisualViewportResidueTracker(
   isKeyboardOpen: () => boolean,
 ): VisualViewportResidueTracker {
   let checkPending = false;
-  let following = false;
+  let confirmAttempts = 0;
+  let offsetTopAtCheck = 0;
   let offsetTopBeforeScroll = 0;
   let confirmController: AbortController | null = null;
 
@@ -285,17 +285,16 @@ function createVisualViewportResidueTracker(
     }
   };
 
-  const sync = () => {
-    if (!following) {
+  // WebKit does not always publish an event when the pan finally ends, so a
+  // following root polls the visual viewport every frame until it does.
+  const followFrame = createFrameTask(() => {
+    if (isKeyboardOpen() || !hasVisualViewportResidue(viewport)) {
+      clearVisualViewportResidue();
       return;
     }
-    if (hasVisualViewportResidue(viewport)) {
-      setVisualViewportResidue(viewport);
-      return;
-    }
-    following = false;
-    clearVisualViewportResidue();
-  };
+    setVisualViewportResidue(viewport);
+    followFrame.schedule();
+  });
 
   // WebKit publishes the offsetTop that results from the origin scroll on the
   // next frame; follow the visual viewport only when the pan survived it.
@@ -305,8 +304,8 @@ function createVisualViewportResidueTracker(
     }
     const recoveredByScroll = !hasVisualViewportResidue(viewport);
     if (!recoveredByScroll) {
-      following = true;
       setVisualViewportResidue(viewport);
+      followFrame.schedule();
     }
     captureVisualViewportResidue({
       innerHeight: window.innerHeight,
@@ -318,8 +317,8 @@ function createVisualViewportResidueTracker(
   });
 
   // The keyboard close animation keeps panning the visual viewport for a few
-  // hundred milliseconds after its last event. Only a pan that outlives that
-  // animation is a residue; acting earlier would move the root mid-animation.
+  // hundred milliseconds, on some builds without any event. Only a pan that
+  // has stopped moving for a whole confirmation window is a residue.
   const confirm = async (confirmSignal: AbortSignal) => {
     await delay(VISUAL_VIEWPORT_RESIDUE_CONFIRM_DELAY_MS, {
       signal: confirmSignal,
@@ -329,10 +328,29 @@ function createVisualViewportResidueTracker(
     if (isKeyboardOpen() || !hasVisualViewportResidue(viewport)) {
       return;
     }
-    offsetTopBeforeScroll = readVisualViewportOffsetTop(viewport);
+    const offsetTop = readVisualViewportOffsetTop(viewport);
+    if (offsetTop !== offsetTopAtCheck) {
+      offsetTopAtCheck = offsetTop;
+      confirmAttempts += 1;
+      if (confirmAttempts < VISUAL_VIEWPORT_RESIDUE_CONFIRM_ATTEMPTS) {
+        scheduleConfirm();
+      }
+      return;
+    }
+    offsetTopBeforeScroll = offsetTop;
     // A stuck document scroll is the cheap case: return to the origin first.
     window.scrollTo(0, 0);
     decideFrame.schedule();
+  };
+
+  const scheduleConfirm = () => {
+    const controller = createChildAbortController(signal);
+    confirmController = controller;
+    detach(
+      confirm(controller.signal),
+      Reason.DomCallback,
+      "visual viewport residue",
+    );
   };
 
   const check = () => {
@@ -346,13 +364,9 @@ function createVisualViewportResidueTracker(
     }
     cancelConfirm();
     decideFrame.cancel();
-    const controller = createChildAbortController(signal);
-    confirmController = controller;
-    detach(
-      confirm(controller.signal),
-      Reason.DomCallback,
-      "visual viewport residue",
-    );
+    offsetTopAtCheck = readVisualViewportOffsetTop(viewport);
+    confirmAttempts = 0;
+    scheduleConfirm();
   };
 
   return {
@@ -360,19 +374,17 @@ function createVisualViewportResidueTracker(
       checkPending = true;
     },
     commit() {
-      if (checkPending) {
-        checkPending = false;
-        check();
+      if (!checkPending) {
         return;
       }
-      sync();
+      checkPending = false;
+      check();
     },
-    sync,
     clear() {
       cancelConfirm();
       decideFrame.cancel();
+      followFrame.cancel();
       checkPending = false;
-      following = false;
       clearVisualViewportResidue();
     },
   };
@@ -489,12 +501,9 @@ export function setupVisualViewportKeyboardState(
       if (keyboardWasOpen) {
         residue.markClosed();
       }
-      // The residue check waits for the settled close sample; until then a
-      // running follow keeps tracking the visual viewport.
+      // The residue check starts from the settled close sample.
       if (commitOpening) {
         residue.commit();
-      } else {
-        residue.sync();
       }
       revealFrame.cancel();
       return;

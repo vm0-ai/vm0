@@ -432,19 +432,54 @@ test("A mobile browser root follows a visual viewport that stays panned after th
   expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
   expect(residueTop()).toBe("310px");
 
-  // The browser keeps panning the visual viewport while the residue lasts.
+  // The browser keeps panning the visual viewport while the residue lasts,
+  // and it does not always announce that through an event.
   viewport.offsetTop = 120;
-  viewport.dispatchEvent(new Event("scroll"));
   await clock.flushUpdate();
   expect(residueTop()).toBe("120px");
 
   viewport.offsetTop = 0;
-  viewport.dispatchEvent(new Event("scroll"));
   await clock.flushUpdate();
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
   expect(residueTop()).toBe("");
+});
+
+test("A pan that is still moving at the confirmation is checked again", async () => {
+  const viewport = new MockVisualViewport(844);
+  setInnerHeight(844);
+  setStandalone(false);
+  setIPhoneUserAgent();
+  installVisualViewport(viewport);
+  const scrollTo = installScrollTo(viewport, false);
+  const entry = focusTextEntry();
+  const clock = startViewportKeyboardState();
+
+  await resizeAndSettle(viewport, clock, 520, 310);
+  entry.blur();
+  await resizeAndSettle(viewport, clock, 844, 310);
+
+  // The close animation is still panning when the first confirmation runs.
+  viewport.offsetTop = 200;
+  await clock.flushUpdate();
+  expect(scrollTo).not.toHaveBeenCalled();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
+
+  // The pan has not moved since, so the second confirmation acts on it.
+  await clock.flushUpdate();
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+  expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
+  expect(residueTop()).toBe("200px");
+
+  // The pan ends without an event; the polling follow notices and lets go.
+  viewport.offsetTop = 0;
+  await clock.flushUpdate();
+  expect(
+    document.documentElement.dataset.visualViewportResidue,
+  ).toBeUndefined();
 });
 
 test("A residual visual viewport pan that an origin scroll clears needs no root follow", async () => {
