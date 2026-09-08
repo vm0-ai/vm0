@@ -275,7 +275,6 @@ function isTeamsBotGreeting(prompt: string): boolean {
 function commandHelpNotice(args: {
   readonly canSwitch: boolean;
   readonly canModel: boolean;
-  readonly publicBrand: PublicBrand;
   readonly installation?: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
   const { assistantName, botName } = teamsIdentity(args.installation);
@@ -1501,7 +1500,6 @@ function teamsValidationFallbackNotice(args: {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
@@ -1893,7 +1891,6 @@ function unboundInstallationNotice(args: {
     return commandHelpNotice({
       canSwitch: false,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
@@ -1917,7 +1914,6 @@ function missingConnectionNotice(args: {
     return commandHelpNotice({
       canSwitch: true,
       canModel: false,
-      publicBrand: args.publicBrand,
       installation: args.installation,
     });
   }
@@ -1946,7 +1942,6 @@ const connectedCommandBeforeCompose$ = command(
         return commandHelpNotice({
           canSwitch: true,
           canModel: true,
-          publicBrand: args.publicBrand,
           installation: args.installation,
         });
       }

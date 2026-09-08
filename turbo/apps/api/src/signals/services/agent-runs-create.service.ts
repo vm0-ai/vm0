@@ -12,7 +12,6 @@ import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-thre
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { permissionGrantsToFirewallPolicies } from "@okouai/connectors/firewall-metadata/policy";
 import type { FirewallPolicies } from "@okouai/connectors/firewall-types";
 import {
@@ -156,7 +155,6 @@ interface CreateAgentRunCommandArgs {
   readonly body: AgentRunCreateBody;
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
-  readonly publicBrand?: PublicBrand;
   readonly appendSystemPrompt?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
@@ -1011,7 +1009,6 @@ function buildCreateAgentRunArgs(args: {
     callbacks: command.callbacks,
     includeOkouTokenSecret: true,
     productAgentExecutionPlan,
-    okouTokenPublicBrand: command.publicBrand,
     okouTokenComputerUseHostId: command.computerUseHostId,
     okouTokenCloudBrowserEnabled: args.cloudBrowserEnabled,
     introVideoEnabled,

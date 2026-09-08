@@ -15,6 +15,7 @@ import { now, nowDate, withMockNowForTest } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { readCanonicalAgentNameFixture } from "../../../test-fixtures/canonical-agent-authority";
 import { clearRunLaunchSnapshotFixture } from "../../../test-fixtures/agent-runs";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import {
   createBddApi,
   expectApiError,
@@ -51,7 +52,6 @@ import {
 // unicorn/text-encoding-identifier-case.
 const UTF8_ENCODING = ["utf", "8"].join("-");
 const HOUR_MS = 60 * 60 * 1000;
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -1693,8 +1693,13 @@ describe("RUN-01: direct run admission boundaries", () => {
 
     mockEnv("ENV", "production");
     mockOptionalEnv("VERCEL_ENV", "preview");
+    const legacyDomainActor = {
+      ...actor,
+      email: `bdd-${randomUUID().slice(0, 8)}@vm0.ai`,
+    };
+    await bdd.readMe(legacyDomainActor);
     const externalGate = await reads.requestCreateDirectRun(
-      actor,
+      legacyDomainActor,
       {
         agentId: compose.agentId,
         prompt: "capture from a non-staff organization",
@@ -1705,7 +1710,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     expectApiError(externalGate.body);
     expect(externalGate.body.error.message).toContain("internal accounts");
 
-    const staff = bdd.user({ orgId: STAFF_ORG_ID });
+    const staff = bdd.user({ orgId: createUniqueStaffOrgIdFixture() });
     await api.grantProEntitlement(staff);
     const staffAgent = await createClaudeAgent(staff, "bdd-staff-capture");
     const allowed = await reads.requestCreateDirectRun(

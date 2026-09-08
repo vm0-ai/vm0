@@ -270,7 +270,6 @@ export async function resolveAgentPhoneAuditLogsUrl(
     readonly orgId: string;
     readonly userId: string;
     readonly runId: string;
-    readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
 ): Promise<string | undefined> {

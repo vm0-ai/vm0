@@ -3376,7 +3376,6 @@ function buildCreateAgentRunArgs(params: {
   return {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
-    publicBrand: args.publicBrand,
     chatThreadId: prepared.thread.threadId,
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,

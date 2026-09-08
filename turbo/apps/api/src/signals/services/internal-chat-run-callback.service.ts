@@ -511,7 +511,6 @@ interface ChatCallbackDependencies {
       readonly chatThreadId: string;
       readonly runId: string;
       readonly errorMessage: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<string>;
@@ -546,7 +545,6 @@ interface ChatCallbackDependencies {
       readonly threadTs: string;
       readonly routeThreadTs?: string;
       readonly chatEventId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -945,7 +943,6 @@ function buildQueuedCreateAgentRunArgs(
     triggerSource: input.triggerSource,
     agentRunPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
-    publicBrand: input.publicBrand,
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
     queueFirstAssociation: {
@@ -3600,7 +3597,6 @@ async function handleSlackQueuedMessageAdmissionFailure(
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
         chatEventId: failed.assistantEventId,
-        publicBrand: args.failure.publicBrand,
       },
       signal,
     ),
@@ -4390,7 +4386,6 @@ async function prepareFailedTerminalChatCallbackWork(
               chatThreadId: args.chatThread.chatThreadId,
               runId: args.runId,
               errorMessage: args.errorMessage,
-              publicBrand: args.publicBrand,
             },
             signal,
           );

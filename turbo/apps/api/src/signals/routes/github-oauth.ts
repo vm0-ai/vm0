@@ -109,7 +109,6 @@ function replayGithubAppSetupCallbackAt(
 
 function replayPersistedGithubAppSetupCallback(args: {
   readonly request: Request;
-  readonly publicBrand: PublicBrand;
 }): string | null {
   const requestOrigin = new URL(args.request.url).origin;
   const apiOrigins = new Set([githubApiOrigin(args.request)]);
@@ -425,7 +424,6 @@ async function githubAppUpdateCallbackResponse(
 
   const replayUrl = replayPersistedGithubAppSetupCallback({
     request: args.request,
-    publicBrand: installation.setupPublicBrand,
   });
   return replayUrl
     ? noStoreRedirect(replayUrl)
