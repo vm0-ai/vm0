@@ -104,7 +104,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Dropbox file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
@@ -304,7 +304,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
+      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
@@ -324,8 +324,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@okou.ai",
     description:
       "Offer desktop passage actions for selections anywhere within one assistant reply.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VoiceInputV2]: {
     maintainer: "ethan@okou.ai",
@@ -360,6 +359,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  // Every artifact privacy slice in #32492 uses this same rollout switch.
+  [FeatureSwitchKey.PrivateArtifacts]: {
+    maintainer: "yuma@okou.ai",
+    description:
+      "Use private storage and authenticated previews for CLI artifact uploads.",
+    enabled: false,
   },
   [FeatureSwitchKey.AgentMessageMath]: {
     maintainer: "bingjie@okou.ai",

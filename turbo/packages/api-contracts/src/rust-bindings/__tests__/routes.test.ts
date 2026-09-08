@@ -4,6 +4,18 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 const expectedBindings = [
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/ssh/resolve",
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "resolve"],
+    rustConstName: "RESOLVE",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/runs/:runId/ssh/pin",
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "pin"],
+    rustConstName: "PIN",
+  },
+  {
+    method: "POST",
     path: "/api/webhooks/agent/pi-memory-phase2/usage",
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],
     rustConstName: "SEND",

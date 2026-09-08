@@ -12,23 +12,23 @@ required-features = ["bench"]
 bench = ["dep:serde_json", "dep:tempfile", "dep:which"]
 
 [dependencies]
-bitvec = { workspace = true }
-libc = { workspace = true }
+bitvec = { workspace = true, features = ["atomic", "std"] }
+libc = { workspace = true, features = ["std"] }
 nix = { workspace = true, features = ["fs", "socket", "uio"] }
-serde_json = { workspace = true, optional = true }
-tempfile = { workspace = true, optional = true }
-thiserror = { workspace = true }
+serde_json = { workspace = true, features = ["std"], optional = true }
+tempfile = { workspace = true, features = ["getrandom"], optional = true }
+thiserror = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
-which = { workspace = true, optional = true }
+tracing = { workspace = true, features = ["attributes", "std"] }
+uuid = { workspace = true, features = ["std", "v4"] }
+which = { workspace = true, features = ["real-sys"], optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 nix = { workspace = true, features = ["user"] }
-tempfile = { workspace = true }
-tracing-subscriber.workspace = true
+tempfile = { workspace = true, features = ["getrandom"] }
+tracing-subscriber = { workspace = true, features = ["ansi", "fmt", "smallvec", "std", "tracing-log"] }
 tracing-test-support.workspace = true
 
 [lints]

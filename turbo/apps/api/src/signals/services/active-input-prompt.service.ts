@@ -1,9 +1,14 @@
+import type { ClerkClient } from "../external/clerk";
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@okouai/db/schema/chat-event";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
@@ -180,6 +185,7 @@ export interface MaterializedActiveInputPrompt {
 
 export async function materializePendingActiveInputPrompts(
   db: Db,
+  clerk: ClerkClient,
   candidates: readonly PendingActiveInputRow[],
   auth: { readonly orgId: string; readonly userId: string },
   signal: AbortSignal,
@@ -203,7 +209,7 @@ export async function materializePendingActiveInputPrompts(
     }
     prompts.set(
       event.id,
-      await materializeActiveInputPrompt(db, {
+      await materializeActiveInputPrompt(db, clerk, {
         event: {
           id: event.id,
           chatThreadId: event.chatThreadId,
@@ -213,6 +219,7 @@ export async function materializePendingActiveInputPrompts(
         },
         orgId: auth.orgId,
         userId: auth.userId,
+        featureSwitchContext,
         presentationTemplatesEnabled: isFeatureEnabled(
           FeatureSwitchKey.PresentationTemplates,
           featureSwitchContext,
@@ -279,11 +286,13 @@ function unreachableActiveInputContextType(contextType: never): never {
 /** Materialize one claimed input prompt into the same text capability as a run prompt. */
 async function materializeActiveInputPrompt(
   db: Db,
+  clerk: ClerkClient,
   args: {
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
     readonly presentationTemplatesEnabled: boolean;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<MaterializedActiveInputPrompt> {
   const userMessage = requiredUserMessageForEvent(
@@ -301,6 +310,13 @@ async function materializeActiveInputPrompt(
     );
   }
   const generationTemplates = resolveThreadGenerationTemplatePrompt({
+    introVideoEnabled: await loadIntroVideoTemplateAccess(
+      db,
+      clerk,
+      args.userId,
+      projection.templates,
+      args.featureSwitchContext,
+    ),
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,

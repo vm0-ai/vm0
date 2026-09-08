@@ -610,6 +610,9 @@
       "categories": "Catégories de modèles",
       "category": "Catégorie de modèle",
       "chooseVoice": "Choisir une voix pour {{title}}",
+      "creativeVideo": "Vidéo créative",
+      "explainerUnavailable": "Ce modèle vidéo n’est plus disponible. Retirez-le pour envoyer votre message.",
+      "explainerVideo": "Vidéo explicative",
       "filters": {
         "age": "Âge",
         "all": "Tous",
@@ -2019,6 +2022,20 @@
       },
       "runCancelled": "En pause au milieu d'une pensée — reprenez-la quand vous voulez."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Trouvez une voix adaptée à votre contenu.",
+      "avatarVoice": "Voix de l’avatar",
+      "changeAvatar": "Changer d’avatar",
+      "chooseStyle": "Choisir un style",
+      "chooseStyleAndVoice": "Choisissez un style et une voix.",
+      "noMatches": "Aucun résultat. Essayez une autre recherche ou catégorie.",
+      "ready": "Prêt à utiliser. Ajoutez votre contenu dans le chat.",
+      "searchAvatars": "Rechercher des avatars",
+      "searchStyles": "Rechercher des styles",
+      "settings": "Paramètres de la vidéo explicative",
+      "style": "Style",
+      "useSelection": "Utiliser la sélection"
+    },
     "feedback": {
       "emailDraftDescription": "un brouillon d'email (ID du brouillon : {{id}})",
       "partHeading": "Retour sur cette partie de votre réponse :",
@@ -2049,50 +2066,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou décide",
-        "autoDescription": "Choisir un présentateur public HeyGen adapté à votre demande",
         "heading": "Choisir un avatar",
         "label": "Avatar",
         "none": "Aucun avatar",
-        "noneDescription": "Créer la vidéo sans présentateur",
         "previewLook": "Aperçu de l’apparence {{name}}"
       },
-      "cardDescription": "Transformez une idée ou vos contenus en vidéo finalisée",
       "catalog": {
-        "empty": "Aucune option publique HeyGen n’est disponible.",
-        "error": "Le catalogue HeyGen n’a pas pu être chargé.",
+        "error": "Le catalogue n’a pas pu être chargé.",
         "loading": "Chargement d’autres options",
         "reload": "Recharger le catalogue",
         "retry": "Réessayer"
       },
-      "description": "Ajoutez des contenus, décrivez votre objectif et choisissez éventuellement un style, un avatar et une voix HeyGen.",
-      "errors": {
-        "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre demande est toujours ici, vous pouvez réessayer.",
-        "uploadFailed": "Un ou plusieurs fichiers n'ont pas pu être importés. Supprimez-les ou réessayez."
-      },
       "footer": {
-        "cancel": "Annuler",
-        "create": "Créer la vidéo",
-        "hint": "Ajoutez des consignes, des fichiers ou les deux"
-      },
-      "format": {
-        "auto": "Automatique",
-        "output": "Format de sortie"
-      },
-      "heading": "Créez votre vidéo d’introduction",
-      "help": "Ajoutez des contenus, décrivez votre objectif ou faites les deux. Okou s’occupe du reste.",
-      "prompt": {
-        "label": "Que doit transmettre la vidéo ?",
-        "placeholder": "Décrivez l’objectif, le public, la langue, le ton ou tout autre détail important"
-      },
-      "source": {
-        "drop": "Déposez vos fichiers ici ou cliquez pour les importer",
-        "remove": "Retirer {{filename}}"
+        "cancel": "Annuler"
       },
       "style": {
         "auto": "Laisser Okou choisir",
         "browseGroups": "Parcourir par style",
-        "description": "Le style définit les scènes, les transitions, les textes superposés et le rythme.",
         "groups": {
           "cinematic": "Cinéma et photographie",
           "handmade": "Artisanat et matières",
@@ -2102,25 +2092,16 @@
           "print": "Impression et édition",
           "retro-tech": "Technologie rétro et interfaces"
         },
-        "heading": "Choisir une référence de style",
-        "label": "Référence de style",
         "preview": "Aperçu de {{title}}",
         "previewUnavailable": "Aucun aperçu vidéo n’est disponible pour ce style."
       },
-      "title": "Créer une vidéo d'introduction",
       "voice": {
         "auto": "Laisser Okou choisir",
-        "autoDescription": "Okou choisit une voix publique HeyGen adaptée",
-        "default": "Par défaut · Suit l’avatar",
         "defaultDescription": "Utiliser la voix par défaut de l’avatar choisi",
-        "defaultForAvatar": "Par défaut · {{avatar}}",
-        "defaultForAvatarDescription": "Utiliser la voix HeyGen par défaut de {{avatar}}",
         "heading": "Choisir une voix",
         "label": "Voix",
         "none": "Sans voix off",
-        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine.",
-        "original": "Audio d'origine",
-        "originalDescription": "Conserver le son d’origine sélectionné sans ajouter de voix générée"
+        "noneDescription": "Ne pas ajouter de narration ; conserver le son d’origine sauf demande de mise en sourdine."
       }
     },
     "mail": {

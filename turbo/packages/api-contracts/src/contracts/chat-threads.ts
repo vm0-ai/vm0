@@ -12,6 +12,7 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
+import { explainerVideoOptionsSchema } from "./explainer-video";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
@@ -438,6 +439,8 @@ const videoGenerationTemplateRequestSchema = z.object({
   selection: z.object({
     stylePresetId: z.string().min(1),
     avatarOptions: avatarGenerationOptionsSchema.optional(),
+    // Keep the video envelope readable by previously deployed clients.
+    explainerOptions: explainerVideoOptionsSchema.optional(),
 
     /**
      * The four fields below are no longer written: the web-client floor has

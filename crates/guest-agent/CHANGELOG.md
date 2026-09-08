@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.86.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.17...guest-agent-v0.86.18) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** prevent duplicate pi phase two charges ([#32639](https://github.com/vm0-ai/vm0/issues/32639)) ([c84981d](https://github.com/vm0-ai/vm0/commit/c84981db7355cc4f4ded6aff39891d9daed66747))
+* **guest-agent:** bound masked JSON key collision resolution ([#32623](https://github.com/vm0-ai/vm0/issues/32623)) ([6b2c673](https://github.com/vm0-ai/vm0/commit/6b2c67342a417d6e408901de7dc48df968d10df2))
+* **guest-agent:** handle short reads in streaming upload buffers ([#32555](https://github.com/vm0-ai/vm0/issues/32555)) ([fdc9511](https://github.com/vm0-ai/vm0/commit/fdc9511532d552ae1745185cee3e8445a187049f))
+
 ## [0.86.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.16...guest-agent-v0.86.17) (2026-09-08)
 
 

@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Clapperboard, Play } from "lucide-react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
-import { Button, cn } from "@okouai/ui";
+import { Button } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
-import { introVideoWizardSignals } from "../../signals/okou-page/intro-video.ts";
 import {
   startCardKinds$,
   startCardWorkflowConnectorIcons$,
@@ -15,10 +14,7 @@ import {
   type StartCardConnectorIcon,
   type StartCardKind,
 } from "../../signals/okou-page/start-cards.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { IntroVideoWizard } from "./intro-video-wizard.tsx";
 import { localizedWorkflowTemplate } from "./workflow-template-copy.ts";
 
 // Every kind draws into the same square slot so the row reads as one family.
@@ -408,37 +404,6 @@ function StartCard({
   );
 }
 
-function IntroVideoStartCard({ onOpen }: { readonly onOpen: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      data-testid="intro-video-start-card"
-      onClick={onOpen}
-      className="okou-card group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.025] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl" />
-      <span className="grid size-[72px] shrink-0 place-items-center rounded-xl bg-primary/10 text-brand-text">
-        <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
-          <Clapperboard size={18} />
-        </span>
-      </span>
-      <span className="relative min-w-0">
-        <strong className="block text-sm font-semibold text-foreground">
-          {t(($) => {
-            return $.chat.introVideo.title;
-          })}
-        </strong>
-        <span className="mt-1 line-clamp-2 block text-sm leading-relaxed text-muted-foreground">
-          {t(($) => {
-            return $.chat.introVideo.cardDescription;
-          })}
-        </span>
-      </span>
-    </button>
-  );
-}
-
 export function StartCards({
   onSelectPrompt,
 }: {
@@ -446,13 +411,10 @@ export function StartCards({
 }) {
   const { t } = useTranslation();
   const kinds = useGet(startCardKinds$);
+  const explainerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
-  const featureSwitches = useLastResolved(featureSwitch$);
-  const introVideoEnabled =
-    featureSwitches?.[FeatureSwitchKey.IntroVideo] ?? false;
-  const pageSignal = useGet(pageSignal$);
-  const openIntroVideoWizard = useSet(introVideoWizardSignals.openWizard$);
   const setTemplateCategory = useSet(
     composerSignals.template.setTemplatePickerCategory$,
   );
@@ -499,6 +461,14 @@ export function StartCards({
         prompt: template?.promptGuidance ?? "",
       };
     }
+    if (kind === "video" && explainerEnabled) {
+      return {
+        ...copy.video,
+        title: t(($) => {
+          return $.artifacts.templates.creativeVideo;
+        }),
+      };
+    }
     return copy[kind];
   };
 
@@ -515,24 +485,11 @@ export function StartCards({
     return art[kind];
   };
 
-  const openIntroVideo = () => {
-    detach(
-      openIntroVideoWizard(pageSignal),
-      Reason.DomCallback,
-      "open intro video wizard",
-    );
-  };
-
   return (
     <>
       <div
         data-testid="start-cards"
-        className={cn(
-          "grid w-full grid-cols-1 gap-3",
-          introVideoEnabled
-            ? "sm:grid-cols-2"
-            : "sm:grid-cols-2 lg:grid-cols-3",
-        )}
+        className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
       >
         {kinds.map((kind) => {
           return (
@@ -548,13 +505,7 @@ export function StartCards({
             />
           );
         })}
-        {introVideoEnabled ? (
-          <IntroVideoStartCard onOpen={openIntroVideo} />
-        ) : null}
       </div>
-      {introVideoEnabled ? (
-        <IntroVideoWizard composer={composerSignals} />
-      ) : null}
     </>
   );
 }

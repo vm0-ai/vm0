@@ -479,7 +479,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+      # Generation formats Rust output with the same toolchain as native checks.
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||

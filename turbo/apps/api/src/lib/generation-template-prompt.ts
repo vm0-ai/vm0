@@ -28,6 +28,11 @@ import {
   PRESENTATION_STATIC_HTML_INSTRUCTION,
 } from "@okouai/core/presentation-generation-instructions";
 import { WEBSITE_IMAGE_BATCH_INSTRUCTION } from "@okouai/core/website-generation-instructions";
+import type { ExplainerVideoOptions } from "@okouai/api-contracts/contracts/explainer-video";
+import {
+  EXPLAINER_VIDEO_TEMPLATE_ID,
+  explainerVideoInstructionLines,
+} from "@okouai/core/explainer-video-template";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -43,6 +48,7 @@ interface VideoGenerationTemplateInput {
   readonly selection: {
     readonly stylePresetId: string;
     readonly avatarOptions?: AvatarTemplateOptions;
+    readonly explainerOptions?: ExplainerVideoOptions;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly titleSnapshot?: string;
     /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
@@ -117,6 +123,7 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
+  readonly introVideoEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
 }
@@ -130,7 +137,10 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    return buildVideoGenerationTemplatePrompt(generationTemplate);
+    return buildVideoGenerationTemplatePrompt(
+      generationTemplate,
+      options.introVideoEnabled === true,
+    );
   }
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
@@ -372,7 +382,29 @@ function buildWebsiteTemplatePackagePrompt(
 
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
+  introVideoEnabled: boolean,
 ): GenerationTemplatePromptResult {
+  if (
+    generationTemplate.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
+  ) {
+    if (!introVideoEnabled) {
+      return { status: "invalid", message: "Explainer video is not available" };
+    }
+    const options = generationTemplate.selection.explainerOptions;
+    if (!options) {
+      return {
+        status: "invalid",
+        message: "Explainer video settings are missing",
+      };
+    }
+    return {
+      status: "resolved",
+      prompt: [
+        ...templateFraming("an explainer video"),
+        ...explainerVideoInstructionLines(options),
+      ].join("\n"),
+    };
+  }
   const avatarId = parseAvatarTemplateStylePresetId(
     generationTemplate.selection.stylePresetId,
   );

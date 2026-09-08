@@ -1,6 +1,6 @@
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -8,7 +8,11 @@ import {
   emitMockedClerkEvent,
   mockClerkSessionTransitioning,
 } from "../../__tests__/mock-auth.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../__tests__/page-helper.ts";
 import {
   AGENT_ID,
   context,
@@ -18,6 +22,17 @@ import {
 } from "../../views/okou-page/__tests__/chat-composer-test-helpers.ts";
 
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+
+async function openTemplates() {
+  click(await screen.findByLabelText("Template"));
+  await screen.findByRole("dialog");
+}
+
+function explainerTab() {
+  return queryAllByRoleFast("tab").find((tab) => {
+    return tab.textContent?.trim() === "Explainer video";
+  });
+}
 
 test("A signed-in workspace receives its enabled features", async () => {
   mockOrgModelRoutes("claude-sonnet-4-6");
@@ -35,9 +50,10 @@ test("A signed-in workspace receives its enabled features", async () => {
   });
 
   await screen.findByRole("textbox", { name: "Message" });
-  await expect(
-    screen.findByTestId("intro-video-start-card"),
-  ).resolves.toBeVisible();
+  await openTemplates();
+  await waitFor(() => {
+    expect(explainerTab()).toBeVisible();
+  });
 });
 
 async function setupIntroVideoRolloutPage(args: {
@@ -72,28 +88,29 @@ async function setupIntroVideoRolloutPage(args: {
   });
 
   await screen.findByRole("textbox", { name: "Message" });
+  await openTemplates();
 }
 
-test("Bingjie retains the intro video rollout after hydration", async () => {
+test("Bingjie retains the explainer video rollout after hydration", async () => {
   await setupIntroVideoRolloutPage({
     email: "BINGJIE@VM0.AI",
     fullName: "Bingjie",
     userId: "user_bingjie",
   });
 
-  await expect(
-    screen.findByTestId("intro-video-start-card"),
-  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(explainerTab()).toBeVisible();
+  });
 });
 
-test("another staff member does not receive the intro video rollout", async () => {
+test("another staff member does not receive the explainer video rollout", async () => {
   await setupIntroVideoRolloutPage({
     email: "ethan@vm0.ai",
     fullName: "Another staff member",
     userId: "user_other_staff",
   });
 
-  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
+  expect(explainerTab()).toBeUndefined();
 });
 
 test("Image recognition remains available by default", async () => {
@@ -199,7 +216,8 @@ test("A feature response is discarded after identity changes", async () => {
     },
   });
   await screen.findByRole("textbox", { name: "Message" });
-  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
+  await openTemplates();
+  expect(explainerTab()).toBeUndefined();
   await requestStarted.promise;
 
   mockClerkSessionTransitioning(true);
@@ -207,7 +225,7 @@ test("A feature response is discarded after identity changes", async () => {
   releaseResponse.resolve(undefined);
   mockClerkSessionTransitioning(false);
 
-  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
+  expect(explainerTab()).toBeUndefined();
 });
 
 test("The same identity can finish feature loading through an auth refresh", async () => {
@@ -236,13 +254,14 @@ test("The same identity can finish feature loading through an auth refresh", asy
     },
   });
   await screen.findByRole("textbox", { name: "Message" });
-  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
+  await openTemplates();
+  expect(explainerTab()).toBeUndefined();
   await requestStarted.promise;
 
   emitMockedClerkEvent();
   releaseResponse.resolve(undefined);
 
-  await expect(
-    screen.findByTestId("intro-video-start-card"),
-  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(explainerTab()).toBeVisible();
+  });
 });

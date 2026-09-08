@@ -734,7 +734,7 @@ async function readBuiltInGenerationResponse<T>(args: {
 }
 
 /**
- * Upload a local file and receive back metadata including a public CDN URL.
+ * Upload a local file and receive metadata including its stable file URL.
  * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
@@ -749,7 +749,7 @@ async function readBuiltInGenerationResponse<T>(args: {
  */
 export async function uploadWebFile(
   localPath: string,
-  options?: { contentType?: string },
+  options?: { contentType?: string; purpose?: "artifact" },
 ): Promise<UploadWebFileResult> {
   const stats = statSync(localPath);
   if (!stats.isFile()) {
@@ -783,6 +783,7 @@ export async function uploadWebFile(
       filename,
       contentType,
       size: stats.size,
+      purpose: options?.purpose,
     }),
   });
 
