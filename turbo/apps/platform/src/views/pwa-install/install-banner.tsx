@@ -88,7 +88,7 @@ export function IosInstallModal() {
         }
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

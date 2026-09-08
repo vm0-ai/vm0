@@ -1975,7 +1975,9 @@ function FeishuSetupDialog({
       }}
     >
       <DialogContent
-        className="!flex h-[min(800px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-2xl !flex-col !overflow-hidden"
+        size="2xl"
+        height={800}
+        contentClassName="flex flex-col overflow-hidden"
         closeLabel={t(($) => {
           return $.connectors.actions.close;
         })}

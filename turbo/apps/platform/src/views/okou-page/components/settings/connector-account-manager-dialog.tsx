@@ -501,7 +501,7 @@ function DeleteAccountConfirmation({
         return !open && clear();
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
             {t(
@@ -649,7 +649,7 @@ export function ConnectorAccountManagerDialog({
         return !open && leave(onClose);
       }}
     >
-      <DialogContent className="!flex w-full max-w-xl !flex-col !overflow-hidden">
+      <DialogContent size="xl" contentClassName="flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0 gap-2">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">

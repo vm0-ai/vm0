@@ -5962,7 +5962,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem ?? importedPreviewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
+    "flex flex-col",
   );
   // A persona pill filters the grid, ideation-gallery style.
   // resolveWorkflowCatalog() keeps that logic out of this component to stay
@@ -6247,7 +6247,9 @@ function TemplatePickerDialog({
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        className={dialogContentClassName}
+        size="6xl"
+        height={760}
+        contentClassName={dialogContentClassName}
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
         onKeyDownCapture={
@@ -7061,7 +7063,8 @@ function AddConnectorsDialog({
     >
       <DialogContent
         ref={registerConnectionDialog}
-        className="okou-app max-w-2xl flex max-h-[80vh] flex-col"
+        size="2xl"
+        contentClassName="okou-app flex flex-col"
         aria-describedby={undefined}
       >
         <DialogHeader className="shrink-0">
@@ -8395,7 +8398,7 @@ function ComputerUseDownloadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md gap-0 overflow-hidden p-0">
+      <DialogContent size="md" contentClassName="gap-0 overflow-hidden p-0">
         <div className="flex h-44 items-center justify-center border-b border-border bg-gray-50">
           <img
             src={computerUseIllustrationImg}

@@ -60,6 +60,28 @@ Commands run from `turbo`. An invalid Git reference, unreadable baseline, or mal
 
 ## Enforcement and feedback
 
+### Dialog viewport ownership
+
+`DialogContent` owns the Base UI viewport and popup. Windowed dialogs are
+centered inside the four safe-area insets plus a 24 px gutter. Fullscreen
+dialogs paint to the viewport edges while their content and close control stay
+inside the safe-area insets. The environment values come from the existing
+`--sat`, `--sar`, `--sab`, `--sal`, and `--okou-viewport-height` properties;
+the shared primitive also works with native `env()` insets outside Platform.
+
+Callers select a preferred `size`, `height`, and `mode`. The numeric size
+variants preserve existing desktop widths; `size="preview"` requests a
+1440 by 1000 px preview. Every variant is capped by the available viewport.
+Increasing a preferred size must never increase the safe boundary.
+
+The popup does not accept `className`, `style`, or `render`. Use
+`contentClassName` for the inner layout and `DialogBody` for a scrolling body
+below a fixed header. `contentClassName` remains subject to the style policy.
+Use `showCloseButton` instead of CSS selectors that hide the close control.
+Business code must import the shared dialog rather than Base UI's dialog
+primitives; ESLint enforces this boundary. Preserve Base UI's focus, nested
+portal, outside-press, and animation-completion ownership when changing it.
+
 Run the complete check from `turbo`:
 
 ```bash

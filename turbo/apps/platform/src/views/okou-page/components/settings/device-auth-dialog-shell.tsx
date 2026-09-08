@@ -39,7 +39,7 @@ export function DeviceAuthDialogShell({
       }}
     >
       <DialogContent
-        className="max-w-md"
+        size="md"
         aria-describedby={undefined}
         closeLabel={t(($) => {
           return $.settings.shared.close;

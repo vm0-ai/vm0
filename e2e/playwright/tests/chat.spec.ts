@@ -1,10 +1,159 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { omitAppApiPrefetch } from "../lib/app-api-prefetch";
+import { refreshClerkSessionToken } from "../lib/auth";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const MOBILE_VIEWPORT = { width: 402, height: 874 } as const;
+
+test("artifact dialogs keep their panel and fullscreen controls inside safe areas", async ({
+  page,
+}) => {
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await expect(page.getByTestId("chat-tagline")).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // Own a fresh thread so uploading this fixture cannot replace another test's draft.
+  const [created] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/chat-threads",
+    ),
+    page.getByRole("button", { name: "New chat", exact: true }).last().click(),
+  ]);
+  expect(created.status()).toBe(201);
+  const thread: unknown = await created.json();
+  if (
+    typeof thread !== "object" ||
+    thread === null ||
+    !("id" in thread) ||
+    typeof thread.id !== "string"
+  ) {
+    throw new Error("Expected the created dialog-test thread id");
+  }
+  try {
+    await expect(page).toHaveURL(new URL(`/chats/${thread.id}`, appUrl).href);
+    await page.locator('input[type="file"][multiple]').setInputFiles({
+      name: "dialog-safe-area.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGMIqFhAEmIY1TCqYfhqAAATWWgQLeF+owAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+    await page
+      .getByRole("button", {
+        name: "Open image preview for dialog-safe-area.png",
+        exact: true,
+      })
+      .click();
+    const dialog = page.getByTestId("attachment-lightbox");
+    await expect(dialog).toBeVisible();
+
+    for (const scenario of [
+      { width: 402, height: 874, top: 62, right: 0, bottom: 34, left: 0 },
+      { width: 874, height: 402, top: 0, right: 62, bottom: 21, left: 62 },
+      { width: 390, height: 640, top: 59, right: 0, bottom: 34, left: 0 },
+      { width: 1920, height: 1200, top: 0, right: 0, bottom: 0, left: 0 },
+    ]) {
+      await page.setViewportSize({
+        width: scenario.width,
+        height: scenario.height,
+      });
+      await page.evaluate((insets) => {
+        const style = document.documentElement.style;
+        style.setProperty("--sat", `${insets.top}px`);
+        style.setProperty("--sar", `${insets.right}px`);
+        style.setProperty("--sab", `${insets.bottom}px`);
+        style.setProperty("--sal", `${insets.left}px`);
+      }, scenario);
+      await expect
+        .poll(async () => {
+          const box = await dialog.boundingBox();
+          return (
+            box !== null &&
+            box.x >= scenario.left + 23 &&
+            box.y >= scenario.top + 23 &&
+            box.x + box.width <= scenario.width - scenario.right - 23 &&
+            box.y + box.height <= scenario.height - scenario.bottom - 23
+          );
+        })
+        .toBe(true);
+      const box = await dialog.boundingBox();
+      if (!box) throw new Error("Expected the windowed preview bounds");
+      expect(box.x + box.width / 2).toBeCloseTo(
+        (scenario.width + scenario.left - scenario.right) / 2,
+        0,
+      );
+      expect(box.y + box.height / 2).toBeCloseTo(
+        (scenario.height + scenario.top - scenario.bottom) / 2,
+        0,
+      );
+      if (scenario.width === 1920) {
+        expect(box.width).toBeCloseTo(1440, 0);
+        expect(box.height).toBeCloseTo(1000, 0);
+      }
+
+      await dialog
+        .getByRole("button", { name: "Enter fullscreen", exact: true })
+        .click();
+      const exitFullscreen = dialog.getByRole("button", {
+        name: "Exit fullscreen",
+        exact: true,
+      });
+      await expect(exitFullscreen).toBeVisible();
+      for (const control of [
+        exitFullscreen,
+        dialog.getByRole("button", { name: "Close", exact: true }),
+      ]) {
+        await expect
+          .poll(async () => {
+            const rect = await control.boundingBox();
+            return (
+              rect !== null &&
+              rect.x >= scenario.left &&
+              rect.y >= scenario.top &&
+              rect.x + rect.width <= scenario.width - scenario.right &&
+              rect.y + rect.height <= scenario.height - scenario.bottom
+            );
+          })
+          .toBe(true);
+      }
+      await exitFullscreen.click();
+      await expect(
+        dialog.getByRole("button", { name: "Enter fullscreen", exact: true }),
+      ).toBeVisible();
+    }
+
+    // Native outside-press ownership must distinguish a drag from a deliberate click.
+    const panel = await dialog.boundingBox();
+    if (!panel)
+      throw new Error("Expected the preview before testing dismissal");
+    await page.mouse.move(
+      panel.x + panel.width / 2,
+      panel.y + panel.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(5, 5);
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    await page.mouse.click(5, 5);
+    await expect(dialog).toBeHidden();
+  } finally {
+    const token = await refreshClerkSessionToken(page);
+    const deleted = await page.request.delete(
+      new URL(`/api/chat-threads/${thread.id}`, resolveApiBackendUrl()).href,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    expect(deleted.status()).toBe(204);
+  }
+});
 
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);

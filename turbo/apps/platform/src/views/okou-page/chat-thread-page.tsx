@@ -2164,11 +2164,11 @@ function HeaderWorkflowAutomationEditDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={
+        size={
           automation.kind === "event" &&
           automation.eventType === "gmail-new-message"
-            ? "max-w-2xl"
-            : ""
+            ? "2xl"
+            : "lg"
         }
       >
         <DialogHeader>
@@ -7480,7 +7480,8 @@ function RelatedArtifactsDialog({
       </TooltipProvider>
       <DialogContent
         aria-describedby={undefined}
-        className="!flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl"
+        size="xl"
+        contentClassName="flex flex-col overflow-hidden gap-0 p-0"
         data-testid="chat-run-related-artifacts-dialog"
       >
         <DialogHeader className="shrink-0 px-5 pb-4 pt-5 pr-12">

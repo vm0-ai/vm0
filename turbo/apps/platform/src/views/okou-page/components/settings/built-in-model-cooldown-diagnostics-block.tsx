@@ -144,7 +144,7 @@ function CooldownCancellationDialogBody({
   const { t } = useTranslation();
 
   return (
-    <DialogContent className="max-w-md" showCloseButton={!cancelling}>
+    <DialogContent size="md" showCloseButton={!cancelling}>
       <DialogHeader>
         <DialogTitle>
           {t(($) => {

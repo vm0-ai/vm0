@@ -76,6 +76,7 @@ export default [
       "better-tailwindcss/no-unknown-classes": [
         "error",
         {
+          attributes: ["class", "className", "contentClassName"],
           ignore: baseline.legacyClassTokens.map(exactRegex),
         },
       ],

@@ -3993,8 +3993,7 @@
     },
     "apps/platform/src/views/okou-page/attachment-chips.tsx": {
       "okou-chat-card": 4,
-      "okou-chat-frame": 1,
-      "okou-fixed-viewport-shell": 1
+      "okou-chat-frame": 1
     },
     "apps/platform/src/views/okou-page/banking-action-card.tsx": {
       "okou-chat-card": 3
@@ -4174,7 +4173,6 @@
     },
     "apps/platform/src/views/okou-page/components/settings/settings-dialog.tsx": {
       "okou-app": 1,
-      "okou-border": 1,
       "okou-border-r": 1
     },
     "apps/platform/src/views/okou-page/components/settings/timezone-settings.tsx": {
