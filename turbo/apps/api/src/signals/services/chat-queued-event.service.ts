@@ -59,10 +59,7 @@ import {
   canonicalChatEventUserMessage,
   parseCanonicalChatEventRequiredOfficialWorkflowIds,
 } from "./canonical-chat-event-read.service";
-import {
-  officialWorkflowQueueContextFromContextId,
-  webChatQueueContextFromContextId,
-} from "./web-chat-public-brand-context.service";
+import { webChatQueueContextFromContextId } from "./web-chat-public-brand-context.service";
 
 type DbTransaction = Tx;
 
@@ -259,26 +256,34 @@ function resolveQueuedOfficialWorkflowContext(args: {
   readonly contextId: string | null;
   readonly requiredOfficialWorkflowIds: readonly string[] | null;
 }) {
+  const hasClaim = args.requiredOfficialWorkflowIds !== null;
+  if (hasClaim && !isWebChatContextType(args.contextType)) {
+    throw new Error(
+      `Queued ${args.contextType} input cannot carry an Official Workflow source claim`,
+    );
+  }
   const webContext =
     args.contextType === "web"
       ? webChatQueueContextFromContextId(args.contextId)
       : null;
+  if (args.contextType === "web" && webContext === null) {
+    throw new Error(`Invalid Web public-brand context: ${args.contextId}`);
+  }
+  // Both Official agent encodings carry a brand here, never the source Run.
+  // Recognizing both also keeps annotation-based source/budget recovery shared.
   const officialAgentContext =
     args.contextType === "agent_run"
-      ? officialWorkflowQueueContextFromContextId(args.contextId)
+      ? webChatQueueContextFromContextId(args.contextId)
       : null;
-  const markerRequiresClaim =
+  const contextRequiresClaim =
     webContext?.officialWorkflowClaimRequired === true ||
     officialAgentContext !== null;
-  const hasClaim = args.requiredOfficialWorkflowIds !== null;
-  if (markerRequiresClaim !== hasClaim) {
+  if (
+    (contextRequiresClaim && !hasClaim) ||
+    (hasClaim && webContext === null && officialAgentContext === null)
+  ) {
     throw new Error(
-      "Queued Official Workflow marker and source claim do not match",
-    );
-  }
-  if (hasClaim && !isWebChatContextType(args.contextType)) {
-    throw new Error(
-      `Queued ${args.contextType} input cannot carry an Official Workflow source claim`,
+      "Queued Official Workflow context and source claim do not match",
     );
   }
   return { webContext, officialAgentContext };

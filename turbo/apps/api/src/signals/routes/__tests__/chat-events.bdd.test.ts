@@ -266,53 +266,64 @@ const PI_API_FIRST_TURN_BASE_USAGE_CATEGORIES = [
   "tokens.cache_read",
   "tokens.cache_creation",
 ] as const;
-const STANDARD_TERRA_API_KEY_BDD_ROUTES = [
-  {
-    name: "OpenAI",
-    type: "openai-api-key",
-    endpoint: "https://api.openai.com/v1/responses",
-    baseUrl: "https://api.openai.com/v1",
-    secretName: "OPENAI_API_KEY",
-    piProvider: "openai",
-    runtimeModel: "gpt-5.6-terra",
-  },
-  {
-    name: "OpenRouter",
-    type: "openrouter-codex",
-    endpoint: "https://openrouter.ai/api/v1/responses",
-    baseUrl: "https://openrouter.ai/api/v1",
-    secretName: "OPENROUTER_API_KEY",
-    piProvider: "openrouter",
-    runtimeModel: "openai/gpt-5.6-terra",
-  },
-  {
-    name: "Vercel AI Gateway",
-    type: "vercel-ai-gateway-codex",
-    endpoint: "https://ai-gateway.vercel.sh/v1/responses",
-    baseUrl: "https://ai-gateway.vercel.sh/v1",
-    secretName: "VERCEL_AI_GATEWAY_API_KEY",
-    piProvider: "openai",
-    catalogModel: "gpt-5.6-terra",
-    runtimeModel: "openai/gpt-5.6-terra",
-  },
+const GPT_PI_BDD_MODELS = [
+  "gpt-5.6-terra",
+  "gpt-5.6-sol",
+  "gpt-5.6-luna",
 ] as const;
-const USER_OWNED_TERRA_FAST_BDD_ROUTES = [
-  {
-    name: "subscription",
-    type: "codex-oauth-token",
-    endpoint: "https://chatgpt.com/backend-api/codex/responses",
-    runtimeModel: "gpt-5.6-terra",
-    wireTier: "priority",
-  },
-  ...STANDARD_TERRA_API_KEY_BDD_ROUTES.map((route) => {
+type PiGptBddModel = (typeof GPT_PI_BDD_MODELS)[number];
+const GPT_API_KEY_BDD_ROUTES = GPT_PI_BDD_MODELS.flatMap((selectedModel) => {
+  return [
+    {
+      name: `OpenAI ${selectedModel}`,
+      selectedModel,
+      type: "openai-api-key",
+      endpoint: "https://api.openai.com/v1/responses",
+      baseUrl: "https://api.openai.com/v1",
+      secretName: "OPENAI_API_KEY",
+      piProvider: "openai",
+      runtimeModel: selectedModel,
+    },
+    {
+      name: `OpenRouter ${selectedModel}`,
+      selectedModel,
+      type: "openrouter-codex",
+      endpoint: "https://openrouter.ai/api/v1/responses",
+      baseUrl: "https://openrouter.ai/api/v1",
+      secretName: "OPENROUTER_API_KEY",
+      piProvider: "openrouter",
+      runtimeModel: `openai/${selectedModel}`,
+    },
+    {
+      name: `Vercel AI Gateway ${selectedModel}`,
+      selectedModel,
+      type: "vercel-ai-gateway-codex",
+      endpoint: "https://ai-gateway.vercel.sh/v1/responses",
+      baseUrl: "https://ai-gateway.vercel.sh/v1",
+      secretName: "VERCEL_AI_GATEWAY_API_KEY",
+      piProvider: "openai",
+      catalogModel: selectedModel,
+      runtimeModel: `openai/${selectedModel}`,
+    },
+  ] as const;
+});
+const USER_OWNED_GPT_FAST_BDD_ROUTES = [
+  ...GPT_PI_BDD_MODELS.map((selectedModel) => {
     return {
-      ...route,
-      wireTier: "priority" as const,
-    };
+      name: `subscription ${selectedModel}`,
+      selectedModel,
+      type: "codex-oauth-token",
+      endpoint: "https://chatgpt.com/backend-api/codex/responses",
+      runtimeModel: selectedModel,
+      wireTier: "priority",
+    } as const;
+  }),
+  ...GPT_API_KEY_BDD_ROUTES.map((route) => {
+    return { ...route, wireTier: "priority" as const };
   }),
 ] as const;
 
-const TERRA_USAGE_PRICING = [
+const GPT_USAGE_PRICING = [
   "tokens.input",
   "tokens.output",
   "tokens.cache_read",
@@ -329,19 +340,21 @@ const TERRA_USAGE_PRICING = [
   "tokens.output.long_context.fast",
   "tokens.cache_read.long_context.fast",
   "tokens.cache_creation.long_context.fast",
-].map((category) => {
-  return {
-    kind: "model",
-    provider: "gpt-5.6-terra",
-    category,
-    unitPrice: 1,
-    unitSize: 1_000_000,
-  };
+].flatMap((category) => {
+  return GPT_PI_BDD_MODELS.map((provider) => {
+    return {
+      kind: "model",
+      provider,
+      category,
+      unitPrice: 1,
+      unitSize: 1_000_000,
+    };
+  });
 });
 type PiApiFirstTurnUsageProvider =
   | "deepseek-v4-flash"
   | "deepseek-v4-pro"
-  | "gpt-5.6-terra";
+  | PiGptBddModel;
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
 An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
@@ -739,11 +752,11 @@ async function expectNoBuiltInModelUsage(runId: string): Promise<void> {
   await expect(readRunUsageEventsFixture(runId)).resolves.toStrictEqual([]);
 }
 
-async function createTerraUsagePricingResolution(): Promise<
+async function createGptUsagePricingResolution(): Promise<
   UsagePricingFixture["resolution"]
 > {
   const pricing = await createUsagePricingFixture({
-    configured: TERRA_USAGE_PRICING,
+    configured: GPT_USAGE_PRICING,
   });
   onTestFinished(pricing.cleanup);
   return pricing.resolution;
@@ -752,8 +765,8 @@ async function createTerraUsagePricingResolution(): Promise<
 async function createPiApiFirstTurnUsagePricingResolution(
   provider: PiApiFirstTurnUsageProvider,
 ): Promise<UsagePricingFixture["resolution"]> {
-  if (provider === "gpt-5.6-terra") {
-    return await createTerraUsagePricingResolution();
+  if (provider !== "deepseek-v4-flash" && provider !== "deepseek-v4-pro") {
+    return await createGptUsagePricingResolution();
   }
   const pricing = await createUsagePricingFixture({
     configured: PI_API_FIRST_TURN_BASE_USAGE_CATEGORIES.map((category) => {
@@ -777,7 +790,7 @@ async function seedBuiltInModelKey(selectedModel: string): Promise<string> {
 
 async function configureBuiltInPiModel(
   actor: ApiTestUser,
-  selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.6-terra",
+  selectedModel: PiApiFirstTurnUsageProvider,
 ): Promise<void> {
   await seedBuiltInModelKey(selectedModel);
   await api.updateOrgModelPolicies(actor, [
@@ -791,9 +804,9 @@ async function configureBuiltInPiModel(
   ]);
 }
 
-async function configureApiKeyTerraPiModel(
+async function configureApiKeyGptPiModel(
   actor: ApiTestUser,
-  route: (typeof STANDARD_TERRA_API_KEY_BDD_ROUTES)[number],
+  route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   secret: string,
 ): Promise<string> {
   await authDeviceSupport.updateFeatureSwitches(actor, {
@@ -806,7 +819,7 @@ async function configureApiKeyTerraPiModel(
   });
   await api.updateOrgModelPolicies(actor, [
     {
-      model: "gpt-5.6-terra",
+      model: route.selectedModel,
       isDefault: true,
       defaultProviderType: route.type,
       credentialScope: "org",
@@ -816,26 +829,31 @@ async function configureApiKeyTerraPiModel(
   return providerId;
 }
 
-async function configureUserOwnedTerraPiModel(
+async function configureUserOwnedGptPiModel(
   actor: ApiTestUser,
-  route: (typeof USER_OWNED_TERRA_FAST_BDD_ROUTES)[number],
+  route: (typeof USER_OWNED_GPT_FAST_BDD_ROUTES)[number],
 ): Promise<{ readonly secret: string; readonly accountId: string | null }> {
   if (route.type === "codex-oauth-token") {
     const accountId = "subscription-continuity-account";
-    const { oauth } = await configureSubscriptionPiModel(actor, { accountId });
+    const { oauth } = await configureSubscriptionPiModel(
+      actor,
+      { accountId },
+      route.selectedModel,
+    );
     return {
       secret: z.string().parse(oauth.oauthTokenResponses[0]?.access_token),
       accountId,
     };
   }
   const secret = `${route.type}-pi-fixture-key`;
-  await configureApiKeyTerraPiModel(actor, route, secret);
+  await configureApiKeyGptPiModel(actor, route, secret);
   return { secret, accountId: null };
 }
 
 async function configureSubscriptionPiModel(
   actor: ApiTestUser,
   options: Parameters<typeof mockCodexDeviceAuthProvider>[0] = {},
+  selectedModel: PiGptBddModel = "gpt-5.6-terra",
 ) {
   await authDeviceSupport.updateFeatureSwitches(actor, {
     [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
@@ -862,7 +880,7 @@ async function configureSubscriptionPiModel(
   }
   await chatCallbacks.updateOrgModelPolicies(actor, [
     {
-      model: "gpt-5.6-terra",
+      model: selectedModel,
       isDefault: true,
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
@@ -874,7 +892,7 @@ async function configureSubscriptionPiModel(
 
 async function configureBuiltInPiModelOnOpenRouter(
   actor: ApiTestUser,
-  selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.6-terra",
+  selectedModel: PiApiFirstTurnUsageProvider,
 ): Promise<<T>(work: () => Promise<T>) => Promise<T>> {
   await seedBuiltInModelCandidateKeys(context, selectedModel);
   const primary = await resolveBuiltInModelRouteFixture(context, selectedModel);
@@ -5410,9 +5428,9 @@ function piResponsesToolSse(args: {
     .join("");
 }
 
-function expectApiKeyTerraRequest(
+function expectApiKeyGptRequest(
   request: unknown,
-  route: (typeof STANDARD_TERRA_API_KEY_BDD_ROUTES)[number],
+  route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   secret: string,
   tier: "fast" | undefined,
 ): void {
@@ -5432,7 +5450,7 @@ function expectApiKeyTerraRequest(
   expect(body).not.toHaveProperty("previous_response_id");
 }
 
-async function claimTerraPiSandbox(
+async function claimGptPiSandbox(
   actor: ApiTestUser,
   runId: string,
   tier: "fast" | undefined,
@@ -5458,9 +5476,9 @@ async function claimTerraPiSandbox(
   });
 }
 
-function expectApiKeyTerraSandboxCarrier(
+function expectApiKeyGptSandboxCarrier(
   claim: Awaited<ReturnType<typeof api.claimRunnerJob>>,
-  route: (typeof STANDARD_TERRA_API_KEY_BDD_ROUTES)[number],
+  route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   tier: "fast" | undefined,
 ): void {
   expect(claim.piModelConfig).toStrictEqual({
@@ -5503,12 +5521,13 @@ function expectNativeSubscriptionRequest(
   request: unknown,
   accessToken: string,
   tier: "fast" | undefined,
+  selectedModel: PiGptBddModel = "gpt-5.6-terra",
 ): void {
   expect(request).toMatchObject({
     accountMatches: true,
     authorization: `Bearer ${accessToken}`,
     body: {
-      model: "gpt-5.6-terra",
+      model: selectedModel,
       stream: true,
       store: false,
       reasoning: { effort: "max" },
@@ -5564,7 +5583,11 @@ function settledSubscriptionToolHistory(h1: string): string {
           return content.type === "toolCall";
         })
       : undefined;
-  if (!pendingTool || pendingTool.type !== "toolCall") {
+  if (
+    pendingAssistant?.role !== "assistant" ||
+    !pendingTool ||
+    pendingTool.type !== "toolCall"
+  ) {
     throw new Error("Expected native Codex tool call in H1");
   }
   h2Session.appendMessage({
@@ -5581,7 +5604,7 @@ function settledSubscriptionToolHistory(h1: string): string {
     content: [{ type: "text", text: "Subscription Sandbox complete" }],
     api: "openai-codex-responses",
     provider: "openai-codex",
-    model: "gpt-5.6-terra",
+    model: pendingAssistant.model,
     usage: {
       input: 5,
       output: 3,
@@ -5931,7 +5954,7 @@ async function queueCapabilityProvenPiRun(args: {
   readonly runnerGroup: string;
   readonly prompt: string;
   readonly codexServiceTier?: "fast";
-  readonly terraRoute?: "openai" | "openrouter";
+  readonly gptRoute?: "openai" | "openrouter";
   readonly selectedModel?: PiApiFirstTurnUsageProvider;
 }): Promise<{
   readonly anchor: { readonly runId: string; readonly threadId: string };
@@ -5961,7 +5984,7 @@ async function queueCapabilityProvenPiRun(args: {
   let withModelRoute = async <T>(work: () => Promise<T>): Promise<T> => {
     return await work();
   };
-  if (args.terraRoute === "openrouter") {
+  if (args.gptRoute === "openrouter") {
     withModelRoute = await configureBuiltInPiModelOnOpenRouter(
       args.actor,
       selectedModel,
@@ -6560,94 +6583,98 @@ describe("CHAT-02: model-first provider policies", () => {
     ).toHaveLength(0);
   }, 90_000);
 
-  it("keeps captured Pi admission after PiLoop turns off", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
-    mockPiResourceArchiveDownloads(true);
-    mockPiCheckpointObjectStore();
-    await api.heartbeatRunner(runnerGroup);
+  it.each(GPT_PI_BDD_MODELS)(
+    "keeps captured Pi admission after PiLoop turns off for %s",
+    async (selectedModel) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      await configureBuiltInPiModel(actor, selectedModel);
+      mockPiResourceArchiveDownloads(true);
+      mockPiCheckpointObjectStore();
+      await api.heartbeatRunner(runnerGroup);
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: false },
-    );
-    const baseline = await sendChatRun(actor, {
-      agentId,
-      prompt: "establish the captured Codex session family",
-      model: "gpt-5.6-terra",
-    });
-    await flushWaitUntilForTest();
-    await expect(api.readRun(actor, baseline.runId)).resolves.toMatchObject({
-      status: "pending",
-    });
-    await expect(
-      readRunLaunchSnapshotFixture(context, baseline.runId),
-    ).resolves.toMatchObject({
-      launch_snapshot: { framework: "codex" },
-    });
-    const baselineClaim = await claimChatRun(runnerGroup, baseline.runId);
-    expect(baselineClaim.claim.cliAgentType).toBe("codex");
-    expect(baselineClaim.claim.piLaunchConfig).toBeUndefined();
-    const baselineBinding = await readThreadSessionBinding(
-      context,
-      baseline.threadId,
-    );
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(baseline.runId, baselineClaim.sandboxHeaders, {
-      cliAgentType: "codex",
-    });
-    await flushWaitUntilForTest();
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: false },
+      );
+      const baseline = await sendChatRun(actor, {
+        agentId,
+        prompt: "establish the captured Codex session family",
+        model: selectedModel,
+      });
+      await flushWaitUntilForTest();
+      await expect(api.readRun(actor, baseline.runId)).resolves.toMatchObject({
+        status: "pending",
+      });
+      await expect(
+        readRunLaunchSnapshotFixture(context, baseline.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "codex" },
+      });
+      const baselineClaim = await claimChatRun(runnerGroup, baseline.runId);
+      expect(baselineClaim.claim.cliAgentType).toBe("codex");
+      expect(baselineClaim.claim.piLaunchConfig).toBeUndefined();
+      const baselineBinding = await readThreadSessionBinding(
+        context,
+        baseline.threadId,
+      );
+      chatCallbacks.mockChatOutputEvents([]);
+      await completeChatRunOk(baseline.runId, baselineClaim.sandboxHeaders, {
+        cliAgentType: "codex",
+      });
+      await flushWaitUntilForTest();
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    const enabledGate = holdAgentRunPiExecutionSnapshotFixture({
-      userId: actor.userId,
-      orgId,
-      signal: context.signal,
-    });
-    onTestFinished(enabledGate.release);
-    const enabledSend = sendChatRun(actor, {
-      agentId,
-      threadId: baseline.threadId,
-      prompt: "keep Pi after the switch turns off",
-      model: "gpt-5.6-terra",
-    });
-    const enabledSnapshot = await enabledGate.arrival;
-    expect(enabledSnapshot).toMatchObject({
-      chatThreadId: baseline.threadId,
-      piExecution: true,
-      threadSessionCliAgentType: "pi",
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: false },
-    );
-    enabledGate.release();
-    const enabled = await enabledSend;
-    await flushWaitUntilForTest();
-    const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
-    expect(enabledClaim.claim.cliAgentType).toBe("pi");
-    expect(enabledClaim.claim.piLaunchConfig).toBeDefined();
-    await expect(
-      readRunLaunchSnapshotFixture(context, enabled.runId),
-    ).resolves.toMatchObject({
-      launch_snapshot: { framework: "pi" },
-    });
-    const enabledBinding = await readThreadSessionBinding(
-      context,
-      enabled.threadId,
-    );
-    expect(enabledBinding.agent_session_id).not.toBe(
-      baselineBinding.agent_session_id,
-    );
-    await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
-  }, 90_000);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const enabledGate = holdAgentRunPiExecutionSnapshotFixture({
+        userId: actor.userId,
+        orgId,
+        signal: context.signal,
+      });
+      onTestFinished(enabledGate.release);
+      const enabledSend = sendChatRun(actor, {
+        agentId,
+        threadId: baseline.threadId,
+        prompt: "keep Pi after the switch turns off",
+        model: selectedModel,
+      });
+      const enabledSnapshot = await enabledGate.arrival;
+      expect(enabledSnapshot).toMatchObject({
+        chatThreadId: baseline.threadId,
+        piExecution: true,
+        threadSessionCliAgentType: "pi",
+      });
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: false },
+      );
+      enabledGate.release();
+      const enabled = await enabledSend;
+      await flushWaitUntilForTest();
+      const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
+      expect(enabledClaim.claim.cliAgentType).toBe("pi");
+      expect(enabledClaim.claim.piLaunchConfig).toBeDefined();
+      await expect(
+        readRunLaunchSnapshotFixture(context, enabled.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      const enabledBinding = await readThreadSessionBinding(
+        context,
+        enabled.threadId,
+      );
+      expect(enabledBinding.agent_session_id).not.toBe(
+        baselineBinding.agent_session_id,
+      );
+      await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
+    },
+    90_000,
+  );
 
   it("pins recall-enabled Pi memory through API completion and Sandbox handoff", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -6667,7 +6694,7 @@ describe("CHAT-02: model-first provider policies", () => {
       initialMemory,
       frozenSummary,
     );
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
       context,
@@ -6873,7 +6900,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const memory = await commitMemoryVersion(context, actor, [
       { path: "memory_summary.md", content: summary },
     ]);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
       context,
@@ -6963,107 +6990,111 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
   }, 90_000);
 
-  it("keeps captured Codex admission after PiLoop turns on", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
-    mockPiResourceArchiveDownloads();
-    mockPiCheckpointObjectStore();
-    server.use(
-      http.post("https://api.openai.com/v1/responses", () => {
-        return new HttpResponse(piResponsesTextSse("baseline Pi answer", 0), {
-          headers: { "content-type": "text/event-stream" },
-        });
-      }),
-    );
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    const baseline = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "establish the captured Pi session family",
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
-    await waitForRunStatus(actor, baseline.runId, "completed", 10_000);
-    await flushWaitUntilForTest();
-    await expect(
-      readRunLaunchSnapshotFixture(context, baseline.runId),
-    ).resolves.toMatchObject({
-      launch_snapshot: { framework: "pi" },
-    });
-    const baselineBinding = await readThreadSessionBinding(
-      context,
-      baseline.threadId,
-    );
+  it.each(GPT_PI_BDD_MODELS)(
+    "keeps captured Codex admission after PiLoop turns on for %s",
+    async (selectedModel) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      await configureBuiltInPiModel(actor, selectedModel);
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      server.use(
+        http.post("https://api.openai.com/v1/responses", () => {
+          return new HttpResponse(piResponsesTextSse("baseline Pi answer", 0), {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }),
+      );
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const baseline = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "establish the captured Pi session family",
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await waitForRunStatus(actor, baseline.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+      await expect(
+        readRunLaunchSnapshotFixture(context, baseline.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      const baselineBinding = await readThreadSessionBinding(
+        context,
+        baseline.threadId,
+      );
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: false },
-    );
-    const disabledGate = holdAgentRunPiExecutionSnapshotFixture({
-      userId: actor.userId,
-      orgId,
-      signal: context.signal,
-    });
-    onTestFinished(disabledGate.release);
-    const disabledSend = sendChatRun(actor, {
-      agentId,
-      threadId: baseline.threadId,
-      prompt: "keep Codex after the switch turns on",
-      model: "gpt-5.6-terra",
-    });
-    const disabledSnapshot = await disabledGate.arrival;
-    expect(disabledSnapshot).toMatchObject({
-      chatThreadId: baseline.threadId,
-      piExecution: false,
-      threadSessionCliAgentType: "codex",
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    disabledGate.release();
-    const disabled = await disabledSend;
-    await flushWaitUntilForTest();
-    const disabledClaim = await claimChatRun(runnerGroup, disabled.runId);
-    expect(disabledClaim.claim.cliAgentType).toBe("codex");
-    expect(disabledClaim.claim.piLaunchConfig).toBeUndefined();
-    expect(
-      expectCanonicalStorageManifest(
-        disabledClaim.claim.storageManifest,
-      )?.storageMounts.filter((mount) => {
-        return mount.name === "memory";
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({
-        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        missingRootPolicy: "preserveParentVersion",
-      }),
-    ]);
-    await expect(
-      readRunLaunchSnapshotFixture(context, disabled.runId),
-    ).resolves.toMatchObject({
-      launch_snapshot: { framework: "codex" },
-    });
-    const disabledBinding = await readThreadSessionBinding(
-      context,
-      disabled.threadId,
-    );
-    expect(disabledBinding.agent_session_id).not.toBe(
-      baselineBinding.agent_session_id,
-    );
-    await cancelChatRun(actor, disabled.runId, disabledClaim.sandboxHeaders);
-  }, 90_000);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: false },
+      );
+      const disabledGate = holdAgentRunPiExecutionSnapshotFixture({
+        userId: actor.userId,
+        orgId,
+        signal: context.signal,
+      });
+      onTestFinished(disabledGate.release);
+      const disabledSend = sendChatRun(actor, {
+        agentId,
+        threadId: baseline.threadId,
+        prompt: "keep Codex after the switch turns on",
+        model: selectedModel,
+      });
+      const disabledSnapshot = await disabledGate.arrival;
+      expect(disabledSnapshot).toMatchObject({
+        chatThreadId: baseline.threadId,
+        piExecution: false,
+        threadSessionCliAgentType: "codex",
+      });
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      disabledGate.release();
+      const disabled = await disabledSend;
+      await flushWaitUntilForTest();
+      const disabledClaim = await claimChatRun(runnerGroup, disabled.runId);
+      expect(disabledClaim.claim.cliAgentType).toBe("codex");
+      expect(disabledClaim.claim.piLaunchConfig).toBeUndefined();
+      expect(
+        expectCanonicalStorageManifest(
+          disabledClaim.claim.storageManifest,
+        )?.storageMounts.filter((mount) => {
+          return mount.name === "memory";
+        }),
+      ).toStrictEqual([
+        expect.objectContaining({
+          mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+          missingRootPolicy: "preserveParentVersion",
+        }),
+      ]);
+      await expect(
+        readRunLaunchSnapshotFixture(context, disabled.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "codex" },
+      });
+      const disabledBinding = await readThreadSessionBinding(
+        context,
+        disabled.threadId,
+      );
+      expect(disabledBinding.agent_session_id).not.toBe(
+        baselineBinding.agent_session_id,
+      );
+      await cancelChatRun(actor, disabled.runId, disabledClaim.sandboxHeaders);
+    },
+    90_000,
+  );
 
   it("decodes persisted launch snapshots at webhook completion before Stage 1 admission", async () => {
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
@@ -7285,7 +7316,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const sourceToken = okouTokenFromClaim(sourceClaim.claim);
     const targetThread = await chat.createThread(actor, { agentId });
 
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -7426,7 +7457,7 @@ describe("CHAT-02: model-first provider policies", () => {
         piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({ triggerSource }),
       ).toBe(expectedAdmissionBySource[triggerSource]);
     }
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -7808,7 +7839,128 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toBe(1);
   }, 90_000);
 
-  it.each(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-terra"] as const)(
+  it.each(
+    GPT_PI_BDD_MODELS.flatMap((selectedModel) => {
+      return (["openai", "openrouter"] as const).map((provider) => {
+        return {
+          selectedModel,
+          provider,
+        };
+      });
+    }),
+  )(
+    "bills built-in $selectedModel on $provider at both canonical input boundaries and tiers",
+    async ({ selectedModel, provider }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      const threshold =
+        MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[selectedModel];
+      if (threshold === undefined) {
+        throw new Error(
+          `Expected a long-context threshold for ${selectedModel}`,
+        );
+      }
+      let withRoute = async <T>(work: () => Promise<T>): Promise<T> => {
+        return await work();
+      };
+      if (provider === "openrouter") {
+        withRoute = await configureBuiltInPiModelOnOpenRouter(
+          actor,
+          selectedModel,
+        );
+      } else {
+        await configureBuiltInPiModel(actor, selectedModel);
+      }
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.CodexFastMode]: true,
+      });
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const endpoint =
+        provider === "openai"
+          ? "https://api.openai.com/v1/responses"
+          : "https://openrouter.ai/api/v1/responses";
+      const upstreamModel =
+        provider === "openai" ? selectedModel : `openai/${selectedModel}`;
+      const requests: unknown[] = [];
+      for (const tier of [undefined, "fast"] as const) {
+        for (const totalInput of [threshold - 1, threshold]) {
+          server.use(
+            http.post(endpoint, async ({ request }) => {
+              requests.push(await request.json());
+              return nativeCodexSseResponse(
+                piResponsesTextSse(
+                  "accounted response",
+                  requests.length,
+                  {
+                    input_tokens: totalInput,
+                    output_tokens: 3,
+                    total_tokens: totalInput + 3,
+                    input_tokens_details: {
+                      cached_tokens: 3,
+                      cache_write_tokens: 2,
+                    },
+                  },
+                  tier === "fast" ? "priority" : "default",
+                ),
+              );
+            }),
+          );
+          const run = await withRoute(async () => {
+            return await sendChatRun(
+              actor,
+              {
+                agentId,
+                prompt: `bill ${selectedModel} at ${totalInput} total input`,
+                model: selectedModel,
+                runOptions: { codexServiceTier: tier },
+              },
+              "vm0",
+              usagePricingResolution,
+            );
+          });
+          await waitForRunStatus(actor, run.runId, "completed");
+          await flushWaitUntilForTest();
+          const longContext = totalInput === threshold;
+          const suffix = longContext
+            ? tier === "fast"
+              ? ".long_context.fast"
+              : ".long_context"
+            : tier === "fast"
+              ? ".fast"
+              : "";
+          await expectPiApiUsage(run.runId, selectedModel, suffix, {
+            input: totalInput - 5,
+            output: 3,
+            cacheRead: 3,
+            cacheCreation: 2,
+          });
+          expect(requests.at(-1)).toMatchObject({
+            model: upstreamModel,
+            reasoning: { effort: "max" },
+            store: false,
+          });
+          if (tier === undefined) {
+            expect(requests.at(-1)).not.toHaveProperty("service_tier");
+          } else {
+            expect(requests.at(-1)).toMatchObject({ service_tier: "priority" });
+          }
+          await expect(
+            readRunLaunchSnapshotFixture(context, run.runId),
+          ).resolves.toMatchObject({ launch_snapshot: { framework: "pi" } });
+        }
+      }
+      expect(requests).toHaveLength(4);
+    },
+    90_000,
+  );
+
+  it.each([
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    ...GPT_PI_BDD_MODELS,
+  ] as const)(
     "runs the Pi API first turn once for %s and resumes canonical JSONL",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -7833,10 +7985,9 @@ describe("CHAT-02: model-first provider policies", () => {
         `first API answer for ${selectedModel}`,
         `second API answer for ${selectedModel}`,
       ];
-      const providerUrl =
-        selectedModel === "gpt-5.6-terra"
-          ? "https://api.openai.com/v1/responses"
-          : "https://api.deepseek.com/responses";
+      const providerUrl = selectedModel.startsWith("gpt-")
+        ? "https://api.openai.com/v1/responses"
+        : "https://api.deepseek.com/responses";
       server.use(
         http.post(providerUrl, async ({ request }) => {
           const sequence = modelRequests.length;
@@ -8005,16 +8156,18 @@ describe("CHAT-02: model-first provider policies", () => {
       selectedModel: "deepseek-v4-pro",
       upstreamModel: "company-deepseek-pro-production",
     },
-    {
-      selectedModel: "gpt-5.6-terra",
-      upstreamModel: "company-terra-production",
-    },
+    ...GPT_PI_BDD_MODELS.map((selectedModel) => {
+      return {
+        selectedModel,
+        upstreamModel: `company-${selectedModel}-production`,
+      };
+    }),
   ] as const)(
     "runs custom Responses gateway $selectedModel through Pi without built-in model billing",
     async ({ selectedModel, upstreamModel }) => {
-      const { actor, agentId } = await entitledChatActor();
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const usagePricingResolution = await createGptUsagePricingResolution();
       const created = await accept(
         modelProviderConnectionsClient().create({
           headers: sessionHeaders(actor),
@@ -8109,14 +8262,42 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       expect(modelRequests).toStrictEqual([
         {
-          body: expect.objectContaining({ model: upstreamModel }),
+          body: expect.objectContaining({
+            model: upstreamModel,
+            ...(selectedModel.startsWith("gpt-")
+              ? { reasoning: expect.objectContaining({ effort: "max" }) }
+              : {}),
+          }),
           authorization: null,
           apiKey: "Key custom-pi-gateway-secret",
         },
       ]);
+      expect(modelRequests[0]?.body).not.toHaveProperty("service_tier");
       await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
         [],
       );
+      if (selectedModel.startsWith("gpt-")) {
+        await authDeviceSupport.updateFeatureSwitches(actor, {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.CodexFastMode]: true,
+        });
+        const fast = await sendChatRun(actor, {
+          agentId,
+          model: selectedModel,
+          prompt: "keep custom Fast on its existing runtime until slice 2",
+          runOptions: { codexServiceTier: "fast" },
+        });
+        const claimed = await claimChatRun(runnerGroup, fast.runId);
+        expect(claimed.claim.cliAgentType).toBe("codex");
+        expect(claimed.claim.piModelConfig).toBeUndefined();
+        expect(claimEnvironment(claimed.claim)).toMatchObject({
+          OPENAI_MODEL: upstreamModel,
+          OKOU_CODEX_SERVICE_TIER: "fast",
+        });
+        expect(modelRequests).toHaveLength(1);
+        await cancelChatRun(actor, fast.runId, claimed.sandboxHeaders);
+        await expectNoBuiltInModelUsage(fast.runId);
+      }
     },
     90_000,
   );
@@ -8194,11 +8375,13 @@ describe("CHAT-02: model-first provider policies", () => {
   );
 
   it.each([
-    {
-      name: "Terra",
-      selectedModel: "gpt-5.6-terra",
-      providerUrl: "https://api.openai.com/v1/responses",
-    },
+    ...GPT_PI_BDD_MODELS.map((selectedModel) => {
+      return {
+        name: selectedModel,
+        selectedModel,
+        providerUrl: "https://api.openai.com/v1/responses",
+      };
+    }),
     {
       name: "DeepSeek Flash",
       selectedModel: "deepseek-v4-flash",
@@ -8295,11 +8478,13 @@ describe("CHAT-02: model-first provider policies", () => {
   );
 
   it.each([
-    {
-      name: "Terra",
-      selectedModel: "gpt-5.6-terra",
-      providerUrl: "https://api.openai.com/v1/responses",
-    },
+    ...GPT_PI_BDD_MODELS.map((selectedModel) => {
+      return {
+        name: selectedModel,
+        selectedModel,
+        providerUrl: "https://api.openai.com/v1/responses",
+      };
+    }),
     {
       name: "DeepSeek Pro",
       selectedModel: "deepseek-v4-pro",
@@ -8412,7 +8597,7 @@ describe("CHAT-02: model-first provider policies", () => {
   it("resumes pre-migration OpenRouter Chat JSONL through API-first Responses", async () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
       actor,
       "gpt-5.6-terra",
@@ -8582,473 +8767,584 @@ describe("CHAT-02: model-first provider policies", () => {
     ).toBeFalsy();
   }, 90_000);
 
-  it("reuses one OpenRouter Responses Pi session across standard, fast, and long-context Terra turns", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    const longContextInputTokens =
-      MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS["gpt-5.6-terra"];
-    if (longContextInputTokens === undefined) {
-      throw new Error("Expected the Terra long-context pricing threshold");
-    }
-    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
-      actor,
-      "gpt-5.6-terra",
-    );
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.CodexFastMode]: true,
-      },
-    );
-    mockPiResourceArchiveDownloads();
-    const checkpointObjects = mockPiCheckpointObjectStore();
-    const prompts = [
-      "start standard Terra in the canonical Pi session",
-      "continue fast Terra in the same Pi session",
-      "continue long-context Terra in the same Pi session",
-    ] as const;
-    const answers = [
-      "first standard Terra answer",
-      "fast Terra answer",
-      "long-context Terra answer",
-    ] as const;
-    const modelRequests: unknown[] = [];
-    const observedTiers = ["default", "priority", "flex"] as const;
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/responses",
-        async ({ request }) => {
-          const requestIndex = modelRequests.length;
-          modelRequests.push(await request.json());
-          const answer = answers[requestIndex];
-          if (!answer) {
-            return HttpResponse.json(
-              { error: "unexpected duplicate Terra request" },
-              { status: 500 },
-            );
-          }
-          return new HttpResponse(
-            piResponsesTextSse(
-              answer,
-              requestIndex,
-              requestIndex === 2
-                ? {
-                    input_tokens: longContextInputTokens,
-                    output_tokens: 3,
-                    total_tokens: longContextInputTokens + 3,
-                  }
-                : {
-                    input_tokens: 10,
-                    output_tokens: 3,
-                    total_tokens: 13,
-                    input_tokens_details: {
-                      cached_tokens: 3,
-                      cache_write_tokens: 2,
+  it.each(GPT_PI_BDD_MODELS)(
+    "reuses one OpenRouter Responses Pi session across standard, fast, and long-context turns for %s",
+    async (selectedModel) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      const longContextInputTokens =
+        MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[selectedModel];
+      if (longContextInputTokens === undefined) {
+        throw new Error("Expected the Terra long-context pricing threshold");
+      }
+      const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+        actor,
+        selectedModel,
+      );
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.CodexFastMode]: true,
+        },
+      );
+      mockPiResourceArchiveDownloads();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const prompts = [
+        "start standard Terra in the canonical Pi session",
+        "continue fast Terra in the same Pi session",
+        "continue long-context Terra in the same Pi session",
+      ] as const;
+      const answers = [
+        "first standard Terra answer",
+        "fast Terra answer",
+        "long-context Terra answer",
+      ] as const;
+      const modelRequests: unknown[] = [];
+      const observedTiers = ["default", "priority", "flex"] as const;
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/responses",
+          async ({ request }) => {
+            const requestIndex = modelRequests.length;
+            modelRequests.push(await request.json());
+            const answer = answers[requestIndex];
+            if (!answer) {
+              return HttpResponse.json(
+                { error: "unexpected duplicate Terra request" },
+                { status: 500 },
+              );
+            }
+            return new HttpResponse(
+              piResponsesTextSse(
+                answer,
+                requestIndex,
+                requestIndex === 2
+                  ? {
+                      input_tokens: longContextInputTokens,
+                      output_tokens: 3,
+                      total_tokens: longContextInputTokens + 3,
+                    }
+                  : {
+                      input_tokens: 10,
+                      output_tokens: 3,
+                      total_tokens: 13,
+                      input_tokens_details: {
+                        cached_tokens: 3,
+                        cache_write_tokens: 2,
+                      },
                     },
-                  },
-              observedTiers[requestIndex],
-            ),
-            { headers: { "content-type": "text/event-stream" } },
-          );
-        },
-      ),
-    );
-
-    const first = await withOpenRouterRoute(async () => {
-      return await sendChatRun(
-        actor,
-        {
-          agentId,
-          prompt: prompts[0],
-          model: "gpt-5.6-terra",
-        },
-        "vm0",
-        usagePricingResolution,
-      );
-    });
-    await waitForRunStatus(actor, first.runId, "completed", 10_000);
-    await flushWaitUntilForTest();
-    const firstBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    if (!firstBinding.agent_session_id) {
-      throw new Error("Expected standard Terra to bind a canonical Pi session");
-    }
-
-    const fast = await withOpenRouterRoute(async () => {
-      return await sendChatRun(
-        actor,
-        {
-          agentId,
-          threadId: first.threadId,
-          prompt: prompts[1],
-          model: "gpt-5.6-terra",
-          runOptions: { codexServiceTier: "fast" },
-        },
-        "vm0",
-        usagePricingResolution,
-      );
-    });
-    await waitForRunStatus(actor, fast.runId, "completed", 10_000);
-    await flushWaitUntilForTest();
-    const fastBinding = await readThreadSessionBinding(context, first.threadId);
-    expect(fastBinding.agent_session_id).toBe(firstBinding.agent_session_id);
-
-    await chat.updateThreadModelSelection(
-      actor,
-      first.threadId,
-      "gpt-5.6-terra",
-      { codexServiceTier: null },
-    );
-    const returned = await withOpenRouterRoute(async () => {
-      return await sendChatRun(
-        actor,
-        {
-          agentId,
-          threadId: first.threadId,
-          prompt: prompts[2],
-          model: "gpt-5.6-terra",
-        },
-        "vm0",
-        usagePricingResolution,
-      );
-    });
-    await waitForRunStatus(actor, returned.runId, "completed", 10_000);
-    await flushWaitUntilForTest();
-    const returnedBinding = await readThreadSessionBinding(
-      context,
-      first.threadId,
-    );
-    expect(returnedBinding.agent_session_id).toBe(
-      firstBinding.agent_session_id,
-    );
-    await expect(
-      readThreadSessionConversation(context, first.threadId),
-    ).resolves.toMatchObject({
-      agent_session_id: firstBinding.agent_session_id,
-      conversation_run_id: returned.runId,
-    });
-
-    expect(modelRequests).toHaveLength(3);
-    const requestTiers = modelRequests.map((body) => {
-      return z
-        .object({ service_tier: z.literal("priority").optional() })
-        .passthrough()
-        .parse(body).service_tier;
-    });
-    expect(requestTiers).toStrictEqual([undefined, "priority", undefined]);
-    for (const body of modelRequests) {
-      expect(body).toMatchObject({ store: false });
-      expect(body).not.toHaveProperty("previous_response_id");
-    }
-    for (const [requestIndex, expectedTurns] of [
-      [0, [prompts[0]]],
-      [1, [prompts[0], answers[0], prompts[1]]],
-      [2, [prompts[0], answers[0], prompts[1], answers[1], prompts[2]]],
-    ] as const) {
-      const input = JSON.stringify(modelRequests[requestIndex]);
-      for (const turn of expectedTurns) {
-        expect(occurrences(input, turn)).toBe(1);
-      }
-      expect(occurrences(input, answers[requestIndex])).toBe(0);
-    }
-
-    for (const run of [first, fast, returned]) {
-      await expect(
-        readRunLaunchSnapshotFixture(context, run.runId),
-      ).resolves.toMatchObject({
-        launch_snapshot: { framework: "pi" },
-      });
-      const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
-      expect(claim.status).toBe(404);
-    }
-    for (const runId of [fast.runId, returned.runId]) {
-      const run = await api.readRun(actor, runId);
-      const appendSystemPrompt = run.appendSystemPrompt ?? "";
-      expect(appendSystemPrompt).not.toContain("# Web Chat Run Context");
-      for (const turn of [...prompts, ...answers]) {
-        expect(appendSystemPrompt).not.toContain(turn);
-      }
-    }
-
-    await expectTerraApiUsage(first.runId, "", {
-      input: 5,
-      output: 3,
-      cacheRead: 3,
-      cacheCreation: 2,
-    });
-    await expectTerraApiUsage(fast.runId, ".fast", {
-      input: 5,
-      output: 3,
-      cacheRead: 3,
-      cacheCreation: 2,
-    });
-    await expectTerraApiUsage(returned.runId, ".long_context", {
-      input: longContextInputTokens,
-      output: 3,
-      cacheRead: 0,
-      cacheCreation: 0,
-    });
-
-    const visibleTurns = [
-      { runId: first.runId, prompt: prompts[0], answer: answers[0] },
-      { runId: fast.runId, prompt: prompts[1], answer: answers[1] },
-      { runId: returned.runId, prompt: prompts[2], answer: answers[2] },
-    ];
-    const finalEvents = await waitForThreadMessages(
-      actor,
-      first.threadId,
-      (events) => {
-        return eventBackedContents(events, returned.runId).some((event) => {
-          return event.content === answers[2];
-        });
-      },
-    );
-    const runIds = new Set(
-      visibleTurns.map((turn) => {
-        return turn.runId;
-      }),
-    );
-    expect(
-      finalEvents.events
-        .filter((event) => {
-          return (
-            event.runId !== undefined &&
-            event.runId !== null &&
-            runIds.has(event.runId) &&
-            (event.eventType === "input.prompt" ||
-              event.eventType === "output.message")
-          );
-        })
-        .map((event) => {
-          return {
-            runId: event.runId,
-            eventType: event.eventType,
-            content: chatEventDisplayText(event),
-          };
-        }),
-    ).toStrictEqual(
-      visibleTurns.flatMap((turn) => {
-        return [
-          {
-            runId: turn.runId,
-            eventType: "input.prompt",
-            content: turn.prompt,
-          },
-          {
-            runId: turn.runId,
-            eventType: "output.message",
-            content: turn.answer,
-          },
-        ];
-      }),
-    );
-    const sessionBlobs = [...checkpointObjects.entries()].filter(([key]) => {
-      return key.includes("/blobs/");
-    });
-    expect(sessionBlobs.length).toBeGreaterThan(0);
-    for (const [, bytes] of sessionBlobs) {
-      expect(bytes.toString("utf8")).not.toContain("serviceTier");
-    }
-  }, 90_000);
-
-  it("bills managed OpenRouter priority only from the observed terminal Responses tier", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
-      actor,
-      "gpt-5.6-terra",
-    );
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.CodexFastMode]: true,
-      },
-    );
-    mockPiResourceArchiveDownloads();
-    mockPiCheckpointObjectStore();
-    const cases = [
-      { observed: "priority", expectedSuffix: ".fast" },
-      { observed: "fast", expectedSuffix: ".fast" },
-      { observed: "default", expectedSuffix: "" },
-      { observed: "flex", expectedSuffix: "" },
-      { observed: null, expectedSuffix: "" },
-      { observed: undefined, expectedSuffix: "" },
-      { observed: "future-tier", expectedSuffix: "" },
-    ] as const;
-    const modelRequests: unknown[] = [];
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/responses",
-        async ({ request }) => {
-          const requestIndex = modelRequests.length;
-          modelRequests.push(await request.json());
-          const testCase = cases[requestIndex];
-          if (!testCase) {
-            return HttpResponse.json(
-              { error: "unexpected duplicate OpenRouter request" },
-              { status: 500 },
+                observedTiers[requestIndex],
+              ),
+              { headers: { "content-type": "text/event-stream" } },
             );
-          }
-          return new HttpResponse(
-            piResponsesTextSse(
-              `OpenRouter tier answer ${requestIndex.toString()}`,
-              requestIndex,
-              undefined,
-              testCase.observed,
-            ),
-            { headers: { "content-type": "text/event-stream" } },
-          );
-        },
-      ),
-    );
+          },
+        ),
+      );
 
-    for (const [index, testCase] of cases.entries()) {
-      const run = await withOpenRouterRoute(async () => {
+      const first = await withOpenRouterRoute(async () => {
         return await sendChatRun(
           actor,
           {
             agentId,
-            prompt: `observe OpenRouter tier case ${index.toString()}`,
-            model: "gpt-5.6-terra",
+            prompt: prompts[0],
+            model: selectedModel,
+          },
+          "vm0",
+          usagePricingResolution,
+        );
+      });
+      await waitForRunStatus(actor, first.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+      const firstBinding = await readThreadSessionBinding(
+        context,
+        first.threadId,
+      );
+      if (!firstBinding.agent_session_id) {
+        throw new Error(
+          "Expected standard Terra to bind a canonical Pi session",
+        );
+      }
+
+      const fast = await withOpenRouterRoute(async () => {
+        return await sendChatRun(
+          actor,
+          {
+            agentId,
+            threadId: first.threadId,
+            prompt: prompts[1],
+            model: selectedModel,
             runOptions: { codexServiceTier: "fast" },
           },
           "vm0",
           usagePricingResolution,
         );
       });
-      await waitForRunStatus(actor, run.runId, "completed", 10_000);
+      await waitForRunStatus(actor, fast.runId, "completed", 10_000);
       await flushWaitUntilForTest();
-      await expectTerraApiFollowUpUsage(run.runId, testCase.expectedSuffix);
-    }
+      const fastBinding = await readThreadSessionBinding(
+        context,
+        first.threadId,
+      );
+      expect(fastBinding.agent_session_id).toBe(firstBinding.agent_session_id);
 
-    expect(modelRequests).toHaveLength(cases.length);
-    for (const body of modelRequests) {
-      expect(body).toMatchObject({
-        service_tier: "priority",
-        store: false,
+      await chat.updateThreadModelSelection(
+        actor,
+        first.threadId,
+        selectedModel,
+        { codexServiceTier: null },
+      );
+      const returned = await withOpenRouterRoute(async () => {
+        return await sendChatRun(
+          actor,
+          {
+            agentId,
+            threadId: first.threadId,
+            prompt: prompts[2],
+            model: selectedModel,
+          },
+          "vm0",
+          usagePricingResolution,
+        );
       });
-      expect(body).not.toHaveProperty("previous_response_id");
-    }
-  }, 90_000);
+      await waitForRunStatus(actor, returned.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+      const returnedBinding = await readThreadSessionBinding(
+        context,
+        first.threadId,
+      );
+      expect(returnedBinding.agent_session_id).toBe(
+        firstBinding.agent_session_id,
+      );
+      await expect(
+        readThreadSessionConversation(context, first.threadId),
+      ).resolves.toMatchObject({
+        agent_session_id: firstBinding.agent_session_id,
+        conversation_run_id: returned.runId,
+      });
 
-  it("promotes queued fast Terra through Pi API-first with priority", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "hold the thread before queued fast Terra",
-      model: "claude-sonnet-5",
-    });
-    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-
-    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.CodexFastMode]: true,
-      },
-    );
-    mockPiResourceArchiveDownloads();
-    mockPiCheckpointObjectStore();
-    const modelRequests: unknown[] = [];
-    const prompt = "promote queued fast Terra through the callback";
-    const answer = "queued fast Terra API-first answer";
-    server.use(
-      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
-        modelRequests.push(await request.json());
-        return new HttpResponse(piResponsesTextSse(answer, 0), {
-          headers: { "content-type": "text/event-stream" },
+      expect(modelRequests).toHaveLength(3);
+      const requestTiers = modelRequests.map((body) => {
+        return z
+          .object({ service_tier: z.literal("priority").optional() })
+          .passthrough()
+          .parse(body).service_tier;
+      });
+      expect(requestTiers).toStrictEqual([undefined, "priority", undefined]);
+      for (const body of modelRequests) {
+        expect(body).toMatchObject({
+          model: `openai/${selectedModel}`,
+          reasoning: { effort: "max" },
+          store: false,
         });
-      }),
-    );
+        expect(body).not.toHaveProperty("previous_response_id");
+      }
+      for (const [requestIndex, expectedTurns] of [
+        [0, [prompts[0]]],
+        [1, [prompts[0], answers[0], prompts[1]]],
+        [2, [prompts[0], answers[0], prompts[1], answers[1], prompts[2]]],
+      ] as const) {
+        const input = JSON.stringify(modelRequests[requestIndex]);
+        for (const turn of expectedTurns) {
+          expect(occurrences(input, turn)).toBe(1);
+        }
+        expect(occurrences(input, answers[requestIndex])).toBe(0);
+      }
 
-    const queuedId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        prompt,
-        clientEventId: queuedId,
-        model: "gpt-5.6-terra",
-        runOptions: { codexServiceTier: "fast" },
-      },
-      [201],
-      { usagePricingResolution },
-    );
-    if (queued.status !== 201) {
-      throw new Error("Expected queued fast Terra to enter the chat queue");
-    }
-    expect(queued.body.runId).toBeNull();
+      for (const run of [first, fast, returned]) {
+        await expect(
+          readRunLaunchSnapshotFixture(context, run.runId),
+        ).resolves.toMatchObject({
+          launch_snapshot: { framework: "pi" },
+        });
+        const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+        expect(claim.status).toBe(404);
+      }
+      for (const runId of [fast.runId, returned.runId]) {
+        const run = await api.readRun(actor, runId);
+        const appendSystemPrompt = run.appendSystemPrompt ?? "";
+        expect(appendSystemPrompt).not.toContain("# Web Chat Run Context");
+        for (const turn of [...prompts, ...answers]) {
+          expect(appendSystemPrompt).not.toContain(turn);
+        }
+      }
 
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
-      usagePricingResolution,
-    });
-    const messages = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (events) => {
-        return userMessages(events).some((event) => {
-          return (
-            event.revokesEventId === queuedId && typeof event.runId === "string"
+      await expectPiApiUsage(first.runId, selectedModel, "", {
+        input: 5,
+        output: 3,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+      await expectPiApiUsage(fast.runId, selectedModel, ".fast", {
+        input: 5,
+        output: 3,
+        cacheRead: 3,
+        cacheCreation: 2,
+      });
+      await expectPiApiUsage(returned.runId, selectedModel, ".long_context", {
+        input: longContextInputTokens,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
+
+      const visibleTurns = [
+        { runId: first.runId, prompt: prompts[0], answer: answers[0] },
+        { runId: fast.runId, prompt: prompts[1], answer: answers[1] },
+        { runId: returned.runId, prompt: prompts[2], answer: answers[2] },
+      ];
+      const finalEvents = await waitForThreadMessages(
+        actor,
+        first.threadId,
+        (events) => {
+          return eventBackedContents(events, returned.runId).some((event) => {
+            return event.content === answers[2];
+          });
+        },
+      );
+      const runIds = new Set(
+        visibleTurns.map((turn) => {
+          return turn.runId;
+        }),
+      );
+      expect(
+        finalEvents.events
+          .filter((event) => {
+            return (
+              event.runId !== undefined &&
+              event.runId !== null &&
+              runIds.has(event.runId) &&
+              (event.eventType === "input.prompt" ||
+                event.eventType === "output.message")
+            );
+          })
+          .map((event) => {
+            return {
+              runId: event.runId,
+              eventType: event.eventType,
+              content: chatEventDisplayText(event),
+            };
+          }),
+      ).toStrictEqual(
+        visibleTurns.flatMap((turn) => {
+          return [
+            {
+              runId: turn.runId,
+              eventType: "input.prompt",
+              content: turn.prompt,
+            },
+            {
+              runId: turn.runId,
+              eventType: "output.message",
+              content: turn.answer,
+            },
+          ];
+        }),
+      );
+      const sessionBlobs = [...checkpointObjects.entries()].filter(([key]) => {
+        return key.includes("/blobs/");
+      });
+      expect(sessionBlobs.length).toBeGreaterThan(0);
+      for (const [, bytes] of sessionBlobs) {
+        expect(bytes.toString("utf8")).not.toContain("serviceTier");
+      }
+    },
+    90_000,
+  );
+
+  it.each(GPT_PI_BDD_MODELS)(
+    "bills managed OpenRouter priority only from the observed terminal Responses tier %s",
+    async (selectedModel) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+        actor,
+        selectedModel,
+      );
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.CodexFastMode]: true,
+        },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const cases = [
+        { observed: "priority", expectedSuffix: ".fast" },
+        { observed: "fast", expectedSuffix: ".fast" },
+        { observed: "default", expectedSuffix: "" },
+        { observed: "flex", expectedSuffix: "" },
+        { observed: null, expectedSuffix: "" },
+        { observed: undefined, expectedSuffix: "" },
+        { observed: "future-tier", expectedSuffix: "" },
+      ] as const;
+      const modelRequests: unknown[] = [];
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/responses",
+          async ({ request }) => {
+            const requestIndex = modelRequests.length;
+            modelRequests.push(await request.json());
+            const testCase = cases[requestIndex];
+            if (!testCase) {
+              return HttpResponse.json(
+                { error: "unexpected duplicate OpenRouter request" },
+                { status: 500 },
+              );
+            }
+            return new HttpResponse(
+              piResponsesTextSse(
+                `OpenRouter tier answer ${requestIndex.toString()}`,
+                requestIndex,
+                undefined,
+                testCase.observed,
+              ),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        ),
+      );
+
+      for (const [index, testCase] of cases.entries()) {
+        const run = await withOpenRouterRoute(async () => {
+          return await sendChatRun(
+            actor,
+            {
+              agentId,
+              prompt: `observe OpenRouter tier case ${index.toString()}`,
+              model: selectedModel,
+              runOptions: { codexServiceTier: "fast" },
+            },
+            "vm0",
+            usagePricingResolution,
           );
         });
-      },
-    );
-    const promoted = userMessages(messages.events).find((event) => {
-      return event.revokesEventId === queuedId;
-    });
-    if (!promoted?.runId) {
-      throw new Error("Expected queued fast Terra to create a run");
-    }
-    const promotedRunId = promoted.runId;
-    await waitForRunStatus(actor, promotedRunId, "completed", 10_000);
-    await flushWaitUntilForTest();
+        await waitForRunStatus(actor, run.runId, "completed", 10_000);
+        await flushWaitUntilForTest();
+        await expectPiApiUsage(
+          run.runId,
+          selectedModel,
+          testCase.expectedSuffix,
+          { input: 5, output: 3, cacheRead: 0, cacheCreation: 0 },
+        );
+      }
 
-    expect(modelRequests).toHaveLength(1);
-    const request = z
-      .object({ service_tier: z.literal("priority") })
-      .passthrough()
-      .parse(modelRequests[0]);
-    expect(request.service_tier).toBe("priority");
-    expect(occurrences(JSON.stringify(request), prompt)).toBe(1);
-    await expect(
-      readRunLaunchSnapshotFixture(context, promotedRunId),
-    ).resolves.toMatchObject({
-      launch_snapshot: { framework: "pi" },
-    });
-    const claim = await api.requestClaimRunnerJob(true, promotedRunId, [404]);
-    expect(claim.status).toBe(404);
-    await expectTerraApiFollowUpUsage(promotedRunId, ".fast");
-    const finalEvents = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (events) => {
-        return eventBackedContents(events, promotedRunId).some((event) => {
-          return event.content === answer;
+      expect(modelRequests).toHaveLength(cases.length);
+      for (const body of modelRequests) {
+        expect(body).toMatchObject({
+          model: `openai/${selectedModel}`,
+          reasoning: { effort: "max" },
+          service_tier: "priority",
+          store: false,
         });
-      },
-    );
-    expect(
-      eventBackedContents(finalEvents.events, promotedRunId).filter((event) => {
-        return event.content === answer;
+        expect(body).not.toHaveProperty("previous_response_id");
+      }
+    },
+    90_000,
+  );
+
+  it.each(GPT_PI_BDD_MODELS)(
+    "promotes queued fast %s through Pi API-first with priority",
+    async (selectedModel) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createGptUsagePricingResolution();
+      const anchor = await sendChatRun(actor, {
+        agentId,
+        prompt: "hold the thread before queued fast Terra",
+        model: "claude-sonnet-5",
+      });
+      const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+      await configureBuiltInPiModel(actor, selectedModel);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.CodexFastMode]: true,
+        },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const modelRequests: unknown[] = [];
+      const prompt = "promote queued fast Terra through the callback";
+      const answer = "queued fast Terra API-first answer";
+      server.use(
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            modelRequests.push(await request.json());
+            return new HttpResponse(piResponsesTextSse(answer, 0), {
+              headers: { "content-type": "text/event-stream" },
+            });
+          },
+        ),
+      );
+
+      const queuedId = randomUUID();
+      const queued = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: anchor.threadId,
+          prompt,
+          clientEventId: queuedId,
+          model: selectedModel,
+          runOptions: { codexServiceTier: "fast" },
+        },
+        [201],
+        { usagePricingResolution },
+      );
+      if (queued.status !== 201) {
+        throw new Error("Expected queued fast Terra to enter the chat queue");
+      }
+      expect(queued.body.runId).toBeNull();
+
+      chatCallbacks.mockChatOutputEvents([]);
+      await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+        usagePricingResolution,
+      });
+      const messages = await waitForThreadMessages(
+        actor,
+        anchor.threadId,
+        (events) => {
+          return userMessages(events).some((event) => {
+            return (
+              event.revokesEventId === queuedId &&
+              typeof event.runId === "string"
+            );
+          });
+        },
+      );
+      const promoted = userMessages(messages.events).find((event) => {
+        return event.revokesEventId === queuedId;
+      });
+      if (!promoted?.runId) {
+        throw new Error("Expected queued fast Terra to create a run");
+      }
+      const promotedRunId = promoted.runId;
+      await waitForRunStatus(actor, promotedRunId, "completed", 10_000);
+      await flushWaitUntilForTest();
+
+      expect(modelRequests).toHaveLength(1);
+      const request = z
+        .object({ service_tier: z.literal("priority") })
+        .passthrough()
+        .parse(modelRequests[0]);
+      expect(request.service_tier).toBe("priority");
+      expect(request).toMatchObject({
+        model: selectedModel,
+        reasoning: { effort: "max" },
+      });
+      expect(occurrences(JSON.stringify(request), prompt)).toBe(1);
+      await expect(
+        readRunLaunchSnapshotFixture(context, promotedRunId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      const claim = await api.requestClaimRunnerJob(true, promotedRunId, [404]);
+      expect(claim.status).toBe(404);
+      await expectPiApiUsage(promotedRunId, selectedModel, ".fast", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
+      const finalEvents = await waitForThreadMessages(
+        actor,
+        anchor.threadId,
+        (events) => {
+          return eventBackedContents(events, promotedRunId).some((event) => {
+            return event.content === answer;
+          });
+        },
+      );
+      expect(
+        eventBackedContents(finalEvents.events, promotedRunId).filter(
+          (event) => {
+            return event.content === answer;
+          },
+        ),
+      ).toHaveLength(1);
+    },
+    90_000,
+  );
+
+  it("preserves one Pi session while selecting Terra, Sol, Luna, and Terra again", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    for (const model of GPT_PI_BDD_MODELS) {
+      await seedBuiltInModelKey(model);
+    }
+    await api.updateOrgModelPolicies(
+      actor,
+      GPT_PI_BDD_MODELS.map((model) => {
+        return {
+          model,
+          isDefault: model === "gpt-5.6-terra",
+          defaultProviderType: "built-in",
+          credentialScope: "org",
+          modelProviderId: null,
+        };
       }),
-    ).toHaveLength(1);
+    );
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+    const usagePricingResolution = await createGptUsagePricingResolution();
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    const requests: unknown[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.json());
+        return nativeCodexSseResponse(
+          piResponsesTextSse(`answer ${requests.length}`, requests.length),
+        );
+      }),
+    );
+    let threadId: string | undefined;
+    let sessionId: string | null | undefined;
+    for (const model of [...GPT_PI_BDD_MODELS, "gpt-5.6-terra"] as const) {
+      const run = await sendChatRun(
+        actor,
+        { agentId, threadId, model, prompt: `continue with ${model}` },
+        "vm0",
+        usagePricingResolution,
+      );
+      threadId = run.threadId;
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+      const session = await readThreadSessionConversation(context, threadId);
+      if (sessionId === undefined) {
+        sessionId = session.agent_session_id;
+        expect(sessionId).toStrictEqual(expect.any(String));
+      }
+      expect(session.agent_session_id).toBe(sessionId);
+      expect(requests.at(-1)).toMatchObject({
+        model,
+        reasoning: { effort: "max" },
+      });
+      expect(requests.at(-1)).not.toHaveProperty("service_tier");
+      await expectPiApiUsage(run.runId, model, "", {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheCreation: 0,
+      });
+    }
+    expect(requests).toHaveLength(4);
+    for (const answer of ["answer 1", "answer 2", "answer 3"]) {
+      expect(occurrences(JSON.stringify(requests.at(-1)), answer)).toBe(1);
+    }
   }, 90_000);
 
-  it("preserves generations across Terra Pi and fast Sol Codex boundaries", async () => {
+  it("preserves generations across Terra Pi and fast Astra Codex boundaries", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -9056,7 +9352,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const piModel = "gpt-5.6-terra";
     await seedBuiltInModelKey(piModel);
-    await seedBuiltInModelKey("gpt-5.6-sol");
+    await seedBuiltInModelKey("gpt-6-astra");
     await api.updateOrgModelPolicies(actor, [
       {
         model: piModel,
@@ -9066,7 +9362,7 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.6-sol",
+        model: "gpt-6-astra",
         isDefault: false,
         defaultProviderType: "built-in",
         credentialScope: "org",
@@ -9144,7 +9440,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: firstPi.threadId,
       prompt: firstCodexPrompt,
-      model: "gpt-5.6-sol",
+      model: "gpt-6-astra",
       runOptions: { codexServiceTier: "fast" },
     });
     const firstCodexBinding = await readThreadSessionBinding(
@@ -9308,7 +9604,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: firstPi.threadId,
       prompt: repeatedCodexPrompt,
-      model: "gpt-5.6-sol",
+      model: "gpt-6-astra",
       runOptions: { codexServiceTier: "fast" },
     });
     const repeatedCodexBinding = await readThreadSessionBinding(
@@ -11223,23 +11519,30 @@ describe("CHAT-02: model-first provider policies", () => {
   }, 90_000);
 
   it.each([
-    {
-      name: "OpenRouter Terra",
-      selectedModel: "gpt-5.6-terra",
-      providerUrl: "https://openrouter.ai/api/v1/responses",
-      observedServiceTier: "default",
-      codexServiceTier: "fast",
-      terraRoute: "openrouter",
-      inputTokens: 10,
-      expectedInput: 5,
-    },
+    ...GPT_PI_BDD_MODELS.flatMap((selectedModel) => {
+      return (["openai", "openrouter"] as const).map((gptRoute) => {
+        return {
+          name: `${gptRoute} ${selectedModel}`,
+          selectedModel,
+          providerUrl:
+            gptRoute === "openai"
+              ? "https://api.openai.com/v1/responses"
+              : "https://openrouter.ai/api/v1/responses",
+          observedServiceTier: "default",
+          codexServiceTier: "fast" as const,
+          gptRoute,
+          inputTokens: 10,
+          expectedInput: 5,
+        };
+      });
+    }),
     {
       name: "built-in DeepSeek Flash",
       selectedModel: "deepseek-v4-flash",
       providerUrl: "https://api.deepseek.com/responses",
       observedServiceTier: "priority",
       codexServiceTier: undefined,
-      terraRoute: undefined,
+      gptRoute: undefined,
       inputTokens: 300_000,
       expectedInput: 299_995,
     },
@@ -11250,7 +11553,7 @@ describe("CHAT-02: model-first provider policies", () => {
       providerUrl,
       observedServiceTier,
       codexServiceTier,
-      terraRoute,
+      gptRoute,
       inputTokens,
       expectedInput,
     }) => {
@@ -11295,7 +11598,7 @@ describe("CHAT-02: model-first provider policies", () => {
           runnerGroup,
           prompt: "let cancellation commit before API publication",
           ...(codexServiceTier === undefined ? {} : { codexServiceTier }),
-          ...(terraRoute === undefined ? {} : { terraRoute }),
+          ...(gptRoute === undefined ? {} : { gptRoute }),
           selectedModel,
         });
       await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -11324,7 +11627,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
 
       expect(modelCalls).toBe(1);
-      if (selectedModel === "gpt-5.6-terra") {
+      if (codexServiceTier === "fast") {
         expect(
           z
             .object({ service_tier: z.literal("priority") })
@@ -11334,12 +11637,17 @@ describe("CHAT-02: model-first provider policies", () => {
       } else {
         expect(modelRequests[0]).not.toHaveProperty("service_tier");
       }
-      await expectPiApiUsage(run.runId, selectedModel, "", {
-        input: expectedInput,
-        output: 3,
-        cacheRead: 3,
-        cacheCreation: 2,
-      });
+      await expectPiApiUsage(
+        run.runId,
+        selectedModel,
+        gptRoute === "openai" ? ".fast" : "",
+        {
+          input: expectedInput,
+          output: 3,
+          cacheRead: 3,
+          cacheCreation: 2,
+        },
+      );
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "cancelled",
       });
@@ -11434,7 +11742,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "fails incomplete Pi $name output once after recording consumed Built-in usage",
     async ({ content, atCap }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const usagePricingResolution = await createGptUsagePricingResolution();
       await configureBuiltInPiModel(actor, "gpt-5.6-terra");
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PiLoop]: true,
@@ -11563,16 +11871,16 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(USER_OWNED_TERRA_FAST_BDD_ROUTES)(
+  it.each(USER_OWNED_GPT_FAST_BDD_ROUTES)(
     "fails incomplete Pi $name Fast output without Built-in billing or provider substitution",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      await configureUserOwnedTerraPiModel(actor, route);
+      await configureUserOwnedGptPiModel(actor, route);
       mockPiResourceArchiveDownloads();
       const objects = mockPiCheckpointObjectStore();
       const requests: string[] = [];
       server.use(
-        ...USER_OWNED_TERRA_FAST_BDD_ROUTES.map((candidate) => {
+        ...USER_OWNED_GPT_FAST_BDD_ROUTES.map((candidate) => {
           return http.post(candidate.endpoint, ({ request }) => {
             requests.push(request.url);
             return nativeCodexSseResponse(
@@ -11589,7 +11897,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const run = await sendChatRun(actor, {
         agentId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "finish the user-owned turn",
         runOptions: { codexServiceTier: "fast" },
       });
@@ -11794,7 +12102,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("preserves ordinary Pi stop checkpoints and length with pending tools after incomplete output fails", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.PiLoop]: true,
@@ -12669,7 +12977,7 @@ describe("CHAT-02: model-first provider policies", () => {
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const runnerIdentity = {
       runnerId: randomUUID(),
@@ -13071,130 +13379,145 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(modelCalls).toBe(2);
   }, 150_000);
 
-  it("keeps DeepSeek API-first and Sandbox usage as separate billable rows", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = requireOrgId(actor);
-    const selectedModel = "deepseek-v4-flash";
-    const usagePricingResolution =
-      await createPiApiFirstTurnUsagePricingResolution(selectedModel);
-    await configureBuiltInPiModel(actor, selectedModel);
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiLoop]: true },
-    );
-    mockPiResourceArchiveDownloads();
-    const checkpointObjects = mockPiCheckpointObjectStore();
-    let modelCalls = 0;
-    server.use(
-      http.post("https://api.deepseek.com/responses", () => {
-        modelCalls += 1;
-        return new HttpResponse(
-          piResponsesContentSse({
-            blocks: [
-              {
-                type: "toolCall",
-                callId: "call_deepseek_sandbox",
-                name: "bash",
-                arguments: { command: "true" },
-              },
-            ],
-            sequence: modelCalls,
-            usage: {
-              input_tokens: 10,
-              output_tokens: 3,
-              total_tokens: 13,
-              input_tokens_details: {
-                cached_tokens: 3,
-                cache_write_tokens: 2,
-              },
-            },
-          }),
-          { headers: { "content-type": "text/event-stream" } },
-        );
-      }),
-    );
+  it.each(["deepseek-v4-flash", ...GPT_PI_BDD_MODELS] as const)(
+    "keeps %s API-first and Sandbox usage as separate billable rows",
+    async (selectedModel) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const isDeepSeek = selectedModel === "deepseek-v4-flash";
+      const usagePricingResolution =
+        await createPiApiFirstTurnUsagePricingResolution(selectedModel);
+      await configureBuiltInPiModel(actor, selectedModel);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      let modelCalls = 0;
+      server.use(
+        http.post(
+          isDeepSeek
+            ? "https://api.deepseek.com/responses"
+            : "https://api.openai.com/v1/responses",
+          () => {
+            modelCalls += 1;
+            return new HttpResponse(
+              piResponsesContentSse({
+                blocks: [
+                  {
+                    type: "toolCall",
+                    callId: "call_deepseek_sandbox",
+                    name: "bash",
+                    arguments: { command: "true" },
+                  },
+                ],
+                sequence: modelCalls,
+                usage: {
+                  input_tokens: 10,
+                  output_tokens: 3,
+                  total_tokens: 13,
+                  input_tokens_details: {
+                    cached_tokens: 3,
+                    cache_write_tokens: 2,
+                  },
+                },
+              }),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        ),
+      );
 
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "hand a built-in DeepSeek tool response to Sandbox",
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "hand a built-in DeepSeek tool response to Sandbox",
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+      await expect
+        .poll(() => {
+          return checkpointObjects.has(manifestKey);
+        })
+        .toBe(true);
+      await flushWaitUntilForTest();
+      expect(modelCalls).toBe(1);
+
+      const claimed = await claimChatRun(runnerGroup, run.runId);
+      expect(claimed.claim.piModelConfig).toMatchObject({
+        provider: isDeepSeek ? "deepseek" : "openai",
         model: selectedModel,
-      },
-      "vm0",
-      usagePricingResolution,
-    );
-    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
-    await expect
-      .poll(() => {
-        return checkpointObjects.has(manifestKey);
-      })
-      .toBe(true);
-    await flushWaitUntilForTest();
-    expect(modelCalls).toBe(1);
-
-    const claimed = await claimChatRun(runnerGroup, run.runId);
-    expect(claimed.claim.piModelConfig).toMatchObject({
-      provider: "deepseek",
-      api: "openai-responses",
-    });
-    expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
-    const sandboxUsageEvent = {
-      idempotencyKey: randomUUID(),
-      kind: "model" as const,
-      provider: selectedModel,
-      category: "tokens.output",
-      quantity: 2,
-    };
-    const sandboxUsageReceipts = await Promise.all([
-      webhooks.requestAgentUsageEvent(
-        { runId: run.runId, events: [sandboxUsageEvent] },
-        claimed.sandboxHeaders,
+        api: "openai-responses",
+      });
+      expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
+      const sandboxUsageEvent = {
+        idempotencyKey: randomUUID(),
+        kind: "model" as const,
+        provider: selectedModel,
+        category: "tokens.output",
+        quantity: 2,
+      };
+      const sandboxUsageReceipts = await Promise.all([
+        webhooks.requestAgentUsageEvent(
+          { runId: run.runId, events: [sandboxUsageEvent] },
+          claimed.sandboxHeaders,
+          [200],
+          usagePricingResolution,
+        ),
+        webhooks.requestAgentUsageEvent(
+          { runId: run.runId, events: [sandboxUsageEvent] },
+          claimed.sandboxHeaders,
+          [200],
+          usagePricingResolution,
+        ),
+      ]);
+      expect(
+        sandboxUsageReceipts.map((receipt) => {
+          return receipt.body;
+        }),
+      ).toStrictEqual([{ success: true }, { success: true }]);
+      await api.requestCancelRun(
+        actor,
+        run.runId,
         [200],
         usagePricingResolution,
-      ),
-      webhooks.requestAgentUsageEvent(
-        { runId: run.runId, events: [sandboxUsageEvent] },
-        claimed.sandboxHeaders,
-        [200],
-        usagePricingResolution,
-      ),
-    ]);
-    expect(
-      sandboxUsageReceipts.map((receipt) => {
-        return receipt.body;
-      }),
-    ).toStrictEqual([{ success: true }, { success: true }]);
-    await api.requestCancelRun(actor, run.runId, [200], usagePricingResolution);
-    await waitForRunStatus(actor, run.runId, "cancelled");
-    await failChatRun(run.runId, claimed.sandboxHeaders, "Run cancelled");
-    await flushWaitUntilForTest();
-    const combinedUsage = await readRunUsageEventsFixture(run.runId);
-    expect(
-      combinedUsage.filter((row) => {
-        return row.category === "tokens.output" && row.quantity === 3;
-      }),
-    ).toHaveLength(1);
-    expect(
-      combinedUsage.filter((row) => {
-        return row.category === "tokens.output" && row.quantity === 2;
-      }),
-    ).toHaveLength(1);
-    expect(combinedUsage).toHaveLength(5);
-    expect(
-      combinedUsage.every((row) => {
-        return (
-          row.provider === selectedModel &&
-          row.status === "processed" &&
-          row.billingError === null &&
-          !row.category.includes(".fast") &&
-          !row.category.includes(".long_context")
-        );
-      }),
-    ).toBeTruthy();
-    expect(totalChargedCredits(combinedUsage)).toBeGreaterThan(0);
-  }, 90_000);
+      );
+      await waitForRunStatus(actor, run.runId, "cancelled");
+      await failChatRun(run.runId, claimed.sandboxHeaders, "Run cancelled");
+      await flushWaitUntilForTest();
+      const combinedUsage = await readRunUsageEventsFixture(run.runId);
+      expect(
+        combinedUsage.filter((row) => {
+          return row.category === "tokens.output" && row.quantity === 3;
+        }),
+      ).toHaveLength(1);
+      expect(
+        combinedUsage.filter((row) => {
+          return row.category === "tokens.output" && row.quantity === 2;
+        }),
+      ).toHaveLength(1);
+      expect(combinedUsage).toHaveLength(5);
+      expect(
+        combinedUsage.every((row) => {
+          return (
+            row.provider === selectedModel &&
+            row.status === "processed" &&
+            row.billingError === null &&
+            !row.category.includes(".fast") &&
+            !row.category.includes(".long_context")
+          );
+        }),
+      ).toBeTruthy();
+      expect(totalChargedCredits(combinedUsage)).toBeGreaterThan(0);
+    },
+    90_000,
+  );
 
   it("publishes OpenRouter Responses blocks, hands tools to H2, and checkpoints Pi memory notes", async () => {
     if (await runInIsolatedProcess(import.meta.url)) {
@@ -13202,7 +13525,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
-    const usagePricingResolution = await createTerraUsagePricingResolution();
+    const usagePricingResolution = await createGptUsagePricingResolution();
     const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
       actor,
       "gpt-5.6-terra",
@@ -14331,7 +14654,7 @@ describe("CHAT-02: model-first provider policies", () => {
   );
 
   it.each(
-    STANDARD_TERRA_API_KEY_BDD_ROUTES.flatMap((route) => {
+    GPT_API_KEY_BDD_ROUTES.flatMap((route) => {
       return [
         { ...route, tier: undefined, generation: 2, outcome: "completed" },
         { ...route, tier: "fast", generation: 3, outcome: "completed" },
@@ -14340,13 +14663,13 @@ describe("CHAT-02: model-first provider policies", () => {
       ] as const;
     }),
   )(
-    "runs $name API-key Terra $tier through API-first and generation-$generation Sandbox with $outcome and credential rotation",
+    "runs $name API-key $tier through API-first and generation-$generation Sandbox with $outcome and credential rotation",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const firewall = createFirewallApi(context);
       chatCallbacks.failIfChatCallbackRouteIsFetched();
       const initialSecret = `${route.type}-initial-secret`;
-      const providerId = await configureApiKeyTerraPiModel(
+      const providerId = await configureApiKeyGptPiModel(
         actor,
         route,
         initialSecret,
@@ -14393,7 +14716,7 @@ describe("CHAT-02: model-first provider policies", () => {
       const first = await sendChatRun(actor, {
         agentId,
         prompt: firstPrompt,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         runOptions: { codexServiceTier: route.tier },
       });
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/manifest.json`;
@@ -14420,13 +14743,13 @@ describe("CHAT-02: model-first provider policies", () => {
       await expectNoBuiltInModelUsage(first.runId);
 
       await api.heartbeatRunner(runnerGroup);
-      const claim = await claimTerraPiSandbox(actor, first.runId, route.tier);
+      const claim = await claimGptPiSandbox(actor, first.runId, route.tier);
       const sandboxHeaders = {
         authorization: `Bearer ${claim.sandboxToken}`,
       };
       expect(claim.cliAgentType).toBe("pi");
       expect(claim.piSessionId).toBe(first.threadId);
-      expectApiKeyTerraSandboxCarrier(claim, route, route.tier);
+      expectApiKeyGptSandboxCarrier(claim, route, route.tier);
       expect(JSON.stringify(claim)).not.toContain(initialSecret);
       if (!claim.encryptedSecrets) {
         throw new Error("Expected API-key Terra claim credentials");
@@ -14582,7 +14905,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await flushWaitUntilForTest();
       expect(providerRequests).toHaveLength(1);
-      expectApiKeyTerraRequest(
+      expectApiKeyGptRequest(
         providerRequests[0],
         route,
         initialSecret,
@@ -14615,13 +14938,13 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         threadId: first.threadId,
         prompt: followUpPrompt,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         runOptions: { codexServiceTier: route.tier },
       });
       await waitForRunStatus(actor, followUp.runId, "completed");
       await flushWaitUntilForTest();
       expect(providerRequests).toHaveLength(2);
-      expectApiKeyTerraRequest(
+      expectApiKeyGptRequest(
         providerRequests[1],
         route,
         initialSecret,
@@ -14657,14 +14980,14 @@ describe("CHAT-02: model-first provider policies", () => {
           agentId,
           threadId: first.threadId,
           prompt: `continue after rotating the ${route.name} credential`,
-          model: "gpt-5.6-terra",
+          model: route.selectedModel,
           runOptions: { codexServiceTier: route.tier },
         });
       });
       await waitForRunStatus(actor, rotated.runId, "completed");
       await flushWaitUntilForTest();
       expect(providerRequests).toHaveLength(3);
-      expectApiKeyTerraRequest(
+      expectApiKeyGptRequest(
         providerRequests[2],
         route,
         rotatedSecret,
@@ -14734,12 +15057,12 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(STANDARD_TERRA_API_KEY_BDD_ROUTES)(
+  it.each(GPT_API_KEY_BDD_ROUTES)(
     "fails closed when the admitted $name Fast credential disappears before provider ownership",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const secret = `${route.type}-deleted-secret`;
-      await configureApiKeyTerraPiModel(actor, route, secret);
+      await configureApiKeyGptPiModel(actor, route, secret);
       const entered = createDeferredPromise<void>(context.signal);
       const release = createDeferredPromise<void>(context.signal);
       const objects = mockPiCheckpointObjectStore();
@@ -14758,7 +15081,7 @@ describe("CHAT-02: model-first provider policies", () => {
             headers: { "content-type": "application/gzip" },
           });
         }),
-        ...USER_OWNED_TERRA_FAST_BDD_ROUTES.map((candidate) => {
+        ...USER_OWNED_GPT_FAST_BDD_ROUTES.map((candidate) => {
           return http.post(candidate.endpoint, ({ request }) => {
             providerRequests.push(request.url);
             return new HttpResponse(
@@ -14773,7 +15096,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const run = await sendChatRun(actor, {
         agentId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "keep captured Fast credentials authoritative",
         runOptions: { codexServiceTier: "fast" },
       });
@@ -14819,13 +15142,13 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(STANDARD_TERRA_API_KEY_BDD_ROUTES)(
+  it.each(GPT_API_KEY_BDD_ROUTES)(
     "keeps rejected $name API-key Fast single-owner, redacted, and unbilled",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const secret = `${route.type}-rejected-secret`;
       const privateDiagnostic = "private-provider-rejection-details";
-      await configureApiKeyTerraPiModel(actor, route, secret);
+      await configureApiKeyGptPiModel(actor, route, secret);
       mockPiResourceArchiveDownloads();
       const objects = mockPiCheckpointObjectStore();
       const requests: {
@@ -14834,7 +15157,7 @@ describe("CHAT-02: model-first provider policies", () => {
         body: unknown;
       }[] = [];
       server.use(
-        ...USER_OWNED_TERRA_FAST_BDD_ROUTES.map((candidate) => {
+        ...USER_OWNED_GPT_FAST_BDD_ROUTES.map((candidate) => {
           return http.post(candidate.endpoint, async ({ request }) => {
             requests.push({
               url: request.url,
@@ -14855,7 +15178,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const run = await sendChatRun(actor, {
         agentId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "fail the captured API-key Fast request once",
         runOptions: { codexServiceTier: "fast" },
       });
@@ -14863,7 +15186,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toBe(route.endpoint);
-      expectApiKeyTerraRequest(requests[0], route, secret, "fast");
+      expectApiKeyGptRequest(requests[0], route, secret, "fast");
       const failed = await api.readRun(actor, run.runId);
       expect(failed).toMatchObject({
         status: "failed",
@@ -16117,14 +16440,30 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
-  it.each([
-    { name: "standard", tier: undefined, generation: 2, outcome: "completed" },
-    { name: "Fast", tier: "fast", generation: 3, outcome: "completed" },
-    { name: "Fast", tier: "fast", generation: 3, outcome: "failed" },
-    { name: "Fast", tier: "fast", generation: 3, outcome: "cancelled" },
-  ] as const)(
-    "hands native $name subscription Terra tools to a generation-$generation Sandbox with $outcome outcome and no built-in billing",
-    async ({ tier, generation, outcome }) => {
+  it.each(
+    (
+      [
+        {
+          name: "standard",
+          tier: undefined,
+          generation: 2,
+          outcome: "completed",
+        },
+        { name: "Fast", tier: "fast", generation: 3, outcome: "completed" },
+        { name: "Fast", tier: "fast", generation: 3, outcome: "failed" },
+        { name: "Fast", tier: "fast", generation: 3, outcome: "cancelled" },
+      ] as const
+    ).flatMap((scenario) => {
+      return GPT_PI_BDD_MODELS.map((selectedModel) => {
+        return {
+          ...scenario,
+          selectedModel,
+        };
+      });
+    }),
+  )(
+    "hands native $name subscription $selectedModel tools to a generation-$generation Sandbox with $outcome outcome and no built-in billing",
+    async ({ tier, generation, outcome, selectedModel }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const firewall = createFirewallApi(context);
       chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -16139,6 +16478,7 @@ describe("CHAT-02: run-level model overrides", () => {
           refreshedAccessTokenExpiresAt: Math.floor(now() / 1000) + 7200,
           workspaceName: "Pi Subscription Account",
         },
+        selectedModel,
       );
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
@@ -16194,7 +16534,7 @@ describe("CHAT-02: run-level model overrides", () => {
       const run = await sendChatRun(actor, {
         agentId,
         prompt: "use the Okou CLI through native subscription Terra",
-        model: "gpt-5.6-terra",
+        model: selectedModel,
         runOptions: { codexServiceTier: tier },
       });
       await expect
@@ -16219,6 +16559,7 @@ describe("CHAT-02: run-level model overrides", () => {
         providerRequests[0],
         refreshedAccessToken,
         tier,
+        selectedModel,
       );
       expect(oauth.oauthToken).toHaveLength(2);
       expect(oauth.oauthToken[1]?.get("grant_type")).toBe("refresh_token");
@@ -16262,7 +16603,7 @@ describe("CHAT-02: run-level model overrides", () => {
           transport: "sse",
           provider: "openai-codex",
           baseUrl: "https://chatgpt.com/backend-api",
-          model: "gpt-5.6-terra",
+          model: selectedModel,
           thinkingLevel: "max",
           credentialBindings: [
             {
@@ -16394,7 +16735,7 @@ describe("CHAT-02: run-level model overrides", () => {
         agentId,
         threadId: run.threadId,
         prompt: "continue on the same subscription account",
-        model: "gpt-5.6-terra",
+        model: selectedModel,
         runOptions: { codexServiceTier: tier },
       });
       await waitForRunStatus(actor, continued.runId, "completed");
@@ -16404,6 +16745,7 @@ describe("CHAT-02: run-level model overrides", () => {
         providerRequests[1],
         refreshedAccessToken,
         tier,
+        selectedModel,
       );
       expect(JSON.stringify(providerRequests[1]?.body)).toContain(
         "Okou CLI help output",
@@ -16677,11 +17019,11 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectNoBuiltInModelUsage(run.runId);
   }, 90_000);
 
-  it.each(USER_OWNED_TERRA_FAST_BDD_ROUTES)(
+  it.each(USER_OWNED_GPT_FAST_BDD_ROUTES)(
     "reuses one $name Pi session across standard, Fast, and standard requests",
     async (route) => {
       const { actor, agentId } = await entitledChatActor();
-      const { secret, accountId } = await configureUserOwnedTerraPiModel(
+      const { secret, accountId } = await configureUserOwnedGptPiModel(
         actor,
         route,
       );
@@ -16710,7 +17052,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
       const first = await sendChatRun(actor, {
         agentId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "Terra standard start",
       });
       await waitForRunStatus(actor, first.runId, "completed");
@@ -16722,7 +17064,7 @@ describe("CHAT-02: run-level model overrides", () => {
       const fast = await sendChatRun(actor, {
         agentId,
         threadId: first.threadId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "Terra Fast continuation",
         runOptions: { codexServiceTier: "fast" },
       });
@@ -16736,13 +17078,13 @@ describe("CHAT-02: run-level model overrides", () => {
       await chat.updateThreadModelSelection(
         actor,
         first.threadId,
-        "gpt-5.6-terra",
+        route.selectedModel,
         { codexServiceTier: null },
       );
       const standard = await sendChatRun(actor, {
         agentId,
         threadId: first.threadId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "Terra standard return",
       });
       await waitForRunStatus(actor, standard.runId, "completed");
@@ -16796,7 +17138,7 @@ describe("CHAT-02: run-level model overrides", () => {
   );
 
   it.each(
-    USER_OWNED_TERRA_FAST_BDD_ROUTES.flatMap((route) => {
+    USER_OWNED_GPT_FAST_BDD_ROUTES.flatMap((route) => {
       return (["web", "agent"] as const).map((origin) => {
         return {
           route,
@@ -16824,7 +17166,7 @@ describe("CHAT-02: run-level model overrides", () => {
         "chat-event:read",
         "chat-event:write",
       ]);
-      const { secret, accountId } = await configureUserOwnedTerraPiModel(
+      const { secret, accountId } = await configureUserOwnedGptPiModel(
         actor,
         route,
       );
@@ -16847,7 +17189,7 @@ describe("CHAT-02: run-level model overrides", () => {
         threadId: anchor.threadId,
         clientEventId: queuedId,
         prompt: "queued Terra Fast",
-        model: "gpt-5.6-terra" as const,
+        model: route.selectedModel,
         runOptions: { codexServiceTier: "fast" as const },
       };
       const queued =
@@ -16901,7 +17243,7 @@ describe("CHAT-02: run-level model overrides", () => {
       const immediateBody = {
         agentId,
         prompt: "immediate Terra Fast",
-        model: "gpt-5.6-terra" as const,
+        model: route.selectedModel,
         runOptions: { codexServiceTier: "fast" as const },
       };
       const immediate =
@@ -16922,7 +17264,7 @@ describe("CHAT-02: run-level model overrides", () => {
   );
 
   it.each(
-    USER_OWNED_TERRA_FAST_BDD_ROUTES.flatMap((route) => {
+    USER_OWNED_GPT_FAST_BDD_ROUTES.flatMap((route) => {
       return (["in-flight", "late-result"] as const).map((phase) => {
         return {
           route,
@@ -16935,7 +17277,7 @@ describe("CHAT-02: run-level model overrides", () => {
     "keeps cancelled $name Fast $phase results unbilled and unreplayed",
     async ({ route, phase }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      const { secret, accountId } = await configureUserOwnedTerraPiModel(
+      const { secret, accountId } = await configureUserOwnedGptPiModel(
         actor,
         route,
       );
@@ -16960,7 +17302,7 @@ describe("CHAT-02: run-level model overrides", () => {
       );
       const run = await sendChatRun(actor, {
         agentId,
-        model: "gpt-5.6-terra",
+        model: route.selectedModel,
         prompt: "cancel Terra Fast ownership",
         runOptions: { codexServiceTier: "fast" },
       });

@@ -7,7 +7,8 @@ load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
-BUILT_IN_FALLBACK_MODEL="gpt-5.6-luna"
+# Keep Codex fallback coverage on a model outside the Pi expansion.
+BUILT_IN_FALLBACK_MODEL="gpt-6-astra"
 
 setup() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"

@@ -8,28 +8,25 @@ import { inArray } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 
 import type { Db } from "../external/db";
+import { isPiGptModel, type PiGptModel } from "./pi-gpt-model";
 
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
-const TERRA_MODEL = "gpt-5.6-terra";
 const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
 const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 
 type PiApiFirstTurnUsageProvider =
-  | typeof TERRA_MODEL
+  | PiGptModel
   | typeof DEEPSEEK_FLASH_MODEL
   | typeof DEEPSEEK_PRO_MODEL;
 
-function terraLongContextMinimumInputTokens(): number {
-  const minimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[TERRA_MODEL];
+function gptLongContextMinimumInputTokens(model: PiGptModel): number {
+  const minimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[model];
   if (minimum === undefined) {
-    throw new Error("Terra long-context pricing threshold is missing");
+    throw new Error(`${model} long-context pricing threshold is missing`);
   }
   return minimum;
 }
-
-const TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS =
-  terraLongContextMinimumInputTokens();
 
 type PiUsageCategoryBase =
   | "tokens.input"
@@ -76,7 +73,8 @@ function idempotencyKey(namespace: string, parts: readonly string[]): string {
   return uuidv5(JSON.stringify(parts), namespace);
 }
 
-function terraApiFirstTurnUsageEntries(
+function gptApiFirstTurnUsageEntries(
+  model: PiGptModel,
   turn: PiApiFirstTurnResult,
   fast: boolean,
 ): readonly PiApiFirstTurnUsageEntry[] {
@@ -87,7 +85,7 @@ function terraApiFirstTurnUsageEntries(
   const cacheCreation = usageQuantity(usage.cacheWrite, "cache-creation");
   const longContext =
     input + cacheRead + cacheCreation >=
-    TERRA_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS;
+    gptLongContextMinimumInputTokens(model);
   const category = (base: PiUsageCategoryBase): PiUsageCategory => {
     if (longContext) {
       return fast ? `${base}.long_context.fast` : `${base}.long_context`;
@@ -148,7 +146,7 @@ function piApiFirstTurnUsageProvider(
   provider: string | undefined,
 ): PiApiFirstTurnUsageProvider | null {
   if (
-    provider === TERRA_MODEL ||
+    isPiGptModel(provider) ||
     provider === DEEPSEEK_FLASH_MODEL ||
     provider === DEEPSEEK_PRO_MODEL
   ) {
@@ -186,10 +184,13 @@ export async function recordPiApiFirstTurnUsage(
     return;
   }
   const responseSourceId = sourceId(args.turn);
-  const entries =
-    provider === TERRA_MODEL
-      ? terraApiFirstTurnUsageEntries(args.turn, isFastPiApiFirstTurn(args))
-      : deepSeekApiFirstTurnUsageEntries(args.turn);
+  const entries = isPiGptModel(provider)
+    ? gptApiFirstTurnUsageEntries(
+        provider,
+        args.turn,
+        isFastPiApiFirstTurn(args),
+      )
+    : deepSeekApiFirstTurnUsageEntries(args.turn);
   const usageRows = entries.map((entry) => {
     return {
       runId: args.runId,

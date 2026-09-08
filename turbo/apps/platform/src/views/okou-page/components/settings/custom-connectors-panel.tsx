@@ -22,7 +22,7 @@ import {
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   closeCustomConnectorDialog$,
-  connectCustomConnectorAccountAuthorization$,
+  connectCustomConnectorAuthorization$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
@@ -447,7 +447,7 @@ function CustomConnectorGrid({
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const connectAccountAuthorization = useSet(
-    connectCustomConnectorAccountAuthorization$,
+    connectCustomConnectorAuthorization$,
   );
   const signal = useGet(pageSignal$);
   const openAccountManager = useSet(openCustomAccountManager$);
@@ -534,7 +534,7 @@ function CustomAccountDialogs({
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
   const finishAccountConnection = useSet(finishConnectorAccountConnection$);
   const connectAccountAuthorization = useSet(
-    connectCustomConnectorAccountAuthorization$,
+    connectCustomConnectorAuthorization$,
   );
   const signal = useGet(pageSignal$);
   return (

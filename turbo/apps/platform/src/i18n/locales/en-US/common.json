@@ -5527,6 +5527,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Action required — delivery paused",
         "addAction": "Add Calendar automation",
         "addAria": "Add Google Calendar automation",
         "addDescriptionCancelled": "Run this workflow when a Google Calendar event is cancelled.",
@@ -5535,16 +5536,24 @@
         "addTitle": "Add Google Calendar automation",
         "calendarId": "Calendar ID",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "This calendar is no longer available. Choose another calendar to resume this automation.",
         "cancelledDescription": "Run when a calendar event is cancelled.",
         "cancelledRule": "When calendar {{calendar}} event is cancelled",
         "cancelledTitle": "Google Calendar event cancelled",
+        "changeAria": "Change Google Calendar automation",
+        "changeCalendar": "Change calendar",
         "createdDescription": "Run when a calendar event is created.",
         "createdRule": "When calendar {{calendar}} gets a new event",
         "createdTitle": "Google Calendar event created",
+        "enabledIntent": "Enabled",
+        "reconnectDescription": "Google Calendar needs to be reconnected before this automation can resume.",
+        "reconnectGoogleCalendar": "Reconnect Google Calendar",
+        "saveCalendar": "Save calendar",
         "summary": "Calendar {{calendar}}",
         "updatedDescription": "Run when a calendar event is updated.",
         "updatedRule": "When calendar {{calendar}} event is updated",
-        "updatedTitle": "Google Calendar event updated"
+        "updatedTitle": "Google Calendar event updated",
+        "updateError": "We couldn't change this calendar. Try again."
       },
       "chat": {
         "addAction": "Add chat automation",
@@ -6120,6 +6129,7 @@
       }
     },
     "list": {
+      "actionRequired": "Action required",
       "agentEmpty": "No workflows run as this agent yet.",
       "all": "All",
       "allAgents": "All agents",
@@ -6137,6 +6147,7 @@
       },
       "noWorkflows": "No workflows",
       "open": "Open {{title}}",
+      "openRecovery": "Open {{title}} recovery",
       "runsAs": "Runs as",
       "runsAsAria": "Runs as {{agent}}",
       "section": {

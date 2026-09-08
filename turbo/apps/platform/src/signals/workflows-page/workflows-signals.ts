@@ -7,6 +7,7 @@ import {
   type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GoogleCalendarAutomationEventConfig,
   type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
@@ -129,9 +130,30 @@ type WorkflowWebhookAutomationSummary = Extract<
   WorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
+export type GoogleCalendarWorkflowAutomationSummary = Extract<
+  WorkflowAutomationSummary,
+  {
+    readonly kind: "event";
+    readonly eventType:
+      | "google-calendar-event-created"
+      | "google-calendar-event-updated"
+      | "google-calendar-event-cancelled";
+  }
+>;
 export type WorkflowAutomationEntry = WorkflowAutomationsListEntry;
 const WORKFLOW_DETAIL_FILE_PARAM = "file";
 const WORKFLOW_AUTOMATION_TARGET_PARAM = "automationId";
+
+export function isGoogleCalendarWorkflowAutomation(
+  automation: WorkflowAutomationSummary,
+): automation is GoogleCalendarWorkflowAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    (automation.eventType === "google-calendar-event-created" ||
+      automation.eventType === "google-calendar-event-updated" ||
+      automation.eventType === "google-calendar-event-cancelled")
+  );
+}
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
   switch (route) {
@@ -234,6 +256,7 @@ const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
 );
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowAutomationId$ = state<string | null>(null);
+const internalEditingGoogleCalendarId$ = state("");
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
@@ -437,6 +460,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowAutomationId$, null);
+  set(internalEditingGoogleCalendarId$, "");
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowAutomationCreateDialog$, null);
   set(internalCreatedWorkflowWebhookAutomation$, null);
@@ -483,6 +507,16 @@ export const setEditingWorkflowAutomationId$ = command(
       set(internalEditingGmailMatchConditions$, {});
     }
     set(internalEditingWorkflowAutomationId$, automationId);
+  },
+);
+
+export const editingGoogleCalendarId$ = computed((get) => {
+  return get(internalEditingGoogleCalendarId$);
+});
+
+export const setEditingGoogleCalendarId$ = command(
+  ({ set }, calendarId: string) => {
+    set(internalEditingGoogleCalendarId$, calendarId);
   },
 );
 
@@ -1410,6 +1444,41 @@ export const updateWorkflowAutomationEventConfig$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGoogleCalendarAutomationEventConfig$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly automationId: string;
+      readonly eventConfig: GoogleCalendarAutomationEventConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<GoogleCalendarWorkflowAutomationSummary> => {
+    await set(updateWorkflowAutomationEventConfig$, input, signal);
+    const detail = await get(currentWorkflowDetail$);
+    signal.throwIfAborted();
+    const automation = detail?.automations.find((candidate) => {
+      return candidate.id === input.automationId;
+    });
+    const eventMatches =
+      automation?.kind === "event" &&
+      ((automation.eventType === "google-calendar-event-created" &&
+        input.eventConfig.event === "event_created") ||
+        (automation.eventType === "google-calendar-event-updated" &&
+          input.eventConfig.event === "event_updated") ||
+        (automation.eventType === "google-calendar-event-cancelled" &&
+          input.eventConfig.event === "event_cancelled"));
+    if (
+      !automation ||
+      !isGoogleCalendarWorkflowAutomation(automation) ||
+      !eventMatches ||
+      automation.warning !== undefined
+    ) {
+      throw new Error("Google Calendar automation recovery did not complete");
+    }
+    return automation;
   },
 );
 

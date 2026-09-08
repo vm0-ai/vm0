@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.316.6](https://github.com/vm0-ai/vm0/compare/cli-v9.316.5...cli-v9.316.6) (2026-09-08)
+
+
+### Bug Fixes
+
+* **pi:** hand slash input to native sandbox execution ([#32509](https://github.com/vm0-ai/vm0/issues/32509)) ([0a07340](https://github.com/vm0-ai/vm0/commit/0a073409de8a9fdd5ced97fc52cfae3e1129d430)), closes [#32453](https://github.com/vm0-ai/vm0/issues/32453)
+
+
+### Refactoring
+
+* **chat:** remove video model rollout fallbacks ([#32363](https://github.com/vm0-ai/vm0/issues/32363)) ([d23807b](https://github.com/vm0-ai/vm0/commit/d23807b1b0913312306777c23a7342c67b050487))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.414.3
+    * @okouai/core bumped to 8.634.5
+    * @okouai/pi-agent-runtime bumped to 1.22.0
+
 ## [9.316.5](https://github.com/vm0-ai/vm0/compare/cli-v9.316.4...cli-v9.316.5) (2026-09-08)
 
 
