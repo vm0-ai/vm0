@@ -1,7 +1,9 @@
 // Disposable operational verification for #32264. This preview PR must not merge.
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import process from "node:process";
 
 import {
   EncryptCommand,
@@ -67,13 +69,17 @@ async function verifyIdentity(account, expectedKey) {
       : [targetKey];
   assert.ok(acceptedWriteKeys.includes(process.env.SECRETS_KMS_KEY_ID));
   assert.ok(!process.env.AWS_SESSION_TOKEN);
-  const sts = new STSClient({ maxAttempts: 1 });
+  const sts = new STSClient({
+    maxAttempts: 1,
+    requestHandler: {
+      connectionTimeout: 30_000,
+      requestTimeout: 30_000,
+    },
+  });
   let identity;
   try {
     identity = identitySchema.parse(
-      await sts.send(new GetCallerIdentityCommand({}), {
-        abortSignal: AbortSignal.timeout(30_000),
-      }),
+      await sts.send(new GetCallerIdentityCommand({})),
     );
   } finally {
     sts.destroy();
@@ -211,8 +217,9 @@ async function verifyNewRuntime() {
           EncryptionContext: context,
         }),
       ),
-      (error) =>
-        error instanceof Error && error.name === "AccessDeniedException",
+      (error) => {
+        return error instanceof Error && error.name === "AccessDeniedException";
+      },
     );
   }
   await assert.rejects(
@@ -223,7 +230,9 @@ async function verifyNewRuntime() {
         EncryptionContext: { purpose: "kms-32264-invalid" },
       }),
     ),
-    (error) => error instanceof Error && error.name === "AccessDeniedException",
+    (error) => {
+      return error instanceof Error && error.name === "AccessDeniedException";
+    },
   );
   kms.destroy();
   process.stdout.write(
