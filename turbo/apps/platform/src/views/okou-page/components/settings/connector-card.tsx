@@ -121,6 +121,7 @@ function CatalogConnectorCard({
         { connector: connector.label },
       )}
       aria-disabled={busy}
+      data-slot="connector-card"
       className={cn(
         surfaceVariants({ interactive: !busy }),
         "overflow-hidden text-left",
@@ -292,6 +293,7 @@ function AccountsConnectorCard({
   };
   return (
     <div
+      data-slot="connector-card"
       className={cn(
         surfaceVariants({ interactive: canActivate }),
         "relative flex flex-col text-left",
@@ -402,6 +404,7 @@ function OnboardingConnectorCard({
   const label = connector?.label ?? connectorSlug;
   return (
     <div
+      data-slot="connector-card"
       className={cn(
         "flex min-w-0 items-center gap-3",
         layout === "workflow"
@@ -502,6 +505,7 @@ function ActionConnectorCard({
 
   return (
     <div
+      data-slot="connector-card"
       data-testid="connector-action-card"
       className={cn(
         surfaceVariants(),

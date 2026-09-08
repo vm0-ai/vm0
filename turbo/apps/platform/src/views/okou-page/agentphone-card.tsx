@@ -346,7 +346,10 @@ export function AgentPhoneCard() {
 
   return (
     <>
-      <div className={surfaceVariants({ className: "flex flex-col" })}>
+      <div
+        data-slot="integration-card"
+        className={surfaceVariants({ className: "flex flex-col" })}
+      >
         <div className="flex items-center gap-4 p-4">
           <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
             <img src={imessageIconImg} alt="" className="h-7 w-7" />

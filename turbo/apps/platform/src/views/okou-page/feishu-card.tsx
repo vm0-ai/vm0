@@ -1382,6 +1382,7 @@ export function FeishuCard() {
   return (
     <Link
       pathname={ROUTES.settingsFeishu}
+      data-slot="integration-card"
       data-testid="feishu-setup-button"
       className={surfaceVariants({ className: "block" })}
     >
