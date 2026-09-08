@@ -584,6 +584,101 @@ test("Do not render result actions while waiting for assistant output", async ()
   ).toBeNull();
 });
 
+test.each([false, true])(
+  "Gate legacy waiting response spacing with work folding enabled=%s",
+  async (runWorkFoldingEnabled) => {
+    installRunChat({
+      activeRunIds: [RUN_A],
+      chatEvents: [
+        promptEvent({
+          id: "waiting-spacing-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare a response",
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+      },
+    });
+
+    await readyChat();
+    const thinking = document.querySelector<HTMLElement>(
+      "[data-thinking-indicator]",
+    );
+    const body = thinking?.querySelector<HTMLElement>(
+      ".okou-chat-bubble-assistant",
+    );
+    if (!body) {
+      throw new Error("Expected the waiting response body");
+    }
+    expect(
+      body.classList.contains(
+        "group-data-[run-work-folding-disabled]/chat:py-4",
+      ),
+    ).toBeTruthy();
+    expect(body.closest("[data-run-work-folding-disabled]") !== null).toBe(
+      !runWorkFoldingEnabled,
+    );
+  },
+);
+
+test.each([false, true])(
+  "Gate legacy first-line spacing with work folding enabled=%s",
+  async (runWorkFoldingEnabled) => {
+    installRunChat({
+      chatEvents: [
+        promptEvent({
+          id: "response-spacing-user",
+          runId: RUN_A,
+          seqId: 1,
+          text: "Prepare a response",
+        }),
+        assistantEvent({
+          id: "response-spacing-result",
+          runId: RUN_A,
+          seqId: 2,
+          text: "The response is ready",
+        }),
+        completedEvent({
+          id: "response-spacing-terminal",
+          runId: RUN_A,
+          seqId: 3,
+        }),
+      ],
+    });
+
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+      },
+    });
+
+    await readyChat();
+    const body = screen
+      .getByText("The response is ready")
+      .closest<HTMLElement>(".okou-chat-bubble-assistant");
+    if (!body) {
+      throw new Error("Expected the assistant response body");
+    }
+    expect(
+      body.classList.contains(
+        "@[900px]:group-data-[run-work-folding-disabled]/chat:pt-2.5",
+      ),
+    ).toBeTruthy();
+    expect(body.closest("[data-run-work-folding-disabled]") !== null).toBe(
+      !runWorkFoldingEnabled,
+    );
+  },
+);
+
 test("Render result actions after a run completes", async () => {
   installRunChat({
     chatEvents: [
