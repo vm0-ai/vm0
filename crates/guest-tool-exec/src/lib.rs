@@ -112,7 +112,7 @@ fn write_hook_denial(output: &mut impl Write, reason: &str) -> io::Result<()> {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": format!("VM0 could not isolate this shell tool: {reason}"),
+                "permissionDecisionReason": format!("Okou could not isolate this shell tool: {reason}"),
             }
         }),
     )?;
