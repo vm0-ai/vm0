@@ -490,7 +490,14 @@ async function fetchDataForSeoOnce(
       ),
     );
   }
-  if (parsed.data.tasks_error !== 0 || task.status_code !== 20_000) {
+  // SERP 40102 is a completed, potentially billable search with no items.
+  // Preserve its status and metadata through the normal response and billing path.
+  const hasNoSearchResults =
+    request.operation === "serp" && task.status_code === 40_102;
+  if (
+    parsed.data.tasks_error !== 0 ||
+    (task.status_code !== 20_000 && !hasNoSearchResults)
+  ) {
     L.warn("DataForSEO task failed", {
       operation: request.operation,
       endpoint,
