@@ -5526,6 +5526,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "조치 필요 — 전송 일시 중지됨",
         "addAction": "캘린더 자동화 추가",
         "addAria": "Google 캘린더 자동화 추가",
         "addDescriptionCancelled": "Google 캘린더 이벤트가 취소될 때 이 워크플로를 실행합니다.",
@@ -5534,16 +5535,24 @@
         "addTitle": "Google 캘린더 자동화 추가",
         "calendarId": "캘린더 ID",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "이 캘린더는 더 이상 사용할 수 없습니다. 이 자동화를 재개하려면 다른 캘린더를 선택하세요.",
         "cancelledDescription": "캘린더 이벤트가 취소될 때 실행됩니다.",
         "cancelledRule": "캘린더 {{calendar}} 이벤트가 취소될 때",
         "cancelledTitle": "Google 캘린더 이벤트 취소됨",
+        "changeAria": "Google Calendar 자동화 변경",
+        "changeCalendar": "캘린더 변경",
         "createdDescription": "캘린더 이벤트가 생성될 때 실행됩니다.",
         "createdRule": "캘린더 {{calendar}}에 새 이벤트가 생길 때",
         "createdTitle": "Google 캘린더 이벤트 생성됨",
+        "enabledIntent": "활성화됨",
+        "reconnectDescription": "이 자동화를 재개하려면 먼저 Google Calendar를 다시 연결해야 합니다.",
+        "reconnectGoogleCalendar": "Google Calendar 다시 연결",
+        "saveCalendar": "캘린더 저장",
         "summary": "캘린더 {{calendar}}",
         "updatedDescription": "캘린더 이벤트가 업데이트될 때 실행됩니다.",
         "updatedRule": "캘린더 {{calendar}} 이벤트가 업데이트될 때",
-        "updatedTitle": "Google 캘린더 이벤트 업데이트됨"
+        "updatedTitle": "Google 캘린더 이벤트 업데이트됨",
+        "updateError": "이 캘린더를 변경하지 못했습니다. 다시 시도하세요."
       },
       "chat": {
         "addAction": "채팅 자동화 추가",
@@ -6119,6 +6128,7 @@
       }
     },
     "list": {
+      "actionRequired": "조치 필요",
       "agentEmpty": "이 에이전트로 실행된 워크플로가 없습니다.",
       "all": "전체",
       "allAgents": "모든 에이전트",
@@ -6136,6 +6146,7 @@
       },
       "noWorkflows": "워크플로가 없습니다",
       "open": "{{title}} 열기",
+      "openRecovery": "{{title}} 복구 열기",
       "runsAs": "다음 에이전트로 실행됨",
       "runsAsAria": "{{agent}}로 실행됨",
       "section": {

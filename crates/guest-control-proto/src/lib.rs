@@ -20,8 +20,8 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x1F`
-//! in allocation order; `0x20` is the next available non-error assignment.
+//! Non-error message types currently occupy the contiguous range `0x00..=0x21`
+//! in allocation order; `0x22` is the next available non-error assignment.
 //! Existing values are stable wire assignments: do not renumber or reuse them.
 //! Allocate new non-error messages at the next unused value below `0xFF`, even
 //! when related operations are not adjacent. `0xFF` is
@@ -62,12 +62,14 @@
 //! | 0x1D | H→G       | write_private_files | same payload as `write_files`; result is `write_files_result` with the request sequence |
 //! | 0x1E | H→G       | workspace_drive_mount | (empty) |
 //! | 0x1F | G→H       | workspace_drive_mount_result | same payload as `exec_result`, with both streams captured and bounded to 64 KiB each |
+//! | 0x20 | H→G       | file_write_status | (empty); read-only, available while quiescing |
+//! | 0x21 | G→H       | file_write_status_result | `[4B latest_write_seq][1B stage]`; see [`FileWriteStatus`] |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
 //! covers `write_file`, `write_files`, `write_private_files`, `exec_start`, `exec_cancel`,
 //! `exec_control`, `guest_dns_readiness`, `guest_storage_manifest`, and
-//! `guest_state_restore`, and `workspace_drive_mount`; operation replies reuse
+//! `guest_state_restore`, `workspace_drive_mount`, and `file_write_status`; replies reuse
 //! the original non-zero request sequence. `exec_output.output_seq` is per exec
 //! operation and starts at 0, incrementing by 1 for each output frame across
 //! stdout and stderr.
@@ -225,6 +227,7 @@ pub use payloads::exec_operation::{
     encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
     validate_exec_control, validate_exec_process_contract,
 };
+pub use payloads::file_write_status::{FileWriteStage, FileWriteStatus};
 pub use payloads::guest_dns_readiness::{
     DecodedGuestDnsReadinessRequest, DecodedGuestDnsReadinessResult,
     GUEST_DNS_READINESS_MAX_ANSWER_BYTES, GUEST_DNS_READINESS_MAX_DIAGNOSTIC_BYTES,
@@ -268,12 +271,12 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_AGENT_READY, MSG_EXEC_CANCEL,
     MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START,
-    MSG_EXEC_STARTED, MSG_GUEST_DNS_READINESS, MSG_GUEST_DNS_READINESS_RESULT,
-    MSG_GUEST_STATE_RESTORE, MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST,
-    MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WORKSPACE_DRIVE_MOUNT,
-    MSG_WORKSPACE_DRIVE_MOUNT_RESULT, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
-    MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
-    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_EXEC_STARTED, MSG_FILE_WRITE_STATUS, MSG_FILE_WRITE_STATUS_RESULT, MSG_GUEST_DNS_READINESS,
+    MSG_GUEST_DNS_READINESS_RESULT, MSG_GUEST_STATE_RESTORE, MSG_GUEST_STATE_RESTORE_RESULT,
+    MSG_GUEST_STORAGE_MANIFEST, MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING,
+    MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MSG_WORKSPACE_DRIVE_MOUNT, MSG_WORKSPACE_DRIVE_MOUNT_RESULT, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES,
+    VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

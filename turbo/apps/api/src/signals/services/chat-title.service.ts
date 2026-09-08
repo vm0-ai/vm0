@@ -55,23 +55,7 @@ const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
 const FOLLOWUP_CONTEXT_MESSAGE_CAP = 8;
-const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
-  "Supported built-in generation tasks:",
-  "- image: create or edit images and visual assets.",
-  "- video: create short generated videos.",
-  "- presentation: create slide decks or presentation documents.",
-  "- website: create hosted websites or web pages.",
-].join("\n");
-const LEGACY_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT = [
-  `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
-  "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
-  'The "prompt" values are shown as plain text, not rendered as Markdown, so formatting characters will appear literally. Do not use Markdown or presentation-only syntax inside prompt values, including backticks around technical names, bold or italic markers, links, or bullet markers.',
-  'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks for one of the supported built-in generation outputs.',
-  BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
-  "For generate items, include generationType as one of: image, video, presentation, website.",
-  'Return only a JSON array of objects like {"prompt":"...","kind":"talk"} or {"prompt":"...","kind":"generate","generationType":"website"}. No markdown or extra text.',
-].join("\n");
-const OPTIMIZED_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT = [
+const RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT = [
   "You generate recommended follow-up messages for a chat.",
   "",
   `Generate exactly ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} distinct follow-up messages that meaningfully advance the task. These are quick replies, not task briefs.`,
@@ -483,7 +467,6 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
-  followUpOptimizeEnabled: boolean,
 ): Promise<ChatRecommendedFollowup[]> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -500,9 +483,7 @@ async function generateRecommendedFollowups(
     [
       {
         role: "system",
-        content: followUpOptimizeEnabled
-          ? OPTIMIZED_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT
-          : LEGACY_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT,
+        content: RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -526,17 +507,13 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
-  readonly followUpOptimizeEnabled: boolean;
 }): Promise<ChatRecommendedFollowup[]> {
   return (
-    (await tapError(
-      generateRecommendedFollowups(args.messages, args.followUpOptimizeEnabled),
-      (err) => {
-        log.warn("Recommended follow-up generation failed", {
-          ...(args.threadId ? { threadId: args.threadId } : {}),
-          err,
-        });
-      },
-    )) ?? []
+    (await tapError(generateRecommendedFollowups(args.messages), (err) => {
+      log.warn("Recommended follow-up generation failed", {
+        ...(args.threadId ? { threadId: args.threadId } : {}),
+        err,
+      });
+    })) ?? []
   );
 }

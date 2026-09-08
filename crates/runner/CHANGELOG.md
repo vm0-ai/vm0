@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.188.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.9...runner-rs-v0.188.10) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** allow api cold starts in http timeout budgets ([#32517](https://github.com/vm0-ai/vm0/issues/32517)) ([041a420](https://github.com/vm0-ai/vm0/commit/041a420f4e44a8d648945c6fc817cd9b571e4a88))
+
+## [0.188.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.8...runner-rs-v0.188.9) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** remove legacy model provider failure report retry ([#32521](https://github.com/vm0-ai/vm0/issues/32521)) ([dc2942a](https://github.com/vm0-ai/vm0/commit/dc2942a3bec447353e4816af373fdfba3b9bdefc)), closes [#29882](https://github.com/vm0-ai/vm0/issues/29882)
+
 ## [0.188.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.188.7...runner-rs-v0.188.8) (2026-09-08)
 
 

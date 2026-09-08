@@ -42,7 +42,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
       true,
     );
@@ -373,9 +372,6 @@ describe("getFeatureSwitchMetadata", () => {
     expect(
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
-    expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
-      "released",
-    );
     expect(metadata[FeatureSwitchKey.PresentationTemplates].rolloutStage).toBe(
       "released",
     );

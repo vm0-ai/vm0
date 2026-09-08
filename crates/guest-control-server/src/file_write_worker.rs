@@ -4,6 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 
+use guest_control_proto::{FileWriteStage, FileWriteStatus};
+
+use crate::file_write_progress::{FileWriteProgress, FileWriteRequestProgress};
+
 use crate::handlers::{
     decode_write_file_message, decode_write_files_message, handle_decoded_write_file_message,
     handle_decoded_write_files_message,
@@ -55,6 +59,7 @@ struct FileWriteRequest {
     payload: Vec<u8>,
     operation_guard: OperationGuard,
     admission: SingleActivePermit,
+    progress: FileWriteRequestProgress,
 }
 
 pub(crate) struct FileWriteWorker {
@@ -62,6 +67,7 @@ pub(crate) struct FileWriteWorker {
     handle: Option<JoinHandle<()>>,
     admission: SingleActiveAdmission,
     connection_cancel: Arc<AtomicBool>,
+    progress: FileWriteProgress,
 }
 
 impl FileWriteWorker {
@@ -94,11 +100,16 @@ impl FileWriteWorker {
             handle: Some(handle),
             admission: SingleActiveAdmission::new(),
             connection_cancel,
+            progress: FileWriteProgress::default(),
         })
     }
 
     pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
         self.admission.try_acquire()
+    }
+
+    pub(crate) fn status(&self) -> FileWriteStatus {
+        self.progress.snapshot()
     }
 
     pub(crate) fn submit(
@@ -115,6 +126,7 @@ impl FileWriteWorker {
             payload: payload.to_vec(),
             operation_guard,
             admission,
+            progress: self.progress.start(seq),
         };
         let Some(sender) = &self.sender else {
             return Err(FileWriteSubmitError::Disconnected);
@@ -152,34 +164,49 @@ fn handle_request(
         payload,
         operation_guard,
         admission,
+        progress,
     } = request;
 
     let response = match kind {
         FileWriteKind::File => decode_write_file_message(&payload)
             .map_err(protocol_error)
-            .and_then(|decoded| handle_decoded_write_file_message(seq, decoded, connection_cancel)),
+            .and_then(|decoded| {
+                handle_decoded_write_file_message(seq, decoded, connection_cancel, &progress)
+            }),
         FileWriteKind::Files => decode_write_files_message(&payload)
             .map_err(protocol_error)
             .and_then(|decoded| {
-                handle_decoded_write_files_message(seq, decoded, false, connection_cancel)
+                handle_decoded_write_files_message(
+                    seq,
+                    decoded,
+                    false,
+                    connection_cancel,
+                    &progress,
+                )
             }),
         FileWriteKind::PrivateFiles => decode_write_files_message(&payload)
             .map_err(protocol_error)
             .and_then(|decoded| {
-                handle_decoded_write_files_message(seq, decoded, true, connection_cancel)
+                handle_decoded_write_files_message(seq, decoded, true, connection_cancel, &progress)
             }),
     };
     // Admission may be released at the writer boundary, but do not retain the
     // completed request's large payload while the result frame is being sent.
     drop(payload);
+    progress.mark(FileWriteStage::WaitingForWriter);
 
     match response {
         Ok(response) => writer
             .write_frame_after_lock_unless_cancelled(&response, connection_cancel, || {
+                progress.mark(FileWriteStage::WritingResponse);
                 operation_guard.release();
                 drop(admission);
             })
-            .map(|_| ()),
+            .map(|sent| {
+                if sent {
+                    progress.mark(FileWriteStage::ResponseSent);
+                }
+            }),
         Err(error) => {
             writer.shutdown_after_lock(|| {
                 operation_guard.release();
