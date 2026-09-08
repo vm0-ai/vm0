@@ -130,12 +130,15 @@ function ComputerUsePage() {
 
     return (
       <>
-        <ComputerUseDriverControls state={loadable.data.driver} />
         <ComputerUseContent
           authLoading={authLoading}
           authState={authState}
           developerToolsEnabled={developerToolsEnabled}
           state={loadable.data}
+        />
+        <ComputerUseDriverControls
+          developerToolsEnabled={developerToolsEnabled}
+          state={loadable.data.driver}
         />
       </>
     );

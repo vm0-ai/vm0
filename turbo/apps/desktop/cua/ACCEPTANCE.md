@@ -162,8 +162,11 @@ bundle IDs and versions, displays/scaling/Space/window bounds, foreground policy
 network, power/thermal conditions and concurrent workloads. Pause manual testing
 if the candidate updates or its identity changes; reinspect and start a new pair.
 
-Launch/sign in/authorize via normal UI only. The user chooses the Developer
-experiment and the selector; agents/CLI have no driver parameter. For every run,
+Launch/sign in/authorize via normal UI only. Check **Developer Tools** in the
+app menu, then select **CUA (Experimental)** in the driver panel below the
+hero/setup and existing developer panels. That explicit choice is the opt-in;
+showing/hiding tools must not switch or stop drivers. Agents/CLI have no driver
+parameter. For every run,
 record **actual** backend, controller generation and loaded version from Desktop
 state/command diagnostics. A requested CUA preference, expected version or
 transport “success” does not prove ready CUA or task completion. Take fresh
