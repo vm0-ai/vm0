@@ -42,6 +42,20 @@ for (const inputPath of eslintCacheInputPaths) {
 
 const eslintCacheFingerprint = eslintCacheHash.digest("hex");
 
+const runtimeImportRestrictions = Object.freeze([
+  Object.freeze({
+    name: "ably",
+    allowTypeImports: true,
+    message:
+      "Use src/lib/ably-realtime.ts for the modular runtime; direct imports are type-only.",
+  }),
+  Object.freeze({
+    name: "@clerk/clerk-js",
+    message:
+      "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
+  }),
+]);
+
 /** @type {import("eslint").Linter.Config[]} */
 export default [
   ...baseConfig,
@@ -371,17 +385,7 @@ export default [
         "error",
         {
           paths: [
-            {
-              name: "ably",
-              allowTypeImports: true,
-              message:
-                "Use src/lib/ably-realtime.ts for the modular runtime; direct imports are type-only.",
-            },
-            {
-              name: "@clerk/clerk-js",
-              message:
-                "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
-            },
+            ...runtimeImportRestrictions,
             {
               name: "@clerk/ui",
               allowTypeImports: true,
@@ -390,6 +394,16 @@ export default [
             },
           ],
         },
+      ],
+    },
+  },
+  {
+    files: ["src/clerk-ui.ts"],
+    rules: {
+      // Only this independent build entry may import the optional UI at runtime.
+      "no-restricted-imports": [
+        "error",
+        { paths: [...runtimeImportRestrictions] },
       ],
     },
   },

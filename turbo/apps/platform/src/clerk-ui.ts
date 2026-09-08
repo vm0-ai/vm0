@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-restricted-imports -- This independent build entry is never imported by the application; bundle checks enforce that boundary.
 import { ui } from "@clerk/ui";
 
 // This separately built, route-scoped entry is never imported by main.ts.
