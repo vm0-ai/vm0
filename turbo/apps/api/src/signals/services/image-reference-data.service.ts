@@ -66,7 +66,7 @@ export function imageReferencePreviewAssetId(row: ImageReferenceRow): string {
   return `${IMAGE_REFERENCE_PREVIEW_ASSET_PREFIX}${row.id}:${storageVersionId}`;
 }
 
-export interface ImageReferencePreviewAssetIdentity {
+interface ImageReferencePreviewAssetIdentity {
   readonly referenceId: string;
   readonly storageVersionId: string;
 }
