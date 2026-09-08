@@ -11,6 +11,24 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.866.1](https://github.com/vm0-ai/vm0/compare/app-v0.866.0...app-v0.866.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** collapse nonempty chat work history by default ([#32690](https://github.com/vm0-ai/vm0/issues/32690)) ([c6894cb](https://github.com/vm0-ai/vm0/commit/c6894cba3b4678d6f6523ec19c243e6dd4611ff3))
+* **platform:** keep sidebar scrolling stable and reorder pins through menus ([#32688](https://github.com/vm0-ai/vm0/issues/32688)) ([232704f](https://github.com/vm0-ai/vm0/commit/232704f8fa63267630e296810a3b31e0d9b6b37c))
+* **ui:** unify base ui popup transitions ([#32669](https://github.com/vm0-ai/vm0/issues/32669)) ([c46e160](https://github.com/vm0-ai/vm0/commit/c46e160427dbf8bdd29d81a08cf7177843542f2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+    * @okouai/core bumped to 8.637.2
+    * @okouai/ui bumped to 1.6.5
+
 ## [0.866.0](https://github.com/vm0-ai/vm0/compare/app-v0.865.0...app-v0.866.0) (2026-09-08)
 
 

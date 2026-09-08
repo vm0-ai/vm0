@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.12](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.11...desktop-v0.48.12) (2026-09-08)
+
+
+### Bug Fixes
+
+* **desktop:** isolate cua shutdown with supervised process ownership ([#32673](https://github.com/vm0-ai/vm0/issues/32673)) ([de7f18a](https://github.com/vm0-ai/vm0/commit/de7f18ad39be4633319dbcd8045834c65b47a72b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.417.1
+
 ## [0.48.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.10...desktop-v0.48.11) (2026-09-08)
 
 
