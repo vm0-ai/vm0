@@ -351,7 +351,7 @@ pub(crate) fn prepare_download_tasks(
 
 /// Download all prepared tasks in parallel using std::thread.
 /// Limits active archive attempts to MAX_CONCURRENT and serializes logically or
-/// physically overlapping mount paths across each task's complete retry cycle.
+/// physically overlapping mount paths in task order across complete retry cycles.
 /// Returns true if all downloads succeeded, false if any failed.
 pub(crate) fn download_all_parallel(tasks: Vec<PreparedDownloadTask>) -> bool {
     download_all_parallel_with_runner(tasks, run_download_attempt)
@@ -445,17 +445,31 @@ fn find_startable_download(
     reservations: &[DownloadReservation],
     on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
 ) -> Option<(usize, usize)> {
-    // Scan the pending queue instead of using strict FIFO so a reserved
-    // parent/child mount-path conflict does not leave a slot idle when a later
-    // independent task can start.
+    // Independent tasks may bypass blocked work, but conflicting tasks must
+    // retain their order even when the earlier task has not started yet.
     for (index, download) in pending.iter().enumerate() {
         if let Some((blocking, pending_path, reserved_path)) =
             reservations.iter().find_map(|reservation| {
-                conflicting_mount_paths(&download.task, reservation)
-                    .map(|(pending_path, reserved_path)| (reservation, pending_path, reserved_path))
+                conflicting_mount_paths(
+                    &download.task,
+                    &reservation.logical_mount_path,
+                    &reservation.effective_mount_path,
+                )
+                .map(|(pending_path, reserved_path)| (reservation, pending_path, reserved_path))
             })
         {
             on_conflict(download.id, pending_path, blocking.id, reserved_path);
+            continue;
+        }
+
+        if pending.iter().take(index).any(|earlier| {
+            conflicting_mount_paths(
+                &download.task,
+                earlier.task.logical_mount_path(),
+                earlier.task.effective_mount_path(),
+            )
+            .is_some()
+        }) {
             continue;
         }
 
@@ -465,21 +479,16 @@ fn find_startable_download(
     None
 }
 
-fn conflicting_mount_paths<'pending, 'reserved>(
+fn conflicting_mount_paths<'pending, 'other>(
     pending: &'pending PreparedDownloadTask,
-    reserved: &'reserved DownloadReservation,
-) -> Option<(&'pending Path, &'reserved Path)> {
-    if mount_paths_conflict(pending.logical_mount_path(), &reserved.logical_mount_path) {
-        return Some((pending.logical_mount_path(), &reserved.logical_mount_path));
+    other_logical: &'other Path,
+    other_effective: &'other Path,
+) -> Option<(&'pending Path, &'other Path)> {
+    if mount_paths_conflict(pending.logical_mount_path(), other_logical) {
+        return Some((pending.logical_mount_path(), other_logical));
     }
-    if mount_paths_conflict(
-        pending.effective_mount_path(),
-        &reserved.effective_mount_path,
-    ) {
-        return Some((
-            pending.effective_mount_path(),
-            &reserved.effective_mount_path,
-        ));
+    if mount_paths_conflict(pending.effective_mount_path(), other_effective) {
+        return Some((pending.effective_mount_path(), other_effective));
     }
     None
 }

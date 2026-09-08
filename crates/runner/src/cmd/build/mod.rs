@@ -27,7 +27,7 @@ use hashes::{
     compute_template_hash,
 };
 use local_publish::LocalFilePublish;
-use scripts::{RootfsScripts, rootfs_script_command, run_rootfs_script};
+use scripts::{RootfsScriptDir, RootfsScripts, rootfs_script_command, run_rootfs_script};
 use sizes::file_sizes;
 
 const TEMPLATE_FILE: &str = "template.ext4";
@@ -270,10 +270,11 @@ struct RootfsBuildInput<'a> {
 
 enum RootfsImageLock {
     Shared { _guard: Flock<File> },
-    Exclusive { _guard: Flock<File> },
+    Exclusive { guard: std::sync::Arc<Flock<File>> },
 }
 
 impl RootfsImageLock {
+    #[cfg(test)]
     fn is_exclusive(&self) -> bool {
         matches!(self, Self::Exclusive { .. })
     }
@@ -331,7 +332,9 @@ async fn acquire_rootfs_lock_for_image_build_inner(
             continue;
         }
 
-        return Ok(RootfsImageLock::Exclusive { _guard: guard });
+        return Ok(RootfsImageLock::Exclusive {
+            guard: std::sync::Arc::new(guard),
+        });
     }
 }
 
@@ -341,20 +344,41 @@ struct BuildHashes {
     snapshot_hash: Option<String>,
 }
 
-struct TemplateLockRelease(Option<Box<dyn FnOnce() + Send>>);
+struct TemplateLockRelease {
+    guard: Option<std::sync::Arc<Flock<File>>>,
+    #[cfg(test)]
+    callback: Option<Box<dyn FnOnce() + Send>>,
+}
 
 impl TemplateLockRelease {
     #[cfg(test)]
     fn none() -> Self {
-        Self(None)
+        Self {
+            guard: None,
+            callback: None,
+        }
     }
 
+    fn from_lock(guard: Flock<File>) -> Self {
+        Self {
+            guard: Some(std::sync::Arc::new(guard)),
+            #[cfg(test)]
+            callback: None,
+        }
+    }
+
+    #[cfg(test)]
     fn from_release(release: impl FnOnce() + Send + 'static) -> Self {
-        Self(Some(Box::new(release)))
+        Self {
+            guard: None,
+            callback: Some(Box::new(release)),
+        }
     }
 
     fn release(&mut self) {
-        if let Some(release) = self.0.take() {
+        self.guard = None;
+        #[cfg(test)]
+        if let Some(release) = self.callback.take() {
             release();
         }
     }
@@ -503,8 +527,8 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 "acquiring exclusive template lock for warm build: {}",
                 template_lock_path.display()
             );
-            let _template_lock = lock::acquire(template_lock_path).await?;
-            ensure_template_cached_under_lock(&template_input).await?;
+            let template_lock = std::sync::Arc::new(lock::acquire(template_lock_path).await?);
+            ensure_template_cached_under_lock(&template_input, template_lock).await?;
             tracing::info!(
                 "template cache warm complete: template={}",
                 hashes.template_hash
@@ -539,16 +563,20 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 rootfs_paths,
                 guests,
             };
-            if _rootfs_lock.is_exclusive() {
+            if let RootfsImageLock::Exclusive { guard } = &_rootfs_lock {
                 let template_lock_path = paths.template_lock(&hashes.template_hash);
                 tracing::info!(
                     "acquiring exclusive template lock for image build: {}",
                     template_lock_path.display()
                 );
                 let template_lock = lock::acquire(template_lock_path).await?;
-                let release_template_lock =
-                    TemplateLockRelease::from_release(move || drop(template_lock));
-                ensure_rootfs_under_lock(input, release_template_lock).await?;
+                let release_template_lock = TemplateLockRelease::from_lock(template_lock);
+                ensure_rootfs_under_lock(
+                    input,
+                    release_template_lock,
+                    std::sync::Arc::clone(guard),
+                )
+                .await?;
             } else {
                 tracing::info!(
                     "[OK] rootfs already present: {}",
@@ -588,23 +616,25 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
 async fn ensure_rootfs_under_lock(
     input: RootfsBuildInput<'_>,
     mut release_template_lock: TemplateLockRelease,
+    rootfs_lock: std::sync::Arc<Flock<File>>,
 ) -> RunnerResult<()> {
     let publish = LocalFilePublish::for_rootfs(input.rootfs_paths);
 
     // Clear any `rootfs.ext4.staging` residue from a previous crashed or
     // failed build. Holding the rootfs flock means the previous writer has
-    // already exited (kernel releases flocks on process death), so any
+    // already exited (the script waiter retains the lock through teardown), so any
     // staging file on disk is guaranteed to be stale — never a concurrent
     // writer's work-in-progress. This is the recovery arm of the
     // staging-rename contract; see `RootfsPaths::rootfs_staging`.
     publish.cleanup_stale_staging_best_effort().await;
 
     let need_rootfs = !is_rootfs_present(input.rootfs_paths).await?;
-    let mut scripts = RootfsScripts::new();
+    let mut scripts = RootfsScripts::new(rootfs_lock, release_template_lock.guard.clone());
 
     if need_rootfs {
         let result = async {
             obtain_template_to_staging(&input.template, input.rootfs_paths, &mut scripts).await?;
+            scripts.release_template_lock();
             release_template_lock.release();
             let work_dir_path = scripts.path().await?;
             customize_rootfs_staging(&input, &work_dir_path).await?;
@@ -623,14 +653,18 @@ async fn ensure_rootfs_under_lock(
             "[OK] rootfs already present: {}",
             input.rootfs_paths.dir().display()
         );
+        scripts.release_template_lock();
         release_template_lock.release();
     }
 
     Ok(())
 }
 
-async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerResult<()> {
-    let mut scripts = RootfsScripts::new();
+async fn ensure_template_cached_under_lock(
+    input: &TemplateInput<'_>,
+    template_lock: std::sync::Arc<Flock<File>>,
+) -> RunnerResult<()> {
+    let mut scripts = RootfsScripts::new(template_lock, None);
     ensure_template_cached_under_lock_with_scripts(input, &mut scripts).await
 }
 
@@ -857,7 +891,7 @@ async fn obtain_template_to_staging(
 async fn materialize_template_from_r2_or_build(
     input: &TemplateInput<'_>,
     attempt_dir: &Path,
-    work_dir: &Path,
+    work_dir: &RootfsScriptDir,
     target: TemplateMaterializationTarget<'_>,
 ) -> RunnerResult<()> {
     tokio::fs::create_dir_all(attempt_dir).await.map_err(|e| {
@@ -884,7 +918,7 @@ async fn materialize_template_from_r2_or_build(
 async fn resolve_remote_template(
     input: &TemplateInput<'_>,
     downloaded_template: &Path,
-    work_dir: &Path,
+    work_dir: &RootfsScriptDir,
 ) -> RunnerResult<RemoteTemplateDecision> {
     let Some(cache) = input.cache.as_cache() else {
         return Ok(RemoteTemplateDecision::BuildAndUpload(
@@ -974,7 +1008,7 @@ fn move_file_sync(source: &Path, destination: &Path, label: &str) -> RunnerResul
 async fn build_template_locally(
     input: &TemplateInput<'_>,
     output_dir: &Path,
-    work_dir: &Path,
+    work_dir: &RootfsScriptDir,
 ) -> RunnerResult<()> {
     tokio::fs::create_dir_all(output_dir)
         .await
@@ -989,8 +1023,9 @@ async fn build_template_locally(
     drop(lock::open_lock_file(&debootstrap_lock_path)?);
     let rootfs_disk_mb_str = input.rootfs_disk_mb.to_string();
 
-    let mut cmd = rootfs_script_command(&work_dir.join("build-template.sh"));
-    cmd.arg("--output-dir")
+    let mut cmd = rootfs_script_command(work_dir, "build-template.sh")?;
+    cmd.command
+        .arg("--output-dir")
         .arg(output_dir)
         .arg("--debootstrap-dir")
         .arg(&debootstrap_dir)
@@ -1027,7 +1062,7 @@ async fn build_template_locally(
     Ok(())
 }
 
-async fn verify_rootfs(rootfs_paths: &RootfsPaths, work_dir: &Path) -> RunnerResult<()> {
+async fn verify_rootfs(rootfs_paths: &RootfsPaths, work_dir: &RootfsScriptDir) -> RunnerResult<()> {
     verify_rootfs_file(&rootfs_paths.rootfs_staging(), work_dir, "rootfs").await?;
 
     let rootfs_sz = file_sizes(&rootfs_paths.rootfs_staging()).await;
@@ -1040,7 +1075,7 @@ async fn verify_rootfs(rootfs_paths: &RootfsPaths, work_dir: &Path) -> RunnerRes
     Ok(())
 }
 
-async fn verify_template_file(rootfs: &Path, work_dir: &Path) -> RunnerResult<()> {
+async fn verify_template_file(rootfs: &Path, work_dir: &RootfsScriptDir) -> RunnerResult<()> {
     verify_rootfs_file(rootfs, work_dir, "template").await?;
 
     let rootfs_sz = file_sizes(rootfs).await;
@@ -1053,11 +1088,19 @@ async fn verify_template_file(rootfs: &Path, work_dir: &Path) -> RunnerResult<()
     Ok(())
 }
 
-async fn verify_rootfs_file(rootfs: &Path, work_dir: &Path, mode: &str) -> RunnerResult<()> {
-    let mut cmd = rootfs_script_command(&work_dir.join("verify-rootfs.sh"));
-    cmd.arg("--rootfs").arg(rootfs).arg("--mode").arg(mode);
+async fn verify_rootfs_file(
+    rootfs: &Path,
+    work_dir: &RootfsScriptDir,
+    mode: &str,
+) -> RunnerResult<()> {
+    let mut cmd = rootfs_script_command(work_dir, "verify-rootfs.sh")?;
+    cmd.command
+        .arg("--rootfs")
+        .arg(rootfs)
+        .arg("--mode")
+        .arg(mode);
     for definition in guest_definitions() {
-        cmd.arg("--guest-dest").arg(definition.destination);
+        cmd.command.arg("--guest-dest").arg(definition.destination);
     }
     let status = run_rootfs_script(cmd, "verify-rootfs.sh").await?;
 
@@ -1101,19 +1144,21 @@ async fn upload_template_to_r2(
 
 async fn customize_rootfs_staging(
     input: &RootfsBuildInput<'_>,
-    work_dir: &Path,
+    work_dir: &RootfsScriptDir,
 ) -> RunnerResult<()> {
     let staging = input.rootfs_paths.rootfs_staging();
     let ca_dir = input.template.paths.ca_dir();
-    let mut cmd = rootfs_script_command(&work_dir.join("customize-rootfs.sh"));
-    cmd.arg("--rootfs")
+    let mut cmd = rootfs_script_command(work_dir, "customize-rootfs.sh")?;
+    cmd.command
+        .arg("--rootfs")
         .arg(&staging)
         .arg("--ca-dir")
         .arg(&ca_dir)
         .arg("--dns-nameserver")
         .arg(DNS_PROBE_RESOLVER_IPV4.to_string());
     for guest in input.guests.iter() {
-        cmd.arg("--guest")
+        cmd.command
+            .arg("--guest")
             .arg(&guest.path)
             .arg(guest.definition.destination);
     }

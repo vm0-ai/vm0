@@ -1299,6 +1299,19 @@ function mockUpdateWorkflowAutomation(
             eventConfig: body.eventConfig,
           });
         }
+        if (body.eventConfig.provider === "google-calendar") {
+          const automation =
+            body.eventConfig.event === "event_created"
+              ? googleCalendarWorkflowAutomation()
+              : body.eventConfig.event === "event_updated"
+                ? googleCalendarUpdatedWorkflowAutomation()
+                : googleCalendarCancelledWorkflowAutomation();
+          return respond(200, {
+            ...automation,
+            id: params.id,
+            eventConfig: body.eventConfig,
+          } as WorkflowAutomationSummary);
+        }
         if (body.eventConfig.event === "label_applied") {
           return respond(200, {
             ...gmailLabelWorkflowAutomation(),

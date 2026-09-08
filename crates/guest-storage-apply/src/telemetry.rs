@@ -41,6 +41,8 @@
 //! increment these metrics. These values are therefore not counts of unique
 //! tasks or unique path pairs. Each observation contributes to the total and
 //! exactly one of the three classified conflict families.
+//! Ordering checks against earlier pending tasks do not add observations; these
+//! counters retain their reservation-conflict semantics.
 //!
 //! The run also emits
 //! `guest_storage_apply_framework_home_instructions_task_{present,absent}`. This is

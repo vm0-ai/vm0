@@ -166,6 +166,20 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
 
 test("Authorize an agent to use an already connected connector", async () => {
   mockConnectedConnector("gmail");
+  let authorized = false;
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs: authorized ? ["gmail"] : [],
+    });
+  });
+  context.mocks.api(userConnectorsContract.update, ({ body, respond }) => {
+    expect(body).toStrictEqual({
+      enabledConnectorSlugs: ["gmail"],
+      operation: "add",
+    });
+    authorized = true;
+    return respond(200, { enabledConnectorSlugs: ["gmail"] });
+  });
   const threadId = "00000000-0000-4000-a000-000000000101";
   const callbackPrompt = "Re-check Gmail, then continue";
   let continuationPrompt: string | null = null;
@@ -200,6 +214,45 @@ test("Authorize an agent to use an already connected connector", async () => {
       version: 1,
       parts: [{ type: "text", text: callbackPrompt }],
     });
+  });
+});
+
+test("Wait for refreshed authorization state instead of updating optimistically", async () => {
+  mockConnectedConnector("gmail");
+  const releaseUpdate = context.mocks.deferred<void>();
+  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledConnectorSlugs: [] });
+  });
+  context.mocks.api(
+    userConnectorsContract.update,
+    async ({ body, respond }) => {
+      expect(body).toStrictEqual({
+        enabledConnectorSlugs: ["gmail"],
+        operation: "add",
+      });
+      await releaseUpdate.promise;
+      return respond(200, { enabledConnectorSlugs: ["gmail"] });
+    },
+  );
+
+  await setupPage({
+    context,
+    path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+  });
+
+  click(await screen.findByText("Authorize Zero"));
+
+  await waitFor(() => {
+    expect(screen.queryByText("Authorize Zero")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
+  });
+
+  releaseUpdate.resolve();
+
+  await waitFor(() => {
+    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorized")).not.toBeInTheDocument();
   });
 });
 

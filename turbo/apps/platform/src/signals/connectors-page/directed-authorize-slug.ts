@@ -82,20 +82,6 @@ export const setDirectedAuthorizeConnectModalKey$ = command(
   },
 );
 
-function connectorAgentAuthorizationKey(args: {
-  readonly connectorSlug: ConnectorSlug;
-  readonly agentId: string;
-}): string {
-  return `${args.agentId}:${args.connectorSlug}`;
-}
-
-const internalAuthorized$ = state<Set<string>>(new Set());
-
-/** Whether the connector has just been authorized (optimistic). */
-export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
-  return get(internalAuthorized$);
-});
-
 /** Authorize a connector for the given agent via user-connectors API. */
 export const authorizeConnector$ = command(
   async (
@@ -124,23 +110,5 @@ export const authorizeConnector$ = command(
       },
     );
     signal.throwIfAborted();
-
-    // Optimistic update
-    set(internalAuthorized$, (prev) => {
-      return new Set([
-        ...prev,
-        connectorAgentAuthorizationKey({ connectorSlug, agentId }),
-      ]);
-    });
   },
 );
-
-export function isJustAuthorizedConnectorAgent(
-  justAuthorizedKeys: ReadonlySet<string>,
-  args: {
-    readonly connectorSlug: ConnectorSlug;
-    readonly agentId: string;
-  },
-): boolean {
-  return justAuthorizedKeys.has(connectorAgentAuthorizationKey(args));
-}

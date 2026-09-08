@@ -10,69 +10,33 @@ import { IconButton, Panel } from "./components";
 import { detach, Reason } from "./async-action";
 
 export function ComputerUseDriverControls({
+  developerToolsEnabled,
   state,
 }: {
+  readonly developerToolsEnabled: boolean;
   readonly state: DesktopComputerUseDriverState;
 }) {
   const [selection, select] = useLoadableSet(selectComputerUseDriver$);
   const [retry, start] = useLoadableSet(startComputerUse$);
   const [stopping, stop] = useLoadableSet(stopComputerUse$);
   const visible =
-    state.experimentalCuaEnabled && state.developerAvailability === "available";
-  if (
-    !visible &&
-    state.selectedDriver === "okou" &&
-    state.actual?.id !== "cua" &&
-    !state.error &&
-    !state.cleanupPending &&
-    state.phase !== "switching"
-  )
-    return null;
+    developerToolsEnabled && state.developerAvailability === "available";
+  const needsRecovery =
+    state.phase === "blocked" ||
+    state.phase === "error" ||
+    state.error !== null ||
+    state.cleanupPending;
+  if (!visible && !needsRecovery) return null;
+
   const busy = selection.state === "loading";
-  return (
-    <Panel title="Computer Use driver">
-      {visible && (
-        <label className="driver-choice">
-          <span>Driver</span>
-          <select
-            aria-label="Computer Use driver"
-            value={state.selectedDriver}
-            disabled={busy}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              if (value === "okou" || value === "cua")
-                detach(select(value), Reason.DomCallback);
-            }}
-          >
-            <option value="okou">Okou</option>
-            <option value="cua">CUA (Experimental)</option>
-          </select>
-        </label>
+  const recovery = (
+    <>
+      {state.cleanupPending && (
+        <p className="inline-alert" role="status">
+          Cleanup is still pending. Recovery waits for the previous driver to
+          exit.
+        </p>
       )}
-      <div className="driver-status" role="status" aria-live="polite">
-        <p>
-          Requested:{" "}
-          {state.selectedDriver === "cua" ? "CUA (Experimental)" : "Okou"}
-        </p>
-        <p>
-          Actual:{" "}
-          {state.actual
-            ? `${state.actual.id === "cua" ? "CUA" : "Okou"} · generation ${String(state.actual.generation)}`
-            : "No native driver"}{" "}
-          · {state.phase}
-        </p>
-        <p>
-          Ready version: {state.actual?.version ?? "Unavailable"} · Packaged
-          CUA: {state.expectedCuaVersion} (expected)
-        </p>
-        <p>Lifecycle elapsed: {state.lifecycleElapsedMs} ms</p>
-        {state.cleanupPending && (
-          <p>
-            Cleanup is still pending. Recovery waits for the previous driver to
-            exit.
-          </p>
-        )}
-      </div>
       {state.error && (
         <p className="inline-alert" role="alert">
           {state.error}
@@ -124,6 +88,52 @@ export function ComputerUseDriverControls({
           </IconButton>
         )}
       </div>
+    </>
+  );
+
+  if (!visible) {
+    // Account authorization can hide tools while CUA is blocked. Keep explicit
+    // recovery in the normal page without exposing the selector or diagnostics.
+    return <div aria-label="Computer Use recovery">{recovery}</div>;
+  }
+
+  return (
+    <Panel title="Computer Use driver">
+      <label className="driver-choice">
+        <span>Driver</span>
+        <select
+          aria-label="Computer Use driver"
+          value={state.selectedDriver}
+          disabled={busy || state.phase === "switching"}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            if (value === "okou" || value === "cua")
+              detach(select(value), Reason.DomCallback);
+          }}
+        >
+          <option value="okou">Okou</option>
+          <option value="cua">CUA (Experimental)</option>
+        </select>
+      </label>
+      <div className="driver-status" role="status" aria-live="polite">
+        <p>
+          Requested:{" "}
+          {state.selectedDriver === "cua" ? "CUA (Experimental)" : "Okou"}
+        </p>
+        <p>
+          Actual:{" "}
+          {state.actual
+            ? `${state.actual.id === "cua" ? "CUA" : "Okou"} · generation ${String(state.actual.generation)}`
+            : "No native driver"}{" "}
+          · {state.phase}
+        </p>
+        <p>
+          Ready version: {state.actual?.version ?? "Unavailable"} · Packaged
+          CUA: {state.expectedCuaVersion} (expected)
+        </p>
+        <p>Lifecycle elapsed: {state.lifecycleElapsedMs} ms</p>
+      </div>
+      {recovery}
     </Panel>
   );
 }

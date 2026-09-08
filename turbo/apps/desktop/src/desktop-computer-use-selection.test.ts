@@ -21,6 +21,7 @@ import { DesktopComputerUseDriverPreferences } from "./desktop-computer-use-driv
 import { DesktopComputerUseDriverSelection } from "./desktop-computer-use-driver-selection";
 import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
 import { DeveloperToolsController } from "./desktop-developer-tools-controller";
+import { desktopDeveloperToolsMenu } from "./desktop-developer-tools-menu";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
@@ -360,6 +361,8 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 it.each([
   undefined,
   "{}",
+  '{"computerUseDriver":{"experimentalCuaEnabled":false,"selectedDriver":"okou"}}',
+  '{"computerUseDriver":{"experimentalCuaEnabled":false,"selectedDriver":"cua"}}',
   '{"computerUseDriver":{"experimentalCuaEnabled":"true","selectedDriver":"cua"}}',
   '{"computerUseDriver":{"experimentalCuaEnabled":true,"selectedDriver":"other"}}',
 ])(
@@ -377,17 +380,156 @@ it.each([
     });
     expect(app.boundaries).toHaveLength(0);
     const actual = app.selection.getState().actual;
-    await app.selection.setExperiment(true);
-    app.developer.setEnabled(true);
-    app.developer.setEnabled(false);
+    const authority = app.developer.getAuthorization();
+    const menu = desktopDeveloperToolsMenu(app.developer);
+    expect(menu).toEqual([
+      {
+        label: "Developer Tools",
+        type: "checkbox",
+        checked: false,
+        click: expect.any(Function),
+      },
+      { type: "separator" },
+    ]);
+    menu[0]?.click?.();
+    expect(app.developer.getState()).toEqual({
+      available: true,
+      enabled: true,
+    });
+    expect(desktopDeveloperToolsMenu(app.developer)[0]?.checked).toBe(true);
+    desktopDeveloperToolsMenu(app.developer)[0]?.click?.();
+    expect(app.developer.getState()).toEqual({
+      available: true,
+      enabled: false,
+    });
+    expect(app.developer.getAuthorization()).toBe(authority);
     expect(app.selection.getState()).toMatchObject({
       selectedDriver: "okou",
-      experimentalCuaEnabled: true,
+      experimentalCuaEnabled: false,
       actual,
     });
     expect(app.boundaries).toHaveLength(0);
   },
 );
+
+it.each([
+  undefined,
+  '{"computerUseDriver":{"experimentalCuaEnabled":false,"selectedDriver":"okou"}}',
+  '{"computerUseDriver":{"experimentalCuaEnabled":true,"selectedDriver":"okou"}}',
+])(
+  "commits explicit CUA choice and opt-in together without starting a stopped host: %s",
+  async (stored) => {
+    const app = desktop(stored);
+    await app.authorize();
+    await app.controller.stop();
+    const selecting = app.selection.select("cua");
+    expect(
+      JSON.parse(readFileSync(app.file, "utf8")).computerUseDriver,
+    ).toEqual({
+      experimentalCuaEnabled: true,
+      selectedDriver: "cua",
+    });
+    await selecting;
+    expect(app.selection.getState()).toMatchObject({
+      experimentalCuaEnabled: true,
+      selectedDriver: "cua",
+      phase: "stopped",
+      actual: null,
+    });
+    expect(app.boundaries).toHaveLength(0);
+    expect(app.nativeStarts()).toBe(0);
+    const restored = new DesktopComputerUseDriverPreferences(() => app.file);
+    restored.load();
+    expect(restored.getState()).toEqual(app.preference.getState());
+  },
+);
+
+it("rejects CUA selection without current authority even if the panel was enabled", async () => {
+  const app = desktop();
+  expect(desktopDeveloperToolsMenu(app.developer)).toEqual([]);
+  await expect(app.selection.select("cua")).rejects.toThrow("Developer access");
+  await app.authorize();
+  desktopDeveloperToolsMenu(app.developer)[0]?.click?.();
+  app.auth.signOut();
+  expect(app.developer.getAuthorization()).toBeNull();
+  await expect(app.selection.select("cua")).rejects.toThrow("Developer access");
+  expect(app.preference.getState()).toEqual({
+    experimentalCuaEnabled: false,
+    selectedDriver: "okou",
+    preferenceError: null,
+  });
+  expect(app.boundaries).toHaveLength(0);
+});
+
+it("fails closed when saving the initial CUA choice fails", async () => {
+  const stored =
+    '{"computerUseDriver":{"experimentalCuaEnabled":false,"selectedDriver":"okou"}}';
+  const app = desktop(stored);
+  await app.authorize();
+  // Reads succeed, but the atomic writer cannot create a temporary file.
+  chmodSync(app.directory, 0o500);
+  try {
+    await expect(app.selection.select("cua")).rejects.toThrow(
+      "could not be saved",
+    );
+  } finally {
+    chmodSync(app.directory, 0o700);
+  }
+  expect(readFileSync(app.file, "utf8")).toBe(stored);
+  expect(app.preference.getState()).toMatchObject({
+    experimentalCuaEnabled: false,
+    selectedDriver: "okou",
+    preferenceError: expect.stringContaining("could not be saved"),
+  });
+  expect(app.selection.blockReason(app.selection.requestedDriver())).toContain(
+    "could not be saved",
+  );
+  await app.controller.start({ userInitiated: true });
+  expect(app.selection.getState()).toMatchObject({
+    actual: null,
+    phase: "blocked",
+  });
+  expect(app.boundaries).toHaveLength(0);
+  expect(app.nativeStarts()).toBe(0);
+});
+
+it("keeps an admitted CUA command and its completion alive while the menu hides and restores tools", async () => {
+  const app = desktop();
+  await app.authorize();
+  await app.selection.select("cua");
+  await app.controller.start({ userInitiated: true });
+  const original = app.selection.getState().actual;
+  const host = app.controller.getHostState().hostId;
+  const persisted = readFileSync(app.file, "utf8");
+  const gate = deferred<void>();
+  app.completionGate = gate.promise;
+  app.command = { id: "command", kind: "apps.list", payload: {} };
+  app.tick(5000);
+  await app.completed.promise;
+  for (const enabled of [true, false, true]) {
+    desktopDeveloperToolsMenu(app.developer)[0]?.click?.();
+    expect(app.developer.getState().enabled).toBe(enabled);
+    expect(app.selection.getState()).toMatchObject({
+      selectedDriver: "cua",
+      experimentalCuaEnabled: true,
+      actual: original,
+      phase: "ready",
+    });
+    expect(app.boundaries).toHaveLength(1);
+    expect(app.boundaries[0]?.live).toBe(true);
+    expect(readFileSync(app.file, "utf8")).toBe(persisted);
+  }
+  gate.resolve();
+  await vi.waitFor(() =>
+    expect(app.controller.getHostState().localCommandLog).toHaveLength(1),
+  );
+  expect(app.controller.getHostState().localCommandLog[0]).toMatchObject({
+    status: "succeeded",
+    driver: original,
+  });
+  expect(app.controller.getHostState().hostId).toBe(host);
+  expect(app.nativeStarts()).toBe(0);
+});
 
 it("restores CUA as a request without passive activation, and keeps manual Stop across selections and availability refresh", async () => {
   const app = desktop(
@@ -430,7 +572,6 @@ it("preserves shared installation, keep-awake and plugin writes, and never overw
   const app = desktop();
   await app.authorize();
   const installation = readOrCreateComputerUseInstallationId(app.file);
-  await app.selection.setExperiment(true);
   const awake = new DesktopKeepAwakeController({
     preferencesPath: app.file,
     blocker: { start: () => 1, stop: () => {}, isStarted: () => true },
@@ -469,7 +610,6 @@ it("uses the latest alternating selection without overlapping executors or resta
   const app = desktop();
   await app.authorize();
   await app.controller.start();
-  await app.selection.setExperiment(true);
   const host = app.controller.getHostState().hostId;
   await Promise.all([
     app.selection.select("cua"),
@@ -492,7 +632,6 @@ it("uses the latest alternating selection without overlapping executors or resta
 it("keeps disable honest until the original CUA command and completion drain, with pinned private diagnostics", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   await app.controller.start({ userInitiated: true });
   const original = app.selection.getState().actual;
@@ -533,7 +672,6 @@ it("keeps disable honest until the original CUA command and completion drain, wi
 it("blocks stale Developer authority on a new account and retains the stored CUA request", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   const entered = deferred<void>();
   const response = deferred<void>();
@@ -569,7 +707,6 @@ it("blocks stale Developer authority on a new account and retains the stored CUA
 it("keeps startup failure visible and sanitized without a passive retry or implicit Okou fallback", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   app.failLoad = true;
   await app.controller.start({ userInitiated: true });
@@ -596,7 +733,6 @@ it("keeps startup failure visible and sanitized without a passive retry or impli
 it("defers update and refuses recovery after a UI timeout until native cleanup is proven", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   await app.controller.start({ userInitiated: true });
   const external = app.boundaries[0]!;
@@ -637,7 +773,6 @@ it("honors the latest same-driver request after the first CUA startup has alread
   const app = desktop();
   await app.authorize();
   await app.controller.start();
-  await app.selection.setExperiment(true);
   const entered = deferred<void>();
   const release = deferred<void>();
   app.configureCua = (boundary) => {
@@ -671,7 +806,6 @@ it.each(["stop", "auth", "update", "selection"] as const)(
   async (action) => {
     const app = desktop();
     await app.authorize();
-    await app.selection.setExperiment(true);
     await app.selection.select("cua");
     const entered = deferred<void>();
     const release = deferred<void>();
@@ -719,7 +853,6 @@ it("keeps the real filesystem process and host serving after CUA permission revo
   app.plugin.setFeatureEnabled(true);
   app.plugin.addAllowedDirectory(app.directory);
   app.plugin.setEnabled(true);
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   await app.controller.start({ userInitiated: true });
   await vi.waitFor(
@@ -760,7 +893,6 @@ it("keeps the real filesystem process and host serving after CUA permission revo
 it("reports spontaneous embedded cleanup as update-busy and retries only after proof", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   await app.controller.start({ userInitiated: true });
   const external = app.boundaries[0]!;
@@ -794,7 +926,6 @@ it("reports spontaneous embedded cleanup as update-busy and retries only after p
 it("withdraws live CUA immediately on unresolved access, resumes only an existing running intent, and blocks denial", async () => {
   const app = desktop();
   await app.authorize();
-  await app.selection.setExperiment(true);
   await app.selection.select("cua");
   await app.controller.start({ userInitiated: true });
   const response = deferred<void>();

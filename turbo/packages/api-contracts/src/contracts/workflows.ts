@@ -500,10 +500,17 @@ export type GoogleCalendarEventCancelledEventConfig = z.infer<
   typeof googleCalendarEventCancelledEventConfigSchema
 >;
 
-export type GoogleCalendarAutomationEventConfig =
-  | GoogleCalendarEventCreatedEventConfig
-  | GoogleCalendarEventUpdatedEventConfig
-  | GoogleCalendarEventCancelledEventConfig;
+export const googleCalendarAutomationEventConfigSchema = z.discriminatedUnion(
+  "event",
+  [
+    googleCalendarEventCreatedEventConfigSchema,
+    googleCalendarEventUpdatedEventConfigSchema,
+    googleCalendarEventCancelledEventConfigSchema,
+  ],
+);
+export type GoogleCalendarAutomationEventConfig = z.infer<
+  typeof googleCalendarAutomationEventConfigSchema
+>;
 
 export const googleCalendarWatchActionRequiredReasonSchema = z.enum([
   "calendar_not_found",
@@ -1450,10 +1457,16 @@ export const workflowGithubEventAutomationUpdateRequestSchema = z.object({
   eventConfig: githubAutomationEventConfigSchema,
 });
 
+export const workflowGoogleCalendarEventAutomationUpdateRequestSchema =
+  z.object({
+    eventConfig: googleCalendarAutomationEventConfigSchema,
+  });
+
 export const workflowAutomationUpdateRequestSchema = z.union([
   workflowScheduleAutomationUpdateRequestSchema,
   workflowGmailEventAutomationUpdateRequestSchema,
   workflowGithubEventAutomationUpdateRequestSchema,
+  workflowGoogleCalendarEventAutomationUpdateRequestSchema,
 ]);
 export type WorkflowAutomationUpdateRequest = z.infer<
   typeof workflowAutomationUpdateRequestSchema

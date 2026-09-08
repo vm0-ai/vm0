@@ -82,7 +82,10 @@ async function loadImage(
   url: string,
   signal: AbortSignal,
 ): Promise<HTMLImageElement> {
-  const response = await fetch(url, { signal });
+  // The preview renders this URL through a plain <img>, which can cache an
+  // opaque no-CORS response. Bypass that entry so this read performs the CORS
+  // request required for access to the image bytes.
+  const response = await fetch(url, { cache: "no-store", signal });
   if (!response.ok) {
     throw new Error(
       `Failed to read image for flattening: ${response.status} ${response.statusText}`,

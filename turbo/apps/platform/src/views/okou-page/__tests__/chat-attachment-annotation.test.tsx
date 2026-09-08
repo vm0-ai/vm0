@@ -219,6 +219,52 @@ test("A user can attach marks to a private image through its public URL", async 
   ).toBeNull();
 });
 
+test("A user can attach marks after previewing a public image", async () => {
+  const image = draftAttachment("cached-preview.png");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+  context.mocks.browser.requestCacheMode();
+  context.mocks.http.get(image.url, ({ request }) => {
+    // A plain cross-origin <img> can populate the browser cache with an opaque
+    // response. Reading pixels must bypass that entry and perform a CORS fetch.
+    if (request.cache !== "no-store") {
+      return HttpResponse.error();
+    }
+    return HttpResponse.arrayBuffer(new Uint8Array([1, 2, 3]).buffer, {
+      headers: { "Content-Type": "image/png" },
+    });
+  });
+  context.mocks.browser.imageDimensions({ width: 800, height: 500 });
+  context.mocks.browser.canvasRendering();
+  context.mocks.upload.success({
+    id: "a0000000-0000-4000-a000-000000000094",
+    filename: "cached-preview.annotated.png",
+    contentType: "image/png",
+    size: 11,
+    url: "https://files.example.test/cached-preview.annotated.png",
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("cached-preview.png");
+  drawBox(surface);
+  click(await findNamedButton("Attach marks"));
+
+  await waitFor(() => {
+    expect(screen.queryByTestId("image-annotation-editor")).toBeNull();
+    expect(
+      screen.getByTestId("composer-attachment-mark-count"),
+    ).toHaveTextContent("1");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
+  });
+  expect(
+    screen.queryByLabelText("Failed to upload cached-preview.png. Try again."),
+  ).toBeNull();
+});
+
 test("Retry attaching marks when the original image cannot be read", async () => {
   const image = draftAttachment("retry-billing.png");
   let imageReads = 0;

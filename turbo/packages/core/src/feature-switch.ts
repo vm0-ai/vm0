@@ -52,233 +52,233 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Dummy]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
   [FeatureSwitchKey.BillConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the BILL Spend & Expense connector",
     enabled: false,
   },
   [FeatureSwitchKey.BentomlConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the BentoML model serving connector",
     enabled: false,
   },
   [FeatureSwitchKey.CanvaConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Canva design connector",
     enabled: false,
   },
   [FeatureSwitchKey.CalComConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Cal.com scheduling connector",
     enabled: false,
   },
   [FeatureSwitchKey.CopperConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Copper CRM connector",
     enabled: false,
   },
   [FeatureSwitchKey.DatadogConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Datadog observability connector",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Deel HR connector",
     enabled: false,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
   [FeatureSwitchKey.DropboxConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Dropbox file storage connector",
     enabled: false,
   },
   [FeatureSwitchKey.FigmaConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Figma design connector",
     enabled: false,
   },
   [FeatureSwitchKey.ExpensifyConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Expensify accounting connector",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
   [FeatureSwitchKey.NeonConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
   [FeatureSwitchKey.NetSuiteConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Oracle NetSuite ERP connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Garmin Connect wellness connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Reddit connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.SupabaseConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Supabase database connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.CloseConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Close CRM connector",
     enabled: false,
   },
   [FeatureSwitchKey.WebflowConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
   [FeatureSwitchKey.PosthogConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
   [FeatureSwitchKey.PayPalConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the PayPal payments connector",
     enabled: false,
   },
   [FeatureSwitchKey.RampConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Ramp spend management connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Mailchimp email marketing connector",
     enabled: false,
   },
   [FeatureSwitchKey.ResendConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Resend email service connector",
     enabled: false,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.StripeMarketplaceOAuthConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Show Stripe Marketplace OAuth as a sign-in option for the Stripe connector.",
     enabled: false,
   },
   [FeatureSwitchKey.OkouDebug]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, realtime connection diagnostics, and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.SharedWorkerRealtime]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Route application realtime subscriptions through the SharedWorker",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Banking]: {
-    maintainer: "linghan@vm0.ai",
+    maintainer: "linghan@okou.ai",
     description:
       "Enable the managed banking gateway and banking:read OKOU_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Lab]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description: "Show the Lab page for viewing feature rollout stages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.NotionWorkflowAutomations]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
     enabled: true,
   },
   [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description: "Enable Google Forms response workflow automations.",
     enabled: true,
   },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
     enabled: false,
   },
   [FeatureSwitchKey.OfficialWorkflows]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable Official Workflow catalog discovery and new installations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MorningBrief]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable the first-class Morning Brief experience in Preferences.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
-    maintainer: "liangyou@vm0.ai",
+    maintainer: "liangyou@okou.ai",
     description:
       "Enable the test-oauth connector, a synthetic OAuth 2.0 provider used only for automated tests. Off in prod.",
     enabled: false,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Freshdesk helpdesk connector",
     enabled: false,
   },
   [FeatureSwitchKey.StabilityAiConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Stability AI image generation connector",
     enabled: false,
   },
   [FeatureSwitchKey.ZoomConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
   [FeatureSwitchKey.WorkdayConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description: "Enable the Workday HCM and finance connector",
     enabled: false,
   },
 
   [FeatureSwitchKey.CodexFastMode]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description: "Enable Codex fast mode for GPT 5.6 runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
@@ -293,52 +293,52 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatPreference]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable dedicated Chat settings and explicit new-chat default actions.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Run web chat jobs with the sandbox-owned official Pi runtime, JSONL session persistence, and shared Codex-compatible memory.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PresentationTemplates]: {
-    maintainer: "bingjie@vm0.ai",
+    maintainer: "bingjie@okou.ai",
     description:
       "Enable owner-scoped presentation template imports and catalog APIs.",
     enabled: true,
   },
   [FeatureSwitchKey.IntroVideo]: {
-    maintainer: "bingjie@vm0.ai",
+    maintainer: "bingjie@okou.ai",
     description:
       "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.AvatarComposerV2]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Use the background-free avatar composer for new agents and avatar customization.",
     enabled: true,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
-    maintainer: "ming@vm0.ai",
+    maintainer: "ming@okou.ai",
     description:
       "Give composer avatars a shared neck and sweater, scaling each head so every chin meets the same collar.",
     enabled: true,
   },
   [FeatureSwitchKey.ChatTranslation]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
@@ -351,55 +351,55 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VoiceInputV2]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUseDesktopPlugins]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Enable Zero Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatErrorRecovery]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatRunWorkFolding]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
-    maintainer: "bingjie@vm0.ai",
+    maintainer: "bingjie@okou.ai",
     description:
       "Publish coherent website and HTML presentation previews while the agent continues improving them.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatThinkingSpinner]: {
-    maintainer: "yuma@vm0.ai",
+    maintainer: "yuma@okou.ai",
     description:
       "Replace the three-block chat thinking loader with a rotating Okou mark.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
-    maintainer: "tongx@vm0.ai",
+    maintainer: "tongx@okou.ai",
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
@@ -408,13 +408,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.FollowUpOptimize]: {
-    maintainer: "lancy@vm0.ai",
+    maintainer: "lancy@okou.ai",
     description:
       "Use a concise, language-matched prompt for recommended chat follow-ups.",
     enabled: true,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
     enabled: false,
@@ -428,7 +428,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GradientColorThemes]: {
-    maintainer: "ming@vm0.ai",
+    maintainer: "ming@okou.ai",
     description:
       "Apply a palette-derived tint across interface surfaces, borders, states, and workspace ambience.",
     enabled: false,
@@ -436,42 +436,42 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
   [FeatureSwitchKey.SharedThreadSharing]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SidebarSubscriptionUsage]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Show Codex and Claude Code personal subscription usage in the sidebar footer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PersonalModelProviderAccounts]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description:
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.FeishuIntegration]: {
-    maintainer: "linghan@vm0.ai",
+    maintainer: "linghan@okou.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CustomConnectorMcp]: {
-    maintainer: "liangyou@vm0.ai",
+    maintainer: "liangyou@okou.ai",
     description:
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SshAccess]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "ethan@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
   },

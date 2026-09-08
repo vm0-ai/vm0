@@ -10,6 +10,8 @@ _DOT_SEGMENTS = {".", ".."}
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _MAX_PERCENT_DECODE_PASSES = 5
 _PERCENT_ESCAPE_LENGTH = 3
+# UAX #15 stream-safe limit, measured after compatibility decomposition.
+_MAX_CONSECUTIVE_NONSTARTERS = 30
 # Match the addon's existing 64 KiB request-work scale. Character count bounds
 # Python string processing without first scanning and allocating encoded bytes.
 MAX_PATH_VALIDATION_CHARACTERS = 64 * 1024
@@ -72,11 +74,32 @@ def _segment_has_unsafe_path(raw_segment: str) -> bool:
 def _segment_has_unsafe_syntax(segment: str) -> bool:
     if _segment_has_unsafe_syntax_parts(segment):
         return True
+    if _segment_exceeds_normalization_budget(segment):
+        return True
 
     normalized = unicodedata.normalize(_COMPATIBILITY_NORMALIZATION_FORM, segment)
     return normalized != segment and (
         "%" in normalized or _segment_has_unsafe_syntax_parts(normalized)
     )
+
+
+def _segment_exceeds_normalization_budget(segment: str) -> bool:
+    if segment.isascii():
+        return False
+
+    nonstarters = 0
+    for char in segment:
+        # Decompose only one code point at a time: whole-segment NFKD would
+        # already perform the potentially quadratic canonical reordering.
+        # Raw combining classes miss expansions such as U+0F73 and U+FF9E.
+        for decomposed in unicodedata.normalize("NFKD", char):
+            if unicodedata.combining(decomposed):
+                nonstarters += 1
+                if nonstarters > _MAX_CONSECUTIVE_NONSTARTERS:
+                    return True
+            else:
+                nonstarters = 0
+    return False
 
 
 def _segment_has_unsafe_syntax_parts(segment: str) -> bool:

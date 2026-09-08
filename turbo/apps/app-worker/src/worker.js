@@ -9,6 +9,7 @@ const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
 const APP_API_PREFETCH_PATHS = [
   "/api/feature-switches",
   "/api/user-preferences",
+  "/api/onboarding/status",
   "/api/agents",
 ];
 const APP_API_PREFETCH_MARKER = "<!--okou-app-api-prefetch-->";

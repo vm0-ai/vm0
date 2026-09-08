@@ -1,7 +1,13 @@
+import {
+  userLocaleSchema,
+  type UserLocale,
+} from "@okouai/api-contracts/contracts/user-preferences";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
   workflowAutomations,
   workflowUserAutomationThreads,
+  workflows,
 } from "@okouai/db/schema/workflow";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -15,6 +21,90 @@ import {
   type ChatThreadEventTransaction,
 } from "./chat-thread-event.service";
 import { loadNewChatThreadMediaModels } from "./chat-thread-media-model.service";
+import {
+  readAcceptedOfficialWorkflowDefinition,
+  readAcceptedOfficialWorkflowRevision,
+} from "./official-workflow-catalog-read.service";
+
+const OFFICIAL_WORKFLOW_THREAD_TITLES: Readonly<
+  Partial<Record<string, Readonly<Record<UserLocale, string>>>>
+> = {
+  "morning-brief": {
+    "en-US": "Okou Morning Brief",
+    "pt-BR": "Okou Resumo da manhã",
+    "ja-JP": "Okou モーニングブリーフ",
+    "ko-KR": "Okou 모닝 브리핑",
+    "id-ID": "Okou Ringkasan pagi",
+    "de-DE": "Okou Morgenbriefing",
+    "es-ES": "Okou Resumen matinal",
+    "it-IT": "Okou Brief del mattino",
+    "fr-FR": "Okou Brief du matin",
+    "hi-IN": "Okou सुबह की ब्रीफ़",
+  },
+};
+
+async function loadOfficialWorkflowDisplayName(
+  db: ReadonlyDb,
+  definitionName: string,
+): Promise<string | null> {
+  const definition = await readAcceptedOfficialWorkflowDefinition(
+    db,
+    definitionName,
+  );
+  if (!definition) {
+    return null;
+  }
+  const revision = await readAcceptedOfficialWorkflowRevision(db, {
+    name: definition.name,
+    revision: definition.revision,
+  });
+  return revision?.definition.workflow.displayName ?? null;
+}
+
+async function resolveAutomationChatThreadTitle(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+    readonly workflowTitle: string;
+  },
+): Promise<string> {
+  const [context] = await db
+    .select({
+      officialDefinitionName: workflows.officialDefinitionName,
+      locale: orgMembersMetadata.locale,
+    })
+    .from(workflows)
+    .leftJoin(
+      orgMembersMetadata,
+      and(
+        eq(orgMembersMetadata.orgId, args.orgId),
+        eq(orgMembersMetadata.userId, args.userId),
+      ),
+    )
+    .where(
+      and(eq(workflows.orgId, args.orgId), eq(workflows.id, args.workflowId)),
+    )
+    .limit(1);
+  if (!context?.officialDefinitionName) {
+    return args.workflowTitle;
+  }
+
+  const locale = userLocaleSchema.parse(context.locale ?? "en-US");
+  const localizedTitle =
+    OFFICIAL_WORKFLOW_THREAD_TITLES[context.officialDefinitionName]?.[locale];
+  if (localizedTitle) {
+    return localizedTitle;
+  }
+
+  return (
+    (await loadOfficialWorkflowDisplayName(
+      db,
+      context.officialDefinitionName,
+    )) ?? args.workflowTitle
+  );
+}
 
 export async function loadWorkflowUserAutomationThreadId(
   db: ReadonlyDb,
@@ -216,11 +306,17 @@ export async function ensureWorkflowUserAutomationThread(
     }
   }
 
+  const title = await resolveAutomationChatThreadTitle(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    workflowId: args.workflowId,
+    workflowTitle: args.workflowTitle,
+  });
   const chatThreadId = await createAutomationChatThread(db, {
     userId: args.userId,
     orgId: args.orgId,
     agentId: args.agentId,
-    title: args.workflowTitle,
+    title,
     currentTime: args.currentTime,
   });
 
