@@ -74,7 +74,7 @@ export function uploadedArtifactObject(args: UploadedArtifactIdentity) {
       return {
         key: record.key,
         bucket: record.bucket,
-        url: privateArtifactUrl(record.id, record.publicBrand, record.filename),
+        url: privateArtifactUrl(record.id, record.filename),
         publicBrand: record.publicBrand,
         filename: record.filename,
         contentType: record.contentType,
@@ -123,8 +123,11 @@ export const resolveUploadedMultipart$ = command(
         : { key: record.key, bucket: record.bucket, parts };
     }
     const upload = await set(resolveArtifactMultipartUpload$, args, signal);
-    return upload
-      ? { ...upload, bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME") }
-      : null;
+    if (!upload) {
+      // Keep the existing public route's error contract. Private misses above
+      // return null so their routes can deny access without revealing ownership.
+      throw new Error("R2 multipart upload was not found");
+    }
+    return { ...upload, bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME") };
   },
 );

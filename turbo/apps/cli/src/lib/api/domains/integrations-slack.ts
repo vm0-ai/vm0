@@ -24,6 +24,37 @@ import {
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
 import { headersWithCliClientHeaders } from "../client-headers";
+import {
+  integrationsSlackReadContract,
+  type SlackChannelListQuery,
+  type SlackChannelListResponse,
+  type SlackHistoryQuery,
+  type SlackHistoryResponse,
+} from "@okouai/api-contracts/contracts/integrations-slack-read";
+
+export async function listSlackChannels(
+  query: SlackChannelListQuery,
+): Promise<SlackChannelListResponse> {
+  const client = initClient(
+    integrationsSlackReadContract,
+    await getClientConfig(),
+  );
+  const result = await client.listChannels({ query, headers: {} });
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to list Slack channels");
+}
+
+export async function readSlackHistory(
+  query: SlackHistoryQuery,
+): Promise<SlackHistoryResponse> {
+  const client = initClient(
+    integrationsSlackReadContract,
+    await getClientConfig(),
+  );
+  const result = await client.history({ query, headers: {} });
+  if (result.status === 200) return result.body;
+  handleError(result, "Failed to read Slack history");
+}
 
 export async function sendSlackMessage(
   body: SendSlackMessageBody,

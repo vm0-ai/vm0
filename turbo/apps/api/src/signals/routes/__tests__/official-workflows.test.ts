@@ -7,7 +7,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { UserMessagePart } from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
@@ -84,6 +83,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
+  mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -138,12 +138,16 @@ const GMAIL_TOPIC_NAME =
 const GOOGLE_FORMS_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-google-forms-events";
 const GOOGLE_FORMS_PUSH_AUDIENCE =
-  "https://api.vm0.ai/api/webhooks/google-forms";
+  "https://api.okou.ai/api/webhooks/google-forms";
 const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
 const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
 const GOOGLE_FORM_SEED_CURSOR = "2026-09-01T08:15:00.123456Z";
+const NOTION_FIRST_PAGE_ID = "11111111-1111-4111-8111-111111111111";
+const NOTION_FIRST_PAGE_URL = `https://www.notion.so/First-${NOTION_FIRST_PAGE_ID.replaceAll("-", "")}`;
+const NOTION_SECOND_PAGE_ID = "22222222-2222-4222-8222-222222222222";
+const NOTION_SECOND_PAGE_URL = `https://www.notion.so/Second-${NOTION_SECOND_PAGE_ID.replaceAll("-", "")}`;
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type ActiveDefinition = Extract<
@@ -347,6 +351,31 @@ function googleMeetBlueprint(
   };
 }
 
+function notionBlueprint(): OfficialWorkflowBlueprint {
+  return {
+    key: "notion-child-page-trigger",
+    parameters: [
+      {
+        key: "parent-page-url",
+        type: "string",
+        format: "url",
+        required: true,
+      },
+    ],
+    desiredState: {
+      kind: "event",
+      eventType: "notion-child-page-created",
+      eventConfig: {
+        provider: "notion",
+        event: "child_page_created",
+        parentPageUrl: { parameter: "parent-page-url" },
+      },
+      autonomyBudget: 4,
+    },
+    runtime: { resultEmail: false },
+  };
+}
+
 function structureTransitionGoogleMeetBlueprint(): OfficialWorkflowBlueprint {
   return {
     ...googleMeetBlueprint(1),
@@ -420,13 +449,56 @@ function configureOfficialGoogleFormsMock() {
   return recorder;
 }
 
+function configureOfficialNotionPageMock(): void {
+  const pages = new Map([
+    [NOTION_FIRST_PAGE_ID, { title: "First page", url: NOTION_FIRST_PAGE_URL }],
+    [
+      NOTION_SECOND_PAGE_ID,
+      { title: "Second page", url: NOTION_SECOND_PAGE_URL },
+    ],
+  ]);
+  server.use(
+    http.get(
+      "https://api.notion.com/v1/pages/:pageId",
+      ({ request, params }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer notion-access-token",
+        );
+        expect(request.headers.get("notion-version")).toBe("2026-03-11");
+        const pageId = String(params.pageId);
+        const page = pages.get(pageId);
+        if (!page) {
+          throw new Error(`Unexpected Official Workflow Notion page ${pageId}`);
+        }
+        return HttpResponse.json({
+          object: "page",
+          id: pageId,
+          created_time: "2026-09-01T00:00:00.000Z",
+          last_edited_time: "2026-09-01T00:00:00.000Z",
+          archived: false,
+          in_trash: false,
+          url: page.url,
+          parent: { type: "workspace" },
+          properties: {
+            title: {
+              id: "title",
+              type: "title",
+              title: [{ type: "text", plain_text: page.title }],
+            },
+          },
+        });
+      },
+    ),
+  );
+}
+
 function configureOfficialGoogleMeetMock() {
   const testId = randomUUID();
   const accessToken = `official-google-meet-access-${testId}`;
   const externalId = `official-google-meet-user-${testId}`;
   const topicName = `projects/vm0-ai-488909/topics/official-google-meet-${testId}`;
   const recorder = { createCalls: 0 };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -520,7 +592,7 @@ function configureOfficialGoogleMeetMultiAccountMock(
     createAccessTokens: [] as string[],
     deleteAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -683,7 +755,7 @@ function configureOfficialCalendarWatchMock() {
     watchAccessTokens: [] as string[],
     stopAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
@@ -1410,10 +1482,10 @@ function installCatalogStorageFixture() {
 }
 
 const officialQueueEncodings = [
-  { encoding: "legacy", origin: "web", brand: "vm0" },
-  { encoding: "canonical", origin: "web", brand: "okou" },
-  { encoding: "legacy", origin: "agent_run", brand: "okou" },
-  { encoding: "canonical", origin: "agent_run", brand: "vm0" },
+  { encoding: "legacy", origin: "web", storedBrand: "vm0" },
+  { encoding: "canonical", origin: "web", storedBrand: "okou" },
+  { encoding: "legacy", origin: "agent_run", storedBrand: "okou" },
+  { encoding: "canonical", origin: "agent_run", storedBrand: "vm0" },
 ] as const;
 
 type OfficialQueueEncoding = (typeof officialQueueEncodings)[number];
@@ -1435,7 +1507,6 @@ function officialQueueHeaders(
   sourceRunId: string,
   queueCase: {
     readonly origin: "web" | "agent_run";
-    readonly brand: PublicBrand;
   },
 ) {
   return queueCase.origin === "web"
@@ -1445,7 +1516,6 @@ function officialQueueHeaders(
           actor,
           sourceRunId,
           ["agent:write"],
-          queueCase.brand,
         )}`,
       };
 }
@@ -1462,7 +1532,7 @@ async function prepareOfficialQueueEncoding(
   const source = await readOfficialWorkflowQueueInputFixture(args.eventId);
   expect(source).toMatchObject({
     contextType: args.origin,
-    contextId: officialQueueContextIds.legacy[args.brand],
+    contextId: officialQueueContextIds.legacy.okou,
     requiredOfficialWorkflowIds: [args.workflowId],
   });
   const userMessage = source.payload?.userMessage;
@@ -1480,12 +1550,14 @@ async function prepareOfficialQueueEncoding(
       }),
     );
   }
-  if (args.encoding === "legacy") {
+  if (args.encoding === "legacy" && args.storedBrand === "okou") {
     return source.id;
   }
-  const canonical = await appendOfficialWorkflowQueueInputFixture({
+  // New API requests always write Okou. Historical brand markers and the
+  // canonical encoding require a persisted fixture to exercise older rows.
+  const encoded = await appendOfficialWorkflowQueueInputFixture({
     eventId: source.id,
-    contextId: officialQueueContextIds.canonical[args.brand],
+    contextId: officialQueueContextIds[args.encoding][args.storedBrand],
     contextType: args.origin,
     claim: source.requiredOfficialWorkflowIds,
     userMessage,
@@ -1493,7 +1565,7 @@ async function prepareOfficialQueueEncoding(
   await expect(
     readOfficialWorkflowQueueInputFixture(source.id),
   ).resolves.toStrictEqual(source);
-  return canonical.id;
+  return encoded.id;
 }
 
 async function assertOfficialQueueRawHistory(
@@ -1712,8 +1784,8 @@ async function connectStripeOAuthForOfficialWorkflow(
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
   const emailId = `email_${actor.userId}`;
-  mockEnv("APP_URL", "https://app.vm0.ai");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   context.mocks.clerk.users.getUserList.mockResolvedValue({
     data: [
@@ -4811,7 +4883,6 @@ describe.sequential("Official Workflow installations", () => {
       context,
       { orgId: actor.orgId, userId: actor.userId },
       {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
         [FeatureSwitchKey.OfficialWorkflows]: true,
       },
     );
@@ -4865,6 +4936,122 @@ describe.sequential("Official Workflow installations", () => {
     });
     expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
     expect(forms.watchCalls).toBe(1);
+  });
+
+  it("reconfigures an Official Notion automation without a feature override", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-notion-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [notionBlueprint()])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    mockNotionConnectorOAuth();
+    await workflowBdd.connectConnector(actor, "notion");
+    configureOfficialNotionPageMock();
+    await setOfficialWorkflowsEnabled(actor, true);
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [
+            {
+              blueprintKey: "notion-child-page-trigger",
+              bindings: [
+                { key: "parent-page-url", value: NOTION_FIRST_PAGE_URL },
+              ],
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const initial = installed.body.workflow.automations.find((automation) => {
+      return automation.official?.blueprintKey === "notion-child-page-trigger";
+    });
+    if (
+      !initial ||
+      initial.kind !== "event" ||
+      initial.eventType !== "notion-child-page-created" ||
+      !initial.official
+    ) {
+      throw new Error("Expected an Official Notion automation");
+    }
+    const connectorId = initial.eventConfig.connectorId;
+    const initialFingerprint = initial.official.appliedFingerprint;
+    expect(initial).toMatchObject({
+      enabled: true,
+      eventConfig: {
+        connectorId,
+        parentPage: {
+          id: NOTION_FIRST_PAGE_ID,
+          rawUrl: NOTION_FIRST_PAGE_URL,
+          title: "First page",
+          url: NOTION_FIRST_PAGE_URL,
+        },
+      },
+      official: { reconciliationStatus: "current" },
+    });
+
+    const reconfigured = await accept(
+      installationClient().reconfigure({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: {
+          blueprints: [
+            {
+              blueprintKey: "notion-child-page-trigger",
+              bindings: [
+                { key: "parent-page-url", value: NOTION_SECOND_PAGE_URL },
+              ],
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    const current = reconfigured.body.workflow.automations.find(
+      (automation) => {
+        return automation.id === initial.id;
+      },
+    );
+    expect(current).toMatchObject({
+      id: initial.id,
+      kind: "event",
+      eventType: "notion-child-page-created",
+      enabled: true,
+      eventConfig: {
+        connectorId,
+        parentPage: {
+          id: NOTION_SECOND_PAGE_ID,
+          rawUrl: NOTION_SECOND_PAGE_URL,
+          title: "Second page",
+          url: NOTION_SECOND_PAGE_URL,
+        },
+      },
+      official: {
+        parameterBindings: [
+          { key: "parent-page-url", value: NOTION_SECOND_PAGE_URL },
+        ],
+        reconciliationStatus: "current",
+      },
+    });
+    expect(current?.official?.appliedFingerprint).toBe(initialFingerprint);
   });
 
   it("projects the Google Meet account during installation and reconfiguration", async () => {
@@ -7802,7 +7989,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-producers-${suffix}`;
     await syncCatalog(
@@ -8562,7 +8749,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("creates no Run-family rows for unresolved explicit, schedule, once, or webhook admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-unresolved-producers-${suffix}`;
     await syncCatalog(
@@ -9069,7 +9256,7 @@ describe.sequential("Official Workflow Run admission", () => {
   });
 
   it.each(officialQueueEncodings)(
-    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin $brand)",
+    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-source-${suffix}`;
@@ -9141,7 +9328,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queuedOfficial = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9397,7 +9584,7 @@ describe.sequential("Official Workflow Run admission", () => {
   );
 
   it.each(officialQueueEncodings)(
-    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin $brand)",
+    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-retry-${suffix}`;
@@ -9469,7 +9656,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queued = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9626,7 +9813,10 @@ describe.sequential("Official Workflow Run admission", () => {
         throw new Error("Expected queued Run Okou token");
       }
       expect(verifyOkouToken(token)).toMatchObject({
-        publicBrand: queueCase.brand,
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId: retriedRunId,
+        capabilities: expect.arrayContaining(["agent:read"]),
       });
 
       await webhooks.requestAgentComplete(
@@ -9835,7 +10025,6 @@ describe.sequential("Official Workflow Run admission", () => {
         workflowClient().run({
           headers: officialQueueHeaders(actor, firstRunId, {
             origin: "agent_run",
-            brand: "okou",
           }),
           params: { workflowId: installation.body.workflow.id },
         }),

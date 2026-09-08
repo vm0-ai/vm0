@@ -100,7 +100,9 @@ describe("private artifact uploads", () => {
       api()(uploadsContract).prepare({ headers, body }),
       [200],
     );
-    expect(new URL(legacy.body.url).pathname).toMatch(/^\/artifacts\//);
+    expect(legacy.body.url).toMatch(
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.html$/u,
+    );
 
     await setPrivateArtifacts(true);
     const input = await accept(
@@ -110,7 +112,9 @@ describe("private artifact uploads", () => {
       }),
       [200],
     );
-    expect(new URL(input.body.url).pathname).toMatch(/^\/artifacts\//);
+    expect(input.body.url).toMatch(
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.png$/u,
+    );
     const artifact = await accept(
       api()(uploadsContract).prepare({
         headers,

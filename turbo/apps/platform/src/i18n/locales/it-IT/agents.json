@@ -38,17 +38,11 @@
     "description": "Scegli uno stile oppure usa Mescola per una sorpresa.",
     "editDescription": "Ritocca ogni dettaglio oppure usa Mescola per un nuovo look.",
     "editTitle": "Modifica avatar",
-    "intensity": {
-      "chill": "Tranquillo",
-      "hyped": "Carico",
-      "normal": "Normale"
-    },
     "nextStep": "Prossimo passo",
     "previousStep": "Passaggio precedente",
     "randomize": "Genera un avatar casuale",
     "shuffleHint": "Mescola — prova un look casuale!",
     "steps": {
-      "angle": "Angolo",
       "color": "Colore",
       "face": "Viso",
       "hair": "Capelli",

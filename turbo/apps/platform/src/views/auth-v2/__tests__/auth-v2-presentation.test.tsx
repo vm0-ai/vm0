@@ -10,7 +10,6 @@ import {
 import {
   platformOkouWordmarkDarkImg,
   platformOkouWordmarkLightImg,
-  platformVm0LogoImg,
 } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { renderedAuthV2LinkContrast } from "./auth-v2-style-assertions.ts";
@@ -51,7 +50,7 @@ test("Authentication link actions remain readable in light and dark themes", asy
   await setupPage({
     auth: null,
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
   });
 
@@ -79,7 +78,7 @@ test("Okou authentication uses the wordmark for the active theme", async () => {
   await setupPage({
     auth: null,
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/sign-in?redirect_url=${encodeURIComponent(OKOU_HOME_URL)}`,
   });
 
@@ -108,12 +107,14 @@ test("The authentication theme can be toggled by pointer and keyboard", async ()
   await setupPage({
     auth: null,
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
   });
 
   await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
-  expect(screen.getByRole("heading", { name: "Sign in to VM0" })).toBeVisible();
+  expect(
+    screen.getByRole("heading", { name: "Sign in to Okou" }),
+  ).toBeVisible();
   const themeToggle = buttonByLabel("Toggle theme");
   expect(themeToggle).toHaveAttribute("aria-pressed", "false");
 
@@ -125,12 +126,6 @@ test("The authentication theme can be toggled by pointer and keyboard", async ()
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
   expect(screen.getByRole("status")).toHaveTextContent("Dark theme enabled");
-  expect(screen.getByAltText("VM0")).toHaveAttribute("src", platformVm0LogoImg);
-  expect(screen.getByTestId("auth-v2-brand-logo")).toHaveAttribute(
-    "src",
-    platformVm0LogoImg,
-  );
-
   await user.keyboard("{Enter}");
 
   await waitFor(() => {

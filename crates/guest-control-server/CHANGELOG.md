@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.1](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.0...guest-control-server-v0.20.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **rust:** enforce exec-control request deadlines ([#32560](https://github.com/vm0-ai/vm0/issues/32560)) ([f222eab](https://github.com/vm0-ai/vm0/commit/f222eab48ae3490abd952db26ef1ff51c8074af6))
+
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.19.159...guest-control-server-v0.20.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** diagnose private-write terminal response timeouts ([#32539](https://github.com/vm0-ai/vm0/issues/32539)) ([d4af301](https://github.com/vm0-ai/vm0/commit/d4af3011d8636ffc06a5d0bf21c1a12608795e94))
+
 ## [0.19.159](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.19.158...guest-control-server-v0.19.159) (2026-09-08)
 
 ## [0.19.158](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.19.157...guest-control-server-v0.19.158) (2026-09-07)

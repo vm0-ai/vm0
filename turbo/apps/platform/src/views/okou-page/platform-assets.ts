@@ -33,7 +33,7 @@ export const emptySearchImg = pageAssetUrl(
   "assets/empty-search-b4e60a8e07b8.webp",
 );
 export const thinkingSpinnerImg = platformPublicStaticUrl(
-  "https://static.vm0.io/public/okou-transparent.svg",
+  "https://static.okou.io/public/okou-transparent.svg",
 );
 export const computerUseIllustrationImg = pageAssetUrl(
   "assets/computer-use-illustration-eecea534a3ac.png?v=568fa471",

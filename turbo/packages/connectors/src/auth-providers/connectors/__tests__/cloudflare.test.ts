@@ -30,7 +30,7 @@ describe("connector/providers/cloudflare", () => {
         buildCloudflareAuthorizationUrl(
           grant,
           "cloudflare-client-id",
-          "https://api.vm0.ai/api/connectors/cloudflare/callback",
+          "https://api.okou.ai/api/connectors/cloudflare/callback",
           "test-state",
         ),
       );
@@ -40,7 +40,7 @@ describe("connector/providers/cloudflare", () => {
       );
       expect(url.searchParams.get("client_id")).toBe("cloudflare-client-id");
       expect(url.searchParams.get("redirect_uri")).toBe(
-        "https://api.vm0.ai/api/connectors/cloudflare/callback",
+        "https://api.okou.ai/api/connectors/cloudflare/callback",
       );
       expect(url.searchParams.get("response_type")).toBe("code");
       expect(url.searchParams.get("state")).toBe("test-state");
@@ -62,7 +62,7 @@ describe("connector/providers/cloudflare", () => {
             },
           },
           "cloudflare-client-id",
-          "https://api.vm0.ai/api/connectors/cloudflare/callback",
+          "https://api.okou.ai/api/connectors/cloudflare/callback",
           "test-state",
         ),
       );
@@ -112,7 +112,7 @@ describe("connector/providers/cloudflare", () => {
         "client-id",
         "client-secret",
         "test-code",
-        "https://api.vm0.ai/api/connectors/cloudflare/callback",
+        "https://api.okou.ai/api/connectors/cloudflare/callback",
       );
 
       expect(tokenRequestAuthorization).toBe(
@@ -121,7 +121,7 @@ describe("connector/providers/cloudflare", () => {
       expect(tokenRequestBody?.get("client_secret")).toBeNull();
       expect(tokenRequestBody?.get("code")).toBe("test-code");
       expect(tokenRequestBody?.get("redirect_uri")).toBe(
-        "https://api.vm0.ai/api/connectors/cloudflare/callback",
+        "https://api.okou.ai/api/connectors/cloudflare/callback",
       );
       expect(result).toStrictEqual({
         accessToken: "cloudflare-access-token",
@@ -151,7 +151,7 @@ describe("connector/providers/cloudflare", () => {
           "client-id",
           "client-secret",
           "test-code",
-          "https://api.vm0.ai/api/connectors/cloudflare/callback",
+          "https://api.okou.ai/api/connectors/cloudflare/callback",
         ),
       ).rejects.toThrow("No refresh token in Cloudflare response");
     });

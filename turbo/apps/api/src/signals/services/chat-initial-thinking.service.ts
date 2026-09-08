@@ -42,7 +42,8 @@ const log = logger("api:chat-initial-thinking");
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
 const THINKING_CONTEXT_MESSAGE_CAP = 8;
 const THINKING_CONTEXT_CHAR_CAP = 700;
-const THINKING_MAX_TOKENS = 160;
+// Gemini's completion ceiling includes reasoning as well as visible copy.
+const THINKING_MAX_TOKENS = 1024;
 const THINKING_TEXT_CHAR_CAP = 600;
 
 interface ThinkingContextMessage {
@@ -226,7 +227,7 @@ async function generateInitialThinkingText(args: {
       },
     ],
     THINKING_MAX_TOKENS,
-    { reasoning: { effort: "none" } },
+    { reasoning: { effort: "low" } },
   );
 
   return sanitizeThinkingText(text);

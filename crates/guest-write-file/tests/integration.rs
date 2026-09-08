@@ -432,10 +432,19 @@ fn batch_mode_truncates_existing_files() {
 #[cfg(unix)]
 #[test]
 fn private_batch_mode_writes_private_files_with_restrictive_umask() {
+    use std::os::unix::fs::MetadataExt;
+
     let dir = tempfile::tempdir().unwrap();
+    let connector = dir
+        .path()
+        .join("run/connector-account-context/context.json");
     let first = dir.path().join("run/user-env/env.json");
     let second = dir.path().join("run/run-payload/payload.json");
     let payload = guest_control_proto::encode_write_files(&[
+        guest_control_proto::WriteFileBatchEntry {
+            path: connector.to_str().unwrap(),
+            content: br#"{"schemaVersion":1,"targets":[]}"#,
+        },
         guest_control_proto::WriteFileBatchEntry {
             path: first.to_str().unwrap(),
             content: b"env",
@@ -450,13 +459,30 @@ fn private_batch_mode_writes_private_files_with_restrictive_umask() {
     let output = run_helper_with_umask(&["--batch", "--private"], &payload, 0o777);
 
     assert!(output.status.success(), "stderr={:?}", output.stderr);
+    assert_eq!(
+        std::fs::read(&connector).unwrap(),
+        br#"{"schemaVersion":1,"targets":[]}"#
+    );
     assert_eq!(std::fs::read(&first).unwrap(), b"env");
     assert_eq!(std::fs::read(&second).unwrap(), b"payload");
     assert_eq!(mode(&dir.path().join("run")), 0o700);
+    assert_eq!(
+        mode(&dir.path().join("run/connector-account-context")),
+        0o700
+    );
     assert_eq!(mode(&dir.path().join("run/user-env")), 0o700);
     assert_eq!(mode(&dir.path().join("run/run-payload")), 0o700);
     assert_eq!(mode(&first), 0o600);
+    assert_eq!(mode(&connector), 0o600);
     assert_eq!(mode(&second), 0o600);
+    let owner = std::fs::metadata(dir.path()).unwrap();
+    for path in [&connector, &first, &second] {
+        for owned_path in [path.as_path(), path.parent().unwrap()] {
+            let metadata = std::fs::metadata(owned_path).unwrap();
+            assert_eq!(metadata.uid(), owner.uid());
+            assert_eq!(metadata.gid(), owner.gid());
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -492,6 +518,7 @@ fn private_batch_mode_reports_later_failure_after_partial_progress() {
     std::fs::create_dir(&target).unwrap();
     std::os::unix::fs::symlink(&target, &link).unwrap();
     let second = link.join("payload.json");
+    let third = dir.path().join("run/last.json");
     let payload = guest_control_proto::encode_write_files(&[
         guest_control_proto::WriteFileBatchEntry {
             path: first.to_str().unwrap(),
@@ -500,6 +527,10 @@ fn private_batch_mode_reports_later_failure_after_partial_progress() {
         guest_control_proto::WriteFileBatchEntry {
             path: second.to_str().unwrap(),
             content: b"payload",
+        },
+        guest_control_proto::WriteFileBatchEntry {
+            path: third.to_str().unwrap(),
+            content: b"must not be written",
         },
     ])
     .unwrap();
@@ -510,6 +541,44 @@ fn private_batch_mode_reports_later_failure_after_partial_progress() {
     assert_eq!(std::fs::read(&first).unwrap(), b"env");
     assert_eq!(mode(&first), 0o600);
     assert!(!target.join("payload.json").exists());
+    assert!(!third.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn private_batch_mode_first_failure_preserves_later_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    let link = dir.path().join("connector-account-context");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let connector = link.join("context.json");
+    let user_env = dir.path().join("env.json");
+    let run_payload = dir.path().join("payload.json");
+    std::fs::write(&user_env, b"previous env").unwrap();
+    std::fs::write(&run_payload, b"previous payload").unwrap();
+    let payload = guest_control_proto::encode_write_files(&[
+        guest_control_proto::WriteFileBatchEntry {
+            path: connector.to_str().unwrap(),
+            content: b"context",
+        },
+        guest_control_proto::WriteFileBatchEntry {
+            path: user_env.to_str().unwrap(),
+            content: b"new env",
+        },
+        guest_control_proto::WriteFileBatchEntry {
+            path: run_payload.to_str().unwrap(),
+            content: b"new payload",
+        },
+    ])
+    .unwrap();
+
+    let output = run_helper(&["--batch", "--private"], &payload);
+
+    assert!(!output.status.success());
+    assert!(!target.join("context.json").exists());
+    assert_eq!(std::fs::read(&user_env).unwrap(), b"previous env");
+    assert_eq!(std::fs::read(&run_payload).unwrap(), b"previous payload");
 }
 
 #[test]

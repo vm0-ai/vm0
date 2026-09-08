@@ -85,7 +85,7 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
   expect(featureRows).toHaveLength(Object.values(FeatureSwitchKey).length);
   expect(screen.getAllByRole("switch")).toHaveLength(featureRows.length);
   expect(
-    within(released).getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+    within(released).getByText(FeatureSwitchKey.PresentationTemplates),
   ).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
   expect(within(alpha).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
@@ -227,41 +227,6 @@ test("A feature switch update resynchronizes color theme document attributes", a
   await waitFor(() => {
     expect(featureControl).toBeChecked();
     expect(document.documentElement.dataset.gradientColorThemes).toBe("");
-  });
-});
-
-test("The Notion automation switch writes only its canonical key", async () => {
-  const user = userEvent.setup();
-  const updates: Record<string, boolean>[] = [];
-
-  await setupPage({
-    context,
-    path: "/_/lab",
-    featureSwitches: {
-      [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-    },
-  });
-  await screen.findByRole("heading", { name: "Lab" });
-
-  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
-    updates.push(body.switches);
-    return respond(200, {
-      switches: body.switches,
-      effectiveSwitches: body.switches,
-    });
-  });
-
-  await user.click(
-    within(
-      featureSwitchRow(FeatureSwitchKey.NotionWorkflowAutomations),
-    ).getByRole("switch"),
-  );
-
-  await waitFor(() => {
-    expect(updates).toStrictEqual([
-      { [FeatureSwitchKey.NotionWorkflowAutomations]: false },
-    ]);
   });
 });
 

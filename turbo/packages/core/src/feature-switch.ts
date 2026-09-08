@@ -218,17 +218,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NotionWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description:
-      "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description: "Enable Google Forms response workflow automations.",
-    enabled: true,
-  },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -324,12 +313,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the prompt, file, HeyGen style, avatar, and voice intro-video flow in new chat.",
     enabled: false,
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
-  },
-  [FeatureSwitchKey.AvatarComposerV2]: {
-    maintainer: "yuma@okou.ai",
-    description:
-      "Use the background-free avatar composer for new agents and avatar customization.",
-    enabled: true,
   },
   [FeatureSwitchKey.AvatarNeckSweater]: {
     maintainer: "ming@okou.ai",
@@ -461,6 +444,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@okou.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.SlackRead]: {
+    maintainer: "linghan@okou.ai",
+    description:
+      "List Slack channels and read channel and bot DM history through the Okou CLI.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.21](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.20...ably-subscriber-v1.0.21) (2026-09-08)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** keep subscribe logs off stdout ([#32552](https://github.com/vm0-ai/vm0/issues/32552)) ([97367e4](https://github.com/vm0-ai/vm0/commit/97367e4a420913227406e6c31c9a325abb86cd7f))
+
 ## [1.0.20](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.19...ably-subscriber-v1.0.20) (2026-08-28)
 
 

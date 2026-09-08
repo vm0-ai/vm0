@@ -112,7 +112,7 @@ test("The Agents document title rejects a look-alike Okou host", async () => {
     path: "/agents",
   });
   await screen.findByRole("heading", { name: "Agents" });
-  expect(document.title).toBe("Agents | VM0");
+  expect(document.title).toBe("Agents | Okou");
 });
 
 test("Unread indicators recover after realtime reconnects", async () => {

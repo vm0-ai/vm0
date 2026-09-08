@@ -3,17 +3,14 @@ import {
   bankingPublicContract,
   bankingUserContract,
 } from "@okouai/api-contracts/contracts/banking";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -178,9 +175,7 @@ const createConnectSessionInner$ = command(
     }
     const auth = get(organizationAuthContext$);
     const configuredAppUrl = env("APP_URL");
-    const redirectOrigin = new URL(
-      appUrlForPublicBrand(configuredAppUrl, get(publicBrand$)),
-    ).origin;
+    const redirectOrigin = new URL(configuredAppUrl).origin;
     const webhookOrigin = new URL(
       env("FINICITY_WEBHOOK_BASE_URL") ?? configuredAppUrl,
     ).origin;
@@ -227,8 +222,8 @@ const revokeAgentGrantInner$ = command(async ({ get, set }) => {
   });
 });
 
-const connectReturn$ = command(({ get }) => {
-  const { assistantName } = publicBrandPresentation(get(publicBrand$));
+const connectReturn$ = command(() => {
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const html = `<!doctype html>
 <html lang="en">
   <head>

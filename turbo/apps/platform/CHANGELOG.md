@@ -11,6 +11,67 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.863.0](https://github.com/vm0-ai/vm0/compare/app-v0.862.8...app-v0.863.0) (2026-09-08)
+
+
+### Features
+
+* **platform:** add related artifacts dialog ([#32505](https://github.com/vm0-ai/vm0/issues/32505)) ([b47a771](https://github.com/vm0-ai/vm0/commit/b47a771269cc545c8f6dc216903e943930795272))
+
+
+### Bug Fixes
+
+* **platform:** clean up abort listeners in polling delays ([#32566](https://github.com/vm0-ai/vm0/issues/32566)) ([fe57f9e](https://github.com/vm0-ai/vm0/commit/fe57f9eb1df389c1e4d1e396e96f29f9114a4d90))
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+    * @okouai/connectors bumped to 3.8.3
+    * @okouai/core bumped to 8.635.1
+
+## [0.862.8](https://github.com/vm0-ai/vm0/compare/app-v0.862.7...app-v0.862.8) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** converge calendar recovery after reconnect ([#32549](https://github.com/vm0-ai/vm0/issues/32549)) ([26c387f](https://github.com/vm0-ai/vm0/commit/26c387f49b2858be89eb130a859a2e3999f9cbf1))
+
+
+### Refactoring
+
+* remove googleFormsWorkflowAutomations feature switch ([#32523](https://github.com/vm0-ai/vm0/issues/32523)) ([9f498b5](https://github.com/vm0-ai/vm0/commit/9f498b557f70cf3545a784cf53108f73302c24ec))
+* remove notion workflow automation feature switch ([#32524](https://github.com/vm0-ai/vm0/issues/32524)) ([14a02ec](https://github.com/vm0-ai/vm0/commit/14a02ec10b944dc744b143c678ce2a60787e6284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.0
+    * @okouai/core bumped to 8.635.0
+
+## [0.862.7](https://github.com/vm0-ai/vm0/compare/app-v0.862.6...app-v0.862.7) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** keep browser card height stable ([#32535](https://github.com/vm0-ai/vm0/issues/32535)) ([a85c01f](https://github.com/vm0-ai/vm0/commit/a85c01feeaef9863ed8d97639e091ef22ccb1695))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.6
+
 ## [0.862.6](https://github.com/vm0-ai/vm0/compare/app-v0.862.5...app-v0.862.6) (2026-09-08)
 
 

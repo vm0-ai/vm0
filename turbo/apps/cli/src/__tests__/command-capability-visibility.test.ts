@@ -388,18 +388,21 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(prog)).toContain("model-provider");
   });
 
-  it("should show slack when slack:write capability is present", () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: ["slack:write"],
-    });
-    vi.stubEnv("OKOU_TOKEN", token);
+  it.each(["slack:read", "slack:write"])(
+    "should show slack when %s capability is present",
+    (capability) => {
+      const token = buildOkouToken({
+        scope: "okou",
+        capabilities: [capability],
+      });
+      vi.stubEnv("OKOU_TOKEN", token);
 
-    const prog = buildProgram();
+      const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("slack");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
+      expect(visibleCommandNames(prog)).toContain("slack");
+      expect(visibleCommandNames(prog)).toContain("whoami");
+    },
+  );
 
   it("should show feishu when feishu:write capability is present", () => {
     const token = buildOkouToken({

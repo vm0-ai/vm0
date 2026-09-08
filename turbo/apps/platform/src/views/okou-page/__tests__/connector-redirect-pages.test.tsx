@@ -9,16 +9,16 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const MOBILE_WARNING =
-  "The GitHub app may not support this OAuth link. Please complete this connection in the VM0 web app on a computer.";
+  "The GitHub app may not support this OAuth link. Please complete this connection in the Okou web app on a computer.";
 const IPHONE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
 
-function getBackLink(brand: "VM0" | "Okou"): HTMLElement {
+function getBackLink(): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === `Back to ${brand}`;
+    return candidate.textContent?.trim() === "Back to Okou";
   });
   if (!link) {
-    throw new Error(`Expected a Back to ${brand} link`);
+    throw new Error("Expected a Back to Okou link");
   }
   return link;
 }
@@ -34,30 +34,13 @@ test("The connector redirect page explains the secure provider handoff", async (
     screen.findByRole("heading", { name: "Redirecting to GitHub…" }),
   ).resolves.toBeInTheDocument();
   expect(
-    screen.getByText("You’ll continue on GitHub to authorize VM0."),
+    screen.getByText("You’ll continue on GitHub to authorize Okou."),
   ).toBeInTheDocument();
   expect(screen.getByText("Preparing a secure connection")).toBeInTheDocument();
   expect(
     screen.getByLabelText("Connector icon unavailable"),
   ).toBeInTheDocument();
-  expect(getBackLink("VM0")).toHaveAttribute("href", "/");
-});
-
-test("A connector redirect uses Okou branding on Okou", async () => {
-  await setupPage({
-    context,
-    host: "app.okou.ai",
-    path: "/connectors/github/redirecting?label=GitHub",
-    auth: null,
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Redirecting to GitHub…" }),
-  ).resolves.toBeInTheDocument();
-  expect(
-    screen.getByText("You’ll continue on GitHub to authorize Okou."),
-  ).toBeInTheDocument();
-  expect(getBackLink("Okou")).toHaveAttribute("href", "/");
+  expect(getBackLink()).toHaveAttribute("href", "/");
 });
 
 test("A stalled mobile provider handoff shows guidance", async () => {
@@ -106,7 +89,7 @@ test("A failed provider handoff offers a return path", async () => {
     screen.findByRole("heading", { name: "Couldn’t open GitHub" }),
   ).resolves.toBeInTheDocument();
   expect(
-    screen.getByText("Return to VM0 and try connecting again."),
+    screen.getByText("Return to Okou and try connecting again."),
   ).toBeInTheDocument();
-  expect(getBackLink("VM0")).toHaveAttribute("href", "/");
+  expect(getBackLink()).toHaveAttribute("href", "/");
 });

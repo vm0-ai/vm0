@@ -291,7 +291,7 @@ test("A newly available thread appears after shared-data reconnection", async ()
   await user.click(recoveredLink);
 
   await expectReadyChat("Recovered synchronized title");
-  expect(document.title).toBe("Recovered synchronized title | VM0");
+  expect(document.title).toBe("Recovered synchronized title | Okou");
 });
 
 test("Returning to an interrupted chat does not reuse abandoned details", async () => {
@@ -342,7 +342,7 @@ test("Returning to an interrupted chat does not reuse abandoned details", async 
   abandonedDetails.resolve(undefined);
 
   expect(screen.queryByText("Abandoned visit title")).not.toBeInTheDocument();
-  expect(document.title).toBe("Agents | VM0");
+  expect(document.title).toBe("Agents | Okou");
 
   window.history.back();
 

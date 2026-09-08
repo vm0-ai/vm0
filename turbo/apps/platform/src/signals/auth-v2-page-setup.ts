@@ -23,42 +23,18 @@ import {
   type AuthV2SignUpSignals,
 } from "./auth-v2/sign-up-flow.ts";
 import { AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH } from "./auth-v2/sign-up-external-strategies.ts";
-import { navigateSatelliteAuthRoute$ } from "./auth.ts";
 import { updateDocumentTitle$ } from "./document-title.ts";
 import { updatePage$ } from "./react-router.ts";
 import { ROUTES } from "./route-paths.ts";
 
 import {
   authV2Invitation$,
-  navigateInvitationToPrimary$,
   redeemAuthV2Invitation$,
 } from "./auth-v2/invitation.ts";
-
-import type { AuthV2Navigation } from "./auth-v2/navigation.ts";
-
-const navigateAuthEntry$ = command(
-  async (
-    { set },
-    mode: AuthV2PageMode,
-    navigation: AuthV2Navigation,
-    signal: AbortSignal,
-  ) => {
-    return (
-      (await set(navigateInvitationToPrimary$, navigation, signal)) ||
-      (await set(navigateSatelliteAuthRoute$, mode, signal))
-    );
-  },
-);
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const platformContext = resolveAuthV2PlatformContext(mode);
-    if (
-      await set(navigateAuthEntry$, mode, platformContext.navigation, signal)
-    ) {
-      return;
-    }
-
     const invitation = get(authV2Invitation$);
     const invitationTicket =
       invitation?.mode === mode ? invitation.ticket : undefined;

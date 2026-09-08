@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
@@ -18,8 +17,8 @@ import { resolveRunModelSelection } from "./run-model-selection.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
-function buildLogsUrl(runId: string, publicBrand: PublicBrand): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/activities/${encodeURIComponent(runId)}`;
+function buildLogsUrl(runId: string): string {
+  return `${env("APP_URL")}/activities/${encodeURIComponent(runId)}`;
 }
 
 async function resolveRespondedByLabel(args: {
@@ -146,7 +145,7 @@ export async function resolveIntegrationAgentResponsePresentation(
     overrides: typedOverrides,
   });
   return {
-    logsUrl: enabled ? buildLogsUrl(args.runId, args.publicBrand) : undefined,
+    logsUrl: enabled ? buildLogsUrl(args.runId) : undefined,
     footerText: parts.length > 0 ? parts.join(" · ") : undefined,
   };
 }

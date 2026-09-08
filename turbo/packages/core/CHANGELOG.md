@@ -1,5 +1,46 @@
 # Changelog
 
+## [8.635.1](https://github.com/vm0-ai/vm0/compare/core-v8.635.0...core-v8.635.1) (2026-09-08)
+
+
+### Refactoring
+
+* serve only the okou.ai domain across platform, api, cli and desktop ([#32484](https://github.com/vm0-ai/vm0/issues/32484)) ([af545b4](https://github.com/vm0-ai/vm0/commit/af545b4bc4a892f60efc89c11aa3f54a73adc004))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.1
+
+## [8.635.0](https://github.com/vm0-ai/vm0/compare/core-v8.634.6...core-v8.635.0) (2026-09-08)
+
+
+### Features
+
+* add slack bot channel discovery and history reads ([#32527](https://github.com/vm0-ai/vm0/issues/32527)) ([9873338](https://github.com/vm0-ai/vm0/commit/9873338effbfa71fa10e7fbf4c8a3508a9de1ba3))
+
+
+### Refactoring
+
+* remove googleFormsWorkflowAutomations feature switch ([#32523](https://github.com/vm0-ai/vm0/issues/32523)) ([9f498b5](https://github.com/vm0-ai/vm0/commit/9f498b557f70cf3545a784cf53108f73302c24ec))
+* remove notion workflow automation feature switch ([#32524](https://github.com/vm0-ai/vm0/issues/32524)) ([14a02ec](https://github.com/vm0-ai/vm0/commit/14a02ec10b944dc744b143c678ce2a60787e6284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.415.0
+
+## [8.634.6](https://github.com/vm0-ai/vm0/compare/core-v8.634.5...core-v8.634.6) (2026-09-08)
+
+
+### Refactoring
+
+* remove followUpOptimize feature switch ([#32522](https://github.com/vm0-ai/vm0/issues/32522)) ([cd4d62b](https://github.com/vm0-ai/vm0/commit/cd4d62b5e072e6c9e32c9431338fb37ee4eeedef))
+
 ## [8.634.5](https://github.com/vm0-ai/vm0/compare/core-v8.634.4...core-v8.634.5) (2026-09-08)
 
 

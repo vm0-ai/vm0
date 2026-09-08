@@ -26,12 +26,7 @@ export interface LegacyAvatarSvgConfig {
 
 export type ResolvedAvatarSvgConfig = AvatarSvgConfig | LegacyAvatarSvgConfig;
 
-export function serializeAvatarSvgConfig(
-  config: ResolvedAvatarSvgConfig,
-): string {
-  if (isLegacyAvatarSvgConfig(config)) {
-    return `${AVATAR_SVG_PREFIX}r${config.rotation}s${config.skin}h${config.hairStyle}c${config.hairColor}f${config.expression}${config.intensity}`;
-  }
+export function serializeAvatarSvgConfig(config: AvatarSvgConfig): string {
   return avatarComposerUrl(config);
 }
 
@@ -222,19 +217,4 @@ export function avatarSvgComposition(
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
   return randomAvatarComposerConfig();
-}
-
-export function randomLegacyAvatarSvgConfig(): LegacyAvatarSvgConfig {
-  const randomInteger = (min: number, max: number) => {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-  };
-  const intensities = ["d", "m", "h"] as const;
-  return {
-    rotation: randomInteger(1, 5),
-    skin: randomInteger(0, 4),
-    hairStyle: randomInteger(1, 5),
-    hairColor: randomInteger(1, 5),
-    expression: randomInteger(1, 5),
-    intensity: intensities[randomInteger(0, intensities.length - 1)]!,
-  };
 }

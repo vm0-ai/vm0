@@ -29,7 +29,7 @@ import {
   installChatListAgent,
   installChatListModelPolicies,
   installChatListStream,
-  seedChatListCache,
+  seedPersistentChatListCache,
   sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
 
@@ -59,7 +59,7 @@ test.each([false, true])(
     const auth = chatListAuth(49);
     const initialPage = createChildAbortController(context.signal);
     const refreshedPage = createChildAbortController(refreshedContext.signal);
-    await seedChatListCache(49, auth, []);
+    await seedPersistentChatListCache(49, auth, []);
     let createdThreadId: string | undefined;
     let createdEventId: string | undefined;
     let persistedDraft = textContinuityDraft("");

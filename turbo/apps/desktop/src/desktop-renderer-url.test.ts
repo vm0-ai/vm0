@@ -27,7 +27,7 @@ describe("desktop renderer URL", () => {
 
   it("rejects other protocol targets and path traversal", () => {
     const distDir = "/Applications/Okou.app/Contents/Resources/app/dist";
-    expect(desktopRendererFilePath("https://app.vm0.ai/", distDir)).toBeNull();
+    expect(desktopRendererFilePath("https://app.okou.ai/", distDir)).toBeNull();
     expect(
       desktopRendererFilePath("vm0-desktop://other/index.html", distDir),
     ).toBeNull();

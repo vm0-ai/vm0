@@ -74,17 +74,23 @@ interface OpenRouterGenerateTextOptions {
 export class OpenRouterRequestError extends Error {
   readonly status: number;
   readonly errorType: string | undefined;
+  readonly errorCode: string | number | undefined;
+  readonly errorParam: string | undefined;
 
   constructor(args: {
     readonly message: string;
     readonly status: number;
     readonly errorType?: string;
+    readonly errorCode?: string | number;
+    readonly errorParam?: string;
   }) {
     const errorType = args.errorType ? ` (${args.errorType})` : "";
     super(`${args.message}: ${String(args.status)}${errorType}`);
     this.name = "OpenRouterRequestError";
     this.status = args.status;
     this.errorType = args.errorType;
+    this.errorCode = args.errorCode;
+    this.errorParam = args.errorParam;
   }
 }
 
@@ -95,14 +101,48 @@ function objectProperty(value: unknown, property: string): unknown | undefined {
   return value[property as keyof typeof value];
 }
 
-function openRouterErrorType(value: unknown): string | undefined {
-  const error = objectProperty(value, "error") ?? value;
-  const metadata = objectProperty(error, "metadata");
-  const errorType = objectProperty(metadata, "error_type");
-  return typeof errorType === "string" &&
-    /^[a-z][a-z0-9_]{0,127}$/u.test(errorType)
-    ? errorType
+// Provider diagnostics are untrusted data, including strings that look like
+// identifiers. Only retain enumerated values; never retain messages or raw data.
+function safeDiagnosticString(
+  value: unknown,
+  allowed: readonly string[],
+): string | undefined {
+  return typeof value === "string" && allowed.includes(value)
+    ? value
     : undefined;
+}
+
+function safeErrorCode(error: unknown): string | number | undefined {
+  const code = objectProperty(error, "code");
+  if (
+    typeof code === "number" &&
+    [400, 401, 402, 403, 404, 408, 413, 422, 429, 500, 502, 503, 504].includes(
+      code,
+    )
+  ) {
+    return code;
+  }
+  return safeDiagnosticString(code, [
+    "invalid_request_error",
+    "invalid_argument",
+    "invalid_parameter",
+    "unsupported_parameter",
+    "unsupported_value",
+    "rate_limit_exceeded",
+    "INVALID_ARGUMENT",
+    "RESOURCE_EXHAUSTED",
+    "UNAVAILABLE",
+  ]);
+}
+
+function safeErrorParam(error: unknown): string | undefined {
+  return safeDiagnosticString(objectProperty(error, "param"), [
+    "reasoning",
+    "reasoning.effort",
+    "reasoning_effort",
+    "max_tokens",
+    "temperature",
+  ]);
 }
 
 function openRouterRequestError(args: {
@@ -110,11 +150,42 @@ function openRouterRequestError(args: {
   readonly status: number;
   readonly value: unknown;
 }): OpenRouterRequestError {
-  const errorType = openRouterErrorType(args.value);
+  const error = objectProperty(args.value, "error") ?? args.value;
+  const metadata = objectProperty(error, "metadata");
+  const errorType = safeDiagnosticString(
+    objectProperty(metadata, "error_type"),
+    [
+      "invalid_image",
+      "image_too_small",
+      "unsupported_image_format",
+      "image_too_large",
+      "image_not_found",
+      "image_download_failed",
+      "invalid_request_error",
+    ],
+  );
+  // OpenRouter may wrap the provider's JSON error in metadata.raw. Parse just
+  // one bounded envelope and apply the same allowlists; never attach it as cause.
+  const raw = objectProperty(metadata, "raw");
+  const provider =
+    typeof raw === "string" && Buffer.byteLength(raw, "utf8") <= 4096
+      ? objectProperty(safeJsonParse(raw), "error")
+      : undefined;
+  const errorCode =
+    safeDiagnosticString(objectProperty(provider, "status"), [
+      "INVALID_ARGUMENT",
+      "RESOURCE_EXHAUSTED",
+      "UNAVAILABLE",
+    ]) ??
+    safeErrorCode(provider) ??
+    safeErrorCode(error);
+  const errorParam = safeErrorParam(provider) ?? safeErrorParam(error);
   return new OpenRouterRequestError({
     message: args.message,
     status: args.status,
     ...(errorType === undefined ? {} : { errorType }),
+    ...(errorCode === undefined ? {} : { errorCode }),
+    ...(errorParam === undefined ? {} : { errorParam }),
   });
 }
 
@@ -157,11 +228,20 @@ function parseOpenRouterGeneration(
     });
   }
   if (choice.finish_reason !== "stop") {
-    const nativeReason = choice.native_finish_reason
-      ? ` (native: ${choice.native_finish_reason})`
+    const nativeFinishReason = safeDiagnosticString(
+      choice.native_finish_reason,
+      ["MAX_TOKENS", "STOP", "SAFETY", "RECITATION", "OTHER"],
+    );
+    const finishReason = safeDiagnosticString(choice.finish_reason, [
+      "length",
+      "content_filter",
+      "tool_calls",
+    ]);
+    const nativeReason = nativeFinishReason
+      ? ` (native: ${nativeFinishReason})`
       : "";
     throw new Error(
-      `OpenRouter completion finished with ${choice.finish_reason ?? "unknown"}${nativeReason}`,
+      `OpenRouter completion finished with ${finishReason ?? "unknown"}${nativeReason}`,
     );
   }
 
@@ -244,6 +324,10 @@ export async function generateTextWithUsage(
     signal,
   });
   await ensureOpenRouterResponseOk(response);
-  const data = (await response.json()) as OpenRouterResponse;
-  return parseOpenRouterGeneration(data);
+  // JSON parser errors can quote the upstream body. Keep failures payload-free.
+  const data = safeJsonParse(await response.text());
+  if (typeof data !== "object" || data === null) {
+    throw new Error("OpenRouter returned invalid JSON");
+  }
+  return parseOpenRouterGeneration(data as OpenRouterResponse);
 }

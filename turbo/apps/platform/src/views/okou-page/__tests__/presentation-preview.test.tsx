@@ -29,7 +29,7 @@ function installPresentationObjectUrls(): PresentationObjectUrls {
       throw new Error("Presentation preview created a non-Blob object URL");
     }
     nextObjectUrl += 1;
-    const url = `blob:https://app.vm0.ai/presentation-preview-${String(nextObjectUrl)}`;
+    const url = `blob:https://app.okou.ai/presentation-preview-${String(nextObjectUrl)}`;
     sources.set(url, source);
     return url;
   });
@@ -195,7 +195,7 @@ test("Selecting a slide preserves its authored layout", async () => {
     </html>`);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}/chat`,
   });
 
@@ -244,7 +244,7 @@ test("A generically authored deck still previews", async () => {
     </html>`);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}/chat`,
   });
 
@@ -281,7 +281,7 @@ test("A presentation slide fills its preview frame cleanly", async () => {
     </html>`);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}/chat`,
   });
 
@@ -325,7 +325,7 @@ test("An unusable generated theme does not break the presentation preview", asyn
     </html>`);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}/chat`,
   });
 
@@ -371,7 +371,7 @@ test("Presentation previews preserve the selected theme", async () => {
     </html>`);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/agents/${AGENT_ID}/chat`,
   });
 

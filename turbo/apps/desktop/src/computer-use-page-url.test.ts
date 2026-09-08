@@ -11,7 +11,7 @@ describe("isDesktopComputerUsePageUrl", () => {
   it("rejects hosted Platform pages and other local files", () => {
     expect(
       isDesktopComputerUsePageUrl(
-        "https://app.vm0.ai/computer-use",
+        "https://app.okou.ai/computer-use",
         RENDERER_URL,
       ),
     ).toBe(false);

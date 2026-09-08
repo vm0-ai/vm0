@@ -5,7 +5,7 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-// Zero always asks Browser Use for its longest provider lifetime and manages
+// Okou always asks Browser Use for its longest provider lifetime and manages
 // reclamation itself through the idle lease below, so a hard provider timeout
 // can never cut a browser short while somebody is still using it.
 export const BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
@@ -56,7 +56,7 @@ export const browserSessionSchema = z
     timeoutMinutes: z.number().int().positive(),
     // Only live provider instances have persisted window dimensions.
     screen: browserScreenSchema.optional(),
-    // When Zero reclaims the live provider instance unless somebody leases it
+    // When Okou reclaims the live provider instance unless somebody leases it
     // again. Null once no provider instance is running.
     idleExpiresAt: z.iso.datetime().nullable(),
     suspendedAt: z.iso.datetime().nullable(),

@@ -148,7 +148,7 @@ test("A signed-out page does not load workspace features", async () => {
     auth: null,
   });
 
-  await screen.findByRole("heading", { name: "Sign in to VM0" });
+  await screen.findByRole("heading", { name: "Sign in to Okou" });
 
   expect(screen.queryByText("Ahrefs")).not.toBeInTheDocument();
   expect(workspaceFeatureRequested).toBeFalsy();

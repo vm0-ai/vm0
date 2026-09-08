@@ -115,7 +115,8 @@ function piRuntimeContract(args: {
     return {
       api: "openai-responses",
       thinkingLevel: "max",
-      ...(isBuiltInModelProviderType(args.providerType) &&
+      ...((isBuiltInModelProviderType(args.providerType) ||
+        args.providerType === "custom-openai-responses") &&
       args.codexServiceTier === "fast"
         ? { serviceTier: "priority" as const }
         : {}),
@@ -149,6 +150,7 @@ function isFastGptPiProvider(
 ): boolean {
   return (
     modelProviderType === "codex-oauth-token" ||
+    modelProviderType === "custom-openai-responses" ||
     isGptApiKeyPiProviderType(modelProviderType) ||
     (isBuiltInModelProviderType(modelProviderType) &&
       (builtInModelRuntimeRoute?.providerType === "openai-api-key" ||

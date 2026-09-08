@@ -61,7 +61,7 @@ test("Sequence diagrams render in chat", async () => {
   await setupPage({
     context,
     path: chat.path,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const diagram = await screen.findByRole("img", { name: "Diagram" });

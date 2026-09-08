@@ -1987,7 +1987,6 @@ async fn assert_reused_private_write_timeout_telemetry(
     let source_ip = sandbox.source_ip().to_string();
     let (idle_sandbox, _lease) =
         make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
-    overrides.push_private_write_file_result(Ok(()));
     overrides.push_private_write_files_result(Err(SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,
         stage,
@@ -2024,11 +2023,11 @@ async fn assert_reused_private_write_timeout_telemetry(
     );
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    assert_eq!(overrides.private_write_file_calls().len(), 1);
+    assert!(overrides.private_write_file_calls().is_empty());
     assert_eq!(overrides.private_write_files_calls().len(), 1);
 }
 
-async fn assert_reused_connector_account_context_failure(
+async fn assert_reused_required_private_batch_failure(
     error: SandboxError,
     expected_outcome: Option<&str>,
 ) {
@@ -2036,9 +2035,9 @@ async fn assert_reused_connector_account_context_failure(
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     let expected_failure = format!("sandbox error: {error}");
-    overrides.push_private_write_file_result(Err(error));
+    overrides.push_private_write_files_result(Err(error));
     let sandbox = Box::new(MockSandbox::with_overrides(
-        "connector-account-context-failure",
+        "required-private-batch-failure",
         Arc::clone(&overrides),
     ));
     let source_ip = sandbox.source_ip().to_string();
@@ -2068,7 +2067,7 @@ async fn assert_reused_connector_account_context_failure(
     let operations = telemetry.pending_ops_with_outcome_snapshot();
     let matching: Vec<_> = operations
         .iter()
-        .filter(|operation| operation.0 == "runner_connector_account_context_write")
+        .filter(|operation| operation.0 == "runner_required_private_files_write")
         .collect();
     assert_eq!(matching.len(), 1);
     assert!(!matching[0].1);
@@ -2076,32 +2075,35 @@ async fn assert_reused_connector_account_context_failure(
     assert_eq!(matching[0].3, None);
     assert_action_outcome(
         &telemetry,
-        "runner_connector_account_context_write",
+        "runner_required_private_files_write",
         false,
-        Some("connector account context unavailable"),
+        None,
     );
 
     assert!(outcome.sandbox.is_some());
     let failure = outcome
         .failure
-        .expect("connector context failure should stop the run");
+        .expect("required private batch failure should stop the run");
     assert_eq!(failure.error, expected_failure);
     assert_eq!(
         outcome.sandbox_reuse_disposition,
         SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
     );
-    assert_lacks_action(&telemetry, "runner_required_private_files_write");
     assert_lacks_action(&telemetry, "runner_agent_start_process");
     assert!(overrides.start_agent_process_calls().is_empty());
-    let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 1);
-    assert_eq!(private_writes[0].path, expected_connector_context_path);
-    assert!(overrides.private_write_files_calls().is_empty());
+    assert!(overrides.private_write_file_calls().is_empty());
+    let private_batches = overrides.private_write_files_calls();
+    assert_eq!(private_batches.len(), 1);
+    assert_eq!(private_batches[0].files.len(), 3);
+    assert_eq!(
+        private_batches[0].files[0].path,
+        expected_connector_context_path
+    );
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_guest_failure_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_guest_failure_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::Operation {
             operation: SandboxOperation::WriteFile,
             reason: SandboxOperationReason::Guest,
@@ -2113,8 +2115,8 @@ async fn reused_connector_account_context_guest_failure_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_before_frame_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_before_frame_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::BeforeFrameWrite,
@@ -2126,8 +2128,8 @@ async fn reused_connector_account_context_before_frame_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_frame_write_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_frame_write_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::FrameWrite,
@@ -2139,8 +2141,8 @@ async fn reused_connector_account_context_frame_write_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_terminal_response_timeout_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_terminal_response_timeout_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
             stage: SandboxOperationTimeoutStage::AwaitingTerminalResponse,
@@ -2152,8 +2154,8 @@ async fn reused_connector_account_context_terminal_response_timeout_stops() {
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_backend_crash_stops() {
-    assert_reused_connector_account_context_failure(
+async fn reused_required_private_batch_backend_crash_stops() {
+    assert_reused_required_private_batch_failure(
         SandboxError::Operation {
             operation: SandboxOperation::WriteFile,
             reason: SandboxOperationReason::BackendCrashed,

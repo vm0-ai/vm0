@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -581,11 +582,7 @@ function newAutomationDisplayContext(
         : null,
     connectorSourceId:
       "connectorSourceId" in values ? (values.connectorSourceId ?? null) : null,
-    // Deliberate current-contract default: automation producers without a
-    // provider Host are VM0 until every producer supplies an authoritative
-    // public brand and this input can become required.
-    publicBrand:
-      "publicBrand" in values ? (values.publicBrand ?? "vm0") : "vm0",
+    publicBrand: PUBLIC_BRAND,
     triggerBrief:
       "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
   };
@@ -616,7 +613,7 @@ function newDisplayContext(
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
       botUserId: slackContext.botUserId,
-      publicBrand: slackContext.publicBrand,
+      publicBrand: PUBLIC_BRAND,
       conversationContext: slackContext.conversationContext,
       messageText: slackContext.messageText,
       messageFiles: slackContext.messageFiles,
@@ -638,6 +635,7 @@ function newDisplayContext(
       id: eventId,
       chatThreadId: values.chatThreadId,
       ...feishuContext,
+      publicBrand: PUBLIC_BRAND,
     };
   }
 
@@ -649,6 +647,7 @@ function newDisplayContext(
       id: eventId,
       chatThreadId: values.chatThreadId,
       ...teamsContext,
+      publicBrand: PUBLIC_BRAND,
     };
   }
 
@@ -660,6 +659,7 @@ function newDisplayContext(
       id: eventId,
       chatThreadId: values.chatThreadId,
       ...telegramContext,
+      publicBrand: PUBLIC_BRAND,
     };
   }
 
@@ -671,6 +671,7 @@ function newDisplayContext(
       id: eventId,
       chatThreadId: values.chatThreadId,
       ...githubContext,
+      publicBrand: PUBLIC_BRAND,
     };
   }
 
@@ -682,6 +683,7 @@ function newDisplayContext(
       id: eventId,
       chatThreadId: values.chatThreadId,
       ...agentphoneContext,
+      publicBrand: PUBLIC_BRAND,
     };
   }
 

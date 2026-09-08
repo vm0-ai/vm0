@@ -1287,12 +1287,11 @@ class _FirewallMatchCollection:
 
 
 class _FirewallDecisionState:
-    """Mutable decision state for selected-owner policy reduction."""
+    """Policy reduction state initialized with the preselected base fallback."""
 
     __slots__ = (
         "allowed_match",
         "base_match",
-        "best_base_specificity",
         "denied_match",
         "denied_permission_names",
         "malformed_config_match",
@@ -1301,53 +1300,19 @@ class _FirewallDecisionState:
 
     allowed_match: _AllowedRuleMatch | None
     base_match: _BaseMatch | None
-    best_base_specificity: _BaseSpecificity | None
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
     malformed_config_match: _BlockMatch | None
     malformed_policy_match: _BlockMatch | None
 
-    def __init__(self) -> None:
+    def __init__(self, base_match: _BaseMatch | None) -> None:
         self.allowed_match = None
-        self.base_match = None
-        self.best_base_specificity = None
+        self.base_match = base_match
         self.denied_match = None
         self.denied_permission_names = {}
         self.malformed_config_match = None
         self.malformed_policy_match = None
-
-    def accept_base_match(
-        self,
-        api_entry: _CompiledApi,
-        *,
-        name: str,
-        rel_path: str,
-        base_params: dict[str, str],
-    ) -> bool:
-        if (
-            self.best_base_specificity is None
-            or api_entry.base.specificity > self.best_base_specificity
-        ):
-            self.best_base_specificity = api_entry.base.specificity
-            self.allowed_match = None
-            self.base_match = None
-            self.denied_match = None
-            self.denied_permission_names = {}
-            self.malformed_config_match = None
-            self.malformed_policy_match = None
-        elif api_entry.base.specificity < self.best_base_specificity:
-            return False
-
-        if self.base_match is None:
-            self.base_match = _BaseMatch(
-                api_entry.base.raw,
-                name,
-                rel_path,
-                api_entry.raw_api_entry,
-                base_params,
-            )
-        return True
 
     def record_malformed_config(self, match: _BlockMatch) -> None:
         if self.malformed_config_match is None:
@@ -1674,18 +1639,24 @@ def _reduce_selected_owner(
         if conflicting_block is not None:
             return conflicting_block
 
-    decision = _FirewallDecisionState()
+    # Collection owns base specificity; owner/permissionless filtering preserves
+    # that tier's order, so only its first selected fallback is needed here.
+    base_match = next(
+        (
+            _BaseMatch(
+                match.api.base.raw,
+                match.firewall.name,
+                match.rel_path,
+                match.api.raw_api_entry,
+                match.base_params,
+            )
+            for match in _selected_base_api_matches(collection, selected_name)
+        ),
+        None,
+    )
+    decision = _FirewallDecisionState(base_match)
     evaluable_api_orders: set[int] = set()
     relevant_api_matches = _relevant_owner_api_matches(collection, selected_name)
-
-    for api_match in _selected_base_api_matches(collection, selected_name):
-        fw_entry = api_match.firewall
-        decision.accept_base_match(
-            api_match.api,
-            name=fw_entry.name,
-            rel_path=api_match.rel_path,
-            base_params=api_match.base_params,
-        )
 
     for api_match in relevant_api_matches:
         fw_entry = api_match.firewall

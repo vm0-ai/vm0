@@ -3,12 +3,11 @@ import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contr
 import { customConnectorOAuth2Contract } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, request$, setResHeader$ } from "../context/hono";
+import { request$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -53,6 +52,7 @@ import {
 } from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 import { connectorConnectionWriteFailureMessage } from "../services/connector-data.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   okouMcpOAuthClientMetadata,
   okouMcpOAuthDynamicClientMetadata,
@@ -81,8 +81,8 @@ function callbackError(origin: string, message: string): Response {
   return callbackRedirect({ origin, status: "error", message });
 }
 
-function appOriginForPublicBrand(publicBrand: "vm0" | "okou"): string {
-  return new URL(appUrlForPublicBrand(env("APP_URL"), publicBrand)).origin;
+function appOrigin(): string {
+  return new URL(env("APP_URL")).origin;
 }
 
 function okouOAuthRedirectUri(request: Request): string {
@@ -136,10 +136,10 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!agentTarget.ok) {
     return badRequestMessage(agentTarget.message);
   }
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const redirectUri = new URL(
     CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH,
-    appOriginForPublicBrand(publicBrand),
+    appOrigin(),
   ).toString();
   const okouClientMetadata = okouMcpOAuthClientMetadata(get(request$).raw);
   const result = await set(
@@ -335,10 +335,7 @@ async function codeLessCustomOAuthCallbackResponse(
   );
   signal.throwIfAborted();
   return status.kind === "usable"
-    ? callbackError(
-        appOriginForPublicBrand(status.publicBrand),
-        "Missing authorization code",
-      )
+    ? callbackError(appOrigin(), "Missing authorization code")
     : callbackError(args.origin, "Invalid OAuth state - please try again");
 }
 
@@ -568,7 +565,7 @@ const completeOAuth2Callback$ = command(
         "Invalid OAuth state - please try again",
       );
     }
-    const origin = appOriginForPublicBrand(claimed.state.publicBrand);
+    const origin = appOrigin();
     const state = validateClaimedState(claimed.state);
     if (!state.ok) {
       return callbackError(origin, "Invalid OAuth state - please try again");

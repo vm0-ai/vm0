@@ -1287,8 +1287,8 @@ describe("shared thread routes", () => {
       "public, max-age=31536000, s-maxage=31536000, immutable",
     );
 
-    const vm0Snapshot = await readSharedThreadSnapshot(second.id);
-    expect(vm0Snapshot.body).toMatchObject({ publicBrand: "vm0" });
+    const secondSnapshot = await readSharedThreadSnapshot(second.id);
+    expect(secondSnapshot.body).toMatchObject({ publicBrand: "okou" });
 
     const catalog = await chat.listArtifactCatalog(owner.actor, {
       kind: "shared-thread",

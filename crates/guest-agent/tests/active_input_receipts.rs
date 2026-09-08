@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::http::HttpClient;
 use httpmock::prelude::*;
@@ -498,11 +499,18 @@ async fn unacknowledged_journal_recovers_without_requeueing_the_backend()
         receipt_http(&server.base_url())?,
     )?;
     let recovered_controller = recovered.controller();
-    let _writer = recovered.into_writer();
+    let mut recovered_writer = recovered.into_writer();
 
     assert_eq!(
         recovered_controller.handle_control_payload(&accepted_payload),
-        ActiveInputControlOutcome::Accepted,
+        ActiveInputControlOutcome::Accepted
+    );
+    // Admission enqueues synchronously. Poll before close hides queued frames,
+    // without allowing a cooperative yield to masquerade as an empty queue.
+    assert!(
+        tokio::task::unconstrained(recovered_writer.next_frame())
+            .now_or_never()
+            .is_none(),
         "a recovered delivery must not be queued for the backend again"
     );
     recovered_controller.close_terminal();

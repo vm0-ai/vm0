@@ -4,7 +4,6 @@ import type {
   GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { connectors } from "@okouai/db/schema/connector";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
@@ -12,11 +11,10 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
-import { OFFICIAL_GITHUB_PUBLIC_BRAND } from "../../lib/github-official-app";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import {
   buildGithubAppInstallUrl,
@@ -27,6 +25,7 @@ import {
   verifyGithubConnectSignature,
 } from "./github-oauth.service";
 import { connectorActionResolver } from "./connector-action-resolver.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
   return { status, body: { error: { message, code } } };
@@ -235,13 +234,10 @@ export const connectGithubUser$ = command(
 export const getGithubInstallation$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const apiOrigin = getOAuthApiOrigin(get(request$).raw);
-    const callbackOrigin = apiUrlForPublicBrand(apiOrigin, publicBrand);
-    const providerCallbackOrigin = apiUrlForPublicBrand(
-      apiOrigin,
-      OFFICIAL_GITHUB_PUBLIC_BRAND,
-    );
+    const callbackOrigin = apiOrigin;
+    const providerCallbackOrigin = apiOrigin;
     const db = set(writeDb$);
     const installation = await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();

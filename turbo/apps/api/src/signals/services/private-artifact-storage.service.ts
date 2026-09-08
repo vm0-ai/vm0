@@ -9,7 +9,6 @@ import { env } from "../../lib/env";
 import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { nowDate } from "../../lib/time";
 import { apiBackendUrl } from "../../lib/api-backend-url";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { db$, writeDb$ } from "../external/db";
 
 const PRIVATE_STORAGE = "private-artifact-v1";
@@ -19,19 +18,12 @@ const privateMetadataSchema = z.object({
   publicBrand: z.enum(["vm0", "okou"]),
 });
 
-export function privateArtifactUrl(
-  id: string,
-  publicBrand: PublicBrand,
-  filename: string,
-): string {
+export function privateArtifactUrl(id: string, filename: string): string {
   const origin = apiBackendUrl();
   if (!origin) {
     throw new Error("OKOU_API_BACKEND_URL is required for private artifacts");
   }
-  const url = new URL(
-    "/api/web/download-file",
-    apiUrlForPublicBrand(origin, publicBrand),
-  );
+  const url = new URL("/api/web/download-file", origin);
   url.searchParams.set("file_id", id);
   // A display hint lets Markdown classify the file without an unauthenticated
   // metadata request. Authorization and storage lookup use only file_id.
@@ -63,7 +55,7 @@ export const allocatePrivateArtifact$ = command(
     const bucket = privateArtifactsBucket();
     const id = randomUUID();
     const key = `private-artifacts/${id}/${sanitizeArtifactFilename(args.filename)}`;
-    const url = privateArtifactUrl(id, args.publicBrand, args.filename);
+    const url = privateArtifactUrl(id, args.filename);
     const db = set(writeDb$);
     // This independent ownership record also covers uploads outside a run.
     // Historical accessLevel="private" rows still use public storage; only

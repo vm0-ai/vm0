@@ -436,7 +436,7 @@ body {
   );
 }
 
-/* Zero app: inherits global neutral tokens; only card-specific tokens defined here */
+/* Okou app: inherits global neutral tokens; only card-specific tokens defined here */
 .okou-app {
   --okou-card-radius: 1.25rem;
   /* Cards rendered inside a chat message sit one level in from the page, so
@@ -570,7 +570,7 @@ body {
   background-color: hsl(var(--gray-0));
 }
 
-/* Zero chip-style gray (tone options, skill tags, Add skill) */
+/* Chip-style gray (tone options, skill tags, Add skill) */
 .okou-app .okou-chip {
   background-color: hsl(var(--gray-50));
   border: 0.7px solid hsl(var(--gray-400));
@@ -583,7 +583,7 @@ body {
   border-color: hsl(var(--gray-400));
 }
 
-/* Zero left nav */
+/* Left nav */
 .okou-nav {
   --color-sidebar-border: hsl(var(--gray-200));
 }
@@ -743,7 +743,7 @@ body {
   );
 }
 
-/* Message bubble (e.g. Meet Zero tone samples) */
+/* Message bubble (e.g. Meet Okou tone samples) */
 .okou-app .okou-bubble-cool {
   background-color: hsl(var(--gray-100) / 0.95);
   color: hsl(var(--foreground));
@@ -757,7 +757,7 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* Chat: assistant (Zero) message bubble */
+/* Chat: assistant message bubble */
 .okou-app .okou-chat-bubble-assistant {
   background-color: transparent;
   border: none;
@@ -1333,7 +1333,7 @@ details > summary {
   transition: color 0.15s ease;
 }
 
-/* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
+/* Okou workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 .okou-workspace-bg {
   position: relative;

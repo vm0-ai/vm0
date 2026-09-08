@@ -806,20 +806,53 @@ export const allWorkflowAutomationEntries$ = computed(
   },
 );
 
+/** One response owner per workflow and reload generation. */
+const currentWorkflowDetailResource$ = computed((get) => {
+  get(workflowReloadVersion$);
+  const workflowId = get(currentWorkflowId$);
+  if (!workflowId) {
+    return null;
+  }
+  const client = get(apiClient$)(workflowsDetailContract);
+  const read = async (
+    signal?: AbortSignal,
+  ): Promise<WorkflowDetailResponse | null> => {
+    const result = await accept(
+      client.get({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    signal?.throwIfAborted();
+    return result.status === 404 ? null : result.body;
+  };
+  const response$ = state<Promise<WorkflowDetailResponse | null>>(read());
+  const refresh$ = command(async ({ set }, signal: AbortSignal) => {
+    const detail = await read(signal);
+    signal.throwIfAborted();
+    // Publish only authoritative successful reads. Failed/cancelled confirmation
+    // stays in its command loadable while the page retains the last real warning.
+    set(response$, Promise.resolve(detail));
+    return detail;
+  });
+  return { response$, refresh$ };
+});
+
 /** The workflow detail derived from the active route. */
 export const currentWorkflowDetail$ = computed(
   async (get): Promise<WorkflowDetailResponse | null> => {
-    get(workflowReloadVersion$);
-    const workflowId = get(currentWorkflowId$);
-    if (!workflowId) {
-      return null;
-    }
-    const client = get(apiClient$)(workflowsDetailContract);
-    const result = await accept(
-      client.get({ params: { workflowId } }),
-      [200, 404],
-    );
-    return result.status === 404 ? null : result.body;
+    const resource = get(currentWorkflowDetailResource$);
+    return resource ? await get(resource.response$) : null;
+  },
+);
+
+/** Refresh the same summary the open page renders, owned by the caller. */
+export const reloadCurrentWorkflowDetail$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const resource = get(currentWorkflowDetailResource$);
+    return resource ? await set(resource.refresh$, signal) : null;
   },
 );
 

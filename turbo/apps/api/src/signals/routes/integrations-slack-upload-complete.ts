@@ -8,7 +8,6 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import {
   createSlackClient,
   type SlackClient,
@@ -18,6 +17,7 @@ import { completeCanonicalSlackDelivery$ } from "../services/canonical-slack-ass
 import { recordSlackUploadedFile$ } from "../services/run-uploaded-files.service";
 import { slackOrgInstallation } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const noInstallation = Object.freeze({
   status: 404 as const,
@@ -197,8 +197,7 @@ const completeDirectUpload$ = command(
 
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const runId =
     "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;
 

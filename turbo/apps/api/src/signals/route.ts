@@ -151,6 +151,7 @@ import { integrationsGithubUploadInitRoutes } from "./routes/integrations-github
 import { integrationsFeishuFileRoutes } from "./routes/integrations-feishu-files";
 import { integrationsSlackRoutes } from "./routes/integrations-slack";
 import { integrationsSlackMessageRoutes } from "./routes/integrations-slack-message";
+import { integrationsSlackReadRoutes } from "./routes/integrations-slack-read";
 import { integrationsFeishuMessageRoutes } from "./routes/integrations-feishu-message";
 import { integrationsSlackUploadCompleteRoutes } from "./routes/integrations-slack-upload-complete";
 import { integrationsSlackUploadInitRoutes } from "./routes/integrations-slack-upload-init";
@@ -376,6 +377,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsFeishuFileRoutes,
   ...integrationsSlackRoutes,
   ...integrationsSlackMessageRoutes,
+  ...integrationsSlackReadRoutes,
   ...integrationsFeishuMessageRoutes,
   ...integrationsSlackUploadCompleteRoutes,
   ...integrationsSlackUploadInitRoutes,

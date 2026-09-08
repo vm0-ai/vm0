@@ -136,7 +136,7 @@ test("A valid sign-in ticket returns to its trusted Okou destination", async () 
 
   await startPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: `/sign-in-token?token=clerk-ticket&redirect_url=${encodeURIComponent(
       returnUrl,
     )}`,

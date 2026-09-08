@@ -11,7 +11,6 @@ import {
   fill,
   queryAllByRoleFast,
   setupPage,
-  startPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -44,7 +43,7 @@ test("An invitation to the app root signs an existing user in and removes the ti
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
     path: `/agents?__clerk_status=sign_in&__clerk_ticket=${ticket}`,
     env: { VITE_POSTHOG_KEY: "phc_platform_test" },
@@ -79,7 +78,7 @@ test("An invitation sign-in continues through a required second factor", async (
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
     path: `/sign-in?__clerk_status=sign_in&__clerk_ticket=${ticket}`,
   });
@@ -115,7 +114,7 @@ test("A new invitee completes the remaining sign-up fields without creating anot
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
     path: `/?__clerk_status=sign_up&__clerk_ticket=${ticket}`,
   });
@@ -149,7 +148,7 @@ test("A failed invitation exchange is safe to retry and coalesces repeated click
     .mockReturnValueOnce(exchange.promise);
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
     path: `/?__clerk_status=sign_in&__clerk_ticket=${ticket}`,
   });
@@ -175,32 +174,6 @@ test("A failed invitation exchange is safe to retry and coalesces repeated click
   expect(mockedClerk.setActive).toHaveBeenCalledTimes(1);
 });
 
-test("A satellite invitation reaches primary authentication with the original ticket and a safe return URL", async () => {
-  await startPage({
-    context,
-    host: "app.okou.ai",
-    auth: null,
-    path: `/agents?__clerk_status=sign_in&__clerk_ticket=${ticket}`,
-  });
-  await waitFor(() => {
-    return expect(mockedClerk.navigate).toHaveBeenCalledWith(
-      expect.any(String),
-    );
-  });
-  const destination = mockedClerk.navigate.mock.calls[0]?.[0];
-  if (typeof destination !== "string") {
-    throw new Error("Expected primary authentication URL");
-  }
-  const url = new URL(destination);
-  expect(url.origin).toBe("https://app.vm0.ai");
-  expect(url.searchParams.get("__clerk_ticket")).toBe(ticket);
-  expect(url.searchParams.get("__clerk_status")).toBe("sign_in");
-  expect(
-    new URL(url.hash.slice(1), url.origin).searchParams.get("redirect_url"),
-  ).toBe("https://app.okou.ai/agents?__clerk_synced=false");
-  expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
-});
-
 test("Invitation exchange preserves the return URL in Clerk's auth fragment", async () => {
   mockedClerk.clientSignInCreate.mockImplementation(() => {
     mockSignInResource({
@@ -211,7 +184,7 @@ test("Invitation exchange preserves the return URL in Clerk's auth fragment", as
   });
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: null,
     path: `/sign-in?__clerk_status=sign_in&__clerk_ticket=${ticket}#/?redirect_url=${encodeURIComponent("https://app.okou.ai/agents?__clerk_synced=false")}`,
   });

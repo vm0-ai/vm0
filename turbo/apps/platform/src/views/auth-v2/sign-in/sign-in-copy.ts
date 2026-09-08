@@ -1,4 +1,4 @@
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -352,9 +352,7 @@ function signInTerminalCopy(
   t: TFunction<"common">,
   authBrand: AuthBrandContext,
 ) {
-  const supportEmail = publicBrandPresentation(
-    authBrand.brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+  const supportEmail = PUBLIC_BRAND_PRESENTATION.supportEmail;
   return {
     accessNotAllowed: t(($) => {
       return $.auth.clerk.accessNotAllowed;

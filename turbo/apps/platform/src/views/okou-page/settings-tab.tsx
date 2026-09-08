@@ -43,6 +43,7 @@ import {
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   serializeAvatarSvgConfig,
+  type AvatarSvgConfig,
   type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
@@ -103,10 +104,7 @@ function AvatarSettingsControl({
   isDefaultAgent: boolean;
   avatarUrl: string | null;
   alt: string;
-  onConfirm: (
-    config: ResolvedAvatarSvgConfig,
-    signal: AbortSignal,
-  ) => Promise<void>;
+  onConfirm: (config: AvatarSvgConfig, signal: AbortSignal) => Promise<void>;
 }) {
   if (isDefaultAgent) {
     return (

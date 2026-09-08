@@ -84,9 +84,6 @@ function createAttachmentResourceUrl$(
       return { resourceUrl: url, shareUrl: url };
     }
 
-    // Refresh before the 15-minute private signature expires, including after
-    // a background tab wakes up. Timers and listeners belong to the page.
-    get(resourceRevision$);
     const sourceUrl = new URL(url);
     const fileId = sourceUrl.searchParams.get("file_id");
     if (!fileId) {
@@ -102,6 +99,12 @@ function createAttachmentResourceUrl$(
       [200],
       signal,
     );
+    if (response.body.publicUrl === null) {
+      // Only confirmed private resources follow the page's refresh clock.
+      // Their recorded policy survives disabling creation; public attachments
+      // keep their existing resolution lifetime.
+      get(resourceRevision$);
+    }
     return {
       resourceUrl: response.body.url,
       shareUrl: response.body.publicUrl,

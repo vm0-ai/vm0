@@ -43,7 +43,9 @@ const fileUrlInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 
   signal.throwIfAborted();
-  set(setResHeader$, "Cache-Control", "private, no-store");
+  if (object.isPrivate) {
+    set(setResHeader$, "Cache-Control", "private, no-store");
+  }
   return {
     status: 200 as const,
     body: { url, publicUrl: object.isPrivate ? null : object.url },

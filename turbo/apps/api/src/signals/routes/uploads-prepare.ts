@@ -9,7 +9,6 @@ import {
 } from "../../lib/uploads-constants";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import {
   abortMultipartS3Upload,
@@ -22,6 +21,7 @@ import { allocateUploadedArtifact$ } from "../services/uploaded-artifact.service
 import { rejectSuspendedOrg$ } from "../services/org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUT_URL_TTL_SECONDS = 3600;
 const MULTIPART_PART_SIZE_BYTES = 5 * 1024 * 1024;
@@ -59,8 +59,7 @@ const prepareUploadInner$ = command(
         filename,
         contentType,
         size,
-        publicBrand:
-          auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
         purpose: bodyResult.data.purpose,
       },
       signal,

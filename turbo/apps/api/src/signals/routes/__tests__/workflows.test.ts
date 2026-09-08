@@ -1646,13 +1646,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Notion Copy Source Agent",
       visibility: "private",
@@ -2006,13 +1999,6 @@ describe("workflows", () => {
       );
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-      },
-    );
     const sourceAgent = await createAgent(actor, {
       displayName: "Google Forms Copy Source Agent",
       visibility: "private",
@@ -2031,7 +2017,7 @@ describe("workflows", () => {
     mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", topicName);
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
-      "https://api.vm0.ai/api/webhooks/google-forms",
+      "https://api.okou.ai/api/webhooks/google-forms",
     );
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",

@@ -1,5 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -9,6 +10,7 @@ import {
   assistantEvent,
   completedEvent,
   context,
+  findButton,
   installRunChat,
   promptEvent,
   queryButton,
@@ -66,6 +68,25 @@ function findNamedLink(name: string): Promise<HTMLElement> {
   });
 }
 
+function relatedArtifactRows(dialog: HTMLElement, url: string): HTMLElement[] {
+  return Array.from(
+    dialog.querySelectorAll<HTMLElement>(
+      `[data-chat-run-related-artifact-url="${url}"]`,
+    ),
+  );
+}
+
+function relatedArtifactRow(dialog: HTMLElement, url: string): HTMLElement {
+  const rows = relatedArtifactRows(dialog, url);
+  expect(rows).toHaveLength(1);
+  return rows[0]!;
+}
+
+async function openRelatedArtifacts(): Promise<HTMLElement> {
+  click(await screen.findByTestId("chat-run-related-artifacts-trigger"));
+  return screen.findByTestId("chat-run-related-artifacts-dialog");
+}
+
 async function setupArtifactRun(
   outputEvents: ReturnType<typeof assistantEvent>[],
 ): Promise<void> {
@@ -94,7 +115,7 @@ async function setupArtifactRun(
   await readyChat();
 }
 
-test("Carry an artifact referenced only by history below the main result", async () => {
+test("Expose an artifact referenced only by history from the main result actions", async () => {
   const reportUrl = artifactUrl("supporting-report", "supporting-report.pdf");
   await setupArtifactRun([
     assistantEvent({
@@ -112,9 +133,6 @@ test("Carry an artifact referenced only by history below the main result", async
   ]);
 
   const main = screen.getByText("Final release summary");
-  const artifact = await findNamedLink(
-    "Open pdf preview for supporting-report.pdf",
-  );
   const assistantGroup = assistantGroupFor(main);
   const actions = assistantGroup.querySelector<HTMLElement>(
     '[data-testid="chat-event-actions"]',
@@ -123,19 +141,28 @@ test("Carry an artifact referenced only by history below the main result", async
     throw new Error("Expected the main result action bar");
   }
   expect(actions).toBeVisible();
-  expectDocumentOrder(main, artifact, actions);
+  expectDocumentOrder(main, actions);
   expect(screen.queryByText("Generated supporting evidence.")).toBeNull();
-  expect(assistantGroupFor(artifact)).toBe(assistantGroup);
+  expect(
+    queryNamedLink("Open pdf preview for supporting-report.pdf"),
+  ).toBeNull();
   const mainMessage = main.closest<HTMLElement>("[data-chat-run-work-main]");
   if (!mainMessage) {
-    throw new Error("Expected the artifact inside the main message region");
+    throw new Error("Expected the result inside the main message region");
   }
   expect(mainMessage).toContainElement(actions);
-  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+  const artifactTrigger = screen.getByTestId(
+    "chat-run-related-artifacts-trigger",
+  );
+  expect(actions).toContainElement(artifactTrigger);
+  expect(artifactTrigger).toHaveAccessibleName("1 artifact");
   expect(viewAgentProfileLinks()).toHaveLength(1);
+  const dialog = await openRelatedArtifacts();
+  expect(relatedArtifactRow(dialog, reportUrl)).toHaveTextContent("Report");
+  expect(queryWorkHistoryToggle("collapsed")).toBeNull();
 });
 
-test("A carried image link keeps its label and opens the image preview", async () => {
+test("A carried image keeps its label and opens a lightbox over the dialog", async () => {
   const url = artifactUrl("linked-evidence", "evidence.png");
   await setupArtifactRun([
     assistantEvent({
@@ -152,22 +179,166 @@ test("A carried image link keeps its label and opens the image preview", async (
     }),
   ]);
 
-  const link = await waitFor(() => {
-    const link = queryAllByRoleFast("link").find((candidate) => {
-      return candidate.textContent === "Supporting evidence";
-    });
-    if (!link) {
-      throw new Error("Expected the carried evidence link");
-    }
-    return link;
-  });
-  expect(link).toHaveAttribute("href", url);
-  expect(link.querySelector("strong")).toHaveTextContent("Supporting evidence");
-  expectDocumentOrder(screen.getByText("Final linked evidence summary"), link);
-  click(link);
+  const dialog = await openRelatedArtifacts();
+  const artifact = relatedArtifactRow(dialog, url);
+  expect(artifact).toHaveTextContent("Supporting evidence");
+  click(artifact);
   await expect(
     screen.findByTestId("attachment-lightbox-image"),
   ).resolves.toHaveAttribute("src", url);
+  expect(dialog).toBeVisible();
+  click(screen.getByTestId("attachment-lightbox-backdrop"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+  });
+  expect(dialog).toBeVisible();
+});
+
+async function openRelatedArtifactOverSidebar(filename: string, body?: string) {
+  const url = artifactUrl("sidebar-preview", filename);
+  if (body !== undefined) {
+    context.mocks.http.get(url, () => {
+      return HttpResponse.text(body);
+    });
+  }
+  await setupArtifactRun([
+    assistantEvent({
+      id: "sidebar-artifact-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: `[Supporting artifact](${url})`,
+    }),
+    assistantEvent({
+      id: "sidebar-artifact-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Final sidebar artifact summary",
+    }),
+  ]);
+  click(await findButton("Open artifacts"));
+  await expect(
+    screen.findByTestId("thread-sidebar-artifacts"),
+  ).resolves.toBeVisible();
+
+  const dialog = await openRelatedArtifacts();
+  click(relatedArtifactRow(dialog, url));
+  const lightbox = await screen.findByRole("dialog", {
+    name: `${filename} preview`,
+  });
+  expect(lightbox).toBeVisible();
+  expect(dialog).toBeVisible();
+  return { dialog, lightbox, url };
+}
+
+async function closeRelatedArtifactPreview(dialog: HTMLElement) {
+  click(screen.getByTestId("attachment-lightbox-backdrop"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
+  });
+  expect(dialog).toBeVisible();
+}
+
+test("Open a carried image over an existing artifact sidebar", async () => {
+  const { dialog, lightbox, url } =
+    await openRelatedArtifactOverSidebar("evidence.png");
+  await expect(
+    within(lightbox).findByTestId("attachment-lightbox-image"),
+  ).resolves.toHaveAttribute("src", url);
+  await closeRelatedArtifactPreview(dialog);
+});
+
+test.each([
+  ["walkthrough.mp4", "Video"],
+  ["narration.mp3", "Audio"],
+])(
+  "Open carried media %s over an existing artifact sidebar",
+  async (filename, kind) => {
+    const { dialog, lightbox, url } =
+      await openRelatedArtifactOverSidebar(filename);
+    await expect(
+      within(lightbox).findByLabelText(`${kind} preview for ${filename}`),
+    ).resolves.toHaveAttribute("src", url);
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test.each([
+  ["report.pdf", "#navpanes=0"],
+  ["page.html", ""],
+])(
+  "Open carried document %s over an existing artifact sidebar",
+  async (filename, fragment) => {
+    const { dialog, lightbox, url } =
+      await openRelatedArtifactOverSidebar(filename);
+    await expect(
+      within(lightbox).findByTitle(`${filename} preview`),
+    ).resolves.toHaveAttribute("src", `${url}${fragment}`);
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test.each([
+  ["summary.txt", "Related artifact content"],
+  ["notes.md", "# Related artifact content"],
+  ["data.json", '{"result":"Related artifact content"}'],
+  ["report.csv", "result\nRelated artifact content"],
+])(
+  "Read carried text %s over an existing artifact sidebar",
+  async (filename, body) => {
+    const { dialog, lightbox } = await openRelatedArtifactOverSidebar(
+      filename,
+      body,
+    );
+    await expect(
+      within(lightbox).findByText(/Related artifact content/u),
+    ).resolves.toBeVisible();
+    await closeRelatedArtifactPreview(dialog);
+  },
+);
+
+test("Open a carried generic file over an existing artifact sidebar", async () => {
+  const { dialog, lightbox } =
+    await openRelatedArtifactOverSidebar("archive.zip");
+  expect(
+    within(lightbox).getByText("No inline preview available for this file."),
+  ).toBeVisible();
+  await closeRelatedArtifactPreview(dialog);
+});
+
+test("List every carried artifact without a secondary browse step", async () => {
+  const urls = Array.from({ length: 12 }, (_, index) => {
+    return artifactUrl(
+      `complete-list-${String(index)}`,
+      `report-${String(index)}.pdf`,
+    );
+  });
+  await setupArtifactRun([
+    assistantEvent({
+      id: "complete-artifact-list-history",
+      runId: RUN_ID,
+      seqId: 2,
+      text: urls
+        .map((url, index) => {
+          return `![Report ${String(index)}](${url})`;
+        })
+        .join("\n\n"),
+    }),
+    assistantEvent({
+      id: "complete-artifact-list-main",
+      runId: RUN_ID,
+      seqId: 3,
+      text: "Final complete artifact list summary",
+    }),
+  ]);
+
+  const dialog = await openRelatedArtifacts();
+  expect(
+    dialog.querySelectorAll("[data-chat-run-related-artifact-url]"),
+  ).toHaveLength(urls.length);
+  expect(relatedArtifactRow(dialog, urls.at(-1)!)).toHaveTextContent(
+    "Report 11",
+  );
+  expect(within(dialog).queryByText(/browse all/iu)).toBeNull();
 });
 
 test("Keep completed result actions before recommended followups", async () => {
@@ -218,9 +389,6 @@ test("Keep completed result actions before recommended followups", async () => {
   await readyChat();
 
   const main = screen.getByText("The followup report is ready");
-  const artifact = await findNamedLink(
-    "Open pdf preview for followup-report.pdf",
-  );
   const mainMessage = main.closest<HTMLElement>("[data-chat-run-work-main]");
   if (!mainMessage) {
     throw new Error("Expected the result inside the main message region");
@@ -237,7 +405,10 @@ test("Keep completed result actions before recommended followups", async () => {
   expect(mainMessage).toContainElement(actions);
   expect(mainMessage).not.toContainElement(keepGoing);
   expect(assistantGroupFor(main)).toContainElement(keepGoing);
-  expectDocumentOrder(main, artifact, actions, keepGoing);
+  expect(actions).toContainElement(
+    screen.getByTestId("chat-run-related-artifacts-trigger"),
+  );
+  expectDocumentOrder(main, actions, keepGoing);
 });
 
 test("Subtract final artifacts after ordered URL deduplication", async () => {
@@ -280,13 +451,17 @@ test("Subtract final artifacts after ordered URL deduplication", async () => {
   const repeatedArtifacts = namedLinks("Open pdf preview for repeated.pdf");
   expect(repeatedArtifacts).toHaveLength(1);
   const repeated = repeatedArtifacts[0]!;
-  const appendix = await findNamedLink("Open pdf preview for appendix.pdf");
-  const source = await findNamedLink("Open pdf preview for source.pdf");
   expect(screen.queryByText("First historical output")).toBeNull();
   expect(screen.queryByText("Second historical output")).toBeNull();
-  expectDocumentOrder(main, repeated, appendix, source);
-  expect(assistantGroupFor(appendix)).toBe(assistantGroupFor(main));
-  expect(assistantGroupFor(source)).toBe(assistantGroupFor(main));
+  expectDocumentOrder(main, repeated);
+  expect(
+    screen.getByTestId("chat-run-related-artifacts-trigger"),
+  ).toHaveAccessibleName("2 artifacts");
+  const dialog = await openRelatedArtifacts();
+  expect(relatedArtifactRows(dialog, repeatedUrl)).toHaveLength(0);
+  const appendix = relatedArtifactRow(dialog, appendixUrl);
+  const source = relatedArtifactRow(dialog, sourceUrl);
+  expectDocumentOrder(appendix, source);
 });
 
 test("Keep artifacts with the same filename distinct when their URLs differ", async () => {
@@ -313,15 +488,12 @@ test("Keep artifacts with the same filename distinct when their URLs differ", as
     }),
   ]);
 
-  await findNamedLink("Open pdf preview for report.pdf");
-  await waitFor(() => {
-    expect(namedLinks("Open pdf preview for report.pdf")).toHaveLength(2);
-  });
-  const main = screen.getByText("Final same-name report summary");
-  const artifacts = namedLinks("Open pdf preview for report.pdf");
-  expectDocumentOrder(main, ...artifacts);
-  expect(artifacts[0]).toHaveAttribute("href", firstUrl);
-  expect(artifacts[1]).toHaveAttribute("href", secondUrl);
+  expect(screen.getByText("Final same-name report summary")).toBeVisible();
+  const dialog = await openRelatedArtifacts();
+  const first = relatedArtifactRow(dialog, firstUrl);
+  const second = relatedArtifactRow(dialog, secondUrl);
+  expectDocumentOrder(first, second);
+  expect(within(dialog).getAllByText("Report")).toHaveLength(2);
   expect(screen.queryByText("First report version")).toBeNull();
   expect(screen.queryByText("Second report version")).toBeNull();
 });
@@ -350,6 +522,7 @@ test("Do not carry inline media or action cards out of historical messages", asy
   expect(screen.queryByText("Historical rich output")).toBeNull();
   expect(screen.queryByAltText("Inline chart")).toBeNull();
   expect(screen.queryByTestId("plan-upgrade-card")).toBeNull();
+  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
 });
 
@@ -430,11 +603,10 @@ test("Carry artifacts across every run in the same run group", async () => {
   });
   await readyChat();
 
-  const main = screen.getByText("Latest run result");
-  const artifact = await findNamedLink("Open pdf preview for earlier-run.pdf");
+  expect(screen.getByText("Latest run result")).toBeVisible();
   expect(screen.queryByText("Earlier run output")).toBeNull();
-  expectDocumentOrder(main, artifact);
-  expect(assistantGroupFor(artifact)).toBe(assistantGroupFor(main));
+  const dialog = await openRelatedArtifacts();
+  expect(relatedArtifactRow(dialog, earlierUrl)).toHaveTextContent("Report");
   expect(queryButton("Expand grouped run history")).toBeNull();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
 });
@@ -482,5 +654,52 @@ test("Ignore artifacts from revoked output messages", async () => {
 
   expect(screen.getByText("The obsolete artifact was withdrawn")).toBeVisible();
   expect(queryNamedLink("Open pdf preview for obsolete.pdf")).toBeNull();
+  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
   expect(queryWorkHistoryToggle("collapsed")).toBeNull();
+});
+
+test("Keep historical artifact links inline when run work folding is off", async () => {
+  const reportUrl = artifactUrl("legacy-report", "legacy-report.pdf");
+  installRunChat({
+    chatEvents: [
+      promptEvent({
+        id: "legacy-artifact-user",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Prepare the legacy artifact",
+      }),
+      assistantEvent({
+        id: "legacy-artifact-output",
+        runId: RUN_ID,
+        seqId: 2,
+        text: `Generated legacy evidence.\n\n![Report](${reportUrl})`,
+      }),
+      assistantEvent({
+        id: "legacy-artifact-main",
+        runId: RUN_ID,
+        seqId: 3,
+        text: "Final legacy summary",
+      }),
+      completedEvent({
+        id: "legacy-artifact-complete",
+        runId: RUN_ID,
+        seqId: 4,
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
+  });
+  await readyChat();
+
+  expect(screen.queryByTestId("chat-run-related-artifacts-trigger")).toBeNull();
+  click(await findButton("Expand work history"));
+  expect(screen.getByText("Generated legacy evidence.")).toBeVisible();
+  await expect(
+    findNamedLink("Open pdf preview for legacy-report.pdf"),
+  ).resolves.toBeVisible();
+  expect(screen.getByText("Final legacy summary")).toBeVisible();
 });
