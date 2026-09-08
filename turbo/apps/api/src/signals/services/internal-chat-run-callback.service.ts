@@ -1911,7 +1911,6 @@ async function generateRecommendedFollowupsForCompletedRun(
   args: {
     readonly followupContext: readonly ChatCompletionContextMessage[];
     readonly threadId: string;
-    readonly followUpOptimizeEnabled: boolean;
   },
   signal: AbortSignal,
 ): Promise<readonly ChatRecommendedFollowup[] | undefined> {
@@ -1919,7 +1918,6 @@ async function generateRecommendedFollowupsForCompletedRun(
   const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
     messages: args.followupContext,
     threadId: args.threadId,
-    followUpOptimizeEnabled: args.followUpOptimizeEnabled,
   });
   signal.throwIfAborted();
   return suggestions.length > 0 ? suggestions : undefined;
@@ -2140,20 +2138,10 @@ async function runCompletedChatCallbackSideEffects(
 
   const followupsStep = (async () => {
     signal.throwIfAborted();
-    const featureSwitchContext = await loadUserFeatureSwitchContext(
-      args.db,
-      args.chatThread.orgId,
-      args.chatThread.userId,
-    );
-    signal.throwIfAborted();
     const followups = await generateRecommendedFollowupsForCompletedRun(
       {
         followupContext: args.followupContext,
         threadId: args.chatThread.chatThreadId,
-        followUpOptimizeEnabled: isFeatureEnabled(
-          FeatureSwitchKey.FollowUpOptimize,
-          featureSwitchContext,
-        ),
       },
       signal,
     );
