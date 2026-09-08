@@ -15,21 +15,15 @@ export enum Reason {
   Daemon = "daemon",
 }
 
+/** Private bookkeeping shared by detach() and clearAllDetached(). */
 class PromiseTracker {
-  collected = new Set<Promise<unknown>>();
-  reasons = new Map<Promise<unknown>, Reason>();
-  descriptions = new Map<Promise<unknown>, string>();
-  handledErrors = new WeakSet<object>();
+  readonly collected = new Map<
+    Promise<void>,
+    { readonly reason: Reason; readonly description?: string }
+  >();
 }
 
 const tracker = new PromiseTracker();
-function isHandledDetachedError(error: unknown): boolean {
-  return (
-    (typeof error === "object" || typeof error === "function") &&
-    error !== null &&
-    tracker.handledErrors.has(error)
-  );
-}
 
 export function detach<T>(
   promise: T | Promise<T>,
@@ -48,7 +42,7 @@ export function detach<T>(
     silencePromise = Promise.resolve(promise).then(
       () => {},
       (error: unknown) => {
-        if (!isAbortError(error) && !isHandledDetachedError(error)) {
+        if (!isAbortError(error)) {
           L.error(`Detached promise rejected [${reason}]`, error);
         }
       },
@@ -56,64 +50,17 @@ export function detach<T>(
   }
 
   if (IN_VITEST && silencePromise) {
-    tracker.collected.add(silencePromise);
-    tracker.reasons.set(silencePromise, reason);
-    if (description) {
-      tracker.descriptions.set(silencePromise, description);
-    }
+    tracker.collected.set(silencePromise, { reason, description });
   }
 }
 
-export async function clearAllDetached() {
-  if (!IN_VITEST) {
-    tracker.collected.clear();
-    tracker.reasons.clear();
-    tracker.descriptions.clear();
-    return [];
+/** Shared test setup drains detached work after testContext aborts its lifetimes. */
+export async function clearAllDetached(): Promise<void> {
+  for (const [promise, { reason, description }] of tracker.collected) {
+    L.debug(`Await promise: ${reason} ${description ?? ""}`);
+    await promise;
+    tracker.collected.delete(promise);
   }
-
-  L.debug("Clear all detached promises");
-
-  const settledResult: {
-    promise: Promise<unknown>;
-    reason: Reason | undefined;
-    description: string | undefined;
-    result?: unknown;
-    error?: unknown;
-  }[] = [];
-
-  L.debugGroup("Detached promises");
-  for (const promise of tracker.collected) {
-    const reason = tracker.reasons.get(promise);
-    const description = tracker.descriptions.get(promise);
-    L.debug(`Await promise: ${reason ?? "unknown"} ${description ?? ""}`);
-    await promise.then(
-      (result) => {
-        settledResult.push({
-          promise,
-          reason,
-          description: tracker.descriptions.get(promise),
-          result,
-        });
-      },
-      (error: unknown) => {
-        throwIfNotAbort(error);
-        settledResult.push({
-          promise,
-          reason,
-          description: tracker.descriptions.get(promise),
-          error,
-        });
-      },
-    );
-  }
-  L.debugGroupEnd();
-
-  tracker.collected.clear();
-  tracker.reasons.clear();
-  tracker.descriptions.clear();
-
-  return settledResult;
 }
 
 export const isAbortError = (error: unknown): boolean => {
@@ -152,12 +99,6 @@ export function completeOnLocalAbort(
       throw error;
     }
   });
-}
-
-function throwIfNotAbort(e: unknown) {
-  if (!isAbortError(e)) {
-    throw e;
-  }
 }
 
 export function throwIfAbort(e: unknown) {

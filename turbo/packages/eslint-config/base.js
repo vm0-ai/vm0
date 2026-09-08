@@ -151,7 +151,7 @@ export const config = [
       okou: okouPlugin,
     },
     rules: {
-      "turbo/no-undeclared-env-vars": "warn",
+      "turbo/no-undeclared-env-vars": "error",
       "arrow-body-style": ["error", "always"],
       complexity: ["error", { max: 20 }],
       "okou/no-msw-bypass": "error",

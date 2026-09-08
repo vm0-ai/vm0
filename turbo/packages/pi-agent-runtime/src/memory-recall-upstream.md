@@ -49,3 +49,8 @@ Guest output and transactionally stores private provenance in the additive
 `run_output_memory_citations` table, keyed by run and event sequence. Historical
 chat, Snapshot, browser-cache, shared-thread, search, callback, and activity
 reads apply the same text-only defense without rewriting source rows or blobs.
+
+Issue #32569 adds bounded escaping for isolated, closed code examples of the
+delimiter constants. Real envelopes inside code remain private. The native
+Codex 0.153.4 source/order evidence, literal grammar and public caller audit are
+documented in [the delimiter boundary](../../../../docs/citation-delimiter-literals.md).

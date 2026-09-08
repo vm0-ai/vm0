@@ -15,6 +15,7 @@ const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 pub(crate) enum RawHttpAction {
     Respond(Vec<u8>),
     Disconnect,
+    WaitForDisconnect,
     WaitThenRespond {
         release: oneshot::Receiver<()>,
         response: Vec<u8>,
@@ -323,6 +324,18 @@ async fn serve(
                 write_response(index, &mut socket, &response).await?;
             }
             RawHttpAction::Disconnect => {}
+            RawHttpAction::WaitForDisconnect => {
+                let mut byte = [0];
+                let read = tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, socket.read(&mut byte))
+                    .await
+                    .map_err(|_| fixture_timeout(index, "waiting for client disconnect"))??;
+                if read != 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "expected client disconnect without another request",
+                    ));
+                }
+            }
             RawHttpAction::WaitThenRespond { release, response } => {
                 release.await.map_err(|_| {
                     io::Error::new(

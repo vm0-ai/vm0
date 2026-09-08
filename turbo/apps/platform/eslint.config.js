@@ -58,7 +58,7 @@ export default [
     },
     rules: {
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
   {
@@ -107,16 +107,7 @@ export default [
         },
       ],
       "ccstate/no-get-signal": "error",
-      "ccstate/no-package-variable": [
-        "error",
-        {
-          allowedConstructors: [
-            "LocationOverrides",
-            "PromiseTracker",
-            "LoggerRegistry",
-          ],
-        },
-      ],
+      "ccstate/no-package-variable": "error",
       "ccstate/computed-const-args-package-scope": "error",
     },
   },
@@ -166,19 +157,19 @@ export default [
           selector:
             "CallExpression[callee.name=/^(it|test)$/][arguments.2.type='Literal']",
           message:
-            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Use event-driven synchronization or setLoop, never handwritten loops with sleep/delay. Find and fix the underlying timing issue instead.",
         },
         {
           selector:
             "CallExpression[callee.name='describe'][arguments.2.type='Literal']",
           message:
-            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Use event-driven synchronization or setLoop, never handwritten loops with sleep/delay. Find and fix the underlying timing issue instead.",
         },
         {
           selector:
             "CallExpression[callee.name='waitFor'] > ObjectExpression > Property[key.name='timeout']",
           message:
-            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Use event-driven synchronization or setLoop, never handwritten loops with sleep/delay. Find and fix the underlying timing issue instead.",
         },
         {
           selector: "NewExpression[callee.name='Date'][arguments.length=0]",
@@ -226,25 +217,31 @@ export default [
       "ccstate/no-detach-in-signals": "off",
     },
   },
-  // Allow direct fetch$ in the abstraction layers and tests.
-  // View files below use fetch$ for multipart file uploads that lack typed
-  // contracts — migrate them to apiClient$ when contracts are added.
+  // Active transport and lifecycle boundaries are documented in docs/platform-lint.md.
   {
-    files: [
-      "src/signals/fetch.ts",
-      "src/signals/api-client.ts",
-      "src/signals/okou-page/chat-draft.ts",
-      "src/signals/__tests__/fetch.test.ts",
-      "src/signals/voice-io/voice-io-stt.ts",
-      "src/views/okou-page/components/org-manage/org-general-tab.tsx",
-      "src/views/agents-page/agents-page.tsx",
-      "src/views/okou-page/settings-tab.tsx",
-      "src/lib/push-notifications.ts",
-    ],
-    rules: {
-      "ccstate/no-direct-fetch": "off",
-    },
+    files: ["src/lib/resource-fetch.ts"],
+    rules: { "ccstate/no-direct-fetch": "off" },
   },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/signals/utils.ts"],
+    rules: { "ccstate/no-manual-polling": "error" },
+  },
+  ...[
+    ["src/signals/location.ts", "LocationOverrides"],
+    ["src/signals/utils.ts", "PromiseTracker"],
+    ["src/signals/log.ts", "LoggerRegistry"],
+  ].map(([file, constructor]) => {
+    return {
+      files: [file],
+      rules: {
+        "ccstate/no-package-variable": [
+          "error",
+          { allowedConstructors: [constructor] },
+        ],
+      },
+    };
+  }),
   // Allow direct localStorage in the abstraction layer only
   {
     files: ["src/signals/external/local-storage.ts"],
@@ -252,28 +249,19 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
-  // Allow Promise primitives in the centralized deferred helper and dedicated
-  // browser wrappers. App code should continue using createDeferredPromise().
+  // Only primitive implementations may construct deferred promises.
   {
-    files: [
-      "src/signals/utils.ts",
-      "src/polyfill.ts",
-      "src/views/okou-page/components/org-manage/read-image-dimensions.ts",
-    ],
+    files: ["src/signals/utils.ts", "src/polyfill.ts"],
     rules: {
       "ccstate/no-new-promise": "off",
     },
   },
-  // Allow new AbortController in signal infrastructure, test helpers, and
-  // views that need a controller outliving the page signal (e.g. post-navigate
-  // async work).
+  // Root lifetimes are created here; callers inherit a parent or use resetSignal().
   {
     files: [
       "src/signals/utils.ts",
       "src/polyfill.ts",
       "src/signals/__tests__/test-helpers.ts",
-      "src/signals/__tests__/utils.test.ts",
-      "src/signals/__tests__/realtime.test.ts",
     ],
     rules: {
       "ccstate/no-new-abort-controller": "off",
@@ -393,33 +381,6 @@ export default [
               name: "@clerk/clerk-js",
               message:
                 "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
-            },
-            {
-              name: "@clerk/ui",
-              message:
-                "Hosted Clerk UI is not part of platform auth; use the app-owned Auth v2 components.",
-            },
-            {
-              name: "@solana/web3.js",
-              message:
-                "Wallet support is not part of the platform auth surface.",
-            },
-            {
-              name: "katex",
-              message: "Markdown math rendering is intentionally disabled.",
-            },
-            {
-              name: "rehype-katex",
-              message: "Markdown math rendering is intentionally disabled.",
-            },
-            {
-              name: "remark-math",
-              message: "Markdown math rendering is intentionally disabled.",
-            },
-            {
-              name: "@tabler/icons-react",
-              message:
-                "Use lucide-react or a shared @okouai/ui brand icon instead.",
             },
           ],
         },

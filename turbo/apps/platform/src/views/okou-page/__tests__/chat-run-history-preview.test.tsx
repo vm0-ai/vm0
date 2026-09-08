@@ -323,16 +323,13 @@ test.each(["completed", "failed", "cancelled"] as const)(
     const historyBody = document.querySelector<HTMLElement>(
       '[data-chat-scroll-anchor-event-id="rich-preview-0"]',
     );
-    const mainBody = document.querySelector<HTMLElement>(
-      '[data-chat-scroll-anchor-event-id="rich-preview-3"]',
-    );
-    if (!historyBody || !mainBody) {
-      throw new Error("Expected matching assistant message bodies");
+    if (!historyBody) {
+      throw new Error("Expected the history message body");
     }
     expect(historyBody).toHaveTextContent(
       "Review Checked dependencies and tests.",
     );
-    expect(historyBody.className).toBe(mainBody.className);
+    expect(screen.getByRole("heading", { name: "Review" })).toBeVisible();
     await expect(
       screen.findByAltText("Dependency chart"),
     ).resolves.toBeVisible();
