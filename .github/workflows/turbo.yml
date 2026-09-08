@@ -1214,6 +1214,74 @@ jobs:
           API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
+      # Disposable #32264 preview fixture. This branch must not be merged.
+      - name: Prepare old-key application fixtures for KMS migration
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/kms-migration-32264-runtime'
+        env:
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+        run: |
+          set -euo pipefail
+          cp "$API_ENV_FILE" "$RUNNER_TEMP/kms-32264-original.env"
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              export "${line%%=*}=${line#*=}"
+            fi
+          done < "$API_ENV_FILE"
+          pnpm --dir turbo/apps/api exec tsx scripts/kms-migration-runtime-smoke.mjs prepare-old
+
+      - name: Fetch prepared test KMS migration credentials
+        id: kms-migration-config
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/kms-migration-32264-runtime'
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: dev_kms_migration_32264
+
+      - name: Verify new KMS runtime credentials and configure this API preview
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/kms-migration-32264-runtime'
+        env:
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+          KMS_MIGRATION_CONFIG_JSON: ${{ toJSON(steps.kms-migration-config.outputs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+
+          config = json.loads(os.environ["KMS_MIGRATION_CONFIG_JSON"])
+          names = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "SECRETS_KMS_KEY_ID", "AWS_REGION", "AWS_DEFAULT_REGION"]
+          for name in names:
+              if not config.get(name) or "\n" in config[name]:
+                  raise RuntimeError(f"Missing or invalid prepared KMS configuration: {name}")
+          if config["SECRETS_KMS_KEY_ID"] != "arn:aws:kms:us-west-2:251964670836:key/1a610d49-e630-4726-9226-da01225eddfc":
+              raise RuntimeError("Unexpected KMS migration target; test key required")
+          path = Path(os.environ["API_ENV_FILE"])
+          lines = [line for line in path.read_text().splitlines() if line.partition("=")[0] not in names]
+          lines.extend(f"{name}={config[name]}" for name in names)
+          path.write_text("\n".join(lines) + "\n")
+          PYTHON
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              export "${line%%=*}=${line#*=}"
+            fi
+          done < "$API_ENV_FILE"
+          pnpm --dir turbo/apps/api exec tsx scripts/kms-migration-runtime-smoke.mjs verify-new
+
+      - name: Verify old runtime can read newly encrypted application data
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/kms-migration-32264-runtime'
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              export "${line%%=*}=${line#*=}"
+            fi
+          done < "$RUNNER_TEMP/kms-32264-original.env"
+          pnpm --dir turbo/apps/api exec tsx scripts/kms-migration-runtime-smoke.mjs verify-rollback
+          rm "$RUNNER_TEMP/kms-32264-original.env" "$RUNNER_TEMP/kms-32264-old.json" "$RUNNER_TEMP/kms-32264-new.json"
+
       - name: Deploy API to Vercel
         id: api-deploy
         uses: ./.github/actions/vercel-deploy
