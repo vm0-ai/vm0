@@ -89,6 +89,10 @@ export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
 
+export const settingsDialogSessionActive$ = computed((get) => {
+  return get(internalSettingsDialogSessionActive$);
+});
+
 export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
 
 export const setPendingAccountMenuSettingsSection$ = command(

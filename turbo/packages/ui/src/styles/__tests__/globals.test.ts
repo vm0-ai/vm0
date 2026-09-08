@@ -229,6 +229,17 @@ describe("global Lucide defaults", () => {
   });
 });
 
+describe("dialog motion", () => {
+  it("fades and translates dialog content in both directions", () => {
+    expect(readRuleBody(globalCss, "@keyframes okou-dialog-popup-in")).toMatch(
+      /from\s*{[\s\S]*?opacity:\s*0;[\s\S]*?translateY\(8px\)[\s\S]*?to\s*{[\s\S]*?opacity:\s*1;[\s\S]*?translateY\(0\)/,
+    );
+    expect(readRuleBody(globalCss, "@keyframes okou-dialog-popup-out")).toMatch(
+      /from\s*{[\s\S]*?opacity:\s*1;[\s\S]*?translateY\(0\)[\s\S]*?to\s*{[\s\S]*?opacity:\s*0;[\s\S]*?translateY\(8px\)/,
+    );
+  });
+});
+
 describe("interaction state ladder", () => {
   it.each(THEMES)(
     "gives $name a layer colour and every alpha",

@@ -10,8 +10,8 @@ import {
   withLegacyAutoFocus,
 } from "../../lib/base-ui-compat";
 import {
-  dialogPopupTransitionClassName,
-  modalBackdropTransitionClassName,
+  dialogBackdropAnimationClassName,
+  dialogPopupAnimationClassName,
 } from "./popup-motion";
 import { cn } from "../../lib/utils";
 
@@ -79,7 +79,7 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        modalBackdropTransitionClassName,
+        dialogBackdropAnimationClassName,
         "fixed inset-0 bg-overlay/45 dark:bg-overlay/55",
         className,
       )}
@@ -120,7 +120,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           ref={ref}
           data-slot="dialog-content"
           className={cn(
-            dialogPopupTransitionClassName,
+            dialogPopupAnimationClassName,
             "fixed left-[50%] top-[50%] grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
             className,
           )}

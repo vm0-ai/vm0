@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Dialog, DialogContent, DialogTitle } from "../dialog";
 
 describe("Dialog", () => {
-  it("applies the shared Base UI dialog transitions", () => {
+  it("applies Base UI animations that run on initial mount", () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -13,15 +13,18 @@ describe("Dialog", () => {
     );
 
     expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass(
-      "transition-opacity",
-      "data-starting-style:opacity-0",
-      "data-ending-style:opacity-0",
+      "data-open:animate-[okou-dialog-backdrop-in_150ms_ease-out]",
+      "data-closed:animate-[okou-dialog-backdrop-out_150ms_ease-out]",
+      "motion-reduce:animate-none",
     );
     expect(screen.getByRole("dialog", { name: "Default dialog" })).toHaveClass(
-      "transition-[transform,opacity]",
-      "data-starting-style:opacity-0",
-      "data-ending-style:opacity-0",
+      "data-open:animate-[okou-dialog-popup-in_150ms_ease-out]",
+      "data-closed:animate-[okou-dialog-popup-out_150ms_ease-out]",
+      "motion-reduce:animate-none",
     );
+    expect(
+      screen.getByRole("dialog", { name: "Default dialog" }),
+    ).toHaveAttribute("data-open");
   });
 
   it("renders an overlay for nested dialogs", () => {
