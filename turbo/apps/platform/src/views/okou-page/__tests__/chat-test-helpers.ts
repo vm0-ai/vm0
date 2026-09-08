@@ -103,6 +103,7 @@ interface ThreadListItem {
   serviceTier?: "priority" | null;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  selectedVideoModel?: string | null;
 }
 
 const UUID_PATTERN =
@@ -123,6 +124,7 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
       serviceTier: thread.serviceTier ?? null,
       computerUseHostId: thread.computerUseHostId ?? null,
       cloudBrowserEnabled: thread.cloudBrowserEnabled ?? false,
+      selectedVideoModel: thread.selectedVideoModel ?? null,
     };
   });
 }

@@ -39,7 +39,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.PresentationTemplates, {})).toBe(
       true,
     );
@@ -367,9 +366,6 @@ describe("getFeatureSwitchMetadata", () => {
   it("should classify non-internal switches by rollout audience", () => {
     const metadata = getFeatureSwitchMetadata();
 
-    expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
-      "released",
-    );
     expect(metadata[FeatureSwitchKey.PresentationTemplates].rolloutStage).toBe(
       "released",
     );

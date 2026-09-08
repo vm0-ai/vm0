@@ -28,8 +28,8 @@ mod session_history;
 /// How long before we auto-flush pending ops (matching TS: 30s).
 const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 
-/// Timeout for telemetry HTTP requests (shorter than default API timeout).
-const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
+/// Timeout for telemetry HTTP requests, including API cold starts.
+const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(10);
 const RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Effective resource path once the guest process has spawned.
@@ -1289,6 +1289,15 @@ mod tests {
             flush.as_mut().now_or_never().is_none(),
             "flush returned before the held auto-flush response completed"
         );
+
+        // API cold starts can exceed the previous five-second request deadline.
+        tokio::select! {
+            biased;
+            () = flush.as_mut() => {
+                panic!("flush timed out before the delayed API response was released");
+            }
+            () = tokio::time::sleep(Duration::from_secs(6)) => {}
+        }
 
         release_tx.send(()).unwrap();
         tokio::time::timeout(Duration::from_secs(1), flush)

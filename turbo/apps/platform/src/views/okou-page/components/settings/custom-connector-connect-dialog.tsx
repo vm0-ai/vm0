@@ -21,13 +21,11 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCustomConnectorDialog$,
   connectCustomConnectorAuthorization$,
-  connectCustomConnectorAccountAuthorization$,
   connectCustomConnectorAuthorizationForAgent$,
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
   setCustomConnectorValues$,
-  setCustomConnectorAccountValues$,
   setCustomConnectorValuesForAgent$,
 } from "../../../../signals/okou-page/settings/custom-connectors.ts";
 import { sanitizeTokenInputRecord } from "../../../../signals/okou-page/settings/token-input.ts";
@@ -163,15 +161,9 @@ function useCustomConnectorConnectionSubmitters(
   const [agentAuthorizationLoadable, submitAgentAuthorization] = useLoadableSet(
     connectCustomConnectorAuthorizationForAgent$,
   );
-  const [accountValuesLoadable, submitAccountValues] = useLoadableSet(
-    setCustomConnectorAccountValues$,
-  );
-  const [accountAuthorizationLoadable, submitAccountAuthorization] =
-    useLoadableSet(connectCustomConnectorAccountAuthorization$);
   const account = accountOptions.account;
   const usesDefaultProjection =
     accountOptions.useDefaultConnectorProjection === true;
-  const managesAccount = !usesDefaultProjection;
 
   const submitDeclaredValues = async (
     args: {
@@ -180,9 +172,6 @@ function useCustomConnectorConnectionSubmitters(
     },
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (managesAccount) {
-      return await submitAccountValues({ ...args, account }, signal);
-    }
     if (agentId) {
       return await submitAgentValues({ ...args, agentId, account }, signal);
     }
@@ -192,12 +181,6 @@ function useCustomConnectorConnectionSubmitters(
     connectorId: string,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
-    if (managesAccount) {
-      return await submitAccountAuthorization(
-        { id: connectorId, account },
-        signal,
-      );
-    }
     if (agentId) {
       return await submitAgentAuthorization(
         {
@@ -228,9 +211,7 @@ function useCustomConnectorConnectionSubmitters(
       valuesLoadable.state === "loading" ||
       agentValuesLoadable.state === "loading" ||
       authorizationLoadable.state === "loading" ||
-      agentAuthorizationLoadable.state === "loading" ||
-      accountValuesLoadable.state === "loading" ||
-      accountAuthorizationLoadable.state === "loading",
+      agentAuthorizationLoadable.state === "loading",
     submitDeclaredValues,
     submitAuthorizationMode,
   };

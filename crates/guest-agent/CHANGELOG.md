@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.13...guest-agent-v0.86.14) (2026-09-08)
+
+
+### Bug Fixes
+
+* **runner:** allow api cold starts in http timeout budgets ([#32517](https://github.com/vm0-ai/vm0/issues/32517)) ([041a420](https://github.com/vm0-ai/vm0/commit/041a420f4e44a8d648945c6fc817cd9b571e4a88))
+
 ## [0.86.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.12...guest-agent-v0.86.13) (2026-09-08)
 
 ## [0.86.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.11...guest-agent-v0.86.12) (2026-09-07)

@@ -54,7 +54,8 @@ printf 'BENTOML_ENDPOINT_SHA256='
 printf '%s' "$BENTO_CLOUD_API_ENDPOINT" | sha256sum | cut -d' ' -f1
 # Raw DNS has dedicated runner coverage. Keep this connector-refresh probe on
 # IPv4 so an unavailable AAAA response cannot block an otherwise valid request.
-if curl --ipv4 --silent --show-error --max-time 5 \
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+if curl --ipv4 --silent --show-error --max-time 15 \
     --output /dev/null \
     "${BENTO_CLOUD_API_ENDPOINT}/"; then
     printf '__OUTPUT_PREFIX__SENT\n'

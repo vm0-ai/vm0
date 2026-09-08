@@ -18,9 +18,11 @@ import {
 } from "./workflows-signals.ts";
 import { setOfficialWorkflowConfigurationForm$ } from "./official-workflows-signals.ts";
 import { detachedNavigateTo$ } from "../route.ts";
+import { resetConnectorAccountDialogs$ } from "../okou-page/settings/connector-account-dialogs.ts";
 
 export const setupWorkflowDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(resetConnectorAccountDialogs$);
     set(setOfficialWorkflowConfigurationForm$, null);
     set(resetWorkflowDetailUiState$);
     const detail = await get(currentWorkflowDetail$);

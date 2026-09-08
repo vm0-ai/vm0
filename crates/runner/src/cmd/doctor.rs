@@ -48,8 +48,8 @@ const DOCTOR_IO_CONCURRENCY: usize = 4;
 
 const SYSTEMD_SYSTEM_DIR: &str = "/etc/systemd/system";
 
-/// Total timeout for each API connectivity probe.
-const API_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+/// Total timeout for each API connectivity probe, including cold starts.
+const API_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Grace period where a freshly claimed new-sandbox run may still be preparing
 /// and may not have a stable Firecracker process yet.
@@ -3736,6 +3736,39 @@ printf '%s\n' \
 
         assert!(reports.is_empty());
         api.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn build_runner_reports_allows_api_cold_starts() {
+        let server = MockServer::start_async().await;
+        let api = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/api")
+                    .header("authorization", "Bearer test-token");
+                then.status(200).delay(Duration::from_secs(6));
+            })
+            .await;
+        let api_url = server.url("/api");
+        let fixture = doctor_report_fixture_with_server(
+            "running",
+            None,
+            None,
+            Some((&api_url, "test-token")),
+        );
+        let runner = live_runner_instance(
+            std::process::id(),
+            fixture.config_path.clone(),
+            fixture.base_dir.clone(),
+        );
+        let client = build_api_client();
+
+        let reports =
+            build_runner_reports(&[runner], None, client.as_ref(), &empty_discovered(), &[]).await;
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].api_ok, Some(true));
+        api.assert_calls_async(1).await;
     }
 
     #[tokio::test]

@@ -250,6 +250,7 @@ function mockChatThreadSnapshot(
           selectedModel: null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
         };
       }),
       latestEventId: null,

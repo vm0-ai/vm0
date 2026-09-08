@@ -9,12 +9,13 @@ use std::sync::atomic::AtomicBool;
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use guest_contracts::file_write::WRITE_FILE_HELPER_TIMEOUT_MS;
 use guest_control_proto::{
-    self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
-    MSG_WRITE_FILES_RESULT,
+    self, BorrowedRawMessage, FileWriteStage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN,
+    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES_RESULT,
 };
 
 use crate::drain::{DrainCancellation, drain_into_vec_cancellable};
 use crate::error::to_io_error;
+use crate::file_write_progress::FileWriteRequestProgress;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::shutdown::handle_shutdown;
@@ -56,7 +57,9 @@ fn handle_write_file(
     append: bool,
     private: bool,
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
 ) -> (bool, String) {
+    progress.mark(FileWriteStage::StartingHelper);
     log(
         "INFO",
         &format!(
@@ -74,7 +77,13 @@ fn handle_write_file(
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
 
-    wait_write_file_child(child, content, connection_cancel, SystemThreadSpawner)
+    wait_write_file_child(
+        child,
+        content,
+        connection_cancel,
+        progress,
+        SystemThreadSpawner,
+    )
 }
 
 fn handle_write_files(
@@ -83,7 +92,9 @@ fn handle_write_files(
     content_bytes: usize,
     private: bool,
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
 ) -> (bool, String) {
+    progress.mark(FileWriteStage::StartingHelper);
     let operation = if private {
         "write_private_files"
     } else {
@@ -99,13 +110,20 @@ fn handle_write_files(
         Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
     };
 
-    wait_write_file_child(child, payload, connection_cancel, SystemThreadSpawner)
+    wait_write_file_child(
+        child,
+        payload,
+        connection_cancel,
+        progress,
+        SystemThreadSpawner,
+    )
 }
 
 fn wait_write_file_child<S>(
     child: Child,
     content: &[u8],
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
     spawner: S,
 ) -> (bool, String)
 where
@@ -116,6 +134,7 @@ where
         content,
         WRITE_FILE_HELPER_TIMEOUT_MS,
         connection_cancel,
+        progress,
         spawner,
     )
 }
@@ -125,11 +144,13 @@ fn wait_write_file_child_with_timeout<S>(
     content: &[u8],
     timeout_ms: u32,
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
     spawner: S,
 ) -> (bool, String)
 where
     S: ThreadSpawner,
 {
+    progress.mark(FileWriteStage::WaitingForHelper);
     let cancel = match DrainCancellation::new() {
         Ok(cancel) => Arc::new(cancel),
         Err(error) => {
@@ -213,11 +234,13 @@ where
                 )
             },
         );
+        progress.mark(FileWriteStage::JoiningStdin);
         let stdin_result = match stdin_handle.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
         };
 
+        progress.mark(FileWriteStage::DrainingStderr);
         let _ = await_drain_deadline(&done_rx, 1, &cancel, EXEC_OUTPUT_DRAIN_DEADLINE);
         let stderr = stderr_handle.join().unwrap_or_default();
 
@@ -351,6 +374,7 @@ pub(crate) fn handle_decoded_write_file_message(
     seq: u32,
     decoded: DecodedWriteFileMessage<'_>,
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_file(
         decoded.path,
@@ -359,6 +383,7 @@ pub(crate) fn handle_decoded_write_file_message(
         decoded.append,
         decoded.private,
         connection_cancel,
+        progress,
     );
     let payload = guest_control_proto::encode_write_file_result(success, &error);
     guest_control_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
@@ -369,6 +394,7 @@ pub(crate) fn handle_decoded_write_files_message(
     decoded: DecodedWriteFilesMessage<'_>,
     private: bool,
     connection_cancel: &AtomicBool,
+    progress: &FileWriteRequestProgress,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_files(
         decoded.payload,
@@ -376,6 +402,7 @@ pub(crate) fn handle_decoded_write_files_message(
         decoded.content_bytes,
         private,
         connection_cancel,
+        progress,
     );
     let payload = guest_control_proto::encode_write_files_result(success, &error);
     guest_control_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
@@ -476,6 +503,7 @@ mod tests {
             child,
             b"",
             &connection_cancel,
+            &crate::file_write_progress::FileWriteProgress::default().start(1),
             FailingThreadSpawner::fail_once(THREAD_WRITE_STDERR),
         );
 
@@ -518,6 +546,7 @@ mod tests {
             &content,
             10,
             &connection_cancel,
+            &crate::file_write_progress::FileWriteProgress::default().start(1),
             SystemThreadSpawner,
         );
 
@@ -578,6 +607,7 @@ mod tests {
             &content,
             1_000,
             &connection_cancel,
+            &crate::file_write_progress::FileWriteProgress::default().start(1),
             SystemThreadSpawner,
         );
         let _ = std::fs::remove_file(&fifo_path);

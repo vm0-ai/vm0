@@ -62,14 +62,16 @@ trap 'rm -f "$response_file"' EXIT
 deadline=$((SECONDS + 90))
 while ((SECONDS < deadline)); do
     : > "$response_file"
-    curl --silent --show-error --max-time 5 \
+    # The allowed request can spend up to 10 seconds resolving auth. A transport
+    # failure or partial response must not end the run before policy is observed.
+    if curl --silent --show-error --max-time 15 \
         --resolve 'firewall-placeholder.vm3.ai:443:8.8.8.8' \
         --output "$response_file" \
         --request POST \
         --header 'content-type: application/json' \
         --data '{"objectID":"vm0-e2e"}' \
-        '__REQUEST_URL__' || true
-    if ! grep -Eq '"error"[[:space:]]*:[[:space:]]*"permission_denied"' "$response_file"; then
+        '__REQUEST_URL__' &&
+        ! grep -Eq '"error"[[:space:]]*:[[:space:]]*"permission_denied"' "$response_file"; then
         printf 'ALGOLIA_PERMISSION_ALLOWED\n'
         exit 0
     fi

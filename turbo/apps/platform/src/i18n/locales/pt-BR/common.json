@@ -5594,6 +5594,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Ação necessária — entrega pausada",
         "addAction": "Adicionar automação do Calendar",
         "addAria": "Adicionar automação do Google Calendar",
         "addDescriptionCancelled": "Execute este fluxo de trabalho quando um evento do Google Calendar for cancelado.",
@@ -5602,16 +5603,24 @@
         "addTitle": "Adicionar automação do Google Calendar",
         "calendarId": "ID do calendário",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "Este calendário não está mais disponível. Escolha outro calendário para retomar esta automação.",
         "cancelledDescription": "Execute quando um evento do calendário for cancelado.",
         "cancelledRule": "Quando um evento do calendário {{calendar}} for cancelado",
         "cancelledTitle": "Evento do Google Calendar cancelado",
+        "changeAria": "Alterar automação do Google Calendar",
+        "changeCalendar": "Alterar calendário",
         "createdDescription": "Execute quando um evento do calendário for criado.",
         "createdRule": "Quando o calendário {{calendar}} receber um novo evento",
         "createdTitle": "Evento do Google Calendar criado",
+        "enabledIntent": "Ativada",
+        "reconnectDescription": "O Google Calendar precisa ser reconectado antes que esta automação possa ser retomada.",
+        "reconnectGoogleCalendar": "Reconectar Google Calendar",
+        "saveCalendar": "Salvar calendário",
         "summary": "Calendário {{calendar}}",
         "updatedDescription": "Execute quando um evento do calendário for atualizado.",
         "updatedRule": "Quando um evento do calendário {{calendar}} for atualizado",
-        "updatedTitle": "Evento do Google Calendar atualizado"
+        "updatedTitle": "Evento do Google Calendar atualizado",
+        "updateError": "Não foi possível alterar este calendário. Tente novamente."
       },
       "chat": {
         "addAction": "Adicionar automação de chat",
@@ -6191,6 +6200,7 @@
       }
     },
     "list": {
+      "actionRequired": "Ação necessária",
       "agentEmpty": "Nenhum fluxo de trabalho é executado como este agente ainda.",
       "all": "Todos",
       "allAgents": "Todos os agentes",
@@ -6208,6 +6218,7 @@
       },
       "noWorkflows": "Nenhum fluxo de trabalho",
       "open": "Abrir {{title}}",
+      "openRecovery": "Abrir recuperação de {{title}}",
       "runsAs": "Executado como",
       "runsAsAria": "Executado como {{agent}}",
       "section": {

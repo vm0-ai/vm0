@@ -5526,6 +5526,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "対応が必要 — 配信を一時停止中",
         "addAction": "カレンダーのオートメーションを追加する",
         "addAria": "Google Calendar オートメーションを追加",
         "addDescriptionCancelled": "Google Calendar イベントがキャンセルされたときに、このワークフローを実行します。",
@@ -5534,16 +5535,24 @@
         "addTitle": "Google Calendar オートメーションを追加",
         "calendarId": "カレンダーID",
         "calendarIdPlaceholder": "プライマリー",
+        "calendarNotFoundDescription": "このカレンダーは利用できなくなりました。このオートメーションを再開するには、別のカレンダーを選択してください。",
         "cancelledDescription": "カレンダーイベントがキャンセルされたときに実行されます。",
         "cancelledRule": "カレンダー {{calendar}} イベントがキャンセルされた場合",
         "cancelledTitle": "Google Calendar イベントがキャンセルされました",
+        "changeAria": "Google Calendar オートメーションを変更",
+        "changeCalendar": "カレンダーを変更",
         "createdDescription": "カレンダーイベントの作成時に実行します。",
         "createdRule": "カレンダー {{calendar}} が新しいイベントを取得したとき",
         "createdTitle": "Google Calendar イベントが作成されました",
+        "enabledIntent": "有効",
+        "reconnectDescription": "このオートメーションを再開するには、Google Calendar を再接続する必要があります。",
+        "reconnectGoogleCalendar": "Google Calendar を再接続",
+        "saveCalendar": "カレンダーを保存",
         "summary": "カレンダー {{calendar}}",
         "updatedDescription": "カレンダーイベントが更新されたときに実行します。",
         "updatedRule": "カレンダー {{calendar}} イベントが更新されたとき",
-        "updatedTitle": "Google Calendar イベントが更新されました"
+        "updatedTitle": "Google Calendar イベントが更新されました",
+        "updateError": "このカレンダーを変更できませんでした。もう一度お試しください。"
       },
       "chat": {
         "addAction": "チャットオートメーションを追加する",
@@ -6119,6 +6128,7 @@
       }
     },
     "list": {
+      "actionRequired": "対応が必要",
       "agentEmpty": "このエージェントとして実行されるワークフローはまだありません。",
       "all": "すべて",
       "allAgents": "すべてのエージェント",
@@ -6136,6 +6146,7 @@
       },
       "noWorkflows": "ワークフローなし",
       "open": "{{title}} を開く",
+      "openRecovery": "{{title}} の復旧を開く",
       "runsAs": "として実行",
       "runsAsAria": "{{agent}} として実行",
       "section": {

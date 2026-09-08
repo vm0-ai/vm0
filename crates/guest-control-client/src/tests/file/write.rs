@@ -1209,6 +1209,15 @@ async fn write_private_file_missing_terminal_response_uses_shared_deadline_and_f
         RequestTimeoutStage::AwaitingTerminalResponse,
         guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE,
     );
+    assert_eq!(
+        error
+            .get_ref()
+            .unwrap()
+            .downcast_ref::<RequestTimeoutError>()
+            .unwrap()
+            .private_write_sequence(),
+        Some(write.seq())
+    );
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
         normal_operation_readiness(&host),

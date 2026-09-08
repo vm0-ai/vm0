@@ -44,4 +44,8 @@ Custom OAuth app supports `client_secret_basic` and `client_secret_post` at the 
 
 Each member can add and reconnect accounts through the same connector account flow. Reconnect always targets the selected account; it does not replace a sibling account. Connecting from an Agent surface grants that Agent access only after the selected account is connected.
 
+Adding an account from the Connectors list grants connector-level access to all agents currently visible to that member in the active organization, including the default agent, only when the connector had no accounts before the connection started. This applies to built-in connectors and custom HTTP/MCP connectors. Adding another account or reconnecting an existing account preserves Agent access, including access the user manually revoked. Accounts that need reconnecting still count as existing accounts. Removing every account and then adding one triggers automatic authorization again. This does not backfill previously connected accounts or automatically authorize agents created later. Failed or cancelled connection attempts do not grant access.
+
+Custom connectors with a permission bundle still require explicit permission selection; connecting an account does not select or overwrite those fine-grained permissions. Existing grants for other connectors are retained.
+
 If an Automatic OAuth account receives a valid insufficient-scope challenge during a run, the CLI provides an Okou authorization link. Complete the new consent and start a new run. The failed MCP operation is not replayed, and the current run keeps its original credential snapshot.
