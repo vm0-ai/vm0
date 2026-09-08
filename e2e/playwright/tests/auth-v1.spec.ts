@@ -40,7 +40,14 @@ async function expectLogo(page: Page): Promise<void> {
   // branding needs an explicit column so its DS gap applies at both widths.
   await expect(page.locator(".cl-rootBox")).toHaveCSS("display", "flex");
   await expect(page.locator(".cl-rootBox")).toHaveCSS("row-gap", "20px");
-  await expectSeparated(logo, page.locator(".cl-cardBox"));
+  await expect
+    .poll(async () => {
+      const brand = await logo.boundingBox();
+      const card = await page.locator(".cl-cardBox").boundingBox();
+      if (!brand || !card) throw new Error("Expected the brand and auth card");
+      return card.y - (brand.y + brand.height);
+    })
+    .toBeCloseTo(20, 1);
 }
 
 async function expectPrimary(page: Page, button: Locator): Promise<void> {
