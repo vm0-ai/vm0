@@ -391,7 +391,7 @@ jobs:
           # shellcheck disable=SC2086
           ./scripts/check-file-size.sh $FILTERED_FILES
 
-  # Lint jobs - split into 4 parallel jobs for faster CI
+  # Lint jobs - split into independent parallel jobs for faster CI
   lint-eslint:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
@@ -418,6 +418,30 @@ jobs:
       - name: Lint
         working-directory: turbo
         run: pnpm lint
+
+  lint-style:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: ./.github/actions/toolchain-init
+      - name: Lint app styles
+        working-directory: turbo
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHECKOUT_REF: ${{ github.ref }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          STYLE_POLICY_RATCHET_REF=$(../.github/scripts/changed-base-ref.sh)
+          export STYLE_POLICY_RATCHET_REF
+          pnpm lint:style
 
   lint-types:
     needs: [detect-turbo-ts-checks]
@@ -2310,6 +2334,7 @@ jobs:
         prepare,
         deploy-cli,
         lint-eslint,
+        lint-style,
         lint-types,
         lint-format,
         lint-knip,
@@ -3074,6 +3099,7 @@ jobs:
       - prepare
       - file-size-check
       - lint-eslint
+      - lint-style
       - lint-types
       - lint-type-app
       - lint-type-api
@@ -3177,9 +3203,10 @@ jobs:
           check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
-          # Turbo TypeScript checks: only 'success' is acceptable unless
+          # Turbo checks: only 'success' is acceptable unless
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-style" "${{ needs.lint-style.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-type-app" "${{ needs.lint-type-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-type-api" "${{ needs.lint-type-api.result }}" "$TS_CHECK_SKIP_ALLOWED"

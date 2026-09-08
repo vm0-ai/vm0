@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.9.295...guest-control-tests-v0.10.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** diagnose private-write terminal response timeouts ([#32539](https://github.com/vm0-ai/vm0/issues/32539)) ([d4af301](https://github.com/vm0-ai/vm0/commit/d4af3011d8636ffc06a5d0bf21c1a12608795e94))
+
 ## [0.9.295](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.9.294...guest-control-tests-v0.9.295) (2026-09-08)
 
 ## [0.9.294](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.9.293...guest-control-tests-v0.9.294) (2026-09-07)

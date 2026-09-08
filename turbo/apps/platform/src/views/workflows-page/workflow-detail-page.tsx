@@ -1260,8 +1260,6 @@ function AutomationCreateAction() {
   const capabilities = useLastResolved(orgPlanCapabilities$);
   const webhookTierEligible =
     capabilities?.workflowWebhookAutomationAllowed ?? true;
-  const googleFormsWorkflowAutomationsEnabled =
-    features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
   const stripeInvoicePaidAutomationsEnabled =
     features[FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations] ?? false;
 
@@ -1274,9 +1272,6 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      googleFormsWorkflowAutomationsEnabled={
-        googleFormsWorkflowAutomationsEnabled
-      }
       stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
     />
@@ -4249,12 +4244,7 @@ function buildNotionAutomationOptions(): AutomationCreateOption[] {
   ];
 }
 
-function buildGoogleFormsAutomationOptions(
-  googleFormsWorkflowAutomationsEnabled: boolean,
-): AutomationCreateOption[] {
-  if (!googleFormsWorkflowAutomationsEnabled) {
-    return [];
-  }
+function buildGoogleFormsAutomationOptions(): AutomationCreateOption[] {
   return [
     {
       kind: "google-forms",
@@ -4388,17 +4378,13 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  googleFormsWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
-  const googleFormsOptions = buildGoogleFormsAutomationOptions(
-    googleFormsWorkflowAutomationsEnabled,
-  );
+  const googleFormsOptions = buildGoogleFormsAutomationOptions();
   const integrationOptions = buildIntegrationAutomationOptions({
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
@@ -4532,12 +4518,10 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  googleFormsWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly googleFormsWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
@@ -4546,7 +4530,6 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    googleFormsWorkflowAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
   });

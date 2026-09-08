@@ -166,22 +166,6 @@ function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
 }
 
-async function enableGoogleFormsWorkflowAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
-  });
-}
-
-async function disableGoogleFormsWorkflowAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
-  });
-}
-
 interface GoogleFormsWatchRecorder {
   readonly watchIds: string[];
   createCalls: number;
@@ -1671,33 +1655,8 @@ describe("okou workflow automations", () => {
     );
   });
 
-  it("rejects Google Forms response automation creation when the feature is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await disableGoogleFormsWorkflowAutomations(fixture);
-    const rejected = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "google-forms-response-submitted",
-          eventConfig: {
-            provider: "google-forms",
-            event: "response_submitted",
-            formUrl: GOOGLE_FORM_URL,
-          },
-        },
-      }),
-      [400],
-    );
-    expect(rejected.body.error.message).toBe(
-      "Google Forms workflow automations are not enabled",
-    );
-  });
-
   it("rejects Google Forms creation when Pub/Sub push is not configured", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
 
     const rejected = await accept(
@@ -1724,7 +1683,6 @@ describe("okou workflow automations", () => {
 
   it("rejects Google Forms respondent links with edit-page guidance", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     const rejected = await accept(
       automationsClient().create({
@@ -1750,7 +1708,6 @@ describe("okou workflow automations", () => {
 
   it("explains inaccessible or missing Google Forms", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock();
     server.use(
@@ -1792,7 +1749,6 @@ describe("okou workflow automations", () => {
 
   it("validates Google Forms, seeds the raw cursor, creates a watch, and warns for unpublished forms", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     const connectorId = await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock({ unpublished: true });
     const created = await accept(
@@ -1835,7 +1791,6 @@ describe("okou workflow automations", () => {
     const second = await createAgentWithWorkflow(scenario, {
       workflowName: `second-${WORKFLOW_NAME}`,
     });
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     const watch = configureGoogleFormsCreationMock();
     const createAutomation = async (workflowId: string) => {
@@ -1891,7 +1846,6 @@ describe("okou workflow automations", () => {
 
   it("adopts the matching Google Forms watch after a create conflict", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock();
     const adoptedWatchId = `forms-watch-adopted-${randomUUID()}`;
@@ -1953,7 +1907,6 @@ describe("okou workflow automations", () => {
     const startedAt = Date.parse("2026-08-05T10:00:00.000Z");
     mockNow(startedAt);
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     const watch = configureGoogleFormsCreationMock({
       expireTime: "2026-08-12T10:00:00Z",
@@ -2040,7 +1993,6 @@ describe("okou workflow automations", () => {
 
   it("does not count a stopped Google Forms watch as renewed", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock();
     const created = await accept(
@@ -2108,7 +2060,6 @@ describe("okou workflow automations", () => {
     const second = await createAgentWithWorkflow(scenario, {
       workflowName: `second-${WORKFLOW_NAME}`,
     });
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock({
       formIds: [GOOGLE_FORM_ID, SECOND_GOOGLE_FORM_ID],
@@ -2159,7 +2110,6 @@ describe("okou workflow automations", () => {
 
   it("treats the Google Forms missing-watch 403 as successful teardown", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     const watch = configureGoogleFormsCreationMock();
     const created = await accept(
@@ -2220,7 +2170,6 @@ describe("okou workflow automations", () => {
 
   it("rejects updates to a Google Forms trigger with explicit guidance", async () => {
     const scenario = await setupFixture();
-    await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
     configureGoogleFormsCreationMock();
     const created = await accept(

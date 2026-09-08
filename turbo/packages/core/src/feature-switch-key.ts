@@ -36,7 +36,6 @@ export enum FeatureSwitchKey {
   SharedWorkerRealtime = "sharedWorkerRealtime",
   Banking = "banking",
   Lab = "_lab",
-  GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   OfficialWorkflows = "officialWorkflows",
   MorningBrief = "morningBrief",

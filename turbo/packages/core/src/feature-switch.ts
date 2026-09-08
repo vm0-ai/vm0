@@ -218,11 +218,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description: "Enable Google Forms response workflow automations.",
-    enabled: true,
-  },
   [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
     maintainer: "lancy@okou.ai",
     description:

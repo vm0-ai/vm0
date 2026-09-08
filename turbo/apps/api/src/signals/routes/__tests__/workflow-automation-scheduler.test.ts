@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  workflowAutomationsContract,
+  type WorkflowSchedule,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   agentsByIdContract,
   agentsMainContract,
@@ -279,6 +282,27 @@ async function completeRunThroughSandbox(
     sandboxHeaders,
     [200],
   );
+}
+
+async function waitForScheduleCallback(
+  scenario: Scenario,
+  runId: string,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const callbacks = await store.set(
+        readAgentRunCallbacks$,
+        { orgId: scenario.orgId, userId: scenario.userId, runId },
+        context.signal,
+      );
+      return callbacks.find((callback) => {
+        return (
+          callback.internalKind === "workflow-automation:cron" ||
+          callback.internalKind === "workflow-automation:loop"
+        );
+      })?.status;
+    })
+    .toBe("delivered");
 }
 
 async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
@@ -736,6 +760,103 @@ describe("okou workflow automation scheduler", () => {
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
     await disableAutomation(automation.automationId);
   });
+
+  it.each([
+    {
+      change: "cron time and timezone",
+      originalSchedule: {
+        type: "cron",
+        cronExpression: "30 9 * * 1-5",
+        timezone: "Asia/Shanghai",
+      },
+      updatedSchedule: {
+        type: "cron",
+        cronExpression: "0 1 * * 1-5",
+        timezone: "UTC",
+      },
+      expectedNextRunAt: "2026-09-09T01:00:00.000Z",
+    },
+    {
+      change: "cron to loop",
+      originalSchedule: {
+        type: "cron",
+        cronExpression: "30 9 * * 1-5",
+        timezone: "Asia/Shanghai",
+      },
+      updatedSchedule: { type: "loop", intervalSeconds: 3600 },
+      expectedNextRunAt: "2026-09-08T03:35:10.634Z",
+    },
+    {
+      change: "loop to cron",
+      originalSchedule: { type: "loop", intervalSeconds: 300 },
+      updatedSchedule: {
+        type: "cron",
+        cronExpression: "0 1 * * 1-5",
+        timezone: "UTC",
+      },
+      expectedNextRunAt: "2026-09-09T01:00:00.000Z",
+    },
+    {
+      change: "cron to once",
+      originalSchedule: {
+        type: "cron",
+        cronExpression: "30 9 * * 1-5",
+        timezone: "Asia/Shanghai",
+      },
+      updatedSchedule: {
+        type: "once",
+        atTime: "2026-09-08T04:00:00.000Z",
+        timezone: "UTC",
+      },
+      expectedNextRunAt: "2026-09-08T04:00:00.000Z",
+    },
+  ] satisfies {
+    readonly change: string;
+    readonly originalSchedule: WorkflowSchedule;
+    readonly updatedSchedule: WorkflowSchedule;
+    readonly expectedNextRunAt: string;
+  }[])(
+    "uses the current schedule after an in-flight $change edit",
+    async ({ originalSchedule, updatedSchedule, expectedNextRunAt }) => {
+      mockNow(Date.parse("2026-09-08T01:29:00.000Z"));
+      const scenario = await setup({ timezone: "Asia/Shanghai" });
+      const created = await accept(
+        automationsClient().create({
+          headers: authHeaders(),
+          params: { workflowId: scenario.workflowId },
+          body: { schedule: originalSchedule },
+        }),
+        [201],
+      );
+
+      mockNow(Date.parse("2026-09-08T01:30:50.668Z"));
+      const threadId = await executeDueWorkflowAutomations(created.body.id);
+      const run = await onlyWorkflowRunMessage(threadId);
+
+      mockNow(Date.parse("2026-09-08T02:24:37.180Z"));
+      const updated = await accept(
+        automationsClient().update({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+          body: { schedule: updatedSchedule },
+        }),
+        [200],
+      );
+      expect(updated.body.schedule).toStrictEqual(updatedSchedule);
+
+      mockNow(Date.parse("2026-09-08T02:35:10.634Z"));
+      await completeRunThroughSandbox(scenario, run.runId, 0);
+      // The edit already seeded nextRunAt; wait for the old callback before
+      // checking it so an eventual stale overwrite cannot pass unnoticed.
+      await waitForScheduleCallback(scenario, run.runId);
+      await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
+        schedule: updatedSchedule,
+        enabled: true,
+        nextRunAt: expectedNextRunAt,
+      });
+      await disableAutomation(created.body.id);
+    },
+  );
 
   it("disables every workflow automation bound to a deleted chat thread", async () => {
     const scenario = await setup();

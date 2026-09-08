@@ -8,6 +8,21 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.567.1](https://github.com/vm0-ai/vm0/compare/api-v1.567.0...api-v1.567.1) (2026-09-08)
+
+
+### Refactoring
+
+* remove followUpOptimize feature switch ([#32522](https://github.com/vm0-ai/vm0/issues/32522)) ([cd4d62b](https://github.com/vm0-ai/vm0/commit/cd4d62b5e072e6c9e32c9431338fb37ee4eeedef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.6
+    * @okouai/db bumped to 1.245.15
+
 ## [1.567.0](https://github.com/vm0-ai/vm0/compare/api-v1.566.4...api-v1.567.0) (2026-09-08)
 
 

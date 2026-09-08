@@ -893,7 +893,7 @@ test("Rename and delete a specific connector account", async () => {
       promotedDefaultConnectionId: null,
     });
   });
-  await setupAccountsPage();
+  await setupPage({ context, path: "/connectors?keywords=github" });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Manage GitHub accounts");
