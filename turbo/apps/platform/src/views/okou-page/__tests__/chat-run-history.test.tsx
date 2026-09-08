@@ -4,10 +4,7 @@ import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { setupPage } from "./chat-lifecycle-test-helpers.ts";
-import {
-  queryMessageBody,
-  type MockChatEventInput,
-} from "./chat-event-test-helpers.ts";
+import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
   assistantEvent,
   cancelledEvent,
@@ -206,16 +203,10 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
-  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
-  await expect(
-    screen.findByText("Collected requirements"),
-  ).resolves.toBeVisible();
+  expect(screen.getByText("Collected requirements")).toBeVisible();
   expect(screen.getByText("Compared rollback options")).toBeVisible();
+  expect(screen.getByText("Checked launch dependencies")).toBeVisible();
+  expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
   expectTextOrder(
     "Plan phase one",
     "Collected requirements",
@@ -223,16 +214,7 @@ test("Browse completed work by conversation phase", async () => {
     "Include rollback steps",
     "Phase one final plan",
   );
-  expect(
-    queryMessageBody("Checked launch dependencies"),
-  ).not.toBeInTheDocument();
-
-  await expect(
-    screen.findByText("Checked launch dependencies"),
-  ).resolves.toBeVisible();
   expect(screen.getByLabelText("Credit usage 7")).toBeVisible();
-  expect(queryMessageBody("Collected requirements")).not.toBeInTheDocument();
-  expect(queryMessageBody("Compared rollback options")).not.toBeInTheDocument();
 
   expect(screen.getByText("Plan phase two")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
@@ -293,7 +275,7 @@ test.each([
     expect(main).toBeVisible();
 
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
     expect(assistantGroupFor(main)).toContainElement(thinking);
 
@@ -430,7 +412,7 @@ test.each([
       canExpandHistory ? 1 : 0,
     );
     for (let index = 0; index < messageCount - 1; index += 1) {
-      expect(queryMessageBody(workMessage(index))).toBeNull();
+      expect(screen.queryByText(workMessage(index))).toBeNull();
     }
   },
 );
@@ -516,7 +498,7 @@ test.each(finalOutputDocuments)(
     const main = await find();
     expect(main).toBeVisible();
     expect(viewAgentProfileLinks()).toHaveLength(1);
-    expect(queryMessageBody("Earlier output belongs in history")).toBeNull();
+    expect(screen.getByText("Earlier output belongs in history")).toBeVisible();
     expect(queryWorkHistoryToggles("collapsed")).toHaveLength(0);
     const thinking = document.querySelector<HTMLElement>(
       "[data-thinking-indicator]",

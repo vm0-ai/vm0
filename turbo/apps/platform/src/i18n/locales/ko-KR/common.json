@@ -2195,7 +2195,6 @@
     "run": {
       "automatedRun": "자동 실행",
       "collapseGroupedHistory": "그룹화된 실행 기록 접기",
-      "collapseHistoryMessage": "기록 메시지 접기: {{message}}",
       "collapseWorkHistory": "작업 기록 접기",
       "creditUsage": "크레딧 사용량",
       "done": {

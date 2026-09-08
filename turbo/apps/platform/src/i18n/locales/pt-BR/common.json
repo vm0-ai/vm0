@@ -2234,7 +2234,6 @@
     "run": {
       "automatedRun": "Execução automatizada",
       "collapseGroupedHistory": "Recolher histórico de execuções agrupadas",
-      "collapseHistoryMessage": "Recolher mensagem do histórico: {{message}}",
       "collapseWorkHistory": "Recolher histórico de trabalho",
       "creditUsage": "Uso de créditos",
       "done": {
