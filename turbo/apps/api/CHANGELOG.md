@@ -8,6 +8,24 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.566.2](https://github.com/vm0-ai/vm0/compare/api-v1.566.1...api-v1.566.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** localize official workflow thread titles ([#32431](https://github.com/vm0-ai/vm0/issues/32431)) ([7912cb7](https://github.com/vm0-ai/vm0/commit/7912cb7484d2bda2994abbbbb2bf12c64b212822))
+* **calendar:** support safe target reconfiguration ([#32441](https://github.com/vm0-ai/vm0/issues/32441)) ([f6f48c8](https://github.com/vm0-ai/vm0/commit/f6f48c8dff8c9a4a33e4312f77da9f8e1a36dc79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.1
+    * @okouai/core bumped to 8.634.2
+    * @okouai/db bumped to 1.245.11
+    * @okouai/pi-agent-runtime bumped to 1.21.21
+
 ## [1.566.1](https://github.com/vm0-ai/vm0/compare/api-v1.566.0...api-v1.566.1) (2026-09-08)
 
 

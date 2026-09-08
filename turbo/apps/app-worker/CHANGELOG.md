@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.3](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.2...app-worker-v1.5.3) (2026-09-08)
+
+
+### Performance Improvements
+
+* **app:** prefetch onboarding status ([#32425](https://github.com/vm0-ai/vm0/issues/32425)) ([5d80a5a](https://github.com/vm0-ai/vm0/commit/5d80a5a5ff8fa201a5e6a6b83a00f6bbb1207a2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.2
+
 ## [1.5.2](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.1...app-worker-v1.5.2) (2026-09-08)
 
 

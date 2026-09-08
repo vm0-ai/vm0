@@ -11,6 +11,22 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.2](https://github.com/vm0-ai/vm0/compare/app-v0.862.1...app-v0.862.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **calendar:** support safe target reconfiguration ([#32441](https://github.com/vm0-ai/vm0/issues/32441)) ([f6f48c8](https://github.com/vm0-ai/vm0/commit/f6f48c8dff8c9a4a33e4312f77da9f8e1a36dc79))
+* **platform:** bypass opaque cache for annotated images ([#32478](https://github.com/vm0-ai/vm0/issues/32478)) ([3d3f761](https://github.com/vm0-ai/vm0/commit/3d3f7612e6ee11480caf558c8ef3159cc09e2ff9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.1
+    * @okouai/core bumped to 8.634.2
+
 ## [0.862.1](https://github.com/vm0-ai/vm0/compare/app-v0.862.0...app-v0.862.1) (2026-09-08)
 
 
