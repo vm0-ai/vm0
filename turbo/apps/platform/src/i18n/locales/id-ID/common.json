@@ -130,6 +130,7 @@
         "diskPressure": "Penggunaan ulang workspace dilewati karena runner mengalami tekanan disk.",
         "environment": "Lingkungan",
         "featureDisabled": "Penggunaan ulang sandbox dinonaktifkan untuk run ini.",
+        "framework": "Framework",
         "generation": "Generasi",
         "hostname": "Nama host",
         "invalidMetadata": "Metadata workspace dalam cache tidak valid.",

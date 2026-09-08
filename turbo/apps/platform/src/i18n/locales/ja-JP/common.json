@@ -130,6 +130,7 @@
         "diskPressure": "ランナーのディスク使用量が逼迫していたため、ワークスペースの再利用をスキップしました。",
         "environment": "環境",
         "featureDisabled": "この実行ではサンドボックスの再利用が無効になっています。",
+        "framework": "フレームワーク",
         "generation": "世代",
         "hostname": "ホスト名",
         "invalidMetadata": "キャッシュ済みワークスペースのメタデータが無効でした。",

@@ -130,6 +130,7 @@
         "diskPressure": "러너의 디스크 여유 공간이 부족하여 작업 공간 재사용을 건너뛰었습니다.",
         "environment": "환경",
         "featureDisabled": "이 실행에 대해 샌드박스 재사용이 비활성화되었습니다.",
+        "framework": "프레임워크",
         "generation": "세대",
         "hostname": "호스트 이름",
         "invalidMetadata": "캐시된 작업 공간 메타데이터가 유효하지 않습니다.",

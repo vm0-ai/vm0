@@ -132,6 +132,7 @@
         "diskPressure": "A reutilização do workspace foi ignorada porque o runner estava sob pressão de disco.",
         "environment": "Ambiente",
         "featureDisabled": "A reutilização de sandbox está desativada para esta execução.",
+        "framework": "Framework",
         "generation": "Geração",
         "hostname": "Nome do host",
         "invalidMetadata": "Os metadados do workspace em cache eram inválidos.",

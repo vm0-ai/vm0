@@ -132,6 +132,7 @@
         "diskPressure": "La réutilisation de l'espace de travail a été ignorée en raison de la pression disque du runner.",
         "environment": "Environnement",
         "featureDisabled": "La réutilisation du bac à sable est désactivée pour cette exécution.",
+        "framework": "Framework",
         "generation": "Génération",
         "hostname": "Nom d’hôte",
         "invalidMetadata": "Les métadonnées de l'espace de travail en cache n'étaient pas valides.",
