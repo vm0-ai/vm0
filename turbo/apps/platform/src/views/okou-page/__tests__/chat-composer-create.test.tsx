@@ -18,10 +18,8 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import {
   AGENT_ID,
   composerInlineTemplates,

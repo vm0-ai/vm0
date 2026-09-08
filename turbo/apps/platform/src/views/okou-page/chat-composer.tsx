@@ -168,11 +168,25 @@ import {
   safePreviewGround,
   type PresentationPreviewDraft,
 } from "./presentation-html-preview.ts";
-import type { IllustrationTemplateItem } from "@okouai/core/illustration-template-items";
-import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import {
+  type IllustrationTemplateItem,
+  ILLUSTRATION_TEMPLATE_ITEMS,
+} from "@okouai/core/illustration-template-items";
+import {
+  type PresentationTemplateItem,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+} from "@okouai/core/presentation-template-items";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
-import type { VideoTemplateItem } from "@okouai/core/video-template-items";
-import type { WebsiteTemplateItem } from "@okouai/core/website-template-items";
+import {
+  type VideoTemplateItem,
+  VIDEO_TEMPLATE_ITEMS,
+  findVideoTemplateItem,
+} from "@okouai/core/video-template-items";
+import {
+  type WebsiteTemplateItem,
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+} from "@okouai/core/website-template-items";
 import {
   WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
@@ -310,15 +324,6 @@ import {
   toAvatarGenerationTemplate,
 } from "../../signals/okou-page/avatar-template-selection.ts";
 import { resolveModelFirstUserDefaultSelection } from "../../signals/okou-page/model-default-selection.ts";
-import { platformPublicStaticUrl } from "../../lib/static-assets.ts";
-import {
-  ILLUSTRATION_TEMPLATE_ITEMS,
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-  findVideoTemplateItem,
-  findWebsiteTemplateItem,
-} from "../../lib/platform-template-items.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
@@ -378,9 +383,8 @@ const TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE = {
   width: 224,
   height: 126,
 } as const;
-const PRESENTATION_GALLERY_PREVIEW_BASE_URL = platformPublicStaticUrl(
-  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04",
-);
+const PRESENTATION_GALLERY_PREVIEW_BASE_URL =
+  "https://static.okou.io/web/assets/presentation-gallery/2026-07-04";
 const PRESENTATION_GALLERY_SLIDE_COUNT = 15;
 const TEMPLATE_PREWARM_IMAGE_COUNT = 15;
 const IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT = 16;

@@ -11,10 +11,8 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import {
-  VIDEO_TEMPLATE_ITEMS,
-  WEBSITE_TEMPLATE_ITEMS,
-} from "../../../lib/platform-template-items.ts";
+import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
+import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
 import {
   AGENT_ID,
   context,

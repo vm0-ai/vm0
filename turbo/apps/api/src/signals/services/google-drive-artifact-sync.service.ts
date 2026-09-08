@@ -6,7 +6,6 @@ import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agents } from "@okouai/db/schema/agent";
@@ -1032,13 +1031,10 @@ async function ensureDriveFolder(args: {
 
 async function ensureArtifactFolder(args: {
   readonly accessToken: string;
-  readonly publicBrand: PublicBrand;
   readonly threadId: string;
 }): Promise<DriveTokenResult<string>> {
   let parentFolderId: string | null = null;
-  const rootFolderName =
-    args.publicBrand === "okou" ? "Okou Artifacts" : "vm0-artifact";
-  for (const name of [rootFolderName, `chat-${args.threadId}`]) {
+  for (const name of ["Okou Artifacts", `chat-${args.threadId}`]) {
     const folder = await ensureDriveFolder({
       accessToken: args.accessToken,
       parentFolderId,
@@ -1113,7 +1109,6 @@ async function uploadDriveFile(args: {
 
 async function uploadArtifactWithToken(args: {
   readonly accessToken: string;
-  readonly publicBrand: PublicBrand;
   readonly threadId: string;
   readonly runId: string;
   readonly fileId: string;
@@ -1123,7 +1118,6 @@ async function uploadArtifactWithToken(args: {
 }): Promise<DriveTokenResult<Response>> {
   const folder = await ensureArtifactFolder({
     accessToken: args.accessToken,
-    publicBrand: args.publicBrand,
     threadId: args.threadId,
   });
   if (folder.type === "unauthorized") {
@@ -1186,7 +1180,6 @@ export const syncArtifactToGoogleDrive$ = command(
       readonly threadId: string;
       readonly runId: string;
       readonly fileId: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ): Promise<
@@ -1264,7 +1257,6 @@ export const syncArtifactToGoogleDrive$ = command(
 
     let result = await uploadArtifactWithToken({
       accessToken: tokens.accessToken,
-      publicBrand: args.publicBrand,
       threadId: args.threadId,
       runId: args.runId,
       fileId: args.fileId,
@@ -1289,7 +1281,6 @@ export const syncArtifactToGoogleDrive$ = command(
       if (refreshed.type === "ok") {
         result = await uploadArtifactWithToken({
           accessToken: refreshed.accessToken,
-          publicBrand: args.publicBrand,
           threadId: args.threadId,
           runId: args.runId,
           fileId: args.fileId,

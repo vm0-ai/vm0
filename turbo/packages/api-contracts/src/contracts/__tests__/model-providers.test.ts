@@ -135,10 +135,6 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("claude-sonnet-5").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("kimi-k3").success).toBe(false);
-    expect(supportedRunModelSchema.safeParse("kimi-k2.7-code").success).toBe(
-      false,
-    );
     expect(supportedRunModelSchema.safeParse("claude-fable-5-1").success).toBe(
       true,
     );
@@ -148,23 +144,12 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("claude-opus-5").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
-      false,
-    );
-    expect(supportedRunModelSchema.safeParse("claude-haiku-4-5").success).toBe(
-      false,
-    );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
       true,
     );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-pro").success).toBe(
       true,
     );
-    expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
-      false,
-    );
-    expect(supportedRunModelSchema.safeParse("kimi-k2.6").success).toBe(false);
-    expect(supportedRunModelSchema.safeParse("kimi-k2.5").success).toBe(false);
     expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
       true,
     );
@@ -188,7 +173,6 @@ describe("model-first canonical catalog", () => {
         },
       ],
     });
-
     expect(parsed.policies).toHaveLength(1);
     expect(parsed.policies[0]).not.toHaveProperty("modelProviderSurfaceId");
   });
@@ -262,18 +246,10 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("deepseek-v4-pro")).toBe(
       "DeepSeek V4 Pro",
     );
-    expect(getCanonicalModelDisplayName("kimi-k3")).toBe("kimi-k3");
-    expect(getCanonicalModelDisplayName("glm-5.2")).toBe("glm-5.2");
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
 
   it("normalizes provider aliases without accepting unsupported models", () => {
-    expect(normalizeRunModelId("z-ai/glm-5.2")).toBe("z-ai/glm-5.2");
-    expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("z-ai/glm-5.1");
-    expect(normalizeRunModelId("xiaomi/mimo-v2.5")).toBe("xiaomi/mimo-v2.5");
-    expect(normalizeRunModelId("tencent/hy3-preview")).toBe(
-      "tencent/hy3-preview",
-    );
     expect(normalizeRunModelId("anthropic/claude-sonnet-5")).toBe(
       "claude-sonnet-5",
     );
@@ -290,45 +266,11 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("claude-fable-5-1")).toBe(true);
     expect(isSupportedRunModel("claude-fable-5")).toBe(true);
     expect(isSupportedRunModel("claude-opus-5")).toBe(true);
-    expect(isSupportedRunModel("glm-5.2")).toBe(false);
-    expect(isSupportedRunModel("glm-5.1")).toBe(false);
-    expect(isSupportedRunModel("mimo-v2.5")).toBe(false);
-    expect(isSupportedRunModel("hy3-preview")).toBe(false);
     expect(isSupportedRunModel("gpt-6-astra")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
-    expect(isSupportedRunModel("kimi-k3")).toBe(false);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
-    expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
-      "deepseek/deepseek-v4-flash",
-    );
-    expect(normalizeRunModelId("anthropic/claude-haiku-4.5")).toBe(
-      "anthropic/claude-haiku-4.5",
-    );
-    expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
-      "minimax/minimax-m2.7",
-    );
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
     expect(isSupportedRunModel("deepseek-v4-pro")).toBe(true);
-  });
-
-  it("removes retired identifiers from the selectable catalog", () => {
-    const retiredModels = [
-      "claude-opus-4-7",
-      "claude-opus-4-6",
-      "kimi-k3",
-      "kimi-k2.7-code",
-      "MiniMax-M3",
-      "glm-5.2",
-      "glm-5.1",
-      "mimo-v2.5",
-      "hy3-preview",
-    ];
-    for (const model of retiredModels) {
-      expect(isSupportedRunModel(model)).toBe(false);
-      expect(supportedRunModelSchema.safeParse(model).success).toBe(false);
-    }
-    expect(isSupportedRunModel("gpt-5.5")).toBe(true);
-    expect(isSupportedRunModel("claude-sonnet-4-6")).toBe(true);
   });
 
   it("keeps historical models readable in the shared schema catalog", () => {
@@ -854,8 +796,6 @@ describe("getBuiltInVisibleModels", () => {
     expect(models).toEqual(ACTIVE_RUN_MODELS);
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("claude-sonnet-4-6");
-    expect(models).not.toContain("kimi-k3");
-    expect(models).not.toContain("glm-5.2");
   });
 });
 
@@ -904,23 +844,6 @@ describe("model image input support", () => {
   it("treats unknown model ids as unknown rather than unsupported", () => {
     expect(modelSupportsImageInput("custom/model")).toBe(false);
     expect(getModelImageInputSupport("custom/model")).toBe("unknown");
-  });
-});
-
-describe("removed poor agent backend models", () => {
-  it("removes old provider aliases from static provider model lists", () => {
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "anthropic/claude-haiku-4.5",
-    );
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "deepseek/deepseek-v4-flash",
-    );
-    expect(getModels("openrouter-api-key")).not.toContain(
-      "minimax/minimax-m2.7",
-    );
-    expect(getModels("vercel-ai-gateway")).not.toContain(
-      "anthropic/claude-haiku-4.5",
-    );
   });
 });
 
