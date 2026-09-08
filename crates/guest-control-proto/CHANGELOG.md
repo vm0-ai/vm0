@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.19.0...guest-control-proto-v0.20.0) (2026-09-08)
+
+
+### Features
+
+* **runner:** add bounded host-owned ssh execution ([#32526](https://github.com/vm0-ai/vm0/issues/32526)) ([7c84eb2](https://github.com/vm0-ai/vm0/commit/7c84eb254233ad62f4482f7213e1b297cc7e8692))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/guest-control-proto-v0.18.49...guest-control-proto-v0.19.0) (2026-09-08)
 
 

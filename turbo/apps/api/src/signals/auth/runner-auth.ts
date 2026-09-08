@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { command } from "ccstate";
+import { OFFICIAL_RUNNER_TOKEN_PREFIX } from "@okouai/api-contracts/contracts/runner-primitives";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -12,8 +13,6 @@ import {
 import { isPatToken, verifyCliToken } from "./tokens";
 
 const L = logger("RunnerAuth");
-
-const OFFICIAL_RUNNER_TOKEN_PREFIX = "vm0_official_";
 
 export type RunnerAuthContext =
   | {

@@ -341,6 +341,7 @@ pub struct ApiProvider {
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
+    ssh: Option<Arc<crate::ssh::SshRuntime>>,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
     poll_degradation_tracker: DegradationEpisodeTracker,
@@ -355,6 +356,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 pub struct ApiProviderConfig {
+    pub(crate) ssh: Option<Arc<crate::ssh::SshRuntime>>,
     pub(crate) runner_identity: RunnerProcessIdentity,
     pub(crate) runner_hostname: Option<String>,
     pub group: String,
@@ -372,6 +374,7 @@ impl ApiProvider {
         cancel_tokens: RunCancellationRegistry,
     ) -> Arc<Self> {
         let ApiProviderConfig {
+            ssh,
             runner_identity,
             runner_hostname,
             group,
@@ -403,6 +406,7 @@ impl ApiProvider {
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
             connector_runtime_sync,
+            ssh,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
             poll_degradation_tracker: DegradationEpisodeTracker::new(),
@@ -562,6 +566,7 @@ impl ApiProvider {
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
             connector_runtime_sync: self.connector_runtime_sync.clone(),
+            ssh: self.ssh.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
             provider_cancel: self.cancel.clone(),
         }));
@@ -2363,6 +2368,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
+            ssh: None,
             connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,

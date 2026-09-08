@@ -437,13 +437,13 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
     );
   };
   return (
-    <form className="px-1 py-4" onSubmit={submit}>
-      <label className="text-sm font-medium" htmlFor="account-rename">
-        {t(($) => {
-          return $.connectors.accounts.accountName;
-        })}
-      </label>
-      <div className="mt-2 flex gap-2">
+    <form className="space-y-4 px-5 py-4" onSubmit={submit}>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium" htmlFor="account-rename">
+          {t(($) => {
+            return $.connectors.accounts.accountName;
+          })}
+        </label>
         <Input
           id="account-rename"
           value={draft.displayName}
@@ -452,14 +452,16 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
           }}
           maxLength={255}
         />
-        <Button type="submit" disabled={renameLoadable.state === "loading"}>
-          {t(($) => {
-            return $.connectors.actions.save;
-          })}
-        </Button>
+      </div>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={clear}>
           {t(($) => {
             return $.connectors.actions.cancel;
+          })}
+        </Button>
+        <Button type="submit" disabled={renameLoadable.state === "loading"}>
+          {t(($) => {
+            return $.connectors.actions.save;
           })}
         </Button>
       </div>

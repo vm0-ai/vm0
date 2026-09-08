@@ -1,4 +1,5 @@
 import { runnerRealtimeTokenContract } from "../contracts/realtime";
+import { runnerSshContract } from "../contracts/runner-ssh";
 import {
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -33,6 +34,16 @@ export interface RustRouteBinding {
 }
 
 export const rustRouteBindings = [
+  {
+    route: runnerSshContract.resolve,
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "resolve"],
+    rustConstName: "RESOLVE",
+  },
+  {
+    route: runnerSshContract.pin,
+    rustModulePath: ["runners", "runs", "by_run_id", "ssh", "pin"],
+    rustConstName: "PIN",
+  },
   {
     route: webhookPiMemoryPhase2UsageContract.send,
     rustModulePath: ["webhooks", "agent", "pi_memory_phase2", "usage"],

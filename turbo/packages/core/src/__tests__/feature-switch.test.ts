@@ -232,7 +232,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatDesktopSelection]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -274,7 +274,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
-    expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
+    expect(states[FeatureSwitchKey.TestOauthConnector]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
@@ -395,7 +395,7 @@ describe("overrides", () => {
 
   it("should not affect keys without overrides", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.DropboxConnector, {
+      isFeatureEnabled(FeatureSwitchKey.TestOauthConnector, {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
       }),
     ).toBe(false);

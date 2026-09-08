@@ -591,6 +591,9 @@
       "categories": "템플릿 카테고리",
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
+      "creativeVideo": "창작 영상",
+      "explainerUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
+      "explainerVideo": "설명 영상",
       "filters": {
         "age": "연령",
         "all": "전체",
@@ -1986,6 +1989,20 @@
       },
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "콘텐츠에 맞는 음성을 선택합니다.",
+      "avatarVoice": "아바타 음성",
+      "changeAvatar": "아바타 변경",
+      "chooseStyle": "스타일 선택",
+      "chooseStyleAndVoice": "스타일과 음성을 선택하세요.",
+      "noMatches": "결과가 없습니다. 다른 검색어나 카테고리를 사용해 보세요.",
+      "ready": "준비되었습니다. 채팅에 콘텐츠를 추가하세요.",
+      "searchAvatars": "아바타 검색",
+      "searchStyles": "스타일 검색",
+      "settings": "설명 영상 설정",
+      "style": "스타일",
+      "useSelection": "선택 항목 사용"
+    },
     "feedback": {
       "emailDraftDescription": "이메일 초안 (메일 초안 ID: {{id}})",
       "partHeading": "답변 이 부분에 대한 피드백:",
@@ -2014,50 +2031,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "자동 · Okou가 선택",
-        "autoDescription": "요청에 맞는 HeyGen 공개 발표자 선택",
         "heading": "아바타 선택",
         "label": "아바타",
         "none": "아바타 없음",
-        "noneDescription": "발표자 없이 영상 만들기",
         "previewLook": "{{name}} 모습 미리보기"
       },
-      "cardDescription": "아이디어나 자료를 완성된 영상으로 변환",
       "catalog": {
-        "empty": "사용 가능한 HeyGen 공개 옵션이 없습니다.",
-        "error": "HeyGen 목록을 불러오지 못했습니다.",
+        "error": "카탈로그를 불러올 수 없습니다.",
         "loading": "옵션 더 불러오는 중",
         "reload": "목록 새로고침",
         "retry": "다시 시도"
       },
-      "description": "자료를 추가하고 원하는 내용을 설명한 뒤, 필요에 따라 HeyGen 스타일, 아바타, 음성을 선택하세요.",
-      "errors": {
-        "sendFailed": "채팅 스레드를 만들 수 없습니다. 요청이 이 화면에 남아 있으니 다시 시도해 주세요.",
-        "uploadFailed": "일부 파일을 업로드할 수 없습니다. 해당 파일을 제거하거나 다시 시도해 주세요."
-      },
       "footer": {
-        "cancel": "취소",
-        "create": "영상 만들기",
-        "hint": "지침이나 파일 또는 둘 다 추가하세요"
-      },
-      "format": {
-        "auto": "자동",
-        "output": "출력 화면 비율"
-      },
-      "heading": "인트로 영상 만들기",
-      "help": "자료를 추가하거나 원하는 내용을 설명하세요. 둘 다 해도 좋습니다. 나머지는 Okou가 처리합니다.",
-      "prompt": {
-        "label": "영상으로 무엇을 전달하고 싶으신가요?",
-        "placeholder": "목표, 시청 대상, 언어, 분위기 등 중요한 내용을 설명하세요"
-      },
-      "source": {
-        "drop": "여기에 파일을 놓거나 클릭하여 업로드",
-        "remove": "{{filename}} 삭제"
+        "cancel": "취소"
       },
       "style": {
         "auto": "Okou에게 맡기기",
         "browseGroups": "스타일별로 찾기",
-        "description": "스타일이 장면, 전환, 텍스트 오버레이, 진행 속도를 결정합니다.",
         "groups": {
           "cinematic": "영화와 사진",
           "handmade": "수공예와 소재",
@@ -2067,25 +2057,16 @@
           "print": "인쇄와 출판",
           "retro-tech": "레트로 기술과 인터페이스"
         },
-        "heading": "참고할 스타일 선택",
-        "label": "스타일 참고",
         "preview": "{{title}} 미리보기",
         "previewUnavailable": "이 스타일의 동영상 미리보기가 없습니다."
       },
-      "title": "인트로 영상 만들기",
       "voice": {
         "auto": "Okou에게 맡기기",
-        "autoDescription": "Okou가 적합한 HeyGen 공개 음성을 선택합니다",
-        "default": "기본값 · 아바타에 맞춤",
         "defaultDescription": "선택한 아바타의 기본 음성 사용",
-        "defaultForAvatar": "기본값 · {{avatar}}",
-        "defaultForAvatarDescription": "{{avatar}}의 HeyGen 기본 음성 사용",
         "heading": "음성 선택",
         "label": "음성",
         "none": "내레이션 없음",
-        "noneDescription": "내레이션을 추가하지 않으며, 음소거 요청이 없으면 원본 오디오를 유지합니다.",
-        "original": "원본 오디오",
-        "originalDescription": "선택한 원본 오디오를 유지하고 생성 음성을 추가하지 않습니다"
+        "noneDescription": "내레이션을 추가하지 않으며, 음소거 요청이 없으면 원본 오디오를 유지합니다."
       }
     },
     "mail": {

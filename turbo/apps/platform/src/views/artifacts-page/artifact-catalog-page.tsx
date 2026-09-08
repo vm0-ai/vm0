@@ -29,7 +29,7 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
-import { publicAttachmentUrl } from "../okou-page/attachment-url.ts";
+import { useResolvedAttachmentUrl } from "../okou-page/attachment-resource.ts";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -140,9 +140,10 @@ function ArtifactCatalogFallbackPreview({
 }
 
 function ArtifactCatalogVideoPreview({ sourceUrl }: { sourceUrl: string }) {
+  const resourceUrl = useResolvedAttachmentUrl(sourceUrl);
   return (
     <video
-      src={`${publicAttachmentUrl(sourceUrl)}#t=0.001`}
+      src={resourceUrl ? `${resourceUrl}#t=0.001` : undefined}
       preload="metadata"
       muted
       playsInline

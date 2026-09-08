@@ -1,4 +1,7 @@
-import { captureDesktopNativeHelperError } from "./sentry-main";
+import {
+  captureDesktopNativeHelperError,
+  captureDesktopNativePermissionRecovery,
+} from "./sentry-main";
 import { openAsBlob, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -211,6 +214,8 @@ const {
   probeComputerUseAutomationPermission,
   recordComputerUseAutomationPermissionDenied,
 } = createDesktopComputerUsePermissions({
+  refreshNative: (query) =>
+    computerUseController.refreshNativePermissions(query),
   driver: computerUseDriver,
   requestedDriver: () => driverPreferences.getState().selectedDriver,
   transitioning: () => computerUseController.isTransitioning(),
@@ -347,6 +352,7 @@ const applicationMenu = new DesktopApplicationMenu({
   quit: requestDesktopQuit,
 });
 const computerUseController = new ComputerUseRuntimeController({
+  onPermissionRecovery: captureDesktopNativePermissionRecovery,
   driver: computerUseDriver,
   createRuntime: createComputerUseHostRuntime,
   refreshPermissions: refreshComputerUsePermissionState,
@@ -360,6 +366,7 @@ const computerUseController = new ComputerUseRuntimeController({
     ]);
   },
   getAuthState: () => getAuthSession().getAuthState(),
+  getAuthAuthority: () => getAuthSession().getAuthority(),
   setHostRuntimeOnline: (online) => {
     filesystemPluginManager?.setHostRuntimeOnline(online);
     mcpPluginManager?.setHostRuntimeOnline(online);
@@ -490,6 +497,7 @@ function notifyAuthChanged(): void {
   const authority = authSession?.getAuthority() ?? null;
   if (lastSessionAuthority !== authority) {
     lastSessionAuthority = authority;
+    computerUseController.cancelPermissionRefresh();
     resetComputerUsePermissionState();
     if (
       driverSelection.requestedDriver().id === "cua" ||

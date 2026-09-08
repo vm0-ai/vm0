@@ -1,9 +1,15 @@
 # Pi Bash spool backpressure
 
-The version-pinned `@earendil-works/pi-coding-agent@0.84.1` patch fixes the
+The version-pinned `@earendil-works/pi-coding-agent@0.85.1` patch fixes the
 local backend used by `createBashTool` in `src/session-runtime.ts`. The runtime
 still selects `/usr/local/bin/guest-tool-exec`; its factory and the existing
 AgentSession/Photon patch behavior are unchanged.
+
+The original #32637 evidence below was recorded against 0.84.1. The #32641
+upgrade ports all six Bash, accumulator and child-process JS/declaration hunks
+to official 0.85.1, retaining its shared shell factories, context working
+directory and configured spool prefix. The original contract fixtures remain
+unchanged and run against the installed 0.85.1 package.
 
 This implements [#32637](https://github.com/vm0-ai/vm0/issues/32637). It does
 not establish the cause of the historical termination in
@@ -49,9 +55,9 @@ independent OS pipes.
 
 ## Audited callers and scope
 
-The upstream source is pinned at
-`earendil-works/pi@53fa77ccd8a279eb87e92294ef3687b03ff80112` and the installed
-runtime is the corresponding distributed JavaScript, not the TypeScript source.
+The original #32637 audit used upstream source at
+`earendil-works/pi@53fa77ccd8a279eb87e92294ef3687b03ff80112` and the corresponding
+distributed JavaScript runtime, not the TypeScript source.
 The patch updates the three affected `.js` files and their `.d.ts` declarations.
 
 - `core/tools/bash.js` is the sole installed `OutputAccumulator` consumer.
@@ -65,8 +71,8 @@ The patch updates the three affected `.js` files and their `.d.ts` declarations.
   its existing separate spool implementation. The bounded-output guarantee here
   applies to the official local Bash tool used by vm0's factory.
 
-The existing `patchedDependencies` entry and Pi version stay unchanged. The
-lockfile changes only the coding-agent patch hash and references. `pnpm
+#32637 kept the existing `patchedDependencies` entry and Pi version unchanged.
+Its lockfile changed only the coding-agent patch hash and references. `pnpm
 patch-commit` generates the patch and hash; unrelated peer-resolution churn is
 excluded from this focused change. Applying the original patch to the official
 npm tarball and comparing AgentSession JS/declarations and Photon JS confirms
@@ -162,9 +168,10 @@ patches, and lockfile and **no `node_modules`** successfully runs:
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-All nine installed patched JS/declaration files match the edited patch package,
-Pi remains 0.84.1, and the six large contract fixtures run from that fresh
-installation. Skipping package lifecycle scripts in this disposable install
+All nine installed patched JS/declaration files matched the edited patch package,
+Pi remained 0.84.1 in that original verification, and the six large contract
+fixtures ran from that fresh installation. Skipping package lifecycle scripts
+in this disposable install
 does not skip pnpm patch application; the main checkout also passes normal
 `pnpm install --frozen-lockfile`.
 

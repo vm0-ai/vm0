@@ -1,12 +1,17 @@
+import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import { EXPLAINER_VIDEO_TEMPLATE_ID } from "@okouai/core/explainer-video-template";
 import { computed } from "ccstate";
-import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
-import { clerk$ } from "../external/clerk";
-import { db$ } from "../external/db";
+import { clerk$, type ClerkClient } from "../external/clerk";
+import { db$, type ReadonlyDb } from "../external/db";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 export const introVideoDisabled = Object.freeze({
@@ -28,14 +33,27 @@ export const introVideoEnabled$ = computed(async (get) => {
     auth.orgId,
     auth.userId,
   );
-  if (isFeatureEnabled(FeatureSwitchKey.IntroVideo, context)) {
-    return true;
+  return await loadIntroVideoAccess(db, clerk, auth.userId, context);
+});
+
+async function loadIntroVideoAccess(
+  db: Pick<ReadonlyDb, "select">,
+  clerk: ClerkClient,
+  userId: string,
+  context: FeatureSwitchContext,
+): Promise<boolean> {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.IntroVideo, context);
+  if (
+    enabled ||
+    context.overrides?.[FeatureSwitchKey.IntroVideo] !== undefined
+  ) {
+    return enabled;
   }
 
   const [user] = await db
     .select({ email: userCache.email })
     .from(userCache)
-    .where(eq(userCache.userId, auth.userId))
+    .where(eq(userCache.userId, userId))
     .limit(1);
   if (user?.email) {
     return isFeatureEnabled(FeatureSwitchKey.IntroVideo, {
@@ -45,7 +63,7 @@ export const introVideoEnabled$ = computed(async (get) => {
   }
 
   const users = await clerk.users.getUserList({
-    userId: [auth.userId],
+    userId: [userId],
     limit: 1,
   });
   const profile = users.data[0];
@@ -57,4 +75,24 @@ export const introVideoEnabled$ = computed(async (get) => {
     ...context,
     email,
   });
-});
+}
+
+export async function loadIntroVideoTemplateAccess(
+  db: Pick<ReadonlyDb, "select">,
+  clerk: ClerkClient,
+  userId: string,
+  templates: readonly GenerationTemplateRequest[],
+  context: FeatureSwitchContext,
+): Promise<boolean> {
+  if (
+    !templates.some((template) => {
+      return (
+        template.type === "video" &&
+        template.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
+      );
+    })
+  ) {
+    return false;
+  }
+  return await loadIntroVideoAccess(db, clerk, userId, context);
+}

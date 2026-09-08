@@ -176,7 +176,10 @@ import {
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import {
+  updateFeatureSwitchesForUser,
+  deleteFeatureSwitchesForUser,
+} from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
   seedReadyMemorySummaryProjection,
@@ -21342,6 +21345,206 @@ describe("CHAT-02: prior rounds and thread titles", () => {
 });
 
 describe("CHAT-02: generation templates and attachments", () => {
+  const explainerTemplate: GenerationTemplateRequest = {
+    type: "video",
+    selection: {
+      stylePresetId: "explainer-video",
+      explainerOptions: {
+        style: {
+          kind: "catalog",
+          style: {
+            id: "minimalism",
+            name: "Minimalism",
+            tags: ["iconic-artist"],
+            aspectRatio: "16:9",
+          },
+        },
+        avatar: { kind: "none" },
+        voice: { kind: "none" },
+      },
+    },
+  };
+
+  it.each(["override", "email allowlist"] as const)(
+    "gates explainer template sends with %s while preserving ordinary video",
+    async (access) => {
+      const { actor, agentId } = await entitledChatActor(
+        access === "email allowlist" ? { email: "bingjie@vm0.ai" } : {},
+      );
+      const scopedActor = { ...actor, orgId: requireOrgId(actor) };
+      await updateFeatureSwitchesForUser(context, scopedActor, {
+        [FeatureSwitchKey.IntroVideo]: false,
+      });
+      const ordinary = VIDEO_TEMPLATE_ITEMS[0]!;
+      const ordinaryTemplate: GenerationTemplateRequest = {
+        type: "video",
+        selection: { stylePresetId: ordinary.id },
+      };
+      for (const templates of [
+        [explainerTemplate],
+        [ordinaryTemplate, explainerTemplate],
+      ]) {
+        const rejected = await chat.requestSendEvent(
+          actor,
+          {
+            agentId,
+            prompt: "Explain the product",
+            userMessage: {
+              version: 1,
+              parts: [
+                { type: "text", text: "Explain the product" },
+                ...templates.map((template) => {
+                  return {
+                    type: "template" as const,
+                    titleSnapshot: "Selected video",
+                    template,
+                  };
+                }),
+              ],
+            },
+          },
+          [400],
+        );
+        expectApiError(rejected.body);
+        expect(rejected.body.error.message).toBe(
+          "Explainer video is not available",
+        );
+      }
+      const events = await chat.requestThreadEvents(actor, {}, [200]);
+      if (events.status !== 200) {
+        throw new Error("Expected thread events to load");
+      }
+      expect(events.body.events).toStrictEqual([]);
+      const video = await sendChatRun(actor, {
+        agentId,
+        prompt: "Make a creative scene",
+        template: ordinaryTemplate,
+      });
+      expect(
+        (await api.readRun(actor, video.runId)).appendSystemPrompt,
+      ).toContain(ordinary.id);
+      await cancelChatRun(actor, video.runId);
+
+      if (access === "email allowlist") {
+        await deleteFeatureSwitchesForUser(context, scopedActor);
+      } else {
+        await updateFeatureSwitchesForUser(context, scopedActor, {
+          [FeatureSwitchKey.IntroVideo]: true,
+        });
+      }
+
+      const malformed = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          prompt: "Explain it",
+          userMessage: userMessageWithTemplate("Explain it", {
+            type: "video",
+            selection: { stylePresetId: "explainer-video" },
+          }),
+        },
+        [400],
+      );
+      expectApiError(malformed.body);
+      expect(malformed.body.error.message).toBe(
+        "Explainer video settings are missing",
+      );
+      const explained = await sendChatRun(actor, {
+        agentId,
+        prompt: "Explain the product",
+        template: explainerTemplate,
+      });
+      const prompt = (await api.readRun(actor, explained.runId))
+        .appendSystemPrompt;
+      expect(prompt).toContain("Use the $intro-video skill");
+      expect(prompt).toContain("Minimalism");
+      expect(prompt).toContain("No avatar. Do not add a presenter.");
+      expect(prompt).toContain("No voiceover. Do not add narration.");
+      await cancelChatRun(actor, explained.runId);
+    },
+    90_000,
+  );
+
+  it.each(["queued dispatch", "active input"] as const)(
+    "rechecks explainer access before %s",
+    async (delivery) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const scopedActor = { ...actor, orgId: requireOrgId(actor) };
+      await updateFeatureSwitchesForUser(context, scopedActor, {
+        [FeatureSwitchKey.IntroVideo]: true,
+      });
+      const active = await sendChatRun(actor, {
+        agentId,
+        prompt: "Start the conversation",
+      });
+      const claimed = await claimChatRun(runnerGroup, active.runId);
+      const eventId = randomUUID();
+      await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          clientEventId: eventId,
+          prompt: "Explain the product",
+          userMessage: userMessageWithTemplate(
+            "Explain the product",
+            explainerTemplate,
+          ),
+        },
+        [201],
+      );
+      await updateFeatureSwitchesForUser(context, scopedActor, {
+        [FeatureSwitchKey.IntroVideo]: false,
+      });
+      context.mocks.axiom.ingest.mockClear();
+      if (delivery === "active input") {
+        const reserved = await api.reserveRunnerActiveInputs(
+          claimed.claim.sandboxToken,
+          active.runId,
+        );
+        if (reserved.outcome !== "reserved") {
+          throw new Error("Expected the active input to be reserved");
+        }
+        expect(reserved.prompt).toContain("Explain the product");
+        expect(reserved.prompt).not.toContain("Use the $intro-video skill");
+        expect(templateUsageEvents()).toStrictEqual([]);
+        await cancelChatRun(actor, active.runId);
+        return;
+      }
+      await completeChatRunOk(active.runId, claimed.sandboxHeaders);
+      await flushWaitUntilForTest();
+      const messages = await waitForThreadMessages(
+        actor,
+        active.threadId,
+        (items) => {
+          return userMessages(items).some((message) => {
+            return (
+              message.revokesEventId === eventId &&
+              typeof message.runId === "string"
+            );
+          });
+        },
+      );
+      const next = userMessages(messages.events).find((message) => {
+        return (
+          message.revokesEventId === eventId &&
+          typeof message.runId === "string"
+        );
+      });
+      if (!next?.runId) {
+        throw new Error("Expected the queued input to dispatch");
+      }
+      const run = await api.readRun(actor, next.runId);
+      expect(run.prompt).toContain("Explain the product");
+      expect(run.appendSystemPrompt).not.toContain(
+        "Use the $intro-video skill",
+      );
+      expect(templateUsageEvents()).toStrictEqual([]);
+      await cancelChatRun(actor, next.runId);
+    },
+    90_000,
+  );
+
   it("uses the userMessage document for the runtime prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

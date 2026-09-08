@@ -36,6 +36,40 @@ function authHeaders() {
 }
 
 describe("multipart user artifact uploads", () => {
+  it.each(["complete", "abort"] as const)(
+    "preserves the public %s error when storage cannot find the multipart upload",
+    async (action) => {
+      mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+      context.mocks.s3.send.mockImplementation((command) => {
+        expect(command).toBeInstanceOf(ListPartsCommand);
+        return Promise.reject(
+          Object.assign(new Error("Multipart upload not found"), {
+            name: "NoSuchUpload",
+          }),
+        );
+      });
+      const body = {
+        id: randomUUID(),
+        filename: "recording.mp4",
+        uploadId: randomUUID(),
+      };
+      const response =
+        action === "complete"
+          ? await accept(
+              apiClient().completeMultipart({
+                headers: authHeaders(),
+                body: { ...body, partCount: 1 },
+              }),
+              [500],
+            )
+          : await accept(
+              apiClient().abortMultipart({ headers: authHeaders(), body }),
+              [500],
+            );
+      expect(response.body).toStrictEqual({ error: "Internal server error" });
+    },
+  );
+
   it("prepares 5 MiB parts for a large upload", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

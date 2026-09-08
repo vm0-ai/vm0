@@ -592,6 +592,9 @@
       "categories": "Template categories",
       "category": "Template category",
       "chooseVoice": "Choose a voice for {{title}}",
+      "creativeVideo": "Creative video",
+      "explainerUnavailable": "This video template is no longer available. Remove it to send your message.",
+      "explainerVideo": "Explainer video",
       "filters": {
         "age": "Age",
         "all": "All",
@@ -1989,6 +1992,20 @@
       },
       "runCancelled": "Paused mid-thought — pick it back up whenever."
     },
+    "explainerVideo": {
+      "autoVoiceDescription": "Find a voice that fits your content.",
+      "avatarVoice": "Avatar’s voice",
+      "changeAvatar": "Change avatar",
+      "chooseStyle": "Choose a style",
+      "chooseStyleAndVoice": "Choose a style and a voice.",
+      "noMatches": "No matches found. Try a different search or category.",
+      "ready": "Ready to use. Add your content in the chat.",
+      "searchAvatars": "Search avatars",
+      "searchStyles": "Search styles",
+      "settings": "Explainer video settings",
+      "style": "Style",
+      "useSelection": "Use selection"
+    },
     "feedback": {
       "emailDraftDescription": "an email draft (mail draft ID: {{id}})",
       "partHeading": "Feedback on this part of your reply:",
@@ -2017,50 +2034,23 @@
     },
     "introVideo": {
       "avatar": {
-        "auto": "Auto · Okou decides",
-        "autoDescription": "Match a public HeyGen presenter to the request",
         "heading": "Choose an avatar",
         "label": "Avatar",
         "none": "No avatar",
-        "noneDescription": "Create the video without a presenter",
         "previewLook": "Preview look {{name}}"
       },
-      "cardDescription": "Turn an idea or material into a finished video",
       "catalog": {
-        "empty": "No public HeyGen options are available.",
-        "error": "The HeyGen catalog could not be loaded.",
+        "error": "The catalog could not be loaded.",
         "loading": "Loading more options",
         "reload": "Reload catalog",
         "retry": "Try again"
       },
-      "description": "Add material, describe what you want, and optionally choose a HeyGen style, avatar, and voice.",
-      "errors": {
-        "sendFailed": "The chat thread could not be created. Your request is still here so you can try again.",
-        "uploadFailed": "One or more files could not be uploaded. Remove them or try again."
-      },
       "footer": {
-        "cancel": "Cancel",
-        "create": "Create video",
-        "hint": "Add a prompt, files, or both"
-      },
-      "format": {
-        "auto": "Auto",
-        "output": "Output format"
-      },
-      "heading": "Create your intro video",
-      "help": "Add material, describe what you want, or do both. Okou handles the rest.",
-      "prompt": {
-        "label": "What should the video do?",
-        "placeholder": "Describe the goal, audience, language, tone, or anything that matters"
-      },
-      "source": {
-        "drop": "Drop files here or click to upload",
-        "remove": "Remove {{filename}}"
+        "cancel": "Cancel"
       },
       "style": {
         "auto": "Let Okou choose",
         "browseGroups": "Browse by style",
-        "description": "The style sets scenes, transitions, text overlays, and pacing.",
         "groups": {
           "cinematic": "Film and photography",
           "handmade": "Handmade and materials",
@@ -2070,25 +2060,16 @@
           "print": "Print and publishing",
           "retro-tech": "Retro tech and interfaces"
         },
-        "heading": "Choose a style reference",
-        "label": "Style reference",
         "preview": "Preview {{title}}",
         "previewUnavailable": "A video preview is not available for this style."
       },
-      "title": "Create an intro video",
       "voice": {
         "auto": "Let Okou choose",
-        "autoDescription": "Okou picks a suitable public HeyGen voice",
-        "default": "Default · Follows avatar",
         "defaultDescription": "Use the chosen avatar's default voice",
-        "defaultForAvatar": "Default · {{avatar}}",
-        "defaultForAvatarDescription": "Use {{avatar}}'s default HeyGen voice",
         "heading": "Choose a voice",
         "label": "Voice",
         "none": "No voiceover",
-        "noneDescription": "Do not add narration; keep source audio unless you ask to mute it.",
-        "original": "Original audio",
-        "originalDescription": "Keep the selected source audio without adding generated speech"
+        "noneDescription": "Do not add narration; keep source audio unless you ask to mute it."
       }
     },
     "mail": {

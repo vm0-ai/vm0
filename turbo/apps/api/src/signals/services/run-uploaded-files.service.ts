@@ -120,7 +120,10 @@ function videoArtifactPreviewArgs(
     row.previewImageUrl ||
     !args.orgId ||
     !args.url ||
-    !args.contentType?.startsWith("video/")
+    !args.contentType?.startsWith("video/") ||
+    // The public thumbnail pipeline cannot read authenticated sources.
+    // Private derivatives join the generation slice in #32492.
+    new URL(args.url).pathname === "/api/web/download-file"
   ) {
     return null;
   }

@@ -229,6 +229,43 @@ test.each(["failed", "cancelled"] as const)(
   },
 );
 
+test("Keep completion status visible while followups are unavailable", async () => {
+  const events = [
+    ...resultEvents(),
+    completedEvent({
+      id: "completed-without-followups",
+      runId: RUN_A,
+      seqId: 4,
+    }),
+  ];
+  installRunChat({ chatEvents: events });
+  await openChat();
+
+  const completionTail = document.querySelector<HTMLElement>(
+    "[data-chat-run-status-tail]",
+  );
+  expect(completionTail).toBeVisible();
+  expect(completionTail?.querySelector("p")).toBeVisible();
+  expect(completionTail?.querySelector('[role="separator"]')).toBeVisible();
+  expect(screen.queryByRole("group", { name: "Keep going" })).toBeNull();
+  await expectRetainedResult();
+
+  events.push({
+    id: "delayed-followups",
+    content: null,
+    runId: RUN_A,
+    seqId: 5,
+    createdAt: "2026-08-01T10:00:05.000Z",
+    followups: [{ prompt: "Summarize the check", kind: "talk" }],
+  });
+  publishRunUpdate();
+
+  const followups = await screen.findByRole("group", { name: "Keep going" });
+  expect(followups.closest("[data-chat-run-status-tail]")).toBeVisible();
+  expect(screen.getByText("Summarize the check")).toBeVisible();
+  await expectRetainedResult();
+});
+
 test("Retire completion and followups while retaining the result actions", async () => {
   const sendGate = context.mocks.deferred<void>();
   installRunChat({

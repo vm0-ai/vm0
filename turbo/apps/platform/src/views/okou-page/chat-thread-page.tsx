@@ -1,3 +1,4 @@
+import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -2901,7 +2902,7 @@ export function ChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftPane = useGet(currentLeftPane$);
   const rightPane = useGet(currentRightPane$);
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadSidebarShell
         animateEntry={activeThreadSidebar?.animateEntry ?? true}
@@ -2924,7 +2925,7 @@ export function ChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       <ChatConnectorActionConnectModal />
-    </>
+    </>,
   );
 }
 
@@ -3122,7 +3123,7 @@ function ChatThreadRenderedEventGroups({
     ),
   });
 
-  return (
+  return withChatScrollLayout(
     <>
       <ChatThreadEventGroups
         thread={thread}
@@ -3150,7 +3151,7 @@ function ChatThreadRenderedEventGroups({
         }
         runGroupFolds={runGroupFoldPlacements.thinkingIndicatorRunGroupFolds}
       />
-    </>
+    </>,
   );
 }
 
@@ -3205,7 +3206,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
   const sharingPhase = useGet(thread.sharing.phase$);
 
-  return (
+  return withChatScrollLayout(
     <main
       data-run-work-folding={runWorkFoldingEnabled || undefined}
       className={cn(CHAT_THREAD_CONTENT_MAIN_CLASS, "group/chat")}
@@ -3224,7 +3225,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadNextRunModelNotice thread={thread} />
       </div>
-    </main>
+    </main>,
   );
 }
 
@@ -3264,7 +3265,7 @@ function ChatThreadNextRunModelNotice({
     runningSelection === undefined ||
     runningSelection === null
   ) {
-    return null;
+    return withChatScrollLayout(null);
   }
 
   const selectedRunSelection: ChatRunModelSelection = {
@@ -3292,9 +3293,9 @@ function ChatThreadNextRunModelNotice({
           return $.chat.run.fastModeWillBeOff;
         });
   } else {
-    return null;
+    return withChatScrollLayout(null);
   }
-  return <RunSectionDividerRow label={label} announce />;
+  return withChatScrollLayout(<RunSectionDividerRow label={label} announce />);
 }
 
 // An assistant group whose events are all bookkeeping — a run's terminal event,
@@ -4266,14 +4267,14 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
     thread.sharing.create$,
   );
   if (phase === "idle") {
-    return <ChatThreadComposer thread={thread} />;
+    return withChatScrollLayout(<ChatThreadComposer thread={thread} />);
   }
 
   const creating = createLoadable.state === "loading";
   const shareUrl = sharedThreadId
     ? `${window.location.origin}/share/threads/${sharedThreadId}`
     : null;
-  return (
+  return withChatScrollLayout(
     <footer className="relative shrink-0 border-t border-border/60 bg-background px-4 py-3 sm:px-6">
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-2">
         {shareUrl ? (
@@ -4373,7 +4374,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
           </div>
         )}
       </div>
-    </footer>
+    </footer>,
   );
 }
 
@@ -4689,11 +4690,13 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
+  const composerLayoutRef = useSet(thread.composerLayoutOnRef$);
   const standalonePwa = isStandalonePwa();
 
   return (
     <footer
       data-chat-composer
+      ref={composerLayoutRef}
       className="relative shrink-0 bg-[hsl(var(--background))]"
       style={{
         paddingBottom: "max(0.5rem, var(--okou-composer-safe-bottom))",
@@ -4937,17 +4940,12 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const donePhrase =
     useLastResolved(thread.donePhrase$) ??
     t(($) => {
       return $.chat.run.done.default;
     });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  if (runWorkFoldingEnabled && source === null) {
-    return null;
-  }
   const label =
     source && runFinishedAt
       ? t(
@@ -5137,8 +5135,6 @@ function ThinkingIndicator({
   inAssistantGroup?: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
-  const runWorkFoldingEnabled =
-    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const spinnerEnabled =
     featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
@@ -5174,12 +5170,7 @@ function ThinkingIndicator({
         }
       : undefined;
 
-  if (
-    mode === null ||
-    (runWorkFoldingEnabled &&
-      mode === "finished" &&
-      recommendedFollowupSource === null)
-  ) {
+  if (mode === null) {
     return null;
   }
 
@@ -7521,19 +7512,6 @@ type PagedAssistantGroupProps = {
   readonly statusTailEvents?: readonly EnrichedChatEvent[];
 };
 
-function visibleRunIndicatorMode(
-  mode: Exclude<ThinkingIndicatorMode, null> | undefined,
-  recommendedFollowupSource: RecommendedFollowupSource | null,
-): Exclude<ThinkingIndicatorMode, null> | undefined {
-  if (mode === undefined) {
-    return undefined;
-  }
-  if (mode === "finished" && recommendedFollowupSource === null) {
-    return undefined;
-  }
-  return mode;
-}
-
 type PagedAssistantHistoryItem =
   | {
       readonly kind: "assistant";
@@ -7745,10 +7723,6 @@ function PagedRunWorkAssistantContent({
   | "runIndicatorMode"
   | "statusTailEvents"
 >) {
-  const recommendedFollowupSource =
-    useLastResolved(thread.recommendedFollowupSource$, {
-      equalityFn: equalRecommendedFollowupSources,
-    }) ?? null;
   const timelineItems = buildPagedAssistantTimeline({
     group: {
       ...group,
@@ -7765,10 +7739,6 @@ function PagedRunWorkAssistantContent({
         return event.id === runWorkSection.anchorEventId;
       })
     : undefined;
-  const visibleIndicatorMode = visibleRunIndicatorMode(
-    runIndicatorMode,
-    recommendedFollowupSource,
-  );
   const mainActions =
     mainEvent !== undefined ? (
       <PagedGroupActions
@@ -7780,15 +7750,14 @@ function PagedRunWorkAssistantContent({
       />
     ) : undefined;
 
-  return (
+  return withChatScrollLayout(
     <>
       <PagedAssistantTimeline
         items={timelineItems}
         thread={thread}
         mainActions={mainActions}
       />
-      {(statusTailEvents?.length ?? 0) > 0 ||
-      visibleIndicatorMode !== undefined ? (
+      {(statusTailEvents?.length ?? 0) > 0 || runIndicatorMode !== undefined ? (
         <div
           data-chat-run-status-tail
           className={CHAT_THREAD_RESPONSE_STACK_CLASS}
@@ -7803,17 +7772,17 @@ function PagedRunWorkAssistantContent({
                 />
               );
             })
-          ) : visibleIndicatorMode !== undefined ? (
+          ) : runIndicatorMode !== undefined ? (
             <ThinkingIndicator
               thread={thread}
-              mode={visibleIndicatorMode}
+              mode={runIndicatorMode}
               runGroupFolds={[]}
               inAssistantGroup
             />
           ) : null}
         </div>
       ) : null}
-    </>
+    </>,
   );
 }
 

@@ -161,10 +161,40 @@ const userArtifactsPublicS3Client$ = computed((get): S3Client => {
   return createS3Client(publicEndpoint, userArtifactsS3Credentials());
 });
 
+function privateArtifactsS3Credentials(): S3Credentials {
+  const accessKeyId = env("R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID");
+  const secretAccessKey = env("R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY");
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID and R2_PRIVATE_ARTIFACTS_SECRET_ACCESS_KEY must be configured",
+    );
+  }
+  return { accessKeyId, secretAccessKey };
+}
+
+const privateArtifactsS3Client$ = computed((): S3Client => {
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    privateArtifactsS3Credentials(),
+  );
+});
+
+const privateArtifactsPublicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  return publicEndpoint
+    ? createS3Client(publicEndpoint, privateArtifactsS3Credentials())
+    : get(privateArtifactsS3Client$);
+});
+
 function s3ClientForBucket(
   bucket: string,
   usePublicEndpoint = false,
 ): Computed<S3Client> {
+  if (bucket === env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME")) {
+    return usePublicEndpoint
+      ? privateArtifactsPublicS3Client$
+      : privateArtifactsS3Client$;
+  }
   if (bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {
     return usePublicEndpoint
       ? userArtifactsPublicS3Client$
@@ -775,7 +805,13 @@ export function generatePresignedGetUrl(
     bucket,
     key,
     expiresIn,
-    filename,
+    {
+      filename,
+      responseCacheControl:
+        bucket === env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME")
+          ? "private, no-store"
+          : undefined,
+    },
   );
 }
 
@@ -784,15 +820,23 @@ function generatePresignedGetUrlWithClient(
   bucket: string,
   key: string,
   expiresIn: number,
-  filename?: string,
+  options?: {
+    readonly filename?: string;
+    readonly responseCacheControl?: string;
+  },
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
     const client = get(client$);
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      ...(filename
-        ? { ResponseContentDisposition: `attachment; filename="${filename}"` }
+      ...(options?.responseCacheControl
+        ? { ResponseCacheControl: options.responseCacheControl }
+        : {}),
+      ...(options?.filename
+        ? {
+            ResponseContentDisposition: `attachment; filename="${options.filename}"`,
+          }
         : {}),
     });
     return getSignedUrl(client, command, { expiresIn });

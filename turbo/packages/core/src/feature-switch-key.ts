@@ -52,6 +52,7 @@ export enum FeatureSwitchKey {
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
   ChatRunWorkFolding = "chatRunWorkFolding",
+  PrivateArtifacts = "privateArtifacts",
   AgentMessageMath = "agentMessageMath",
   ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
