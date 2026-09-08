@@ -19,6 +19,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  VIDEO_TEMPLATE_ITEMS,
+} from "../../../lib/platform-template-items.ts";
+import {
   AGENT_ID,
   composerInlineTemplates,
   context,
@@ -142,7 +146,7 @@ test("Image mode combines styles and image models while preserving the prompt", 
   setupModels();
   const editor = await setupComposer();
   await chooseCommand(editor, "A quiet garden /create image", "Create image");
-  expect(button("Choose style")).toBeInTheDocument();
+  expect(button("Add style")).toBeInTheDocument();
   const picker = await screen.findByRole("combobox", { name: "Image models" });
   click(picker);
   const model = PUBLIC_IMAGE_MODELS.find((candidate) => {
@@ -192,34 +196,106 @@ test("Image mode sends when the model menu is still open", async () => {
   });
 });
 
-test("Presentation mode replaces its one selected template without adding a second", async () => {
-  setupModels();
-  const editor = await setupComposer();
-  const [first, replacement] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  if (!first || !replacement) {
-    throw new Error("Expected two presentation templates");
-  }
-  await chooseCommand(
-    editor,
-    "Our launch /create presentation",
-    "Create presentation",
-  );
-  click(button("Choose template"));
-  await screen.findByRole("dialog");
-  click(await screen.findByLabelText(`Select template ${first.title}`));
-  await waitFor(() => {
-    expect(button(first.title)).toBeInTheDocument();
-  });
-  click(button(first.title));
-  await screen.findByRole("dialog");
-  click(await screen.findByLabelText(`Select template ${replacement.title}`));
-  await waitFor(() => {
-    expect(button(replacement.title)).toBeInTheDocument();
-  });
-  expect(composerInlineTemplates()).toHaveLength(1);
-  expect(composerInlineTemplates()[0]).toHaveTextContent(replacement.title);
-  expect(editor).toHaveTextContent("Our launch");
-});
+test.each([
+  {
+    mode: "image",
+    commandLabel: "Create image",
+    pickerLabel: "Add style",
+    selectLabel: "Select template",
+    previewLabel: "Preview template",
+    templates: ILLUSTRATION_TEMPLATE_ITEMS,
+  },
+  {
+    mode: "video",
+    commandLabel: "Create video",
+    pickerLabel: "Add template",
+    selectLabel: "Select video template",
+    previewLabel: "Preview video template",
+    templates: VIDEO_TEMPLATE_ITEMS,
+  },
+  {
+    mode: "presentation",
+    commandLabel: "Create presentation",
+    pickerLabel: "Add template",
+    selectLabel: "Select template",
+    previewLabel: "Preview template",
+    templates: PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  },
+])(
+  "$commandLabel adds multiple templates, edits only the clicked chip, and sends every reference",
+  async ({
+    mode,
+    commandLabel,
+    pickerLabel,
+    selectLabel,
+    previewLabel,
+    templates,
+  }) => {
+    setupModels();
+    const submissions: UserMessageDocument[] = [];
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        if (body.userMessage) {
+          submissions.push(body.userMessage);
+        }
+      },
+    });
+    const editor = await setupComposer();
+    const user = userEvent.setup({ delay: null });
+    const [first, second, replacement] = templates;
+    if (!first || !second || !replacement) {
+      throw new Error(`Expected three ${mode} templates`);
+    }
+    await chooseCommand(editor, `Our launch /create ${mode}`, commandLabel);
+    click(button(pickerLabel));
+    await screen.findByRole("dialog");
+    click(await screen.findByLabelText(`${selectLabel} ${first.title}`));
+    await waitFor(() => {
+      expect(composerInlineTemplates()).toHaveLength(1);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    await user.paste(" for the cover. ");
+    click(button(pickerLabel));
+    await screen.findByRole("dialog");
+    click(await screen.findByLabelText(`${selectLabel} ${second.title}`));
+    await waitFor(() => {
+      const chips = composerInlineTemplates();
+      expect(chips).toHaveLength(2);
+      expect(chips[0]).toHaveTextContent(first.title);
+      expect(chips[1]).toHaveTextContent(second.title);
+    });
+
+    const firstChip = composerInlineTemplates()[0];
+    if (!firstChip) {
+      throw new Error("Expected the first inline template");
+    }
+    click(button(`${previewLabel} ${first.title}`, firstChip));
+    await screen.findByRole("dialog");
+    click(await screen.findByLabelText(`${selectLabel} ${replacement.title}`));
+    await waitFor(() => {
+      const chips = composerInlineTemplates();
+      expect(chips).toHaveLength(2);
+      expect(chips[0]).toHaveTextContent(replacement.title);
+      expect(chips[1]).toHaveTextContent(second.title);
+    });
+    expect(editor).toHaveTextContent("Our launch");
+    expect(editor).toHaveTextContent("for the cover.");
+    expect(button(pickerLabel)).toBeInTheDocument();
+
+    click(button("Send"));
+    await waitFor(() => {
+      expect(submissions).toHaveLength(1);
+    });
+    const parts = submissions[0]?.parts;
+    expect(
+      parts?.flatMap((part) => {
+        return part.type === "template" ? [part.titleSnapshot] : [];
+      }),
+    ).toStrictEqual([replacement.title, second.title]);
+    expect(JSON.stringify(parts)).toContain("Our launch");
+    expect(JSON.stringify(parts)).toContain("for the cover.");
+  },
+);
 
 test("Multiple templates keep a generic toolbar label and all references survive sending", async () => {
   setupModels();
@@ -244,7 +320,7 @@ test("Multiple templates keep a generic toolbar label and all references survive
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create presentation", menu));
   await waitFor(() => {
-    expect(button("Choose template")).toBeInTheDocument();
+    expect(button("Add template")).toBeInTheDocument();
   });
   expect(composerInlineTemplates()).toHaveLength(2);
   click(button("Send"));
@@ -262,13 +338,13 @@ test("Multiple templates keep a generic toolbar label and all references survive
   ).toStrictEqual([first.title, second.title]);
 });
 
-test("Presentation recognizes an existing template picked before entering create mode", async () => {
+test("Presentation adds another template when the draft already has one", async () => {
   setupModels();
   const editor = await setupComposer();
   const user = userEvent.setup({ delay: null });
-  const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
-  if (!first) {
-    throw new Error("Expected a presentation template");
+  const [first, second] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
+  if (!first || !second) {
+    throw new Error("Expected two presentation templates");
   }
   await selectTemplate(user, first);
   await user.click(editor);
@@ -276,9 +352,18 @@ test("Presentation recognizes an existing template picked before entering create
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create presentation", menu));
   await waitFor(() => {
-    expect(button(first.title)).toBeInTheDocument();
+    expect(button("Add template")).toBeInTheDocument();
   });
   expect(composerInlineTemplates()).toHaveLength(1);
+  click(button("Add template"));
+  await screen.findByRole("dialog");
+  click(await screen.findByLabelText(`Select template ${second.title}`));
+  await waitFor(() => {
+    const chips = composerInlineTemplates();
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent(first.title);
+    expect(chips[1]).toHaveTextContent(second.title);
+  });
 });
 
 test("Create suggestions expose one image command that opens the style gallery", async () => {
@@ -292,7 +377,7 @@ test("Create suggestions expose one image command that opens the style gallery",
     }),
   ).toHaveLength(1);
   click(button("Create image", menu));
-  click(button("Choose style"));
+  click(button("Add style"));
   const dialog = await screen.findByRole("dialog");
   await waitFor(() => {
     const tab = queryAllByRoleFast("tab", dialog).find((item) => {

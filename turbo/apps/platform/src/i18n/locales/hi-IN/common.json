@@ -1872,8 +1872,8 @@
       "agentSuggestions": "एजेंट",
       "configureModel": "मॉडल कॉन्फ़िगर करें",
       "create": {
-        "chooseStyle": "शैली चुनें",
-        "chooseTemplate": "टेम्पलेट चुनें",
+        "addStyle": "शैली जोड़ें",
+        "addTemplate": "टेम्पलेट जोड़ें",
         "exit": "बनाने के मोड से बाहर निकलें",
         "image": "छवि बनाएँ",
         "imagePlaceholder": "आप जो छवि बनाना चाहते हैं उसका वर्णन करें…",

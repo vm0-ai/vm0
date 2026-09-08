@@ -6,7 +6,6 @@ import {
   useComposerActions,
   type ComposerActions,
 } from "./composer-actions.ts";
-import { useEditorState } from "@tiptap/react";
 import {
   ComposerCreateHeader,
   ComposerCreateImageModelPicker,
@@ -60,7 +59,6 @@ import {
   ArrowUp,
   Bolt,
   Check,
-  ChevronDown,
   Download,
   Globe,
   Image as ImageIcon,
@@ -266,11 +264,7 @@ import {
   sttVoiceLevel$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
-import {
-  INLINE_TEMPLATE_NODE_NAME,
-  TEMPLATE_ATTACHMENT_NODE_NAME,
-  shouldUseUserMessage,
-} from "../../signals/okou-page/user-message-document-codec.ts";
+import { shouldUseUserMessage } from "../../signals/okou-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import {
@@ -6701,62 +6695,19 @@ function TemplatePickerButton({
   const category = useGet(signals.template.templatePickerCategory$);
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const createMode = useGet(signals.create.mode$);
-  const templates = useEditorState({
-    editor: signals.editor.editor,
-    selector: ({ editor }) => {
-      const result: {
-        title: string;
-        type: string;
-        position: number;
-        legacy: boolean;
-      }[] = [];
-      editor.state.doc.descendants((node, position) => {
-        if (
-          node.type.name === INLINE_TEMPLATE_NODE_NAME ||
-          node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME
-        ) {
-          const title: unknown = node.attrs.title;
-          const type: unknown = node.attrs.templateType;
-          if (typeof title === "string" && typeof type === "string") {
-            result.push({
-              title,
-              type,
-              position,
-              legacy: node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME,
-            });
-          }
-          return false;
-        }
-        return true;
-      });
-      return result;
-    },
-  });
-  const templateMode =
-    createMode === "presentation"
-      ? "presentation"
-      : createMode === "image"
-        ? "illustration"
-        : null;
-  const singleTemplate =
-    templateMode &&
-    templates.length === 1 &&
-    templates[0]?.type === templateMode
-      ? templates[0]
-      : undefined;
+  const templateMode = createMode === "image" ? "illustration" : createMode;
   const templateLabel =
-    singleTemplate?.title ??
-    (templateMode === "illustration"
+    templateMode === "illustration"
       ? t(($) => {
-          return $.chat.composer.create.chooseStyle;
+          return $.chat.composer.create.addStyle;
         })
-      : templateMode === "presentation"
+      : templateMode
         ? t(($) => {
-            return $.chat.composer.create.chooseTemplate;
+            return $.chat.composer.create.addTemplate;
           })
         : t(($) => {
             return $.artifacts.templates.template;
-          }));
+          });
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
@@ -6800,27 +6751,16 @@ function TemplatePickerButton({
               onPointerDown={prewarmPicker}
               onClick={() => {
                 prewarmPicker();
-                openTemplatePicker(
-                  singleTemplate
-                    ? singleTemplate.legacy
-                      ? { kind: "edit-legacy", category: selectedCategory }
-                      : {
-                          kind: "edit-selected",
-                          category: selectedCategory,
-                          position: singleTemplate.position,
-                        }
-                    : { kind: "insert", category: selectedCategory },
-                );
+                openTemplatePicker({
+                  kind: "insert",
+                  category: selectedCategory,
+                });
               }}
             >
               {templateMode ? (
                 <>
+                  <Plus size={16} className="shrink-0" aria-hidden />
                   <span className="min-w-0 truncate">{templateLabel}</span>
-                  <ChevronDown
-                    size={12}
-                    className="shrink-0 opacity-50"
-                    aria-hidden
-                  />
                 </>
               ) : (
                 <SwatchBook size={18} aria-hidden="true" />

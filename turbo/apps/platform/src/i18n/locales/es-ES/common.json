@@ -1901,8 +1901,8 @@
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
       "create": {
-        "chooseStyle": "Elegir estilo",
-        "chooseTemplate": "Elegir plantilla",
+        "addStyle": "Añadir estilo",
+        "addTemplate": "Añadir plantilla",
         "exit": "Salir del modo de creación",
         "image": "Crear imagen",
         "imagePlaceholder": "Describe la imagen que quieres crear…",

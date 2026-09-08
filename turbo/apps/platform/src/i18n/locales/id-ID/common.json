@@ -1869,8 +1869,8 @@
       "agentSuggestions": "Agen",
       "configureModel": "Konfigurasikan model",
       "create": {
-        "chooseStyle": "Pilih gaya",
-        "chooseTemplate": "Pilih templat",
+        "addStyle": "Tambahkan gaya",
+        "addTemplate": "Tambahkan templat",
         "exit": "Keluar dari mode pembuatan",
         "image": "Buat gambar",
         "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
