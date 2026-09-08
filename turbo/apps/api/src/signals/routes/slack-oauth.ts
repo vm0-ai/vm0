@@ -29,7 +29,7 @@ import {
 } from "../services/slack-connect.service";
 import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
-import { getOAuthApiOrigin, getOAuthWebOrigin } from "../../lib/oauth-origin";
+import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import { OFFICIAL_SLACK_PUBLIC_BRAND } from "../../lib/slack-official-app";
 import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
@@ -57,7 +57,7 @@ interface SignedOAuthState extends OAuthState {
 }
 
 interface ParsedOAuthState {
-  readonly redirectUri: string | null;
+  readonly redirectUri: string;
   readonly state: OAuthState;
 }
 
@@ -214,25 +214,13 @@ function parseOAuthState(state: string | undefined): ParsedOAuthState | null {
   }
 
   const signedState = parseSignedOAuthState(state);
-  if (signedState) {
-    return { state: signedState, redirectUri: signedState.redirectUri };
-  }
-
-  // Surface: an old or rollback API can emit unsigned state that returns to a
-  // new API after the Slack browser round trip. The window is that API's
-  // rollback lifetime plus in-flight authorizations. Remove under #26720 once
-  // those API targets are retired and the authorizations drain. A legacy state
-  // never supplies its own redirect URI.
-  const legacyState = parseOAuthStateValue(safeJsonParse(state));
-  return legacyState ? { state: legacyState, redirectUri: null } : null;
+  return signedState
+    ? { state: signedState, redirectUri: signedState.redirectUri }
+    : null;
 }
 
 function callbackRedirectUri(origin: string): string {
   return `${origin}${SLACK_OAUTH_CALLBACK_PATH}`;
-}
-
-function legacyCallbackRedirectUri(request: Request): string {
-  return `${getOAuthWebOrigin(request)}${SLACK_OAUTH_CALLBACK_PATH}`;
 }
 
 function slackCredentials(): {
@@ -692,7 +680,6 @@ const handleConnectCallback$ = command(
 );
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const request = get(request$).raw;
   const credentials = slackCredentials();
   if (!credentials) {
     return jsonErrorResponse("Slack integration is not configured", 503);
@@ -700,7 +687,6 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const query = get(queryOf(slackOauthContract.callback));
   const parsedState = parseOAuthState(query.state);
-  const state = parsedState?.state ?? null;
 
   if (query.error) {
     return failedRedirect(query.error);
@@ -710,11 +696,10 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     return jsonErrorResponse("Missing authorization code", 400);
   }
 
-  if (!state) {
+  if (!parsedState) {
     return failedRedirect("Invalid OAuth state.");
   }
-  const redirectUri =
-    parsedState?.redirectUri ?? legacyCallbackRedirectUri(request);
+  const { state, redirectUri } = parsedState;
   if (state.flow === "connect") {
     return await set(
       handleConnectCallback$,

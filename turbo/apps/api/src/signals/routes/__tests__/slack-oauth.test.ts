@@ -629,40 +629,6 @@ describe("Slack OAuth API routes", () => {
       expect(slackMessages).toContain("<@B_TEST>");
     });
 
-    it("replays the configured web callback for unsigned legacy state", async () => {
-      const fixture = await track(
-        store.set(
-          seedSlackConnectOrg$,
-          { installationOrgId: null },
-          context.signal,
-        ),
-      );
-      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
-      await seedMembership(fixture.orgId, fixture.userId, "admin");
-      mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
-      const state = JSON.stringify({
-        orgId: fixture.orgId,
-        publicBrand: "vm0",
-        redirectUri: "https://evil.example/oauth/callback",
-        userId: fixture.userId,
-      });
-
-      const response = await appRequest(
-        `/api/integrations/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
-        {
-          origin: API_ORIGIN,
-          headers: { "x-vm0-web-origin": WEB_ORIGIN },
-        },
-      );
-
-      expect(response.status).toBe(307);
-      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
-        expect.objectContaining({
-          redirect_uri: `${WEB_ORIGIN}/api/integrations/slack/oauth/callback`,
-        }),
-      );
-    });
-
     it("rejects a tampered signed redirect URI", async () => {
       const start = await appRequest("/api/slack/oauth/install", {
         origin: API_ORIGIN,
