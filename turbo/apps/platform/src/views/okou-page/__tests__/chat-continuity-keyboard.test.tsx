@@ -95,7 +95,7 @@ test("Move between neighboring chats from the focused pane", async () => {
   const current = continuityThread(16, 2, "Current keyboard chat");
   const side = continuityThread(16, 3, "Side keyboard chat");
   const newest = continuityThread(16, 4, "Newest neighboring chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 16,
     threads: [oldest, current, side, newest],
   });
@@ -103,7 +103,7 @@ test("Move between neighboring chats from the focused pane", async () => {
   await setupPage({
     context,
     path: `/chats/${current.id}?sidebar=${side.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   await waitFor(() => {
@@ -149,7 +149,7 @@ test("Move between neighboring chats from the focused pane", async () => {
 test("Add, replace, or remove the focused chat icon", async () => {
   const current = continuityThread(18, 1, "Project plan");
   const emojiOnlySide = continuityThread(18, 2, "❓");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 18,
     threads: [current, emojiOnlySide],
   });
@@ -159,7 +159,7 @@ test("Add, replace, or remove the focused chat icon", async () => {
   await setupPage({
     context,
     path: `/chats/${current.id}?sidebar=${emojiOnlySide.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
   });
 
@@ -224,7 +224,7 @@ test("Add, replace, or remove the focused chat icon", async () => {
 
 test("Show keyboard help without stealing composer input", async () => {
   const thread = continuityThread(19, 1, "Keyboard help chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 19,
     threads: [thread],
   });
@@ -232,7 +232,7 @@ test("Show keyboard help without stealing composer input", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -277,7 +277,7 @@ test.each([
     context.mocks.browser.userAgent(userAgent);
     const main = continuityThread(70, 1, "Main pin shortcut chat");
     const side = continuityThread(70, 2, "Side pin shortcut chat");
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId: 70,
       threads: [main, side],
     });
@@ -297,7 +297,7 @@ test.each([
     await setupPage({
       context,
       path: `/chats/${main.id}?sidebar=${side.id}`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
     });
     await waitFor(() => {
       expect(composerIn(main.id)).toBeVisible();
@@ -339,7 +339,7 @@ test.each([
 test("Pin the main chat when neither pane owns keyboard focus", async () => {
   const main = continuityThread(71, 1, "Default pin shortcut chat");
   const side = continuityThread(71, 2, "Other pin shortcut chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 71,
     threads: [main, side],
   });
@@ -349,7 +349,7 @@ test("Pin the main chat when neither pane owns keyboard focus", async () => {
   await setupPage({
     context,
     path: `/chats/${main.id}?sidebar=${side.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
   await waitFor(() => {
     expect(composerIn(side.id)).toBeVisible();
@@ -369,7 +369,7 @@ test("Pin the main chat when neither pane owns keyboard focus", async () => {
 
 test("Respect composition, held keys, dialogs, and navigation for pin shortcuts", async () => {
   const thread = continuityThread(73, 1, "Scoped pin shortcut chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 73,
     threads: [thread],
   });
@@ -379,7 +379,7 @@ test("Respect composition, held keys, dialogs, and navigation for pin shortcuts"
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
   });
   const composer = await screen.findByRole("textbox", { name: "Message" });
   composer.focus();

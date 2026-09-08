@@ -3,7 +3,6 @@ import { createHmac, randomUUID } from "node:crypto";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -28,7 +27,6 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
@@ -115,14 +113,6 @@ function workflowAutomationExecutionClient() {
     context,
     routes: testWorkflowAutomationExecutionRoutes,
   })(testWorkflowAutomationExecutionContract);
-}
-
-async function enableNotionWorkflowAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-  });
 }
 
 function configureNotionParentPageMock(
@@ -560,8 +550,7 @@ describe("POST /api/webhooks/notion", () => {
   it("verifies, signs, de-duplicates, and refreshes pending child page events", async () => {
     const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionParentPageMock(entities);
 
@@ -683,8 +672,7 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues and refreshes pending database item events", async () => {
     const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
@@ -796,8 +784,7 @@ describe("POST /api/webhooks/notion", () => {
 
   it("enqueues and debounces page content updated events for a page scope", async () => {
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
@@ -894,8 +881,7 @@ describe("POST /api/webhooks/notion", () => {
   it("executes due page content updated events with the latest page context", async () => {
     const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
@@ -1026,8 +1012,7 @@ describe("POST /api/webhooks/notion", () => {
 
   it("enqueues page content updated events for a database scope", async () => {
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
@@ -1080,8 +1065,7 @@ describe("POST /api/webhooks/notion", () => {
 
   it("suppresses content updated events while child page creation is pending", async () => {
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionParentAndChildPageMock(entities);
 
@@ -1165,8 +1149,7 @@ describe("POST /api/webhooks/notion", () => {
 
   it("suppresses content updated events while database item creation is pending", async () => {
     const scenario = await setupFixture();
-    const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId, entities } = scenario;
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
@@ -1256,7 +1239,6 @@ describe("POST /api/webhooks/notion", () => {
     const runnerGroup = runsApi.configureRunnerGroup();
     const scenario = await setupFixture();
     const { actor, agentId, fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     const [firstAccount] = await connectorsApi.listBuiltinConnectorAccounts(
       actor,

@@ -1,3 +1,10 @@
+import { z } from "zod";
+import {
+  slackHistoryMessageSchema,
+  type SlackChannelListQuery,
+  type SlackHistoryQuery,
+} from "@okouai/api-contracts/contracts/integrations-slack-read";
+
 interface SlackApiError {
   ok: false;
   error: string;
@@ -8,6 +15,7 @@ class SlackApiClientError extends Error {
     readonly method: string,
     readonly code: string,
     readonly statusCode?: number,
+    readonly retryAfterSeconds?: number,
   ) {
     super(
       statusCode
@@ -57,10 +65,18 @@ async function callSlackApi<T>(
   });
 
   if (!response.ok) {
+    const retryAfter = response.headers.get("retry-after");
+    const retryAfterSeconds =
+      retryAfter === null ? undefined : Number(retryAfter);
     throw new SlackApiClientError(
       method,
       response.statusText || "http_error",
       response.status,
+      retryAfterSeconds !== undefined &&
+        Number.isInteger(retryAfterSeconds) &&
+        retryAfterSeconds >= 0
+        ? retryAfterSeconds
+        : undefined,
     );
   }
 
@@ -72,6 +88,57 @@ async function callSlackApi<T>(
   }
 
   return data as T;
+}
+
+const conversationPageSchema = z.object({
+  channels: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      is_private: z.boolean(),
+      is_member: z.boolean(),
+    }),
+  ),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
+
+const historyPageSchema = z.object({
+  messages: z.array(slackHistoryMessageSchema),
+  has_more: z.boolean().optional(),
+  response_metadata: z
+    .object({ next_cursor: z.string().optional() })
+    .optional(),
+});
+
+export async function listSlackChannelsPage(
+  token: string,
+  query: SlackChannelListQuery,
+  signal: AbortSignal,
+) {
+  return conversationPageSchema.parse(
+    await callSlackApi<unknown>(
+      token,
+      "conversations.list",
+      {
+        ...query,
+        types: "public_channel,private_channel",
+        exclude_archived: true,
+      },
+      signal,
+    ),
+  );
+}
+
+export async function readSlackHistoryPage(
+  token: string,
+  query: SlackHistoryQuery,
+  signal: AbortSignal,
+) {
+  return historyPageSchema.parse(
+    await callSlackApi<unknown>(token, "conversations.history", query, signal),
+  );
 }
 
 interface SlackConversation {

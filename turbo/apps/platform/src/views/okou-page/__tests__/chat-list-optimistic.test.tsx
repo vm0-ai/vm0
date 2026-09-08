@@ -11,6 +11,7 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
+  cachedChatListEvents,
   chatListAuth,
   chatListEvent,
   chatListThread,
@@ -19,7 +20,6 @@ import {
   installChatListAgent,
   installChatListModelPolicies,
   installChatListStream,
-  seedChatListCache,
   sidebarThreadLinks,
   sidebarThreadTitles,
 } from "./chat-list-test-helpers.ts";
@@ -64,7 +64,6 @@ function installNewThreadDefaults(): void {
 
 test("A new conversation appears before server confirmation", async () => {
   const auth = chatListAuth(9);
-  await seedChatListCache(9, auth, []);
   const confirmation = context.mocks.deferred<void>();
   let createdThreadId: string | undefined;
   let requestedModel: string | undefined;
@@ -103,6 +102,7 @@ test("A new conversation appears before server confirmation", async () => {
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(9, []),
   });
 
   const defaultModel = await screen.findByRole("combobox", {
@@ -134,7 +134,6 @@ test("Sending in an older conversation moves it to the top", async () => {
   const auth = chatListAuth(12);
   const older = chatListThread(45, "Older cached thread");
   const newer = chatListThread(46, "Newer cached thread");
-  await seedChatListCache(12, auth, [older, newer]);
   const send = context.mocks.deferred<void>();
   let sentPrompt: string | undefined;
   installChatListAgent(context);
@@ -155,7 +154,12 @@ test("Sending in an older conversation moves it to the top", async () => {
     });
   });
 
-  await setupPage({ context, path: `/chats/${older.id}`, auth });
+  await setupPage({
+    context,
+    path: `/chats/${older.id}`,
+    auth,
+    cachedChatThreadEvents: cachedChatListEvents(12, [older, newer]),
+  });
 
   await waitFor(() => {
     expect(sidebarThreadTitles()).toStrictEqual([
@@ -183,7 +187,6 @@ test("Sending in an older conversation moves it to the top", async () => {
 
 test("Server confirmation settles a new conversation without duplication", async () => {
   const auth = chatListAuth(13);
-  await seedChatListCache(13, auth, []);
   const confirmation = context.mocks.deferred<void>();
   let createdThreadId: string | undefined;
   let createdEventId: string | undefined;
@@ -217,6 +220,7 @@ test("Server confirmation settles a new conversation without duplication", async
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
     auth,
+    cachedChatThreadEvents: cachedChatListEvents(13, []),
   });
 
   await selectClaudeSonnet();

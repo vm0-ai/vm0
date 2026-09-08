@@ -48,14 +48,14 @@ test.each(platforms)(
       );
     });
     const thread = chatListThread(1, "Keyboard hints");
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId: 60,
       threads: [thread],
     });
     await setupPage({
       context,
       path: `/chats/${thread.id}`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
       featureSwitches,
     });
     const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -114,14 +114,14 @@ test.each(platforms)(
       return query === "(min-width: 48rem)";
     });
     const thread = chatListThread(1, "Keyboard shortcuts");
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId: 63,
       threads: [thread],
     });
     await setupPage({
       context,
       path: `/chats/${thread.id}`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
       featureSwitches,
     });
     const composer = await screen.findByRole("textbox", { name: "Message" });
@@ -156,7 +156,7 @@ test("Hide thread hints when stable chat navigation is disabled and preserve act
       query === "(min-width: 48rem)" || query === "(display-mode: standalone)"
     );
   });
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 62,
     threads: [chatListThread(1, "Thread hints")],
   });
@@ -176,7 +176,7 @@ test("Hide thread hints when stable chat navigation is disabled and preserve act
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     cachedFeatureSwitches: featureSwitches,
   });
   await screen.findByRole("textbox", { name: "Message" });

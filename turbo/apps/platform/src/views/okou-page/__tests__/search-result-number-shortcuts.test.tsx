@@ -31,7 +31,6 @@ import {
 } from "./chat-navigation-artifact-test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
-  cachedChatListEvents,
   chatListThread,
   fastButton,
   sidebarThreadTitles,
@@ -201,7 +200,7 @@ test.each([
       });
     });
     const remoteChatList = context.mocks.deferred<void>();
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId,
       threads,
       chatListRemoteGate: remoteChatList.promise,
@@ -209,8 +208,7 @@ test.each([
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      auth: workspace.auth,
-      cachedChatThreadEvents: cachedChatListEvents(caseId, threads),
+      ...workspace.pageOptions,
       featureSwitches,
     });
     const expectedTitles = [
@@ -291,7 +289,7 @@ test("Empty search follows the current agent and unread filter", async () => {
     agentId: "c7000000-0000-4000-a000-000000000002",
     pinnedAt: "2026-08-01T00:59:00.000Z",
   });
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 25,
     threads: [first, second, third, foreign],
   });
@@ -305,7 +303,7 @@ test("Empty search follows the current agent and unread filter", async () => {
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   await waitFor(() => {
@@ -352,7 +350,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   });
   const titleMatch = chatListThread(1, "Budget planning");
   const messageMatch = chatListThread(2, "Project notes");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 26,
     threads: [titleMatch, messageMatch],
   });
@@ -382,7 +380,7 @@ test("Search numbers follow fresh matches and restart after filtering", async ()
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const { dialog, search } = await openSearch();
@@ -424,14 +422,14 @@ test("Search shortcuts preserve typing and reset hints when focus is lost or the
     );
   });
   const first = chatListThread(1, "First chat");
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 27,
     threads: [first],
   });
   await setupPage({
     context,
     path: `/chats/${first.id}`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches,
   });
   const { dialog, search } = await openSearch();
@@ -514,7 +512,7 @@ test.each([
       );
     });
     const titleMatch = chatListThread(1, "Budget planning");
-    const workspace = await installContinuityWorkspace(context, {
+    const workspace = installContinuityWorkspace(context, {
       caseId: 29,
       threads: [titleMatch],
     });
@@ -522,7 +520,7 @@ test.each([
     await setupPage({
       context,
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      auth: workspace.auth,
+      ...workspace.pageOptions,
       featureSwitches,
     });
     const { dialog, search } = await openSearch();
@@ -586,14 +584,14 @@ test("Disabling stable navigation restores activity order and workspace-wide sea
   const foreign = chatListThread(3, "Another agent's chat", {
     agentId: "c7000000-0000-4000-a000-000000000002",
   });
-  const workspace = await installContinuityWorkspace(context, {
+  const workspace = installContinuityWorkspace(context, {
     caseId: 28,
     threads: [firstPin, secondPin, foreign],
   });
   await setupPage({
     context,
     path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth: workspace.auth,
+    ...workspace.pageOptions,
     featureSwitches: {
       [FeatureSwitchKey.StableChatThreadNavigation]: false,
     },

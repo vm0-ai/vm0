@@ -2,7 +2,7 @@ use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use guest_control_proto::{ExecControlNonce, ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 use process_control_ipc::{ControlRequest, ControlResponseStatus};
@@ -12,9 +12,10 @@ use crate::log::log;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::writer::GuestWriter;
 
+use super::deadline_io::DeadlineStream;
 use super::sink::{ControlSinkState, ControlStreamLockError, PendingControlSlot};
 use super::{
-    CONTROL_SINK_IO_TIMEOUT, EXEC_CONTROL_LOG_NAME, EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX,
+    EXEC_CONTROL_LOG_NAME, EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX,
     EXEC_CONTROL_WORKER_START_ERROR_PREFIX, EXEC_OPERATION_INACTIVE_MESSAGE,
     EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, THREAD_EXEC_CONTROL_FORWARD, duration_until, is_timeout,
     request_timeout_error,
@@ -176,29 +177,17 @@ fn forward_to_connected_sink(
         message_id: message_id.to_owned(),
         payload,
     };
-    let write_timeout = match control_sink_io_timeout(deadline) {
-        Ok(timeout) => timeout,
-        Err(error) if is_timeout(&error) => {
-            return control_forward_io_error(
-                ExecControlStatus::SinkTimeout,
-                error,
-                ControlSinkDisposition::Keep,
-            );
-        }
-        Err(error) => {
-            return control_forward_io_error(
-                ExecControlStatus::SinkError,
-                error,
-                ControlSinkDisposition::Keep,
-            );
-        }
-    };
-    if let Err(error) = write_control_request(stream, &request_frame, write_timeout) {
+    let mut stream = DeadlineStream::new(stream, deadline);
+    if let Err(error) = process_control_ipc::write_request(&mut stream, &request_frame) {
         return if is_timeout(&error) {
             control_forward_io_error(
                 ExecControlStatus::SinkTimeout,
                 error,
-                ControlSinkDisposition::Fail,
+                if stream.io_started {
+                    ControlSinkDisposition::Fail
+                } else {
+                    ControlSinkDisposition::Keep
+                },
             )
         } else {
             control_forward_io_error(
@@ -209,24 +198,14 @@ fn forward_to_connected_sink(
         };
     }
 
-    let read_timeout = match control_sink_io_timeout(deadline) {
-        Ok(timeout) => timeout,
-        Err(error) if is_timeout(&error) => {
-            return control_forward_io_error(
-                ExecControlStatus::SinkTimeout,
-                error,
-                ControlSinkDisposition::Fail,
-            );
-        }
-        Err(error) => {
-            return control_forward_io_error(
-                ExecControlStatus::SinkError,
-                error,
-                ControlSinkDisposition::Fail,
-            );
-        }
-    };
-    match read_control_response(stream, read_timeout) {
+    match process_control_ipc::read_response(&mut stream) {
+        // Socket timeout rounding and scheduling can complete the final read
+        // after its budget. Never turn that late response into an acceptance.
+        Ok(_) if request_expired(deadline) => control_forward_io_error(
+            ExecControlStatus::SinkTimeout,
+            request_timeout_error(),
+            ControlSinkDisposition::Fail,
+        ),
         Ok(response) if response.message_id != message_id => ControlForwardOutcome {
             status: ExecControlStatus::SinkError,
             diagnostic: format!(
@@ -284,30 +263,6 @@ fn control_forward_io_error(
 
 fn request_expired(deadline: Instant) -> bool {
     duration_until(deadline).is_none()
-}
-
-fn control_sink_io_timeout(deadline: Instant) -> io::Result<Duration> {
-    duration_until(deadline)
-        .map(|remaining| remaining.min(CONTROL_SINK_IO_TIMEOUT))
-        .filter(|timeout| !timeout.is_zero())
-        .ok_or_else(request_timeout_error)
-}
-
-fn write_control_request(
-    stream: &mut UnixStream,
-    request: &ControlRequest,
-    timeout: Duration,
-) -> io::Result<()> {
-    stream.set_write_timeout(Some(timeout))?;
-    process_control_ipc::write_request(stream, request)
-}
-
-fn read_control_response(
-    stream: &mut UnixStream,
-    timeout: Duration,
-) -> io::Result<process_control_ipc::ControlResponse> {
-    stream.set_read_timeout(Some(timeout))?;
-    process_control_ipc::read_response(stream)
 }
 
 pub(super) fn encode_control_result(

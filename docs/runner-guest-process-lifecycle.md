@@ -116,6 +116,20 @@ whether this is a request deadline or whether the sandbox can be reused.
 
 ## Agent Start Timing
 
+Required Agent bootstrap files are written in connector-context, user-environment,
+then run-payload order through the existing bounded private-file operation.
+`runner_required_private_files_write` measures this entire operation, including
+serialization and oversized sequential/chunked fallback. It is not a transaction:
+any failure prevents Agent start, but earlier entries may already have been written.
+A fitting batch shares one 30-second guest-helper budget and one 60-second request
+deadline; fallback retains the existing deadline per transmitted request.
+
+The former `runner_connector_account_context_write` event is no longer emitted.
+For historical comparisons, sum that old interval and the old
+`runner_required_private_files_write` interval per run before aggregating. Do not
+compare the old two-file interval alone against the new three-file interval or
+infer independent per-file wall-clock durations from the batch.
+
 `runner_agent_start_process`, `runner_executor_start_to_spawn`,
 `runner_claim_to_spawn`, and `api_to_spawn` retain their historical shell-spawn
 boundary. Agent readiness is recorded separately by

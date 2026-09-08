@@ -84,6 +84,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
+  mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
 import { createEmailOutboxStateApi } from "./helpers/email-outbox-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -144,6 +145,10 @@ const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
 const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
 const GOOGLE_FORM_URL = `https://docs.google.com/forms/d/${GOOGLE_FORM_ID}/edit`;
 const GOOGLE_FORM_SEED_CURSOR = "2026-09-01T08:15:00.123456Z";
+const NOTION_FIRST_PAGE_ID = "11111111-1111-4111-8111-111111111111";
+const NOTION_FIRST_PAGE_URL = `https://www.notion.so/First-${NOTION_FIRST_PAGE_ID.replaceAll("-", "")}`;
+const NOTION_SECOND_PAGE_ID = "22222222-2222-4222-8222-222222222222";
+const NOTION_SECOND_PAGE_URL = `https://www.notion.so/Second-${NOTION_SECOND_PAGE_ID.replaceAll("-", "")}`;
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type ActiveDefinition = Extract<
@@ -347,6 +352,31 @@ function googleMeetBlueprint(
   };
 }
 
+function notionBlueprint(): OfficialWorkflowBlueprint {
+  return {
+    key: "notion-child-page-trigger",
+    parameters: [
+      {
+        key: "parent-page-url",
+        type: "string",
+        format: "url",
+        required: true,
+      },
+    ],
+    desiredState: {
+      kind: "event",
+      eventType: "notion-child-page-created",
+      eventConfig: {
+        provider: "notion",
+        event: "child_page_created",
+        parentPageUrl: { parameter: "parent-page-url" },
+      },
+      autonomyBudget: 4,
+    },
+    runtime: { resultEmail: false },
+  };
+}
+
 function structureTransitionGoogleMeetBlueprint(): OfficialWorkflowBlueprint {
   return {
     ...googleMeetBlueprint(1),
@@ -418,6 +448,49 @@ function configureOfficialGoogleFormsMock() {
     ),
   );
   return recorder;
+}
+
+function configureOfficialNotionPageMock(): void {
+  const pages = new Map([
+    [NOTION_FIRST_PAGE_ID, { title: "First page", url: NOTION_FIRST_PAGE_URL }],
+    [
+      NOTION_SECOND_PAGE_ID,
+      { title: "Second page", url: NOTION_SECOND_PAGE_URL },
+    ],
+  ]);
+  server.use(
+    http.get(
+      "https://api.notion.com/v1/pages/:pageId",
+      ({ request, params }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer notion-access-token",
+        );
+        expect(request.headers.get("notion-version")).toBe("2026-03-11");
+        const pageId = String(params.pageId);
+        const page = pages.get(pageId);
+        if (!page) {
+          throw new Error(`Unexpected Official Workflow Notion page ${pageId}`);
+        }
+        return HttpResponse.json({
+          object: "page",
+          id: pageId,
+          created_time: "2026-09-01T00:00:00.000Z",
+          last_edited_time: "2026-09-01T00:00:00.000Z",
+          archived: false,
+          in_trash: false,
+          url: page.url,
+          parent: { type: "workspace" },
+          properties: {
+            title: {
+              id: "title",
+              type: "title",
+              title: [{ type: "text", plain_text: page.title }],
+            },
+          },
+        });
+      },
+    ),
+  );
 }
 
 function configureOfficialGoogleMeetMock() {
@@ -4864,6 +4937,122 @@ describe.sequential("Official Workflow installations", () => {
     });
     expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
     expect(forms.watchCalls).toBe(1);
+  });
+
+  it("reconfigures an Official Notion automation without a feature override", async () => {
+    installCatalogStorageFixture();
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const definitionName = `api-test-notion-${suffix}`;
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [notionBlueprint()])]),
+    );
+
+    const { actor } = await workflowBdd.setupWorkflowOrg({
+      timezone: "Asia/Shanghai",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected organization-scoped actor");
+    }
+    const { agentId } = await workflowBdd.createAgent(actor);
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await bdd.deleteAgent(actor, agentId);
+      await cleanupCatalog();
+    });
+    mockNotionConnectorOAuth();
+    await workflowBdd.connectConnector(actor, "notion");
+    configureOfficialNotionPageMock();
+    await setOfficialWorkflowsEnabled(actor, true);
+    const headers = authHeaders(actor);
+    const installed = await accept(
+      officialClient().install({
+        headers,
+        params: { definitionName },
+        body: {
+          agentId,
+          blueprints: [
+            {
+              blueprintKey: "notion-child-page-trigger",
+              bindings: [
+                { key: "parent-page-url", value: NOTION_FIRST_PAGE_URL },
+              ],
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const initial = installed.body.workflow.automations.find((automation) => {
+      return automation.official?.blueprintKey === "notion-child-page-trigger";
+    });
+    if (
+      !initial ||
+      initial.kind !== "event" ||
+      initial.eventType !== "notion-child-page-created" ||
+      !initial.official
+    ) {
+      throw new Error("Expected an Official Notion automation");
+    }
+    const connectorId = initial.eventConfig.connectorId;
+    const initialFingerprint = initial.official.appliedFingerprint;
+    expect(initial).toMatchObject({
+      enabled: true,
+      eventConfig: {
+        connectorId,
+        parentPage: {
+          id: NOTION_FIRST_PAGE_ID,
+          rawUrl: NOTION_FIRST_PAGE_URL,
+          title: "First page",
+          url: NOTION_FIRST_PAGE_URL,
+        },
+      },
+      official: { reconciliationStatus: "current" },
+    });
+
+    const reconfigured = await accept(
+      installationClient().reconfigure({
+        headers,
+        params: { workflowId: installed.body.workflow.id },
+        body: {
+          blueprints: [
+            {
+              blueprintKey: "notion-child-page-trigger",
+              bindings: [
+                { key: "parent-page-url", value: NOTION_SECOND_PAGE_URL },
+              ],
+            },
+          ],
+        },
+      }),
+      [200],
+    );
+    const current = reconfigured.body.workflow.automations.find(
+      (automation) => {
+        return automation.id === initial.id;
+      },
+    );
+    expect(current).toMatchObject({
+      id: initial.id,
+      kind: "event",
+      eventType: "notion-child-page-created",
+      enabled: true,
+      eventConfig: {
+        connectorId,
+        parentPage: {
+          id: NOTION_SECOND_PAGE_ID,
+          rawUrl: NOTION_SECOND_PAGE_URL,
+          title: "Second page",
+          url: NOTION_SECOND_PAGE_URL,
+        },
+      },
+      official: {
+        parameterBindings: [
+          { key: "parent-page-url", value: NOTION_SECOND_PAGE_URL },
+        ],
+        reconciliationStatus: "current",
+      },
+    });
+    expect(current?.official?.appliedFingerprint).toBe(initialFingerprint);
   });
 
   it("projects the Google Meet account during installation and reconfiguration", async () => {

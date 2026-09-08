@@ -787,10 +787,7 @@ pub(super) fn guest_connector_account_context_file_path(run_id: RunId) -> Runner
     })
 }
 
-pub(super) async fn write_connector_account_context_file(
-    sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
-) -> RunnerResult<String> {
+fn build_connector_account_context(context: &ExecutionContext) -> RunConnectorAccountContext {
     let targets = context
         .connector_runtime_targets
         .iter()
@@ -813,54 +810,55 @@ pub(super) async fn write_connector_account_context_file(
             },
         })
         .collect();
-    let payload = serde_json::to_vec(&RunConnectorAccountContext {
+    RunConnectorAccountContext {
         schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
         targets,
-    })
-    .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
-    let file_path = guest_connector_account_context_file_path(context.run_id)?;
-    sandbox.write_private_file(&file_path, &payload).await?;
-    Ok(file_path)
+    }
 }
 
 pub(super) struct RequiredAgentFiles {
-    pub(super) user_env_file: Option<String>,
+    pub(super) user_env_file: String,
     pub(super) run_payload_file: String,
 }
 
 pub(super) async fn write_required_agent_files(
     sandbox: &dyn Sandbox,
-    run_id: RunId,
-    user_env: &HashMap<String, String>,
+    context: &ExecutionContext,
+    user_env: &mut HashMap<String, String>,
     run_payload: &guest_contracts::env::RunPayload,
 ) -> RunnerResult<RequiredAgentFiles> {
-    let run_payload_file = guest_run_payload_file_path(run_id)?;
+    let connector_context_file = guest_connector_account_context_file_path(context.run_id)?;
+    let connector_context_bytes = serde_json::to_vec(&build_connector_account_context(context))
+        .map_err(|e| RunnerError::Internal(format!("serialize connector account context: {e}")))?;
+    user_env.insert(
+        guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.to_string(),
+        connector_context_file.clone(),
+    );
+    let user_env_file = guest_user_env_file_path(context.run_id)?;
+    let user_env_bytes = serde_json::to_vec(user_env)
+        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+    let run_payload_file = guest_run_payload_file_path(context.run_id)?;
     let run_payload_bytes = serde_json::to_vec(run_payload)
         .map_err(|e| RunnerError::Internal(format!("serialize run payload: {e}")))?;
 
-    let user_env_file = if user_env.is_empty() {
-        sandbox
-            .write_private_file(&run_payload_file, &run_payload_bytes)
-            .await?;
-        None
-    } else {
-        let user_env_file = guest_user_env_file_path(run_id)?;
-        let user_env_bytes = serde_json::to_vec(user_env)
-            .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
-        sandbox
-            .write_private_files(&[
-                WriteFileEntry {
-                    path: &user_env_file,
-                    content: &user_env_bytes,
-                },
-                WriteFileEntry {
-                    path: &run_payload_file,
-                    content: &run_payload_bytes,
-                },
-            ])
-            .await?;
-        Some(user_env_file)
-    };
+    // All bootstrap inputs are required. Keep context first so a failed account
+    // projection write prevents later writes, including in oversized fallback.
+    sandbox
+        .write_private_files(&[
+            WriteFileEntry {
+                path: &connector_context_file,
+                content: &connector_context_bytes,
+            },
+            WriteFileEntry {
+                path: &user_env_file,
+                content: &user_env_bytes,
+            },
+            WriteFileEntry {
+                path: &run_payload_file,
+                content: &run_payload_bytes,
+            },
+        ])
+        .await?;
 
     Ok(RequiredAgentFiles {
         user_env_file,

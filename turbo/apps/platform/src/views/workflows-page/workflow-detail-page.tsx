@@ -220,16 +220,6 @@ import {
   type CronTimeOption,
 } from "../../signals/okou-page/cron.ts";
 import { userPreferences$ } from "../../signals/okou-page/settings/user-preferences.ts";
-import { relatedCatalogItems$ } from "../../signals/okou-page/settings/connectors.ts";
-import {
-  builtinAccountConnectDialog$,
-  builtinAccountManager$,
-  closeBuiltinAccountConnectDialog$,
-  closeBuiltinAccountManager$,
-  finishConnectorAccountConnection$,
-  openBuiltinAccountConnectDialog$,
-  openBuiltinAccountManager$,
-} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { Link } from "../router/link.tsx";
 import {
   DetailPageBreadcrumbBar,
@@ -267,9 +257,10 @@ import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { AutomationListIcon } from "../okou-page/workflow-automations-page.tsx";
 import { emptyAutomationsImg } from "../okou-page/platform-assets.ts";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
-import { ConnectModal } from "../okou-page/components/settings/add-connection-dialog.tsx";
-import { ConnectorAccountManagerDialog } from "../okou-page/components/settings/connector-account-manager-dialog.tsx";
-import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
+import {
+  GoogleCalendarRecoveryDialogs,
+  GoogleCalendarReconnectAction,
+} from "./google-calendar-recovery.tsx";
 import {
   createOfficialWorkflowConfigurationForm,
   OfficialWorkflowConfigurationFields,
@@ -280,7 +271,6 @@ import {
 const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS = "min-h-24 resize-y";
 const AUTOMATION_TIMEZONE = "UTC";
-const GOOGLE_CALENDAR_CONNECTOR_SLUG = "google-calendar";
 
 const STRIPE_INVOICE_BILLING_REASONS = [
   "automatic_pending_invoice_item_invoice",
@@ -1003,6 +993,7 @@ export function WorkflowDetailPage() {
       <title>{`${t(($) => {
         return $.workflows.common.workflow;
       })} | ${brandName}`}</title>
+      <GoogleCalendarRecoveryDialogs />
       <WorkflowDetailContent />
     </>
   );
@@ -1260,8 +1251,6 @@ function AutomationCreateAction() {
   const capabilities = useLastResolved(orgPlanCapabilities$);
   const webhookTierEligible =
     capabilities?.workflowWebhookAutomationAllowed ?? true;
-  const notionWorkflowAutomationsEnabled =
-    features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
   const stripeInvoicePaidAutomationsEnabled =
     features[FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations] ?? false;
 
@@ -1274,7 +1263,6 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
     />
@@ -4212,12 +4200,7 @@ function buildIntegrationAutomationOptions({
   ];
 }
 
-function buildNotionAutomationOptions(
-  notionWorkflowAutomationsEnabled: boolean,
-): AutomationCreateOption[] {
-  if (!notionWorkflowAutomationsEnabled) {
-    return [];
-  }
+function buildNotionAutomationOptions(): AutomationCreateOption[] {
   return [
     {
       kind: "notion-child-page",
@@ -4386,11 +4369,9 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
@@ -4399,9 +4380,7 @@ function buildAutomationCreateCategories({
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
   });
-  const notionOptions = buildNotionAutomationOptions(
-    notionWorkflowAutomationsEnabled,
-  );
+  const notionOptions = buildNotionAutomationOptions();
 
   const categories: readonly AutomationCreateCategory[] = [
     {
@@ -4530,12 +4509,10 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
@@ -4544,7 +4521,6 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    notionWorkflowAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
   });
@@ -5066,7 +5042,6 @@ function AutomationsSection({
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
-      <GoogleCalendarRecoveryDialogs />
     </section>
   );
 }
@@ -8579,39 +8554,6 @@ function AutomationRowStats({
   );
 }
 
-function GoogleCalendarReconnectAction() {
-  const connectorLoadable = useLoadable(relatedCatalogItems$);
-  const openAccountManager = useSet(openBuiltinAccountManager$);
-  const pageSignal = useGet(pageSignal$);
-  const connector =
-    connectorLoadable.state === "hasData"
-      ? (connectorLoadable.data.find((candidate) => {
-          return candidate.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG;
-        }) ?? null)
-      : null;
-
-  return (
-    <Button
-      type="button"
-      variant="link"
-      className="h-auto w-fit p-0 text-xs text-amber-700 dark:text-amber-400"
-      disabled={!connector}
-      onClick={() => {
-        if (connector) {
-          openAccountManager(connector, pageSignal);
-        }
-      }}
-    >
-      {connectorLoadable.state === "loading" ? (
-        <Loader2 size={13} className="animate-spin" />
-      ) : null}
-      {i18n.t(($) => {
-        return $.workflows.automations.calendar.reconnectGoogleCalendar;
-      })}
-    </Button>
-  );
-}
-
 function GoogleCalendarAutomationWarning({
   automation,
   canOperate,
@@ -8669,86 +8611,10 @@ function GoogleCalendarAutomationWarning({
           </Button>
         ) : null}
         {automation.warning === "reconnect_required" && canOperate ? (
-          <GoogleCalendarReconnectAction />
+          <GoogleCalendarReconnectAction automation={automation} />
         ) : null}
       </div>
     </div>
-  );
-}
-
-function GoogleCalendarRecoveryDialogs() {
-  const managedConnector = useGet(builtinAccountManager$);
-  const accountConnect = useGet(builtinAccountConnectDialog$);
-  const closeAccountManager = useSet(closeBuiltinAccountManager$);
-  const openAccountConnect = useSet(openBuiltinAccountConnectDialog$);
-  const closeAccountConnect = useSet(closeBuiltinAccountConnectDialog$);
-  const finishAccountConnection = useSet(finishConnectorAccountConnection$);
-  const reloadWorkflows = useSet(reloadWorkflows$);
-  const pageSignal = useGet(pageSignal$);
-  const googleCalendarManager =
-    managedConnector?.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG
-      ? managedConnector
-      : null;
-  const googleCalendarConnect =
-    accountConnect?.connector.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG &&
-    accountConnect.mode.kind === "reconnect"
-      ? {
-          connector: accountConnect.connector,
-          mode: accountConnect.mode,
-        }
-      : null;
-
-  return (
-    <>
-      {googleCalendarManager ? (
-        <ConnectorAccountManagerDialog
-          target={{
-            kind: "builtin",
-            connectorSlug: googleCalendarManager.slug,
-          }}
-          connectorLabel={googleCalendarManager.label}
-          icon={<ConnectorIcon icon={googleCalendarManager.icon} size={20} />}
-          connectionActionsEnabled
-          onClose={closeAccountManager}
-          onReconnect={(account) => {
-            openAccountConnect(googleCalendarManager, {
-              kind: "reconnect",
-              connectionId: account.id,
-              authMethod: account.authMethod,
-            });
-          }}
-        />
-      ) : null}
-      {googleCalendarConnect ? (
-        <ConnectModal
-          item={googleCalendarConnect.connector}
-          accountMode={googleCalendarConnect.mode}
-          reconnectAuthMethod={googleCalendarConnect.mode.authMethod}
-          accountOptions={{
-            account: {
-              intent: "reconnect",
-              connectionId: googleCalendarConnect.mode.connectionId,
-            },
-          }}
-          onClose={closeAccountConnect}
-          onSuccess={async (connectionId) => {
-            await finishAccountConnection(
-              {
-                target: {
-                  kind: "builtin",
-                  connectorSlug: googleCalendarConnect.connector.slug,
-                },
-                connectionId,
-                connectorLabel: googleCalendarConnect.connector.label,
-                mode: googleCalendarConnect.mode,
-              },
-              pageSignal,
-            );
-            reloadWorkflows();
-          }}
-        />
-      ) : null}
-    </>
   );
 }
 

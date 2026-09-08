@@ -7,7 +7,6 @@ import {
   workflowAutomationsContract,
   workflowsDetailContract,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -42,7 +41,6 @@ import {
   chatEventAutomationPart,
   chatEventDisplayText,
 } from "./helpers/chat-event";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";
@@ -164,22 +162,6 @@ interface AutomationScenario {
 
 function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
-}
-
-async function enableNotionWorkflowAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-  });
-}
-
-async function disableNotionWorkflowAutomations(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowAutomations]: false,
-  });
 }
 
 interface GoogleFormsWatchRecorder {
@@ -2224,84 +2206,8 @@ describe("okou workflow automations", () => {
     );
   });
 
-  it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await disableNotionWorkflowAutomations(fixture);
-    const rejected = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "notion-child-page-created",
-          eventConfig: {
-            provider: "notion",
-            event: "child_page_created",
-            parentPageUrl: NOTION_PARENT_PAGE_URL,
-          },
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Notion workflow automations are not enabled",
-    );
-  });
-
-  it("rejects Notion database item automations when Notion automation creation is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await disableNotionWorkflowAutomations(fixture);
-    const rejected = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "notion-database-item-created",
-          eventConfig: {
-            provider: "notion",
-            event: "database_item_created",
-            databaseUrl: NOTION_DATABASE_URL,
-          },
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Notion workflow automations are not enabled",
-    );
-  });
-
-  it("rejects Notion page content updated automations when Notion automation creation is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await disableNotionWorkflowAutomations(fixture);
-    const rejected = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "notion-page-content-updated",
-          eventConfig: {
-            provider: "notion",
-            event: "page_content_updated",
-            pageUrl: NOTION_PARENT_PAGE_URL,
-          },
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Notion workflow automations are not enabled",
-    );
-  });
-
   it("requires a connected Notion account for Notion child page automations", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId } = await setupFixture();
 
     const rejected = await accept(
       automationsClient().create({
@@ -2326,8 +2232,7 @@ describe("okou workflow automations", () => {
   });
 
   it("requires a connected Notion account for Notion database item automations", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId } = await setupFixture();
 
     const rejected = await accept(
       automationsClient().create({
@@ -2352,8 +2257,7 @@ describe("okou workflow automations", () => {
   });
 
   it("requires a connected Notion account for Notion page content updated automations", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowAutomations(fixture);
+    const { workflowId } = await setupFixture();
 
     const rejected = await accept(
       automationsClient().create({
@@ -2379,7 +2283,6 @@ describe("okou workflow automations", () => {
 
   it("requires a standard notion.so page URL for Notion child page automations", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
@@ -2406,7 +2309,6 @@ describe("okou workflow automations", () => {
 
   it("requires a standard notion.so database URL for Notion database item automations", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
@@ -2433,7 +2335,6 @@ describe("okou workflow automations", () => {
 
   it("projects inaccessible Notion page errors by request brand", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
     server.use(
       http.get("https://api.notion.com/v1/pages/:pageId", () => {
@@ -2470,7 +2371,6 @@ describe("okou workflow automations", () => {
 
   it("projects inaccessible Notion database errors by request brand", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
     server.use(
       http.get("https://api.notion.com/v1/databases/:databaseId", () => {
@@ -2511,7 +2411,6 @@ describe("okou workflow automations", () => {
   it("creates Notion child page automations by validating and storing the parent page", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
@@ -2556,7 +2455,6 @@ describe("okou workflow automations", () => {
   it("creates Notion database item automations by validating and storing the data source", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
@@ -2601,7 +2499,6 @@ describe("okou workflow automations", () => {
   it("creates Notion page content updated automations for a page scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
@@ -2649,7 +2546,6 @@ describe("okou workflow automations", () => {
   it("creates Notion page content updated automations for a database scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(

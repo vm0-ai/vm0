@@ -325,42 +325,35 @@ def test_more_specific_base_allow_precedence_matrix(
     assert result.rel_path == expected["rel_path"]
 
 
-def test_more_specific_parameterized_base_unknown_allow_preserves_params():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "tenant",
-            "apis": [
-                {
-                    "base": "https://{workspace}.example.com/api/{tenant}",
-                    "auth": {"headers": {"Authorization": "Bearer tenant"}},
-                    "permissions": [],
-                }
-            ],
-        },
+@pytest.mark.parametrize("specific_first", [False, True], ids=["broad-first", "specific-first"])
+@pytest.mark.parametrize("reverse_fallbacks", [False, True], ids=["original", "reversed"])
+def test_more_specific_parameterized_base_unknown_allow_preserves_first_selected_fallback(
+    specific_first, reverse_fallbacks
+):
+    tenant_base = "https://{workspace}.example.com/api/{tenant}"
+    fallback_apis = [
+        firewall_api(tenant_base, [], auth_label="tenant"),
+        firewall_api(tenant_base, [], auth_label="tenant"),
     ]
+    if reverse_fallbacks:
+        fallback_apis.reverse()
+    fws = [
+        broad_firewall(base="https://{workspace}.example.com"),
+        firewall_entry(
+            "tenant",
+            firewall_api(
+                tenant_base,
+                [firewall_permission("admin", "GET /admin")],
+                auth_label="admin",
+            ),
+            *fallback_apis,
+        ),
+    ]
+    if specific_first:
+        fws.reverse()
     policies = {
-        "broad": {
-            "allow": [],
-            "deny": ["broad"],
-            "unknownPolicy": "deny",
-        },
-        "tenant": {
-            "allow": [],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
+        "broad": network_policy(deny=["broad"]),
+        "tenant": network_policy(unknown_policy="allow"),
     }
 
     result = matching.match_compiled_firewall_request(
@@ -371,6 +364,7 @@ def test_more_specific_parameterized_base_unknown_allow_preserves_params():
     )
 
     assert isinstance(result, matching.FirewallAllow)
+    assert result.api_entry is fallback_apis[0]
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer tenant"
     assert result.name == "tenant"
     assert result.permission is None
