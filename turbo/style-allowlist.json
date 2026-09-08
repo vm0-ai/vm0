@@ -1,0 +1,594 @@
+{
+  "version": 1,
+  "selectors": [
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": ["@layer base"],
+      "selector": ".cl-drawerHeader",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "Clerk owns this drawer class; the adapter aligns its embedded header.",
+      "upstream": "@clerk/react drawer DOM",
+      "removal": "Remove with the Clerk drawer integration or when Clerk exposes a supported appearance hook."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": "[data-color-mode*=\"light\"] .wmde-markdown,.wmde-markdown[data-color-mode*=\"light\"]",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": "[data-color-mode*=\"dark\"] .wmde-markdown,.wmde-markdown[data-color-mode*=\"dark\"]",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h1,.wmde-markdown h2,.wmde-markdown h3,.wmde-markdown h4,.wmde-markdown h5,.wmde-markdown h6",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown blockquote,.wmde-markdown table,.wmde-markdown pre,.wmde-markdown details",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ul,.wmde-markdown ol,.wmde-markdown dl",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown>:first-child",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown>:last-child",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown li>p",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h1",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h2",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h3",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h4",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h5",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown h6",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown a",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown a:hover",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ":where([data-theme=\"dark\"]) .wmde-markdown a",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ":where([data-theme=\"dark\"]) .wmde-markdown a:hover",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown blockquote",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ul,.wmde-markdown ol",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ul ul,.wmde-markdown ol ul,.wmde-markdown ul ol,.wmde-markdown ol ol",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ul",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ol",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ul ul",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown ol ol",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown hr",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown mark",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown table",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown table th,.wmde-markdown table td",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown table th",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown table tr",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown table tr:nth-child(2n)",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown code,.wmde-markdown tt",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown :not(pre)>code,.wmde-markdown :not(pre)>tt",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown pre",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown pre code,.wmde-markdown pre tt",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown pre>code::-webkit-scrollbar-thumb",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown pre .copied",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown pre:hover .copied:hover",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown kbd",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown .markdown-alert",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown .markdown-alert.markdown-alert-note",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "The Markdown renderer owns these classes; the adapter applies app design tokens to generated content.",
+      "upstream": "@uiw/react-markdown-preview generated DOM",
+      "removal": "Remove when the renderer is replaced or its generated DOM can be styled through supported attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".tiptap p.is-editor-empty:first-child::before",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "Tiptap owns these editor state classes; the adapter styles generated editable DOM.",
+      "upstream": "@tiptap/react editor DOM",
+      "removal": "Remove when the Tiptap editor is replaced or exposes equivalent element attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ".tiptap:focus",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "Tiptap owns these editor state classes; the adapter styles generated editable DOM.",
+      "upstream": "@tiptap/react editor DOM",
+      "removal": "Remove when the Tiptap editor is replaced or exposes equivalent element attributes."
+    },
+    {
+      "file": "apps/platform/src/views/css/index.css",
+      "atRules": [],
+      "selector": ":root:is(.dark,[data-theme=\"dark\"])[data-gradient-color-themes][data-color-theme]",
+      "kind": "global-environment",
+      "owner": "frontend-platform",
+      "rationale": "This selector maps the document-level dark theme state into design tokens.",
+      "upstream": "application theme state",
+      "removal": "Remove when the document theme no longer exposes the dark class fallback."
+    },
+    {
+      "file": "packages/ui/src/styles/globals.css",
+      "atRules": ["@layer base"],
+      "selector": ".dark,[data-theme=\"dark\"]",
+      "kind": "global-environment",
+      "owner": "frontend-platform",
+      "rationale": "This selector maps the document-level dark theme state into design tokens.",
+      "upstream": "application theme state",
+      "removal": "Remove when the document theme no longer exposes the dark class fallback."
+    },
+    {
+      "file": "packages/ui/src/styles/globals.css",
+      "atRules": ["@layer base"],
+      "selector": "svg.lucide-ellipsis circle,svg.lucide-ellipsis-vertical circle",
+      "kind": "third-party-dom-adapter",
+      "owner": "frontend-platform",
+      "rationale": "Lucide owns these icon classes; the adapter normalizes generated SVG geometry.",
+      "upstream": "lucide-react SVG DOM",
+      "removal": "Remove when Lucide exposes the geometry through component props or data attributes."
+    }
+  ],
+  "styleInjections": [
+    {
+      "file": "apps/platform/src/views/okou-page/chat-composer.tsx",
+      "kind": "third-party-dom-adapter",
+      "syntax": "create-style-element",
+      "fingerprint": "83864e0d938d8d765db78c7c08c6a6f1d7790cb4d61709d25714b8bc7ed9dd4c",
+      "preview": "document.createElement(\"style\")",
+      "owner": "frontend-platform",
+      "rationale": "A Shadow DOM adapter isolates and normalizes user-supplied presentation template markup.",
+      "upstream": "user-supplied presentation template Shadow DOM",
+      "removal": "Remove when presentation template thumbnails no longer render external markup."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/chat-composer.tsx",
+      "kind": "third-party-dom-adapter",
+      "syntax": "style-content-write",
+      "fingerprint": "7f52bc829c2266e01bb80da09f59bfd93a1c8adfb418e3d7cd692c841944ab1b",
+      "preview": "resetStyle.textContent = ` :host { all: initial; contain: strict; display: block; height: 100%; overflow: hidden; positi",
+      "owner": "frontend-platform",
+      "rationale": "A Shadow DOM adapter isolates and normalizes user-supplied presentation template markup.",
+      "upstream": "user-supplied presentation template Shadow DOM",
+      "removal": "Remove when presentation template thumbnails no longer render external markup."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/presentation-html-preview.ts",
+      "kind": "third-party-dom-adapter",
+      "syntax": "create-style-element",
+      "fingerprint": "709b96faebec6d7a66fc75d52beb005b3af546f7240c22be13a5f6deb3001bc3",
+      "preview": "doc.createElement(\"style\")",
+      "owner": "frontend-platform",
+      "rationale": "The presentation preview adapter normalizes generated HTML in its isolated document.",
+      "upstream": "generated presentation HTML document",
+      "removal": "Remove when generated presentation HTML exposes a stable attribute-only styling contract."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/presentation-html-preview.ts",
+      "kind": "third-party-dom-adapter",
+      "syntax": "style-content-write",
+      "fingerprint": "6a2b1a2eeb67cb33d4e8092263252d959aa4afdef77c64ffa5136ebef6543679",
+      "preview": "style.textContent = materializedThemeCss({ fontPair: selectedFontPairFromScript(scriptText), palette, })",
+      "owner": "frontend-platform",
+      "rationale": "The presentation preview adapter normalizes generated HTML in its isolated document.",
+      "upstream": "generated presentation HTML document",
+      "removal": "Remove when generated presentation HTML exposes a stable attribute-only styling contract."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/presentation-html-preview.ts",
+      "kind": "third-party-dom-adapter",
+      "syntax": "create-style-element",
+      "fingerprint": "424e786dbfe7b0c99e99d7d17fc241ef8091db6979ccd70c6e456196627a185f",
+      "preview": "previewDoc.createElement(\"style\")",
+      "owner": "frontend-platform",
+      "rationale": "The presentation preview adapter normalizes generated HTML in its isolated document.",
+      "upstream": "generated presentation HTML document",
+      "removal": "Remove when generated presentation HTML exposes a stable attribute-only styling contract."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/presentation-html-preview.ts",
+      "kind": "third-party-dom-adapter",
+      "syntax": "style-content-write",
+      "fingerprint": "a9563a3e54169b34dfcf02639c4bfe4faec64cda9e80f5c0f8342f8923e2007d",
+      "preview": "style.textContent = ` html, body { width: 100%; height: 100%; margin: 0 !important; overflow: hidden !important; } body ",
+      "owner": "frontend-platform",
+      "rationale": "The presentation preview adapter normalizes generated HTML in its isolated document.",
+      "upstream": "generated presentation HTML document",
+      "removal": "Remove when generated presentation HTML exposes a stable attribute-only styling contract."
+    },
+    {
+      "file": "apps/platform/src/views/okou-page/presentation-html-preview.ts",
+      "kind": "third-party-dom-adapter",
+      "syntax": "style-content-write",
+      "fingerprint": "26922ebb2e6a49c0d23f72a53972dda4c90eefa00a423912d4585f6c463b2d4d",
+      "preview": "style.textContent = styleText",
+      "owner": "frontend-platform",
+      "rationale": "The presentation preview adapter normalizes generated HTML in its isolated document.",
+      "upstream": "generated presentation HTML document",
+      "removal": "Remove when generated presentation HTML exposes a stable attribute-only styling contract."
+    }
+  ],
+  "vendorFiles": [
+    {
+      "file": "apps/platform/src/views/css/vendor/uiw-react-markdown-preview-5.2.0.css",
+      "sha256": "cc357264d451087fe09cc3a5714f517ee58f5d1dd673d3794f63f31f19b9f480",
+      "owner": "frontend-platform",
+      "upstream": "@uiw/react-markdown-preview 5.2.0",
+      "rationale": "This file is a verbatim pinned third-party stylesheet and is reviewed as one immutable artifact.",
+      "removal": "Remove when the Markdown renderer no longer depends on this upstream stylesheet."
+    }
+  ]
+}
