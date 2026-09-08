@@ -1,0 +1,494 @@
+{
+  "components": [
+    {
+      "file": "alert.tsx",
+      "id": "alert",
+      "module": "./components/ui/alert",
+      "exports": [],
+      "types": [],
+      "variants": {
+        "variant": [
+          "default",
+          "destructive"
+        ]
+      },
+      "doc": null,
+      "lines": 69,
+      "usesBaseUi": false
+    },
+    {
+      "file": "button.tsx",
+      "id": "button",
+      "module": "./components/ui/button",
+      "exports": [
+        "Button",
+        "buttonVariants"
+      ],
+      "types": [
+        "ButtonProps"
+      ],
+      "variants": {
+        "variant": [
+          "default",
+          "destructive",
+          "interrupt",
+          "outline",
+          "secondary",
+          "ghost",
+          "quiet",
+          "link"
+        ],
+        "size": [
+          "xs",
+          "sm",
+          "default",
+          "lg",
+          "icon-2xs",
+          "icon-xs",
+          "icon-sm",
+          "icon",
+          "icon-lg"
+        ],
+        "iconSize": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "doc": null,
+      "lines": 184,
+      "usesBaseUi": true
+    },
+    {
+      "file": "card.tsx",
+      "id": "card",
+      "module": "./components/ui/card",
+      "exports": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardDescription",
+        "CardContent"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 97,
+      "usesBaseUi": false
+    },
+    {
+      "file": "checkbox.tsx",
+      "id": "checkbox",
+      "module": "./components/ui/checkbox",
+      "exports": [
+        "Checkbox"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 73,
+      "usesBaseUi": true
+    },
+    {
+      "file": "command.tsx",
+      "id": "command",
+      "module": "./components/ui/command",
+      "exports": [
+        "Command",
+        "CommandDialog",
+        "CommandInput",
+        "CommandList",
+        "CommandEmpty",
+        "CommandGroup",
+        "CommandItem",
+        "CommandSeparator",
+        "CommandShortcut"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 259,
+      "usesBaseUi": true
+    },
+    {
+      "file": "context-menu.tsx",
+      "id": "context-menu",
+      "module": "./components/ui/context-menu",
+      "exports": [
+        "ContextMenu",
+        "ContextMenuTrigger"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 19,
+      "usesBaseUi": true
+    },
+    {
+      "file": "copy-button.tsx",
+      "id": "copy-button",
+      "module": "./components/ui/copy-button",
+      "exports": [
+        "CopyButton"
+      ],
+      "types": [
+        "CopyButtonProps"
+      ],
+      "variants": {},
+      "doc": null,
+      "lines": 90,
+      "usesBaseUi": false
+    },
+    {
+      "file": "dialog.tsx",
+      "id": "dialog",
+      "module": "./components/ui/dialog",
+      "exports": [
+        "Dialog",
+        "DialogPortal",
+        "DialogOverlay",
+        "DialogClose",
+        "DialogTrigger",
+        "DialogContent",
+        "DialogHeader",
+        "DialogFooter",
+        "DialogTitle",
+        "DialogDescription"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 219,
+      "usesBaseUi": true
+    },
+    {
+      "file": "dropdown-menu.tsx",
+      "id": "dropdown-menu",
+      "module": "./components/ui/dropdown-menu",
+      "exports": [
+        "DropdownMenu",
+        "DropdownMenuPortal",
+        "DropdownMenuTrigger",
+        "DropdownMenuContent",
+        "DropdownMenuItem",
+        "DropdownMenuSeparator",
+        "DropdownMenuSub",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuSubContent"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 313,
+      "usesBaseUi": true
+    },
+    {
+      "file": "elapsed-time.tsx",
+      "id": "elapsed-time",
+      "module": "./components/ui/elapsed-time",
+      "exports": [
+        "ElapsedTime"
+      ],
+      "types": [
+        "ElapsedTimeProps"
+      ],
+      "variants": {},
+      "doc": null,
+      "lines": 51,
+      "usesBaseUi": false
+    },
+    {
+      "file": "input.tsx",
+      "id": "input",
+      "module": "./components/ui/input",
+      "exports": [
+        "Input"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 27,
+      "usesBaseUi": true
+    },
+    {
+      "file": "kbd.tsx",
+      "id": "kbd",
+      "module": "./components/ui/kbd",
+      "exports": [
+        "Kbd",
+        "KbdGroup"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 29,
+      "usesBaseUi": false
+    },
+    {
+      "file": "multi-select-combobox.tsx",
+      "id": "multi-select-combobox",
+      "module": "./components/ui/multi-select-combobox",
+      "exports": [
+        "MultiSelectCombobox"
+      ],
+      "types": [
+        "ComboboxOption",
+        "MultiSelectComboboxProps"
+      ],
+      "variants": {},
+      "doc": null,
+      "lines": 234,
+      "usesBaseUi": false
+    },
+    {
+      "file": "popover.tsx",
+      "id": "popover",
+      "module": "./components/ui/popover",
+      "exports": [
+        "Popover",
+        "PopoverTrigger",
+        "PopoverContent",
+        "PopoverAnchor",
+        "PopoverClose"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 278,
+      "usesBaseUi": true
+    },
+    {
+      "file": "radio.tsx",
+      "id": "radio",
+      "module": "./components/ui/radio",
+      "exports": [
+        "Radio",
+        "RadioGroup"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 50,
+      "usesBaseUi": true
+    },
+    {
+      "file": "running-indicator.tsx",
+      "id": "running-indicator",
+      "module": "./components/ui/running-indicator",
+      "exports": [
+        "RunningIndicator"
+      ],
+      "types": [
+        "RunningIndicatorProps"
+      ],
+      "variants": {},
+      "doc": null,
+      "lines": 44,
+      "usesBaseUi": false
+    },
+    {
+      "file": "segment-control.tsx",
+      "id": "segment-control",
+      "module": "./components/ui/segment-control",
+      "exports": [
+        "SegmentControl",
+        "SegmentControlItem"
+      ],
+      "types": [
+        "SegmentControlProps",
+        "SegmentControlItemProps"
+      ],
+      "variants": {
+        "size": [
+          "xs",
+          "sm",
+          "default",
+          "lg"
+        ],
+        "variant": [
+          "default",
+          "plain"
+        ]
+      },
+      "doc": "`default` is the tracked control: a recessed track with the selected segment\nraised out of it. `plain` is the same control without the track -- segments\nsit straight on whatever surface holds them, and the selection is marked\nwith the shared selected layer instead of a raised fill. The raised fill\nneeds a track to lift off; on a bare surface it reads as a stray card.\n\nThe two treatments are variants rather than class overrides because the\nselected fill and its shadow are separate utilities that a consumer's\n`className` cannot reliably take back.",
+      "lines": 166,
+      "usesBaseUi": true
+    },
+    {
+      "file": "select.tsx",
+      "id": "select",
+      "module": "./components/ui/select",
+      "exports": [
+        "Select",
+        "SelectGroup",
+        "SelectValue",
+        "SelectTrigger",
+        "SelectContent",
+        "SelectLabel",
+        "SelectItem",
+        "SelectSeparator",
+        "SelectScrollUpButton",
+        "SelectScrollDownButton"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 381,
+      "usesBaseUi": true
+    },
+    {
+      "file": "sheet.tsx",
+      "id": "sheet",
+      "module": "./components/ui/sheet",
+      "exports": [
+        "Sheet",
+        "SheetPortal",
+        "SheetOverlay",
+        "SheetTrigger",
+        "SheetClose",
+        "SheetContent",
+        "SheetHeader",
+        "SheetFooter",
+        "SheetTitle",
+        "SheetDescription"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 213,
+      "usesBaseUi": true
+    },
+    {
+      "file": "shortcut-tooltip-group.tsx",
+      "id": "shortcut-tooltip-group",
+      "module": "./components/ui/shortcut-tooltip-group",
+      "exports": [
+        "ShortcutTooltipGroup"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 51,
+      "usesBaseUi": false
+    },
+    {
+      "file": "skeleton.tsx",
+      "id": "skeleton",
+      "module": "./components/ui/skeleton",
+      "exports": [
+        "Skeleton"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 16,
+      "usesBaseUi": false
+    },
+    {
+      "file": "slider.tsx",
+      "id": "slider",
+      "module": "./components/ui/slider",
+      "exports": [
+        "Slider"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": "Draw one mark per step above the track. Use it when the steps are the\npoint — a duration in whole seconds — rather than a continuous range.",
+      "lines": 111,
+      "usesBaseUi": true
+    },
+    {
+      "file": "sonner.tsx",
+      "id": "sonner",
+      "module": "./components/ui/sonner",
+      "exports": [],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 96,
+      "usesBaseUi": false
+    },
+    {
+      "file": "switch.tsx",
+      "id": "switch",
+      "module": "./components/ui/switch",
+      "exports": [
+        "Switch"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 59,
+      "usesBaseUi": true
+    },
+    {
+      "file": "table.tsx",
+      "id": "table",
+      "module": "./components/ui/table",
+      "exports": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableHead",
+        "TableRow",
+        "TableCell"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 126,
+      "usesBaseUi": false
+    },
+    {
+      "file": "tabs.tsx",
+      "id": "tabs",
+      "module": "./components/ui/tabs",
+      "exports": [
+        "Tabs",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 76,
+      "usesBaseUi": true
+    },
+    {
+      "file": "textarea.tsx",
+      "id": "textarea",
+      "module": "./components/ui/textarea",
+      "exports": [
+        "Textarea"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 24,
+      "usesBaseUi": false
+    },
+    {
+      "file": "tooltip.tsx",
+      "id": "tooltip",
+      "module": "./components/ui/tooltip",
+      "exports": [
+        "Tooltip",
+        "TooltipTrigger",
+        "TooltipContent",
+        "TooltipProvider"
+      ],
+      "types": [],
+      "variants": {},
+      "doc": null,
+      "lines": 147,
+      "usesBaseUi": true
+    }
+  ],
+  "totals": {
+    "files": 28,
+    "exported": 26,
+    "withVariants": 3
+  }
+}

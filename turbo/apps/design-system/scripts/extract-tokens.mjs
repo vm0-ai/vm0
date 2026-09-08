@@ -8,11 +8,12 @@
  * catalogue on the next build with no edit here.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseBlocks } from "./lib/css-parse.mjs";
+import { emit } from "./lib/emit.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const turboRoot = resolve(here, "../../..");
@@ -404,9 +405,8 @@ const manifest = {
   },
 };
 
-mkdirSync(dirname(outFile), { recursive: true });
-writeFileSync(outFile, `${JSON.stringify(manifest, null, 2)}\n`);
-
-process.stdout.write(
-  `tokens: ${manifest.totals.tokens} (${manifest.totals.colors} colours, ${manifest.totals.themed} theme-aware) across ${manifest.sections.length} sections, ${colorThemes.length} colour themes\n`,
+emit(
+  outFile,
+  manifest,
+  `tokens: ${manifest.totals.tokens} (${manifest.totals.colors} colours, ${manifest.totals.themed} theme-aware) across ${manifest.sections.length} sections, ${colorThemes.length} colour themes`,
 );

@@ -26,7 +26,7 @@ export interface TokenSection {
   tokens: TokenEntry[];
 }
 
-export interface ColorTheme {
+interface ColorTheme {
   id: string;
   label: string;
   anchor: string | null;
@@ -35,7 +35,7 @@ export interface ColorTheme {
   ring: string | null;
 }
 
-export interface TokenManifest {
+interface TokenManifest {
   sources: {
     id: string;
     label: string;
@@ -61,7 +61,7 @@ export interface ComponentEntry {
   usesBaseUi: boolean;
 }
 
-export interface ComponentManifest {
+interface ComponentManifest {
   components: ComponentEntry[];
   totals: { files: number; exported: number; withVariants: number };
 }

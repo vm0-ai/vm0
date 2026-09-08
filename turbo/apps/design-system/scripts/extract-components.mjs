@@ -8,11 +8,12 @@
  * the catalogue -- which is the only version of "keep it in sync" that holds.
  */
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { matchBrace } from "./lib/css-parse.mjs";
+import { emit } from "./lib/emit.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../packages/ui/src");
@@ -218,9 +219,8 @@ const manifest = {
   },
 };
 
-mkdirSync(dirname(outFile), { recursive: true });
-writeFileSync(outFile, `${JSON.stringify(manifest, null, 2)}\n`);
-
-process.stdout.write(
-  `components: ${manifest.totals.files} files, ${manifest.totals.exported} exported, ${manifest.totals.withVariants} with cva variants\n`,
+emit(
+  outFile,
+  manifest,
+  `components: ${manifest.totals.files} files, ${manifest.totals.exported} exported, ${manifest.totals.withVariants} with cva variants`,
 );

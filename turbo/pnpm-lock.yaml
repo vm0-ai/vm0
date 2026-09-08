@@ -491,9 +491,6 @@ importers:
 
   apps/design-system:
     dependencies:
-      '@base-ui/react':
-        specifier: ^1.7.0
-        version: 1.7.0(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@okouai/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -513,9 +510,6 @@ importers:
       '@okouai/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
-      '@okouai/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages/typescript-config
       '@tailwindcss/vite':
         specifier: ^4.1.8
         version: 4.2.2(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
@@ -534,12 +528,6 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.7.0)
-      eslint-plugin-react:
-        specifier: ^7.37.5
-        version: 7.37.5(eslint@9.39.4(jiti@2.7.0))
-      eslint-plugin-react-hooks:
-        specifier: ^7.0.1
-        version: 7.0.1(eslint@9.39.4(jiti@2.7.0))
       globals:
         specifier: ^16.5.0
         version: 16.5.0
@@ -549,15 +537,9 @@ importers:
       oxlint:
         specifier: ^1.75.0
         version: 1.75.0(oxlint-tsgolint@7.0.2001)
-      tailwindcss:
-        specifier: ^4.3.3
-        version: 4.3.3
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
-      typescript-eslint:
-        specifier: ^8.68.0
-        version: 8.68.0(@typescript/typescript6@6.0.2)(eslint@9.39.4(jiti@2.7.0))
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0)

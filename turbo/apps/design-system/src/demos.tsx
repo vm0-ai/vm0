@@ -102,7 +102,7 @@ import {
 import { toast } from "sonner";
 import { Copy, Pause, Play, Settings, Trash2 } from "lucide-react";
 
-export interface Demo {
+interface Demo {
   /** Matches the file name under packages/ui/src/components/ui. */
   id: string;
   title: string;
