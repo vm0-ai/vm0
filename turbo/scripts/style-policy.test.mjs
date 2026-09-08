@@ -1,17 +1,22 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { test } from "node:test";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { ESLint } from "eslint";
 
-import {
-  baselineGrowthErrors,
-  checkStylePolicy,
-  prunedBaseline,
-} from "./style-policy.mjs";
+import { checkStylePolicy } from "./style-policy.mjs";
 
 const EMPTY_ALLOWLIST = {
   version: 1,
@@ -21,9 +26,11 @@ const EMPTY_ALLOWLIST = {
 };
 
 function createWorkspace(testContext, files) {
-  const root = mkdtempSync(join(tmpdir(), "vm0-style-policy-"));
+  const directory = mkdtempSync(join(tmpdir(), "vm0-style-policy-"));
+  const root = join(directory, "turbo");
+  mkdirSync(root);
   testContext.after(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
   });
   for (const [file, contents] of Object.entries(files)) {
     const path = join(root, file);
@@ -31,6 +38,71 @@ function createWorkspace(testContext, files) {
     writeFileSync(path, contents);
   }
   return root;
+}
+
+function git(root, ...args) {
+  return execFileSync("git", args, {
+    cwd: dirname(root),
+    encoding: "utf8",
+  }).trim();
+}
+
+function commitBaseline(root) {
+  git(root, "add", "turbo/style-legacy-baseline.json");
+  git(
+    root,
+    "-c",
+    "user.name=style-policy-test",
+    "-c",
+    "user.email=style-policy-test@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "fixture baseline",
+  );
+  return git(root, "rev-parse", "HEAD");
+}
+
+function createCommandWorkspace(t, files, baseline) {
+  const root = createWorkspace(t, files);
+  mkdirSync(join(root, "scripts"));
+  for (const file of ["style-policy.mjs", "style-class-usage.mjs"]) {
+    copyFileSync(join(import.meta.dirname, file), join(root, "scripts", file));
+  }
+  symlinkSync(
+    join(import.meta.dirname, "../node_modules"),
+    join(root, "node_modules"),
+    "dir",
+  );
+  writeFileSync(
+    join(root, "style-allowlist.json"),
+    JSON.stringify(EMPTY_ALLOWLIST),
+  );
+  writeFileSync(
+    join(root, "style-legacy-baseline.json"),
+    JSON.stringify(baseline),
+  );
+  git(root, "init", "--quiet", "--template=");
+  commitBaseline(root);
+  return root;
+}
+
+function runPolicy(root, args = [], ref = "HEAD") {
+  return spawnSync(
+    process.execPath,
+    [join(root, "scripts/style-policy.mjs"), ...args],
+    {
+      cwd: root,
+      env: { ...process.env, STYLE_POLICY_RATCHET_REF: ref },
+      encoding: "utf8",
+    },
+  );
+}
+
+function assertRejected(result, diagnostic) {
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, diagnostic);
+  assert.match(result.stderr, /Read docs\/styles\.md/);
 }
 
 function emptyBaseline(legacyClassTokens = []) {
@@ -237,54 +309,246 @@ test("the Tailwind lint cannot be disabled inline", async () => {
   );
 });
 
-test("pruning can only remove allowances", () => {
-  const baseline = {
+function selectorBaseline(property = "color", value = "red") {
+  return {
     ...emptyBaseline(["legacy"]),
     cssAtoms: {
       "apps/platform/src/example.css": [
         {
           atRules: [],
           selector: ".legacy",
-          property: "color",
-          value: "red",
+          property,
+          value,
           important: false,
         },
       ],
     },
-    classUsages: {
-      "apps/platform/src/view.tsx": { legacy: 1 },
-    },
   };
-  const pruned = prunedBaseline(baseline, {
-    cssAtoms: {},
-    classUsages: {},
-    styleInjections: {},
-  });
+}
 
-  assert.deepEqual(pruned, emptyBaseline());
+test("the command rejects nested declarations and apply under a frozen class", (t) => {
+  const file = "apps/platform/src/example.css";
+  const root = createCommandWorkspace(
+    t,
+    { [file]: ".legacy { color: red }" },
+    selectorBaseline(),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  for (const addition of [
+    "&:hover { color: blue }",
+    "span { color: blue }",
+    "@media (hover: hover) { color: blue }",
+    "@media (hover: hover) { &:hover { color: blue } }",
+    "@apply bg-red-500;",
+  ]) {
+    writeFileSync(join(root, file), `.legacy { color: red; ${addition} }`);
+    assertRejected(
+      runPolicy(root),
+      /New first-party CSS class selector declaration/,
+    );
+  }
 });
 
-test("the committed legacy baseline can only shrink", () => {
-  const reference = {
-    ...emptyBaseline(["legacy"]),
-    classUsages: {
-      "apps/platform/src/view.tsx": { legacy: 2 },
-    },
-  };
-  const smaller = {
-    ...emptyBaseline(["legacy"]),
-    classUsages: {
-      "apps/platform/src/view.tsx": { legacy: 1 },
-    },
-  };
-  assert.deepEqual(baselineGrowthErrors(smaller, reference), []);
+test("the command freezes apply contents and the parent of a nested selector", (t) => {
+  const file = "apps/platform/src/example.css";
+  const root = createCommandWorkspace(
+    t,
+    { [file]: ".legacy { @apply bg-red-500; }" },
+    selectorBaseline("@apply", "bg-red-500"),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  writeFileSync(join(root, file), ".legacy { @apply bg-blue-500; }");
+  assertRejected(runPolicy(root), /New first-party CSS/);
 
-  const expanded = {
-    ...smaller,
-    legacyClassTokens: ["legacy", "new-class"],
-    classUsages: {
-      "apps/platform/src/view.tsx": { legacy: 3 },
+  const baseline = selectorBaseline();
+  baseline.cssAtoms[file][0].parentSelectors = ["section"];
+  writeFileSync(
+    join(root, "style-legacy-baseline.json"),
+    JSON.stringify(baseline),
+  );
+  commitBaseline(root);
+  writeFileSync(join(root, file), "section { .legacy { color: red } }");
+  assert.equal(runPolicy(root).status, 0);
+  writeFileSync(join(root, file), "aside { .legacy { color: red } }");
+  assertRejected(runPolicy(root), /New first-party CSS/);
+});
+
+test("the command counts local and re-exported class aliases at each consumer", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createCommandWorkspace(
+    t,
+    {
+      "apps/platform/src/classes.ts": 'export const CARD = "legacy";',
+      "apps/platform/src/index.ts": 'export { CARD as ROOT } from "./classes";',
+      [file]:
+        'const CARD = "legacy"; export const View = () => <div className={CARD}/>;',
     },
+    {
+      ...emptyBaseline(["legacy"]),
+      classUsages: { [file]: { legacy: 1 } },
+    },
+  );
+  const declarations = [
+    'const CARD = "legacy";',
+    'import { ROOT as CARD } from "./index";',
+    'import * as styles from "./index"; const CARD = styles.ROOT;',
+    'const styles = { root: "legacy" }; const CARD = styles.root;',
+    'const styles = { root: "legacy" }; const CARD = styles["root"];',
+    'const styles = { root: "legacy" }; const { root: CARD } = styles;',
+    'const styles = ["legacy"] as const; const [CARD] = styles;',
+  ];
+  for (const declaration of declarations) {
+    writeFileSync(
+      join(root, file),
+      `${declaration} export const View = () => <div className={CARD}/>;`,
+    );
+    const accepted = runPolicy(root);
+    assert.equal(accepted.status, 0, `${declaration}\n${accepted.stderr}`);
+    writeFileSync(
+      join(root, file),
+      `${declaration} export const View = () => <><div className={CARD}/><div className={CARD}/></>;`,
+    );
+    assertRejected(runPolicy(root), /usage grew from 1 to 2/);
+  }
+  writeFileSync(
+    join(root, "apps/platform/src/extra.tsx"),
+    'import { ROOT } from "./index"; export const Extra = () => <div className={ROOT}/>;',
+  );
+  assertRejected(runPolicy(root), /usage grew from 0 to 1/);
+});
+
+test("class resolution respects lexical scopes, repeated expressions, and cycles", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createCommandWorkspace(
+    t,
+    {
+      [file]:
+        'const CARD = "legacy"; function View() { const CARD = "flex"; return <div className={CARD}/>; }',
+    },
+    emptyBaseline(["legacy"]),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  writeFileSync(
+    join(root, file),
+    'const CARD = "legacy"; export const View = () => <div className={cn(CARD, CARD)}/>;',
+  );
+  assertRejected(runPolicy(root), /usage grew from 0 to 2/);
+  for (const expression of [
+    "cn({ legacy: enabled })",
+    "cn({ [CARD]: enabled })",
+    "cn({ legacy })",
+    'cn({ state: "legacy" })',
+  ]) {
+    writeFileSync(
+      join(root, file),
+      `const CARD = "legacy"; export const View = () => <div className={${expression}}/>;`,
+    );
+    assertRejected(runPolicy(root), /usage grew from 0 to 1/);
+  }
+  writeFileSync(
+    join(root, file),
+    'const A = B; const B = A; export const View = () => <div className={cn(A, "legacy")}/>;',
+  );
+  assertRejected(runPolicy(root), /usage grew from 0 to 1/);
+});
+
+test("pruning persists only removals and refuses source growth", (t) => {
+  const file = "apps/platform/src/example.css";
+  const root = createCommandWorkspace(
+    t,
+    { [file]: ".legacy { color: red }" },
+    selectorBaseline(),
+  );
+  writeFileSync(join(root, file), "");
+  assertRejected(runPolicy(root), /baseline down/);
+  const pruned = runPolicy(root, ["--prune"]);
+  assert.equal(pruned.status, 0, pruned.stderr);
+  const baselineFile = join(root, "style-legacy-baseline.json");
+  assert.deepEqual(
+    JSON.parse(readFileSync(baselineFile, "utf8")),
+    emptyBaseline(),
+  );
+  assert.equal(runPolicy(root).status, 0);
+  writeFileSync(join(root, file), ".new-class { color: blue }");
+  assertRejected(runPolicy(root, ["--prune"]), /New first-party CSS/);
+  assert.deepEqual(
+    JSON.parse(readFileSync(baselineFile, "utf8")),
+    emptyBaseline(),
+  );
+});
+
+test("the command rejects baseline growth against the selected Git reference", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createCommandWorkspace(t, { [file]: "" }, emptyBaseline());
+  const base = git(root, "rev-parse", "HEAD");
+  const grown = {
+    ...emptyBaseline(["legacy"]),
+    classUsages: { [file]: { legacy: 1 } },
   };
-  assert.equal(baselineGrowthErrors(expanded, reference).length, 2);
+  writeFileSync(
+    join(root, "style-legacy-baseline.json"),
+    JSON.stringify(grown),
+  );
+  writeFileSync(
+    join(root, file),
+    'export const View = () => <div className="legacy"/>;',
+  );
+  assertRejected(runPolicy(root), /Shrink-only baseline/);
+  assertRejected(runPolicy(root, ["--prune"]), /Shrink-only baseline/);
+  commitBaseline(root);
+  assert.equal(runPolicy(root).status, 0);
+  assertRejected(runPolicy(root, [], base), /Shrink-only baseline/);
+});
+
+test("the command fails visibly for malformed existing baselines and invalid Git refs", (t) => {
+  const root = createCommandWorkspace(t, {}, emptyBaseline());
+  const baselineFile = join(root, "style-legacy-baseline.json");
+  writeFileSync(baselineFile, "{ invalid json }");
+  commitBaseline(root);
+  writeFileSync(baselineFile, JSON.stringify(emptyBaseline()));
+  assertRejected(runPolicy(root), /style-policy\/configuration/);
+  assertRejected(
+    runPolicy(root, [], "nonexistent-style-policy-ref"),
+    /style-policy\/configuration/,
+  );
+  writeFileSync(baselineFile, "{ invalid json }");
+  assertRejected(runPolicy(root), /style-policy\/configuration/);
+});
+
+test("only a genuinely absent reference baseline permits initial introduction", (t) => {
+  const root = createCommandWorkspace(t, {}, emptyBaseline());
+  git(root, "rm", "--cached", "turbo/style-legacy-baseline.json");
+  git(
+    root,
+    "-c",
+    "user.name=style-policy-test",
+    "-c",
+    "user.email=style-policy-test@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "fixture without baseline",
+  );
+  const result = runPolicy(root);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Style policy passed/);
+});
+
+test("invalid baseline counters and empty tokens fail instead of weakening the ratchet", (t) => {
+  const file = "apps/platform/src/view.tsx";
+  const root = createCommandWorkspace(t, { [file]: "" }, emptyBaseline());
+  const baselineFile = join(root, "style-legacy-baseline.json");
+  for (const count of ["not-a-number", null, -1, 1.5]) {
+    const malformed = {
+      ...emptyBaseline(["legacy"]),
+      classUsages: { [file]: { legacy: count } },
+    };
+    writeFileSync(baselineFile, JSON.stringify(malformed));
+    assertRejected(runPolicy(root), /positive integer counts/);
+  }
+  commitBaseline(root);
+  writeFileSync(baselineFile, JSON.stringify(emptyBaseline()));
+  assertRejected(runPolicy(root), /positive integer counts/);
+  writeFileSync(baselineFile, JSON.stringify(emptyBaseline([""])));
+  assertRejected(runPolicy(root), /non-empty strings/);
 });

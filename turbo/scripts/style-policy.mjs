@@ -7,8 +7,10 @@ import { fork } from "@eslint/css-tree";
 import { tailwind4 } from "tailwind-csstree";
 import ts from "typescript";
 
+import { collectLegacyClassUsages } from "./style-class-usage.mjs";
+
 const STYLE_POLICY_VERSION = 1;
-const PROJECT_ROOT = resolve(import.meta.dirname, "..");
+const PROJECT_ROOT = process.cwd();
 const ALLOWLIST_PATH = resolve(PROJECT_ROOT, "style-allowlist.json");
 const BASELINE_PATH = resolve(PROJECT_ROOT, "style-legacy-baseline.json");
 const CSS_GLOBS = ["apps/platform/src/**/*.css", "packages/ui/src/**/*.css"];
@@ -39,12 +41,18 @@ function atRuleName(node) {
 }
 
 function selectorKey(record) {
-  return JSON.stringify([record.file, record.atRules, record.selector]);
+  return JSON.stringify([
+    record.file,
+    record.atRules,
+    record.parentSelectors ?? [],
+    record.selector,
+  ]);
 }
 
 function cssAtomKey(record) {
   return JSON.stringify([
     record.atRules,
+    record.parentSelectors ?? [],
     record.selector,
     record.property,
     record.value,
@@ -84,15 +92,62 @@ function metadataErrors(entry, label) {
   return errors;
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertBaseline(baseline) {
+  if (!isRecord(baseline) || baseline.version !== STYLE_POLICY_VERSION) {
+    throw new Error(
+      `Style baseline must be a version ${STYLE_POLICY_VERSION} object.`,
+    );
+  }
+  if (
+    !Array.isArray(baseline.legacyClassTokens) ||
+    !baseline.legacyClassTokens.every(
+      (token) => typeof token === "string" && token.length > 0,
+    )
+  ) {
+    throw new Error(
+      "Style baseline legacyClassTokens must contain non-empty strings.",
+    );
+  }
+  for (const field of ["cssAtoms", "styleInjections"]) {
+    if (
+      !isRecord(baseline[field]) ||
+      !Object.values(baseline[field]).every(
+        (records) => Array.isArray(records) && records.every(isRecord),
+      )
+    ) {
+      throw new Error(
+        `Style baseline ${field} must map files to arrays of records.`,
+      );
+    }
+  }
+  if (!isRecord(baseline.classUsages)) {
+    throw new Error(
+      "Style baseline classUsages must map files to class counts.",
+    );
+  }
+  for (const [file, usage] of Object.entries(baseline.classUsages)) {
+    if (
+      !isRecord(usage) ||
+      !Object.values(usage).every(
+        (count) => Number.isSafeInteger(count) && count > 0,
+      )
+    ) {
+      throw new Error(
+        `Style baseline classUsages in ${file} must contain positive integer counts.`,
+      );
+    }
+  }
+}
+
 export function validatePolicyFiles(allowlist, baseline) {
+  assertBaseline(baseline);
   const errors = [];
   if (allowlist.version !== STYLE_POLICY_VERSION) {
     errors.push(`style-allowlist.json version must be ${STYLE_POLICY_VERSION}`);
-  }
-  if (baseline.version !== STYLE_POLICY_VERSION) {
-    errors.push(
-      `style-legacy-baseline.json version must be ${STYLE_POLICY_VERSION}`,
-    );
   }
 
   const selectorKeys = new Set();
@@ -164,64 +219,89 @@ export function validatePolicyFiles(allowlist, baseline) {
     vendorFiles.add(entry.file);
   }
 
-  if (!Array.isArray(baseline.legacyClassTokens)) {
-    errors.push("legacyClassTokens must be an array");
-  }
   return errors;
+}
+
+function blockDeclarations(block) {
+  const declarations = [];
+  block.children.forEach((child) => {
+    if (child.type === "Declaration") {
+      declarations.push({
+        property: child.property,
+        value: cssSyntax.generate(child.value),
+        important: child.important,
+      });
+    } else if (child.type === "Atrule" && child.block === null) {
+      declarations.push({
+        property: `@${child.name}`,
+        value: child.prelude === null ? "" : cssSyntax.generate(child.prelude),
+        important: false,
+      });
+    }
+  });
+  return declarations;
 }
 
 function collectCssClassRules(file, text) {
   const ast = cssSyntax.parse(text, { filename: file, positions: true });
   const atRules = [];
+  const selectors = [];
   const records = [];
+
+  function recordBlock(node, includeEmpty) {
+    if (!selectors.some(({ hasClass }) => hasClass)) {
+      return;
+    }
+    const declarations = blockDeclarations(node.block);
+    if (declarations.length === 0) {
+      if (!includeEmpty) {
+        return;
+      }
+      declarations.push({ property: null, value: null, important: false });
+    }
+    const parentSelectors = selectors
+      .slice(0, -1)
+      .map(({ selector }) => selector);
+    records.push({
+      file,
+      atRules: [...atRules],
+      ...(parentSelectors.length > 0 ? { parentSelectors } : {}),
+      selector: selectors.at(-1).selector,
+      declarations,
+      line: node.loc.start.line,
+    });
+  }
 
   cssSyntax.walk(ast, {
     enter(node) {
       if (node.type === "Atrule") {
         atRules.push(atRuleName(node));
+        if (node.block !== null) {
+          recordBlock(node, false);
+        }
         return;
       }
       if (node.type !== "Rule") {
         return;
       }
 
-      const classNames = new Set();
+      let hasClass = false;
       cssSyntax.walk(node.prelude, (selectorNode) => {
         if (selectorNode.type === "ClassSelector") {
-          classNames.add(selectorNode.name);
+          hasClass = true;
         }
       });
-      if (classNames.size === 0) {
-        return;
-      }
-
-      const selector = cssSyntax.generate(node.prelude);
-      const declarations = [];
-      node.block.children.forEach((child) => {
-        if (child.type === "Declaration") {
-          declarations.push({
-            property: child.property,
-            value: cssSyntax.generate(child.value),
-            important: child.important,
-          });
-        }
+      selectors.push({
+        selector: cssSyntax.generate(node.prelude),
+        hasClass,
       });
-      if (declarations.length === 0) {
-        declarations.push({ property: null, value: null, important: false });
-      }
-
-      records.push({
-        file,
-        atRules: [...atRules],
-        selector,
-        classNames: [...classNames].sort(),
-        declarations,
-        line: node.loc.start.line,
-      });
+      recordBlock(node, true);
     },
     leave(node) {
       if (node.type === "Atrule") {
         atRules.pop();
+      } else if (node.type === "Rule") {
+        selectors.pop();
       }
     },
   });
@@ -233,6 +313,9 @@ function cssAtomsForRule(rule) {
   return rule.declarations.map((declaration) => {
     return {
       atRules: rule.atRules,
+      ...(rule.parentSelectors === undefined
+        ? {}
+        : { parentSelectors: rule.parentSelectors }),
       selector: rule.selector,
       property: declaration.property,
       value: declaration.value,
@@ -258,16 +341,6 @@ function isStyleJsxElement(node) {
     (ts.isJsxElement(node) &&
       node.openingElement.tagName.getText() === "style") ||
     (ts.isJsxSelfClosingElement(node) && node.tagName.getText() === "style")
-  );
-}
-
-function isStringContentNode(node) {
-  return (
-    ts.isStringLiteral(node) ||
-    ts.isNoSubstitutionTemplateLiteral(node) ||
-    ts.isTemplateHead(node) ||
-    ts.isTemplateMiddle(node) ||
-    ts.isTemplateTail(node)
   );
 }
 
@@ -386,123 +459,6 @@ function collectStyleInjections(file, text) {
   }
   visit(sourceFile);
   return records;
-}
-
-function classStringContents(sourceFile) {
-  const values = new Map();
-  const classCallNames = new Set([
-    "cc",
-    "classNames",
-    "clb",
-    "clsx",
-    "cn",
-    "cnb",
-    "cva",
-    "twJoin",
-    "twMerge",
-    "tv",
-  ]);
-  const domClassCallNames = new Set([
-    "closest",
-    "getElementsByClassName",
-    "matches",
-    "querySelector",
-    "querySelectorAll",
-  ]);
-
-  function collectStrings(node) {
-    if (isStringContentNode(node)) {
-      values.set(`${node.pos}:${node.end}`, node.text);
-    }
-    ts.forEachChild(node, collectStrings);
-  }
-
-  function propertyName(node) {
-    if (ts.isIdentifier(node) || ts.isStringLiteral(node)) {
-      return node.text;
-    }
-    return undefined;
-  }
-
-  function visit(node) {
-    if (
-      ts.isJsxAttribute(node) &&
-      ["class", "className"].includes(node.name.getText(sourceFile)) &&
-      node.initializer !== undefined
-    ) {
-      collectStrings(node.initializer);
-    } else if (
-      ts.isPropertyAssignment(node) &&
-      ["class", "className"].includes(propertyName(node.name))
-    ) {
-      collectStrings(node.initializer);
-    } else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left) &&
-      node.left.name.text === "className"
-    ) {
-      collectStrings(node.right);
-    } else if (ts.isCallExpression(node)) {
-      const callee = node.expression;
-      const calleeName = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : undefined;
-      const classListCall =
-        ts.isPropertyAccessExpression(callee) &&
-        ts.isPropertyAccessExpression(callee.expression) &&
-        callee.expression.name.text === "classList";
-      if (
-        (calleeName !== undefined && classCallNames.has(calleeName)) ||
-        classListCall ||
-        (calleeName !== undefined && domClassCallNames.has(calleeName))
-      ) {
-        for (const argument of node.arguments) {
-          collectStrings(argument);
-        }
-      }
-    } else if (
-      ts.isTaggedTemplateExpression(node) &&
-      node.tag.getText(sourceFile) === "tw"
-    ) {
-      collectStrings(node.template);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
-  return [...values.values()];
-}
-
-function collectLegacyClassUsage(file, text, tokens) {
-  const sourceFile = ts.createSourceFile(
-    file,
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-  const contents = classStringContents(sourceFile);
-  const counts = {};
-  for (const token of tokens) {
-    let count = 0;
-    for (const content of contents) {
-      let offset = content.indexOf(token);
-      while (offset !== -1) {
-        const before = content.charAt(offset - 1);
-        const after = content.charAt(offset + token.length);
-        if (!/[A-Za-z0-9_-]/.test(before) && !/[A-Za-z0-9_-]/.test(after)) {
-          count += 1;
-        }
-        offset = content.indexOf(token, offset + Math.max(token.length, 1));
-      }
-    }
-    if (count > 0) {
-      counts[token] = count;
-    }
-  }
-  return counts;
 }
 
 function countBy(records, key) {
@@ -626,7 +582,6 @@ function collectCurrentStyleState({
     }
   }
 
-  const classUsages = {};
   const styleInjections = {};
   const allowlistedInjections = new Set(
     allowlist.styleInjections.map(injectionKey),
@@ -635,18 +590,14 @@ function collectCurrentStyleState({
   const sourceFiles = globSync(SOURCE_GLOBS, { cwd: root })
     .filter(isProductionSource)
     .sort();
+  const classUsages = collectLegacyClassUsages(
+    root,
+    sourceFiles,
+    baseline.legacyClassTokens,
+  );
 
   for (const file of sourceFiles) {
     const text = readFileSync(resolve(root, file), "utf8");
-    const usage = collectLegacyClassUsage(
-      file,
-      text,
-      baseline.legacyClassTokens,
-    );
-    if (Object.keys(usage).length > 0) {
-      classUsages[file] = usage;
-    }
-
     const legacyInjections = [];
     for (const injection of collectStyleInjections(file, text)) {
       const key = injectionKey(injection);
@@ -768,7 +719,7 @@ function intersection(expected, current, key) {
   });
 }
 
-export function prunedBaseline(baseline, current) {
+function prunedBaseline(baseline, current) {
   const cssAtoms = {};
   for (const [file, atoms] of Object.entries(baseline.cssAtoms)) {
     const retained = intersection(
@@ -841,7 +792,7 @@ function reportBaselineRecordGrowth(
   }
 }
 
-export function baselineGrowthErrors(baseline, reference) {
+function baselineGrowthErrors(baseline, reference) {
   const errors = [];
   const referenceTokens = new Set(reference.legacyClassTokens);
   for (const token of baseline.legacyClassTokens) {
@@ -881,21 +832,39 @@ export function baselineGrowthErrors(baseline, reference) {
 }
 
 function baselineAtGitRef(ref) {
-  execFileSync("git", ["rev-parse", "--verify", `${ref}^{commit}`], {
-    cwd: PROJECT_ROOT,
-    stdio: "ignore",
-  });
-  try {
-    return JSON.parse(
-      execFileSync("git", ["show", `${ref}:turbo/style-legacy-baseline.json`], {
-        cwd: PROJECT_ROOT,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }),
-    );
-  } catch {
+  const commit = execFileSync(
+    "git",
+    ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  ).trim();
+  const baselineFile = "turbo/style-legacy-baseline.json";
+  const entry = execFileSync(
+    "git",
+    ["ls-tree", "--full-tree", "--name-only", "-z", commit, "--", baselineFile],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    },
+  );
+  // The initial lint PR has no baseline on its base commit. Only that actual
+  // absence skips the ratchet; Git failures and malformed existing data fail.
+  // This is repository-history bootstrap, not deployed-version compatibility.
+  // Remove when all supported ratchet refs contain the baseline; tracked by #32402.
+  if (entry === "") {
     return undefined;
   }
+  const baseline = JSON.parse(
+    execFileSync("git", ["show", `${commit}:${baselineFile}`], {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    }),
+  );
+  assertBaseline(baseline);
+  return baseline;
 }
 
 function printIssues(issues) {
@@ -909,6 +878,7 @@ function printIssues(issues) {
 function run() {
   const prune = process.argv.slice(2).includes("--prune");
   const baseline = readJson(BASELINE_PATH);
+  assertBaseline(baseline);
   const ratchetRef = process.env.STYLE_POLICY_RATCHET_REF ?? "HEAD";
   const referenceBaseline = baselineAtGitRef(ratchetRef);
   const baselineErrors =
@@ -956,5 +926,17 @@ function run() {
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  run();
+  try {
+    run();
+  } catch (error) {
+    printIssues([
+      {
+        type: "configuration",
+        file: "style-legacy-baseline.json",
+        line: 1,
+        message: error.message,
+      },
+    ]);
+    process.exitCode = 1;
+  }
 }

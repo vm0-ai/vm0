@@ -3857,8 +3857,8 @@
       {
         "atRules": ["@layer components"],
         "selector": ".icon-button",
-        "property": null,
-        "value": null,
+        "property": "@apply",
+        "value": "flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "important": false
       },
       {
@@ -4241,6 +4241,12 @@
     ]
   },
   "classUsages": {
+    "apps/platform/src/lib/visual-viewport-keyboard.ts": {
+      "okou-composer": 1
+    },
+    "apps/platform/src/signals/chat-page/chat-thread-feedback.ts": {
+      "okou-chat-bubble-assistant": 1
+    },
     "apps/platform/src/signals/chat-page/chat-thread-pin-order.ts": {
       "okou-thread-drag-handle": 1
     },
@@ -4316,6 +4322,9 @@
     "apps/platform/src/views/okou-page/billing-dialog.tsx": {
       "okou-border-t": 2
     },
+    "apps/platform/src/views/okou-page/browser-session-card.tsx": {
+      "okou-chat-card": 3
+    },
     "apps/platform/src/views/okou-page/chat-body-cards.tsx": {
       "okou-chat-card": 4
     },
@@ -4338,9 +4347,11 @@
       "okou-chat-bubble-user": 1
     },
     "apps/platform/src/views/okou-page/chat-thread-page.tsx": {
+      "animate-in": 4,
+      "fade-in": 4,
       "okou-blocks": 1,
       "okou-btn-morandi": 3,
-      "okou-chat-bubble-user": 1,
+      "okou-chat-bubble-user": 2,
       "okou-chat-card": 2,
       "okou-chat-skeleton-reveal": 1,
       "okou-emoji": 3,
@@ -4348,7 +4359,8 @@
       "okou-shimmer-text": 1,
       "okou-thinking-enter": 3,
       "okou-thinking-spinner": 1,
-      "okou-thinking-spinner-frame": 1
+      "okou-thinking-spinner-frame": 1,
+      "slide-in-from-bottom-2": 4
     },
     "apps/platform/src/views/okou-page/chat-thread-sidebar-shell.tsx": {
       "animate-in": 1,
@@ -4580,7 +4592,7 @@
       "okou-desktop-titlebar-drag-region": 2,
       "okou-mobile-fixed-safe-area": 1,
       "okou-mobile-sidebar": 1,
-      "okou-nav": 2,
+      "okou-nav": 3,
       "okou-nav-copy": 4,
       "okou-nav-copy-muted": 2,
       "okou-nav-copy-muted-hover": 1,
@@ -4647,9 +4659,12 @@
       "okou-border": 3
     },
     "apps/platform/src/views/shared-thread-page/shared-thread-page.tsx": {
+      "animate-in": 2,
+      "fade-in": 2,
       "okou-app": 1,
       "okou-composer": 1,
-      "okou-workspace-bg": 1
+      "okou-workspace-bg": 1,
+      "slide-in-from-bottom-2": 2
     },
     "apps/platform/src/views/team-page/job-custom-connectors-section.tsx": {
       "okou-card": 1
