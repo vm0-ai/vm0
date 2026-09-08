@@ -14,12 +14,25 @@ export function singleFlight<TResult>(
       return inFlight;
     }
 
-    const current = (async () => task())().finally(() => {
+    let resolve!: (value: TResult | PromiseLike<TResult>) => void;
+    let reject!: (error: unknown) => void;
+    const result = new Promise<TResult>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    const current = result.finally(() => {
       if (inFlight === current) {
         inFlight = null;
       }
     });
+    // The task's synchronous prefix may notify subscribers that call us again.
+    // Publish first, without delaying synchronous authority withdrawal.
     inFlight = current;
+    try {
+      resolve(task());
+    } catch (error) {
+      reject(error);
+    }
     return current;
   }) as SingleFlightTask<TResult>;
 

@@ -416,7 +416,7 @@ export interface BuiltInModelRouteTarget {
 function builtInPrimaryCandidate(model: string): BuiltInModelRouteCandidate {
   if (!isActiveRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown built-in model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
   return BUILT_IN_MODEL_TO_PROVIDER[model].candidates[0];
@@ -427,7 +427,7 @@ export function getBuiltInModelRouteCandidates(
 ): readonly BuiltInModelRouteTarget[] {
   if (!isActiveRunModel(model)) {
     throw new Error(
-      `Unknown VM0 model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
+      `Unknown built-in model "${model}". Valid models: ${Object.keys(BUILT_IN_MODEL_TO_PROVIDER).join(", ")}`,
     );
   }
   return BUILT_IN_MODEL_TO_PROVIDER[model].candidates.map((candidate) => {

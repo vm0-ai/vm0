@@ -10,7 +10,6 @@ import {
   completedEvent,
   context,
   expectTextOrder,
-  findLink,
   installRunChat,
   promptEvent,
   publishRunUpdate,
@@ -112,13 +111,15 @@ function workSummary(text = RESULT): Element | null {
   return assistantGroup(text).querySelector("[data-chat-run-work]");
 }
 
-async function expectRetainedResult(): Promise<void> {
+async function expectRetainedResult(): Promise<HTMLElement> {
   const main = mainResult(RESULT);
   expect(main).toBeVisible();
-  expect(main).toContainElement(
-    await findLink("Open pdf preview for report.pdf"),
+  const relatedArtifacts = await screen.findByTestId(
+    "chat-run-related-artifacts-trigger",
   );
+  expect(main).toContainElement(relatedArtifacts);
   expect(queryButton("Copy message", main)).toBeVisible();
+  return relatedArtifacts;
 }
 
 function expectWaitingAfter(text: string): void {
@@ -282,10 +283,11 @@ test("Keep separate history previews, artifacts and actions on both sides of a s
 
   await openChat(20);
 
-  await expectRetainedResult();
+  const relatedArtifacts = await expectRetainedResult();
   const previousGroup = assistantGroup(RESULT);
   const nextGroup = assistantGroup(NEXT_RESULT);
   expect(previousGroup).not.toBe(nextGroup);
+  expect(previousGroup).toContainElement(relatedArtifacts);
   const oldPreviews = previousGroup.querySelectorAll(
     "[data-chat-run-work-preview]",
   );
@@ -301,9 +303,7 @@ test("Keep separate history previews, artifacts and actions on both sides of a s
   expect(screen.queryByText("Started the API review")).toBeNull();
   expect(queryButton("Copy message", mainResult(NEXT_RESULT))).toBeVisible();
   expect(screen.getAllByTestId("chat-event-actions")).toHaveLength(2);
-  expect(nextGroup).not.toContainElement(
-    await findLink("Open pdf preview for report.pdf"),
-  );
+  expect(nextGroup).not.toContainElement(relatedArtifacts);
   expect(workSummary()).toHaveTextContent("Worked for");
   expect(workSummary(NEXT_RESULT)).toHaveTextContent("Working for");
   expectWaitingAfter(NEXT_RESULT);

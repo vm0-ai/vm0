@@ -2517,7 +2517,7 @@ async function builtInModelProviderEnvironment(
       const baseUrl = environment.OPENAI_BASE_URL;
       if (!baseUrl) {
         throw new Error(
-          `Missing OPENAI_BASE_URL for VM0 Codex provider ${route.providerType}`,
+          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
         );
       }
       codexRuntimeConfig = {

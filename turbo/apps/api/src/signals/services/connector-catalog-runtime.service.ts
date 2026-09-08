@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
@@ -44,7 +46,10 @@ import {
   type ExternalCatalogIdentity,
 } from "./connector-catalog-external-reader.service";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
-import { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
+import {
+  ConnectorCatalogLoadTiming,
+  type ConnectorRuntimeProjectionCacheObservation,
+} from "./connector-catalog-load-timing.service";
 import {
   countConnectorCatalogRuntimeProjectionRows,
   queryConnectorCatalogRuntimeProjectionRows,
@@ -854,6 +859,67 @@ const runtimeSelectionCache = singleton((): RuntimeSelectionCache => {
   return { completed: undefined, inFlight: undefined };
 });
 
+interface RuntimeSelectionObservationHistory {
+  identityDigest: string | undefined;
+  readonly selectionDigests: string[];
+}
+
+// This is a diagnostic window, not a payload-cache capacity. Keep only fixed-size
+// digests locally; neither the digests nor the original keys are telemetry fields.
+const RUNTIME_SELECTION_OBSERVATION_WINDOW = 16;
+const runtimeSelectionObservationHistory = singleton(
+  (): RuntimeSelectionObservationHistory => {
+    return { identityDigest: undefined, selectionDigests: [] };
+  },
+);
+
+function observeRuntimeSelection(
+  identity: ConnectorCatalogRuntimeProjectionIdentity,
+  key: string,
+): ConnectorRuntimeProjectionCacheObservation {
+  const history = runtimeSelectionObservationHistory();
+  const identityDigest = createHash("sha256")
+    .update(projectionIdentityKey(identity))
+    .digest("hex");
+  const selectionDigest = createHash("sha256").update(key).digest("hex");
+  const previousIdentity = history.identityDigest;
+  if (previousIdentity !== identityDigest) {
+    history.identityDigest = identityDigest;
+    history.selectionDigests.length = 0;
+  }
+  const index = history.selectionDigests.indexOf(selectionDigest);
+  if (index !== -1) {
+    history.selectionDigests.splice(index, 1);
+  }
+  history.selectionDigests.unshift(selectionDigest);
+  if (history.selectionDigests.length > RUNTIME_SELECTION_OBSERVATION_WINDOW) {
+    history.selectionDigests.pop();
+  }
+
+  if (previousIdentity === undefined) {
+    return "first_observation";
+  }
+  if (previousIdentity !== identityDigest) {
+    return "identity_changed";
+  }
+  if (index === -1) {
+    return "not_in_recent_history";
+  }
+  if (index === 0) {
+    return "reuse_1";
+  }
+  if (index === 1) {
+    return "reuse_2";
+  }
+  if (index < 4) {
+    return "reuse_3_4";
+  }
+  if (index < 8) {
+    return "reuse_5_8";
+  }
+  return "reuse_9_16";
+}
+
 async function completeRuntimeSelectionFallback(args: {
   readonly db: ReadonlyDb;
   readonly timing: ConnectorCatalogLoadTiming;
@@ -1109,6 +1175,9 @@ export async function loadConnectorRuntimeSelection(
       runtimeConnectorSlugs,
       metadataConnectorSlugs,
     });
+    timing.recordProjectionCacheObservation(
+      observeRuntimeSelection(identity.projection.identity, key),
+    );
     const cache = runtimeSelectionCache();
     if (cache.completed?.key === key) {
       timing.recordMaterializedConnectorCount(0);

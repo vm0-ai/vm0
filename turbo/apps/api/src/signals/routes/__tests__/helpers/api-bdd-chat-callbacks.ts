@@ -15,6 +15,7 @@ import { pushSubscriptionsRoutes } from "../../push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
+import { openRouterModelContractError } from "./openrouter-model-contract";
 import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -320,6 +321,10 @@ export function createChatCallbacksApi(context: TestContext) {
           const body = openRouterCompletionBodySchema.parse(
             await request.json(),
           );
+          const contractError = openRouterModelContractError(body);
+          if (contractError) {
+            return contractError;
+          }
           const result = await handler(body);
           return HttpResponse.json({
             choices: [

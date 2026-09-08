@@ -21,6 +21,74 @@ async function flushPromises(): Promise<void> {
 }
 
 describe("singleFlight", () => {
+  it("publishes ownership before synchronous task reentry", async () => {
+    const result = deferred<string>();
+    const joined: Promise<string>[] = [];
+    const ownership: boolean[] = [];
+    const refresh = singleFlight(() => {
+      ownership.push(refresh.inFlight);
+      // Bound the regression on the old implementation instead of overflowing.
+      if (ownership.length < 8) joined.push(refresh());
+      return result.promise;
+    });
+
+    const first = refresh();
+    result.resolve("restored");
+    expect(await Promise.all([first, ...joined])).toEqual([
+      "restored",
+      "restored",
+    ]);
+    expect(ownership).toEqual([true]);
+    expect(joined).toEqual([first]);
+    expect(refresh.inFlight).toBe(false);
+  });
+
+  it("shares a synchronous throw with reentrant callers and permits retry", async () => {
+    const error = new Error("task entry failed");
+    let entered = false;
+    let joined: Promise<string> | undefined;
+    const refresh = singleFlight<string>(() => {
+      if (entered) return Promise.resolve("retry");
+      entered = true;
+      joined = refresh();
+      throw error;
+    });
+
+    const first = refresh();
+    const results = await Promise.allSettled([first, joined]);
+    expect(results).toEqual([
+      { status: "rejected", reason: error },
+      { status: "rejected", reason: error },
+    ]);
+    expect(joined).toBe(first);
+    expect(refresh.inFlight).toBe(false);
+    await expect(refresh()).resolves.toBe("retry");
+  });
+
+  it("retains a replacement started synchronously after clear inside task entry", async () => {
+    const oldResult = deferred<string>();
+    const newResult = deferred<string>();
+    let entered = false;
+    let replacement: Promise<string> | undefined;
+    const refresh = singleFlight(() => {
+      if (entered) return newResult.promise;
+      entered = true;
+      refresh.clear();
+      replacement = refresh();
+      return oldResult.promise;
+    });
+
+    const old = refresh();
+    const joined = refresh();
+    oldResult.reject(new Error("retired"));
+    await expect(old).rejects.toThrow("retired");
+    expect(refresh.inFlight).toBe(true);
+    expect(joined).toBe(replacement);
+    newResult.resolve("current");
+    await expect(replacement).resolves.toBe("current");
+    expect(refresh.inFlight).toBe(false);
+  });
+
   it("shares one in-flight task and clears after it settles", async () => {
     const firstRefresh = deferred<string>();
     const task = vi

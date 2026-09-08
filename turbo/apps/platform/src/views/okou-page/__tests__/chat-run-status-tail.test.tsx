@@ -8,7 +8,6 @@ import {
   cancelledEvent,
   completedEvent,
   context,
-  findLink,
   installRunChat,
   promptEvent,
   publishRunUpdate,
@@ -79,9 +78,11 @@ async function expectRetainedResult(): Promise<HTMLElement> {
   if (!main) {
     throw new Error("Expected the previous main result");
   }
-  expect(main).toContainElement(
-    await findLink("Open pdf preview for report.pdf"),
+  const artifactTrigger = await screen.findByTestId(
+    "chat-run-related-artifacts-trigger",
   );
+  expect(main).toContainElement(artifactTrigger);
+  expect(artifactTrigger).toHaveAccessibleName("1 artifact");
   expect(queryButton("Copy message", main)).toBeVisible();
   return main;
 }

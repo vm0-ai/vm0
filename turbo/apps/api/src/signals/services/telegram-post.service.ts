@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
+  DEFAULT_AGENT_DISPLAY_NAME,
   PUBLIC_BRAND_PRESENTATION,
   agentDisplayName,
   PUBLIC_BRAND,
@@ -348,7 +349,9 @@ function displayLabel(row: {
   readonly displayName: string | null;
   readonly name: string | null;
 }): string {
-  return row.displayName?.trim() || row.name?.trim() || "Zero";
+  return (
+    row.displayName?.trim() || row.name?.trim() || DEFAULT_AGENT_DISPLAY_NAME
+  );
 }
 
 async function getWorkspaceAgent(
@@ -382,7 +385,7 @@ async function getWorkspaceAgentDisplayLabel(
   composeId: string,
 ): Promise<string> {
   const agent = await getWorkspaceAgent(db, composeId);
-  return agent ? displayLabel(agent) : "Zero";
+  return agent ? displayLabel(agent) : DEFAULT_AGENT_DISPLAY_NAME;
 }
 
 async function getTelegramCommandAgentName(args: {
