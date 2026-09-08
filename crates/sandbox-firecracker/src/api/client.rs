@@ -91,6 +91,8 @@ const SNAPSHOT_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
 pub struct ApiClient {
     socket_path: PathBuf,
     http: reqwest::Client,
+    #[cfg(test)]
+    pub(super) socket_wait_started: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
 impl ApiClient {
@@ -108,6 +110,8 @@ impl ApiClient {
         Ok(Self {
             socket_path: socket_path.to_owned(),
             http: http::build_client(socket_path)?,
+            #[cfg(test)]
+            socket_wait_started: None,
         })
     }
 
@@ -122,13 +126,20 @@ impl ApiClient {
             .await
             .unwrap_or(false)
         {
-            tokio::time::timeout_at(deadline, wait_for_socket_file(&self.socket_path))
-                .await
-                .map_err(|_| {
-                    ApiError::Other(format!(
-                        "timed out after {timeout:?} waiting for socket file"
-                    ))
-                })??;
+            tokio::time::timeout_at(
+                deadline,
+                wait_for_socket_file(
+                    &self.socket_path,
+                    #[cfg(test)]
+                    self.socket_wait_started.as_deref(),
+                ),
+            )
+            .await
+            .map_err(|_| {
+                ApiError::Other(format!(
+                    "timed out after {timeout:?} waiting for socket file"
+                ))
+            })??;
         }
 
         // Phase 2: poll GET / until the API responds with success.
@@ -505,7 +516,10 @@ impl ApiClient {
 }
 
 /// Wait for a file to appear using inotify (event-driven, no polling).
-async fn wait_for_socket_file(socket_path: &Path) -> Result<(), ApiError> {
+async fn wait_for_socket_file(
+    socket_path: &Path,
+    #[cfg(test)] socket_wait_started: Option<&tokio::sync::Notify>,
+) -> Result<(), ApiError> {
     let dir = socket_path
         .parent()
         .ok_or_else(|| ApiError::Other("socket path has no parent directory".into()))?;
@@ -526,6 +540,13 @@ async fn wait_for_socket_file(socket_path: &Path) -> Result<(), ApiError> {
     // Inotify implements AsFd but not AsRawFd; convert to OwnedFd for AsyncFd.
     let fd: OwnedFd = inotify.into();
     let async_fd = AsyncFd::new(fd).map_err(|e| ApiError::Other(format!("AsyncFd: {e}")))?;
+
+    // Keep this milestone after the post-watch absence check so deferred-socket
+    // tests cannot pass through either existing-file fast path.
+    #[cfg(test)]
+    if let Some(started) = socket_wait_started {
+        started.notify_one();
+    }
 
     loop {
         let mut guard = async_fd
