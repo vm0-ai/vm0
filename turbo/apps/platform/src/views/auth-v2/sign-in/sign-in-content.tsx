@@ -110,7 +110,7 @@ function OAuthFactorButton({
           : copy.googleProvider}
       </FactorActionContent>
       {factor.lastUsed ? (
-        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 okou-auth-badge-text font-medium text-muted-foreground shadow-sm">
+        <span className="pointer-events-none absolute right-2 top-0 z-10 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 text-badge font-medium text-muted-foreground shadow-sm">
           {copy.lastUsed}
         </span>
       ) : null}
@@ -610,7 +610,7 @@ function PasswordStep({
             resetFactor ? (
               <Button
                 className={cn(
-                  "h-auto p-0 okou-auth-action-text",
+                  "h-auto p-0 text-action",
                   AUTH_V2_LINK_ACTION_CLASS,
                 )}
                 disabled={submitting}
@@ -875,7 +875,7 @@ function CodeResendButton({
       {coolingDown ? <span ref={resendCooldownLifecycleRef} hidden /> : null}
       <Button
         className={cn(
-          expired ? "w-full" : "mx-auto h-auto w-fit p-0 okou-auth-action-text",
+          expired ? "w-full" : "mx-auto h-auto w-fit p-0 text-action",
           AUTH_V2_LINK_ACTION_CLASS,
         )}
         disabled={operationPending || (coolingDown && !expired)}

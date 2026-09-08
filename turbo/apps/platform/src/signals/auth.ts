@@ -458,11 +458,12 @@ export const clerk$ = computed(async (get) => {
  * while stable auth and application routes keep the core-only download.
  */
 export const ensureClerkUiLoaded$ = command(
-  async ({ get }, signal: AbortSignal): Promise<void> => {
+  async ({ get }, signal: AbortSignal) => {
     const runtime = await get(clerkRuntime$);
     signal.throwIfAborted();
-    await runtime.ensureUiLoaded();
+    const ui = await runtime.ensureUiLoaded();
     signal.throwIfAborted();
+    return ui;
   },
 );
 

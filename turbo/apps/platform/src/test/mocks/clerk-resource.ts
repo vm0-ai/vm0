@@ -15,7 +15,7 @@ interface ClerkResourceRequest {
 
 interface ClerkResourceMock {
   readonly requests: ClerkResourceRequest[];
-  readonly uiRequests: ClerkResourceRequest[];
+  readonly uiRequests: string[];
   readonly pending: () => ReturnType<typeof createDeferredPromise<void>>;
   readonly unavailable: (error?: Error) => void;
 }
@@ -24,10 +24,10 @@ interface ClerkResourceBehavior {
   failure: Error | null;
   gate: Promise<void>;
   readonly requests: ClerkResourceRequest[];
-  readonly uiRequests: ClerkResourceRequest[];
+  readonly uiRequests: string[];
 }
 
-const CLERK_UI_CONSTRUCTOR_GLOBAL = "__internal_ClerkUICtor";
+const CLERK_UI_GLOBAL = "__okouClerkUI";
 
 function MockClerkUI(): void {
   return;
@@ -51,7 +51,7 @@ export function mockClerkResource(signal: AbortSignal): ClerkResourceMock {
         behaviorStore.set(activeBehavior$, null);
       }
       Reflect.deleteProperty(globalThis, "Clerk");
-      Reflect.deleteProperty(globalThis, CLERK_UI_CONSTRUCTOR_GLOBAL);
+      Reflect.deleteProperty(window, CLERK_UI_GLOBAL);
     },
     { once: true },
   );
@@ -97,24 +97,22 @@ export async function loadClerkJSScript(
   return null;
 }
 
-export async function loadClerkUIScript(
-  options: ClerkResourceOptions,
-): Promise<null> {
-  if (Reflect.has(globalThis, CLERK_UI_CONSTRUCTOR_GLOBAL)) {
+export async function loadScript(src: string): Promise<null> {
+  if (Reflect.has(window, CLERK_UI_GLOBAL)) {
     return null;
   }
   const behavior = behaviorStore.get(activeBehavior$);
   if (!behavior) {
     throw new Error("Clerk resource behavior was not configured");
   }
-  behavior.uiRequests.push({
-    domain: options.domain,
-    publishableKey: options.publishableKey,
-  });
+  behavior.uiRequests.push(src);
   await behavior.gate;
   if (behavior.failure) {
     throw behavior.failure;
   }
-  Reflect.set(globalThis, CLERK_UI_CONSTRUCTOR_GLOBAL, MockClerkUI);
+  Reflect.set(window, CLERK_UI_GLOBAL, {
+    ClerkUI: MockClerkUI,
+    version: "1.26.0",
+  });
   return null;
 }

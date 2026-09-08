@@ -1,5 +1,6 @@
 import { ClerkProvider as BaseClerkProvider } from "@clerk/react";
 import type { BrowserClerk } from "@clerk/shared/types";
+import type { ui } from "@clerk/ui";
 import { useGet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,12 +21,14 @@ interface ClerkProviderProps {
   readonly children: ReactNode;
   readonly clerk: BrowserClerk;
   readonly mode: "sign-in" | "sign-up";
+  readonly ui: typeof ui;
 }
 
 export function AuthV1ClerkProvider({
   children,
   clerk,
   mode,
+  ui,
 }: ClerkProviderProps) {
   const { t } = useTranslation();
   const clerkLocalizations = useGet(clerkLocalizations$);
@@ -39,6 +42,7 @@ export function AuthV1ClerkProvider({
 
   const providerProps = {
     Clerk: clerk,
+    ui,
     afterSignOutUrl: resolveAppAuthUrl("/v1/sign-in"),
     allowedRedirectOrigins,
     appearance: getAuthV1ProviderAppearance(),

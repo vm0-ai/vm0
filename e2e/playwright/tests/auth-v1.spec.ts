@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "../fixtures";
+import { openAuthV2 } from "../lib/auth-v2-ui";
 import {
   createUser,
   deleteUserByEmail,
@@ -122,6 +123,47 @@ for (const device of [
       isMobile: device.name === "mobile dark",
       hasTouch: device.name === "mobile dark",
       viewport: { width: device.width, height: device.height },
+    });
+
+    test("default auth does not download the optional UI and v1 recovers from a resource failure", async ({
+      page,
+    }) => {
+      const uiRequests: string[] = [];
+      page.on("request", (request) => {
+        if (/\/assets\/clerk-ui-[^/]+\.js$/u.test(request.url())) {
+          uiRequests.push(request.url());
+        }
+      });
+      for (const path of ["/sign-in", "/sign-up"]) {
+        await openAuthV2(page, path);
+        expect(uiRequests).toHaveLength(0);
+      }
+
+      const uiAsset = "**/assets/clerk-ui-*.js";
+      await page.route(uiAsset, (route) => route.abort());
+      await page.goto("/v1/sign-in", { waitUntil: "domcontentloaded" });
+      const failure = page.getByRole("alert");
+      await expect(failure).toContainText("Oops! Something went sideways");
+      await expect(page.locator(".cl-signIn-root")).toHaveCount(0);
+      await expect(page.locator("#app-bootstrap-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+      await expectPrimary(
+        page,
+        failure.getByRole("button", { exact: true, name: "Refresh" }),
+      );
+      expect(uiRequests.length).toBeGreaterThan(0);
+
+      await page.unroute(uiAsset);
+      await failure
+        .getByRole("button", { exact: true, name: "Refresh" })
+        .click();
+      await expect(
+        page.getByLabel("Email address", { exact: true }),
+      ).toBeVisible();
+      await expectLogo(page);
+      await expect(failure).toHaveCount(0);
     });
 
     test("hosted password feedback and reveal remain clear after reflow", async ({

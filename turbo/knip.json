@@ -30,6 +30,7 @@
     "apps/platform": {
       "entry": [
         "src/main.ts",
+        "src/clerk-ui.ts",
         "i18next.config.ts",
         "scripts/bench-p90-reporter.ts",
         "scripts/check-build-config.node.ts",

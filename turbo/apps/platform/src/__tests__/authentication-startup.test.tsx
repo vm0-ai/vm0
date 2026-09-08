@@ -297,7 +297,7 @@ test("V1 comparison authentication loads the hosted Clerk UI", async () => {
   ]);
   expect(clerk.loads).toContainEqual(PRIMARY_LOAD_OPTIONS);
   expect(clerk.uiRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    "https://app.example.test/assets/clerk-ui-test.js",
   ]);
 });
 

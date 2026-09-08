@@ -396,8 +396,9 @@ export default [
             },
             {
               name: "@clerk/ui",
+              allowTypeImports: true,
               message:
-                "Use ensureClerkUiLoaded$ so hosted Clerk UI stays scoped to v1 routes.",
+                "Only src/clerk-ui.ts imports the optional UI at runtime; use ensureClerkUiLoaded$ on v1 routes. Other imports must be type-only.",
             },
             {
               name: "@solana/web3.js",

@@ -68,7 +68,7 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
   );
   expect(document.title).toBe("Sign in | VM0");
   expect(clerk.uiRequests).toStrictEqual([
-    { domain: undefined, publishableKey: "test_production_key" },
+    "https://app.example.test/assets/clerk-ui-test.js",
   ]);
   expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
     "aria-hidden",

@@ -72,7 +72,7 @@ const authV1BackLinkClass = cn(
   authV1TextActionClass,
 );
 const authV1ResendCodeLinkClass = cn(
-  "h-auto p-0 okou-auth-action-text",
+  "h-auto p-0 text-action",
   authV1TextActionClass,
 );
 
@@ -174,7 +174,7 @@ export function getAuthV1ComponentAppearance(
       socialButtonsBlockButton: authV1SocialActionClass,
       socialButtonsBlockButtonText: "text-foreground",
       lastAuthenticationStrategyBadge:
-        "rounded-md border border-border bg-card px-1.5 py-0.5 okou-auth-badge-text font-medium text-muted-foreground shadow-sm",
+        "rounded-md border border-border bg-card px-1.5 py-0.5 text-badge font-medium text-muted-foreground shadow-sm",
       dividerRow: "m-0 flex items-center gap-3",
       dividerLine: "h-px flex-1 bg-border",
       dividerText: "m-0 text-sm leading-5 text-muted-foreground",

@@ -16,6 +16,10 @@ export default defineConfig({
         __dirname,
         "./src/test/mocks/clerk-resource.ts",
       ),
+      "@clerk/shared/loadScript": path.resolve(
+        __dirname,
+        "./src/test/mocks/clerk-resource.ts",
+      ),
       "@sentry/browser": path.resolve(
         __dirname,
         "./src/test/mocks/sentry-browser.ts",

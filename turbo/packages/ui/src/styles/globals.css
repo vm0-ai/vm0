@@ -279,18 +279,6 @@
   --shadow-segment-selected: var(--segment-selected-shadow);
 }
 
-@layer utilities {
-  .okou-auth-action-text {
-    font-size: var(--text-action);
-    line-height: var(--text-action--line-height);
-  }
-
-  .okou-auth-badge-text {
-    font-size: var(--text-badge);
-    line-height: var(--text-badge--line-height);
-  }
-}
-
 @layer base {
   :root {
     /* ===================================

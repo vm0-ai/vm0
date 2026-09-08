@@ -11,11 +11,12 @@ import { applicationResourcePriorityHtmlPlugin } from "./app-resource-priority-h
 import {
   RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES,
   VENDOR_MODULE_PATTERN,
-  applicationBundleViolations,
+  applicationBundleViolations as validateApplicationBundle,
   applicationJavaScriptBundlePlugin,
   singleWorkerBundleViolations,
   singleWorkerJavaScriptBundlePlugin,
 } from "./single-bundle.ts";
+import { clerkUiAssetPlugin } from "./clerk-ui.ts";
 import {
   domGlobalUsageCounts,
   workerDomGlobalsMessage,
@@ -101,6 +102,19 @@ await test("production shared worker stays on the app origin", async () => {
 const APP_FILE = "assets/index-AppHash1.js";
 const VENDOR_FILE = "assets/vendor-Vendor01.js";
 const RUNTIME_FILE = "assets/rolldown-runtime-Runtime1.js";
+
+function applicationBundleViolations(
+  outputs: Parameters<typeof validateApplicationBundle>[0],
+) {
+  return validateApplicationBundle([
+    ...outputs,
+    {
+      type: "asset",
+      fileName: "assets/clerk-ui-UiHash01.js",
+      source: "ui",
+    },
+  ]);
+}
 
 function applicationChunk() {
   return {
@@ -367,6 +381,7 @@ function clerkDiscoveryFixture(): string {
   return [
     "<!doctype html><html><head>",
     '<style id="app-bootstrap-critical-styles">body { color: black; }</style>',
+    '<meta name="okou-clerk-ui-script" content="__OKOU_CLERK_UI_SCRIPT_URL__">',
     '<script id="okou-clerk-core-script" src="https://cdn.example.test/clerk.js" defer></script>',
     '<script data-okou-clerk-bootstrap="">window.__clerkConfigured = true;</script>',
     '<script type="module" src="/src/main.js"></script>',
@@ -432,6 +447,29 @@ function assertApplicationStylesheetPreload(htmlSource: string): void {
   );
 }
 
+function assertBuiltPageDiscovery(
+  htmlSource: string,
+  outputs: readonly { fileName: string }[],
+) {
+  const uiAsset = outputs.find((item) => {
+    return /^assets\/clerk-ui-[^/]+\.js$/u.test(item.fileName);
+  });
+  assert.ok(uiAsset);
+  assert.ok(
+    htmlSource.includes(`content="/${uiAsset.fileName}"`),
+    "the optional UI asset URL must be available to route-scoped loading",
+  );
+  assert.ok(!htmlSource.includes("__OKOU_CLERK_UI_SCRIPT_URL__"));
+  assert.ok(
+    !/<(?:script|link)[^>]*(?:src|href)="[^"]*clerk-ui-/u.test(htmlSource),
+    "default routes must not eagerly download Clerk UI",
+  );
+  assertClerkDiscoveryOrder(htmlSource);
+  assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
+  assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
+  assertApplicationStylesheetPreload(htmlSource);
+}
+
 await test("emits the fixed page topology and one external worker", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "okou-app-bundles-"));
   const sourceDirectory = path.join(root, "src");
@@ -489,6 +527,7 @@ await test("emits the fixed page topology and one external worker", async () => 
         },
       },
       plugins: [
+        clerkUiAssetPlugin(),
         applicationJavaScriptBundlePlugin(),
         applicationResourcePriorityHtmlPlugin(),
       ],
@@ -505,7 +544,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     const javaScriptOutputs = result.output.filter((item) => {
       return item.fileName.endsWith(".js");
     });
-    assert.equal(javaScriptOutputs.length, 4);
+    assert.equal(javaScriptOutputs.length, 5);
     assert.equal(
       javaScriptOutputs.filter((item) => {
         return item.type === "chunk" && item.isEntry;
@@ -535,6 +574,7 @@ await test("emits the fixed page topology and one external worker", async () => 
       /^assets\/vendor-[^/]+\.js$/u,
       /^assets\/rolldown-runtime-[^/]+\.js$/u,
       /^assets\/shared-database-worker-[^/]+\.js$/u,
+      /^assets\/clerk-ui-[^/]+\.js$/u,
     ]) {
       assert.ok(
         javaScriptOutputs.some((item) => {
@@ -548,10 +588,7 @@ await test("emits the fixed page topology and one external worker", async () => 
     });
     assert.ok(html?.type === "asset");
     const htmlSource = String(html.source);
-    assertClerkDiscoveryOrder(htmlSource);
-    assert.equal((htmlSource.match(/<script type="module"/gu) ?? []).length, 1);
-    assert.equal((htmlSource.match(/rel="modulepreload"/gu) ?? []).length, 2);
-    assertApplicationStylesheetPreload(htmlSource);
+    assertBuiltPageDiscovery(htmlSource, javaScriptOutputs);
     assert.ok(
       result.output.some((item) => {
         return item.type === "asset" && item.fileName.endsWith(".json");

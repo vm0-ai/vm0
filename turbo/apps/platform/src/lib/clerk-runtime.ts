@@ -1,9 +1,8 @@
-import {
-  loadClerkJSScript,
-  loadClerkUIScript,
-} from "@clerk/shared/loadClerkJsScript";
+import { loadClerkJSScript } from "@clerk/shared/loadClerkJsScript";
+import { loadScript } from "@clerk/shared/loadScript";
 import type { BrowserClerk, EnvironmentResource } from "@clerk/shared/types";
 import type { ClerkUIConstructor } from "@clerk/shared/ui";
+import type { ui } from "@clerk/ui";
 import { createDeferredPromise } from "../signals/utils.ts";
 import { CLERK_JS_VERSION, CLERK_UI_VERSION } from "./clerk-versions.ts";
 
@@ -21,19 +20,14 @@ interface ClerkRuntimeLoadOptions {
   readonly signUpUrl: string;
 }
 
-interface ClerkScriptOptions {
-  readonly publishableKey: string;
-  readonly domain?: string;
-}
-
 interface ClerkBrowserRuntime {
   readonly clerk: PlatformClerk;
   /**
-   * Loads the hosted Clerk UI and hands its constructor to the shared core.
+   * Loads the installed Clerk UI export and hands it to the shared core.
    * Only v1 comparison routes request it, so stable routes keep the core-only
    * download.
    */
-  readonly ensureUiLoaded: () => Promise<void>;
+  readonly ensureUiLoaded: () => Promise<typeof ui>;
   readonly loaded: Promise<void>;
 }
 
@@ -53,30 +47,45 @@ function isBrowserClerk(value: unknown): value is PlatformClerk {
   );
 }
 
-function isClerkUIConstructor(value: unknown): value is ClerkUIConstructor {
-  return typeof value === "function";
-}
-
 function createClerkUiLoader(
-  options: ClerkScriptOptions,
   resolveClerkUI: ResolveClerkUI,
-): () => Promise<void> {
-  let loadPromise: Promise<void> | undefined;
+  earlyUi: Promise<typeof ui> | undefined,
+  signal: AbortSignal,
+): () => Promise<typeof ui> {
+  let loadPromise: Promise<typeof ui> | undefined;
   return () => {
     loadPromise ??= (async () => {
-      await loadClerkUIScript({
-        __internal_clerkUIVersion: CLERK_UI_VERSION,
-        domain: options.domain,
-        publishableKey: options.publishableKey,
-      });
-      const constructor: unknown = Reflect.get(
-        globalThis,
-        "__internal_ClerkUICtor",
-      );
-      if (!isClerkUIConstructor(constructor)) {
-        throw new Error("Clerk UI script did not expose a valid constructor");
+      signal.throwIfAborted();
+      if (earlyUi) {
+        await earlyUi;
+      } else if (!window.__okouClerkUI) {
+        const src = document.querySelector<HTMLMetaElement>(
+          'meta[name="okou-clerk-ui-script"]',
+        )?.content;
+        if (!src) {
+          throw new Error("Clerk UI asset URL is missing");
+        }
+        await loadScript(src, {
+          async: true,
+          crossOrigin: "anonymous",
+          beforeLoad(script) {
+            script.type = "module";
+          },
+        });
       }
-      resolveClerkUI(constructor);
+      signal.throwIfAborted();
+      const loadedUi = window.__okouClerkUI;
+      if (
+        !loadedUi ||
+        typeof loadedUi.ClerkUI !== "function" ||
+        loadedUi.version !== CLERK_UI_VERSION
+      ) {
+        throw new Error(
+          "Clerk UI entry is missing or has an incompatible version",
+        );
+      }
+      resolveClerkUI(loadedUi.ClerkUI);
+      return loadedUi;
     })();
     return loadPromise;
   };
@@ -117,7 +126,7 @@ function matchesEarlyLoadOptions(
 function adoptEarlyClerkRuntime(
   clerk: PlatformClerk,
   options: ClerkRuntimeOptions,
-  scriptOptions: ClerkScriptOptions,
+  signal: AbortSignal,
 ): ClerkBrowserRuntime | null {
   const bootstrap = window.__okouClerkBootstrap;
   if (!bootstrap?.loaded || bootstrap.clerk !== clerk) {
@@ -137,15 +146,16 @@ function adoptEarlyClerkRuntime(
   return {
     clerk,
     ensureUiLoaded: createClerkUiLoader(
-      scriptOptions,
       bootstrap.resolveClerkUI,
+      bootstrap.uiLoaded,
+      signal,
     ),
     loaded,
   };
 }
 
 /**
- * `signal` owns the hosted UI handle handed to Clerk core. Clerk keeps that
+ * `signal` owns the optional UI handle handed to Clerk core. Clerk keeps that
  * promise for the lifetime of the shared browser runtime, so only the app
  * root may abort it; route and command signals must not.
  */
@@ -153,10 +163,6 @@ export async function startClerkBrowserRuntime(
   options: ClerkRuntimeOptions,
   signal: AbortSignal,
 ): Promise<ClerkBrowserRuntime> {
-  const scriptOptions: ClerkScriptOptions = {
-    domain: options.domain,
-    publishableKey: options.publishableKey,
-  };
   await loadClerkJSScript({
     __internal_clerkJSVersion: CLERK_JS_VERSION,
     domain: options.domain,
@@ -166,7 +172,8 @@ export async function startClerkBrowserRuntime(
   if (!isBrowserClerk(clerk)) {
     throw new Error("Clerk browser script did not expose a valid runtime");
   }
-  const earlyRuntime = adoptEarlyClerkRuntime(clerk, options, scriptOptions);
+  signal.throwIfAborted();
+  const earlyRuntime = adoptEarlyClerkRuntime(clerk, options, signal);
   if (earlyRuntime) {
     return earlyRuntime;
   }
@@ -181,7 +188,7 @@ export async function startClerkBrowserRuntime(
   });
   return {
     clerk,
-    ensureUiLoaded: createClerkUiLoader(scriptOptions, clerkUI.resolve),
+    ensureUiLoaded: createClerkUiLoader(clerkUI.resolve, undefined, signal),
     loaded,
   };
 }

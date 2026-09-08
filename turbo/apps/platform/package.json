@@ -27,6 +27,7 @@
     "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
     "@clerk/shared": "4.25.8",
+    "@clerk/ui": "1.26.0",
     "@okouai/api-contracts": "workspace:*",
     "@okouai/connectors": "workspace:*",
     "@okouai/core": "workspace:*",

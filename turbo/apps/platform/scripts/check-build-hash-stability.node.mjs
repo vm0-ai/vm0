@@ -20,6 +20,7 @@ const VERSION_META_NAME = "okou-app-version";
 const VENDOR_FILE_PATTERN = /^vendor-[^/]+\.js$/u;
 const RUNTIME_FILE_PATTERN = /^rolldown-runtime-[^/]+\.js$/u;
 const WORKER_FILE_PATTERN = /^shared-database-worker-[^/]+\.js$/u;
+const CLERK_UI_FILE_PATTERN = /^clerk-ui-[^/]+\.js$/u;
 const MERMAID_LITE_MODULE_PATH =
   "/packages/mermaid-lite/dist/mermaid.esm.min.mjs";
 const BASELINE_COMMIT_SHA = "1111111111111111111111111111111111111111";
@@ -182,7 +183,10 @@ async function describeBuild(outputDirectory) {
     "SharedWorker JavaScript file",
   );
   const appFiles = javaScriptFiles.filter((fileName) => {
-    return ![vendorFile, runtimeFile, workerFile].includes(fileName);
+    return (
+      ![vendorFile, runtimeFile, workerFile].includes(fileName) &&
+      !CLERK_UI_FILE_PATTERN.test(fileName)
+    );
   });
   assert.equal(
     appFiles.length,
@@ -193,6 +197,10 @@ async function describeBuild(outputDirectory) {
   assert.ok(appFile);
 
   const artifacts = {
+    clerkUi: await describeFile(
+      assetsDirectory,
+      exactlyOne(javaScriptFiles, CLERK_UI_FILE_PATTERN, "optional Clerk UI"),
+    ),
     app: await describeFile(assetsDirectory, appFile),
     vendor: await describeFile(assetsDirectory, vendorFile),
     runtime: await describeFile(assetsDirectory, runtimeFile),
@@ -307,10 +315,10 @@ try {
     outputDirectory: path.join(appDirectory, "dist"),
     version: appVersion,
   });
-  for (const label of ["app", "vendor", "runtime", "worker"]) {
+  for (const label of ["app", "vendor", "runtime", "worker", "clerkUi"]) {
     assertStable([baseline, canonical], label);
   }
-  for (const label of ["vendor", "runtime"]) {
+  for (const label of ["vendor", "runtime", "clerkUi"]) {
     assertStable([versionChange, canonical], label);
   }
   assert.deepEqual(baseline.runtimeMetadata, {
@@ -335,10 +343,10 @@ try {
       canonical.artifacts[label].sha256,
     );
   }
-  for (const label of ["vendor", "runtime", "worker"]) {
+  for (const label of ["vendor", "runtime", "worker", "clerkUi"]) {
     assertStable([canonical, appMutation], label);
   }
-  for (const label of ["runtime", "worker"]) {
+  for (const label of ["runtime", "worker", "clerkUi"]) {
     assertStable([canonical, mermaidMutation], label);
   }
   assert.notEqual(
@@ -397,10 +405,10 @@ try {
           },
         },
         verifiedStable: {
-          appMutation: ["vendor", "runtime", "worker"],
-          commitChange: ["app", "vendor", "runtime", "worker"],
-          mermaidMutation: ["runtime", "worker"],
-          versionChange: ["vendor", "runtime"],
+          appMutation: ["vendor", "runtime", "worker", "clerkUi"],
+          commitChange: ["app", "vendor", "runtime", "worker", "clerkUi"],
+          mermaidMutation: ["runtime", "worker", "clerkUi"],
+          versionChange: ["vendor", "runtime", "clerkUi"],
         },
         verifiedInvalidated: {
           appMutation: ["app"],

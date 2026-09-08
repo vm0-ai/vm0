@@ -1,5 +1,6 @@
 import { GoogleOneTap, SignIn, SignUp } from "@clerk/react";
 import type { BrowserClerk } from "@clerk/shared/types";
+import type { ui } from "@clerk/ui";
 import { Loader2 } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -20,6 +21,7 @@ export type AuthV1PageMode = "sign-in" | "sign-up";
 interface AuthV1PageProps {
   readonly clerk: BrowserClerk;
   readonly mode: AuthV1PageMode;
+  readonly ui: typeof ui;
 }
 
 function AuthLoadingFallback() {
@@ -120,9 +122,9 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
   );
 }
 
-export function AuthV1Page({ clerk, mode }: AuthV1PageProps) {
+export function AuthV1Page({ clerk, mode, ui }: AuthV1PageProps) {
   return (
-    <AuthV1ClerkProvider clerk={clerk} mode={mode}>
+    <AuthV1ClerkProvider clerk={clerk} mode={mode} ui={ui}>
       <AuthV1PageContent mode={mode} />
     </AuthV1ClerkProvider>
   );

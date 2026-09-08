@@ -9,6 +9,7 @@ import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import platformPackage from "./package.json";
 import { applicationResourcePriorityHtmlPlugin } from "./scripts/app-resource-priority-html.ts";
 import { clerkCoreHtmlPlugin } from "./scripts/clerk-html.ts";
+import { clerkUiAssetPlugin } from "./scripts/clerk-ui.ts";
 import {
   VENDOR_MODULE_PATTERN,
   applicationJavaScriptBundlePlugin,
@@ -76,6 +77,7 @@ export default defineConfig(({ command }) => ({
     react(),
     devArtifactFetchProxy(),
     clerkCoreHtmlPlugin(),
+    clerkUiAssetPlugin(),
     runtimeBuildInfoHtmlPlugin,
     applicationJavaScriptBundlePlugin(),
     applicationResourcePriorityHtmlPlugin(),
