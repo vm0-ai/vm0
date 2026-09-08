@@ -59,8 +59,10 @@ describe("desktop update feed", () => {
   });
 
   it("builds the static Squirrel.Mac feed base URL", () => {
-    expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai", "zero")).toBe(
-      "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64",
+    expect(
+      desktopUpdateFeedBaseUrl("https://api.vm0.ai", "ai-okou-desktop"),
+    ).toBe(
+      "https://api.vm0.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64",
     );
     expect(
       desktopUpdateFeedBaseUrl("https://api.okou.ai", "ai-okou-desktop"),

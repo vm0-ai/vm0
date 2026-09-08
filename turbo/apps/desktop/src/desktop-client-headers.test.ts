@@ -7,7 +7,6 @@ import {
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
   DESKTOP_PRODUCT_OKOU,
-  DESKTOP_PRODUCT_ZERO,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 
@@ -32,7 +31,7 @@ describe("createDesktopClientHeaderInjector", () => {
     const first = new Headers([
       [CLIENT_VERSION_HEADER, "caller-version"],
       [CLIENT_TYPE_HEADER, "caller-type"],
-      [CLIENT_PRODUCT_HEADER, DESKTOP_PRODUCT_OKOU],
+      [CLIENT_PRODUCT_HEADER, "caller-product"],
       [CLIENT_SESSION_ID_HEADER, "caller-session-id"],
       [CLIENT_REQUEST_ID_HEADER, "caller-request-id"],
     ]);
@@ -43,26 +42,13 @@ describe("createDesktopClientHeaderInjector", () => {
 
     expect(first.get(CLIENT_VERSION_HEADER)).toBe("1.2.3");
     expect(first.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_DESKTOP);
-    expect(first.get(CLIENT_PRODUCT_HEADER)).toBe(DESKTOP_PRODUCT_ZERO);
+    expect(first.get(CLIENT_PRODUCT_HEADER)).toBe(DESKTOP_PRODUCT_OKOU);
     expect(first.get(CLIENT_SESSION_ID_HEADER)).toBe("session-id");
     expect(first.get(CLIENT_REQUEST_ID_HEADER)).toBe("request-id-1");
     expect(second.get(CLIENT_VERSION_HEADER)).toBe("1.2.3");
     expect(second.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_DESKTOP);
-    expect(second.get(CLIENT_PRODUCT_HEADER)).toBe(DESKTOP_PRODUCT_ZERO);
+    expect(second.get(CLIENT_PRODUCT_HEADER)).toBe(DESKTOP_PRODUCT_OKOU);
     expect(second.get(CLIENT_SESSION_ID_HEADER)).toBe("session-id");
     expect(second.get(CLIENT_REQUEST_ID_HEADER)).toBe("request-id-2");
-  });
-
-  it("adds the configured Okou product identity", () => {
-    const addClientHeaders = createDesktopClientHeaderInjector({
-      clientVersion: "1.2.3",
-      product: DESKTOP_PRODUCT_OKOU,
-      createUuid: uuidSequence("session-id", "request-id"),
-    });
-    const headers = new Headers();
-
-    addClientHeaders(headers);
-
-    expect(headers.get(CLIENT_PRODUCT_HEADER)).toBe(DESKTOP_PRODUCT_OKOU);
   });
 });

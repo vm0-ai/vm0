@@ -57,9 +57,15 @@ const META_ADS_USER_URL = "https://graph.facebook.com/v22.0/me";
 const MONDAY_OAUTH_TOKEN_URL = "https://auth.monday.com/oauth2/token";
 const MONDAY_GRAPHQL_URL = "https://api.monday.com/v2";
 const NOTION_OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
+const QUICKBOOKS_OAUTH_TOKEN_URL =
+  "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const QUICKBOOKS_USERINFO_URL =
+  "https://accounts.platform.intuit.com/v1/openid_connect/userinfo";
 const SENTRY_OAUTH_TOKEN_URL = "https://sentry.io/oauth/token/";
 const STRAVA_OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
+const STRIPE_OAUTH_TOKEN_URL = "https://api.stripe.com/v1/oauth/token";
+const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 const TIKTOK_ADS_OAUTH_TOKEN_URL =
   "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
 const TODOIST_OAUTH_TOKEN_URL = "https://todoist.com/oauth/access_token";
@@ -675,12 +681,19 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("MONDAY_OAUTH_CLIENT_SECRET", "monday-test-client-secret");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+  mockOptionalEnv("QUICKBOOKS_OAUTH_CLIENT_ID", "quickbooks-test-client-id");
+  mockOptionalEnv(
+    "QUICKBOOKS_OAUTH_CLIENT_SECRET",
+    "quickbooks-test-client-secret",
+  );
   mockOptionalEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
   mockOptionalEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_ID", "strava-test-client-id");
   mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
+  mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-test-client-id");
+  mockOptionalEnv("STRIPE_OAUTH_CLIENT_SECRET", "stripe-test-client-secret");
   mockOptionalEnv("TIKTOK_ADS_OAUTH_CLIENT_ID", "tiktok-ads-test-client-id");
   mockOptionalEnv(
     "TIKTOK_ADS_OAUTH_CLIENT_SECRET",
@@ -769,6 +782,7 @@ interface DirectOkouTokenExchangeCase {
   readonly clientId: string;
   readonly tokenUrl: string;
   readonly tokenResponse: JsonBodyType;
+  readonly callbackQuery?: Readonly<Record<string, string>>;
   readonly mockUserInfo?: () => void;
 }
 
@@ -875,6 +889,32 @@ const DIRECT_OKOU_TOKEN_EXCHANGE_CASES: readonly DirectOkouTokenExchangeCase[] =
       },
     },
     {
+      connectorSlug: "quickbooks",
+      label: "QuickBooks",
+      authorizationEndpoint: "https://appcenter.intuit.com/connect/oauth2",
+      clientId: "quickbooks-test-client-id",
+      tokenUrl: QUICKBOOKS_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "quickbooks-test-token",
+        refresh_token: "quickbooks-refresh-token",
+        expires_in: 3600,
+        scope: "com.intuit.quickbooks.accounting openid profile email",
+      },
+      callbackQuery: { realmId: "quickbooks-realm-123" },
+      mockUserInfo: () => {
+        server.use(
+          http.get(QUICKBOOKS_USERINFO_URL, () => {
+            return HttpResponse.json({
+              sub: "quickbooks-user-123",
+              givenName: "QuickBooks",
+              familyName: "Test User",
+              email: "quickbooks@example.test",
+            });
+          }),
+        );
+      },
+    },
+    {
       connectorSlug: "sentry",
       label: "Sentry",
       authorizationEndpoint: "https://sentry.io/oauth/authorize/",
@@ -950,8 +990,10 @@ const REDIRECTING_DIRECT_OKOU_CONNECTOR_SLUGS = [
   "intervals-icu",
   "linear",
   "monday",
+  "quickbooks",
   "sentry",
   "strava",
+  "stripe",
   "todoist",
   "x",
   "xero",
@@ -1286,50 +1328,53 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps GitHub denial redirects on the brand that started the flow", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+  it.each(["github", "quickbooks", "stripe"])(
+    "keeps %s denial redirects on the brand that started the flow",
+    async (connectorSlug) => {
+      mockEnv("APP_URL", "https://app.vm0.ai");
 
-    const denialLocation = async (
-      publicBrand: "vm0" | "okou",
-    ): Promise<URL> => {
-      mockAuthenticatedSession();
-      const response = await requestOauthStart("github", {
-        callbackTarget: "app",
-        headers: authHeaders(),
-        origin: publicBrand === "okou" ? OKOU_API_ORIGIN : API_ORIGIN,
-      });
-      expect(response.status).toBe(200);
-      const authorizationUrl = await authorizationUrlFromResponse(response);
-      const state =
-        publicBrand === "okou"
-          ? expectOkouOauthState(authorizationUrl)
-          : expectOauthState(authorizationUrl);
+      const denialLocation = async (
+        publicBrand: "vm0" | "okou",
+      ): Promise<URL> => {
+        mockAuthenticatedSession();
+        const response = await requestOauthStart(connectorSlug, {
+          callbackTarget: "app",
+          headers: authHeaders(),
+          origin: publicBrand === "okou" ? OKOU_API_ORIGIN : API_ORIGIN,
+        });
+        expect(response.status).toBe(200);
+        const authorizationUrl = await authorizationUrlFromResponse(response);
+        const state =
+          publicBrand === "okou"
+            ? expectOkouOauthState(authorizationUrl)
+            : expectOauthState(authorizationUrl);
 
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const callback = await app.request(
-        `${OKOU_API_ORIGIN}/api/connectors/github/callback?${new URLSearchParams(
-          {
-            error: "access_denied",
-            state,
-          },
-        )}`,
-        { headers: { "x-vm0-web-origin": "https://okou.ai" } },
-      );
-      expect(callback.status).toBe(307);
-      return new URL(callback.headers.get("location") ?? "");
-    };
+        const app = createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        });
+        const callback = await app.request(
+          `${OKOU_API_ORIGIN}/api/connectors/${connectorSlug}/callback?${new URLSearchParams(
+            {
+              error: "access_denied",
+              state,
+            },
+          )}`,
+          { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+        );
+        expect(callback.status).toBe(307);
+        return new URL(callback.headers.get("location") ?? "");
+      };
 
-    const okou = await denialLocation("okou");
-    expect(okou.origin).toBe("https://app.okou.ai");
-    expect(okou.pathname).toBe("/connector/error");
+      const okou = await denialLocation("okou");
+      expect(okou.origin).toBe("https://app.okou.ai");
+      expect(okou.pathname).toBe("/connector/error");
 
-    const vm0 = await denialLocation("vm0");
-    expect(vm0.origin).toBe("https://app.vm0.ai");
-    expect(vm0.pathname).toBe("/connector/error");
-  });
+      const vm0 = await denialLocation("vm0");
+      expect(vm0.origin).toBe("https://app.vm0.ai");
+      expect(vm0.pathname).toBe("/connector/error");
+    },
+  );
 
   it("uses the direct Okou App callback for Airtable and reuses its exact PKCE redirect URI", async () => {
     const tokenBodies: URLSearchParams[] = [];
@@ -1787,6 +1832,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       const location = await completeAppOauthCallback(
         providerCase.connectorSlug,
         state,
+        providerCase.callbackQuery,
       );
 
       expect(location.origin).toBe("https://app.okou.ai");
@@ -1795,6 +1841,60 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
     },
   );
+
+  it("uses the direct Okou App callback for Stripe Marketplace OAuth", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(STRIPE_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "stripe-test-token",
+          refresh_token: "stripe-refresh-token",
+          expires_in: 3600,
+          livemode: true,
+          stripe_user_id: "acct_stripe_test",
+        });
+      }),
+      http.get(STRIPE_ACCOUNT_URL, () => {
+        return HttpResponse.json({
+          id: "acct_stripe_test",
+          business_profile: { name: "Stripe Test Account" },
+          email: "stripe@example.test",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("stripe", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://marketplace.stripe.com/oauth/v2/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "stripe-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.okou.ai/connectors/stripe/callback",
+    );
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const location = await completeAppOauthCallback("stripe", state);
+
+    expect(location.origin).toBe("https://app.okou.ai");
+    expect(location.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(Object.fromEntries(tokenBodies[0]!)).toStrictEqual({
+      code: "stripe-authorization-code",
+      grant_type: "authorization_code",
+    });
+  });
 
   it("uses the direct Okou App callback for X and reuses its exact PKCE redirect URI", async () => {
     const tokenBodies: URLSearchParams[] = [];

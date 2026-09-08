@@ -35,7 +35,8 @@ teardown() {
     local prompt
     prompt=$(cat <<'EOF'
 printf 'DISCORD_WEBHOOK_URL=%s\n' "$DISCORD_WEBHOOK_URL"
-curl --silent --show-error --max-time 5 \
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+curl --silent --show-error --max-time 15 \
     --resolve 'firewall-placeholder.vm3.ai:443:8.8.8.8' \
     --output /dev/null \
     "$DISCORD_WEBHOOK_URL" || true

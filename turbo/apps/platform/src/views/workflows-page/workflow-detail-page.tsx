@@ -9,6 +9,7 @@ import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
   GmailNewMessageEventConfig,
+  GoogleCalendarAutomationEventConfig,
   GithubDeploymentState,
   GithubDeploymentStatusCreatedEventConfig,
   GithubIssueCommentCreatedEventConfig,
@@ -131,7 +132,9 @@ import {
   editingScheduleCronFields$,
   editingGithubPullRequestAction$,
   editingGmailMatchConditions$,
+  editingGoogleCalendarId$,
   editingWorkflowAutomationId$,
+  isGoogleCalendarWorkflowAutomation,
   patchWorkflowMetadataForm$,
   openWorkflowChat$,
   pauseWorkflowAutomations$,
@@ -148,6 +151,7 @@ import {
   setCreatedWorkflowWebhookAutomation$,
   setEditingGithubPullRequestAction$,
   setEditingGmailMatchConditions$,
+  setEditingGoogleCalendarId$,
   setEditingScheduleCronFields$,
   setEditingWorkflowAutomationId$,
   setRevealWebhookSecretAutomationId$,
@@ -160,6 +164,7 @@ import {
   setWorkflowAutomationEnabled$,
   scrollTargetedWorkflowAutomationIntoViewRef$,
   updateWorkflowAutomationEventConfig$,
+  updateWorkflowGoogleCalendarAutomationEventConfig$,
   updateWorkflowScheduleAutomation$,
   updateWorkflow$,
   workflowActionDialog$,
@@ -186,6 +191,7 @@ import {
   type GmailMatchCondition,
   type GmailMatchOperator,
   type GmailTextOperator,
+  type GoogleCalendarWorkflowAutomationSummary,
   workflowMetadataPatch$,
   targetedWorkflowAutomationId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -214,6 +220,16 @@ import {
   type CronTimeOption,
 } from "../../signals/okou-page/cron.ts";
 import { userPreferences$ } from "../../signals/okou-page/settings/user-preferences.ts";
+import { relatedCatalogItems$ } from "../../signals/okou-page/settings/connectors.ts";
+import {
+  builtinAccountConnectDialog$,
+  builtinAccountManager$,
+  closeBuiltinAccountConnectDialog$,
+  closeBuiltinAccountManager$,
+  finishConnectorAccountConnection$,
+  openBuiltinAccountConnectDialog$,
+  openBuiltinAccountManager$,
+} from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { Link } from "../router/link.tsx";
 import {
   DetailPageBreadcrumbBar,
@@ -251,6 +267,9 @@ import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { AutomationListIcon } from "../okou-page/workflow-automations-page.tsx";
 import { emptyAutomationsImg } from "../okou-page/platform-assets.ts";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
+import { ConnectModal } from "../okou-page/components/settings/add-connection-dialog.tsx";
+import { ConnectorAccountManagerDialog } from "../okou-page/components/settings/connector-account-manager-dialog.tsx";
+import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import {
   createOfficialWorkflowConfigurationForm,
   OfficialWorkflowConfigurationFields,
@@ -261,6 +280,7 @@ import {
 const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS = "min-h-24 resize-y";
 const AUTOMATION_TIMEZONE = "UTC";
+const GOOGLE_CALENDAR_CONNECTOR_SLUG = "google-calendar";
 
 const STRIPE_INVOICE_BILLING_REASONS = [
   "automatic_pending_invoice_item_invoice",
@@ -3495,6 +3515,23 @@ function googleCalendarIdFromForm(form: FormData): string {
   return formTextValue(form, "calendarId") ?? "primary";
 }
 
+function updatedGoogleCalendarEventConfig(
+  automation: GoogleCalendarWorkflowAutomationSummary,
+  calendarId: string,
+): GoogleCalendarAutomationEventConfig {
+  switch (automation.eventType) {
+    case "google-calendar-event-created": {
+      return { ...automation.eventConfig, calendarId };
+    }
+    case "google-calendar-event-updated": {
+      return { ...automation.eventConfig, calendarId };
+    }
+    case "google-calendar-event-cancelled": {
+      return { ...automation.eventConfig, calendarId };
+    }
+  }
+}
+
 function githubSubjectFilterValue(
   value: FormDataEntryValue | null,
   fallback: GithubIssueCommentSubjectFilter,
@@ -5046,6 +5083,7 @@ function AutomationsSection({
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
+      <GoogleCalendarRecoveryDialogs />
     </section>
   );
 }
@@ -8558,6 +8596,179 @@ function AutomationRowStats({
   );
 }
 
+function GoogleCalendarReconnectAction() {
+  const connectorLoadable = useLoadable(relatedCatalogItems$);
+  const openAccountManager = useSet(openBuiltinAccountManager$);
+  const pageSignal = useGet(pageSignal$);
+  const connector =
+    connectorLoadable.state === "hasData"
+      ? (connectorLoadable.data.find((candidate) => {
+          return candidate.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG;
+        }) ?? null)
+      : null;
+
+  return (
+    <Button
+      type="button"
+      variant="link"
+      className="h-auto w-fit p-0 text-xs text-amber-700 dark:text-amber-400"
+      disabled={!connector}
+      onClick={() => {
+        if (connector) {
+          openAccountManager(connector, pageSignal);
+        }
+      }}
+    >
+      {connectorLoadable.state === "loading" ? (
+        <Loader2 size={13} className="animate-spin" />
+      ) : null}
+      {i18n.t(($) => {
+        return $.workflows.automations.calendar.reconnectGoogleCalendar;
+      })}
+    </Button>
+  );
+}
+
+function GoogleCalendarAutomationWarning({
+  automation,
+  canOperate,
+  canEditStructure,
+  onChangeCalendar,
+}: {
+  readonly automation: GoogleCalendarWorkflowAutomationSummary;
+  readonly canOperate: boolean;
+  readonly canEditStructure: boolean;
+  readonly onChangeCalendar: () => void;
+}) {
+  if (!automation.warning) {
+    return null;
+  }
+  const description =
+    automation.warning === "calendar_not_found"
+      ? i18n.t(($) => {
+          return $.workflows.automations.calendar.calendarNotFoundDescription;
+        })
+      : i18n.t(($) => {
+          return $.workflows.automations.calendar.reconnectDescription;
+        });
+
+  return (
+    <div
+      role="alert"
+      className="flex min-w-0 items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 sm:col-span-5"
+    >
+      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className="font-medium">
+          {automation.enabled ? (
+            <>
+              {i18n.t(($) => {
+                return $.workflows.automations.calendar.enabledIntent;
+              })}
+              <span aria-hidden="true"> · </span>
+            </>
+          ) : null}
+          {i18n.t(($) => {
+            return $.workflows.automations.calendar.actionRequiredPaused;
+          })}
+        </p>
+        <p>{description}</p>
+        {automation.warning === "calendar_not_found" && canEditStructure ? (
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto w-fit p-0 text-xs text-amber-700 dark:text-amber-400"
+            onClick={onChangeCalendar}
+          >
+            {i18n.t(($) => {
+              return $.workflows.automations.calendar.changeCalendar;
+            })}
+          </Button>
+        ) : null}
+        {automation.warning === "reconnect_required" && canOperate ? (
+          <GoogleCalendarReconnectAction />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function GoogleCalendarRecoveryDialogs() {
+  const managedConnector = useGet(builtinAccountManager$);
+  const accountConnect = useGet(builtinAccountConnectDialog$);
+  const closeAccountManager = useSet(closeBuiltinAccountManager$);
+  const openAccountConnect = useSet(openBuiltinAccountConnectDialog$);
+  const closeAccountConnect = useSet(closeBuiltinAccountConnectDialog$);
+  const finishAccountConnection = useSet(finishConnectorAccountConnection$);
+  const reloadWorkflows = useSet(reloadWorkflows$);
+  const pageSignal = useGet(pageSignal$);
+  const googleCalendarManager =
+    managedConnector?.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG
+      ? managedConnector
+      : null;
+  const googleCalendarConnect =
+    accountConnect?.connector.slug === GOOGLE_CALENDAR_CONNECTOR_SLUG &&
+    accountConnect.mode.kind === "reconnect"
+      ? {
+          connector: accountConnect.connector,
+          mode: accountConnect.mode,
+        }
+      : null;
+
+  return (
+    <>
+      {googleCalendarManager ? (
+        <ConnectorAccountManagerDialog
+          target={{
+            kind: "builtin",
+            connectorSlug: googleCalendarManager.slug,
+          }}
+          connectorLabel={googleCalendarManager.label}
+          icon={<ConnectorIcon icon={googleCalendarManager.icon} size={20} />}
+          connectionActionsEnabled
+          onClose={closeAccountManager}
+          onReconnect={(account) => {
+            openAccountConnect(googleCalendarManager, {
+              kind: "reconnect",
+              connectionId: account.id,
+              authMethod: account.authMethod,
+            });
+          }}
+        />
+      ) : null}
+      {googleCalendarConnect ? (
+        <ConnectModal
+          item={googleCalendarConnect.connector}
+          accountMode={googleCalendarConnect.mode}
+          reconnectAuthMethod={googleCalendarConnect.mode.authMethod}
+          accountOptions={{
+            account: {
+              intent: "reconnect",
+              connectionId: googleCalendarConnect.mode.connectionId,
+            },
+          }}
+          onClose={closeAccountConnect}
+          onSuccess={async (connectionId) => {
+            await finishAccountConnection(
+              {
+                target: {
+                  kind: "builtin",
+                  connectorSlug: googleCalendarConnect.connector.slug,
+                },
+                connectionId,
+                connectorLabel: googleCalendarConnect.connector.label,
+                mode: googleCalendarConnect.mode,
+              },
+              pageSignal,
+            );
+            reloadWorkflows();
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function officialReconciliationStatusLabel(
   status: NonNullable<
     WorkflowAutomationSummary["official"]
@@ -8605,6 +8816,55 @@ interface AutomationRowProps {
   readonly showDivider: boolean;
 }
 
+function AutomationRowHeading({
+  automation,
+  title,
+  subtitle,
+}: {
+  readonly automation: WorkflowAutomationSummary;
+  readonly title: string;
+  readonly subtitle: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <AutomationListIcon automation={automation} size="sm" />
+      <div className="min-w-0">
+        <div
+          className="truncate text-sm font-medium text-foreground"
+          title={title}
+        >
+          {title}
+        </div>
+        {subtitle ? (
+          <div
+            className="mt-0.5 truncate text-xs text-muted-foreground"
+            title={subtitle}
+          >
+            {subtitle}
+          </div>
+        ) : null}
+        {automation.official ? (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {i18n.t(
+              ($) => {
+                return $.workflows.official.reconciliationState;
+              },
+              {
+                state: officialReconciliationStatusLabel(
+                  automation.official.reconciliationStatus,
+                ),
+                intended: officialIntendedStateLabel(
+                  automation.official.intendedEnabled,
+                ),
+              },
+            )}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AutomationRow({
   automation,
   canOperate,
@@ -8616,6 +8876,7 @@ function AutomationRow({
   const scrollRef = useSet(scrollTargetedWorkflowAutomationIntoViewRef$);
   const editingAutomationId = useGet(editingWorkflowAutomationId$);
   const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
+  const setEditingGoogleCalendarId = useSet(setEditingGoogleCalendarId$);
   const editing = editingAutomationId === automation.id;
   const targeted = targetedAutomationId === automation.id;
   const title = workflowScheduleTitle(automation, displayTimezone);
@@ -8625,6 +8886,9 @@ function AutomationRow({
     automation.eventType === "stripe-invoice-paid"
       ? automation
       : null;
+  const calendarAutomation = isGoogleCalendarWorkflowAutomation(automation)
+    ? automation
+    : null;
 
   return (
     <>
@@ -8638,42 +8902,11 @@ function AutomationRow({
           !automation.enabled && "opacity-75",
         )}
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <AutomationListIcon automation={automation} size="sm" />
-          <div className="min-w-0">
-            <div
-              className="truncate text-sm font-medium text-foreground"
-              title={title}
-            >
-              {title}
-            </div>
-            {subtitle ? (
-              <div
-                className="mt-0.5 truncate text-xs text-muted-foreground"
-                title={subtitle}
-              >
-                {subtitle}
-              </div>
-            ) : null}
-            {automation.official ? (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {i18n.t(
-                  ($) => {
-                    return $.workflows.official.reconciliationState;
-                  },
-                  {
-                    state: officialReconciliationStatusLabel(
-                      automation.official.reconciliationStatus,
-                    ),
-                    intended: officialIntendedStateLabel(
-                      automation.official.intendedEnabled,
-                    ),
-                  },
-                )}
-              </p>
-            ) : null}
-          </div>
-        </div>
+        <AutomationRowHeading
+          automation={automation}
+          title={title}
+          subtitle={subtitle}
+        />
         <AutomationRowStats
           automation={automation}
           displayTimezone={displayTimezone}
@@ -8692,6 +8925,19 @@ function AutomationRow({
         ) : (
           <div aria-hidden="true" />
         )}
+        {calendarAutomation ? (
+          <GoogleCalendarAutomationWarning
+            automation={calendarAutomation}
+            canOperate={canOperate}
+            canEditStructure={canEditStructure}
+            onChangeCalendar={() => {
+              setEditingGoogleCalendarId(
+                calendarAutomation.eventConfig.calendarId,
+              );
+              setEditingAutomationId(calendarAutomation.id);
+            }}
+          />
+        ) : null}
         {stripeAutomation ? (
           <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:col-span-5">
             <p>
@@ -8846,6 +9092,55 @@ function AutomationStatusSwitch({
   );
 }
 
+function AutomationEditButton({
+  automation,
+  displayTimezone,
+  busy,
+}: {
+  readonly automation: WorkflowAutomationSummary;
+  readonly displayTimezone: string;
+  readonly busy: boolean;
+}) {
+  const copy = automationActionCopy();
+  const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
+  const setEditingGoogleCalendarId = useSet(setEditingGoogleCalendarId$);
+  const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled={busy}
+          aria-label={copy.editAutomation}
+          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
+          onClick={() => {
+            if (
+              automation.kind === "schedule" &&
+              automation.schedule.type === "cron"
+            ) {
+              setEditingScheduleCronFields(
+                parseWorkflowCronFields(automation.schedule, displayTimezone),
+              );
+            }
+            if (isGoogleCalendarWorkflowAutomation(automation)) {
+              setEditingGoogleCalendarId(automation.eventConfig.calendarId);
+            }
+            setEditingAutomationId(automation.id);
+          }}
+        >
+          <Pencil size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs">{copy.editAutomation}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function AutomationControls({
   automation,
   displayTimezone,
@@ -8858,8 +9153,6 @@ function AutomationControls({
   const copy = automationActionCopy();
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
-  const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
-  const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
   const revealWebhookSecretAutomationId = useGet(
     revealWebhookSecretAutomationId$,
   );
@@ -8911,37 +9204,11 @@ function AutomationControls({
             </TooltipContent>
           </Tooltip>
           {canEdit ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={busy}
-                  aria-label={copy.editAutomation}
-                  className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground"
-                  onClick={() => {
-                    if (
-                      automation.kind === "schedule" &&
-                      automation.schedule.type === "cron"
-                    ) {
-                      setEditingScheduleCronFields(
-                        parseWorkflowCronFields(
-                          automation.schedule,
-                          displayTimezone,
-                        ),
-                      );
-                    }
-                    setEditingAutomationId(automation.id);
-                  }}
-                >
-                  <Pencil size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">{copy.editAutomation}</p>
-              </TooltipContent>
-            </Tooltip>
+            <AutomationEditButton
+              automation={automation}
+              displayTimezone={displayTimezone}
+              busy={busy}
+            />
           ) : null}
           {canEditStructure || isWebhookWorkflowAutomation(automation) ? (
             <AutomationMoreActionsMenu
@@ -9063,6 +9330,7 @@ function canEditWorkflowAutomation(
     automation.kind === "schedule" ||
     isGmailWorkflowAutomation(automation) ||
     isGithubWorkflowAutomation(automation) ||
+    isGoogleCalendarWorkflowAutomation(automation) ||
     (automation.kind === "event" &&
       automation.eventType === "chat-run-finished")
   );
@@ -9080,6 +9348,11 @@ function editWorkflowAutomationTitle(
   if (automation.eventType === "chat-run-finished") {
     return i18n.t(($) => {
       return $.workflows.automations.chat.viewTitle;
+    });
+  }
+  if (isGoogleCalendarWorkflowAutomation(automation)) {
+    return i18n.t(($) => {
+      return $.workflows.automations.calendar.changeCalendar;
     });
   }
   if (automation.eventType === "gmail-new-message") {
@@ -9160,6 +9433,12 @@ function EditWorkflowAutomationDialog({
           <UpdateScheduleAutomationForm
             automation={automation}
             displayTimezone={displayTimezone}
+            onCancel={close}
+          />
+        ) : null}
+        {isGoogleCalendarWorkflowAutomation(automation) ? (
+          <UpdateGoogleCalendarAutomationForm
+            automation={automation}
             onCancel={close}
           />
         ) : null}
@@ -9334,6 +9613,102 @@ function UpdateScheduleAutomationForm({
         <span>
           {i18n.t(($) => {
             return $.workflows.automations.schedule.saveSchedule;
+          })}
+        </span>
+      </AutomationFormActions>
+    </form>
+  );
+}
+
+function UpdateGoogleCalendarAutomationForm({
+  automation,
+  onCancel,
+}: {
+  readonly automation: GoogleCalendarWorkflowAutomationSummary;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const calendarId = useGet(editingGoogleCalendarId$);
+  const setCalendarId = useSet(setEditingGoogleCalendarId$);
+  const [updateLoadable, updateGoogleCalendarAutomation] = useLoadableSet(
+    updateWorkflowGoogleCalendarAutomationEventConfig$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      aria-label={i18n.t(($) => {
+        return $.workflows.automations.calendar.changeAria;
+      })}
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const submittedCalendarId = calendarId.trim();
+        if (!submittedCalendarId) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateGoogleCalendarAutomation(
+              {
+                automationId: automation.id,
+                eventConfig: updatedGoogleCalendarEventConfig(
+                  automation,
+                  submittedCalendarId,
+                ),
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.calendar.calendarId;
+        })}
+        <Input
+          name="calendarId"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.calendar.calendarId;
+          })}
+          className={AUTOMATION_FIELD_CLASS}
+          disabled={saving}
+          maxLength={1024}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.calendar.calendarIdPlaceholder;
+          })}
+          required
+          value={calendarId}
+          onChange={(event) => {
+            setCalendarId(event.target.value);
+          }}
+        />
+      </label>
+      {updateLoadable.state === "hasError" ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+        >
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <p>
+            {i18n.t(($) => {
+              return $.workflows.automations.calendar.updateError;
+            })}
+          </p>
+        </div>
+      ) : null}
+      <AutomationFormActions pending={saving} onCancel={onCancel}>
+        {saving ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : (
+          <CalendarClock size={13} />
+        )}
+        <span>
+          {i18n.t(($) => {
+            return $.workflows.automations.calendar.saveCalendar;
           })}
         </span>
       </AutomationFormActions>

@@ -10,6 +10,7 @@ import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows"
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ArrowUpDown,
+  AlertTriangle,
   BadgeCheck,
   ChevronDown,
   Lock,
@@ -44,6 +45,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   allWorkflowAutomationEntries$,
+  isGoogleCalendarWorkflowAutomation,
   setWorkflowAgentFilter$,
   setWorkflowFilter$,
   setWorkflowSortMode$,
@@ -96,12 +98,25 @@ function ownerLabel(workflow: WorkflowSummary): string {
 
 function automationDotClass(entry: WorkflowAutomationEntry): string {
   const automation = entry.automation;
+  if (
+    isGoogleCalendarWorkflowAutomation(automation) &&
+    automation.warning !== undefined
+  ) {
+    return "bg-amber-500";
+  }
   if (automation.kind === "schedule") {
     return "bg-blue-500";
   }
   return automation.eventType === "webhook-received"
     ? "bg-amber-500"
     : "bg-emerald-500";
+}
+
+function isActionRequiredEntry(entry: WorkflowAutomationEntry): boolean {
+  return (
+    isGoogleCalendarWorkflowAutomation(entry.automation) &&
+    entry.automation.warning !== undefined
+  );
 }
 
 function connectorNames(entries: readonly WorkflowAutomationEntry[]): string {
@@ -228,21 +243,70 @@ function ConnectorPopoverList({
           entry.automation,
           displayTimezone,
         );
+        const actionRequired = isActionRequiredEntry(entry);
+        const title = workflowTitle(entry.workflow);
         return (
           <div
             key={entry.automation.id}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-state-hover"
           >
-            <span className={connectorPillClassName({})}>
-              <ConnectorPillMarker dotClassName={automationDotClass(entry)} />
-              {automationTypeLabel(entry.automation)}
-            </span>
-            <span
-              title={ruleLabel}
-              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-            >
-              {ruleLabel}
-            </span>
+            {actionRequired ? (
+              <Link
+                pathname={ROUTES.workflowDetailAutomations}
+                options={{
+                  pathParams: { workflowId: entry.workflow.id },
+                  searchParams: new URLSearchParams({
+                    automationId: entry.automation.id,
+                  }),
+                }}
+                aria-label={i18n.t(
+                  ($) => {
+                    return $.workflows.list.openRecovery;
+                  },
+                  { title },
+                )}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <span
+                  className={cn(
+                    connectorPillClassName({}),
+                    "border-amber-300/80 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400",
+                  )}
+                >
+                  <ConnectorPillMarker
+                    dotClassName={automationDotClass(entry)}
+                  />
+                  {i18n.t(($) => {
+                    return $.workflows.list.actionRequired;
+                  })}
+                </span>
+                <span
+                  title={ruleLabel}
+                  className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                >
+                  {ruleLabel}
+                </span>
+                <AlertTriangle
+                  size={13}
+                  className="shrink-0 text-amber-600 dark:text-amber-400"
+                />
+              </Link>
+            ) : (
+              <>
+                <span className={connectorPillClassName({})}>
+                  <ConnectorPillMarker
+                    dotClassName={automationDotClass(entry)}
+                  />
+                  {automationTypeLabel(entry.automation)}
+                </span>
+                <span
+                  title={ruleLabel}
+                  className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                >
+                  {ruleLabel}
+                </span>
+              </>
+            )}
             <WorkflowAutomationEnabledSwitch entry={entry} size="sm" />
           </div>
         );
@@ -270,6 +334,7 @@ function ConnectorCell({
   }
 
   const [lead] = entries;
+  const actionRequiredEntry = entries.find(isActionRequiredEntry);
   const remaining = entries.length - 2;
   return (
     <Popover>
@@ -279,15 +344,27 @@ function ConnectorCell({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className={connectorPillClassName({ interactive: true })}
+                className={cn(
+                  connectorPillClassName({ interactive: true }),
+                  actionRequiredEntry &&
+                    "border-amber-300/80 bg-amber-50 text-amber-700 hover:border-amber-400 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 dark:hover:bg-amber-950/50",
+                )}
               >
-                {lead ? (
+                {actionRequiredEntry ? (
+                  <ConnectorPillMarker dotClassName="bg-amber-500" />
+                ) : lead ? (
                   <ConnectorPillMarker
                     dotClassName={automationDotClass(lead)}
                   />
                 ) : null}
-                <span>{connectorNames(entries)}</span>
-                {remaining > 0 ? (
+                <span>
+                  {actionRequiredEntry
+                    ? i18n.t(($) => {
+                        return $.workflows.list.actionRequired;
+                      })
+                    : connectorNames(entries)}
+                </span>
+                {!actionRequiredEntry && remaining > 0 ? (
                   <span className="text-muted-foreground">+{remaining}</span>
                 ) : null}
               </button>

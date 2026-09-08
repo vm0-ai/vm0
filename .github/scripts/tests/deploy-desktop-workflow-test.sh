@@ -73,7 +73,6 @@ ruby -e '
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
   raise "Okou artifact must verify its packaged runtime config" unless okou_verify.include?("desktop-runtime-config.json")
-  raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
   preview = build.fetch("steps").find { |step| step["id"] == "preview" }
   preview_env = preview.fetch("env")
@@ -142,7 +141,6 @@ ruby -e '
   raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
-  raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")
   raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")
   raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-")
   raise "Desktop promotion must smoke-test Okou installation" unless promote_text.include?("okou-install-smoke")

@@ -20,8 +20,8 @@ function selectedVideoParameterLabels(
 }
 
 /**
- * The video parameters the composer sent with this message, as a system-prompt
- * block.
+ * The video parameters the composer sent with this message, as agent-only
+ * context prepended to the visible request.
  *
  * These are defaults, and the wording has to say so. The user set them on a
  * chip before writing anything, so the message itself is the later and more

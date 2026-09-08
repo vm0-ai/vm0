@@ -213,7 +213,6 @@ const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
 const POLL_DEGRADED_AFTER: Duration = Duration::from_secs(60);
 /// Runner reuse requires a heartbeat observed within this freshness window.
 const HEARTBEAT_DEGRADED_AFTER: Duration = Duration::from_secs(30);
-const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct DegradationEpisode {
@@ -1412,13 +1411,12 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
-    /// best-effort request and any lifecycle drain waiting for it.
+    /// Send a heartbeat with runner state. The default API timeout allows for
+    /// cold starts while bounding this request and lifecycle drain waits.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-                .timeout(Duration::from_secs(3))
                 .json(state),
             "heartbeat",
         )
@@ -1560,7 +1558,6 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            .timeout(CONNECTOR_RUNTIME_SYNC_TIMEOUT)
             .json(&serde_json::json!({ "targets": targets }))
     }
 
@@ -2010,6 +2007,56 @@ mod tests {
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         api_client_for_url(server.base_url())
+    }
+
+    #[tokio::test]
+    async fn heartbeat_and_connector_sync_allow_api_cold_starts() {
+        let server = MockServer::start_async().await;
+        let heartbeat = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/runners/heartbeat")
+                    .header("authorization", "Bearer runner-token");
+                then.status(200).delay(Duration::from_secs(6));
+            })
+            .await;
+        let run_id = RunId::nil();
+        let sync = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                    .header("authorization", "Bearer runner-token");
+                then.status(200)
+                    .delay(Duration::from_secs(6))
+                    .json_body(serde_json::json!({
+                        "results": [{
+                            "target": {"kind": "builtin", "connectorSlug": "slack"},
+                            "state": "unresolved",
+                            "reason": "connector-unavailable",
+                        }],
+                    }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+        let state = heartbeat_state_for_test();
+        let targets = [ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+            base_url_vars: None,
+            source_id: None,
+        }];
+
+        let (heartbeat_result, sync_result) = tokio::join!(
+            api.heartbeat(&state),
+            api.sync_connector_runtime(run_id, &targets),
+        );
+
+        heartbeat_result.expect("heartbeat should survive an API cold start");
+        assert!(matches!(
+            sync_result.expect("connector sync should survive an API cold start"),
+            ConnectorRuntimeSyncOutcome::Synced(response) if response.results.len() == 1
+        ));
+        heartbeat.assert_calls_async(1).await;
+        sync.assert_calls_async(1).await;
     }
 
     async fn claim_decode_error(
