@@ -104,7 +104,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Dropbox file storage connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
