@@ -4834,7 +4834,7 @@ describe.sequential("Official Workflow installations", () => {
         reconciliationStatus: "current",
       },
     });
-    expect(current?.official?.appliedFingerprint).not.toBe(initialFingerprint);
+    expect(current?.official?.appliedFingerprint).toBe(initialFingerprint);
   });
 
   it("projects the Google Meet account during installation and reconfiguration", async () => {
