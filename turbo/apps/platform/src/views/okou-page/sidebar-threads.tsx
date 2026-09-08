@@ -1,11 +1,6 @@
 import type { MouseEvent } from "react";
 import { timeout } from "signal-timers";
-import {
-  useGet,
-  useSet,
-  useLastResolved,
-  useLastLoadable,
-} from "ccstate-react";
+import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
@@ -58,11 +53,10 @@ import {
   newChatThreadDisabled$,
   type NewChatThreadPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  currentChatThreadListed$,
-  sidebarChatThreadCount$,
-  type SidebarChatThreadScrollSignals,
-  type SidebarChatThreadWindow,
+import type {
+  SidebarChatThreadListSignals,
+  SidebarChatThreadScrollSignals,
+  SidebarChatThreadWindow,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import type { SidebarChatThreadItemSignals } from "../../signals/chat-page/sidebar-chat-thread-item.ts";
 import { sidebarThreadTitleOverflowRef$ } from "../../signals/chat-page/sidebar-thread-title.ts";
@@ -636,19 +630,20 @@ export function ChatThreadDialogs() {
 }
 
 function VirtualizedChatThreads({
+  listSignals,
   scrollSignals,
-  threadCount,
 }: {
+  listSignals: SidebarChatThreadListSignals;
   scrollSignals: SidebarChatThreadScrollSignals;
-  threadCount: number;
 }) {
   const setShortcutRoot = useSet(setThreadListNumberShortcutRoot$);
   const searchOpen = useGet(threeColumnSearchOpen$);
-  const window = useLastResolved(scrollSignals.window$, {
+  const threadCount = useGet(listSignals.count$);
+  const window = useGet(listSignals.window$, {
     equalityFn: equalSidebarChatThreadWindows,
   });
-  const startIndex = window?.startIndex ?? 0;
-  const visibleItems = window?.items ?? [];
+  const startIndex = window.startIndex;
+  const visibleItems = window.items;
 
   const placement = useGet(scrollSignals.pinReorder.placement$);
   return (
@@ -699,14 +694,15 @@ function VirtualizedChatThreads({
 }
 
 function ChatThreads({
+  listSignals,
   scrollSignals,
-  threadCount,
 }: {
+  listSignals: SidebarChatThreadListSignals;
   scrollSignals: SidebarChatThreadScrollSignals;
-  threadCount: number;
 }) {
   const { t } = useTranslation();
   const unreadOnly = useGet(chatThreadOnlyUnread$);
+  const threadCount = useGet(listSignals.count$);
 
   if (threadCount === 0) {
     return (
@@ -723,8 +719,8 @@ function ChatThreads({
   }
   return (
     <VirtualizedChatThreads
+      listSignals={listSignals}
       scrollSignals={scrollSignals}
-      threadCount={threadCount}
     />
   );
 }
@@ -1043,15 +1039,38 @@ function AgentChatThreadsContent({
   currentMainThreadId: string | null;
   scrollSignals: SidebarChatThreadScrollSignals;
 }) {
-  // The primitive count preserves the previous resolved value while the
-  // underlying event projection recomputes. Visible rows subscribe separately
-  // in VirtualizedChatThreads.
-  const threadCountLoadable = useLastLoadable(sidebarChatThreadCount$);
-  const threadCount =
-    threadCountLoadable.state === "hasData" ? threadCountLoadable.data : 0;
-  const chatThreadsLoading = threadCountLoadable.state === "loading";
-  const currentMainThreadListed =
-    useLastResolved(currentChatThreadListed$) ?? false;
+  const listLoadable = useLoadable(scrollSignals.list$);
+
+  if (listLoadable.state === "loading") {
+    return (
+      <div className="flex flex-col gap-1">
+        <ChatThreadsSkeleton />
+      </div>
+    );
+  }
+  if (listLoadable.state === "hasError") {
+    return null;
+  }
+
+  return (
+    <ResolvedAgentChatThreadsContent
+      currentMainThreadId={currentMainThreadId}
+      listSignals={listLoadable.data}
+      scrollSignals={scrollSignals}
+    />
+  );
+}
+
+function ResolvedAgentChatThreadsContent({
+  currentMainThreadId,
+  listSignals,
+  scrollSignals,
+}: {
+  currentMainThreadId: string | null;
+  listSignals: SidebarChatThreadListSignals;
+  scrollSignals: SidebarChatThreadScrollSignals;
+}) {
+  const currentMainThreadListed = useGet(listSignals.currentThreadListed$);
   const scrollCurrentChatThreadOnRef = useSet(
     scrollSignals.scrollCurrentChatThreadOnRef$,
   );
@@ -1065,11 +1084,7 @@ function AgentChatThreadsContent({
           hidden
         />
       ) : null}
-      {chatThreadsLoading ? (
-        <ChatThreadsSkeleton />
-      ) : (
-        <ChatThreads scrollSignals={scrollSignals} threadCount={threadCount} />
-      )}
+      <ChatThreads listSignals={listSignals} scrollSignals={scrollSignals} />
     </div>
   );
 }
@@ -1082,7 +1097,6 @@ function ExpandedChatThreadsContent({
   contentClassName: string;
 }) {
   const { t } = useTranslation();
-  const agentScope = useGet(currentChatAgentScope$);
   const isScrolled = useGet(scrollSignals.isScrolled$);
   const currentMainThreadId = useGet(currentChatThreadId$);
   const scrollToThread = useSet(scrollSignals.scrollToThread$);
@@ -1165,7 +1179,6 @@ function ExpandedChatThreadsContent({
       }}
     >
       <AgentChatThreadsContent
-        key={agentScope ?? "no-agent"}
         currentMainThreadId={currentMainThreadId}
         scrollSignals={scrollSignals}
       />

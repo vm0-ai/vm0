@@ -64,8 +64,8 @@ const config = resolveDesktopConfig(
 if (
   config.identity.product !== process.env.TEST_EXPECTED_PRODUCT ||
   config.platformUrl.toString() !== process.env.TEST_EXPECTED_PLATFORM_URL ||
-  config.authUrl.origin !== (config.identity.product === "okou" ? (config.environment === "production" ? "https://app.okou.ai" : config.platformUrl.origin) : config.webUrl.origin) ||
-  (config.identity.product === "okou" ? config.authPartition === config.sessionPartition : config.authPartition !== config.sessionPartition) ||
+  config.authUrl.origin !== (config.environment === "production" ? "https://app.okou.ai" : config.platformUrl.origin) ||
+  config.authPartition === config.sessionPartition ||
   config.environment !== process.env.TEST_EXPECTED_ENVIRONMENT ||
   config.identity.displayName !== process.env.TEST_EXPECTED_DISPLAY_NAME ||
   config.sessionPartition !== process.env.TEST_EXPECTED_SESSION_PARTITION
@@ -96,7 +96,7 @@ interface EnvironmentValues {
 
 interface RuntimeFileConfig {
   readonly platformUrl: string;
-  readonly product?: "zero" | "okou";
+  readonly product?: unknown;
 }
 
 interface SurfaceCase {
@@ -104,7 +104,7 @@ interface SurfaceCase {
   readonly fileConfig?: RuntimeFileConfig;
   readonly platformArgument?: string;
   readonly productArgument?: string;
-  readonly expectedProduct: "zero" | "okou";
+  readonly expectedProduct: "okou";
   readonly expectedPlatformUrl: string;
   readonly expectedDisplayName: string;
 }
@@ -255,16 +255,10 @@ function runInstalledConfig(testCase: InstalledSurfaceCase): EntryPointResult {
   return { process: processResult, trace: trace(fixture) };
 }
 
-function runForgeConfig(
-  product: "zero" | "okou" | undefined,
-  expectedAppIconBaseName: "icon-zero" | "icon",
-): SpawnSyncReturns<string> {
+function runForgeConfig(): SpawnSyncReturns<string> {
   const environment = baseEnvironment();
   environment.TEST_FORGE_CONFIG = join(desktopDirectory, "forge.config.js");
-  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = expectedAppIconBaseName;
-  if (product) {
-    environment.OKOU_DESKTOP_PRODUCT = product;
-  }
+  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = "icon";
   return spawnSync(process.execPath, ["--eval", forgeConfigHarnessSource], {
     cwd: desktopDirectory,
     encoding: "utf8",
@@ -459,16 +453,11 @@ function preparePackagedApp(
 function runWrapper(
   wrapper: "run-packaged-app.js" | "smoke-test-packaged-app.js",
   values: EnvironmentValues,
-  expectedAppName: "Zero Computer Use" | "Zero CU Dev" | "Okou" | "Okou Dev",
+  expectedAppName: "Okou" | "Okou Dev",
   scenario: SmokeScenario = {},
 ): EntryPointResult {
   const fixture = createDesktopFixture();
-  for (const appName of [
-    "Zero Computer Use",
-    "Zero CU Dev",
-    "Okou",
-    "Okou Dev",
-  ]) {
+  for (const appName of ["Okou", "Okou Dev"]) {
     preparePackagedApp(
       fixture,
       appName,
@@ -552,20 +541,6 @@ describe("Desktop build configuration entry point", () => {
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
     },
-    {
-      name: "keeps Zero selectable through canonical inputs",
-      environment: { canonicalProduct: "zero" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    },
-    {
-      name: "keeps Zero selectable through the runtime file",
-      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    },
   ] satisfies readonly (SurfaceCase & { readonly name: string })[];
 
   it.each(lifecycleCases)("$name", (testCase) => {
@@ -579,7 +554,7 @@ describe("Desktop build configuration entry point", () => {
         canonicalPlatformUrl: "https://app.okou.ai",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       expectedProduct: "okou",
@@ -593,7 +568,7 @@ describe("Desktop build configuration entry point", () => {
   it("keeps non-empty explicit options ahead of canonical environment", () => {
     const result = runBuildConfig({
       environment: {
-        canonicalProduct: "zero",
+        canonicalProduct: "okou",
         canonicalPlatformUrl: "https://app.vm0.ai",
       },
       productArgument: " okou ",
@@ -665,22 +640,6 @@ describe("installed Desktop configuration entry point", () => {
       expectedDisplayName: "Okou Dev",
       expectedEnvironment: "staging",
     },
-    {
-      name: "keeps Zero selectable through canonical inputs",
-      environment: { canonicalProduct: "zero" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    },
-    {
-      name: "keeps Zero selectable through the runtime file",
-      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    },
   ] satisfies readonly (InstalledSurfaceCase & { readonly name: string })[];
 
   it.each(lifecycleCases)("$name", (testCase) => {
@@ -694,7 +653,7 @@ describe("installed Desktop configuration entry point", () => {
         canonicalPlatformUrl: "https://app.okou.ai",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       expectedProduct: "okou",
@@ -709,7 +668,7 @@ describe("installed Desktop configuration entry point", () => {
   it("keeps non-empty arguments ahead of canonical environment", () => {
     const result = runInstalledConfig({
       environment: {
-        canonicalProduct: "zero",
+        canonicalProduct: "okou",
         canonicalPlatformUrl: "https://app.vm0.ai",
       },
       productArgument: " okou ",
@@ -743,7 +702,7 @@ describe("installed Desktop configuration entry point", () => {
         canonicalPlatformUrl: "https://canonical.example.invalid",
       },
       fileConfig: {
-        product: "zero",
+        product: "okou",
         platformUrl: "https://staging-app.omby.ai",
       },
       productArgument: "okou",
@@ -776,6 +735,36 @@ describe("installed Desktop configuration entry point", () => {
   });
 });
 
+describe("Desktop product configuration validation", () => {
+  it.each([
+    { productArgument: "unsupported" },
+    { environment: { canonicalProduct: "unsupported" } },
+    ...["unsupported", "", 1, null].map((product) => ({
+      fileConfig: { product, platformUrl: "https://app.okou.ai" },
+    })),
+  ])(
+    "rejects invalid configured product input at build and runtime: %j",
+    (input) => {
+      const testCase: InstalledSurfaceCase = {
+        ...input,
+        expectedProduct: "okou",
+        expectedPlatformUrl: "https://app.okou.ai/",
+        expectedDisplayName: "Okou",
+        expectedEnvironment: "production",
+      };
+      for (const result of [
+        runBuildConfig(testCase),
+        runInstalledConfig(testCase),
+      ]) {
+        expect(result.process.status).toBe(1);
+        expect(result.process.stderr).toMatch(
+          /Unsupported desktop product|product must be okou/,
+        );
+      }
+    },
+  );
+});
+
 describe("packaged Desktop wrapper entry points", () => {
   const wrappers = [
     "run-packaged-app.js",
@@ -790,16 +779,6 @@ describe("packaged Desktop wrapper entry points", () => {
         canonicalPlatformUrl: " https://staging-app.omby.ai ",
       },
       "Okou Dev",
-    );
-
-    expectSuccessfulEntryPoint(result);
-    expect(result.trace).toBe("selected\n");
-  });
-  it.each(wrappers)("selects the Zero product through %s", (wrapper) => {
-    const result = runWrapper(
-      wrapper,
-      { canonicalProduct: "zero" },
-      "Zero Computer Use",
     );
 
     expectSuccessfulEntryPoint(result);
@@ -935,13 +914,7 @@ describe("packaged Desktop wrapper entry points", () => {
 
 describe("Desktop package brand assets", () => {
   it("uses the Okou app icon by default", () => {
-    const result = runForgeConfig(undefined, "icon");
-
-    expect(result.status, result.stderr).toBe(0);
-  });
-
-  it("retains the legacy icon for explicit Zero builds", () => {
-    const result = runForgeConfig("zero", "icon-zero");
+    const result = runForgeConfig();
 
     expect(result.status, result.stderr).toBe(0);
   });

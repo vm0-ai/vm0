@@ -33,6 +33,7 @@ import {
   CHAT_THREAD_CONTENT_MAIN_CLASS,
   CHAT_THREAD_MESSAGE_LIST_CLASS,
   CHAT_THREAD_MESSAGE_STACK_PULL_CLASS,
+  CHAT_THREAD_RESPONSE_LINE_CLASS,
   CHAT_THREAD_USER_MESSAGE_ACTIONS_CLASS,
   CHAT_THREAD_USER_MESSAGE_ROW_CLASS,
 } from "../okou-page/chat-message-surface.tsx";
@@ -215,7 +216,10 @@ function SharedAssistantGroup({
         <div className="relative flex min-w-0 flex-col gap-2">
           {group.messages.map((message) => {
             return (
-              <ChatAssistantMessageBody key={message.messageIndex}>
+              <ChatAssistantMessageBody
+                key={message.messageIndex}
+                className={CHAT_THREAD_RESPONSE_LINE_CLASS}
+              >
                 {message.tree === undefined && richContent !== undefined ? (
                   <SharedRichMessageBody
                     messageIndex={message.messageIndex}

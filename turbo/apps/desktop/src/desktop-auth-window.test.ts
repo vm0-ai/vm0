@@ -97,8 +97,8 @@ afterEach(() => {
   electron.storage.clear();
   vi.clearAllMocks();
 });
-function setup(timeoutMs = 30_000, product: "okou" | "zero" = "zero") {
-  const config = resolveDesktopConfig(undefined, product);
+function setup(timeoutMs = 30_000) {
+  const config = resolveDesktopConfig();
   const external: string[] = [];
   const driver = new DesktopAuthWindow({
     authOrigin: origin,
@@ -116,10 +116,7 @@ function setup(timeoutMs = 30_000, product: "okou" | "zero" = "zero") {
     },
   });
   const session = new DesktopAuthSession({
-    product,
     apiBaseUrl: "https://api.vm0.ai",
-    cookieUrls: [],
-    cookieSource: { cookies: { get: async () => [] } },
     addClientHeaders: () => {},
     tokenUrl: `${origin}/desktop-auth/token`,
     consumeUrl: () => `${origin}/desktop-auth/consume`,
@@ -351,20 +348,6 @@ describe("Desktop authentication IPC and document lifecycle", () => {
     });
   });
 
-  it("does not reuse the previously cached bearer when a new window only navigates", async () => {
-    const { session } = setup();
-    const initial = session.getToken();
-    const first = currentWindow();
-    await deliver(first, { token: "previous" });
-    navigate(first, "/");
-    expect(await initial).toBe("previous");
-    const next = session.getToken({ forceRefresh: true });
-    const rejected = expect(next).rejects.toThrow("without a token");
-    navigate(currentWindow(), "/");
-    await rejected;
-    expect(session.getCachedToken()).toBeNull();
-  });
-
   it.each(["/desktop-auth/start", "/desktop-auth/select-org"])(
     "ends a signed-out hidden restore at %s with no token",
     async (path) => {
@@ -461,7 +444,7 @@ describe("Desktop authentication IPC and document lifecycle", () => {
   });
   it("clears the isolated App/Clerk store and preserves native profile data", async () => {
     const config = resolveDesktopConfig(undefined, "okou");
-    const { driver } = setup(30_000, "okou");
+    const { driver } = setup();
     electron.storage.set(config.sessionPartition, [
       "host-registration",
       "preferences",
@@ -509,7 +492,7 @@ describe("Desktop authentication IPC and document lifecycle", () => {
     );
     server.listen({ onUnhandledRequest: "error" });
     try {
-      const { session } = setup(30_000, "okou");
+      const { session } = setup();
       const pending = session.consumeCode("code");
       const window = currentWindow();
       navigate(window, "/desktop-auth/token");
@@ -520,6 +503,12 @@ describe("Desktop authentication IPC and document lifecycle", () => {
       await pending;
       expect(session.getCachedToken()).toBe("fresh");
       expect(requests).toEqual(["me:Bearer fresh", "org:Bearer fresh"]);
+      const refresh = session.getToken({ forceRefresh: true });
+      const nextWindow = currentWindow();
+      navigate(nextWindow, "/");
+      expect(await refresh).toBeNull();
+      expect(session.getCachedToken()).toBeNull();
+
       await expect(deliver(window, { token: "stale" })).rejects.toThrow(
         "no longer active",
       );

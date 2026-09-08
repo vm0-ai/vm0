@@ -146,7 +146,7 @@ declare global {
     vm0DesktopAuth?: DesktopAuthApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
     vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
-    vm0DesktopIdentity?: DesktopIdentityInfo;
+    vm0DesktopIdentity: DesktopIdentityInfo;
     vm0DesktopRecorder?: DesktopRecorderApi;
   }
 }

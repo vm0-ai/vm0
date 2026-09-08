@@ -1,15 +1,15 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
-import { createDeferredPromise, onRef } from "../utils.ts";
+import { onRef } from "../utils.ts";
 import {
   CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   type ChatThreadVirtualListScrollAlign,
 } from "../okou-page/sidebar-state.ts";
 import {
-  chatThreads$,
+  currentChatThreadListSignals$,
   currentChatThreadId$,
-  currentChatThreadListIds$,
+  type ChatThreadListSignals,
 } from "../agent-chat.ts";
 import {
   sidebarChatThreadItemSignalsRegistry$,
@@ -29,6 +29,13 @@ export interface SidebarChatThreadWindow {
   readonly items: readonly SidebarChatThreadItemSignals[];
 }
 
+export interface SidebarChatThreadListSignals {
+  readonly count$: Computed<number>;
+  readonly currentThreadListed$: Computed<boolean>;
+  readonly threadIds$: Computed<readonly string[]>;
+  readonly window$: Computed<SidebarChatThreadWindow>;
+}
+
 interface SidebarChatThreadScrollMetrics {
   readonly scrollTop: number;
   readonly clientHeight: number;
@@ -42,7 +49,7 @@ export interface ScrollToThreadRequest {
 export interface SidebarChatThreadScrollSignals {
   readonly pinReorder: PinnedThreadDragSignals;
   readonly isScrolled$: Computed<boolean>;
-  readonly window$: Computed<Promise<SidebarChatThreadWindow>>;
+  readonly list$: Computed<Promise<SidebarChatThreadListSignals>>;
   readonly setScrollMetrics$: Command<void, [SidebarChatThreadScrollMetrics]>;
   readonly refreshScrollViewport$: Command<void, []>;
   readonly setScrollViewport$: Command<
@@ -202,27 +209,27 @@ function getFixedVirtualRange({
   return { startIndex, endIndex };
 }
 
-export const sidebarChatThreadCount$ = computed(
-  async (get): Promise<number> => {
-    return (await get(currentChatThreadListIds$)).length;
-  },
-);
-
-export const currentChatThreadListed$ = computed(
-  async (get): Promise<boolean> => {
+function createSidebarChatThreadListSignals(
+  dom: SidebarChatThreadDomSignals,
+  list: ChatThreadListSignals,
+): SidebarChatThreadListSignals {
+  const itemSignals$ = computed((get) => {
+    return get(sidebarChatThreadItemSignalsRegistry$).reconcile(
+      get(list.threadIds$),
+    );
+  });
+  const count$ = computed((get): number => {
+    return get(list.threadIds$).length;
+  });
+  const currentThreadListed$ = computed((get): boolean => {
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       return false;
     }
-    return (await get(currentChatThreadListIds$)).includes(threadId);
-  },
-);
-
-function createSidebarChatThreadWindowSignal(
-  dom: SidebarChatThreadDomSignals,
-): Computed<Promise<SidebarChatThreadWindow>> {
-  return computed(async (get): Promise<SidebarChatThreadWindow> => {
-    const chatThreads = await get(chatThreads$);
+    return get(list.threadIds$).includes(threadId);
+  });
+  const window$ = computed((get): SidebarChatThreadWindow => {
+    const itemSignals = get(itemSignals$);
     const scrollViewport = get(dom.scrollViewport$);
     const scrollMetrics = get(dom.scrollMetrics$);
     const measuredViewportHeight =
@@ -231,30 +238,32 @@ function createSidebarChatThreadWindowSignal(
       measuredViewportHeight || CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
     const scrollTop = scrollViewport?.scrollTop ?? scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
-      itemCount: chatThreads.length,
+      itemCount: itemSignals.length,
       scrollTop,
       viewportHeight,
     });
     const resolvedEndIndex = measuredViewportHeight
       ? endIndex
       : Math.min(
-          chatThreads.length,
+          itemSignals.length,
           Math.max(
             endIndex,
             startIndex + CHAT_THREAD_VIRTUAL_FALLBACK_WINDOW_SIZE,
           ),
         );
-    const itemSignals = get(sidebarChatThreadItemSignalsRegistry$).reconcile(
-      chatThreads.map((thread) => {
-        return thread.id;
-      }),
-    );
 
     return {
       startIndex,
       items: itemSignals.slice(startIndex, resolvedEndIndex),
     };
   });
+
+  return {
+    count$,
+    currentThreadListed$,
+    threadIds$: list.threadIds$,
+    window$,
+  };
 }
 
 function createScrollVirtualListToIndexCommand(
@@ -304,22 +313,14 @@ function createScrollVirtualListToIndexCommand(
   );
 }
 
-async function waitForAnimationFrame(signal: AbortSignal): Promise<void> {
-  signal.throwIfAborted();
-  const deferred = createDeferredPromise<void>(signal);
-  animationFrame(
-    () => {
-      if (!deferred.settled()) {
-        deferred.resolve(undefined);
-      }
-    },
-    { signal },
-  );
-  await deferred.promise;
-}
-
 function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals {
   const dom = createSidebarChatThreadDomSignals();
+  // The async boundary selects a list context. Its count and virtual window
+  // remain synchronous when thread events or scroll metrics change.
+  const list$ = computed(async (get): Promise<SidebarChatThreadListSignals> => {
+    const list = await get(currentChatThreadListSignals$);
+    return createSidebarChatThreadListSignals(dom, list);
+  });
   const scrollVirtualListToIndex$ = createScrollVirtualListToIndexCommand(dom);
   const scrollToThread$ = command(
     async (
@@ -329,16 +330,14 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
     ) => {
       const threadId = typeof request === "string" ? request : request.threadId;
       const align = typeof request === "string" ? "top" : request.align;
-      const threadIds = await get(currentChatThreadListIds$);
+      const list = await get(list$);
       signal.throwIfAborted();
 
-      const index = threadIds.indexOf(threadId);
+      const index = get(list.threadIds$).indexOf(threadId);
       if (index === -1) {
         return false;
       }
 
-      await waitForAnimationFrame(signal);
-      signal.throwIfAborted();
       return set(scrollVirtualListToIndex$, index, align);
     },
   );
@@ -355,7 +354,7 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
   return {
     pinReorder: createPinnedThreadDragSignals(),
     isScrolled$: dom.isScrolled$,
-    window$: createSidebarChatThreadWindowSignal(dom),
+    list$,
     setScrollMetrics$: dom.setScrollMetrics$,
     setScrollViewport$: dom.setScrollViewport$,
     refreshScrollViewport$: dom.refreshScrollViewport$,

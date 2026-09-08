@@ -34,7 +34,8 @@ set -euo pipefail
 printf 'SERPAPI_TOKEN=%s\n' "$SERPAPI_TOKEN"
 # Raw DNS has dedicated runner coverage. Keep this firewall-auth probe on IPv4
 # so an unavailable AAAA response cannot block an otherwise valid request.
-if curl --ipv4 --silent --show-error --max-time 5 \
+# Leave room for connection setup around the proxy's 10-second auth deadline.
+if curl --ipv4 --silent --show-error --max-time 15 \
     --output /dev/null \
     'https://serpapi.com/search?q=vm0-e2e&engine=google'; then
     printf 'SERPAPI_REQUEST_SENT\n'

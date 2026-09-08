@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import type { EventDrivenChatThread } from "@okouai/core/chat-thread-event-replay";
 import { comparePinnedThreads } from "@okouai/core/chat-thread-pin-order";
@@ -89,35 +89,19 @@ export const currentChatAgentDisplayName$ = computed(async (get) => {
   return (await get(currentChatAgent$))?.displayName;
 });
 
-const filteredThreadIds$ = computed(
-  async (get): Promise<ReadonlySet<string> | null> => {
-    if (!get(chatThreadOnlyUnread$)) {
-      return null;
-    }
-    get(reloadChatIndicatorsCounter$);
+export interface ChatThreadListSignals {
+  readonly threads$: Computed<EventDrivenChatThread[]>;
+  readonly threadIds$: Computed<readonly string[]>;
+}
 
-    const agentId = await get(currentChatAgentId$);
-    if (!agentId) {
-      return new Set();
-    }
-
-    const client = get(apiClient$)(chatThreadsContract);
-    const result = await accept(client.unreads({ query: { agentId } }), [200]);
-    return new Set(
-      result.body.unreads.map((unread) => {
-        return unread.threadId;
-      }),
-    );
-  },
-);
-
-const eventDrivenFilteredChatThreads$ = computed(
-  async (get): Promise<EventDrivenChatThread[]> => {
-    const agentId = await get(currentChatAgentId$);
+function createChatThreadListSignals(
+  agentId: string | null,
+  filteredThreadIds: ReadonlySet<string> | null,
+): ChatThreadListSignals {
+  const threads$ = computed((get): EventDrivenChatThread[] => {
     if (!agentId) {
       return [];
     }
-    const filteredThreadIds = await get(filteredThreadIds$);
     const threads = get(eventDrivenChatThreads$).filter((thread) => {
       return (
         thread.agentId === agentId &&
@@ -136,16 +120,53 @@ const eventDrivenFilteredChatThreads$ = computed(
       }
       return comparePinnedThreads(left, right);
     });
+  });
+
+  return {
+    threads$,
+    threadIds$: computed((get): readonly string[] => {
+      return get(threads$).map((thread) => {
+        return thread.id;
+      });
+    }),
+  };
+}
+
+// Resolve the agent/filter query once, then keep event projection synchronous.
+// Thread events can update the returned signals without replacing this Promise.
+export const currentChatThreadListSignals$ = computed(
+  async (get): Promise<ChatThreadListSignals> => {
+    const unreadOnly = get(chatThreadOnlyUnread$);
+    if (unreadOnly) {
+      get(reloadChatIndicatorsCounter$);
+    }
+
+    const agentId = get(currentChatAgentScope$) ?? (await get(defaultAgentId$));
+    if (!unreadOnly || !agentId) {
+      return createChatThreadListSignals(agentId, null);
+    }
+
+    const client = get(apiClient$)(chatThreadsContract);
+    const result = await accept(client.unreads({ query: { agentId } }), [200]);
+    const filteredThreadIds = new Set(
+      result.body.unreads.map((unread) => {
+        return unread.threadId;
+      }),
+    );
+    return createChatThreadListSignals(agentId, filteredThreadIds);
   },
 );
 
-export const chatThreads$ = eventDrivenFilteredChatThreads$;
+export const chatThreads$ = computed(
+  async (get): Promise<EventDrivenChatThread[]> => {
+    const list = await get(currentChatThreadListSignals$);
+    return get(list.threads$);
+  },
+);
 
 export const currentChatThreadListIds$ = computed(
   async (get): Promise<readonly string[]> => {
-    const threads = await get(eventDrivenFilteredChatThreads$);
-    return threads.map((thread) => {
-      return thread.id;
-    });
+    const list = await get(currentChatThreadListSignals$);
+    return get(list.threadIds$);
   },
 );

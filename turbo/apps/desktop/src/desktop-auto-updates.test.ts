@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DesktopConfig } from "./config";
+import { resolveDesktopConfig, type DesktopConfig } from "./config";
 import { OFFLINE_COMPUTER_USE_HOST_STATE } from "./computer-use-types";
 import type { ComputerUseHostRuntimeState } from "./computer-use-types";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
@@ -97,25 +97,7 @@ vi.mock("electron", () => ({
 const originalPlatform = process.platform;
 const originalArch = process.arch;
 
-const productionConfig: DesktopConfig = {
-  platformUrl: new URL("https://app.vm0.ai"),
-  webUrl: new URL("https://www.vm0.ai"),
-  authUrl: new URL("https://app.okou.ai"),
-  environment: "production",
-  identity: {
-    product: "zero",
-    brandName: "Zero",
-    displayName: "Zero Computer Use",
-    userDataDirectoryName: "Zero Computer Use",
-    updateLine: "zero",
-    bundleId: "ai.vm0.desktop",
-    authProtocolName: "Zero Computer Use",
-    authScheme: "vm0",
-  },
-  sessionPartition: "persist:vm0-desktop-production",
-  authPartition: "persist:okou-desktop-auth-test",
-  allowedAppOrigins: new Set(["https://app.vm0.ai"]),
-};
+const productionConfig = resolveDesktopConfig();
 
 function stubDesktopAutoUpdatePlatform(
   arch: NodeJS.Architecture = "arm64",
@@ -149,7 +131,7 @@ function installAndCaptureAutoUpdates(
   }
 
   expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledExactlyOnceWith({
-    url: "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64/RELEASES.json",
+    url: "https://api.vm0.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
     serverType: "json",
   });
   expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
@@ -333,7 +315,7 @@ describe("desktop auto-updates", () => {
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
 
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     expectActiveUpdateCheckListenerCount(1);
@@ -345,7 +327,7 @@ describe("desktop auto-updates", () => {
     expect(mocks.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         title: "No Updates Available",
-        message: "Zero Computer Use is up to date.",
+        message: "Okou is up to date.",
       }),
     );
   });
@@ -357,7 +339,7 @@ describe("desktop auto-updates", () => {
     emitAutoUpdaterEvent("update-not-available");
 
     runScheduledUpdateCheck();
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
     expectActiveUpdateCheckListenerCount(1);
@@ -374,9 +356,9 @@ describe("desktop auto-updates", () => {
     );
     emitAutoUpdaterEvent("update-not-available");
 
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
     expectActiveUpdateCheckListenerCount(1);
@@ -401,14 +383,14 @@ describe("desktop auto-updates", () => {
         if (origin === "interval") {
           runScheduledUpdateCheck();
         } else {
-          expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+          expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
         }
       }
       const nativeCallCount = origin === "startup" ? 1 : 2;
 
       emitAutoUpdaterEvent("update-available");
       runScheduledUpdateCheck();
-      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
       expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
         nativeCallCount,
       );
@@ -416,7 +398,7 @@ describe("desktop auto-updates", () => {
 
       emitAutoUpdaterEvent("update-downloaded");
       runScheduledUpdateCheck();
-      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
       expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
         nativeCallCount,
       );
@@ -425,7 +407,7 @@ describe("desktop auto-updates", () => {
 
       finishNativeSettle();
       expect(mocks.nativeUpdate.state).toBe("idle");
-      expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+      expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
       runScheduledUpdateCheck();
       expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(
         nativeCallCount + 1,
@@ -440,14 +422,14 @@ describe("desktop auto-updates", () => {
       () => OFFLINE_COMPUTER_USE_HOST_STATE,
     );
 
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     emitAutoUpdaterEvent("update-not-available");
     await flushAsyncCallbacks();
 
     expectActiveUpdateCheckListenerCount(0);
     expect(mocks.scheduledNativeSettles).toHaveLength(0);
     expect(mocks.dialog.showMessageBox).toHaveBeenCalledTimes(1);
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
     expectActiveUpdateCheckListenerCount(1);
   });
@@ -470,13 +452,13 @@ describe("desktop auto-updates", () => {
       "Desktop auto-updater error",
       error,
     );
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     expect(mocks.nativeUpdate.state).toBe("settling");
     expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
 
     finishNativeSettle();
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
 
     consoleError.mockRestore();
@@ -491,7 +473,7 @@ describe("desktop auto-updates", () => {
     );
 
     emitAutoUpdaterEvent("update-available");
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     runScheduledUpdateCheck();
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     const error = new Error("feed unavailable");
@@ -505,13 +487,13 @@ describe("desktop auto-updates", () => {
     expect(mocks.dialog.showMessageBox).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         title: "Unable to Check for Updates",
-        message: "Zero Computer Use could not check for updates.",
+        message: "Okou could not check for updates.",
         detail: "feed unavailable",
       }),
     );
     expectActiveUpdateCheckListenerCount(0);
     expect(mocks.scheduledNativeSettles).toHaveLength(0);
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
 
     consoleError.mockRestore();
@@ -530,7 +512,7 @@ describe("desktop auto-updates", () => {
       throw error;
     });
 
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(false);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(false);
     await flushAsyncCallbacks();
 
     expectActiveUpdateCheckListenerCount(0);
@@ -540,7 +522,7 @@ describe("desktop auto-updates", () => {
         detail: "feed unavailable",
       }),
     );
-    expect(autoUpdates.checkForUpdates("Zero Computer Use")).toBe(true);
+    expect(autoUpdates.checkForUpdates("Okou")).toBe(true);
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
 
     consoleError.mockRestore();

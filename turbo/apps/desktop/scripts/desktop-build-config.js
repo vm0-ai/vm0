@@ -12,7 +12,7 @@ const RUNTIME_CONFIG_PATH = path.resolve(
 );
 
 function desktopProduct(value) {
-  if (value === "zero" || value === "okou") {
+  if (value === "okou") {
     return value;
   }
   throw new Error(`Unsupported desktop product: ${value}`);
@@ -25,6 +25,9 @@ function readRuntimeConfig() {
   const value = JSON.parse(fs.readFileSync(RUNTIME_CONFIG_PATH, "utf8"));
   if (typeof value !== "object" || value === null) {
     throw new Error("desktop-runtime-config.json must contain an object");
+  }
+  if (value.product !== undefined) {
+    desktopProduct(value.product);
   }
   return value;
 }

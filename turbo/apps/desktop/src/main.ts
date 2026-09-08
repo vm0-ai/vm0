@@ -136,7 +136,6 @@ const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
 const addDesktopClientHeaders = createDesktopClientHeaderInjector({
   clientVersion: app.getVersion(),
-  product: config.identity.product,
 });
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.authUrl,
@@ -541,9 +540,6 @@ function getAuthSession(): DesktopAuthSession {
 
   authSession = new DesktopAuthSession({
     apiBaseUrl: desktopApiBaseUrl,
-    product: config.identity.product,
-    cookieUrls: [config.webUrl, config.platformUrl],
-    cookieSource: session.fromPartition(config.sessionPartition),
     addClientHeaders: addDesktopClientHeaders,
     tokenUrl: desktopAuthTokenUrl,
     consumeUrl: (code, handoffId) =>
@@ -595,27 +591,19 @@ function desktopAssetPath(filename: string): string {
 }
 
 function appIconPath(): string {
-  return desktopAssetPath(
-    desktopBrandAssets[config.identity.product].appIconFileName,
-  );
+  return desktopAssetPath(desktopBrandAssets.appIconFileName);
 }
 
 function trayIconPath(): string {
-  return desktopAssetPath(
-    desktopBrandAssets[config.identity.product].trayIconFileName,
-  );
+  return desktopAssetPath(desktopBrandAssets.trayIconFileName);
 }
 
 function trayIconDisabledPath(): string {
-  return desktopAssetPath(
-    desktopBrandAssets[config.identity.product].trayIconDisabledFileName,
-  );
+  return desktopAssetPath(desktopBrandAssets.trayIconDisabledFileName);
 }
 
 function trayIconRunningPath(): string {
-  return desktopAssetPath(
-    desktopBrandAssets[config.identity.product].trayIconRunningFileName,
-  );
+  return desktopAssetPath(desktopBrandAssets.trayIconRunningFileName);
 }
 
 function desktopPreferencesPath(): string {
@@ -754,7 +742,6 @@ function supportedPluginCapabilities(): readonly string[] {
 }
 
 function createComputerUseHostRuntime(): ComputerUseHostRuntime {
-  const desktopSession = session.fromPartition(config.sessionPartition);
   const installationId = readOrCreateComputerUseInstallationId(
     desktopPreferencesPath(),
   );
@@ -781,8 +768,6 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
       onChange: notifyComputerUseChanged,
     },
     {
-      product: config.identity.product,
-      session: desktopSession,
       getAuthSession,
     },
   );
@@ -1117,7 +1102,6 @@ function installDesktopAuth(): void {
 
 function installTray(): void {
   desktopTray = installDesktopTray({
-    brandName: config.identity.brandName,
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
@@ -1427,9 +1411,9 @@ function isDesktopIdentityInfo(value: unknown): value is DesktopIdentityInfo {
     typeof value === "object" &&
     value !== null &&
     "product" in value &&
-    (value.product === "zero" || value.product === "okou") &&
+    value.product === "okou" &&
     "brandName" in value &&
-    (value.brandName === "Zero" || value.brandName === "Okou") &&
+    value.brandName === "Okou" &&
     "displayName" in value &&
     typeof value.displayName === "string"
   );

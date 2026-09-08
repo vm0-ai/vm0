@@ -384,10 +384,8 @@ export function PermissionsStepCard({
           <h2>Allow Computer Use permissions</h2>
           <p>
             {identity.brandName} needs macOS permission to inspect the screen
-            and control UI elements on this Mac.
-            {identity.product === "okou"
-              ? " Okou is a separate app from Zero, so these permissions must be granted again."
-              : ""}
+            and control UI elements on this Mac. Okou is a separate app from
+            Zero, so these permissions must be granted again.
           </p>
         </div>
         <div className="permission-list">

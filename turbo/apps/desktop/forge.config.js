@@ -53,9 +53,7 @@ function desktopNotarizeOptions() {
   };
 }
 
-const { identity: desktopIdentity, product: desktopProduct } =
-  resolveDesktopBuildConfig();
-const desktopAssets = desktopBrandAssets[desktopProduct];
+const { identity: desktopIdentity } = resolveDesktopBuildConfig();
 const osxNotarize = desktopNotarizeOptions();
 
 // Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.
@@ -108,7 +106,7 @@ module.exports = {
     name: desktopIdentity.displayName,
     executableName: desktopIdentity.displayName,
     appBundleId: desktopIdentity.bundleId,
-    icon: path.join(__dirname, "assets", desktopAssets.appIconBaseName),
+    icon: path.join(__dirname, "assets", desktopBrandAssets.appIconBaseName),
     extendInfo: {
       CFBundleIconFile: "icon.icns",
       LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,

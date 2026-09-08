@@ -74,17 +74,12 @@ export interface DesktopTrayMenuActions {
 }
 
 interface DesktopTrayMenuState {
-  readonly brandName?: "Zero" | "Okou";
   readonly computerUse: DesktopComputerUseState;
   readonly auth: DesktopAuthState | null;
   readonly authLoading?: boolean;
   readonly authError: string | null;
   /** Absent unless intro video and native screen recording are both enabled. */
   readonly recorder?: DesktopRecorderState;
-}
-
-function desktopBrandName(state: DesktopTrayMenuState): "Zero" | "Okou" {
-  return state.brandName ?? "Zero";
 }
 
 function separator(): DesktopTrayMenuItem {
@@ -165,7 +160,7 @@ function authActionForComputerUse(
     return null;
   }
   return {
-    label: `Sign in to ${desktopBrandName(state)}`,
+    label: "Sign in to Okou",
     click: actions.openSignIn,
   };
 }
@@ -255,16 +250,16 @@ function buildPermissionItems(
 
 function authStatusLabel(state: DesktopTrayMenuState): string {
   if (isAuthLoading(state)) {
-    return `Signing in to ${desktopBrandName(state)}...`;
+    return "Signing in to Okou...";
   }
   if (state.authError) {
-    return `Sign in to ${desktopBrandName(state)}`;
+    return "Sign in to Okou";
   }
   if (!state.auth) {
-    return `Sign in to ${desktopBrandName(state)}`;
+    return "Sign in to Okou";
   }
   if (state.auth.status === "signed_out") {
-    return `Sign in to ${desktopBrandName(state)}`;
+    return "Sign in to Okou";
   }
   if (!state.auth.organization) {
     return "Select Workspace";
@@ -284,7 +279,7 @@ function buildAuthSubmenu(
     return [
       disabledLabel("Not signed in"),
       {
-        label: `Sign in to ${desktopBrandName(state)}`,
+        label: "Sign in to Okou",
         click: actions.openSignIn,
       },
       { label: "Refresh Account Status", click: actions.refreshStatus },
@@ -485,7 +480,7 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     {
-      label: `Open ${desktopBrandName(state)}`,
+      label: "Open Okou",
       click: actions.showMainWindow,
     },
     {

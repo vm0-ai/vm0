@@ -47,11 +47,13 @@ const DIRECT_OKOU_READY_CONNECTORS = [
   "outlook-calendar",
   "outlook-mail",
   "posthog",
+  "quickbooks",
   "reddit",
   "sentry",
   "slack",
   "spotify",
   "strava",
+  "stripe",
   "supabase",
   "tiktok-ads",
   "todoist",
@@ -90,7 +92,7 @@ describe("direct Okou OAuth callback readiness", () => {
     },
   );
 
-  it.each(["quickbooks", "test-oauth"])(
+  it.each(["test-oauth"])(
     "keeps %s on its existing callback",
     (connectorSlug) => {
       expect(isConnectorDirectOkouOauthCallbackReady(connectorSlug)).toBe(

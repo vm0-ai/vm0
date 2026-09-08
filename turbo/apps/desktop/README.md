@@ -1,13 +1,13 @@
 # Computer Use Desktop
 
-Electron shell for the Zero and Okou products.
+Electron shell for Okou.
 
 This pass is macOS-only. Windows packaging, native push, tray behavior, and
 auto-update are intentionally out of scope. Computer Use setup lives in the
 hosted Platform UI, while this app exposes the Desktop bridge and native macOS
 host runtime that page uses.
 
-Zero Computer Use and Okou support macOS 14+ (macOS 14 or newer). Packaged app
+Okou supports macOS 14+ (macOS 14 or newer). Packaged app
 metadata, native helper builds, and release verification all use the same
 minimum for Apple silicon artifacts. Intel Macs are not supported.
 
@@ -48,8 +48,7 @@ pnpm desktop:dev
 ```
 
 This packages and runs `Okou Dev.app` with `OKOU_DESKTOP_PLATFORM_URL` set to
-the local proxy. Set `OKOU_DESKTOP_PRODUCT=zero` to package `Zero CU Dev.app`
-instead. Use packaged development apps for sign-in callback, URL scheme, and
+the local proxy. Use packaged development apps for sign-in callback, URL scheme, and
 permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
 Zoe, Inc. (C5UWSXYB67)` signing identity in the local keychain. This keeps the
@@ -72,16 +71,7 @@ This builds the production `Okou.app` with bundle ID and callback scheme
 `ai.okou.desktop`, signs it with the local Developer ID Application identity,
 submits it to Apple's notary service, staples the notarization ticket, and
 writes the zip artifact under `apps/desktop/out/make`. Development Okou builds
-use `ai.okou.desktop.dev`. Build the independent Zero identity with:
-
-```bash
-OKOU_DESKTOP_PRODUCT=zero \
-OKOU_DESKTOP_PLATFORM_URL=https://app.vm0.ai \
-pnpm -F @okouai/desktop make
-```
-
-That build creates `Zero Computer Use.app` with bundle ID and callback scheme
-`ai.vm0.zero.desktop`.
+use `ai.okou.desktop.dev`.
 Local notarized builds use the `notarytool` Keychain profile
 `vm0-desktop-notary` by default. Set `OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
 override the profile and `OKOU_DESKTOP_NOTARIZE_KEYCHAIN` to override the
@@ -181,10 +171,11 @@ Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their
 packaged identity; they do not discover or switch products at runtime.
 
-`OKOU_DESKTOP_PRODUCT` defaults to `okou`, so an unconfigured local or CI build
-produces `Okou.app`. Zero remains selectable through an explicit
-`OKOU_DESKTOP_PRODUCT=zero` or a runtime config naming that product; only the
-build-side default retired. Okou production builds package a runtime
+Current Desktop builds support only Okou. `OKOU_DESKTOP_PRODUCT` and the
+runtime configuration's optional `product` field accept `okou`; unsupported
+products fail validation. An unconfigured local or CI build produces
+`Okou.app`, while staging and local origins select `Okou Dev.app` with its
+existing `Okou Dev` profile. Okou production builds package a runtime
 configuration containing
 `product: okou` and `https://app.okou.ai`. That app origin routes API calls to
 `api.okou.ai`, while Clerk and OAuth web flows remain canonical on
@@ -196,8 +187,10 @@ new installation ID. It does not read or migrate the pre-adoption Okou profile
 or Zero's Chromium profile. Users sign in again and grant Accessibility, Screen
 Recording, and browser Automation permissions again because macOS TCC
 associates those permissions with the application identity. The current
-release promotion signs and notarizes both product lines while publishing them
-under independent release tags and update manifests.
+release promotion signs and notarizes only Okou, publishing under its existing
+release tag and update manifest identities. The local manifest writer requires
+existing manifests to identify `product: okou`; it rejects missing or conflicting
+product values instead of relabeling historical artifacts.
 
 ### Final Zero bridge release
 
