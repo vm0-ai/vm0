@@ -768,7 +768,10 @@ function piResponsesToolSse(sequence: number): string {
     .join("");
 }
 
+type SlackPiModel = "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna";
+
 interface SlackPiActorSetup {
+  readonly selectedModel: SlackPiModel;
   readonly actor: ReturnType<typeof bdd.user>;
   readonly orgId: string;
   readonly runnerGroup: ReturnType<typeof runs.configureRunnerGroup>;
@@ -779,7 +782,9 @@ interface PiProviderRequest {
   readonly body: unknown;
 }
 
-async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
+async function configureCanonicalSlackPiActor(
+  selectedModel: SlackPiModel,
+): Promise<SlackPiActorSetup> {
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected canonical Slack Pi actor to belong to an org");
@@ -808,7 +813,7 @@ async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
       modelProviderId: anthropicProviderId,
     },
     {
-      model: "gpt-5.6-terra",
+      model: selectedModel,
       isDefault: false,
       defaultProviderType: "openai-api-key",
       credentialScope: "org",
@@ -821,7 +826,7 @@ async function configureCanonicalSlackPiActor(): Promise<SlackPiActorSetup> {
     { [FeatureSwitchKey.PiLoop]: false },
   );
   await integrations.updateUserModelPreference(actor, "claude-sonnet-5");
-  return { actor, orgId, runnerGroup };
+  return { actor, orgId, runnerGroup, selectedModel };
 }
 
 async function establishCanonicalSlackHistory(args: SlackPiActorSetup) {
@@ -891,7 +896,7 @@ async function establishCanonicalSlackHistory(args: SlackPiActorSetup) {
   await chat.updateThreadModelSelection(
     args.actor,
     chatThreadId,
-    "gpt-5.6-terra",
+    args.selectedModel,
   );
   await updateFeatureSwitchesForUser(
     context,
@@ -985,7 +990,12 @@ async function expectFirstSlackPiExecution(args: {
   expect(args.providerRequests).toHaveLength(1);
   expect(args.providerRequests[0]).toMatchObject({
     authorization: "Bearer bdd-slack-terra-api-key",
-    body: { model: "gpt-5.6-terra", store: false, stream: true },
+    body: {
+      model: args.scenario.selectedModel,
+      store: false,
+      stream: true,
+      reasoning: { effort: "max" },
+    },
   });
   const providerInput = JSON.stringify(args.providerRequests[0]?.body);
   expect(providerInput).toContain("establish non-Pi Slack history");
@@ -2984,80 +2994,84 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
-  it("admits canonical Slack turns into one Pi session without duplicate ownership", async () => {
-    mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
-    const scenario = await establishCanonicalSlackHistory(
-      await configureCanonicalSlackPiActor(),
-    );
-    const providerRequests = mockCanonicalSlackPiProvider();
-    const firstTurn = await runFirstCanonicalSlackPiTurn(scenario);
-    const firstSessionId = await expectFirstSlackPiExecution({
-      scenario,
-      providerRequests,
-      turn: firstTurn,
-    });
-    await expectSlackPiOwnership({
-      scenario,
-      runId: firstTurn.runId,
-      assistantText: "Canonical Slack Pi answer",
-    });
-    const firstCandidate = await expectSlackPiMemoryCandidate({
-      scenario,
-      runId: firstTurn.runId,
-      outcome: "created",
-    });
-    const continuedTurn = await claimContinuedSlackPiTurn({
-      scenario,
-      providerRequests,
-      firstPrompt: firstTurn.prompt,
-      firstSessionId,
-    });
-    await cancelContinuedSlackPiTurn({
-      scenario,
-      providerRequests,
-      turn: continuedTurn,
-    });
-    await expect(
-      readPiMemoryStage1CandidateFixture({
+  it.each(["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"] as const)(
+    "admits canonical Slack %s turns into one Pi session without duplicate ownership",
+    async (selectedModel) => {
+      mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+      const scenario = await establishCanonicalSlackHistory(
+        await configureCanonicalSlackPiActor(selectedModel),
+      );
+      const providerRequests = mockCanonicalSlackPiProvider();
+      const firstTurn = await runFirstCanonicalSlackPiTurn(scenario);
+      const firstSessionId = await expectFirstSlackPiExecution({
+        scenario,
+        providerRequests,
+        turn: firstTurn,
+      });
+      await expectSlackPiOwnership({
+        scenario,
+        runId: firstTurn.runId,
+        assistantText: "Canonical Slack Pi answer",
+      });
+      const firstCandidate = await expectSlackPiMemoryCandidate({
+        scenario,
+        runId: firstTurn.runId,
+        outcome: "created",
+      });
+      const continuedTurn = await claimContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        firstPrompt: firstTurn.prompt,
+        firstSessionId,
+      });
+      await cancelContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        turn: continuedTurn,
+      });
+      await expect(
+        readPiMemoryStage1CandidateFixture({
+          orgId: scenario.orgId,
+          userId: scenario.actor.userId,
+        }),
+      ).resolves.toStrictEqual(firstCandidate);
+
+      const successfulContinuation = await runSuccessfulContinuedSlackPiTurn({
+        scenario,
+        providerRequests,
+        firstPrompt: firstTurn.prompt,
+        firstSessionId,
+      });
+      await expectSlackPiOwnership({
+        scenario,
+        runId: successfulContinuation.runId,
+        assistantText: "Continued Slack Pi answer",
+      });
+      const replacedCandidate = await expectSlackPiMemoryCandidate({
+        scenario,
+        runId: successfulContinuation.runId,
+        outcome: "replaced",
+      });
+      expect(replacedCandidate).toMatchObject({
+        memoryStorageId: firstCandidate.memoryStorageId,
+        piSessionId: firstCandidate.piSessionId,
+      });
+      expect(replacedCandidate.sourceHistoryHash).not.toBe(
+        firstCandidate.sourceHistoryHash,
+      );
+      await expect(
+        readmitPiMemoryStage1CandidateFixture(successfulContinuation.runId),
+      ).resolves.toMatchObject({ outcome: "exact_retry" });
+      const afterExactRetry = await readPiMemoryStage1CandidateFixture({
         orgId: scenario.orgId,
         userId: scenario.actor.userId,
-      }),
-    ).resolves.toStrictEqual(firstCandidate);
-
-    const successfulContinuation = await runSuccessfulContinuedSlackPiTurn({
-      scenario,
-      providerRequests,
-      firstPrompt: firstTurn.prompt,
-      firstSessionId,
-    });
-    await expectSlackPiOwnership({
-      scenario,
-      runId: successfulContinuation.runId,
-      assistantText: "Continued Slack Pi answer",
-    });
-    const replacedCandidate = await expectSlackPiMemoryCandidate({
-      scenario,
-      runId: successfulContinuation.runId,
-      outcome: "replaced",
-    });
-    expect(replacedCandidate).toMatchObject({
-      memoryStorageId: firstCandidate.memoryStorageId,
-      piSessionId: firstCandidate.piSessionId,
-    });
-    expect(replacedCandidate.sourceHistoryHash).not.toBe(
-      firstCandidate.sourceHistoryHash,
-    );
-    await expect(
-      readmitPiMemoryStage1CandidateFixture(successfulContinuation.runId),
-    ).resolves.toMatchObject({ outcome: "exact_retry" });
-    const afterExactRetry = await readPiMemoryStage1CandidateFixture({
-      orgId: scenario.orgId,
-      userId: scenario.actor.userId,
-    });
-    expect(afterExactRetry?.updatedAt).toStrictEqual(
-      replacedCandidate.updatedAt,
-    );
-  }, 90_000);
+      });
+      expect(afterExactRetry?.updatedAt).toStrictEqual(
+        replacedCandidate.updatedAt,
+      );
+    },
+    90_000,
+  );
 
   it("keeps canonical Slack status stable across failed delivery and cancellation", async () => {
     const actor = bdd.user();
