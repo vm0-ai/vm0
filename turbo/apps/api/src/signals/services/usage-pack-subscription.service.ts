@@ -3113,7 +3113,7 @@ async function persistUsagePackPlanState(
     currentPeriodEnd: args.periodEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired: true,
+    showUsagePack: true,
   });
 }
 

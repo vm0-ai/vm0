@@ -282,7 +282,7 @@ const readStateSchema = z.object({
       subscriptionStatus: z.string().nullable(),
       currentPeriodEnd: nullableDateSchema,
       cancelAtPeriodEnd: z.boolean(),
-      memberInviteUsagePackRequired: z.boolean(),
+      showUsagePack: z.boolean(),
     })
     .nullable(),
 });
@@ -885,8 +885,7 @@ async function readUsagePackState(
           subscriptionStatus: org.subscriptionStatus,
           currentPeriodEnd: isoDate(org.currentPeriodEnd),
           cancelAtPeriodEnd: org.cancelAtPeriodEnd,
-          memberInviteUsagePackRequired:
-            capabilities?.memberInviteUsagePackRequired ?? false,
+          showUsagePack: capabilities?.showUsagePack ?? false,
         }
       : null,
   };

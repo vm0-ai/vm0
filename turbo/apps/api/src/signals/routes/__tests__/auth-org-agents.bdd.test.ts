@@ -240,7 +240,7 @@ describe("ORG-01 and ORG-02", () => {
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
       memberInvitationAllowed: true,
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
 
     const inviteEmail = `okou-invite-${shortId()}@example.test`;
@@ -280,7 +280,7 @@ describe("ORG-01 and ORG-02", () => {
     await upsertOrgPlanEntitlementFixture({
       orgId: requiredOrgId(admin),
       memberInvitationAllowed: true,
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
     api.mockClerkOrg(admin, {
       slug: baseSlug,

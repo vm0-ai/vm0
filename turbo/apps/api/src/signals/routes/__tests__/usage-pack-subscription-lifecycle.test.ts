@@ -859,7 +859,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
         stripeSubscriptionId: null,
         subscriptionStatus: "atom_grant",
         currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
-        memberInviteUsagePackRequired: true,
+        showUsagePack: true,
       }),
     );
     expect(planState.legacyCredits).toStrictEqual([]);
@@ -1175,7 +1175,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
       expect.objectContaining({
         tier: "team",
         stripeSubscriptionId: fixture.subscriptionId,
-        memberInviteUsagePackRequired: true,
+        showUsagePack: true,
       }),
     );
 
@@ -1201,7 +1201,7 @@ describe("usage pack subscription Stripe lifecycle", () => {
         stripeSubscriptionId: null,
         subscriptionStatus: "atom_grant",
         currentPeriodEnd: new Date(grantPeriod.end * 1000).toISOString(),
-        memberInviteUsagePackRequired: true,
+        showUsagePack: true,
       }),
     );
     expect(retriedState.subscription).toStrictEqual(

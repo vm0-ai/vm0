@@ -427,7 +427,7 @@ describe("GET /api/billing/status", () => {
       baseConcurrencyLimit: 10,
       canBuyConcurrency: true,
       canBuyCredits: false,
-      memberInviteUsagePackRequired: true,
+      showUsagePack: true,
       memberInvitationAllowed: false,
       autoRechargeAllowed: false,
       supportByok: false,
@@ -449,8 +449,8 @@ describe("GET /api/billing/status", () => {
     expect(response.body.tier).toBe("pro");
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
-    expect(response.body.memberInviteUsagePackRequired).toBeFalsy();
-    expect(response.body.showUsagePack).toBeFalsy();
+    expect(response.body.showUsagePack).toBeTruthy();
+    expect(response.body).not.toHaveProperty("memberInviteUsagePackRequired");
     expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();

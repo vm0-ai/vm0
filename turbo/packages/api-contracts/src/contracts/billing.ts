@@ -86,6 +86,8 @@ const billingStatusResponseSchema = z.object({
   concurrencyUnitAmountCents: z.number().int().positive().optional(),
   concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
+  // Read-only compatibility for Apps talking to a pre-showUsagePack API.
+  // Current APIs omit it. Remove after the API rollback gate in #32575.
   memberInviteUsagePackRequired: z.boolean().optional(),
   showUsagePack: z.boolean(),
   memberInvitationAllowed: z.boolean().optional(),

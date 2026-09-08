@@ -832,7 +832,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
   const cancelAt = subscriptionWillCancel(args.subscription)
     ? scheduledEnd
     : null;
-  const memberInviteUsagePackRequired =
+  const showUsagePack =
     args.stripeSubscriptionId !== null &&
     (args.tier === "pro" || args.tier === "team" || args.tier === "custom") &&
     (await stripeSubscriptionUsesMemberUsagePacks(tx, {
@@ -849,7 +849,7 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
-    memberInviteUsagePackRequired,
+    showUsagePack,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }

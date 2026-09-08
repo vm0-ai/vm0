@@ -473,10 +473,6 @@ const usagePackCatalogResponse$ = computed(async (get) => {
   return result.body;
 });
 
-export const usagePackCatalogAsync$ = computed(async (get) => {
-  return (await get(usagePackCatalogResponse$)).usagePacks;
-});
-
 export const memberUsagePackOptionsAsync$ = computed(
   async (get): Promise<readonly MemberUsagePackOption[]> => {
     const catalog = await get(usagePackCatalogResponse$);

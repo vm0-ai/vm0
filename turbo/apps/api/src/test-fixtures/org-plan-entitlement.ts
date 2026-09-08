@@ -22,7 +22,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
-  readonly memberInviteUsagePackRequired: boolean;
+  readonly showUsagePack: boolean;
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
@@ -46,7 +46,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly baseConcurrencyLimit?: number;
   readonly canBuyConcurrency?: boolean;
   readonly canBuyCredits?: boolean;
-  readonly memberInviteUsagePackRequired?: boolean;
+  readonly showUsagePack?: boolean;
   readonly memberInvitationAllowed?: boolean;
   readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
@@ -63,7 +63,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     baseConcurrencyLimit: values.baseConcurrencyLimit ?? 0,
     canBuyConcurrency: values.canBuyConcurrency,
     canBuyCredits: values.canBuyCredits,
-    memberInviteUsagePackRequired: values.memberInviteUsagePackRequired,
+    showUsagePack: values.showUsagePack,
     memberInvitationAllowed: values.memberInvitationAllowed,
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
@@ -94,10 +94,10 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         ...(row.canBuyCredits === undefined
           ? {}
           : { canBuyCredits: row.canBuyCredits }),
-        ...(row.memberInviteUsagePackRequired === undefined
+        ...(row.showUsagePack === undefined
           ? {}
           : {
-              memberInviteUsagePackRequired: row.memberInviteUsagePackRequired,
+              showUsagePack: row.showUsagePack,
             }),
         ...(row.memberInvitationAllowed === undefined
           ? {}
@@ -167,8 +167,7 @@ export async function readOrgPlanEntitlementFixture(
       baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
       canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
       canBuyCredits: orgPlanEntitlements.canBuyCredits,
-      memberInviteUsagePackRequired:
-        orgPlanEntitlements.memberInviteUsagePackRequired,
+      showUsagePack: orgPlanEntitlements.showUsagePack,
       memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,

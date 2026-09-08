@@ -1119,7 +1119,7 @@ test("Manage member packages on an Atom-granted plan", async () => {
       ...status,
       subscriptionStatus: "atom_grant",
       hasSubscription: false,
-      memberInviteUsagePackRequired: true,
+      showUsagePack: true,
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",

@@ -1479,7 +1479,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
+    bodyHash: "b56c623aa66a35e3426be67d4cffbe4f",
     functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",

@@ -1963,8 +1963,7 @@ async function upsertAtomGrantPlanEntitlement(
     currentPeriodEnd: details.grantExpiresAt,
     expiresAt: details.grantExpiresAt,
     stripePriceId: grantLine ? invoiceLinePriceId(grantLine) : null,
-    memberInviteUsagePackRequired:
-      invoice.metadata?.planVersion === "usagePack",
+    showUsagePack: invoice.metadata?.planVersion === "usagePack",
     sourceMetadata: {
       ...invoice.metadata,
       atomPlanInvoiceId: invoice.id,
@@ -3536,11 +3535,10 @@ async function upsertSubscriptionPlanEntitlement(
     readonly details: SubscriptionInvoiceDetails;
   },
 ): Promise<void> {
-  const memberInviteUsagePackRequired =
-    await stripeSubscriptionUsesMemberUsagePacks(tx, {
-      orgId: args.orgId,
-      stripeSubscriptionId: args.subscriptionId,
-    });
+  const showUsagePack = await stripeSubscriptionUsesMemberUsagePacks(tx, {
+    orgId: args.orgId,
+    stripeSubscriptionId: args.subscriptionId,
+  });
   await upsertOrgPlanEntitlement(tx, {
     orgId: args.orgId,
     tier: args.details.tier,
@@ -3552,7 +3550,7 @@ async function upsertSubscriptionPlanEntitlement(
     currentPeriodEnd: args.details.periodEndDate,
     cancelAt: args.details.scheduledEndDate,
     expiresAt: args.details.scheduledEndDate,
-    memberInviteUsagePackRequired,
+    showUsagePack,
   });
 }
 
@@ -4440,11 +4438,10 @@ async function upsertSubscriptionUpdatedPlanEntitlements(
     ? new Date(args.planItem.current_period_end * 1000)
     : null;
   for (const row of args.rows) {
-    const memberInviteUsagePackRequired =
-      await stripeSubscriptionUsesMemberUsagePacks(tx, {
-        orgId: row.orgId,
-        stripeSubscriptionId: args.subscription.id,
-      });
+    const showUsagePack = await stripeSubscriptionUsesMemberUsagePacks(tx, {
+      orgId: row.orgId,
+      stripeSubscriptionId: args.subscription.id,
+    });
     await upsertOrgPlanEntitlement(tx, {
       orgId: row.orgId,
       tier: args.tier,
@@ -4456,7 +4453,7 @@ async function upsertSubscriptionUpdatedPlanEntitlements(
       currentPeriodEnd: itemPeriodEnd,
       cancelAt: args.scheduledEnd,
       expiresAt: args.scheduledEnd,
-      memberInviteUsagePackRequired,
+      showUsagePack,
       sourceMetadata: args.subscription.metadata ?? {},
     });
   }

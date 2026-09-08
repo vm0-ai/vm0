@@ -613,7 +613,7 @@ async function createUsagePackAtomGrantOrg(
     credits: 0,
     subscriptionStatus: "atom_grant",
     hasSubscription: false,
-    memberInviteUsagePackRequired: false,
+    showUsagePack: true,
   });
   return fixture;
 }
@@ -7550,7 +7550,7 @@ describe("usage pack allocation management", () => {
     });
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({
       tier: "custom",
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
 
     const renewalPeriod = {
@@ -7642,7 +7642,7 @@ describe("usage pack allocation management", () => {
     );
     const status = await readBillingStatus(fixture);
     expect(status.tier).toBe("custom");
-    expect(status.memberInviteUsagePackRequired).toBeFalsy();
+    expect(status.showUsagePack).toBeFalsy();
     expect(status.currentPeriodEnd).toBe(
       new Date(customPlanEnd * 1000).toISOString(),
     );
@@ -7653,13 +7653,13 @@ describe("usage pack allocation management", () => {
     );
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({
       tier: "custom",
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
 
     await reconcileBillingOrganization(fixture.orgId);
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({
       tier: "custom",
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
     });
   });
 
@@ -7728,7 +7728,7 @@ describe("usage pack allocation management", () => {
     );
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({
       tier: "custom",
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
       currentPeriodEnd: new Date(customPlanEnd * 1000).toISOString(),
     });
 
@@ -7752,7 +7752,7 @@ describe("usage pack allocation management", () => {
     );
     await expect(readBillingStatus(fixture)).resolves.toMatchObject({
       tier: "custom",
-      memberInviteUsagePackRequired: false,
+      showUsagePack: false,
       currentPeriodEnd: new Date(customPlanEnd * 1000).toISOString(),
     });
   });
@@ -11263,7 +11263,7 @@ describe("usage pack allocation management", () => {
       authenticateOrg(fixture);
       const billing = await readBillingStatus(fixture);
       expect(billing.memberInvitationAllowed).toBeTruthy();
-      expect(billing.memberInviteUsagePackRequired).toBeFalsy();
+      expect(billing.showUsagePack).toBeFalsy();
       const invited = await accept(
         setupApp({ context, routes: orgInviteRoutes })(
           orgInviteContract,
@@ -11433,7 +11433,7 @@ describe("usage pack allocation management", () => {
       await expect(readBillingStatus(fixture)).resolves.toMatchObject({
         tier,
         memberInvitationAllowed: true,
-        memberInviteUsagePackRequired: false,
+        showUsagePack: true,
       });
       const management = await accept(
         client.get({ headers: { authorization: "Bearer clerk-session" } }),
@@ -12818,7 +12818,7 @@ describe("usage pack allocation management", () => {
         tier,
       );
       const billing = await readBillingStatus(fixture);
-      expect(billing.memberInviteUsagePackRequired).toBeFalsy();
+      expect(billing.showUsagePack).toBeTruthy();
 
       const client = setupApp({ context, routes: orgInviteRoutes })(
         orgInviteContract,
@@ -12848,7 +12848,7 @@ describe("usage pack allocation management", () => {
     async (tier) => {
       const fixture = await createSubscriptionOrg({ tier });
       const billing = await readBillingStatus(fixture);
-      expect(billing.memberInviteUsagePackRequired).toBeFalsy();
+      expect(billing.showUsagePack).toBeFalsy();
 
       context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
         { id: `inv_${randomUUID()}` },

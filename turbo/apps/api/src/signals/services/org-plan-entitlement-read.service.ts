@@ -11,7 +11,6 @@ export interface OrgPlanCapabilities {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
-  readonly memberInviteUsagePackRequired: boolean;
   readonly showUsagePack: boolean;
   readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
@@ -29,8 +28,6 @@ const CAPABILITY_SELECTION = {
   baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
   canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
   canBuyCredits: orgPlanEntitlements.canBuyCredits,
-  memberInviteUsagePackRequired:
-    orgPlanEntitlements.memberInviteUsagePackRequired,
   showUsagePack: orgPlanEntitlements.showUsagePack,
   memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
