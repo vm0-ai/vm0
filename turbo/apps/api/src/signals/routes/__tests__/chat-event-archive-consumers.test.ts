@@ -3,6 +3,10 @@ import { gzipSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
 import { HttpResponse } from "msw";
+import {
+  PI_MEMORY_CITATION_OPEN,
+  PI_MEMORY_CITATION_CLOSE,
+} from "@okouai/api-contracts/contracts/pi-memory-citations";
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
@@ -53,8 +57,11 @@ interface ArchiveFixture {
   readonly threadId: string;
 }
 
+const escapedOpen = `&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;`;
+
 function withHiddenCitation(visible: string): string {
-  return `${visible}<oai-mem-citation><citation_entries>memory.md:1-1|note=[private]</citation_entries></oai-mem-citation>`;
+  // Retained raw-backed rows contain both an isolated example and real private provenance.
+  return `${visible.replace(escapedOpen, PI_MEMORY_CITATION_OPEN)}${PI_MEMORY_CITATION_OPEN}<citation_entries>memory.md:1-1|note=[private]</citation_entries>${PI_MEMORY_CITATION_CLOSE}`;
 }
 
 function searchClient() {
@@ -211,7 +218,7 @@ describe("archived chat event consumers", () => {
 
   it("exports snapshot history plus the PostgreSQL tail after archived source rows are gone", async () => {
     const fixture = await createArchiveFixture("export");
-    const archivedVisible = `archived-export-${randomUUID()}`;
+    const archivedVisible = `archived-export-${randomUUID()} \`${escapedOpen}\` suffix`;
     const archivedText = withHiddenCitation(archivedVisible);
     const archivedEventId = await store.set(
       seedRetentionOutputEvent$,
@@ -223,7 +230,7 @@ describe("archived chat event consumers", () => {
       context.signal,
     );
     await archiveAndRetain(fixture.threadId, [archivedEventId]);
-    const tailVisible = `hot-tail-${randomUUID()}`;
+    const tailVisible = `hot-tail-${randomUUID()} \`${escapedOpen}\` suffix`;
     const tailText = withHiddenCitation(tailVisible);
     await store.set(
       seedRetentionOutputEvent$,
@@ -287,7 +294,7 @@ describe("archived chat event consumers", () => {
 
   it("shares an archived selection while excluding archived revoked and invisible messages", async () => {
     const fixture = await createArchiveFixture("sharing");
-    const archivedVisible = `share-archived-${randomUUID()}`;
+    const archivedVisible = `share-archived-${randomUUID()} \`${escapedOpen}\` suffix`;
     const archivedText = withHiddenCitation(archivedVisible);
     const archivedEventId = await store.set(
       seedRetentionOutputEvent$,
@@ -402,7 +409,7 @@ describe("archived chat event consumers", () => {
 
   it("shares one hot-table snapshot when physical deletion queues behind its read", async () => {
     const fixture = await createArchiveFixture("sharing-race");
-    const hotVisible = `share-hot-race-${randomUUID()}`;
+    const hotVisible = `share-hot-race-${randomUUID()} \`${escapedOpen}\` suffix`;
     const hotText = withHiddenCitation(hotVisible);
     const hotEventId = await store.set(
       seedRetentionOutputEvent$,

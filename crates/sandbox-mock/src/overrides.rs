@@ -55,6 +55,10 @@ pub(crate) struct ExecOverrideState {
     pub(crate) calls: Mutex<Vec<ExecCall>>,
     /// Recorded fixed storage-manifest calls across all attached sandboxes.
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    /// Optional gate entered after recording a fixed storage-manifest call.
+    pub(crate) storage_manifest_gate: Mutex<Option<MockLifecycleGate>>,
+    /// FIFO results for fixed storage-manifest operations.
+    pub(crate) storage_manifest_results: Mutex<VecDeque<Result<ExecResult>>>,
     /// FIFO results for fixed workspace-drive mount operations.
     pub(crate) workspace_drive_mount_results: Mutex<VecDeque<Result<ExecResult>>>,
     /// Total fixed workspace-drive mount calls across attached sandboxes.
@@ -530,6 +534,19 @@ impl MockSandboxOverrides {
             .storage_manifest_calls
             .lock_ignoring_poison()
             .clone()
+    }
+
+    /// Block fixed storage-manifest operations until the gate is released.
+    pub fn set_storage_manifest_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.exec.storage_manifest_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Queue a fixed storage-manifest result across attached sandboxes.
+    pub fn push_storage_manifest_result(&self, result: Result<ExecResult>) {
+        self.exec
+            .storage_manifest_results
+            .lock_ignoring_poison()
+            .push_back(result);
     }
 
     /// Queue a fixed workspace-drive mount result across attached sandboxes.
