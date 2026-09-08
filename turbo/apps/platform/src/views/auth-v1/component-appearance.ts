@@ -158,7 +158,7 @@ export function getAuthV1ComponentAppearance(
     },
     elements: {
       rootBox:
-        "okou-clerk-root mx-auto w-full max-w-[var(--okou-auth-card-max-width)] gap-[var(--okou-auth-card-logo-gap)]",
+        "okou-clerk-root mx-auto flex w-full max-w-[var(--okou-auth-card-max-width)] flex-col gap-[var(--okou-auth-card-logo-gap)]",
       button: "okou-clerk-button",
       cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",

@@ -109,8 +109,9 @@ test("primary actions retain brand styling while links remain accessible", async
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(root).toHaveCSS("border-radius", "12px");
   await expect(continueButton).toHaveCSS("font-size", "13px");
-  // text-[13px] inherits the shared Button's 20/14 line-height ratio.
-  await expect(continueButton).toHaveCSS("line-height", "18.5714px");
+  // cn replaces text-sm with text-[13px], including the text-sm line height.
+  // The original V2 control therefore inherits the document's 1.5 ratio.
+  await expect(continueButton).toHaveCSS("line-height", "19.5px");
   await expect(continueButton).toHaveCSS(
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,

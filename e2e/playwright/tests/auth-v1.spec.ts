@@ -36,6 +36,10 @@ async function expectLogo(page: Page): Promise<void> {
   const logo = page.locator(".cl-logoBox");
   await expect(logo).toBeVisible();
   await expect(logo).toHaveCSS("height", "20px");
+  // Clerk's root is block on desktop and flex on mobile by default. Outside
+  // branding needs an explicit column so its DS gap applies at both widths.
+  await expect(page.locator(".cl-rootBox")).toHaveCSS("display", "flex");
+  await expect(page.locator(".cl-rootBox")).toHaveCSS("row-gap", "20px");
   await expectSeparated(logo, page.locator(".cl-cardBox"));
 }
 
