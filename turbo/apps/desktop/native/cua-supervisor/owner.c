@@ -191,6 +191,11 @@ static napi_value force(napi_env env, napi_callback_info info) {
   int result = -1;
   if (argc == 1 && napi_get_value_int32(env, args[0], &expected) == napi_ok &&
       expected == child && observe(&status) == 0) {
+    // Resume only this still-waitable stopped lifecycle owner so it can reap
+    // its exited helper. It remains outside the SDK kill group and available
+    // if main dies. Neither SIGCONT nor SIGKILL is evidence of completion.
+    if (status.si_pid == child && status.si_code == CLD_STOPPED)
+      kill(child, SIGCONT);
     result = kill(-child, SIGKILL);
     // Keep the guardian available if main dies during force. Only terminate
     // its retained PID once every SDK descendant is gone or kernel-exited.
