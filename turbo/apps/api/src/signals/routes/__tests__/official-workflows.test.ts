@@ -7,7 +7,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { UserMessagePart } from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
@@ -1410,10 +1409,10 @@ function installCatalogStorageFixture() {
 }
 
 const officialQueueEncodings = [
-  { encoding: "legacy", origin: "web", brand: "vm0" },
-  { encoding: "canonical", origin: "web", brand: "okou" },
-  { encoding: "legacy", origin: "agent_run", brand: "okou" },
-  { encoding: "canonical", origin: "agent_run", brand: "vm0" },
+  { encoding: "legacy", origin: "web", storedBrand: "vm0" },
+  { encoding: "canonical", origin: "web", storedBrand: "okou" },
+  { encoding: "legacy", origin: "agent_run", storedBrand: "okou" },
+  { encoding: "canonical", origin: "agent_run", storedBrand: "vm0" },
 ] as const;
 
 type OfficialQueueEncoding = (typeof officialQueueEncodings)[number];
@@ -1435,7 +1434,6 @@ function officialQueueHeaders(
   sourceRunId: string,
   queueCase: {
     readonly origin: "web" | "agent_run";
-    readonly brand: PublicBrand;
   },
 ) {
   return queueCase.origin === "web"
@@ -1445,7 +1443,6 @@ function officialQueueHeaders(
           actor,
           sourceRunId,
           ["agent:write"],
-          queueCase.brand,
         )}`,
       };
 }
@@ -1462,7 +1459,7 @@ async function prepareOfficialQueueEncoding(
   const source = await readOfficialWorkflowQueueInputFixture(args.eventId);
   expect(source).toMatchObject({
     contextType: args.origin,
-    contextId: officialQueueContextIds.legacy[args.brand],
+    contextId: officialQueueContextIds.legacy.okou,
     requiredOfficialWorkflowIds: [args.workflowId],
   });
   const userMessage = source.payload?.userMessage;
@@ -1480,12 +1477,14 @@ async function prepareOfficialQueueEncoding(
       }),
     );
   }
-  if (args.encoding === "legacy") {
+  if (args.encoding === "legacy" && args.storedBrand === "okou") {
     return source.id;
   }
-  const canonical = await appendOfficialWorkflowQueueInputFixture({
+  // New API requests always write Okou. Historical brand markers and the
+  // canonical encoding require a persisted fixture to exercise older rows.
+  const encoded = await appendOfficialWorkflowQueueInputFixture({
     eventId: source.id,
-    contextId: officialQueueContextIds.canonical[args.brand],
+    contextId: officialQueueContextIds[args.encoding][args.storedBrand],
     contextType: args.origin,
     claim: source.requiredOfficialWorkflowIds,
     userMessage,
@@ -1493,7 +1492,7 @@ async function prepareOfficialQueueEncoding(
   await expect(
     readOfficialWorkflowQueueInputFixture(source.id),
   ).resolves.toStrictEqual(source);
-  return canonical.id;
+  return encoded.id;
 }
 
 async function assertOfficialQueueRawHistory(
@@ -9069,7 +9068,7 @@ describe.sequential("Official Workflow Run admission", () => {
   });
 
   it.each(officialQueueEncodings)(
-    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin $brand)",
+    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-source-${suffix}`;
@@ -9141,7 +9140,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queuedOfficial = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9397,7 +9396,7 @@ describe.sequential("Official Workflow Run admission", () => {
   );
 
   it.each(officialQueueEncodings)(
-    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin $brand)",
+    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-retry-${suffix}`;
@@ -9469,7 +9468,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queued = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9626,7 +9625,10 @@ describe.sequential("Official Workflow Run admission", () => {
         throw new Error("Expected queued Run Okou token");
       }
       expect(verifyOkouToken(token)).toMatchObject({
-        publicBrand: queueCase.brand,
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId: retriedRunId,
+        capabilities: expect.arrayContaining(["agent:read"]),
       });
 
       await webhooks.requestAgentComplete(
@@ -9835,7 +9837,6 @@ describe.sequential("Official Workflow Run admission", () => {
         workflowClient().run({
           headers: officialQueueHeaders(actor, firstRunId, {
             origin: "agent_run",
-            brand: "okou",
           }),
           params: { workflowId: installation.body.workflow.id },
         }),

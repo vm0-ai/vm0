@@ -7,7 +7,7 @@ import {
   isChatEventContentTextType,
   isChatEventUserMessageTextType,
 } from "@okouai/api-contracts/contracts/chat-events";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import type {
@@ -90,13 +90,8 @@ const EXPORT_DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
 const EXPORT_DOWNLOAD_EXPIRY_MS = EXPORT_DOWNLOAD_EXPIRY_SECONDS * 1000;
 const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 const DATA_EXPORT_READY_SUBJECT = "Your data export is ready";
+const DATA_EXPORT_FILENAME = "okou-data-export.zip";
 const log = logger("service:user-export");
-
-function dataExportFilename(publicBrand: PublicBrand): string {
-  return publicBrand === "okou"
-    ? "okou-data-export.zip"
-    : "vm0-data-export.zip";
-}
 
 type ExportJobStatus = UserExportJob["status"];
 type ActiveExportJobStatus = Extract<ExportJobStatus, "pending" | "running">;
@@ -104,7 +99,6 @@ type ActiveExportJobStatus = Extract<ExportJobStatus, "pending" | "running">;
 interface StartUserExportArgs {
   readonly userId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }
 
 type StartUserExportResult =
@@ -113,7 +107,6 @@ type StartUserExportResult =
       readonly jobId: string;
       readonly status: ActiveExportJobStatus;
       readonly shouldExecute: boolean;
-      readonly publicBrand: PublicBrand;
     }
   | { readonly kind: "rate_limited" };
 
@@ -121,7 +114,6 @@ interface ExecuteUserExportJobArgs {
   readonly jobId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly publicBrand: PublicBrand;
 }
 
 interface ZipEntry {
@@ -228,7 +220,6 @@ export function userExportStatus(userId: string) {
         completedAt: exportJobs.completedAt,
         expiresAt: exportJobs.expiresAt,
         s3Key: exportJobs.s3Key,
-        publicBrand: exportJobs.publicBrand,
         error: exportJobs.error,
       })
       .from(exportJobs)
@@ -285,7 +276,7 @@ export function userExportStatus(userId: string) {
           env("R2_USER_STORAGES_BUCKET_NAME"),
           latestJob.s3Key,
           DOWNLOAD_URL_EXPIRY_SECONDS,
-          dataExportFilename(latestJob.publicBrand),
+          DATA_EXPORT_FILENAME,
           true,
         ),
       );
@@ -319,7 +310,6 @@ export const startUserExport$ = command(
       .select({
         id: exportJobs.id,
         status: exportJobs.status,
-        publicBrand: exportJobs.publicBrand,
       })
       .from(exportJobs)
       .where(
@@ -337,7 +327,6 @@ export const startUserExport$ = command(
         jobId: activeJob.id,
         status: activeExportJobStatus(activeJob.status),
         shouldExecute: false,
-        publicBrand: activeJob.publicBrand,
       };
     }
 
@@ -365,7 +354,7 @@ export const startUserExport$ = command(
         userId: args.userId,
         orgId: args.orgId,
         status: "pending",
-        publicBrand: args.publicBrand,
+        publicBrand: PUBLIC_BRAND,
         createdAt: nowDate(),
       })
       .returning({ id: exportJobs.id });
@@ -380,7 +369,6 @@ export const startUserExport$ = command(
       jobId: job.id,
       status: "pending",
       shouldExecute: true,
-      publicBrand: args.publicBrand,
     };
   },
 );
@@ -1378,7 +1366,7 @@ const runExportJob$ = command(async function runExportJob(
       runtime.bucket,
       s3Key,
       EXPORT_DOWNLOAD_EXPIRY_SECONDS,
-      dataExportFilename(args.publicBrand),
+      DATA_EXPORT_FILENAME,
       true,
     ),
   );
