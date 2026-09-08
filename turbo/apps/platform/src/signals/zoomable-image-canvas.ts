@@ -95,12 +95,9 @@ function calculateImageCanvasGeometry(
     : null;
 }
 
-/** The mounted image owns decoding; switching previews releases that owner. */
+/** Derive decoded geometry from the currently mounted image. */
 export function createZoomableImageCanvasSignals(): ZoomableImageCanvasSignals {
-  const image$ = state<{
-    readonly element: HTMLImageElement;
-    readonly signal: AbortSignal;
-  } | null>(null);
+  const image$ = state<HTMLImageElement | null>(null);
   const internalZoom$ = state(1);
 
   const geometry$ = computed(async (get) => {
@@ -108,9 +105,8 @@ export function createZoomableImageCanvasSignals(): ZoomableImageCanvasSignals {
     if (!image) {
       return null;
     }
-    await image.element.decode();
-    image.signal.throwIfAborted();
-    return calculateImageCanvasGeometry(image.element);
+    await image.decode();
+    return calculateImageCanvasGeometry(image);
   });
 
   return {
@@ -118,12 +114,11 @@ export function createZoomableImageCanvasSignals(): ZoomableImageCanvasSignals {
     imageRef$: onRef(
       command(
         ({ get, set }, element: HTMLImageElement, signal: AbortSignal) => {
-          const image = { element, signal };
-          set(image$, image);
+          set(image$, element);
           signal.addEventListener(
             "abort",
             () => {
-              if (get(image$) === image) {
+              if (get(image$) === element) {
                 set(image$, null);
               }
             },
