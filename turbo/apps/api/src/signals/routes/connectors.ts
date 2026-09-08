@@ -14,7 +14,7 @@ import { connectorGrantScopes } from "@okouai/connectors/connector-auth-method";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   badRequestMessage,
@@ -59,6 +59,7 @@ import {
 } from "./connector-openid-auth-start";
 import { resolveConnectorConnectionMutation } from "../services/connector-connection-write.service";
 import { insertConnectorOAuthState } from "../services/connector-oauth-state.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -417,7 +418,7 @@ const startConnectorOauthInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
     if (!auth.orgId) {
@@ -550,7 +551,7 @@ const startConnectorOpenIdInner$ = command(
       return bodyResult.response;
     }
     const request = get(request$).raw;
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const auth = get(authContext$);
     const connectorSlug = params.connectorSlug;
 

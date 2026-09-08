@@ -119,7 +119,7 @@ export function createHostMapsBddApi(context: TestContext) {
             baseUrl:
               publicBrand === "okou"
                 ? "https://api.okou.ai"
-                : "https://api.vm0.ai",
+                : "https://api.okou.ai",
           }),
     })(hostContract);
   }

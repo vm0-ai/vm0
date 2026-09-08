@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { feishuBrowserConnectContract } from "@okouai/api-contracts/contracts/feishu-browser-connect";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { feishuOrgConnections } from "@okouai/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
@@ -13,7 +12,7 @@ import {
   requiredAuthContext$,
 } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
@@ -28,6 +27,7 @@ import {
   feishuOAuthAppCallbackUrl,
 } from "../services/feishu-config";
 import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const REDIRECT_STATUS = 307;
 
@@ -42,9 +42,7 @@ function worksRedirect(
   params: Readonly<Record<string, string>>,
   publicBrand: PublicBrand,
 ): Response {
-  return redirect(
-    `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/works?${new URLSearchParams(params)}`,
-  );
+  return redirect(`${env("APP_URL")}/works?${new URLSearchParams(params)}`);
 }
 
 interface FeishuConnectArgs {
@@ -132,7 +130,7 @@ const startFeishuAccountOAuth$ = command(
         orgId: args.orgId,
         userId: args.userId,
         connectorId,
-        redirectUri: feishuOAuthAppCallbackUrl(installation.publicBrand),
+        redirectUri: feishuOAuthAppCallbackUrl(),
         publicBrand: installation.publicBrand,
         account,
         feishuContext: {
@@ -201,13 +199,10 @@ function legacyConnectResult(
 
 const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const auth = await set(requiredAuthContext$, {}, signal);
   if ("status" in auth) {
-    const signIn = new URL(
-      "/sign-in",
-      appUrlForPublicBrand(env("APP_URL"), publicBrand),
-    );
+    const signIn = new URL("/sign-in", env("APP_URL"));
     signIn.searchParams.set("redirect_url", request.url);
     return redirect(signIn.toString());
   }

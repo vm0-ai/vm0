@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
-import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
+import { agentDisplayName } from "@okouai/core/public-brand";
 import { isValidTimeZone } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
@@ -163,11 +163,10 @@ function defaultAgentInfo(
     const metadata: DefaultAgentMetadata = {};
     if (row.displayName !== null) {
       metadata.displayName =
-        agentDisplayNameForPublicBrand({
+        agentDisplayName({
           agentId: composeId,
           defaultAgentId: composeId,
           displayName: row.displayName,
-          publicBrand,
         }) ?? row.displayName;
     }
     if (row.description !== null) {

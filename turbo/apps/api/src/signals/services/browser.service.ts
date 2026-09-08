@@ -22,10 +22,7 @@ import {
 import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 import {
   and,
@@ -247,13 +244,13 @@ function chatRunRequired(
   return serviceError(
     400,
     code,
-    `Managed browsers can only be started from a ${publicBrandPresentation(publicBrand).assistantName} chat run`,
+    `Managed browsers can only be started from a ${PUBLIC_BRAND_PRESENTATION.assistantName} chat run`,
   );
 }
 
 function browserReclaiming(publicBrand: PublicBrand) {
   return conflict(
-    `${publicBrandPresentation(publicBrand).assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
+    `${PUBLIC_BRAND_PRESENTATION.assistantName} is still reclaiming this thread's previous managed browser; retry in a moment`,
     "BROWSER_STOPPING",
   );
 }
@@ -305,7 +302,7 @@ function browserViewerUrl(
   chatThreadId: string,
   publicBrand: PublicBrand,
 ): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/browsers/${chatThreadId}`;
+  return `${env("APP_URL")}/browsers/${chatThreadId}`;
 }
 
 function publicBrowser(

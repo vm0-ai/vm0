@@ -106,7 +106,6 @@ describe("POST /api/uploads/prepare", () => {
       orgId,
       runId,
       capabilities: ["file:write"],
-      publicBrand: "okou",
       iat: seconds,
       exp: seconds + 60,
     });
@@ -116,7 +115,7 @@ describe("POST /api/uploads/prepare", () => {
     ).prepare({
       body: validBody(),
       headers: { authorization: `Bearer ${token}` },
-      extraHeaders: { origin: "https://app.vm0.ai" },
+      extraHeaders: { origin: "https://app.okou.ai" },
     });
 
     expect(response.status).toBe(200);

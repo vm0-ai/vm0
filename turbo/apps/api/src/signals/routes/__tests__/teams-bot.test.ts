@@ -1155,7 +1155,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const fixture = await trackedBotFixture();
     botFrameworkHandlers();
     const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const botName = "Tenant Helper";
 
     const response = await postTeamsActivity({

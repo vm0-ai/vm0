@@ -22,10 +22,10 @@ import { seedOrgMembership$ } from "./helpers/org-membership";
 
 const context = testContext();
 const store = createStore();
-const API_ORIGIN = "https://api.vm0.ai";
+const API_ORIGIN = "https://api.okou.ai";
 const OKOU_API_ORIGIN = "https://api.okou.ai";
-const WEB_ORIGIN = "https://www.vm0.ai";
-const APP_ORIGIN = "https://app.vm0.ai";
+const WEB_ORIGIN = "https://www.okou.ai";
+const APP_ORIGIN = "https://app.okou.ai";
 const OKOU_APP_ORIGIN = "https://app.okou.ai";
 const VM0_INSTALL_STATE = JSON.stringify({ publicBrand: "vm0" });
 const OAUTH_STATE_SIGNING_KEY = randomBytes(32).toString("hex");
@@ -375,7 +375,7 @@ describe("Slack OAuth API routes", () => {
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
         `${API_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
-      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("vm0");
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("okou");
     });
 
     it("does not trust lookalike okou.ai web origins", async () => {
@@ -395,7 +395,7 @@ describe("Slack OAuth API routes", () => {
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
         `${API_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
-      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("vm0");
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("okou");
     });
 
     it("returns 503 when Slack client ID is not configured", async () => {

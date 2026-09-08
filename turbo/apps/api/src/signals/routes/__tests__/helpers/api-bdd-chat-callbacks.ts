@@ -236,7 +236,7 @@ export function createChatCallbacksApi(context: TestContext) {
   function pushSubscriptionsClient(publicBrand: PublicBrand) {
     return setupAppWithRoutes({
       baseUrl:
-        publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+        publicBrand === "okou" ? "https://api.okou.ai" : "https://api.okou.ai",
       context,
       routes: pushSubscriptionsRoutes,
     })(pushSubscriptionsContract);

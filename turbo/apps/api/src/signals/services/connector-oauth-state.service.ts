@@ -4,7 +4,6 @@ import { connectorOauthStates } from "@okouai/db/schema/connector-oauth-state";
 import { and, eq, gt, isNotNull, isNull, type SQL } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { publicBrandFromConnectorOAuthState } from "../../lib/connector-oauth-state";
 import type { Db, ReadonlyDb } from "../external/db";
 import { storedConnectorAccountMutationSelection } from "./connector-account-mutation.service";
 
@@ -44,7 +43,6 @@ export type StoredBuiltinOAuthState = Omit<
   readonly connectorSlug: ConnectorSlug;
   readonly customConnectorId: null;
   readonly storageVersion: null;
-  readonly publicBrand: PublicBrand;
 };
 
 export type StoredCustomConnectorOAuthState = Omit<
@@ -53,7 +51,6 @@ export type StoredCustomConnectorOAuthState = Omit<
 > & {
   readonly connectorSlug: null;
   readonly customConnectorId: string;
-  readonly publicBrand: PublicBrand;
 };
 
 type BuiltinOAuthStateTarget = {
@@ -85,7 +82,6 @@ type ConnectorOAuthStateStatus =
   | { readonly kind: "invalid" }
   | {
       readonly kind: "usable";
-      readonly publicBrand: PublicBrand;
       readonly redirectUri: string;
     };
 
@@ -159,7 +155,6 @@ function narrowStoredOAuthState(
       connectorSlug: state.connectorSlug,
       customConnectorId: null,
       storageVersion: null,
-      publicBrand: publicBrandFromConnectorOAuthState(state.state),
     };
   }
   if (state.customConnectorId === null) {
@@ -170,7 +165,6 @@ function narrowStoredOAuthState(
     ...customState,
     connectorSlug: null,
     customConnectorId: state.customConnectorId,
-    publicBrand: publicBrandFromConnectorOAuthState(state.state),
   };
 }
 
@@ -220,7 +214,6 @@ export async function getConnectorOAuthStateStatus(
 
   return {
     kind: "usable",
-    publicBrand: publicBrandFromConnectorOAuthState(args.state),
     redirectUri: storedState.redirectUri,
   };
 }

@@ -13,7 +13,7 @@ import {
   userExportStatus,
 } from "../services/user-export.service";
 import { tapError } from "../utils";
-import { publicBrand$ } from "../context/hono";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const log = logger("route:user-export");
 
@@ -27,7 +27,7 @@ const getUserExportInner$ = computed(async (get) => {
 const postUserExportInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     signal.throwIfAborted();
 
     const result = await set(

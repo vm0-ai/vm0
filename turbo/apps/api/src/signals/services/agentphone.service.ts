@@ -1,10 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getCanonicalModelDisplayName,
@@ -378,7 +375,7 @@ export function buildAgentPhoneConnectUrl(params: {
       secret: params.secret,
     }),
   });
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/agentphone/connect?${query.toString()}`;
+  return `${env("APP_URL")}/agentphone/connect?${query.toString()}`;
 }
 
 export async function linkAgentPhoneUser(
@@ -1059,7 +1056,7 @@ function formatConnectPrompt(
   event: AgentPhoneMessageEvent,
   publicBrand: PublicBrand,
 ): string {
-  const { brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   const connectUrl = buildAgentPhoneConnectUrl({
     phoneHandle: event.fromNumber,
     agentphoneAgentId: event.agentphoneAgentId,
@@ -1082,7 +1079,7 @@ function formatConnectPrompt(
 }
 
 function formatHelpMessage(publicBrand: PublicBrand): string {
-  const { brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   return [
     `${brandName} text message commands`,
     "",
@@ -1171,7 +1168,7 @@ async function handleConnectCommand(
   signal: AbortSignal,
 ): Promise<void> {
   if (args.userLink) {
-    const { brandName } = publicBrandPresentation(args.publicBrand);
+    const { brandName } = PUBLIC_BRAND_PRESENTATION;
     await sendAgentPhoneSlashCommandText(
       args.event,
       `You are already connected. Send a message here to start using ${brandName}.`,
@@ -1212,7 +1209,7 @@ async function handleDisconnectCommand(
 
   await sendAgentPhoneSlashCommandText(
     args.event,
-    `This phone number has been disconnected from ${publicBrandPresentation(args.publicBrand).brandName}.`,
+    `This phone number has been disconnected from ${PUBLIC_BRAND_PRESENTATION.brandName}.`,
     signal,
   );
 }
@@ -1836,7 +1833,7 @@ export const handleAgentPhoneMessage$ = command(
     if (!agent) {
       await sendAgentPhoneText(
         params.event,
-        `The workspace default agent is not configured. Please choose an agent in ${publicBrandPresentation(params.publicBrand).brandName} first.`,
+        `The workspace default agent is not configured. Please choose an agent in ${PUBLIC_BRAND_PRESENTATION.brandName} first.`,
         signal,
       );
       return;

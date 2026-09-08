@@ -4823,7 +4823,7 @@ describe("CHAT-02: dispatch failure", () => {
 
 describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission with request-branded guidance through visible chat messages", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     const completed = await bdd.completeOnboarding(actor);
@@ -4909,7 +4909,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     }
     expect(guidance.content).toContain("Buy more credits");
     expect(guidance.content).toContain("https://app.okou.ai/?settings=usage");
-    expect(guidance.content).not.toContain("https://app.vm0.ai");
+    expect(guidance.content).not.toContain("https://app.okou.ai");
     expect(guidance.error).toBe("insufficient_credits");
 
     const appended = await chat.listThreadEvents(actor, sent.body.threadId, {
@@ -4967,7 +4967,9 @@ describe("CHAT-02: admission without spendable credits", () => {
     if (!vm0Guidance) {
       throw new Error("Expected VM0 insufficient-credits guidance");
     }
-    expect(vm0Guidance.content).toContain("https://app.vm0.ai/?settings=usage");
+    expect(vm0Guidance.content).toContain(
+      "https://app.okou.ai/?settings=usage",
+    );
     expect(vm0Guidance.content).not.toContain("https://app.okou.ai");
   }, 60_000);
 });
@@ -20739,7 +20741,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
 describe("CHAT-02: public-brand default assistant identity", () => {
   it("keeps the default name as Okou across request brands without renaming custom agents", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     const onboarding = await bdd.readOnboardingStatus(actor);
@@ -20752,7 +20754,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
       vm0: {
         assistantName: "Okou",
         otherAssistantName: "Zero",
-        appUrl: "https://app.vm0.ai",
+        appUrl: "https://app.okou.ai",
         contextId: "e1884e98-ab77-4eca-a420-90e591078804",
       },
       okou: {
@@ -20909,7 +20911,7 @@ describe("CHAT-02: public-brand default assistant identity", () => {
   }, 90_000);
 
   it("posts brand-matched GitHub Audit links with a VM0 legacy fallback", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
     if (!actor.orgId) {

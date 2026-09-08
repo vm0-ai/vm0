@@ -1,6 +1,5 @@
 import { formatRunErrorForExternalSurface } from "@okouai/api-contracts/contracts/errors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { command } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -9,12 +8,12 @@ import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 function addCreditsUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=credits`;
 }
 
 function comparePlansUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=billing&billingView=plans`;
 }
 

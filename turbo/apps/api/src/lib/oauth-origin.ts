@@ -9,7 +9,7 @@ function isTrustedFirstPartyHost(hostname: string, role: HostRole): boolean {
   return (
     (role === "www" &&
       (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
-    hostname === `${role}.vm0.ai` ||
+    hostname === `${role}.okou.ai` ||
     hostname === `${role}.vm6.ai` ||
     hostname.endsWith(`-${role}.vm6.ai`) ||
     hostname === `${role}.vm7.ai` ||

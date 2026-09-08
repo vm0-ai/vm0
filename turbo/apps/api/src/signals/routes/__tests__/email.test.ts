@@ -102,8 +102,8 @@ beforeEach(() => {
   mockEnv("RESEND_API_KEY", "test-resend-key");
   mockEnv("RESEND_WEBHOOK_SECRET", INBOUND_SECRET);
   mockEnv("RESEND_FROM_DOMAIN", "vm0.bot");
-  mockEnv("APP_URL", "https://app.vm0.ai");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   // Resend pacing is not part of these transactional delivery assertions.
   mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 });

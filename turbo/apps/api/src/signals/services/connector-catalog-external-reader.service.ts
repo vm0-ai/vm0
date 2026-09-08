@@ -3,7 +3,6 @@ import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/cont
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
@@ -679,10 +678,7 @@ function iconForCatalog(
     throw new Error(`Invalid connector catalog icon key "${key}"`);
   }
   return {
-    url: staticUrlForPublicBrand(
-      `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
-      publicBrand,
-    ),
+    url: `${CONNECTOR_CATALOG_ICON_BASE_URL}${key}`,
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}

@@ -370,7 +370,7 @@ async function setupConnectedTeamsActor(
   } = {},
 ): Promise<ConnectedTeamsActor> {
   if (options.publicBrand === "okou") {
-    setupTeamsConnectTestEnv("https://app.vm0.ai");
+    setupTeamsConnectTestEnv("https://app.okou.ai");
   }
   const fixture = await trackTeamsFixture(
     Promise.resolve(teamsConnectFixture()),
@@ -1128,7 +1128,7 @@ describe("Teams chat callbacks", () => {
       "Task completed successfully.",
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[Audit](https://app.vm0.ai/activities/${runId})`,
+      `[Audit](https://app.okou.ai/activities/${runId})`,
     );
     expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
     expect(teamsApi.reactionRequests).toStrictEqual([

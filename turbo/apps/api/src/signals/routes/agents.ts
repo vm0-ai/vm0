@@ -22,7 +22,6 @@ import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -55,6 +54,7 @@ import {
 } from "../services/user-connectors.service";
 import { onRejection } from "../utils";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const PUBLIC_AGENT_LIMIT = 7;
 
@@ -310,7 +310,7 @@ const createAgentBody$ = bodyResultOf(agentsMainContract.create);
 
 const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const body = await get(createAgentBody$);
   signal.throwIfAborted();
   if (!body.ok) {
@@ -442,9 +442,7 @@ const agentListResponse$ = computed(
     get,
   ): Promise<{ readonly status: 200; readonly body: AgentResponse[] }> => {
     const auth = get(organizationAuthContext$);
-    const agents = await get(
-      agentList(auth.orgId, auth.userId, get(publicBrand$)),
-    );
+    const agents = await get(agentList(auth.orgId, auth.userId, PUBLIC_BRAND));
     return { status: 200 as const, body: [...agents] };
   },
 );
@@ -457,7 +455,7 @@ const getAgentInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
     }),
   );
   if (!agent) {
@@ -544,7 +542,7 @@ const updateAgentBody$ = bodyResultOf(agentsByIdContract.update);
 
 const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
   const params = get(pathParamsOf(agentsByIdContract.update));
   const body = await get(updateAgentBody$);
@@ -625,7 +623,7 @@ const updateAgentMetadataBody$ = bodyResultOf(
 const updateAgentMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(agentsByIdContract.updateMetadata));
     const body = await get(updateAgentMetadataBody$);

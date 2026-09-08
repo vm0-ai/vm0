@@ -13,7 +13,7 @@ import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
-import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
+import { agentDisplayName } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
 
@@ -36,11 +36,10 @@ export function agentResponse(
   return {
     agentId: row.agentId,
     ownerId: row.owner,
-    displayName: agentDisplayNameForPublicBrand({
+    displayName: agentDisplayName({
       agentId: row.agentId,
       defaultAgentId: row.defaultAgentId,
       displayName: row.displayName,
-      publicBrand,
     }),
     description: row.description,
     sound: row.sound,

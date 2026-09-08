@@ -131,7 +131,7 @@ const GMAIL_EMAIL = "workflow-user@example.com";
 const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
 const GOOGLE_FORMS_TOPIC_NAME = "projects/vm0-ai-488909/topics/forms-events";
 const GOOGLE_FORMS_PUSH_AUDIENCE =
-  "https://api.vm0.ai/api/webhooks/google-forms";
+  "https://api.okou.ai/api/webhooks/google-forms";
 const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScGoogleFormsAutomationTest";
@@ -419,7 +419,7 @@ function configureGoogleCalendarWatchMock(args?: {
     eventListRequests: [],
   };
   const calendarId = args?.calendarId ?? "primary";
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
@@ -438,7 +438,7 @@ function configureGoogleCalendarWatchMock(args?: {
         };
         expect(body).toMatchObject({
           type: "web_hook",
-          address: "https://api.vm0.ai/api/webhooks/google-calendar",
+          address: "https://api.okou.ai/api/webhooks/google-calendar",
           params: { ttl: "604800" },
         });
         expect(body.id).toBeTruthy();
@@ -1355,7 +1355,7 @@ describe("okou workflow automations", () => {
   });
 
   it("projects webhook URLs by request and run brand without rotating credentials", async () => {
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const { actor, agentId, workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
@@ -1385,18 +1385,18 @@ describe("okou workflow automations", () => {
     const brandCases = [
       {
         publicBrand: "okou" as const,
-        origin: "https://app.vm0.ai",
+        origin: "https://app.okou.ai",
         hostname: "api.okou.ai",
       },
       {
         publicBrand: "vm0" as const,
         origin: "https://app.okou.ai",
-        hostname: "api.vm0.ai",
+        hostname: "api.okou.ai",
       },
       {
         publicBrand: undefined,
         origin: "https://app.okou.ai",
-        hostname: "api.vm0.ai",
+        hostname: "api.okou.ai",
       },
     ];
 
@@ -3655,7 +3655,7 @@ describe("okou workflow automations", () => {
   });
 
   it("self-heals a renamed primary Calendar target without crossing accounts", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const legacyCalendarId = "legacy-primary@example.com";
     const firstAccessToken = "renamed-primary-first-token";
     const secondAccessToken = "renamed-primary-second-token";
@@ -3889,7 +3889,7 @@ describe("okou workflow automations", () => {
   });
 
   it("does not remap a shared Calendar when provider resources differ", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const sharedCalendarId = "shared-calendar@example.com";
     const accessToken = "shared-calendar-token";
     let watchCalls = 0;
@@ -4046,7 +4046,7 @@ describe("okou workflow automations", () => {
   });
 
   it("suspends an unavailable primary Calendar once and recovers before resuming", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const accessToken = "primary-action-required-token";
     const accountEmail = "primary-action-required@example.com";
     const resourceId = "primary-action-required-resource";
@@ -4286,7 +4286,7 @@ describe("okou workflow automations", () => {
   });
 
   it("keeps transient Calendar renewal failures retryable", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     const accessToken = "transient-calendar-token";
     let watchCalls = 0;
     let exactTargetProbes = 0;

@@ -99,7 +99,7 @@ const originalArch = process.arch;
 
 const productionConfig: DesktopConfig = {
   platformUrl: new URL("https://app.vm0.ai"),
-  webUrl: new URL("https://www.vm0.ai"),
+  webUrl: new URL("https://www.okou.ai"),
   authUrl: new URL("https://app.okou.ai"),
   environment: "production",
   identity: {
@@ -139,7 +139,7 @@ function installAndCaptureAutoUpdates(
   const prepareForQuitAndInstall = vi.fn(async () => {});
   const autoUpdates = installDesktopAutoUpdates({
     config: productionConfig,
-    apiBaseUrl: "https://api.vm0.ai",
+    apiBaseUrl: "https://api.okou.ai",
     getComputerUseHostState,
     prepareForQuitAndInstall,
   });
@@ -149,7 +149,7 @@ function installAndCaptureAutoUpdates(
   }
 
   expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledExactlyOnceWith({
-    url: "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64/RELEASES.json",
+    url: "https://api.okou.ai/api/desktop/updates/zero/stable/darwin/arm64/RELEASES.json",
     serverType: "json",
   });
   expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
@@ -289,7 +289,7 @@ describe("desktop auto-updates", () => {
     expect(
       installDesktopAutoUpdates({
         config: productionConfig,
-        apiBaseUrl: "https://api.vm0.ai",
+        apiBaseUrl: "https://api.okou.ai",
         getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
         prepareForQuitAndInstall: vi.fn(async () => {}),
       }),

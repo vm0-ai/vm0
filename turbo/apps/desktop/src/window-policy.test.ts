@@ -188,7 +188,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("");
 
     expect(config.platformUrl.toString()).toBe("https://app.okou.ai/");
-    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.okou.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
       product: "okou",
@@ -201,9 +201,9 @@ describe("resolveDesktopConfig", () => {
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
       "https://app.okou.ai",
-      "https://www.vm0.ai",
+      "https://www.okou.ai",
     ]);
   });
 
@@ -211,7 +211,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("", "zero");
 
     expect(config.platformUrl.toString()).toBe("https://app.vm0.ai/");
-    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.okou.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
       product: "zero",
@@ -224,9 +224,9 @@ describe("resolveDesktopConfig", () => {
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
       "https://app.vm0.ai",
-      "https://www.vm0.ai",
+      "https://www.okou.ai",
     ]);
   });
 
@@ -301,7 +301,7 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig(undefined, "okou");
 
     expect(config.platformUrl.toString()).toBe("https://app.okou.ai/");
-    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.okou.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
       product: "okou",
@@ -314,9 +314,9 @@ describe("resolveDesktopConfig", () => {
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
       "https://app.okou.ai",
-      "https://www.vm0.ai",
+      "https://www.okou.ai",
     ]);
   });
 
@@ -348,11 +348,11 @@ describe("resolveDesktopConfig", () => {
 });
 
 describe("window policy", () => {
-  const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.vm0.ai"]);
+  const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.okou.ai"]);
 
   it("allows app-origin navigation", () => {
     expect(
-      isAllowedAppNavigation("https://www.vm0.ai/connectors", allowedOrigins),
+      isAllowedAppNavigation("https://www.okou.ai/connectors", allowedOrigins),
     ).toBe(true);
   });
 
@@ -445,13 +445,13 @@ describe("computer use native helper", () => {
 });
 
 describe("desktop auth", () => {
-  const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.vm0.ai"]);
-  const webUrl = new URL("https://www.vm0.ai");
+  const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.okou.ai"]);
+  const webUrl = new URL("https://www.okou.ai");
   const code = "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
 
   it("builds the production system-browser desktop auth start URL", () => {
     expect(buildDesktopAuthStartUrl(webUrl, "ai.vm0.zero.desktop")).toBe(
-      "https://www.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop",
+      "https://www.okou.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop",
     );
   });
 
@@ -511,7 +511,7 @@ describe("desktop auth", () => {
     ).toBe(true);
     expect(
       isDesktopAuthStartNavigation(
-        "https://www.vm0.ai/desktop-auth/start",
+        "https://www.okou.ai/desktop-auth/start",
         allowedOrigins,
       ),
     ).toBe(true);
@@ -627,7 +627,7 @@ describe("desktop auth", () => {
 
   it("builds the Electron web-session consume URL", () => {
     expect(buildDesktopAuthConsumeUrl(webUrl, code)).toBe(
-      `https://www.vm0.ai/desktop-auth/consume?code=${code}`,
+      `https://www.okou.ai/desktop-auth/consume?code=${code}`,
     );
     expect(
       buildDesktopAuthConsumeUrl(
@@ -636,22 +636,22 @@ describe("desktop auth", () => {
         "550e8400-e29b-41d4-a716-446655440000",
       ),
     ).toBe(
-      `https://www.vm0.ai/desktop-auth/consume?code=${code}&handoffId=550e8400-e29b-41d4-a716-446655440000`,
+      `https://www.okou.ai/desktop-auth/consume?code=${code}&handoffId=550e8400-e29b-41d4-a716-446655440000`,
     );
   });
 
   it("builds the Electron web-session organization selection URL", () => {
     expect(buildDesktopAuthSelectOrgUrl(webUrl)).toBe(
-      "https://www.vm0.ai/desktop-auth/select-org",
+      "https://www.okou.ai/desktop-auth/select-org",
     );
     expect(buildDesktopAuthSelectOrgUrl(webUrl, true)).toBe(
-      "https://www.vm0.ai/desktop-auth/select-org?force=true",
+      "https://www.okou.ai/desktop-auth/select-org?force=true",
     );
   });
 
   it("builds the Electron web-session token refresh URL", () => {
     expect(buildDesktopAuthTokenUrl(webUrl)).toBe(
-      "https://www.vm0.ai/desktop-auth/token",
+      "https://www.okou.ai/desktop-auth/token",
     );
   });
 
@@ -664,7 +664,7 @@ describe("desktop auth", () => {
     ).toBe(true);
     expect(
       isDesktopAuthSelectOrgNavigation(
-        "https://www.vm0.ai/desktop-auth/select-org?force=true",
+        "https://www.okou.ai/desktop-auth/select-org?force=true",
         allowedOrigins,
       ),
     ).toBe(true);
@@ -678,17 +678,17 @@ describe("desktop auth", () => {
 
   it("detects desktop auth completion navigation after locale redirects", () => {
     expect(
-      isDesktopAuthCompletionNavigation("https://www.vm0.ai/", allowedOrigins),
+      isDesktopAuthCompletionNavigation("https://www.okou.ai/", allowedOrigins),
     ).toBe(true);
     expect(
       isDesktopAuthCompletionNavigation(
-        "https://www.vm0.ai/en",
+        "https://www.okou.ai/en",
         allowedOrigins,
       ),
     ).toBe(true);
     expect(
       isDesktopAuthCompletionNavigation(
-        "https://www.vm0.ai/desktop-auth/token",
+        "https://www.okou.ai/desktop-auth/token",
         allowedOrigins,
       ),
     ).toBe(false);
@@ -711,10 +711,10 @@ describe("desktop auth", () => {
 describe("computer use desktop runtime", () => {
   it("derives the API backend URL from platform URLs", () => {
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm0.ai"))).toBe(
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
     );
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.okou.ai"))).toBe(
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
     );
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm7.ai"))).toBe(
       "https://api.vm7.ai",
@@ -2591,7 +2591,7 @@ describe("explicit Desktop auth origin", () => {
     ["okou", "https://custom.example/path", "https://custom.example"],
     ["okou", "http://localhost:3002", "http://localhost:3002"],
     ["okou", "http://127.0.0.1:3002", "http://127.0.0.1:3002"],
-    ["zero", undefined, "https://www.vm0.ai"],
+    ["zero", undefined, "https://www.okou.ai"],
     ["zero", "https://staging-app.omby.ai", "https://staging-www.omby.ai"],
     ["zero", "https://pr-123-app.omby.ai", "https://pr-123-www.omby.ai"],
     ["zero", "https://app.vm7.ai:8443", "https://www.vm7.ai:8443"],
@@ -2624,9 +2624,9 @@ describe("explicit Desktop auth origin", () => {
   it("keeps production API, Marketing and update identity independent from App auth", () => {
     const config = resolveDesktopConfig(undefined, "okou");
     expect(resolveComputerUseApiBaseUrl(config.platformUrl)).toBe(
-      "https://api.vm0.ai",
+      "https://api.okou.ai",
     );
-    expect(config.webUrl.origin).toBe("https://www.vm0.ai");
+    expect(config.webUrl.origin).toBe("https://www.okou.ai");
     expect(config.identity.authScheme).toBe("ai.okou.desktop");
     expect(config.identity.updateLine).toBe("ai-okou-desktop");
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");

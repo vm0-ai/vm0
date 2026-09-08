@@ -7,7 +7,6 @@ import {
   isConnectorDirectOkouOauthCallbackReady,
 } from "@okouai/connectors/app-oauth-callback";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import type {
   ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
@@ -57,7 +56,7 @@ export function getConnectorOAuthCallbackUrlForMethod(args: {
     const callbackAppUrl =
       args.publicBrand === "okou" &&
       isConnectorDirectOkouOauthCallbackReady(args.connectorSlug)
-        ? appUrlForPublicBrand(configuredAppUrl, "okou")
+        ? configuredAppUrl
         : configuredAppUrl;
     return new URL(
       `/connectors/${encodeURIComponent(args.connectorSlug)}/callback`,

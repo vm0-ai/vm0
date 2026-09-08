@@ -43,7 +43,7 @@ function browser(status: "active" | "suspended" = "active") {
     threadId: THREAD_ID,
     name: "booking",
     status,
-    viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
+    viewerUrl: `https://app.okou.ai/browsers/${THREAD_ID}`,
     liveUrl:
       status === "active"
         ? "https://live.browser-use.com/?wss=secret-live-token"
@@ -137,7 +137,7 @@ describe("okou browser command", () => {
     );
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).toContain(
-      `[Open live browser](https://app.vm0.ai/browsers/${THREAD_ID})`,
+      `[Open live browser](https://app.okou.ai/browsers/${THREAD_ID})`,
     );
     expect(output).not.toContain(CDP_URL);
   });
@@ -232,7 +232,7 @@ describe("okou browser command", () => {
     expect(parsedOutput).toMatchObject({
       browser: {
         threadId: THREAD_ID,
-        viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
+        viewerUrl: `https://app.okou.ai/browsers/${THREAD_ID}`,
       },
       agentBrowserSession: "okou-browser",
     });

@@ -16,7 +16,7 @@ import { createDesktopComputerUseHostRuntime } from "./desktop-computer-use-api"
 import type { ComputerUseHostRuntime } from "./computer-use-host";
 import type { ComputerUsePermissionState } from "./computer-use-types";
 
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const startUrl = `${api}/api/computer-use/hosts/start`;
 const permissions = { accessibility: true, screenRecording: true };
 const server = setupServer();
@@ -249,7 +249,7 @@ describe("production Okou Computer Use session wiring", () => {
     const desktop = createDesktop();
     desktop.replies.push(Promise.resolve("app-token"));
     const runtime = desktop.createRuntime({
-      platformUrl: new URL("https://api.vm0.ai:444"),
+      platformUrl: new URL("https://api.okou.ai:444"),
     });
     await runtime.start();
     expect(runtime.getState()).toMatchObject({
@@ -393,7 +393,7 @@ describe("production Zero Computer Use session wiring", () => {
         "__session=legacy-user",
       ]);
       expect(desktop.windows.map((window) => window.url)).toEqual(
-        Array(initial ? 2 : 1).fill("https://www.vm0.ai/desktop-auth/token"),
+        Array(initial ? 2 : 1).fill("https://www.okou.ai/desktop-auth/token"),
       );
       expect(desktop.cookieReads).toEqual([
         "https://app.vm0.ai/",

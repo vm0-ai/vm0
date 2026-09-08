@@ -17,10 +17,6 @@ import {
   verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@okouai/connectors/auth-providers";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
 
 import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
@@ -230,28 +226,8 @@ function missingStateRedirectResponse(
   );
 }
 
-function callbackOriginForStoredState(
-  origin: string,
-  state: Pick<StoredBuiltinOAuthState, "publicBrand" | "redirectUri">,
-): string {
-  if (state.publicBrand === "okou") {
-    return new URL(appUrlForPublicBrand(env("APP_URL"), "okou")).origin;
-  }
-  const configuredAppOrigin = new URL(env("APP_URL")).origin;
-  const redirectOrigin = new URL(state.redirectUri).origin;
-  const configuredApiUrl = env("OKOU_API_BACKEND_URL");
-  if (
-    configuredApiUrl &&
-    redirectOrigin ===
-      new URL(apiUrlForPublicBrand(configuredApiUrl, "vm0")).origin
-  ) {
-    return configuredAppOrigin;
-  }
-  if (redirectOrigin !== configuredAppOrigin) {
-    return origin;
-  }
-  return new URL(appUrlForPublicBrand(env("APP_URL"), state.publicBrand))
-    .origin;
+function appCallbackOrigin(): string {
+  return new URL(env("APP_URL")).origin;
 }
 
 async function exchangeTokenForConnector(args: {
@@ -414,7 +390,7 @@ async function rejectInvalidStoredOAuthStateForCallback(
   if (status.kind === "usable") {
     return {
       ok: true,
-      origin: callbackOriginForStoredState(args.origin, status),
+      origin: appCallbackOrigin(),
     };
   }
 
@@ -898,10 +874,7 @@ const handleOpenIdConnectorCallback$ = command(
     if (!claimedState.ok) {
       return claimedState.response;
     }
-    const callbackOrigin = callbackOriginForStoredState(
-      args.origin,
-      claimedState.storedState,
-    );
+    const callbackOrigin = appCallbackOrigin();
 
     const resolver = await get(
       connectorActionResolverForSnapshot(args.snapshot),
@@ -1056,10 +1029,7 @@ async function authCodeProviderErrorResponse(
     if (!claimedState.ok) {
       return claimedState.response;
     }
-    callbackOrigin = callbackOriginForStoredState(
-      args.origin,
-      claimedState.storedState,
-    );
+    callbackOrigin = appCallbackOrigin();
   }
   return redirectWithError(
     callbackOrigin,
@@ -1148,10 +1118,7 @@ const handleAuthCodeConnectorCallback$ = command(
     if (!claimedState.ok) {
       return claimedState.response;
     }
-    const callbackOrigin = callbackOriginForStoredState(
-      args.origin,
-      claimedState.storedState,
-    );
+    const callbackOrigin = appCallbackOrigin();
 
     const resolver = await get(
       connectorActionResolverForSnapshot(args.snapshot),

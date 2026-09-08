@@ -2,7 +2,10 @@ import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
+} from "@okouai/core/public-brand";
 import { command, computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -14,7 +17,7 @@ import { now } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
@@ -215,8 +218,7 @@ const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
 
 const getLinkStatus$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const requestPublicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const requestPublicBrand = PUBLIC_BRAND;
 
   const config = getAgentPhoneConfig();
   const [link] = await get(db$)
@@ -308,7 +310,7 @@ const sendAgentPhoneVerificationText$ = command(
             {
               config: params.config,
               toNumber: params.phoneHandle,
-              body: `Confirm this phone number for ${publicBrandPresentation(params.publicBrand).brandName}: ${params.connectUrl}`,
+              body: `Confirm this phone number for ${PUBLIC_BRAND_PRESENTATION.brandName}: ${params.connectUrl}`,
             },
             signal,
           ),
@@ -348,8 +350,7 @@ const sendAgentPhoneVerificationText$ = command(
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -467,7 +468,7 @@ const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 function connectConflict(reason: LinkConflictReason, publicBrand: PublicBrand) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const message =
     reason === "phone-handle-linked"
       ? `This phone number is already connected to another ${brandName} account or organization. Disconnect it first.`
@@ -483,8 +484,7 @@ type LinkConflictReason = "phone-handle-linked" | "vm0-org-linked" | "conflict";
 const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand =
-      auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const bodyResult = await get(connectBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -537,7 +537,7 @@ const connectAgentPhone$ = command(
         {
           agentphoneAgentId: body.agentphoneAgentId,
           toNumber: phoneHandle,
-          body: `Your phone number is now connected to ${publicBrandPresentation(flowPublicBrand).brandName}.
+          body: `Your phone number is now connected to ${PUBLIC_BRAND_PRESENTATION.brandName}.
 
 You can text this number like a teammate and it will actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
 
@@ -885,7 +885,7 @@ function shouldDispatchAgentPhoneEvent(event: AgentPhoneMessageEvent): boolean {
 
 const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   const apiStartTime = now();
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const config = agentPhoneWebhookConfig();
   if (!config) {
     return textResponse("Not Found", 404);

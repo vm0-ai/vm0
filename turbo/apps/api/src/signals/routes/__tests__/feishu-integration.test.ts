@@ -102,7 +102,7 @@ const runsApi = createRunsApi(context);
 const storagesApi = createStoragesBddApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
-const FEISHU_CALLBACK_ORIGIN = "https://api.vm0.ai";
+const FEISHU_CALLBACK_ORIGIN = "https://api.okou.ai";
 const ENCRYPT_KEY = "feishu-test-encrypt-key";
 const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
@@ -539,7 +539,7 @@ function feishuCallbackUrlForBrand(
   publicBrand: PublicBrand,
 ): string {
   const branded = new URL(callbackUrl);
-  branded.hostname = publicBrand === "okou" ? "api.okou.ai" : "api.vm0.ai";
+  branded.hostname = publicBrand === "okou" ? "api.okou.ai" : "api.okou.ai";
   return branded.toString();
 }
 
@@ -926,7 +926,7 @@ describe("Feishu integration", () => {
   ): Promise<FeishuRunFixture> {
     const publicBrand = options.publicBrand ?? "vm0";
     if (publicBrand === "okou") {
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
     }
     const appId = `cli_${randomUUID()}`;
     const actor = authOrgApi.user({
@@ -2379,7 +2379,7 @@ describe("Feishu integration", () => {
     const [vm0EncodedState] = vm0SignedState.split(".");
     expect(
       JSON.parse(Buffer.from(vm0EncodedState ?? "", "base64url").toString()),
-    ).toMatchObject({ publicBrand: "vm0" });
+    ).toMatchObject({ publicBrand: "okou" });
     expect(new URL(connectUrl).origin).toBe("https://api.vm0.test");
 
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -2614,8 +2614,8 @@ describe("Feishu integration", () => {
   it.each([
     {
       publicBrand: "vm0" as const,
-      appOrigin: "https://app.vm0.ai",
-      apiOrigin: "https://api.vm0.ai",
+      appOrigin: "https://app.okou.ai",
+      apiOrigin: "https://api.okou.ai",
       connectorStatePattern: /^[0-9a-f]{64}$/u,
     },
     {
@@ -2627,10 +2627,10 @@ describe("Feishu integration", () => {
   ])(
     "projects $publicBrand Feishu OAuth URLs from production VM0 baselines",
     async ({ publicBrand, appOrigin, apiOrigin, connectorStatePattern }) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("FEISHU_CALLBACK_BASE_URL", "https://api.vm0.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("FEISHU_CALLBACK_BASE_URL", "https://api.okou.ai");
 
       const fixture = await setupFeishuRunFixture({ publicBrand });
       expect(new URL(fixture.callbackUrl).origin).toBe(apiOrigin);
@@ -2734,10 +2734,10 @@ describe("Feishu integration", () => {
   );
 
   it("uses the persisted installation brand for Feishu message-link OAuth", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("FEISHU_CALLBACK_BASE_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("FEISHU_CALLBACK_BASE_URL", "https://api.okou.ai");
 
     const fixture = await setupFeishuRunFixture({ publicBrand: "okou" });
     mocks.clerk.session(
@@ -2771,7 +2771,7 @@ describe("Feishu integration", () => {
       headers: {
         "content-type": "application/json",
         cookie: "__session=opaque",
-        origin: "https://app.vm0.ai",
+        origin: "https://app.okou.ai",
       },
       body: JSON.stringify(feishuConnectBody(connectUrl)),
     });
@@ -3000,7 +3000,7 @@ describe("Feishu integration", () => {
   });
 
   it("derives product branding from the webhook Host without renaming the provider bot", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     server.use(
       http.get("https://open.feishu.cn/open-apis/bot/v3/info", () => {
         return HttpResponse.json({

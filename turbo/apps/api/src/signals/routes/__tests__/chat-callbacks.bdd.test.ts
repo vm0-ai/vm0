@@ -4719,18 +4719,18 @@ describe("CHAT-02: drain-time admission failure", () => {
       publicBrand: "okou",
       anchorBrand: "vm0",
       expectedUrl: "https://app.okou.ai/?settings=billing&billingView=credits",
-      otherOrigin: "https://app.vm0.ai",
+      otherOrigin: "https://app.okou.ai",
     },
     {
       publicBrand: "vm0",
       anchorBrand: "okou",
-      expectedUrl: "https://app.vm0.ai/?settings=billing&billingView=credits",
+      expectedUrl: "https://app.okou.ai/?settings=billing&billingView=credits",
       otherOrigin: "https://app.okou.ai",
     },
   ] as const)(
     "terminalizes a queued $publicBrand Web message when credits are lost before drain",
     async ({ publicBrand, anchorBrand, expectedUrl, otherOrigin }) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       if (!actor.orgId) {
         throw new Error("Expected an org-scoped Web chat actor");
@@ -5306,7 +5306,7 @@ describe("CHAT-02: failed chat callbacks", () => {
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
@@ -5398,7 +5398,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5408,7 +5408,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         configureProvider: configureClaudeCodeSubscriptionProvider,
       }),
     ).resolves.toBe(
-      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5425,7 +5425,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         removeCallbackPublicBrand: true,
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: https://app.okou.ai/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -5433,7 +5433,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "member",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.vm0.ai/?settings=model",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: https://app.okou.ai/?settings=model",
     );
   }, 90_000);
 });

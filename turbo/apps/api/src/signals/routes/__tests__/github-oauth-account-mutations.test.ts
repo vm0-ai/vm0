@@ -58,9 +58,9 @@ async function connectGithubAdd(
 
 describe("GitHub OAuth account mutation selection", () => {
   it("persists the setup brand for state-less GitHub App updates", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     await installApiTestConnectorCatalog();
 
     const okouActor = bdd.user();
@@ -102,7 +102,7 @@ describe("GitHub OAuth account mutation selection", () => {
     });
     expect(vm0Ingress.status).toBe(307);
     const vm0Replay = new URL(vm0Ingress.location ?? "");
-    expect(vm0Replay.origin).toBe("https://api.vm0.ai");
+    expect(vm0Replay.origin).toBe("https://api.okou.ai");
     expect(vm0Replay.pathname).toBe("/api/github/app/setup/callback");
     expect(vm0Replay.search.slice(1)).toBe(vm0UpdateQuery);
 
@@ -111,7 +111,9 @@ describe("GitHub OAuth account mutation selection", () => {
       { origin: vm0Replay.origin },
     );
     expect(vm0Update.status).toBe(307);
-    expect(new URL(vm0Update.location ?? "").origin).toBe("https://app.vm0.ai");
+    expect(new URL(vm0Update.location ?? "").origin).toBe(
+      "https://app.okou.ai",
+    );
   });
 
   it("adds a new identity and refreshes the exact existing sibling", async () => {

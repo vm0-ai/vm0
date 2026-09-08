@@ -47,7 +47,8 @@ const mocks = createRouteMocks(context);
 const runs = createRunsApi(context);
 const workflows = createWorkflowsBddApi(context);
 
-const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/google-workspace-events";
+const PUSH_AUDIENCE =
+  "https://api.okou.ai/api/webhooks/google-workspace-events";
 const PUSH_SERVICE_ACCOUNT =
   "google-workspace-events-push@vm0-ai-488909.iam.gserviceaccount.com";
 const OIDC_CERT_KID = "google-workspace-events-test-key";
@@ -203,7 +204,7 @@ function configureGoogleMeetBoundaries(
     reactivateCalls: 0,
   };
 
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", recorder.runnerGroup);

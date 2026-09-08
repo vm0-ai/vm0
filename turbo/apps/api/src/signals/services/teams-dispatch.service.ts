@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 import { v5 as uuidv5 } from "uuid";
 import {
   getBuiltInVisibleModels,
@@ -116,7 +116,7 @@ function teamsIdentity(
   readonly brandName: "VM0" | "Okou";
   readonly botName: string;
 } {
-  const presentation = publicBrandPresentation(publicBrand);
+  const presentation = PUBLIC_BRAND_PRESENTATION;
   return {
     ...presentation,
     botName: teamsBotDisplayName(installation?.botName),

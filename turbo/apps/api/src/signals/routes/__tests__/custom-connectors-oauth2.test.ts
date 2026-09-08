@@ -86,8 +86,8 @@ describe("Custom connector OAuth public-brand callbacks", () => {
   it.each([
     {
       publicBrand: "vm0",
-      apiOrigin: "https://api.vm0.ai",
-      appOrigin: "https://app.vm0.ai",
+      apiOrigin: "https://api.okou.ai",
+      appOrigin: "https://app.okou.ai",
       statePattern: /^[0-9a-f]{64}$/u,
     },
     {
@@ -99,7 +99,7 @@ describe("Custom connector OAuth public-brand callbacks", () => {
   ] as const)(
     "uses the $publicBrand App callback for authorization and token exchange",
     async ({ apiOrigin, appOrigin, statePattern }) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockCustomConnectorOAuth2Provider(context, {
         initialScope: "read",
       });
@@ -143,13 +143,13 @@ describe("Custom connector OAuth public-brand callbacks", () => {
   );
 
   it("does not derive the provider callback from an untrusted API host", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialScope: "read",
     });
     const actor = createBddApi(context).user({ orgRole: "org:admin" });
     const connector = await createCustomOAuthConnector(actor, provider);
-    const callbackUri = "https://app.vm0.ai/connectors/custom/callback";
+    const callbackUri = "https://app.okou.ai/connectors/custom/callback";
 
     const authorizationUrl = new URL(
       await connectors.startCustomConnectorOAuth2AtBaseUrl(
@@ -173,7 +173,7 @@ describe("Custom connector OAuth public-brand callbacks", () => {
   });
 
   it("completes a canonical custom OAuth state callback", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialScope: "read",
     });
@@ -211,14 +211,14 @@ describe("Custom connector OAuth public-brand callbacks", () => {
   });
 
   it("replays a pre-brand-fix Okou callback and uses Okou on reconnect", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialScope: "read",
     });
     const actor = createBddApi(context).user({ orgRole: "org:admin" });
     await connectors.updateFeatureSwitches(actor, {});
     const connector = await createCustomOAuthConnector(actor, provider);
-    const legacyRedirectUri = "https://app.vm0.ai/connectors/custom/callback";
+    const legacyRedirectUri = "https://app.okou.ai/connectors/custom/callback";
     const state = `okou.${randomBytes(32).toString("hex")}`;
 
     // Reproduce an Okou authorization started before the branded callback fix.

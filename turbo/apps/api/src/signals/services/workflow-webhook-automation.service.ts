@@ -4,7 +4,6 @@ import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { WebhookReceivedEventConfig } from "@okouai/api-contracts/contracts/workflows";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   workflowUserAutomationThreads,
   workflowAutomations,
@@ -73,7 +72,7 @@ function workflowWebhookUrlForToken(
   token: string,
   publicBrand: PublicBrand,
 ): string {
-  const baseUrl = apiUrlForPublicBrand(webUrl(), publicBrand);
+  const baseUrl = webUrl();
   return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
   )}`;

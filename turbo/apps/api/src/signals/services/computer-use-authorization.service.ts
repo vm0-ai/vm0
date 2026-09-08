@@ -7,7 +7,6 @@ import type {
   ComputerUseHostListResponse,
 } from "@okouai/api-contracts/contracts/computer-use";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import {
@@ -100,7 +99,7 @@ function authorizationUrl(
   requestToken: string,
   publicBrand: PublicBrand,
 ): string {
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}/computer-use/authorize/${encodeURIComponent(
+  return `${env("APP_URL")}/computer-use/authorize/${encodeURIComponent(
     requestToken,
   )}`;
 }

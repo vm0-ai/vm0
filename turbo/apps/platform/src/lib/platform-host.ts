@@ -1,4 +1,3 @@
-import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
 import {
   isOkouProductionHostname,
   okouAppWorkerPreviewJobRef,
@@ -126,10 +125,7 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const { environment } = clientTelemetryConfig;
   // Only okou.ai serves the app, so every page renders the Okou brand.
   const publicBrand: PlatformPublicBrand = "okou";
-  const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
-    "https://static.vm0.io",
-    publicBrand,
-  );
+  const publicStaticAssetsBaseUrl = "https://static.okou.io";
 
   if (environment === "production") {
     return {

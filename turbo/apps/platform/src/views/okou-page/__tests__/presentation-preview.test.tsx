@@ -13,7 +13,7 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000071";
 const PRESENTATION_URL =
-  "https://static.vm0.io/vm0/artifact-templates/presentation/daf7c2d1-5195-4c09-ad4b-8d85778fc104/playful-launch-presentation.html";
+  "https://static.okou.io/vm0/artifact-templates/presentation/daf7c2d1-5195-4c09-ad4b-8d85778fc104/playful-launch-presentation.html";
 const TEMPLATE_NAME = "Sunburst playroom";
 const PREVIEW_TITLE = `${TEMPLATE_NAME} HTML preview`;
 

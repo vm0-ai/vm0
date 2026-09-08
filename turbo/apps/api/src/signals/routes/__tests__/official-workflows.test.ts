@@ -116,7 +116,7 @@ const GMAIL_TOPIC_NAME =
 const GOOGLE_FORMS_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-google-forms-events";
 const GOOGLE_FORMS_PUSH_AUDIENCE =
-  "https://api.vm0.ai/api/webhooks/google-forms";
+  "https://api.okou.ai/api/webhooks/google-forms";
 const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
@@ -404,7 +404,7 @@ function configureOfficialGoogleMeetMock() {
   const externalId = `official-google-meet-user-${testId}`;
   const topicName = `projects/vm0-ai-488909/topics/official-google-meet-${testId}`;
   const recorder = { createCalls: 0 };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -498,7 +498,7 @@ function configureOfficialGoogleMeetMultiAccountMock(
     createAccessTokens: [] as string[],
     deleteAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -661,7 +661,7 @@ function configureOfficialCalendarWatchMock() {
     watchAccessTokens: [] as string[],
     stopAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
@@ -1492,8 +1492,8 @@ async function connectStripeOAuthForOfficialWorkflow(
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
   const emailId = `email_${actor.userId}`;
-  mockEnv("APP_URL", "https://app.vm0.ai");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   context.mocks.clerk.users.getUserList.mockResolvedValue({
     data: [
@@ -7511,7 +7511,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-producers-${suffix}`;
     await syncCatalog(
@@ -8271,7 +8271,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("creates no Run-family rows for unresolved explicit, schedule, once, or webhook admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-unresolved-producers-${suffix}`;
     await syncCatalog(

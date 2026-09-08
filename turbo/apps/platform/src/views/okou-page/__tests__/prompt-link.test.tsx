@@ -216,7 +216,7 @@ test("A prompt link starts a presentation chat with its selected template", asyn
         templateId: "template:html-ppt-playful-launch",
         colorSystemId: "color-system:carnival",
         previewUrl:
-          "https://static.vm0.io/vm0/artifact-templates/presentation/daf7c2d1-5195-4c09-ad4b-8d85778fc104/playful-launch-presentation.html",
+          "https://static.okou.io/vm0/artifact-templates/presentation/daf7c2d1-5195-4c09-ad4b-8d85778fc104/playful-launch-presentation.html",
       },
     },
   });

@@ -34,7 +34,7 @@ export function prepareConnectorOpenIdAuthStartWithMethod(args: {
   if (args.method.grant.kind !== "openid-auth") {
     throw new Error("OpenID auth method required");
   }
-  const state = generateConnectorOAuthState(args.publicBrand);
+  const state = generateConnectorOAuthState();
   const returnTo = new URL(
     `/api/connectors/${args.connectorSlug}/callback`,
     args.origin,

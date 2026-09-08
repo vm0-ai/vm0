@@ -39,7 +39,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
             return [{ name: "app_session", value: "app-cookie" }];
           }
           if (
-            filter.url === "https://api.vm0.ai/api/computer-use/hosts/start"
+            filter.url === "https://api.okou.ai/api/computer-use/hosts/start"
           ) {
             return [{ name: "api_session", value: "api-cookie" }];
           }
@@ -68,7 +68,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
         return "desktop-token";
       },
     });
-    await sessionFetch("https://api.vm0.ai/api/computer-use/hosts/start", {
+    await sessionFetch("https://api.okou.ai/api/computer-use/hosts/start", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -81,7 +81,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
 
     expect(cookieUrls).toStrictEqual([
       "https://app.vm0.ai/",
-      "https://api.vm0.ai/api/computer-use/hosts/start",
+      "https://api.okou.ai/api/computer-use/hosts/start",
     ]);
     const call = fetchMock.mock.calls[0];
     if (!call) {
@@ -142,7 +142,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
       },
       getAuthToken: refreshAuthToken,
     });
-    await sessionFetch("https://api.vm0.ai/api/auth/me");
+    await sessionFetch("https://api.okou.ai/api/auth/me");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(refreshAuthToken).toHaveBeenCalledOnce();
@@ -200,7 +200,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
       getCachedAuthToken: () => null,
       getAuthToken: refreshAuthToken,
     });
-    await sessionFetch("https://api.vm0.ai/api/auth/me");
+    await sessionFetch("https://api.okou.ai/api/auth/me");
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(refreshAuthToken).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
       getCachedAuthToken: () => null,
       getAuthToken: () => null,
     });
-    const response = await sessionFetch("https://api.vm0.ai/api/auth/me");
+    const response = await sessionFetch("https://api.okou.ai/api/auth/me");
 
     expect(response.status).toBe(401);
     expect(fetchMock).toHaveBeenCalledOnce();

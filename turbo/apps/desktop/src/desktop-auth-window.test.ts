@@ -117,7 +117,7 @@ function setup(timeoutMs = 30_000, product: "okou" | "zero" = "zero") {
   });
   const session = new DesktopAuthSession({
     product,
-    apiBaseUrl: "https://api.vm0.ai",
+    apiBaseUrl: "https://api.okou.ai",
     cookieUrls: [],
     cookieSource: { cookies: { get: async () => [] } },
     addClientHeaders: () => {},
@@ -219,8 +219,8 @@ describe("Desktop authentication IPC and document lifecycle", () => {
 
   it.each([
     rendererUrl,
-    "https://www.vm0.ai/desktop-auth/token",
-    "https://api.vm0.ai/desktop-auth/token",
+    "https://www.okou.ai/desktop-auth/token",
+    "https://api.okou.ai/desktop-auth/token",
     "https://evil.test/desktop-auth/token",
     `${origin}/desktop-auth/callback`,
     `${origin}/desktop-auth/consume`,
@@ -379,8 +379,8 @@ describe("Desktop authentication IPC and document lifecycle", () => {
     const { driver, external } = setup();
     const { pending, window } = run(driver);
     for (const url of [
-      "https://www.vm0.ai/desktop-auth/token",
-      "https://api.vm0.ai/desktop-auth/token",
+      "https://www.okou.ai/desktop-auth/token",
+      "https://api.okou.ai/desktop-auth/token",
       "https://app.okou.ai.evil.test/desktop-auth/token",
     ]) {
       for (const event of ["will-navigate", "will-redirect"]) {
@@ -493,7 +493,7 @@ describe("Desktop authentication IPC and document lifecycle", () => {
   it("validates an App bearer after real IPC and full document completion", async () => {
     const requests: string[] = [];
     const server = setupServer(
-      http.get("https://api.vm0.ai/api/auth/me", ({ request }) => {
+      http.get("https://api.okou.ai/api/auth/me", ({ request }) => {
         requests.push(`me:${request.headers.get("authorization")}`);
         expect(request.headers.get("cookie")).toBeNull();
         return HttpResponse.json({
@@ -502,7 +502,7 @@ describe("Desktop authentication IPC and document lifecycle", () => {
           orgId: "app-org",
         });
       }),
-      http.get("https://api.vm0.ai/api/org", ({ request }) => {
+      http.get("https://api.okou.ai/api/org", ({ request }) => {
         requests.push(`org:${request.headers.get("authorization")}`);
         return HttpResponse.json({ id: "app-org", name: "App" });
       }),

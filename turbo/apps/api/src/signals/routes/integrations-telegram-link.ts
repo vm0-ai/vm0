@@ -5,7 +5,10 @@ import {
   integrationsTelegramContract,
 } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
+} from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -16,7 +19,6 @@ import type { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { bodyResultOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -115,11 +117,8 @@ function missingBotUsernameResponse(official: boolean) {
   );
 }
 
-function linkConflictResponse(
-  reason: LinkTelegramUserConflictReason,
-  publicBrand: PublicBrand,
-) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const message =
     reason === "telegram-user-linked"
       ? `This Telegram account is already connected to another ${brandName} account for this bot. Disconnect it before connecting a different account.`
@@ -135,7 +134,7 @@ function officialLinkConflictResponse(
   publicBrand: PublicBrand,
   botUsername: string,
 ) {
-  const brandName = publicBrandPresentation(publicBrand).brandName;
+  const brandName = PUBLIC_BRAND_PRESENTATION.brandName;
   const botLabel = `official Telegram bot @${botUsername}`;
   const message =
     reason === "telegram-user-linked"
@@ -183,7 +182,7 @@ function sendConnectSuccessMessage(args: {
   readonly publicBrand: PublicBrand;
 }): void {
   const text = args.official
-    ? `✅ Account linked.\nSend me a message to start chatting with ${publicBrandPresentation(args.publicBrand).assistantName}.`
+    ? `✅ Account linked.\nSend me a message to start chatting with ${PUBLIC_BRAND_PRESENTATION.assistantName}.`
     : "✅ Account linked.\nSend me a message to start chatting with your agent.";
 
   waitUntil(
@@ -326,10 +325,7 @@ const linkOfficialInner$ = command(
     args: { readonly auth: OrganizationAuth; readonly body: TelegramLinkBody },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const config = getOfficialTelegramBotConfig();
     if (!config.botToken) {
       return errorResult(
@@ -452,10 +448,7 @@ const linkCustomWithTelegramAuth$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const telegramAuth = args.body.telegramAuth;
     if (!telegramAuth) {
       return missingAuthMethodResponse();
@@ -480,7 +473,7 @@ const linkCustomWithTelegramAuth$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return linkConflictResponse(result.reason, publicBrand);
+      return linkConflictResponse(result.reason);
     }
 
     return linkSuccessResponse(args.installation.botUsername, telegramUserId);
@@ -497,10 +490,7 @@ const linkCustomWithConnectSignature$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const publicBrand =
-      args.auth.tokenType === "agent"
-        ? args.auth.publicBrand
-        : get(publicBrand$);
+    const publicBrand = PUBLIC_BRAND;
     const connectSignature = args.body.connectSignature;
     if (!connectSignature) {
       return missingAuthMethodResponse();
@@ -533,7 +523,7 @@ const linkCustomWithConnectSignature$ = command(
     signal.throwIfAborted();
 
     if (!result.ok) {
-      return linkConflictResponse(result.reason, publicBrand);
+      return linkConflictResponse(result.reason);
     }
 
     sendConnectSuccessMessage({

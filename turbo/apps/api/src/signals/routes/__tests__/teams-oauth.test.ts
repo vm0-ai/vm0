@@ -23,11 +23,11 @@ import { teamsConnectRoutes } from "../teams-connect";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const store = createStore();
-const API_ORIGIN = "https://api.vm0.ai";
+const API_ORIGIN = "https://api.okou.ai";
 const CALLBACK_REDIRECT_URI = `${API_ORIGIN}/api/integrations/teams/oauth/callback`;
 const OKOU_API_ORIGIN = "https://api.okou.ai";
 const OKOU_APP_ORIGIN = "https://app.okou.ai";
-const WEB_ORIGIN = "https://www.vm0.ai";
+const WEB_ORIGIN = "https://www.okou.ai";
 const APP_ORIGIN = "https://app.vm0.test";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
@@ -225,11 +225,11 @@ describe("Teams OAuth API routes", () => {
       readonly redirectUri: string;
     };
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.vm0.ai/api/integrations/teams/oauth/callback",
+      "https://api.okou.ai/api/integrations/teams/oauth/callback",
     );
     expect(state).toMatchObject({
       publicBrand: "vm0",
-      redirectUri: "https://api.vm0.ai/api/integrations/teams/oauth/callback",
+      redirectUri: "https://api.okou.ai/api/integrations/teams/oauth/callback",
     });
   });
 
@@ -265,7 +265,7 @@ describe("Teams OAuth API routes", () => {
   ])(
     "rejects %s callback state using the trusted request brand",
     async (_caseName, stateQuery) => {
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
 
       const response = await appRequest(
         `/api/integrations/teams/oauth/callback?code=valid-code${stateQuery}`,
@@ -281,7 +281,7 @@ describe("Teams OAuth API routes", () => {
   );
 
   it("uses the trusted request brand for provider errors with malformed state", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
 
     const response = await appRequest(
       `/api/integrations/teams/oauth/callback?error=access_denied&state=${encodeURIComponent("not-json")}`,

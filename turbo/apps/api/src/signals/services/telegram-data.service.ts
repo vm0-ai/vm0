@@ -7,7 +7,6 @@ import type {
 } from "@okouai/api-contracts/contracts/integrations-telegram";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
@@ -327,7 +326,7 @@ function customTelegramBot(args: {
 }
 
 function telegramLoginOrigin(publicBrand: PublicBrand): string {
-  return new URL(appUrlForPublicBrand(env("APP_URL"), publicBrand)).origin;
+  return new URL(env("APP_URL")).origin;
 }
 
 function customTelegramBotStatus(args: {

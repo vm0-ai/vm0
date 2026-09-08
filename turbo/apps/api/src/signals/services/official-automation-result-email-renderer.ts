@@ -1,7 +1,7 @@
 import { convert } from "html-to-text";
 import MarkdownIt from "markdown-it";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import { safeSync, safeUrlParse } from "../utils";
 
@@ -219,7 +219,7 @@ function officialAutomationResultEmailHtml(
   resultBodyHtml: string,
   unsubscribeUrl: string,
 ): string {
-  const presentation = publicBrandPresentation(publicBrand);
+  const presentation = PUBLIC_BRAND_PRESENTATION;
   const assistantIdentity =
     publicBrand === "okou"
       ? `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`

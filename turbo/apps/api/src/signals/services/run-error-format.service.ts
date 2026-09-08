@@ -13,7 +13,6 @@ import {
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
@@ -48,12 +47,12 @@ interface FormatRunErrorLikeWebMessageParams {
 }
 
 function buildModelProvidersUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=model`;
 }
 
 function buildPersonalModelProvidersUrl(publicBrand: PublicBrand): string {
-  const appUrl = appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  const appUrl = env("APP_URL");
   return `${appUrl}/?settings=model`;
 }
 

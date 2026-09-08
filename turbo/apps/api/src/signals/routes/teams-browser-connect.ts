@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { teamsBrowserConnectContract } from "@okouai/api-contracts/contracts/teams-browser-connect";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { teamsOrgInstallations } from "@okouai/db/schema/teams-org-installation";
 import { eq } from "drizzle-orm";
 
@@ -9,7 +8,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { teamsBotDisplayName } from "../../lib/teams-official-app";
 import { requiredAuthContext$ } from "../auth/auth-context";
-import { publicBrand$, request$ } from "../context/hono";
+import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import {
@@ -17,6 +16,7 @@ import {
   publishTeamsChanged$,
 } from "../services/teams-connect.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("TeamsBrowserConnect");
 const REDIRECT_STATUS = 307;
@@ -29,9 +29,7 @@ function redirectResponse(url: string): Response {
 }
 
 function appRedirect(path: string, publicBrand: PublicBrand): Response {
-  return redirectResponse(
-    `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`,
-  );
+  return redirectResponse(`${env("APP_URL")}${path}`);
 }
 
 function teamsSettingsParams(
@@ -148,10 +146,7 @@ function signInRedirect(
   requestUrl: string,
   publicBrand: PublicBrand,
 ): Response {
-  const signInUrl = new URL(
-    "/sign-in",
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  );
+  const signInUrl = new URL("/sign-in", env("APP_URL"));
   signInUrl.searchParams.set("redirect_url", requestUrl);
   return redirectResponse(signInUrl.toString());
 }
@@ -201,7 +196,7 @@ function resolveBrowserConnectOrgId(args: {
 
 const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const auth = await set(requiredAuthContext$, {}, signal);
   signal.throwIfAborted();
 

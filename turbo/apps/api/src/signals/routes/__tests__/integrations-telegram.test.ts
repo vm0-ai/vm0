@@ -1358,7 +1358,7 @@ describe("POST /api/integrations/telegram/link", () => {
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
-          origin: "https://app.vm0.ai",
+          origin: "https://app.okou.ai",
         },
         body: JSON.stringify({
           telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,

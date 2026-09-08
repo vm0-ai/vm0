@@ -42,7 +42,7 @@ export function prepareConnectorAuthCodeStartWithMethod(args: {
   if (!authClient) {
     return { ok: false, reason: "auth_client_not_configured" };
   }
-  const state = generateConnectorOAuthState(args.publicBrand);
+  const state = generateConnectorOAuthState();
   return {
     ok: true,
     state,

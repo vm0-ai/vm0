@@ -1,10 +1,7 @@
 import webpush, { WebPushError } from "web-push";
 import { eq } from "drizzle-orm";
 import { pushSubscriptions } from "@okouai/db/schema/push-subscription";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -21,10 +18,10 @@ interface PushNotification {
 
 function notificationUrl(pathOrUrl: string, publicBrand: "vm0" | "okou") {
   if (/^https?:\/\//u.test(pathOrUrl)) {
-    return appUrlForPublicBrand(pathOrUrl, publicBrand);
+    return pathOrUrl;
   }
   const path = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
-  return `${appUrlForPublicBrand(env("APP_URL"), publicBrand)}${path}`;
+  return `${env("APP_URL")}${path}`;
 }
 
 /**
@@ -56,8 +53,7 @@ export async function sendUserPushNotifications(args: {
       const payload = JSON.stringify({
         ...args.notification,
         title:
-          args.notification.title ??
-          publicBrandPresentation(subscription.publicBrand).assistantName,
+          args.notification.title ?? PUBLIC_BRAND_PRESENTATION.assistantName,
         url: notificationUrl(args.notification.url, subscription.publicBrand),
       });
       const result = await settle(
@@ -72,7 +68,7 @@ export async function sendUserPushNotifications(args: {
           payload,
           {
             vapidDetails: {
-              subject: `mailto:${publicBrandPresentation(subscription.publicBrand).contactEmail}`,
+              subject: `mailto:${PUBLIC_BRAND_PRESENTATION.contactEmail}`,
               publicKey,
               privateKey,
             },

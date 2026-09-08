@@ -176,7 +176,7 @@ describe("ComputerUseHostRuntime", () => {
       throw new Error("Expected Computer Use host registration request");
     }
     const [url, init] = call;
-    expect(url).toBe("https://api.vm0.ai/api/computer-use/hosts/start");
+    expect(url).toBe("https://api.okou.ai/api/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
       installationId: INSTALLATION_ID,
@@ -242,7 +242,7 @@ describe("ComputerUseHostRuntime", () => {
       installationId: INSTALLATION_ID,
     });
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/hosts/start",
+      "https://api.okou.ai/api/computer-use/hosts/start",
     );
 
     await runtime.stop();
@@ -1444,7 +1444,7 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(hostFetch).toHaveBeenCalledOnce();
     expect(hostFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/heartbeat",
+      "https://api.okou.ai/api/computer-use/heartbeat",
     );
     expect(runtime.getState()).toMatchObject({
       status: "error",
@@ -1473,10 +1473,10 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(sessionFetch).toHaveBeenCalledTimes(2);
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/computer-use/hosts/start",
+      "https://api.okou.ai/api/computer-use/hosts/start",
     );
     expect(sessionFetch.mock.calls[1]?.[0]).toBe(
-      "https://api.vm0.ai/api/auth/me",
+      "https://api.okou.ai/api/auth/me",
     );
     expect(runtime.getState()).toMatchObject({
       status: "unauthenticated",

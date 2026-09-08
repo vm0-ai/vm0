@@ -4,14 +4,16 @@ import { feishuConnectContract } from "@okouai/api-contracts/contracts/feishu-co
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  PUBLIC_BRAND_PRESENTATION,
+  PUBLIC_BRAND,
+} from "@okouai/core/public-brand";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { InvalidFeishuCredentialsError } from "../external/feishu-client";
 import type { RouteEntry } from "../route-entry";
@@ -60,7 +62,7 @@ const feishuIntegrationEnabled$ = computed(async (get) => {
 
 function appIdInUse(publicBrand: PublicBrand) {
   return conflict(
-    `This Feishu App ID is already registered in ${publicBrandPresentation(publicBrand).brandName}`,
+    `This Feishu App ID is already registered in ${PUBLIC_BRAND_PRESENTATION.brandName}`,
   );
 }
 
@@ -73,7 +75,7 @@ const getStatus$ = computed(async (get) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
       isAdmin: auth.orgRole === "admin",
     }),
   );
@@ -85,8 +87,7 @@ const checkAppId$ = computed(async (get) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -106,8 +107,7 @@ const setup$ = command(async ({ get, set }, signal: AbortSignal) => {
     return feishuIntegrationDisabled;
   }
   const auth = get(organizationAuthContext$);
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   if (auth.orgRole !== "admin") {
     return adminRequired();
   }
@@ -181,7 +181,7 @@ const remove$ = command(async ({ get, set }, signal: AbortSignal) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
       isAdmin: true,
     }),
   );
@@ -243,7 +243,7 @@ const updateInstallation$ = command(
       feishuConnectStatus({
         orgId: auth.orgId,
         userId: auth.userId,
-        publicBrand: get(publicBrand$),
+        publicBrand: PUBLIC_BRAND,
         isAdmin: auth.orgRole === "admin",
         preferredInstallationId: params.installationId,
       }),
@@ -289,7 +289,7 @@ const disconnect$ = command(async ({ get, set }, signal: AbortSignal) => {
     feishuConnectStatus({
       orgId: auth.orgId,
       userId: auth.userId,
-      publicBrand: get(publicBrand$),
+      publicBrand: PUBLIC_BRAND,
       isAdmin: auth.orgRole === "admin",
     }),
   );

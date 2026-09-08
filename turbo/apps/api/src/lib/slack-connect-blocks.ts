@@ -1,5 +1,5 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import type {
   SlackAnyBlock,
@@ -25,7 +25,7 @@ interface AppHomeViewOptions {
 }
 
 function appHomeIntroBlocks(publicBrand: PublicBrand): SlackAnyBlock[] {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "header",
@@ -78,7 +78,7 @@ function disconnectedAppHomeBlocks(
 }
 
 function connectedStatusBlock(options: AppHomeViewOptions): SlackKnownBlock {
-  const { assistantName } = publicBrandPresentation(options.publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "section",
     text: {
@@ -149,7 +149,7 @@ function appHomeAgentBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
 
 function appHomeHelpBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
   const publicBrand = options.publicBrand;
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const botMention = officialSlackBotMention(options.botUserId);
   return [
     {
@@ -177,7 +177,7 @@ function appHomeHelpBlocks(options: AppHomeViewOptions): SlackAnyBlock[] {
 }
 
 function disconnectAccountBlock(publicBrand: PublicBrand): SlackKnownBlock {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return {
     type: "section",
     text: {

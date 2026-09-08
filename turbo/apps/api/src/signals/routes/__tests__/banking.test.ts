@@ -716,7 +716,7 @@ describe("banking access request lifecycle", () => {
   });
 
   it("uses branded Mastercard redirect origins without changing the webhook origin", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockEnv(
       "FINICITY_WEBHOOK_BASE_URL",
       "https://public-api-tunnel.example.test",
@@ -738,8 +738,8 @@ describe("banking access request lifecycle", () => {
     );
     const brandCases = [
       {
-        origin: "https://app.vm0.ai",
-        redirectUri: "https://app.vm0.ai/banking/connect/return",
+        origin: "https://app.okou.ai",
+        redirectUri: "https://app.okou.ai/banking/connect/return",
       },
       {
         origin: "https://app.okou.ai",
@@ -934,7 +934,7 @@ describe("banking access request lifecycle", () => {
 
   it.each([
     {
-      apiOrigin: "https://api.vm0.ai",
+      apiOrigin: "https://api.okou.ai",
       assistantName: "Zero",
       otherAssistantName: "Okou",
     },

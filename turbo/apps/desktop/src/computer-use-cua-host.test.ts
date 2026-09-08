@@ -105,7 +105,7 @@ async function desktop(
     },
   };
   const config = resolveDesktopConfig(undefined, "okou");
-  const api = "https://api.vm0.ai";
+  const api = "https://api.okou.ai";
   const cookies = { cookies: { get: async () => [] } };
   const addClientHeaders = createDesktopClientHeaderInjector({
     product: "okou",

@@ -321,7 +321,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("dispatches linked iMessage DMs, refreshes typing, and replies with plain-text completions", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
     const chat = createChatFilesBddApi(context);
@@ -734,7 +734,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("keeps the webhook brand when a queued AgentPhone launch fails", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const ap = createAgentPhoneBddApi(context);
     const integrations = createBddIntegrationApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
@@ -766,7 +766,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         return send.body ?? "";
       });
     expect(completionBodies).toContainEqual(
-      expect.stringContaining("https://app.vm0.ai/activities/"),
+      expect.stringContaining("https://app.okou.ai/activities/"),
     );
     expect(completionBodies).toContainEqual(
       expect.stringContaining("https://app.okou.ai/activities/"),
@@ -774,7 +774,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
   });
 
   it("deduplicates repeated provider messages and completion callbacks", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const ap = createAgentPhoneBddApi(context);
@@ -810,7 +810,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       `Audit: https://app.okou.ai/activities/${run.runId}`,
     );
     expect(lastSend(sends).body).not.toContain(
-      `https://app.vm0.ai/activities/${run.runId}`,
+      `https://app.okou.ai/activities/${run.runId}`,
     );
     const sendsAfterCompletion = sends.messages.length;
 

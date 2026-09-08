@@ -217,7 +217,7 @@ async function claimChatRun(
 async function setupBrowserScenario() {
   mockNow(STARTED_AT_MS);
   mockEnv("OKOU_BROWSER_USE_API_KEY", "test-browser-use-key");
-  mockEnv("APP_URL", "https://app.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
   server.use(
     http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, () => {
       return new HttpResponse(null, { status: 204 });
@@ -311,7 +311,7 @@ describe("okou browser route", () => {
 
     for (const [publicBrand, origin, assistantName] of [
       ["vm0", "https://app.okou.ai", "Zero"],
-      ["okou", "https://app.vm0.ai", "Okou"],
+      ["okou", "https://app.okou.ai", "Okou"],
     ] as const) {
       const rejected = await requestBrowserUse({
         ...browserHeadersForRun(runs, actor, randomUUID(), publicBrand),
@@ -453,7 +453,7 @@ describe("okou browser route", () => {
       [200],
     );
     expect(new URL(legacyCreated.body.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const vm0RunToken = runs.okouTokenForRunWithCapabilities(
       actor,
@@ -469,7 +469,7 @@ describe("okou browser route", () => {
       [200],
     );
     expect(new URL(vm0CreatedOnOkouApi.body.authorizationUrl).origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
     const okouRunToken = runs.okouTokenForRunWithCapabilities(
       actor,
@@ -678,7 +678,7 @@ describe("okou browser route", () => {
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
       status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${createdInOtherThread.body.browser.threadId}`,
+      viewerUrl: `https://app.okou.ai/browsers/${createdInOtherThread.body.browser.threadId}`,
       screen: {
         width: 1440,
         height: 900,

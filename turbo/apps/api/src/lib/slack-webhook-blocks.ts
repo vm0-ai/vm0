@@ -1,8 +1,5 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  appUrlForPublicBrand,
-  publicBrandPresentation,
-} from "@okouai/core/public-brand";
+import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
 
 import type {
   SlackAnyBlock,
@@ -53,11 +50,11 @@ interface AppHomeOptions {
 }
 
 function appUrl(publicBrand: PublicBrand): string {
-  return appUrlForPublicBrand(env("APP_URL"), publicBrand);
+  return env("APP_URL");
 }
 
 function buildAppHomeHeaderBlocks(publicBrand: PublicBrand): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "header",
@@ -78,7 +75,7 @@ function buildAppHomeHeaderBlocks(publicBrand: PublicBrand): SlackBlocks {
 }
 
 function buildAppHomeNotInstalledBlocks(publicBrand: PublicBrand): SlackBlocks {
-  const { brandName } = publicBrandPresentation(publicBrand);
+  const { brandName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "section",
@@ -128,7 +125,7 @@ function buildAppHomeDisconnectedBlocks(loginUrl?: string): SlackBlocks {
 }
 
 function buildAppHomeAccountBlock(options: AppHomeOptions): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(options.publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "section",
@@ -201,7 +198,7 @@ function buildAppHomeAgentBlocks(options: AppHomeOptions): SlackBlocks {
 
 function buildAppHomeUsageBlocks(options: AppHomeOptions): SlackBlocks {
   const publicBrand = options.publicBrand;
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const botMention = officialSlackBotMention(options.botUserId);
   return [
     {
@@ -300,7 +297,7 @@ export function buildLoginPromptMessage(
   loginUrl: string,
   publicBrand: PublicBrand,
 ): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "section",
@@ -332,7 +329,7 @@ export function buildHelpMessage(
     readonly botUserId?: string;
   },
 ): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   const botMention = opts?.botUserId
     ? officialSlackBotMention(opts.botUserId)
     : undefined;
@@ -565,7 +562,7 @@ export function buildLoginMessage(
   loginUrl: string,
   publicBrand: PublicBrand,
 ): SlackBlocks {
-  const { assistantName } = publicBrandPresentation(publicBrand);
+  const { assistantName } = PUBLIC_BRAND_PRESENTATION;
   return [
     {
       type: "section",

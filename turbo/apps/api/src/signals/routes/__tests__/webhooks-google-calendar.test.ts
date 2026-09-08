@@ -135,7 +135,7 @@ function configureGoogleCalendarApiMock(args: {
     incrementalCalls: 0,
   };
   let incrementalCallCount = 0;
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
@@ -153,7 +153,7 @@ function configureGoogleCalendarApiMock(args: {
         };
         expect(body).toMatchObject({
           type: "web_hook",
-          address: "https://api.vm0.ai/api/webhooks/google-calendar",
+          address: "https://api.okou.ai/api/webhooks/google-calendar",
           params: { ttl: "604800" },
         });
         if (!body.id || !body.token) {
@@ -240,7 +240,7 @@ function configureAccountAwareGoogleCalendarApiMock(args: {
     incrementalAccessTokens: [],
     stoppedAccessTokens: [],
   };
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",

@@ -420,7 +420,7 @@ async function requestRawSlackIngress(
   publicBrand: PublicBrand,
 ): Promise<SlackIngressResponse> {
   const origin =
-    publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai";
+    publicBrand === "okou" ? "https://api.okou.ai" : "https://api.okou.ai";
   const contentType = path.endsWith("/events")
     ? "application/json"
     : "application/x-www-form-urlencoded";
@@ -477,7 +477,7 @@ async function requestRawAgentPhoneWebhook(
     signal: context.signal,
     routes: TEST_APP_ROUTES,
   }).request(
-    `${publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai"}/api/agentphone/webhook`,
+    `${publicBrand === "okou" ? "https://api.okou.ai" : "https://api.okou.ai"}/api/agentphone/webhook`,
     {
       method: "POST",
       headers: {
@@ -665,7 +665,9 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         baseUrl:
-          publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+          publicBrand === "okou"
+            ? "https://api.okou.ai"
+            : "https://api.okou.ai",
         context,
         routes: githubOauthRoutes,
       })(githubOauthContract);
@@ -688,7 +690,9 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       const client = setupApp({
         baseUrl:
-          publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+          publicBrand === "okou"
+            ? "https://api.okou.ai"
+            : "https://api.okou.ai",
         context,
         routes: githubOauthRoutes,
       })(githubOauthContract);
@@ -712,7 +716,7 @@ export function createBddIntegrationApi(context: TestContext) {
       publicBrand: PublicBrand = "vm0",
       baseUrl = publicBrand === "okou"
         ? "https://api.okou.ai"
-        : "https://api.vm0.ai",
+        : "https://api.okou.ai",
     ) {
       const client = setupApp({
         baseUrl,

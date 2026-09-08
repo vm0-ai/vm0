@@ -2574,7 +2574,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       return callback.internalKind === "slack:chat";
     });
     expect(deliveryCallback).toMatchObject({
-      payload: { publicBrand: "vm0" },
+      payload: {},
     });
   });
 
@@ -4997,7 +4997,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
     expect(
       JSON.stringify(context.mocks.slack.views.publish.mock.calls),
-    ).toContain("https://app.vm0.ai/settings/slack");
+    ).toContain("https://app.okou.ai/settings/slack");
     mockEnv("APP_URL", "https://app.vm0.test");
     const disconnectedStatus = await integrations.requestSlackConnectStatus(
       actor,
@@ -5313,7 +5313,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     integrations.acceptSlackSessionHistoryDownloads();
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
@@ -5836,7 +5836,7 @@ describe("INT-02: Telegram integration", () => {
   });
 
   it("registers and manages a Telegram bot through API-visible state", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const telegramProviderBodies: unknown[] = [];
     server.use(
       telegramDomainProbe(),
@@ -6291,7 +6291,7 @@ describe("INT-02: Telegram integration", () => {
   });
 
   it("keeps Telegram Fast footers bound to the originating run", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -6594,9 +6594,9 @@ describe("INT-02: Telegram integration", () => {
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -6651,7 +6651,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       throw new Error("Expected app sign-in redirect");
     }
     const unauthenticatedUrl = new URL(unauthenticatedLocation);
-    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.ai");
+    expect(unauthenticatedUrl.origin).toBe("https://app.okou.ai");
     expect(unauthenticatedUrl.pathname).toBe("/sign-in");
     const redirectUrl = unauthenticatedUrl.searchParams.get("redirect_url");
     if (!redirectUrl) {
@@ -6661,17 +6661,17 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
 
     const untrustedOkouConnect = await integrations.requestGithubOauthConnect(
       null,
-      { publicBrand: "okou" },
+      {},
       [307],
     );
     const untrustedOkouUrl = new URL(
       untrustedOkouConnect.headers.get("location") ?? "",
     );
-    expect(untrustedOkouUrl.origin).toBe("https://app.vm0.ai");
+    expect(untrustedOkouUrl.origin).toBe("https://app.okou.ai");
 
     const trustedOkouConnect = await integrations.requestGithubOauthConnect(
       null,
-      { publicBrand: "vm0" },
+      {},
       [307],
       "okou",
     );
@@ -6747,9 +6747,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         });
       }),
     );
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
@@ -6773,7 +6773,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "bdd-github-client-id",
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://api.vm0.ai/api/connectors/github/callback",
+      "https://api.okou.ai/api/connectors/github/callback",
     );
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/u);
@@ -6789,18 +6789,18 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     const vm0Callback = await connectors.completeOauthCallback(
       "github",
       { code: "bdd-vm0-github-code", state },
-      { baseUrl: "https://api.vm0.ai" },
+      { baseUrl: "https://api.okou.ai" },
     );
     const vm0CallbackLocation = new URL(
       vm0Callback.headers.get("location") ?? "",
     );
-    expect(vm0CallbackLocation.origin).toBe("https://app.vm0.ai");
+    expect(vm0CallbackLocation.origin).toBe("https://app.okou.ai");
     expect(vm0CallbackLocation.searchParams.get("message")).toBeNull();
     expect(vm0CallbackLocation.pathname).toBe("/connector/success");
 
     const okouResponse = await integrations.requestGithubOauthConnect(
       actor,
-      { publicBrand: "vm0" },
+      {},
       [307],
       "okou",
     );
@@ -6826,15 +6826,15 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(okouCallbackLocation.origin).toBe("https://app.okou.ai");
     expect(okouCallbackLocation.pathname).toBe("/connector/success");
     expect(tokenRedirectUris).toStrictEqual([
-      "https://api.vm0.ai/api/connectors/github/callback",
+      "https://api.okou.ai/api/connectors/github/callback",
       "https://api.okou.ai/api/connectors/github/callback",
     ]);
   });
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     integrations.configureGithubAppInstallProvider();
 
@@ -6874,7 +6874,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(vm0State).toMatchObject({
       publicBrand: "vm0",
       publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
-      callbackRedirectUri: "https://api.vm0.ai/api/github/app/setup/callback",
+      callbackRedirectUri: "https://api.okou.ai/api/github/app/setup/callback",
       callbackRedirectUriSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
       sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
@@ -6907,7 +6907,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "okou",
     );
     const vm0ReplayUrl = new URL(vm0Ingress.headers.get("location") ?? "");
-    expect(vm0ReplayUrl.origin).toBe("https://api.vm0.ai");
+    expect(vm0ReplayUrl.origin).toBe("https://api.okou.ai");
     expect(vm0ReplayUrl.pathname).toBe("/api/github/app/setup/callback");
     expect(Object.fromEntries(vm0ReplayUrl.searchParams)).toStrictEqual({
       code: "exact-code",
@@ -6923,7 +6923,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       [307],
     );
     expect(new URL(vm0Error.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
 
     if (!isRecord(vm0State)) {
@@ -6944,7 +6944,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "okou",
     );
     expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
 
     const tamperedCallbackState = JSON.stringify({
@@ -6961,14 +6961,14 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "okou",
     );
     expect(new URL(tamperedCallback.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
+      "https://app.okou.ai",
     );
   });
 
   it("keeps GitHub app setup callback errors visible through redirects", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.clearGithubAppProvider();
     const unconfiguredSetup = await integrations.requestGithubAppSetupCallback(
       {},
@@ -7102,9 +7102,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
     integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
@@ -7282,7 +7282,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps AgentPhone start-link, unlink, and webhook boundaries visible through APIs", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const actor = integrations.user();
     integrations.clearAgentPhoneProvider();
 

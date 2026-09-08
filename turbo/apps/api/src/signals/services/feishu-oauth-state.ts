@@ -91,8 +91,7 @@ export function buildFeishuOAuthConnectUrl(args: {
   return feishuOAuthConnectUrl(
     createFeishuOAuthState({
       ...args,
-      redirectUri: feishuOAuthAppCallbackUrl(args.publicBrand),
+      redirectUri: feishuOAuthAppCallbackUrl(),
     }),
-    args.publicBrand,
   );
 }

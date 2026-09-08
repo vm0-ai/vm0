@@ -711,7 +711,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     );
     mocks.clerk.session(userId, orgId);
     const vm0DriveClient = setupApp({
-      baseUrl: "https://api.vm0.ai",
+      baseUrl: "https://api.okou.ai",
       context,
       routes: chatThreadsArtifactsSyncRoutes,
     })(chatThreadArtifactsContract);

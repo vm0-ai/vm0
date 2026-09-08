@@ -59,6 +59,7 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { onRejection } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 import {
   introVideoDisabled,
   introVideoEnabled$,
@@ -341,7 +342,7 @@ const postVoiceGenerateInner$ = command(
             orgId: auth.orgId,
             userId: auth.userId,
             runId: auth.runId,
-            publicBrand: auth.publicBrand,
+            publicBrand: PUBLIC_BRAND,
             pricing,
             options,
             speech,
@@ -460,7 +461,7 @@ const postGenerateInner$ = command(
         runId: auth.runId,
         request: builtInGenerationRequestWithInternal(
           introVideoPresenterRequestRecord(options),
-          { admissionId: admission?.id, publicBrand: auth.publicBrand },
+          { admissionId: admission?.id, publicBrand: PUBLIC_BRAND },
         ),
       },
       signal,

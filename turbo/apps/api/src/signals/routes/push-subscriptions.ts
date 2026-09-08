@@ -4,13 +4,13 @@ import { pushSubscriptionsContract } from "@okouai/api-contracts/contracts/push-
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
 import { registerPushSubscription$ } from "../services/push-subscriptions.service";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const registerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);
-  const publicBrand = get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
 
   const bodyResult = await get(
     bodyResultOf(pushSubscriptionsContract.register),

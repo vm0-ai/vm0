@@ -134,7 +134,7 @@ function toFeishuInstallationStatus(
     botName: installation.botName,
     botAvatarUrl: installation.botAvatarUrl,
     callbackUrl: feishuCallbackUrl(installation.id, installation.publicBrand),
-    oauthRedirectUrl: feishuOAuthAppCallbackUrl(installation.publicBrand),
+    oauthRedirectUrl: feishuOAuthAppCallbackUrl(),
     oauthScopes: [...FEISHU_OAUTH_SCOPES],
     connectUrl: installation.setupCompletedAt
       ? buildFeishuOAuthConnectUrl({
