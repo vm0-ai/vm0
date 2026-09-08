@@ -5594,6 +5594,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "Action requise — livraison suspendue",
         "addAction": "Ajouter une automatisation du calendrier",
         "addAria": "Ajouter une automatisation Google Calendar",
         "addDescriptionCancelled": "Exécuter ce workflow lorsqu'un événement Google Calendar est annulé.",
@@ -5602,16 +5603,24 @@
         "addTitle": "Ajouter une automatisation Google Calendar",
         "calendarId": "ID du calendrier",
         "calendarIdPlaceholder": "primary",
+        "calendarNotFoundDescription": "Ce calendrier n’est plus disponible. Choisissez un autre calendrier pour reprendre cette automatisation.",
         "cancelledDescription": "Exécuter lorsqu'un événement du calendrier est annulé.",
         "cancelledRule": "Lorsque l'événement du calendrier {{calendar}} est annulé",
         "cancelledTitle": "Événement Google Calendar annulé",
+        "changeAria": "Modifier l’automatisation Google Calendar",
+        "changeCalendar": "Changer de calendrier",
         "createdDescription": "Exécuter lorsqu'un événement du calendrier est créé.",
         "createdRule": "Lorsque le calendrier {{calendar}} reçoit un nouvel événement",
         "createdTitle": "Événement Google Calendar créé",
+        "enabledIntent": "Activée",
+        "reconnectDescription": "Google Calendar doit être reconnecté avant que cette automatisation puisse reprendre.",
+        "reconnectGoogleCalendar": "Reconnecter Google Calendar",
+        "saveCalendar": "Enregistrer le calendrier",
         "summary": "Calendrier {{calendar}}",
         "updatedDescription": "Exécuter lorsqu'un événement du calendrier est mis à jour.",
         "updatedRule": "Lorsque l'événement de calendrier {{calendar}} est mis à jour",
-        "updatedTitle": "Événement Google Calendar mis à jour"
+        "updatedTitle": "Événement Google Calendar mis à jour",
+        "updateError": "Impossible de changer ce calendrier. Réessayez."
       },
       "chat": {
         "addAction": "Ajouter une automatisation de chat",
@@ -6191,6 +6200,7 @@
       }
     },
     "list": {
+      "actionRequired": "Action requise",
       "agentEmpty": "Aucun workflow n'a encore été exécuté avec cet agent.",
       "all": "Tout",
       "allAgents": "Tous les agents",
@@ -6208,6 +6218,7 @@
       },
       "noWorkflows": "Aucun workflow",
       "open": "Ouvrir {{title}}",
+      "openRecovery": "Ouvrir la récupération de {{title}}",
       "runsAs": "S'exécute en tant que",
       "runsAsAria": "S'exécute en tant que {{agent}}",
       "section": {

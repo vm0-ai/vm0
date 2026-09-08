@@ -5535,6 +5535,7 @@
   "workflows": {
     "automations": {
       "calendar": {
+        "actionRequiredPaused": "कार्रवाई आवश्यक — डिलीवरी रोकी गई",
         "addAction": "कैलेंडर ऑटोमेशन जोड़ें",
         "addAria": "Google Calendar ऑटोमेशन जोड़ें",
         "addDescriptionCancelled": "Google Calendar ईवेंट रद्द होने पर इस वर्कफ़्लो को चलाएँ।",
@@ -5543,16 +5544,24 @@
         "addTitle": "Google Calendar ऑटोमेशन जोड़ें",
         "calendarId": "कैलेंडर ID",
         "calendarIdPlaceholder": "प्राथमिक",
+        "calendarNotFoundDescription": "यह कैलेंडर अब उपलब्ध नहीं है। इस ऑटोमेशन को फिर से शुरू करने के लिए कोई दूसरा कैलेंडर चुनें।",
         "cancelledDescription": "कैलेंडर ईवेंट रद्द होने पर चलाएँ।",
         "cancelledRule": "जब कैलेंडर {{calendar}} ईवेंट रद्द हो जाता है",
         "cancelledTitle": "Google Calendar इवेंट रद्द कर दिया गया",
+        "changeAria": "Google Calendar ऑटोमेशन बदलें",
+        "changeCalendar": "कैलेंडर बदलें",
         "createdDescription": "कैलेंडर ईवेंट बनने पर चलाएँ।",
         "createdRule": "जब कैलेंडर {{calendar}} को एक नया ईवेंट मिलता है",
         "createdTitle": "Google Calendar इवेंट बनाया गया",
+        "enabledIntent": "सक्षम",
+        "reconnectDescription": "इस ऑटोमेशन के फिर से शुरू होने से पहले Google Calendar को दोबारा कनेक्ट करना होगा।",
+        "reconnectGoogleCalendar": "Google Calendar दोबारा कनेक्ट करें",
+        "saveCalendar": "कैलेंडर सेव करें",
         "summary": "कैलेंडर {{calendar}}",
         "updatedDescription": "कैलेंडर ईवेंट अपडेट होने पर चलाएँ।",
         "updatedRule": "जब कैलेंडर {{calendar}} इवेंट अपडेट किया जाता है",
-        "updatedTitle": "Google Calendar इवेंट अपडेट किया गया"
+        "updatedTitle": "Google Calendar इवेंट अपडेट किया गया",
+        "updateError": "हम इस कैलेंडर को बदल नहीं सके। फिर से कोशिश करें।"
       },
       "chat": {
         "addAction": "चैट ऑटोमेशन जोड़ें",
@@ -6128,6 +6137,7 @@
       }
     },
     "list": {
+      "actionRequired": "कार्रवाई आवश्यक",
       "agentEmpty": "इस एजेंट के रूप में अभी तक कोई वर्कफ़्लो नहीं चलता है।",
       "all": "सभी",
       "allAgents": "सभी एजेंट",
@@ -6145,6 +6155,7 @@
       },
       "noWorkflows": "कोई वर्कफ़्लो नहीं",
       "open": "{{title}} खोलें",
+      "openRecovery": "{{title}} की रिकवरी खोलें",
       "runsAs": "के रूप में चलता है",
       "runsAsAria": "{{agent}} के रूप में चलता है",
       "section": {
