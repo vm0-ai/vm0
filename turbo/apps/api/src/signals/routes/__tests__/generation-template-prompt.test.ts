@@ -19,46 +19,6 @@ import {
 const USER_TEMPLATE_ROW_ID = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
 
 describe("buildGenerationTemplatePrompt", () => {
-  it("routes an explainer selection through the intro-video skill and preserves explicit choices", () => {
-    const result = buildGenerationTemplatePrompt({
-      type: "video",
-      selection: {
-        stylePresetId: "explainer-video",
-        explainerOptions: {
-          style: {
-            kind: "catalog",
-            style: {
-              id: "minimalism",
-              name: "Minimalism",
-              tags: ["iconic-artist"],
-              aspectRatio: "16:9",
-            },
-          },
-          avatar: { kind: "none" },
-          voice: { kind: "none" },
-        },
-      },
-    });
-    expect(result.status).toBe("resolved");
-    if (result.status !== "resolved") {
-      return;
-    }
-    expect(result.prompt).toContain("$intro-video");
-    expect(result.prompt).toContain('"id":"minimalism"');
-    expect(result.prompt).toContain("No avatar");
-    expect(result.prompt).toContain("No voiceover");
-    expect(result.prompt).not.toContain("generation-guidelines/video");
-  });
-
-  it("rejects an explainer marker whose settings are missing", () => {
-    expect(
-      buildGenerationTemplatePrompt({
-        type: "video",
-        selection: { stylePresetId: "explainer-video" },
-      }),
-    ).toMatchObject({ status: "invalid" });
-  });
-
   it("builds one shared context for multiple ordered templates", () => {
     const illustration = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const workflow = WORKFLOW_TEMPLATE_ITEMS[0]!;

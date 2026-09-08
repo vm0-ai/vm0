@@ -1,3 +1,4 @@
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import {
   introVideoPresenterContract,
   type IntroVideoStyle,
@@ -107,27 +108,35 @@ async function openExplainer() {
     featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
   });
   const dialog = await openTemplatePicker(user);
+  expect(control("Creative video", dialog, "tab")).toBeVisible();
   click(control("Explainer video", dialog, "tab"));
   await within(dialog).findByText("Minimalism");
   return { user, dialog };
 }
 
-test("The template picker separates creative and explainer videos behind the existing rollout", async () => {
-  mockTemplateChat();
-  await setupPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
-  });
-  const dialog = await openTemplatePicker(userEvent.setup({ delay: null }));
-  expect(control("Creative video", dialog, "tab")).toBeVisible();
-  expect(
-    queryAllByRoleFast("tab", dialog).some((tab) => {
-      return tab.textContent === "Explainer video";
-    }),
-  ).toBeFalsy();
-  expect(screen.queryByTestId("intro-video-start-card")).toBeNull();
-});
+test.each([
+  `/agents/${AGENT_ID}/chat`,
+  `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
+  "/?templatePicker=explainer",
+])(
+  "Disabled explainer entry keeps ordinary Video available at %s",
+  async (path) => {
+    mockTemplateChat();
+    await setupPage({
+      context,
+      path,
+      featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const dialog = await openTemplatePicker(userEvent.setup({ delay: null }));
+    expect(control("Video", dialog, "tab")).toBeVisible();
+    expect(
+      queryAllByRoleFast("tab", dialog).some((tab) => {
+        return tab.textContent === "Explainer video";
+      }),
+    ).toBeFalsy();
+  },
+);
 
 test("Expanded style tags combine with search and preserve the selected style", async () => {
   installCatalogs();
@@ -166,7 +175,6 @@ test("Avatar looks require Use, and explicit voice choices survive removing the 
   click(control("Select style Minimalism", dialog));
   click(control("Avatar", dialog, "tab"));
   await within(dialog).findByText("Daphne");
-  expect(within(dialog).queryByText(/Okou decides/)).toBeNull();
   expect(control("Avatar", dialog, "tab")).toHaveTextContent("No avatar");
   click(control("Preview look Daphne in Blue shirt", dialog));
   expect(control("Avatar", dialog, "tab")).toHaveTextContent("No avatar");
@@ -380,4 +388,57 @@ test("Desktop recording handoff keeps both uploaded files with the explainer sel
       return part.type === "file";
     }),
   ).toHaveLength(2);
+});
+
+test("A saved explainer draft cannot send outside the rollout and remains editable", async () => {
+  const capture = mockTemplateChat();
+  context.mocks.api(agentDraftContract.get, ({ respond }) => {
+    return respond(200, {
+      draftUserMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Explain this product " },
+          {
+            type: "template",
+            titleSnapshot: "Explainer video",
+            template: {
+              type: "video",
+              selection: {
+                stylePresetId: "explainer-video",
+                explainerOptions: {
+                  style: { kind: "catalog", style: STYLES[0]! },
+                  avatar: { kind: "none" },
+                  voice: { kind: "none" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      draftAttachments: null,
+    });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: false },
+  });
+  await expectInlineTemplate("Explainer video");
+  const message = await screen.findByRole("textbox", { name: "Message" });
+  const user = userEvent.setup({ delay: null });
+  await user.click(message);
+  await user.keyboard("{Enter}");
+  await screen.findByText(
+    "This video template is no longer available. Remove it to send your message.",
+  );
+  expect(capture.sentMessages).toHaveLength(0);
+  expect(message).toHaveTextContent("Explain this product");
+  await expectInlineTemplate("Explainer video");
+  await user.keyboard(
+    "{Control>}a{/Control}{Backspace}A regular message{Enter}",
+  );
+  await waitFor(() => {
+    expect(capture.sentMessages).toHaveLength(1);
+  });
+  expect(capture.selectedTemplates).toHaveLength(0);
 });

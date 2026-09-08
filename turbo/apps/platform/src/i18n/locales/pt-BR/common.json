@@ -611,6 +611,7 @@
       "category": "Categoria de modelo",
       "chooseVoice": "Escolha uma voz para {{title}}",
       "creativeVideo": "Vídeo criativo",
+      "explainerUnavailable": "Este modelo de vídeo não está mais disponível. Remova-o para enviar sua mensagem.",
       "explainerVideo": "Vídeo explicativo",
       "filters": {
         "age": "Idade",
@@ -2351,7 +2352,7 @@
         "video": {
           "description": "Transforme sua ideia em um vídeo pronto",
           "prompt": "Transforme minha ideia ou meus arquivos em um vídeo pronto.",
-          "title": "Vídeo criativo"
+          "title": "Criar um vídeo"
         },
         "website": {
           "description": "Crie e publique uma página compartilhável",

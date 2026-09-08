@@ -7,7 +7,7 @@ export type TemplatePickerEntryCategory =
 
 export function parseTemplatePickerEntryCategory(
   value: string | null,
-  explainerEnabled = true,
+  explainerEnabled: boolean,
 ): TemplatePickerEntryCategory | null {
   switch (value) {
     case "explainer": {

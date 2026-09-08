@@ -592,6 +592,7 @@
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
       "creativeVideo": "クリエイティブ動画",
+      "explainerUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
       "explainerVideo": "解説動画",
       "filters": {
         "age": "年齢",
@@ -2304,7 +2305,7 @@
         "video": {
           "description": "アイデアや素材から完成した動画を作る",
           "prompt": "私のアイデアや素材から完成した動画を作ってください。",
-          "title": "クリエイティブ動画"
+          "title": "動画を作る"
         },
         "website": {
           "description": "共有できるページを作って公開する",

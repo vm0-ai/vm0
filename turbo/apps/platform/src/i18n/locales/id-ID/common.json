@@ -592,6 +592,7 @@
       "category": "Kategori template",
       "chooseVoice": "Pilih suara untuk {{title}}",
       "creativeVideo": "Video kreatif",
+      "explainerUnavailable": "Template video ini tidak lagi tersedia. Hapus untuk mengirim pesan Anda.",
       "explainerVideo": "Video penjelasan",
       "filters": {
         "age": "Usia",
@@ -2304,7 +2305,7 @@
         "video": {
           "description": "Ubah ide atau aset Anda menjadi video jadi",
           "prompt": "Ubah ide atau aset saya menjadi video jadi.",
-          "title": "Video kreatif"
+          "title": "Buat video"
         },
         "website": {
           "description": "Buat halaman yang bisa dibagikan",

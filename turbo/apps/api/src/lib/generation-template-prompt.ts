@@ -123,6 +123,7 @@ function generationTemplateTypeLabel(
  * leave it empty and lose the guidance rather than point at nothing.
  */
 interface GenerationTemplatePromptOptions {
+  readonly introVideoEnabled?: boolean;
   readonly presentationTemplatesEnabled?: boolean;
   readonly mountedUserPresentationTemplateIds?: readonly string[];
 }
@@ -136,7 +137,10 @@ export function buildGenerationTemplatePrompt(
   }
 
   if (generationTemplate.type === "video") {
-    return buildVideoGenerationTemplatePrompt(generationTemplate);
+    return buildVideoGenerationTemplatePrompt(
+      generationTemplate,
+      options.introVideoEnabled === true,
+    );
   }
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
@@ -378,10 +382,14 @@ function buildWebsiteTemplatePackagePrompt(
 
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
+  introVideoEnabled: boolean,
 ): GenerationTemplatePromptResult {
   if (
     generationTemplate.selection.stylePresetId === EXPLAINER_VIDEO_TEMPLATE_ID
   ) {
+    if (!introVideoEnabled) {
+      return { status: "invalid", message: "Explainer video is not available" };
+    }
     const options = generationTemplate.selection.explainerOptions;
     if (!options) {
       return {

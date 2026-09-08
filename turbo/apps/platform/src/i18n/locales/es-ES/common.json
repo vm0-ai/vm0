@@ -611,6 +611,7 @@
       "category": "Categoría de plantilla",
       "chooseVoice": "Elige una voz para {{title}}",
       "creativeVideo": "Vídeo creativo",
+      "explainerUnavailable": "Esta plantilla de vídeo ya no está disponible. Elimínala para enviar tu mensaje.",
       "explainerVideo": "Vídeo explicativo",
       "filters": {
         "age": "Edad",
@@ -2351,7 +2352,7 @@
         "video": {
           "description": "Convierte tu idea en un vídeo acabado",
           "prompt": "Convierte mi idea o mis archivos en un vídeo acabado.",
-          "title": "Vídeo creativo"
+          "title": "Crear un vídeo"
         },
         "website": {
           "description": "Crea y publica una página que puedas compartir",

@@ -592,6 +592,7 @@
       "category": "템플릿 카테고리",
       "chooseVoice": "{{title}}의 음성 선택",
       "creativeVideo": "창작 영상",
+      "explainerUnavailable": "이 동영상 템플릿은 더 이상 사용할 수 없습니다. 메시지를 보내려면 삭제하세요.",
       "explainerVideo": "설명 영상",
       "filters": {
         "age": "연령",
@@ -2304,7 +2305,7 @@
         "video": {
           "description": "아이디어나 소재를 완성된 영상으로 만드세요",
           "prompt": "제 아이디어나 소재를 완성된 영상으로 만들어 주세요.",
-          "title": "창작 영상"
+          "title": "영상 만들기"
         },
         "website": {
           "description": "공유할 수 있는 페이지를 만들어 게시하세요",

@@ -1,3 +1,5 @@
+import { clerk$, type ClerkClient } from "../external/clerk";
+import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
 
 import { command, createStore } from "ccstate";
@@ -2706,6 +2708,7 @@ async function resolveQueuedMessageModelRoute(args: {
 
 interface CreateQueuedChatRunInputArgs {
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly threadId: string;
   readonly userId: string;
   readonly agent: AgentForAutoSend;
@@ -3072,6 +3075,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     | ReturnType<typeof projectUserMessage>
     | undefined;
   readonly presentationTemplatesEnabled: boolean;
+  readonly introVideoEnabled: boolean;
   readonly mountedUserPresentationTemplateIds: readonly string[];
 }) {
   return measureChatCallbackPreCreateTiming(
@@ -3080,6 +3084,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
+        introVideoEnabled: args.introVideoEnabled,
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
         presentationTemplatesEnabled: args.presentationTemplatesEnabled,
@@ -3127,6 +3132,13 @@ async function resolveQueuedMessageTemplateContext(args: {
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args.input,
       userMessageProjection: args.userMessageProjection,
+      introVideoEnabled: await loadIntroVideoTemplateAccess(
+        args.db,
+        args.input.clerk,
+        args.userId,
+        args.userMessageProjection?.templates ?? [],
+        args.featureSwitchContext,
+      ),
       presentationTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationTemplates,
         args.featureSwitchContext,
@@ -4001,6 +4013,7 @@ interface AutoSendQueuedMessageArgs {
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | QueuedMessageAdmissionFailure | null>;
   readonly db: Db;
+  readonly clerk: ClerkClient;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -4029,6 +4042,7 @@ async function prepareAutoSendQueuedMessageRunInput(input: {
     () => {
       return buildCreateQueuedChatRunInput({
         db: args.db,
+        clerk: args.clerk,
         threadId: args.chatThreadId,
         userId: args.userId,
         agent,
@@ -5512,7 +5526,7 @@ const buildChatCallbackDependencies$ = command(
 /** User-message drain used by the shared event-backed thread scheduler. */
 export const drainQueuedUserMessagesForThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
@@ -5551,6 +5565,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     await autoSendQueuedMessageForThread(
       {
         db,
+        clerk: get(clerk$),
         chatThreadId: args.chatThreadId,
         admissionTime,
         userId: thread.userId,

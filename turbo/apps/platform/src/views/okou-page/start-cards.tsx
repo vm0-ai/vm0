@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
 import { Button } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import {
   startCardKinds$,
@@ -409,6 +411,8 @@ export function StartCards({
 }) {
   const { t } = useTranslation();
   const kinds = useGet(startCardKinds$);
+  const explainerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const workflowTemplate = useGet(startCardWorkflowTemplate$);
   const composerSignals = useGet(agentChatComposerSignals$);
   const setTemplateCategory = useSet(
@@ -455,6 +459,14 @@ export function StartCards({
         // and runs past the two lines this card has.
         description: localized?.shortDescription ?? "",
         prompt: template?.promptGuidance ?? "",
+      };
+    }
+    if (kind === "video" && explainerEnabled) {
+      return {
+        ...copy.video,
+        title: t(($) => {
+          return $.artifacts.templates.creativeVideo;
+        }),
       };
     }
     return copy[kind];

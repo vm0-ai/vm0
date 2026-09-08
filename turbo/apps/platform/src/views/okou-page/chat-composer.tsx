@@ -4413,7 +4413,7 @@ function IllustrationTemplateCard({
 
 function resolveTemplatePickerCategory(
   category: string,
-  explainerEnabled = true,
+  explainerEnabled: boolean,
 ): string {
   switch (category) {
     case "explainer": {
@@ -4472,7 +4472,9 @@ function TemplatePickerCategoryNav({
     {
       value: "video",
       label: t(($) => {
-        return $.artifacts.templates.creativeVideo;
+        return explainerEnabled
+          ? $.artifacts.templates.creativeVideo
+          : $.artifacts.kinds.video;
       }),
       Icon: Video,
     },
@@ -6769,6 +6771,8 @@ function TemplatePickerButton({
     signals.template.templatePickerSkipEnterAnimation$,
   );
   const category = useGet(signals.template.templatePickerCategory$);
+  const explainerEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.IntroVideo] === true;
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const createMode = useGet(signals.create.mode$);
   const templates = useEditorState({
@@ -6836,7 +6840,8 @@ function TemplatePickerButton({
   const selectedCategory =
     templateMode === "presentation"
       ? "slides"
-      : (templateMode ?? resolveTemplatePickerCategory(category));
+      : (templateMode ??
+        resolveTemplatePickerCategory(category, explainerEnabled));
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
       runtime,

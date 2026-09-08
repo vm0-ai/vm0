@@ -160,7 +160,7 @@ async function selectVideoTemplate(): Promise<
     }),
   );
   await screen.findByRole("dialog");
-  click(tabByText("Creative video"));
+  click(tabByText("Video"));
   await waitFor(() => {
     expect(
       fastControl("button", `Select video template ${template.title}`),

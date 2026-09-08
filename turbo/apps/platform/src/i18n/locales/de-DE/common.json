@@ -593,6 +593,7 @@
       "category": "Vorlagenkategorie",
       "chooseVoice": "Stimme für {{title}} auswählen",
       "creativeVideo": "Kreatives Video",
+      "explainerUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
       "explainerVideo": "Erklärvideo",
       "filters": {
         "age": "Alter",
@@ -2308,7 +2309,7 @@
         "video": {
           "description": "Machen Sie aus Ihrer Idee ein fertiges Video",
           "prompt": "Mach aus meiner Idee oder meinen Assets ein fertiges Video.",
-          "title": "Kreatives Video"
+          "title": "Video erstellen"
         },
         "website": {
           "description": "Erstellen Sie eine teilbare Seite",

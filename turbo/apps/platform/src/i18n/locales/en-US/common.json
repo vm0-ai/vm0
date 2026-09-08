@@ -593,6 +593,7 @@
       "category": "Template category",
       "chooseVoice": "Choose a voice for {{title}}",
       "creativeVideo": "Creative video",
+      "explainerUnavailable": "This video template is no longer available. Remove it to send your message.",
       "explainerVideo": "Explainer video",
       "filters": {
         "age": "Age",
@@ -2308,7 +2309,7 @@
         "video": {
           "description": "Turn your idea or assets into a finished video",
           "prompt": "Turn my idea or assets into a finished video.",
-          "title": "Creative video"
+          "title": "Create a video"
         },
         "website": {
           "description": "Create and publish a shareable page",

@@ -107,6 +107,7 @@ export async function openTemplatePicker(
     | "Presentation"
     | "Website"
     | "Illustration"
+    | "Video"
     | "Creative video"
     | "Avatar",
 ): Promise<HTMLElement> {
