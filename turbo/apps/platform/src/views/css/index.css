@@ -699,7 +699,7 @@ body {
 }
 
 /* Cards inside the chat transcript: notice cards, action cards, artifact and
-   media frames. One surface, one hairline, one shadow, one radius — before this
+   media frames. One surface, one border, one shadow, one radius — before this
    the transcript carried two radii, four border tokens and three fills.
 
    `okou-chat-frame` is the same recipe without the fill, for the frames that
@@ -714,7 +714,8 @@ body {
 @layer components {
   .okou-app .okou-chat-card,
   .okou-app .okou-chat-frame {
-    border: 0.7px solid hsl(var(--gray-400));
+    /* Fractional borders visibly repaint when card contents resolve. */
+    border: 1px solid hsl(var(--gray-400));
     border-radius: var(--okou-chat-card-radius);
     box-shadow: var(--okou-chat-card-shadow);
   }
