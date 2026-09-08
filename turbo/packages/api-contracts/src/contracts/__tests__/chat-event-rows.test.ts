@@ -245,7 +245,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
     const content = `explain \`${PI_MEMORY_CITATION_OPEN}\` suffix${PI_MEMORY_CITATION_OPEN}private path and note${PI_MEMORY_CITATION_CLOSE}`;
     const row = canonicalRow({ payload: { content } });
     const before = JSON.stringify(row);
-    const expected = `explain \`${PI_MEMORY_CITATION_OPEN.replaceAll("<", "&lt;").replaceAll(">", "&gt;")}\` suffix`;
+    const expected = `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix`;
     let projected = chatEventFromRow(row);
     expect(projected.content).toBe(expected);
     for (let i = 0; i < 3; i++) {

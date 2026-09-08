@@ -55,10 +55,7 @@ interface ArchiveFixture {
   readonly threadId: string;
 }
 
-const escapedOpen = PI_MEMORY_CITATION_OPEN.replaceAll("<", "&lt;").replaceAll(
-  ">",
-  "&gt;",
-);
+const escapedOpen = `&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;`;
 
 function withHiddenCitation(visible: string): string {
   // Retained raw-backed rows contain both an isolated example and real private provenance.

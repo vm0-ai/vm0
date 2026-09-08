@@ -132,7 +132,7 @@ describe("new Pi Guest to old API rollback privacy", () => {
       ],
     });
     expect(visible).toBe(
-      `explain \`${PI_MEMORY_CITATION_OPEN.replaceAll("<", "&lt;").replaceAll(">", "&gt;")}\` suffix `,
+      `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix `,
     );
     expect(rollback.chatProjection).toStrictEqual([{ content: visible }]);
     expect(rollback.callback).toBe(visible);

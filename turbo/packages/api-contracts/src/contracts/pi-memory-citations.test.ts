@@ -36,11 +36,11 @@ function expand(template: string): string {
   return template
     .replaceAll(
       "$ESCAPED_OPEN",
-      PI_MEMORY_CITATION_OPEN.replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
+      `&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;`,
     )
     .replaceAll(
       "$ESCAPED_CLOSE",
-      PI_MEMORY_CITATION_CLOSE.replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
+      `&lt;${PI_MEMORY_CITATION_CLOSE.slice(1, -1)}&gt;`,
     )
     .replaceAll("$OPEN", PI_MEMORY_CITATION_OPEN)
     .replaceAll("$CLOSE", PI_MEMORY_CITATION_CLOSE);

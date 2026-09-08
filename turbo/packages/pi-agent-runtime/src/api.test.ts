@@ -1130,7 +1130,7 @@ describe("Pi API facade", () => {
   it("preserves split delimiter examples through API-first and immutable session export", () => {
     const literal = `explain \`${PI_MEMORY_CITATION_OPEN}\` suffix`;
     const hidden = `${PI_MEMORY_CITATION_OPEN}<citation_entries>private.md:1-1|note=[private note]</citation_entries>${PI_MEMORY_CITATION_CLOSE}`;
-    const expected = literal.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    const expected = `explain \`&lt;${PI_MEMORY_CITATION_OPEN.slice(1, -1)}&gt;\` suffix`;
     const native = fauxAssistantMessage([
       { type: "text", text: literal.slice(0, 14) },
       { type: "text", text: literal.slice(14) + hidden },
@@ -1138,8 +1138,12 @@ describe("Pi API facade", () => {
     const projected = projectPiApiAssistantMessage(native);
     expect(
       projected.content
-        .filter((block) => {return block.type === "text"})
-        .map((block) => {return block.text})
+        .filter((block) => {
+          return block.type === "text";
+        })
+        .map((block) => {
+          return block.text;
+        })
         .join(""),
     ).toBe(expected);
     expect(projected.memoryCitation?.entries).toEqual([
@@ -1154,13 +1158,17 @@ describe("Pi API facade", () => {
     const exported = projectPiSessionJsonlForExport(canonical);
     const exportedText = MemoryPiSession.fromJsonl(exported)
       .buildSessionContext()
-      .messages.flatMap((message) =>
-        {return message.role === "assistant"
+      .messages.flatMap((message) => {
+        return message.role === "assistant"
           ? message.content
-              .filter((block) => {return block.type === "text"})
-              .map((block) => {return block.text})
-          : []},
-      )
+              .filter((block) => {
+                return block.type === "text";
+              })
+              .map((block) => {
+                return block.text;
+              })
+          : [];
+      })
       .join("");
     expect(exportedText).toBe(expected);
     expect(exported).not.toContain("private.md");
