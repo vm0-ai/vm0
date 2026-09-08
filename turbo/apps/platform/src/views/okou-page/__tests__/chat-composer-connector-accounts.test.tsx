@@ -1,7 +1,7 @@
 import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -390,6 +390,36 @@ test("Choose which connector account a chat uses", async () => {
     "GitHub · Using default account: Work",
   );
   await user.click(await findFastControl("button", "Back", chooser));
+  await waitFor(() => {
+    expect(screen.queryByLabelText("Account for this chat")).toBeNull();
+    expect(queryFastControl("button", "Add connectors")).toBeVisible();
+    expect(
+      queryFastControl("button", "GitHub · Using default account: Work"),
+    ).toBeVisible();
+  });
+});
+
+test("Close the account chooser when the connector list scrolls", async () => {
+  const user = userEvent.setup({ delay: null });
+  const accounts = githubAccounts();
+  installComposerConnectorFixture({
+    catalog: [builtinConnector({ slug: GITHUB_SLUG, label: "GitHub" })],
+    builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
+    accountSummaries: [accountSummary(githubTarget(), accounts)],
+    accounts,
+    threadId: SCOUT_THREAD_ID,
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${SCOUT_THREAD_ID}`,
+  });
+
+  await loadComposer();
+  await openConnectors(user);
+  await openAccountChooser(user, "GitHub · Using default account: Work");
+  fireEvent.scroll(screen.getByRole("list", { name: "Connectors" }));
+
   await waitFor(() => {
     expect(screen.queryByLabelText("Account for this chat")).toBeNull();
     expect(queryFastControl("button", "Add connectors")).toBeVisible();
