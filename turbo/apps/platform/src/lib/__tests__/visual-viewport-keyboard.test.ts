@@ -367,7 +367,7 @@ function installScrollTo(
   viewport: MockVisualViewport,
   restoresOffset: boolean,
 ) {
-  const scrollTo = vi.fn((_x: number, _y: number): void => {
+  const scrollTo = vi.fn<(x: number, y: number) => void>(() => {
     if (restoresOffset) {
       viewport.offsetTop = 0;
     }
@@ -405,13 +405,13 @@ test("A mobile browser root follows a visual viewport that stays panned after th
   expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
   expect(scrollTo).toHaveBeenCalledWith(0, 0);
   expect(document.documentElement.dataset.visualViewportResidue).toBe("true");
-  expect(residueStyle()).toEqual({ top: "310px", height: "844px" });
+  expect(residueStyle()).toStrictEqual({ top: "310px", height: "844px" });
 
   // The browser keeps panning the visual viewport while the residue lasts.
   viewport.offsetTop = 120;
   viewport.dispatchEvent(new Event("scroll"));
   await clock.flushUpdate();
-  expect(residueStyle()).toEqual({ top: "120px", height: "844px" });
+  expect(residueStyle()).toStrictEqual({ top: "120px", height: "844px" });
 
   viewport.offsetTop = 0;
   viewport.dispatchEvent(new Event("scroll"));
@@ -419,7 +419,7 @@ test("A mobile browser root follows a visual viewport that stays panned after th
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toEqual({ top: "", height: "" });
+  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
 });
 
 test("A residual visual viewport pan that an origin scroll clears needs no root follow", async () => {
@@ -439,7 +439,7 @@ test("A residual visual viewport pan that an origin scroll clears needs no root 
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toEqual({ top: "", height: "" });
+  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
 });
 
 test("Reopening the keyboard ends the root follow", async () => {
@@ -462,7 +462,7 @@ test("Reopening the keyboard ends the root follow", async () => {
   expect(
     document.documentElement.dataset.visualViewportResidue,
   ).toBeUndefined();
-  expect(residueStyle()).toEqual({ top: "", height: "" });
+  expect(residueStyle()).toStrictEqual({ top: "", height: "" });
 });
 
 test("A standalone PWA keeps its programmatic keyboard scroll after the keyboard closes", async () => {

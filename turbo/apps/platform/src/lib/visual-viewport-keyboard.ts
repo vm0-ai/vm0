@@ -187,6 +187,162 @@ function clearVisualViewportResidue(): void {
   root.style.removeProperty(VISUAL_VIEWPORT_HEIGHT_PROPERTY);
 }
 
+type FrameTask = {
+  /** Run once on the next animation frame; a pending frame is reused. */
+  schedule(): void;
+  cancel(): void;
+};
+
+function createFrameTask(run: () => void): FrameTask {
+  let frameId: number | null = null;
+  return {
+    schedule() {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        run();
+      });
+    },
+    cancel() {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+    },
+  };
+}
+
+type SettledCommit = {
+  /** Commit once the viewport has been quiet for the settle delay. */
+  schedule(): void;
+  cancel(): void;
+};
+
+function createSettledCommit(
+  resetSettledSignal: () => AbortSignal,
+  commit: () => void,
+): SettledCommit {
+  let timerSignal: AbortSignal | null = null;
+
+  const cancel = () => {
+    if (timerSignal) {
+      resetSettledSignal();
+      timerSignal = null;
+    }
+  };
+
+  const run = async (settledSignal: AbortSignal) => {
+    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
+    settledSignal.throwIfAborted();
+    if (timerSignal !== settledSignal) {
+      return;
+    }
+    timerSignal = null;
+    commit();
+  };
+
+  return {
+    cancel,
+    schedule() {
+      cancel();
+      const settledSignal = resetSettledSignal();
+      timerSignal = settledSignal;
+      detach(run(settledSignal), Reason.DomCallback, "visual viewport settle");
+    },
+  };
+}
+
+type VisualViewportResidueTracker = {
+  /** The keyboard session ended; the next settled sample decides. */
+  markClosed(): void;
+  /** A settled sample arrived while the keyboard is closed. */
+  commit(): void;
+  /** A live sample arrived while the keyboard is closed. */
+  sync(): void;
+  /** Stop tracking, for example because the keyboard reopened. */
+  clear(): void;
+};
+
+function createVisualViewportResidueTracker(
+  viewport: VisualViewport,
+  isKeyboardOpen: () => boolean,
+): VisualViewportResidueTracker {
+  let checkPending = false;
+  let following = false;
+  let offsetTopBeforeScroll = 0;
+
+  const sync = () => {
+    if (!following) {
+      return;
+    }
+    if (hasVisualViewportResidue(viewport)) {
+      setVisualViewportResidue(viewport);
+      return;
+    }
+    following = false;
+    clearVisualViewportResidue();
+  };
+
+  // WebKit publishes the offsetTop that results from the origin scroll on the
+  // next frame; follow the visual viewport only when the pan survived it.
+  const decideFrame = createFrameTask(() => {
+    if (isKeyboardOpen()) {
+      return;
+    }
+    const recoveredByScroll = !hasVisualViewportResidue(viewport);
+    if (!recoveredByScroll) {
+      following = true;
+      setVisualViewportResidue(viewport);
+    }
+    captureVisualViewportResidue({
+      innerHeight: window.innerHeight,
+      offsetTopAfterScroll: readVisualViewportOffsetTop(viewport),
+      offsetTopBeforeScroll,
+      recoveredByScroll,
+      viewportHeight: Math.round(viewport.height),
+    });
+  });
+
+  const check = () => {
+    if (window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches) {
+      // Standalone WebKit briefly reports a stale offsetTop after close, and
+      // its root is scrolled programmatically through the keyboard reserve.
+      return;
+    }
+    decideFrame.cancel();
+    if (!hasVisualViewportResidue(viewport)) {
+      return;
+    }
+    offsetTopBeforeScroll = readVisualViewportOffsetTop(viewport);
+    // A stuck document scroll is the cheap case: return to the origin first.
+    window.scrollTo(0, 0);
+    decideFrame.schedule();
+  };
+
+  return {
+    markClosed() {
+      checkPending = true;
+    },
+    commit() {
+      if (checkPending) {
+        checkPending = false;
+        check();
+        return;
+      }
+      sync();
+    },
+    sync,
+    clear() {
+      decideFrame.cancel();
+      checkPending = false;
+      following = false;
+      clearVisualViewportResidue();
+    },
+  };
+}
+
 function revealFocusedComposer(): void {
   if (!window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches) {
     return;
@@ -216,8 +372,6 @@ type KeyboardViewportState = {
   baselineHeight: number;
   keyboardOpen: boolean;
   resetBaselineOnSettle: boolean;
-  residueCheckPending: boolean;
-  viewportResidue: boolean;
 };
 
 function updateKeyboardViewportState(
@@ -280,153 +434,66 @@ export function setupVisualViewportKeyboardState(
     baselineHeight: readLayoutViewportHeight(viewport),
     keyboardOpen: false,
     resetBaselineOnSettle: false,
-    residueCheckPending: false,
-    viewportResidue: false,
   };
-  let scheduledFrameId: number | null = null;
-  let revealFrameId: number | null = null;
-  let residueFrameId: number | null = null;
-  let settledTimerSignal: AbortSignal | null = null;
-
-  const cancelResidueCheck = () => {
-    if (residueFrameId !== null) {
-      window.cancelAnimationFrame(residueFrameId);
-      residueFrameId = null;
+  const residue = createVisualViewportResidueTracker(viewport, () => {
+    return state.keyboardOpen;
+  });
+  // The scroll reserve is a pseudo-element driven by the keyboard-open style.
+  // Give WebKit one layout frame to publish the new scrollHeight before asking
+  // it to reveal the composer.
+  const revealFrame = createFrameTask(() => {
+    if (state.keyboardOpen) {
+      revealFocusedComposer();
     }
-  };
-
-  const syncVisualViewportResidue = () => {
-    if (hasVisualViewportResidue(viewport)) {
-      setVisualViewportResidue(viewport);
-      return;
-    }
-    state.viewportResidue = false;
-    clearVisualViewportResidue();
-  };
-
-  const scheduleResidueCheck = () => {
-    if (window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches) {
-      // Standalone WebKit briefly reports a stale offsetTop after close, and
-      // its root is scrolled programmatically through the keyboard reserve.
-      return;
-    }
-    cancelResidueCheck();
-    if (!hasVisualViewportResidue(viewport)) {
-      return;
-    }
-    const offsetTopBeforeScroll = readVisualViewportOffsetTop(viewport);
-    // A stuck document scroll is the cheap case: return to the origin first
-    // and follow the visual viewport only when the pan survives that. WebKit
-    // publishes the resulting offsetTop on the next frame.
-    window.scrollTo(0, 0);
-    residueFrameId = window.requestAnimationFrame(() => {
-      residueFrameId = null;
-      if (state.keyboardOpen) {
-        return;
-      }
-      const recoveredByScroll = !hasVisualViewportResidue(viewport);
-      if (!recoveredByScroll) {
-        state.viewportResidue = true;
-        setVisualViewportResidue(viewport);
-      }
-      captureVisualViewportResidue({
-        innerHeight: window.innerHeight,
-        offsetTopAfterScroll: readVisualViewportOffsetTop(viewport),
-        offsetTopBeforeScroll,
-        recoveredByScroll,
-        viewportHeight: Math.round(viewport.height),
-      });
-    });
-  };
-
-  const cancelSettledUpdate = () => {
-    if (settledTimerSignal) {
-      resetSettledSignal();
-      settledTimerSignal = null;
-    }
-  };
-
-  const commitSettledUpdate = async (settledSignal: AbortSignal) => {
-    await delay(VIEWPORT_SETTLE_DELAY_MS, { signal: settledSignal });
-    settledSignal.throwIfAborted();
-    if (settledTimerSignal !== settledSignal) {
-      return;
-    }
-    settledTimerSignal = null;
-    update(true);
-  };
+  });
 
   const update = (commitOpening: boolean) => {
     const keyboardWasOpen = state.keyboardOpen;
     updateKeyboardViewportState(state, viewport, commitOpening);
     if (!state.keyboardOpen) {
       if (keyboardWasOpen) {
-        state.residueCheckPending = true;
+        residue.markClosed();
       }
       // The residue check waits for the settled close sample; until then a
       // running follow keeps tracking the visual viewport.
-      if (commitOpening && state.residueCheckPending) {
-        state.residueCheckPending = false;
-        scheduleResidueCheck();
-      } else if (state.viewportResidue) {
-        syncVisualViewportResidue();
+      if (commitOpening) {
+        residue.commit();
+      } else {
+        residue.sync();
       }
+      revealFrame.cancel();
+      return;
     }
-    if (!keyboardWasOpen && state.keyboardOpen) {
-      cancelResidueCheck();
-      state.residueCheckPending = false;
-      state.viewportResidue = false;
-      clearVisualViewportResidue();
-      if (revealFrameId !== null) {
-        window.cancelAnimationFrame(revealFrameId);
-      }
-      // The scroll reserve is a pseudo-element driven by the keyboard-open
-      // style. Give WebKit one layout frame to publish the new scrollHeight
-      // before asking it to reveal the composer.
-      revealFrameId = window.requestAnimationFrame(() => {
-        revealFrameId = null;
-        if (state.keyboardOpen) {
-          revealFocusedComposer();
-        }
-      });
-    } else if (!state.keyboardOpen && revealFrameId !== null) {
-      window.cancelAnimationFrame(revealFrameId);
-      revealFrameId = null;
+    if (!keyboardWasOpen) {
+      residue.clear();
+      revealFrame.cancel();
+      revealFrame.schedule();
     }
   };
 
-  const scheduleUpdate = () => {
-    // Keep committed keyboard geometry live during animation and caret-driven
-    // viewport panning.
-    if (scheduledFrameId === null) {
-      scheduledFrameId = window.requestAnimationFrame(() => {
-        scheduledFrameId = null;
-        update(false);
-      });
-    }
+  // Keep committed keyboard geometry live during animation and caret-driven
+  // viewport panning.
+  const updateFrame = createFrameTask(() => {
+    update(false);
+  });
+  // Standalone WebKit can publish its final offsetTop without another event.
+  // The short trailing read also prevents the first stale resize sample from
+  // moving the page before the native focus pan has settled.
+  const settledCommit = createSettledCommit(resetSettledSignal, () => {
+    update(true);
+  });
 
-    // Standalone WebKit can publish its final offsetTop without another event.
-    // The short trailing read also prevents the first stale resize sample from
-    // moving the page before the native focus pan has settled.
-    cancelSettledUpdate();
-    const settledSignal = resetSettledSignal();
-    settledTimerSignal = settledSignal;
-    detach(
-      commitSettledUpdate(settledSignal),
-      Reason.DomCallback,
-      "visual viewport settle",
-    );
+  const scheduleUpdate = () => {
+    updateFrame.schedule();
+    settledCommit.schedule();
   };
 
   const scheduleBaselineReset = () => {
     state.resetBaselineOnSettle = true;
     state.keyboardOpen = false;
-    state.residueCheckPending = false;
-    state.viewportResidue = false;
-    cancelSettledUpdate();
-    cancelResidueCheck();
+    settledCommit.cancel();
     setKeyboardClosed();
-    clearVisualViewportResidue();
+    residue.clear();
 
     // Some WebKit versions emit orientationchange before the new viewport
     // metrics and others emit it afterwards. Commit immediately only for the
@@ -458,16 +525,11 @@ export function setupVisualViewportKeyboardState(
     window.removeEventListener("orientationchange", scheduleBaselineReset);
     document.removeEventListener("focusin", scheduleUpdate);
     document.removeEventListener("focusout", scheduleUpdate);
-    if (scheduledFrameId !== null) {
-      window.cancelAnimationFrame(scheduledFrameId);
-    }
-    if (revealFrameId !== null) {
-      window.cancelAnimationFrame(revealFrameId);
-    }
-    cancelResidueCheck();
-    cancelSettledUpdate();
+    updateFrame.cancel();
+    revealFrame.cancel();
+    settledCommit.cancel();
     setKeyboardClosed();
-    clearVisualViewportResidue();
+    residue.clear();
   };
   signal.addEventListener("abort", cleanup, { once: true });
   return cleanup;
