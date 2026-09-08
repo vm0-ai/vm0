@@ -1,3 +1,4 @@
+import { surfaceVariants } from "@okouai/ui";
 import {
   useGet,
   useLastLoadable,
@@ -176,7 +177,7 @@ function TelegramSettingsSkeleton() {
       data-testid="telegram-settings-loading"
     >
       <Skeleton className="h-4 w-64 max-w-full" />
-      <div className="okou-card overflow-hidden">
+      <div className={surfaceVariants({ className: "overflow-hidden" })}>
         {[0, 1, 2].map((index) => {
           return (
             <div key={index}>
@@ -2143,7 +2144,7 @@ function TelegramBotsCard({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="okou-card overflow-hidden">
+    <section className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
         <h2 className="text-sm font-medium text-foreground">
           {t(($) => {
@@ -2263,7 +2264,11 @@ export function TelegramSettingsPage() {
       <main className="flex-1 overflow-auto px-4 pb-[max(2rem,var(--sab))] pt-3 sm:px-6">
         <div className="mx-auto flex max-w-[900px] flex-col gap-4">
           {hasError ? (
-            <div className="okou-card px-6 py-10 text-center text-sm text-destructive">
+            <div
+              className={surfaceVariants({
+                className: "px-6 py-10 text-center text-sm text-destructive",
+              })}
+            >
               {t(($) => {
                 return $.connectors.providerSettings.telegram.loadError;
               })}

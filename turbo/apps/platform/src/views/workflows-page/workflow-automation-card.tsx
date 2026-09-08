@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { cn } from "@okouai/ui";
+import { surfaceVariants, cn } from "@okouai/ui";
 
 export interface WorkflowAutomationCardRow {
   readonly label: string;
@@ -23,7 +23,8 @@ export function WorkflowAutomationCard({
   return (
     <article
       className={cn(
-        "okou-card overflow-hidden transition-colors",
+        surfaceVariants(),
+        "overflow-hidden",
         dimmed && "opacity-75",
         className,
       )}

@@ -113,6 +113,7 @@
   --color-popover-foreground: hsl(var(--popover-foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
+  --color-surface-border: hsl(var(--gray-400));
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-rail: hsl(var(--sidebar-rail));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
@@ -140,6 +141,17 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Page surfaces: theme-neutral geometry, theme-aware fill and elevation. */
+  --radius-surface: 1.25rem;
+  --radius-surface-compact: 0.75rem;
+  --border-width-surface: 0.7px;
+  --shadow-surface: var(--surface-shadow);
+  --background-image-surface-hover: linear-gradient(
+    var(--color-state-hover),
+    var(--color-state-hover)
+  );
+  --ease-surface: ease;
 
   /* Font Size (from Figma) */
   --font-size-2xl: 24px;
@@ -272,6 +284,8 @@
 
 @layer base {
   :root {
+    --surface-shadow:
+      0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025);
     /* ===================================
      * Base Color Palette (Tailwind Style)
      * =================================== */
@@ -432,6 +446,12 @@
       0 1px 2px hsl(30 4.3% 13.5% / 0.06), 0 1px 3px hsl(30 4.3% 13.5% / 0.08);
 
     --radius: 0.5rem;
+  }
+
+  :root[data-gradient-color-themes] {
+    --surface-shadow:
+      0 2px 12px hsl(var(--state-layer) / 0.035),
+      0 0 0 0.5px hsl(var(--state-layer) / 0.018);
   }
 
   .dark,

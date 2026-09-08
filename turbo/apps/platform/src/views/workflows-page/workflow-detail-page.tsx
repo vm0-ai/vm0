@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  surfaceVariants,
   Button,
   Checkbox,
   cn,
@@ -1403,7 +1404,7 @@ function WorkflowInfoTab({
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
-      <div className="okou-card overflow-hidden">
+      <div className={surfaceVariants({ className: "overflow-hidden" })}>
         <div className="p-4 sm:p-5">
           <InlineSettingsRow
             label={i18n.t(($) => {
@@ -1435,7 +1436,7 @@ function WorkflowInfoTab({
         <OfficialWorkflowInstallationSettings detail={detail} />
       ) : null}
       {detail.canManage && !detail.official ? (
-        <div className="okou-card overflow-hidden border-destructive/20">
+        <div className={surfaceVariants({ className: "overflow-hidden" })}>
           <div className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
               <div className="min-w-0 sm:max-w-[46%]">
@@ -1551,7 +1552,7 @@ function OfficialWorkflowReconfigureCard({
         return $.workflows.official.reconfigureUnavailable;
       });
   return (
-    <div className="okou-card overflow-hidden">
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1597,7 +1598,7 @@ function OfficialWorkflowReconfigureCard({
 function OfficialWorkflowUninstallCard() {
   const setActionDialog = useSet(setWorkflowActionDialog$);
   return (
-    <div className="okou-card overflow-hidden border-destructive/20">
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1990,7 +1991,7 @@ function WorkflowMetadataForm({
     <>
       <form
         aria-label={copy.aria}
-        className="okou-card overflow-hidden"
+        className={surfaceVariants({ className: "overflow-hidden" })}
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
           if (!event.currentTarget.checkValidity()) {
@@ -2020,7 +2021,9 @@ function WorkflowInstructionsTab({
 }) {
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="okou-card overflow-hidden px-5 pb-5">
+      <div
+        className={surfaceVariants({ className: "overflow-hidden px-5 pb-5" })}
+      >
         <WorkflowFilePreview detail={detail} />
       </div>
     </div>
@@ -4998,7 +5001,7 @@ function AutomationsSection({
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex flex-col gap-2">
         {automations.length > 0 ? (
-          <div className="okou-card overflow-visible">
+          <div className={surfaceVariants({ className: "overflow-visible" })}>
             {automations.map((automation, index) => {
               return (
                 <AutomationRow
@@ -5015,7 +5018,12 @@ function AutomationsSection({
             })}
           </div>
         ) : (
-          <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+          <div
+            className={surfaceVariants({
+              className:
+                "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+            })}
+          >
             <img
               src={emptyAutomationsImg}
               alt={i18n.t(($) => {

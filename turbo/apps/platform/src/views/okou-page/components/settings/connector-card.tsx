@@ -1,23 +1,11 @@
 import type { ReactNode } from "react";
 import type { LoadableState } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
+import { CircleCheck, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  cn,
-} from "@okouai/ui";
-import {
-  connectorCurrentConnectionStatus,
-  connectorExpiryCountdownText,
-} from "../../../../signals/okou-page/settings/connectors.ts";
-import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
+import { Button, surfaceVariants, cn } from "@okouai/ui";
 import { ConnectorPermissionRow } from "./connector-permission-row.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
@@ -31,18 +19,6 @@ type CatalogConnectorCardProps = {
   readonly connector: PlatformConnectorCatalogStatusItem;
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
-};
-
-type ConnectionConnectorCardProps = {
-  readonly variant: "connection";
-  readonly connector: PlatformConnectorCatalogStatusItem;
-  readonly connected: boolean;
-  readonly busy: boolean;
-  readonly disconnecting: boolean;
-  readonly connect: ConnectorConnectHandlers;
-  readonly manageAccess?: ReactNode;
-  readonly onDisconnect: () => void;
-  readonly onReviewScopes?: () => void;
 };
 
 export type ConnectorAccountSummaryStatus = "loading" | "unavailable" | "ready";
@@ -108,7 +84,6 @@ type PermissionConnectorCardProps = {
 
 type ConnectorCardProps =
   | CatalogConnectorCardProps
-  | ConnectionConnectorCardProps
   | AccountsConnectorCardProps
   | OnboardingConnectorCardProps
   | ActionConnectorCardProps
@@ -147,8 +122,9 @@ function CatalogConnectorCard({
       )}
       aria-disabled={busy}
       className={cn(
-        "okou-card overflow-hidden text-left",
-        busy ? "cursor-default" : "cursor-pointer",
+        surfaceVariants({ interactive: !busy }),
+        "overflow-hidden text-left",
+        busy && "cursor-default",
       )}
       onClick={handleConnect}
       onKeyDown={(event) => {
@@ -189,174 +165,6 @@ function CatalogConnectorCard({
         >
           {connector.description}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ConnectorConnectionStatus({
-  connector,
-  connected,
-  busy,
-  connect,
-}: {
-  readonly connector: PlatformConnectorCatalogStatusItem;
-  readonly connected: boolean;
-  readonly busy: boolean;
-  readonly connect: ConnectorConnectHandlers;
-}) {
-  const { t } = useTranslation();
-  const connectionStatus = connectorCurrentConnectionStatus(connector);
-  if (busy) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Loader2 size={12} className="animate-spin" />
-        {t(($) => {
-          return $.connectors.card.connecting;
-        })}
-      </span>
-    );
-  }
-  if (connected && connectionStatus === "reconnect-required") {
-    return (
-      <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-        <span className="text-amber-600 dark:text-amber-400">
-          {t(($) => {
-            return $.connectors.card.connectionExpired;
-          })}
-        </span>
-      </span>
-    );
-  }
-  if (connected && connectionStatus === "scope-mismatch") {
-    return (
-      <span className="flex min-w-0 items-center gap-2 text-[11px]">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-        <span className="min-w-0 truncate text-amber-600 dark:text-amber-400">
-          {t(($) => {
-            return $.connectors.card.updatePermissions;
-          })}
-        </span>
-      </span>
-    );
-  }
-  if (connected) {
-    const expiryText = connectorExpiryCountdownText(connector);
-    const connectedText =
-      expiryText ??
-      (connector.connection?.externalUsername
-        ? `@${connector.connection.externalUsername}`
-        : t(($) => {
-            return $.connectors.card.connected;
-          }));
-    return (
-      <span className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-        <span className="min-w-0 truncate" title={connectedText}>
-          {connectedText}
-        </span>
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        runConnect(connector, connect, busy);
-      }}
-      className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-    >
-      {t(($) => {
-        return $.connectors.actions.connect;
-      })}
-    </button>
-  );
-}
-
-function ConnectionConnectorCard({
-  connector,
-  connected,
-  busy,
-  disconnecting,
-  connect,
-  manageAccess,
-  onDisconnect,
-  onReviewScopes,
-}: ConnectionConnectorCardProps) {
-  const { t } = useTranslation();
-  const connectionStatus = connectorCurrentConnectionStatus(connector);
-  return (
-    <div className="okou-card flex flex-col">
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon icon={connector.icon} size={20} />
-        </span>
-        <span
-          data-testid="connector-card-label"
-          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-        >
-          {connector.label}
-        </span>
-      </div>
-      <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <ConnectorConnectionStatus
-            connector={connector}
-            connected={connected}
-            busy={busy}
-            connect={connect}
-          />
-        </div>
-        {connected ? (
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-0">
-            {manageAccess}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  showTooltip
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                  aria-label={t(($) => {
-                    return $.connectors.custom.moreOptions;
-                  })}
-                  disabled={busy}
-                >
-                  <EllipsisVertical size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {connectionStatus === "reconnect-required" ? (
-                  <DropdownMenuModalItem
-                    onModalSelect={() => {
-                      runConnect(connector, connect, busy);
-                    }}
-                  >
-                    {t(($) => {
-                      return $.connectors.actions.reconnect;
-                    })}
-                  </DropdownMenuModalItem>
-                ) : null}
-                {connectionStatus === "scope-mismatch" && onReviewScopes ? (
-                  <DropdownMenuModalItem onModalSelect={onReviewScopes}>
-                    {t(($) => {
-                      return $.connectors.card.reviewPermissions;
-                    })}
-                  </DropdownMenuModalItem>
-                ) : null}
-                <DropdownMenuItem
-                  onClick={onDisconnect}
-                  disabled={disconnecting || busy}
-                >
-                  {t(($) => {
-                    return $.connectors.actions.disconnect;
-                  })}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -485,9 +293,9 @@ function AccountsConnectorCard({
   return (
     <div
       className={cn(
-        "okou-card relative flex flex-col text-left",
+        surfaceVariants({ interactive: canActivate }),
+        "relative flex flex-col text-left",
         showDescription && "overflow-hidden",
-        canActivate && "cursor-pointer",
       )}
     >
       {canManage || canConnect ? (
@@ -696,7 +504,8 @@ function ActionConnectorCard({
     <div
       data-testid="connector-action-card"
       className={cn(
-        "okou-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between",
+        surfaceVariants(),
+        "flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
     >
@@ -776,9 +585,6 @@ function PermissionConnectorCard({
 export function ConnectorCard(props: ConnectorCardProps) {
   if (props.variant === "catalog") {
     return <CatalogConnectorCard {...props} />;
-  }
-  if (props.variant === "connection") {
-    return <ConnectionConnectorCard {...props} />;
   }
   if (props.variant === "accounts") {
     return <AccountsConnectorCard {...props} />;

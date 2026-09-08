@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import {
+  surfaceVariants,
   Button,
   Tabs,
   TabsList,
@@ -235,7 +236,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
       <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-[max(2rem,var(--sab))]">
         <div className="mx-auto max-w-[900px]">
-          <Card className="okou-card">
+          <Card className={surfaceVariants()}>
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
@@ -348,7 +349,7 @@ function resolveSound(sound: string): Tone {
 function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="okou-card animate-pulse">
+      <div className={surfaceVariants({ className: "animate-pulse" })}>
         {Array.from({ length: 4 }, (_, i) => {
           return (
             <div
@@ -376,7 +377,11 @@ function PermissionGrantsError() {
   const { t } = useTranslation("agents");
   return (
     <div className="mx-auto max-w-[900px]">
-      <div className="okou-card px-5 py-4 text-sm text-destructive">
+      <div
+        className={surfaceVariants({
+          className: "px-5 py-4 text-sm text-destructive",
+        })}
+      >
         {t(($) => {
           return $.authorization.permissionLoadError;
         })}
@@ -389,7 +394,11 @@ function NoConnectedConnectors() {
   const { t } = useTranslation("agents");
   return (
     <>
-      <div className="okou-card py-8 flex flex-col items-center gap-3">
+      <div
+        className={surfaceVariants({
+          className: "py-8 flex flex-col items-center gap-3",
+        })}
+      >
         <img
           src={noConnectorImg}
           alt={t(($) => {
@@ -446,7 +455,7 @@ function ConnectedConnectorPermissions({
   const focusSearch = useSet(focusPermSearchRef$);
   return (
     <>
-      <div className="okou-card">
+      <div className={surfaceVariants()}>
         <div className="relative border-b border-border/50">
           <div
             className={cn(

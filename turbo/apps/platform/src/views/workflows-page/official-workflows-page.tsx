@@ -14,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import {
+  surfaceVariants,
   Button,
   Dialog,
   DialogContent,
@@ -80,7 +81,7 @@ function CatalogLoading() {
         return (
           <div
             key={index}
-            className="okou-card h-52 animate-pulse bg-muted/40"
+            className={surfaceVariants({ className: "h-52 animate-pulse" })}
           />
         );
       })}
@@ -90,7 +91,12 @@ function CatalogLoading() {
 
 function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
   return (
-    <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+    <div
+      className={surfaceVariants({
+        className:
+          "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+      })}
+    >
       <RotateCcw size={28} className="text-muted-foreground" />
       <h2 className="mt-4 text-sm font-semibold text-foreground">
         {i18n.t(($) => {
@@ -123,7 +129,11 @@ function OfficialWorkflowCard({
   readonly workflow: OfficialWorkflowCatalogSummary;
 }) {
   return (
-    <article className="okou-card flex min-h-52 flex-col overflow-hidden transition-colors hover:bg-state-hover">
+    <article
+      className={surfaceVariants({
+        className: "flex min-h-52 flex-col overflow-hidden",
+      })}
+    >
       {workflow.presentation.coverImageUrl ? (
         <img
           src={workflow.presentation.coverImageUrl}
@@ -256,7 +266,12 @@ function OfficialWorkflowCatalogPage() {
             </div>
           ) : null}
           {catalogLoadable.state === "hasData" && workflows.length === 0 ? (
-            <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+            <div
+              className={surfaceVariants({
+                className:
+                  "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+              })}
+            >
               <Layers3 size={28} className="text-muted-foreground" />
               <h2 className="mt-4 text-sm font-semibold text-foreground">
                 {i18n.t(($) => {
@@ -464,7 +479,12 @@ function OfficialWorkflowDefinitionPage() {
           <CatalogError onRetry={reload} />
         ) : null}
         {definitionLoadable.state === "hasData" && !definition ? (
-          <div className="okou-card flex min-h-[20rem] items-center justify-center px-6 text-sm text-muted-foreground">
+          <div
+            className={surfaceVariants({
+              className:
+                "flex min-h-[20rem] items-center justify-center px-6 text-sm text-muted-foreground",
+            })}
+          >
             {i18n.t(($) => {
               return $.workflows.official.notFound;
             })}
@@ -486,7 +506,7 @@ function OfficialWorkflowDefinitionPage() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            <section className="okou-card p-5">
+            <section className={surfaceVariants({ className: "p-5" })}>
               <h2 className="text-sm font-semibold text-foreground">
                 {i18n.t(($) => {
                   return $.workflows.official.includedAutomations;

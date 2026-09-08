@@ -5,6 +5,7 @@ export {
   type ButtonProps,
 } from "./components/ui/button";
 export {
+  surfaceVariants,
   Card,
   CardHeader,
   CardFooter,

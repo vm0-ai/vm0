@@ -10,6 +10,7 @@ import { EllipsisVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
+  surfaceVariants,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -228,7 +229,10 @@ function CustomConnectorActivationCard({
   const { t } = useTranslation();
   return (
     <div
-      className={`okou-card relative flex flex-col ${canActivate ? "cursor-pointer" : ""}`}
+      className={surfaceVariants({
+        interactive: canActivate,
+        className: "relative flex flex-col",
+      })}
     >
       {canActivate ? (
         <button
@@ -407,7 +411,11 @@ function CustomConnectorDialogs({
 function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="okou-card py-12 flex flex-col items-center gap-3">
+    <div
+      className={surfaceVariants({
+        className: "py-12 flex flex-col items-center gap-3",
+      })}
+    >
       <img
         src={noConnectorImg}
         alt={t(($) => {

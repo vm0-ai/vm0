@@ -1,6 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
+  surfaceVariants,
   Button,
   Card,
   CardContent,
@@ -337,7 +338,7 @@ export function AgentDeleteDialog({
   };
 
   return (
-    <Card className="okou-card overflow-hidden border-destructive/20 mt-4">
+    <Card className={surfaceVariants({ className: "overflow-hidden mt-4" })}>
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0 sm:max-w-[46%]">

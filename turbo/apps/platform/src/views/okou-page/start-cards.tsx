@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Clapperboard, Play } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { WorkflowTemplateItem } from "@okouai/core/workflow-template-items";
-import { Button, cn } from "@okouai/ui";
+import { surfaceVariants, Button, cn } from "@okouai/ui";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
 import { introVideoWizardSignals } from "../../signals/okou-page/intro-video.ts";
@@ -327,7 +327,11 @@ function StartCard({
   // breakpoint yields a 292px card with the sidebar open and a wider one
   // without it.
   return (
-    <div className="okou-card group @container relative flex flex-col justify-center p-4 transition-colors hover:bg-state-hover">
+    <div
+      className={surfaceVariants({
+        className: "group @container relative flex flex-col justify-center p-4",
+      })}
+    >
       {/* Stretched hit area so the whole card opens the template picker, kept as
           a real button so the hover actions stay focusable siblings. */}
       <button
@@ -415,7 +419,10 @@ function IntroVideoStartCard({ onOpen }: { readonly onOpen: () => void }) {
       type="button"
       data-testid="intro-video-start-card"
       onClick={onOpen}
-      className="okou-card group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.025] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={surfaceVariants({
+        className:
+          "group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left hover:-translate-y-0.5 focus-visible:outline-none",
+      })}
     >
       <span className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl" />
       <span className="grid size-[72px] shrink-0 place-items-center rounded-xl bg-primary/10 text-brand-text">

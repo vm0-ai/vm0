@@ -8,7 +8,7 @@ import {
   Download,
   Settings,
 } from "lucide-react";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Popover,
@@ -356,7 +356,7 @@ function SlackCard({ displayName }: { displayName: string }) {
 
   return (
     <>
-      <div className="okou-card flex flex-col">
+      <div className={surfaceVariants({ className: "flex flex-col" })}>
         <div className="flex items-center gap-4 p-4">
           <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
             <img src={slackIconImg} alt="" className="h-7 w-7 scale-[2.2]" />
@@ -490,7 +490,7 @@ function TeamsCard({ displayName }: { displayName: string }) {
 
   return (
     <>
-      <div className="okou-card flex flex-col">
+      <div className={surfaceVariants({ className: "flex flex-col" })}>
         <div className="flex items-center gap-4 p-4">
           <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
             <img src={teamsIconImg} alt="" className="h-7 w-7" />
@@ -586,7 +586,7 @@ function GithubCard() {
   return (
     <div
       data-testid="github-integration-card"
-      className="okou-card flex flex-col"
+      className={surfaceVariants({ className: "flex flex-col" })}
     >
       <div className="flex items-center gap-4 p-4">
         <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
@@ -665,7 +665,9 @@ function TelegramCard() {
   return (
     <Link
       pathname={ROUTES.settingsTelegram}
-      className="okou-card flex flex-col text-inherit no-underline transition-colors hover:bg-state-hover"
+      className={surfaceVariants({
+        className: "flex flex-col text-inherit no-underline",
+      })}
       aria-label={t(($) => {
         return $.works.telegram.openSettings;
       })}
