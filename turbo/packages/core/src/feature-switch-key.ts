@@ -33,7 +33,6 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   StripeMarketplaceOAuthConnector = "stripeMarketplaceOAuthConnector",
   OkouDebug = "_debug",
-  SharedWorkerRealtime = "sharedWorkerRealtime",
   Banking = "banking",
   SlackRead = "slackRead",
   Lab = "_lab",
