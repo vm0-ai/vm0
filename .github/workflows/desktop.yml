@@ -95,6 +95,16 @@ jobs:
           sdk="$native/node_modules/@trycua/cua-driver/dist/index.js"
           python3 cua/guardian-proof/run-macos.py "$electron" \
             "$RUNNER_TEMP/cua-guardian-build" "$sdk" "$RUNNER_TEMP/cua-guardian-evidence" "$native"
+      - name: Prove nine commands and Quit across the production process channel
+        working-directory: turbo/apps/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="$RUNNER_TEMP/cua-adapter-proof"
+          node cua/guardian-proof/build-adapter.mjs "$proof" "$RUNNER_TEMP/cua-guardian-build"
+          electron="$(node -p 'require("electron")')"
+          "$electron" "$proof/adapter.js" "$proof"
+          cp "$proof/adapter.json" "$RUNNER_TEMP/cua-guardian-evidence/adapter.json"
       - name: Upload guardian proof evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

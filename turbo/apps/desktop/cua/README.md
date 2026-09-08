@@ -49,7 +49,8 @@ Three integrity domains are intentionally distinct:
    the complete inventory and hashes before loading the SDK. Signed verification
    excludes native bytes from that comparison, retaining JS/notice checks.
 3. Both Forge signing and artifact promotion pass the four CUA Mach-O paths
-   explicitly to `@electron/osx-sign` before the outer app seal/notarization.
+   and the first-party `cua-owner.node` / `cua-guardian` paths explicitly to
+   `@electron/osx-sign` before the outer app seal/notarization.
    Installed native code is checked by macOS code signing, the native loader,
    and exact live daemon metadata. Re-signing changes Mach-O bytes; original
    native hashes must not reject legitimate signed installations.
@@ -62,13 +63,25 @@ build transformations. No upstream native runtime is modified.
 
 ## Runtime ownership
 
-The CJS main bundle keeps native dynamic `import(fileURL)` for the staged ESM
-entry. Loading ordinary Desktop modules does not evaluate CUA. Only the
-explicit host start calls the public `EmbeddedCuaDriverHost.withOptions` and
-`CuaDriver.connect`. It directly spawns the absolute packaged executable with
-the build's real bundle ID, standard permission mode, a private mode-0700
-endpoint directory, and both telemetry flags disabled. Overlay is disabled for
-this lifecycle/probe slice. No history option or history command is enabled.
+The complete public SDK, host, client, session, cancellation and destruction
+run in one app-owned SDK process per generation. Only its fixed
+`Resources/native/cua-sdk-process.js` entry imports the staged ESM SDK and calls
+`EmbeddedCuaDriverHost.withOptions` / `CuaDriver.connect`. Main retains admission,
+permissions UI, snapshots, deadlines and first-party lifecycle supervision;
+ordinary startup and passive permission reads neither load CUA nor launch it.
+The helper uses the bundled Electron executable, never system Node. It starts
+the absolute packaged daemon with the build's real bundle ID, standard permission
+mode, a private mode-0700 directory and both telemetry flags disabled. Overlay
+and history remain disabled.
+
+The [guardian topology and macOS proof](guardian-proof/README.md) describe the
+native spawn gate, retained waitable identity, independent process-group
+observation and reaping. The first-party guardian is outside the SDK kill group
+and cannot load CUA. Main can resume an exactly retained, explicitly stopped
+guardian so it can reap its child; no signal return counts as exit evidence.
+The private typed channel accepts only the adapter/probe's fixed methods, with
+generation/request IDs, bounded messages/in-flight work and execution deadlines.
+No arbitrary executable, tool, environment or sensitive token is forwarded.
 
 The released daemon reads persistent Computer History opt-in under `HOME`.
 Only the daemon receives a fresh generation-owned home in its private directory;
@@ -77,16 +90,18 @@ This prevents inheriting an existing standalone CUA history opt-in. The director
 is removed after confirmed exit. There is no user-configurable binary, socket,
 environment, permission mode, or generic command route.
 
-SDK startup validates embedded PID/endpoint/protocol ownership. The wrapper
-also requires exact `driverVersion === "0.23.2"` on both the connection and
-client metadata. Starts coalesce. Stop retires admission immediately, aborts
-pending client work, starts the public native stop/reap independently of hung
-SDK/session callbacks, retains late startup/exit results, destroys the client
-only after its pending calls settle, awaits the matching exit observer and
-confirmed stopped state, destroys the host, and then
-removes its private directory. A caller deadline never proves process exit:
-unresolved or failed cleanup keeps that generation owned and blocks replacement.
-Unexpected exit cannot replay a command, revive old readiness, or choose Okou.
+SDK startup validates embedded PID/endpoint/protocol ownership and exact
+`driverVersion === "0.23.2"` on connection and metadata. Stop publishes its
+single-flight retirement and one five-second budget before requesting any
+native cancellation. Healthy cleanup ends sessions, stops and observes the
+daemon, destroys native objects and exits the helper. Three seconds are reserved
+for that work; the remaining two cover repeated scoped force and independent
+exit observation. Both branches require guardian exit and an empty owned group
+before reaping the retained identity and removing the private directory.
+Quit/update/Stop/auth withdrawal/switch/expiry/start failure/probe share this
+owner. A failed observation retains `cleanup_unproven`, blocks replacement/update
+and leaves main responsive. Cancel preserves the existing session. Late results
+cannot revive readiness or replay a command, and no driver fallback is automatic.
 
 ## Automated package verification
 
@@ -100,19 +115,20 @@ production updater. It is not a read-only installed-profile check; moving an
 app or passing an arbitrary Electron profile flag does not isolate that state.
 Use `inspect-cua-package.py` from the guide for inspection without launching.
 
-From `turbo`, the macOS workflow runs both commands on the default,
+From `turbo`, the macOS workflow runs these commands on the default,
 production-configured, and PR preview packages:
 
 ```sh
 node apps/desktop/scripts/smoke-test-packaged-app.js
 node apps/desktop/scripts/smoke-test-packaged-app.js --cua-probe --signed
+node apps/desktop/scripts/smoke-test-packaged-app.js --cua-forced-probe --signed
 ```
 
 The first verifies the real preload/auth/driver-control bridge and initial plus
 settled off/Okou driver state. It rechecks actual SDK dormancy after both IPC
 reads and passive permission refresh.
 The second checks the real package inventory and launches the actual packaged
-Electron main, loads the shipped SDK/native libraries, starts the shipped
+Electron main and isolated helper, loads the shipped SDK/native libraries, starts the shipped
 daemon, validates metadata, passively checks permissions, stops, and observes
 matching-generation exit, stopped host and removed private directory. Structured
 evidence must contain exact metadata/version/state fields and successful child
@@ -124,6 +140,16 @@ run on CI artifacts signed ad-hoc by the existing Forge hook (the artifact
 names say "unsigned" because they lack Developer ID signing/notarization).
 They verify the outer seal before accepting re-signed native bytes, and are
 not installed-app TCC evidence.
+
+The third deliberately blocks helper execution before native cleanup and
+requires independently confirmed process retirement within the same five-second
+budget while main heartbeats continue. Its `forced.json` keeps native graceful
+success false and labels forced recovery separately. The 27-case guardian proof
+also covers startup-before-ready, owner death/pause, repeated launch/stop and
+failed-force/identity/observation fences. A separate real-Electron nine-command
+round trip uses the production guardian/helper/IPC and substitutes only public
+SDK responses; it operates no actual apps. Native metadata/cancel stress uses
+the real pinned SDK, but neither fixture establishes the original mutex race.
 
 The distribution fault test uses fixture archives to inject corruption, unsafe
 entries, version/architecture mismatches, missing files, cache corruption, and

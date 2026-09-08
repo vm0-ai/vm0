@@ -91,7 +91,7 @@ export async function loadPackagedCuaSdk(runtimeRoot: string) {
 
   process.env.CUA_DRIVER_RS_TELEMETRY_ENABLED = "0";
   process.env.CUA_TELEMETRY_ENABLED = "0";
-  // Keep import() native in the CJS main bundle: CUA is ESM and resolves its
+  // Keep import() native in the isolated CJS helper: CUA is ESM and resolves its
   // own .node/dylib through package-relative paths outside root node_modules.
   const sdk: typeof import("@trycua/cua-driver") = await import(
     pathToFileURL(

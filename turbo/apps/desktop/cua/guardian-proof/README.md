@@ -1,6 +1,7 @@
 # Native lifecycle guardian proof gate
 
-This is the Draft proof for #32650, not a working quit repair. The original
+This is the process-boundary proof for #32650. The production implementation is
+in the same repair PR; these diagnostic entries are never shipped. The original
 [utility-only experiment](https://github.com/vm0-ai/vm0/issues/32650#issuecomment-5584395113)
 is retained unchanged. No production path loads these diagnostic files.
 
@@ -21,7 +22,9 @@ is retained unchanged. No production path loads these diagnostic files.
    the guardian terminates/reaps its direct native bootstrap child; no SDK runs.
 3. Main owns the guardian directly through the native module, **not** a Node
    ChildProcess/libuv process handle. `waitid(WNOWAIT | WNOHANG | WEXITED)`
-   observes its exit without reaping. The unreaped direct child reserves its PID
+   observes exit without reaping; only `CLD_EXITED`, `CLD_KILLED` and
+   `CLD_DUMPED` count. Darwin can also report `CLD_STOPPED` under these flags.
+   The unreaped direct child reserves its PID
    even after guardian failure. Main never sends a signal using a persisted PID
    or a caller-provided group number. It must retain this reservation until the
    group's other members have exited. Pinned Node 24.17.0 libuv waits only for
@@ -39,6 +42,11 @@ is retained unchanged. No production path loads these diagnostic files.
    Failed status/identity reads retain the fence. This preserves the guardian
    if main dies while force is still reclaiming live SDK descendants. Main then
    retains the guardian zombie until the group is completely empty.
+
+   For an explicitly stopped, exactly retained guardian, main sends `SIGCONT`
+   so the lifecycle owner can reap its exited child. This handles the macOS
+   SIGSTOP case without destroying supervision or treating a remaining zombie
+   as an empty group. Failure to continue still retains the fence.
 
    Main's monotonic five-second retirement deadline is armed before cleanup.
    Three seconds are available for graceful work, the remaining two for group
@@ -132,3 +140,22 @@ The complete product integration and changed production source must pass again
 at the final head. Draft status remains until those gates pass. Developer ID
 attribution, TCC grant persistence and interactive user-Mac acceptance remain
 pending; the fixture and ad-hoc CI cannot establish them.
+
+The expanded 27-case production-source proof passed at
+`d7c4524ad36bcfd06fe94a1cd7caa747c1b0f638` in
+[run 34232446213](https://github.com/vm0-ai/vm0/actions/runs/34232446213).
+`results.json` SHA-256 is
+`5f7b9e79f0014b27019389b5c215c2ab42d803cd96f5923d623370ae4cbe08dc`.
+The formerly failing guardian-stop case completed in 3038.38 ms with 258 main
+heartbeats and independent kernel exits. Failed-force/identity/observation cases
+retained their failure fences; their later diagnostic rescue is not successful
+product cleanup. Ten immediate spawn/stop cases use native reservation/group
+evidence; the other cases additionally register external kqueue exit observers.
+
+`build-adapter.mjs` separately bundles the production adapter, process owner and
+SDK helper. Its generated payload substitutes only the public SDK boundary with
+the existing test fixture. It executes all nine commands, confirms readable
+observation/action results survive the typed channel, verifies Cancel preserves
+the current generation, and confirms coalesced Quit retires it. It uses actual
+Electron/native guardian/socket transport, no CUA native or real applications.
+Its `adapter.json` is distinct from the real-native `results.json` proof.
