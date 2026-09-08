@@ -529,7 +529,7 @@ test("Keep a reopened artifact usable after dismissing Drive OAuth progress", as
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
   click(await findNamedLink("Drive preview"));
   const preview = await screen.findByRole("dialog", {
@@ -602,7 +602,7 @@ test.each([
     await setupPage({
       context,
       path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-      host: "app.vm0.ai",
+      host: "app.okou.ai",
     });
     click(await findNamedLink("Drive preview"));
     const preview = await screen.findByRole("dialog", {
