@@ -1232,7 +1232,7 @@ jobs:
       - name: Fetch prepared test KMS migration credentials
         id: kms-migration-config
         if: github.event_name == 'pull_request' && github.head_ref == 'test/kms-migration-32264-runtime'
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534 # v2.0.0
         with:
           auth-method: oidc
           doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}

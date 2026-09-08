@@ -1,6 +1,5 @@
 // Disposable operational verification for #32264. This preview PR must not merge.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -9,6 +8,7 @@ import {
   GenerateDataKeyCommand,
   KMSClient,
 } from "@aws-sdk/client-kms";
+import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { Client } from "pg";
 import { z } from "zod";
 
@@ -53,7 +53,7 @@ function keyId(ciphertext) {
     ).kms.keyId;
 }
 
-function verifyIdentity(account, expectedKey) {
+async function verifyIdentity(account, expectedKey) {
   assert.equal(process.env.ENV, "preview");
   assert.equal(process.env.AWS_REGION, "us-west-2");
   const acceptedWriteKeys =
@@ -67,27 +67,30 @@ function verifyIdentity(account, expectedKey) {
       : [targetKey];
   assert.ok(acceptedWriteKeys.includes(process.env.SECRETS_KMS_KEY_ID));
   assert.ok(!process.env.AWS_SESSION_TOKEN);
-  const identity = identitySchema.parse(
-    JSON.parse(
-      execFileSync("aws", ["sts", "get-caller-identity", "--output", "json"], {
-        encoding: "utf8",
-        timeout: 30000,
+  const sts = new STSClient({ maxAttempts: 1 });
+  let identity;
+  try {
+    identity = identitySchema.parse(
+      await sts.send(new GetCallerIdentityCommand({}), {
+        abortSignal: AbortSignal.timeout(30_000),
       }),
-    ),
-  );
+    );
+  } finally {
+    sts.destroy();
+  }
   assert.equal(identity.Account, account);
   assert.equal(identity.Arn, `arn:aws:iam::${account}:user/vm0-kms-test`);
-  console.log(
+  process.stdout.write(
     JSON.stringify({
       phase,
       runtimePrincipal: identity.Arn,
       writeKeyArn: expectedKey,
-    }),
+    }) + "\n",
   );
 }
 
 async function sourceFixtures() {
-  verifyIdentity("072707626411", sourceKey);
+  await verifyIdentity("072707626411", sourceKey);
   const kms = new KMSClient({});
   const legacy = await kms.send(
     new EncryptCommand({
@@ -123,17 +126,17 @@ async function sourceFixtures() {
   );
   await writeFile(oldPath, JSON.stringify(validated), { mode: 0o600 });
   kms.destroy();
-  console.log(
+  process.stdout.write(
     JSON.stringify({
       phase,
       sourceApplicationWritesAndReads: "passed",
       syntheticOnly: true,
-    }),
+    }) + "\n",
   );
 }
 
 async function verifyNewRuntime() {
-  verifyIdentity("251964670836", targetKey);
+  await verifyIdentity("251964670836", targetKey);
   const old = fixtureSchema.parse(JSON.parse(await readFile(oldPath, "utf8")));
   assert.equal(await decryptStoredSecretValue(old.envelope), original);
   assert.equal(await decryptStoredSecretValue(old.legacy), original);
@@ -162,8 +165,9 @@ async function verifyNewRuntime() {
         ).rows,
       );
     assert.equal(rows.length, 2);
-    for (const row of rows)
+    for (const row of rows) {
       assert.equal(await decryptStoredSecretValue(row.ciphertext), original);
+    }
     await db.query(
       "UPDATE kms_migration_32264_canary SET ciphertext = $1 WHERE name = $2",
       [replacement, "new"],
@@ -222,7 +226,7 @@ async function verifyNewRuntime() {
     (error) => error instanceof Error && error.name === "AccessDeniedException",
   );
   kms.destroy();
-  console.log(
+  process.stdout.write(
     JSON.stringify({
       phase,
       oldEnvelopeRead: "passed",
@@ -234,12 +238,12 @@ async function verifyNewRuntime() {
       productionKeyDenied: true,
       wrongPurposeDenied: true,
       syntheticOnly: true,
-    }),
+    }) + "\n",
   );
 }
 
 async function verifyRollback() {
-  verifyIdentity("072707626411", sourceKey);
+  await verifyIdentity("072707626411", sourceKey);
   const fresh = z
     .object({ envelope: z.string(), map: z.string() })
     .parse(JSON.parse(await readFile(newPath, "utf8")));
@@ -248,25 +252,29 @@ async function verifyRollback() {
   assert.deepEqual(await decryptPersistentSecretsMap(fresh.map, {}), {
     KMS_MIGRATION_CANARY: updated,
   });
-  console.log(
+  process.stdout.write(
     JSON.stringify({
       phase,
       oldRuntimeReadsNewEnvelope: "passed",
       oldRuntimeReadsNewMap: "passed",
-    }),
+    }) + "\n",
   );
 }
 
 switch (phase) {
-  case "prepare-old":
+  case "prepare-old": {
     await sourceFixtures();
     break;
-  case "verify-new":
+  }
+  case "verify-new": {
     await verifyNewRuntime();
     break;
-  case "verify-rollback":
+  }
+  case "verify-rollback": {
     await verifyRollback();
     break;
-  default:
+  }
+  default: {
     throw new Error("Expected prepare-old, verify-new, or verify-rollback");
+  }
 }
