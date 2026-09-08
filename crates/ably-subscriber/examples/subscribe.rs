@@ -8,15 +8,23 @@
 //! ```
 //!
 //! `ABLY_API_KEY` format: `keyName:keySecret` (from your Ably dashboard).
-//! Message data is printed to stdout (pipe to `jq` for formatting).
+//! Message JSON is printed to stdout, while tracing and status diagnostics are
+//! printed to stderr, so stdout can be piped directly to `jq` for formatting.
 
 use ably_subscriber::{Event, SubscribeConfig, subscribe};
 
 mod common;
 
+fn make_tracing_subscriber<W>(writer: W) -> impl tracing::Subscriber + Send + Sync + 'static
+where
+    W: for<'writer> tracing_subscriber::fmt::writer::MakeWriter<'writer> + Send + Sync + 'static,
+{
+    tracing_subscriber::fmt().with_writer(writer).finish()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    tracing::subscriber::set_global_default(make_tracing_subscriber(std::io::stderr))?;
 
     const USAGE: &str = "usage: subscribe <CHANNEL> [HOST] (set ABLY_API_KEY; API keys are not accepted as arguments)";
     let api_key = std::env::var("ABLY_API_KEY").map_err(
@@ -73,4 +81,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    use super::make_tracing_subscriber;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .expect("test writer mutex poisoned")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn tracing_diagnostics_are_separate_from_json_message_output() {
+        let stderr = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = make_tracing_subscriber({
+            let stderr = Arc::clone(&stderr);
+            move || SharedWriter(Arc::clone(&stderr))
+        });
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!("diagnostic");
+        });
+
+        let stdout = serde_json::json!({"message": "ok"}).to_string();
+        assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_ok());
+        assert!(!stdout.contains("diagnostic"));
+
+        let stderr = String::from_utf8(stderr.lock().expect("test writer mutex poisoned").clone())
+            .expect("tracing output should be UTF-8");
+        assert!(stderr.contains("diagnostic"));
+    }
 }
