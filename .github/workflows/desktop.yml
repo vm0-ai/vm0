@@ -76,9 +76,12 @@ jobs:
           codesign --force --sign - "$build/owner.node" "$build/guardian" "$build/fixture"
       - name: Prove retained identity and independent process exit
         working-directory: turbo/apps/desktop
+        env:
+          CUA_EVIDENCE_PR_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
+          node -e 'require("electron")'
           electron="$(node -p 'require("electron")')"
           sdk="$PWD/node_modules/@trycua/cua-driver/dist/index.js"
           python3 cua/guardian-proof/run-macos.py "$electron" \

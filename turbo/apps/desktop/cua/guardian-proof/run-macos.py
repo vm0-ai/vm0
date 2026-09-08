@@ -104,6 +104,7 @@ def main():
     results = {
         "platform": platform.platform(), "architecture": platform.machine(),
         "source": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        "prHead": os.environ.get("CUA_EVIDENCE_PR_HEAD"),
         "signing": "ad-hoc proof executables; Developer ID/TCC untested",
         "cases": [],
     }
