@@ -2,8 +2,8 @@
 
 Okou is the default Computer Use driver. The pinned official macOS arm64
 embedded runtime and [command adapter](ADAPTER.md) are available only through an
-an explicit local CUA selection by a current Developer. Ordinary startup does not load
-CUA. This adds no agent-facing driver parameter, runtime download or release.
+explicit local CUA selection by a current Developer. Ordinary startup does not
+load CUA. This adds no agent-facing driver parameter, runtime download or release.
 
 ## Distribution and integrity
 
@@ -194,7 +194,7 @@ switch drains the entire claim/action/post-state/completion, retires the old
 generation, and resumes the same cloud host and plugin processes. Rapid choices
 retain only the latest activation intent, including a repeated CUA choice after
 an intervening Okou choice. Stop, auth changes and update/quit supersede startup.
-Use **Use Okou** or select **Okou** to request a driver change. Collapsing
+Click **Use Okou** or select **Okou** to request a driver change. Collapsing
 Developer Tools never requests a change; reopening it restores current diagnostics.
 
 **Retry** is an explicit Start. **Use Okou** changes the request only; neither
