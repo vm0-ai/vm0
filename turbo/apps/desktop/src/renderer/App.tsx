@@ -172,16 +172,12 @@ function Header() {
     <header className="app-header">
       <div className="titlebar-title">
         <h1>
-          {identity.product === "okou" ? (
-            <img
-              className="titlebar-wordmark"
-              src={okouWordmarkUrl}
-              alt={identity.displayName}
-              draggable={false}
-            />
-          ) : (
-            identity.displayName
-          )}
+          <img
+            className="titlebar-wordmark"
+            src={okouWordmarkUrl}
+            alt={identity.displayName}
+            draggable={false}
+          />
         </h1>
       </div>
     </header>
@@ -189,9 +185,8 @@ function Header() {
 }
 
 export function App() {
-  const identity = currentDesktopIdentity();
   return (
-    <div className={`app-shell desktop-product-${identity.product}`}>
+    <div className="app-shell desktop-product-okou">
       <BridgeSubscription />
       <Header />
       <main className="content">

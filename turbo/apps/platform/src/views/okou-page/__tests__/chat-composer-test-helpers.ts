@@ -366,6 +366,7 @@ export function mockComposerThreadSnapshot(
           selectedModel: thread.selectedModel ?? null,
           serviceTier: null,
           computerUseHostId: null,
+          selectedVideoModel: null,
           selectedImageModel: thread.selectedImageModel ?? null,
         };
       }),

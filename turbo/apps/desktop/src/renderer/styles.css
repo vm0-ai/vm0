@@ -58,14 +58,6 @@ button {
   overflow: hidden;
 }
 
-.desktop-product-zero {
-  --brand: #ed4e01;
-  --brand-hover: #ff6a1f;
-  --brand-press: #d54501;
-  --brand-soft: rgba(237, 78, 1, 0.1);
-  --brand-ring: rgba(237, 78, 1, 0.3);
-}
-
 .app-header {
   -webkit-app-region: drag;
   position: relative;
@@ -1103,17 +1095,6 @@ button {
   user-select: none;
 }
 
-.desktop-brand-mark-zero {
-  border-radius: 50%;
-  background: #ffffff;
-}
-
-.desktop-brand-mark-zero img {
-  width: 92%;
-  height: 92%;
-  transform: translateY(4%);
-}
-
 .desktop-brand-mark-init {
   box-shadow:
     0 6px 20px -8px rgba(20, 23, 29, 0.2),
@@ -1144,10 +1125,6 @@ button {
 .desktop-brand-mark-offline {
   box-shadow: 0 0 0 1px rgba(20, 23, 29, 0.08);
   opacity: 0.62;
-}
-
-.desktop-brand-mark-zero.desktop-brand-mark-offline {
-  filter: grayscale(0.85);
 }
 
 @keyframes brand-mark-breathe {
@@ -1523,13 +1500,6 @@ button {
   .arrival-label {
     animation-duration: 0.4s;
   }
-}
-
-.desktop-product-zero .step-index,
-.desktop-product-zero .button-primary,
-.desktop-product-zero .go-online-button,
-.desktop-product-zero .arrival-label {
-  color: #ffffff;
 }
 
 .screenshot-lightbox {

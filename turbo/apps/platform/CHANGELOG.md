@@ -11,6 +11,39 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.862.4](https://github.com/vm0-ai/vm0/compare/app-v0.862.3...app-v0.862.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align chat avatars without work folding ([#32487](https://github.com/vm0-ai/vm0/issues/32487)) ([7a19f0a](https://github.com/vm0-ai/vm0/commit/7a19f0ae376461b990b6fe3351a6fb52e4c72bc8))
+* **platform:** remove optimistic directed authorization state ([#32493](https://github.com/vm0-ai/vm0/issues/32493)) ([45e1053](https://github.com/vm0-ai/vm0/commit/45e10539dffbd49c47e49c115e28dc78d10d5bb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.2
+    * @okouai/connectors bumped to 3.8.2
+    * @okouai/core bumped to 8.634.4
+
+## [0.862.3](https://github.com/vm0-ai/vm0/compare/app-v0.862.2...app-v0.862.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **platform:** align pinned chat move menu labels ([#32486](https://github.com/vm0-ai/vm0/issues/32486)) ([e911359](https://github.com/vm0-ai/vm0/commit/e9113596224b785a9f7108f2d0ddc66e5e527283))
+* **platform:** normalize feature switch maintainer emails ([#32439](https://github.com/vm0-ai/vm0/issues/32439)) ([16d1e9a](https://github.com/vm0-ai/vm0/commit/16d1e9a9b2bcd80e20ae37dfd64584814c46b531))
+* **platform:** stop transcript card border blink ([#32430](https://github.com/vm0-ai/vm0/issues/32430)) ([18b4cf2](https://github.com/vm0-ai/vm0/commit/18b4cf2354b57ffc5debdda58f1397519f961021))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.634.3
+
 ## [0.862.2](https://github.com/vm0-ai/vm0/compare/app-v0.862.1...app-v0.862.2) (2026-09-08)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.48.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.4...desktop-v0.48.5) (2026-09-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.414.2
+
+## [0.48.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.3...desktop-v0.48.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* **desktop:** place computer use driver under developer tools ([#32490](https://github.com/vm0-ai/vm0/issues/32490)) ([ac67dfd](https://github.com/vm0-ai/vm0/commit/ac67dfd8ddfec17248573ca5cb66ff35046ed1ad))
+
 ## [0.48.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.2...desktop-v0.48.3) (2026-09-08)
 
 

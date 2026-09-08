@@ -62,7 +62,7 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.SshAccess]).toEqual({
-      maintainer: "ethan@vm0.ai",
+      maintainer: "ethan@okou.ai",
       description: "Enable standalone Runner-mediated SSH configuration",
       rolloutStage: "internal",
     });
@@ -150,7 +150,7 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.MorningBrief]).toEqual({
-      maintainer: "lancy@vm0.ai",
+      maintainer: "lancy@okou.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
       rolloutStage: "beta",
@@ -347,7 +347,7 @@ describe("getFeatureSwitchMetadata", () => {
   it("should return display metadata for every switch", () => {
     const metadata = getFeatureSwitchMetadata();
     for (const key of Object.values(FeatureSwitchKey)) {
-      expect(metadata[key]?.maintainer).toEqual(expect.any(String));
+      expect(metadata[key]?.maintainer).toMatch(/@okou\.ai$/u);
       expect(metadata[key]?.description).toEqual(expect.any(String));
       expect(metadata[key]?.rolloutStage).toMatch(
         /^(released|beta|alpha|internal)$/u,

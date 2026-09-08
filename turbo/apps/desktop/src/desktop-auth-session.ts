@@ -1,42 +1,20 @@
 import { authContract } from "@okouai/api-contracts/contracts/auth";
-import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
 import type { DesktopAuthWindowRequest } from "./desktop-auth-window";
 import type { DesktopAuthState } from "./desktop-bridge";
 import type { DesktopAuthCallback } from "./desktop-auth";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
-import {
-  headersWithSessionCookies,
-  type DesktopSessionCookieSource,
-} from "./desktop-session-cookies";
 import { singleFlight } from "./desktop-async-control";
 
 const AUTH_ME_PATH = "/api/auth/me";
-const ZERO_ORG_PATH = "/api/org";
-
-interface AuthMeResponse {
-  readonly userId: string;
-  readonly email: string;
-}
-
-interface ZeroOrgResponse {
-  readonly id: string;
-  readonly name: string;
-}
+const ORG_PATH = "/api/org";
 
 type RunAuthWindow = (
   request: DesktopAuthWindowRequest,
 ) => Promise<string | null>;
 
 interface DesktopAuthSessionOptions {
-  readonly product: DesktopProduct;
   /** Pre-resolved API base URL (`resolveComputerUseApiBaseUrl(platformUrl)`). */
   readonly apiBaseUrl: string;
-  /**
-   * Existing Zero-only cookie precedence: [webUrl, platformUrl, requestUrl].
-   * Okou never reads these cookies, including the API origin cookie jar.
-   */
-  readonly cookieUrls: readonly URL[];
-  readonly cookieSource: DesktopSessionCookieSource;
   readonly addClientHeaders: DesktopClientHeaderInjector;
   /** `buildDesktopAuthTokenUrl(authUrl)`. */
   readonly tokenUrl: string;
@@ -77,10 +55,7 @@ function signingInDesktopAuthState(): DesktopAuthState {
  * mirroring `ComputerUseHostRuntime`'s dependency-injection shape.
  */
 export class DesktopAuthSession {
-  private readonly product: DesktopProduct;
   private readonly apiBaseUrl: string;
-  private readonly cookieUrls: readonly URL[];
-  private readonly cookieSource: DesktopSessionCookieSource;
   private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly tokenUrl: string;
   private readonly consumeUrl: (
@@ -138,10 +113,7 @@ export class DesktopAuthSession {
   }
 
   constructor(options: DesktopAuthSessionOptions) {
-    this.product = options.product;
     this.apiBaseUrl = options.apiBaseUrl;
-    this.cookieUrls = options.cookieUrls;
-    this.cookieSource = options.cookieSource;
     this.addClientHeaders = options.addClientHeaders;
     this.tokenUrl = options.tokenUrl;
     this.consumeUrl = options.consumeUrl;
@@ -167,46 +139,13 @@ export class DesktopAuthSession {
   /**
    * `init` carries the method and body for non-GET calls. Its `headers` are
    * merged under the session headers, which always win, so a caller cannot
-   * accidentally drop the cookie or bearer token.
+   * accidentally drop the bearer token.
    */
   async fetchWithSessionAuth(
     requestUrl: URL,
     init?: RequestInit,
   ): Promise<Response> {
-    if (this.product === "okou") {
-      return await this.fetchWithAppAuth(requestUrl, init);
-    }
-    const response = await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
-    if (response.status !== 401 || !this.token) {
-      return response;
-    }
-
-    this.token = null;
-    const withCookies = await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
-    if (withCookies.status !== 401) {
-      return withCookies;
-    }
-
-    // The token is short-lived, and a call made minutes after the last one —
-    // the click track uploaded after a long video — arrives with an expired
-    // bearer and cookies that no longer answer either. Delivering a recording
-    // must not depend on the token still being the one minted at sign-in:
-    // mint a fresh one and try once more. A refresh that yields nothing means
-    // the sign-in itself is gone, and the 401 stands.
-    const refreshed = await this.getToken({ forceRefresh: true });
-    if (!refreshed) {
-      return withCookies;
-    }
-    return await fetch(requestUrl, {
-      ...init,
-      headers: await this.headersFor(requestUrl, init?.headers),
-    });
+    return await this.fetchWithAppAuth(requestUrl, init);
   }
 
   getCachedToken(): string | null {
@@ -221,67 +160,7 @@ export class DesktopAuthSession {
       return signedOutDesktopAuthState();
     }
 
-    if (this.product === "okou") {
-      return await this.getAppAuthState();
-    }
-
-    // With a cached token, a rejected request already refreshes and retries
-    // inside fetchWithSessionAuth; a second hidden refresh here would only
-    // open the window again for the same answer.
-    const hadToken = this.token !== null;
-    const state = await this.fetchAuthState();
-    if (state.status !== "signed_out" || hadToken) {
-      return state;
-    }
-
-    const restoredToken = await this.getToken({ forceRefresh: true });
-    if (!restoredToken) {
-      return state;
-    }
-
-    return await this.fetchAuthState();
-  }
-
-  private async fetchAuthState(): Promise<DesktopAuthState> {
-    const lifetime = this.lifetime;
-    const meUrl = new URL(AUTH_ME_PATH, this.apiBaseUrl);
-    const meResponse = await this.fetchWithSessionAuth(meUrl);
-    if (meResponse.status === 401) {
-      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
-      return signedOutDesktopAuthState();
-    }
-    if (!meResponse.ok) {
-      throw new Error(`Desktop auth status failed: ${meResponse.status}`);
-    }
-
-    const user = (await meResponse.json()) as AuthMeResponse;
-    const orgUrl = new URL(ZERO_ORG_PATH, this.apiBaseUrl);
-    const orgResponse = await this.fetchWithSessionAuth(orgUrl);
-    if (orgResponse.status === 401) {
-      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
-      return signedOutDesktopAuthState();
-    }
-    if (orgResponse.status === 404) {
-      this.rememberAuthority(signedOutDesktopAuthState(), lifetime);
-      return { status: "signed_in", user, organization: null };
-    }
-    if (!orgResponse.ok) {
-      throw new Error(
-        `Desktop organization status failed: ${orgResponse.status}`,
-      );
-    }
-
-    const organization = (await orgResponse.json()) as ZeroOrgResponse;
-    const state: DesktopAuthState = {
-      status: "signed_in",
-      user,
-      organization: {
-        id: organization.id,
-        name: organization.name,
-      },
-    };
-    this.rememberAuthority(state, lifetime);
-    return lifetime.signal.aborted ? signedOutDesktopAuthState() : state;
+    return await this.getAppAuthState();
   }
 
   signOut(): void {
@@ -337,11 +216,10 @@ export class DesktopAuthSession {
   private async refreshToken(): Promise<string | null> {
     try {
       return await this.authenticate(this.tokenUrl, false, false);
-    } catch (error) {
+    } catch {
       // A failed App restoration requires explicit sign-in, never another
       // identity source. Interactive failures still reject to the caller.
-      if (this.product === "okou") return null;
-      throw error;
+      return null;
     }
   }
 
@@ -374,13 +252,11 @@ export class DesktopAuthSession {
       });
       signal.throwIfAborted();
       if (!token) return null;
-      if (this.product === "okou") {
-        const state = await this.readAppIdentity(token, signal);
-        signal.throwIfAborted();
-        if (state.status !== "signed_in") return null;
-        this.appState = state;
-        this.rememberAuthority(state, lifetime);
-      }
+      const state = await this.readAppIdentity(token, signal);
+      signal.throwIfAborted();
+      if (state.status !== "signed_in") return null;
+      this.appState = state;
+      this.rememberAuthority(state, lifetime);
       this.token = token;
       this.onChange();
       if (interactive) {
@@ -398,7 +274,7 @@ export class DesktopAuthSession {
       throw error;
     } finally {
       if (this.lifetime === lifetime) {
-        if (this.product === "okou" && !this.token) {
+        if (!this.token) {
           // Notify renderer/tray subscribers, and keep their reads from
           // reopening a failed hidden restore until explicit sign-in.
           this.restoreEnabled = false;
@@ -451,7 +327,7 @@ export class DesktopAuthSession {
     // Both reads use the identical server-verified bearer; never refresh only
     // the second half of the user/workspace pair.
     const org = await this.appRequest(
-      new URL(ZERO_ORG_PATH, this.apiBaseUrl),
+      new URL(ORG_PATH, this.apiBaseUrl),
       token,
       signal,
     );
@@ -541,21 +417,5 @@ export class DesktopAuthSession {
     }
     this.signingIn = value;
     this.onChange();
-  }
-
-  private async headersFor(
-    requestUrl: URL,
-    extraHeaders?: HeadersInit,
-  ): Promise<Headers> {
-    const headers = await headersWithSessionCookies(
-      this.cookieSource,
-      [...this.cookieUrls, requestUrl],
-      extraHeaders,
-    );
-    if (this.token) {
-      headers.set("authorization", `Bearer ${this.token}`);
-    }
-    this.addClientHeaders(headers);
-    return headers;
   }
 }

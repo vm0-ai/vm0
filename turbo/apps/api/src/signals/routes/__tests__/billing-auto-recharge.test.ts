@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { billingAutoRechargeContract } from "@okouai/api-contracts/contracts/billing";
+import StripeSDK from "stripe";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -8,6 +9,7 @@ import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createRouteMocks } from "./helpers/route-test";
 import { billingAutoRechargeRoutes } from "../billing-auto-recharge";
 
@@ -15,6 +17,7 @@ const context = testContext();
 const bdd = createBddApi(context);
 const billingApi = createBillingMediaApi(context);
 const runsApi = createRunsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 const mocks = createRouteMocks(context);
 
 const defaultAutoRechargeConfig = Object.freeze({
@@ -84,6 +87,7 @@ function acceptAutoRechargeStripeInvoice(customerId: string): string {
   });
   context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
     id: invoiceId,
+    status: "open",
   });
   context.mocks.stripe.invoices.pay.mockResolvedValue({
     id: invoiceId,
@@ -308,6 +312,196 @@ describe("PUT /api/billing/auto-recharge", () => {
     );
     expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(invoiceId);
   });
+
+  it.each([
+    "zero-due",
+    "payment",
+    "already-paid",
+    "already-paid-no-code",
+  ] as const)(
+    "keeps a %s invoice pending until its webhook grants credits exactly once",
+    async (outcome) => {
+      const { admin, entitlement } = await createProActor();
+      const before = await billingApi.readBillingStatus(admin);
+      const threshold = before.credits + 1000;
+      const amount = threshold + 5000;
+      const invoiceId = acceptAutoRechargeStripeInvoice(entitlement.customerId);
+      const amountPaid =
+        outcome === "zero-due" ? 0 : Math.ceil(amount / 1000) * 100;
+
+      if (outcome === "zero-due") {
+        context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+          id: invoiceId,
+          status: "paid",
+          amount_due: 0,
+          amount_paid: 0,
+        });
+        context.mocks.stripe.invoices.pay.mockRejectedValue(
+          new StripeSDK.errors.StripeInvalidRequestError({
+            type: "invalid_request_error",
+            code: "invoice_already_paid",
+            message: "Invoice is already paid",
+          }),
+        );
+      } else if (
+        outcome === "already-paid" ||
+        outcome === "already-paid-no-code"
+      ) {
+        context.mocks.stripe.invoices.pay.mockRejectedValue(
+          new StripeSDK.errors.StripeInvalidRequestError({
+            type: "invalid_request_error",
+            ...(outcome === "already-paid"
+              ? { code: "invoice_already_paid" }
+              : {}),
+            message: "Invoice is already paid",
+          }),
+        );
+        context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+          id: invoiceId,
+          status: "paid",
+        });
+      }
+
+      const config = { enabled: true, threshold, amount };
+      await billingApi.updateAutoRecharge(admin, config, [200]);
+      await billingApi.updateAutoRecharge(admin, config, [200]);
+
+      expect((await billingApi.readBillingStatus(admin)).credits).toBe(
+        before.credits,
+      );
+      expect(context.mocks.stripe.invoices.create).toHaveBeenCalledTimes(1);
+      expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledTimes(
+        outcome === "zero-due" ? 0 : 1,
+      );
+      if (outcome === "already-paid" || outcome === "already-paid-no-code") {
+        expect(context.mocks.stripe.invoices.retrieve).toHaveBeenCalledWith(
+          invoiceId,
+        );
+      }
+
+      webhooks.configureStripeWebhookSecret();
+      const event = {
+        id: `evt_auto_recharge_${randomUUID()}`,
+        type: "invoice.paid",
+        data: {
+          object: {
+            id: invoiceId,
+            customer: entitlement.customerId,
+            status: "paid",
+            amount_paid: amountPaid,
+            metadata: {
+              type: "auto_recharge",
+              orgId: admin.orgId,
+              creditsAmount: String(amount),
+            },
+            lines: { has_more: false, data: [] },
+            parent: null,
+          },
+        },
+      };
+      await webhooks.postStripeEvent(event, [200]);
+      await webhooks.postStripeEvent(
+        { ...event, id: `evt_auto_recharge_duplicate_${randomUUID()}` },
+        [200],
+      );
+
+      const after = await billingApi.readBillingStatus(admin);
+      expect(after.credits).toBe(before.credits + amount);
+      const grants = after.creditGrants.filter((grant) => {
+        return grant.source === "auto_recharge";
+      });
+      expect(grants).toHaveLength(1);
+      expect(grants[0]).toMatchObject({ amount, remaining: amount });
+
+      acceptAutoRechargeStripeInvoice(entitlement.customerId);
+      await billingApi.updateAutoRecharge(
+        admin,
+        {
+          enabled: true,
+          threshold: after.credits + 1000,
+          amount: after.credits + 6000,
+        },
+        [200],
+      );
+      expect(context.mocks.stripe.invoices.create).toHaveBeenCalledTimes(2);
+      expect((await billingApi.readBillingStatus(admin)).credits).toBe(
+        after.credits,
+      );
+    },
+  );
+
+  it.each([
+    "payment-failed",
+    "already-paid-but-open",
+    "status-lookup-failed",
+    "finalized-void",
+    "payment-still-open",
+  ] as const)(
+    "keeps %s on the failure path without granting credits",
+    async (outcome) => {
+      const { admin, entitlement } = await createProActor();
+      const before = await billingApi.readBillingStatus(admin);
+      const invoiceId = acceptAutoRechargeStripeInvoice(entitlement.customerId);
+
+      if (outcome === "payment-failed") {
+        context.mocks.stripe.invoices.pay.mockRejectedValue(
+          new StripeSDK.errors.StripeCardError({
+            type: "card_error",
+            code: "card_declined",
+            message: "Your card was declined",
+          }),
+        );
+      } else if (outcome === "finalized-void") {
+        context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+          id: invoiceId,
+          status: "void",
+        });
+      } else if (outcome === "payment-still-open") {
+        context.mocks.stripe.invoices.pay.mockResolvedValue({
+          id: invoiceId,
+          status: "open",
+        });
+      } else {
+        context.mocks.stripe.invoices.pay.mockRejectedValue(
+          new StripeSDK.errors.StripeInvalidRequestError({
+            type: "invalid_request_error",
+            code: "invoice_already_paid",
+            message: "Invoice is already paid",
+          }),
+        );
+        if (outcome === "status-lookup-failed") {
+          context.mocks.stripe.invoices.retrieve.mockRejectedValue(
+            new Error("Stripe temporarily unavailable"),
+          );
+        } else {
+          context.mocks.stripe.invoices.retrieve.mockResolvedValue({
+            id: invoiceId,
+            status: "open",
+          });
+        }
+      }
+
+      const config = {
+        enabled: true,
+        threshold: before.credits + 1000,
+        amount: before.credits + 6000,
+      };
+      await billingApi.updateAutoRecharge(admin, config, [200]);
+      expect((await billingApi.readBillingStatus(admin)).credits).toBe(
+        before.credits,
+      );
+      if (outcome === "finalized-void") {
+        expect(context.mocks.stripe.invoices.pay).not.toHaveBeenCalled();
+      }
+
+      acceptAutoRechargeStripeInvoice(entitlement.customerId);
+      await billingApi.updateAutoRecharge(admin, config, [200]);
+      expect(context.mocks.stripe.invoices.create).toHaveBeenCalledTimes(2);
+      expect((await billingApi.readBillingStatus(admin)).credits).toBe(
+        before.credits,
+      );
+    },
+  );
 
   it("disables auto-recharge after a public recharge trigger", async () => {
     const { admin, entitlement } = await createProActor();
