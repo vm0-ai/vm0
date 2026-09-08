@@ -5059,6 +5059,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(created.status).toBe("pending");
     const claim = await api.claimRunnerJob(created.runId);
     expect(claim.prompt).toBe(prompt);
+    const snapshot = runContextSnapshotForRun(created.runId);
+    expect(snapshot).not.toHaveProperty("piModelConfigGeneration");
+    expect(snapshot).not.toHaveProperty("piModelConfigLegacyApi");
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
       expect.objectContaining({
         runId: created.runId,

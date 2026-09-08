@@ -26,10 +26,11 @@ import {
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 import {
-  COMPOSER_CREATE_MODES,
+  composerCreateCommandLabel,
   composerCreateModeLabel,
+  composerCreateModeName,
   composerCreatePlaceholder,
-  type ComposerCreateMode,
+  type ComposerCreateCommand,
 } from "../../signals/okou-page/composer-create.ts";
 
 function isMacKeyboard(): boolean {
@@ -166,8 +167,9 @@ function WorkflowComposerPlaceholder({
   composer: ComposerSignals;
   sending: boolean | undefined;
 }) {
-  useTranslation();
+  const { t } = useTranslation();
   const createMode = useGet(composer.create.mode$);
+  const choosing = useGet(composer.create.choosing$);
   const hasInput = useGet(composer.editor.hasInput$);
   const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
@@ -188,9 +190,13 @@ function WorkflowComposerPlaceholder({
       }`}
       aria-hidden="true"
     >
-      {createMode
-        ? composerCreatePlaceholder(createMode)
-        : workflowComposerPlaceholder(sending)}
+      {choosing
+        ? t(($) => {
+            return $.chat.composer.create.question;
+          })
+        : createMode
+          ? composerCreatePlaceholder(createMode)
+          : workflowComposerPlaceholder(sending)}
     </div>
   );
 }
@@ -298,8 +304,8 @@ interface ComposerSuggestionMenuState {
   readonly selectedIndex: number;
   readonly close: () => void;
   readonly workflows: readonly ComposerSlashWorkflow[];
-  readonly createModes: readonly ComposerCreateMode[];
-  readonly selectCreate: (mode: ComposerCreateMode) => void;
+  readonly createModes: readonly ComposerCreateCommand[];
+  readonly selectCreate: (mode: ComposerCreateCommand) => void;
   readonly workflowQuery: string;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
@@ -315,23 +321,24 @@ interface ComposerSuggestionMenuState {
 function useComposerCreateSuggestions(
   composer: ComposerSignals,
   query: string | undefined,
-): readonly ComposerCreateMode[] {
+): readonly ComposerCreateCommand[] {
   useTranslation();
   const enabled = useGet(composer.create.enabled$);
   if (!enabled || query === undefined) {
     return [];
   }
-  return COMPOSER_CREATE_MODES.filter((mode) => {
-    if (
-      (mode === "image" && !composer.imageModel) ||
-      (mode === "video" && !composer.videoModel)
-    ) {
-      return false;
-    }
-    const normalized = query.toLowerCase().trim();
+  const normalized = query.toLowerCase().trim();
+  if (
+    "create".startsWith(normalized) ||
+    composerCreateCommandLabel("choose").toLowerCase().startsWith(normalized)
+  ) {
+    return ["choose"];
+  }
+  return composer.create.modes.filter((mode) => {
     return (
       `create ${mode}`.includes(normalized) ||
-      composerCreateModeLabel(mode).toLowerCase().includes(normalized)
+      composerCreateModeLabel(mode).toLowerCase().includes(normalized) ||
+      composerCreateModeName(mode).toLowerCase().includes(normalized)
     );
   });
 }
@@ -343,7 +350,9 @@ function useComposerSuggestionMenu({
   readonly composer: ComposerSignals;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
 }): ComposerSuggestionMenuState {
-  const selectCreate = useSet(composer.create.setMode$);
+  const selectCreate = useSet(composer.create.selectCommand$);
+  const setCreateMode = useSet(composer.create.setMode$);
+  const choosing = useGet(composer.create.choosing$);
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
   const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
   const chatThreadRange = useGet(
@@ -428,6 +437,11 @@ function useComposerSuggestionMenu({
   }
 
   function handleKeyDown(event: KeyboardEvent): boolean {
+    if (event.key === "Escape" && choosing && !open) {
+      event.preventDefault();
+      setCreateMode(null);
+      return true;
+    }
     return handleComposerKeyDownCapture(event, {
       composer,
       suggestionCount,

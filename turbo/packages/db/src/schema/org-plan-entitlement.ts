@@ -28,6 +28,7 @@ function orgPlanEntitlementColumnsBeforeModelRestriction() {
     memberInviteUsagePackRequired: boolean("member_invite_usage_pack_required")
       .notNull()
       .default(false),
+    showUsagePack: boolean("show_usage_pack").notNull().default(false),
     memberInvitationAllowed: boolean("member_invitation_allowed")
       .notNull()
       .default(false),

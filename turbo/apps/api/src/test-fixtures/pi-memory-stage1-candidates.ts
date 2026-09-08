@@ -261,7 +261,12 @@ export async function setSyntheticPiMemoryStage1SelectionFixture(args: {
   }
 }
 
-export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
+export async function readmitPiMemoryStage1CandidateFixture(
+  runId: string,
+  ownership: Partial<
+    Pick<AdmitPiMemoryStage1CandidateArgs, "orgId" | "userId" | "chatThreadId">
+  > = {},
+) {
   const [run] = await db()
     .select({
       orgId: agentRuns.orgId,
@@ -302,6 +307,7 @@ export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
       chatThreadId: run.chatThreadId,
       completedAt,
       idleDelayMs: 0,
+      ...ownership,
     });
   });
 }

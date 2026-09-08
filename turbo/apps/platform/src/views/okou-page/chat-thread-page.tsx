@@ -1,5 +1,4 @@
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
-import { RunWorkMessage } from "./run-work-message.tsx";
 import type {
   CSSProperties,
   FormEvent,
@@ -696,9 +695,6 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
   const selectedCount = useGet(thread.sharing.selectedCount$);
   const startSharing = useSet(thread.sharing.start$);
   const closeSharing = useSet(thread.sharing.close$);
-  const sharingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
-
   if (sharingPhase !== "idle") {
     return (
       <header className={CHAT_THREAD_HEADER_CLASS}>
@@ -733,38 +729,36 @@ function DesktopChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     <header className={CHAT_THREAD_HEADER_CLASS}>
       <ChatThreadHeaderTitle thread={thread} />
       <div className="flex items-center gap-0.5">
-        {sharingEnabled ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    detach(
-                      startSharing(pageSignal),
-                      Reason.DomCallback,
-                      "start shared thread selection",
-                    );
-                  }}
-                  variant="quiet"
-                  size="icon-sm"
-                  iconSize="md"
-                  className="shrink-0 duration-150"
-                  aria-label={t(($) => {
-                    return $.chat.sharing.start;
-                  })}
-                >
-                  <Share2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t(($) => {
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                onClick={() => {
+                  detach(
+                    startSharing(pageSignal),
+                    Reason.DomCallback,
+                    "start shared thread selection",
+                  );
+                }}
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0 duration-150"
+                aria-label={t(($) => {
                   return $.chat.sharing.start;
                 })}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : null}
+              >
+                <Share2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.sharing.start;
+              })}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
@@ -7557,10 +7551,6 @@ type PagedAssistantHistoryItem =
       readonly kind: "model-change";
       readonly eventId: string;
       readonly change: RunModelChange;
-    }
-  | {
-      readonly kind: "run-work-message";
-      readonly event: EnrichedChatEvent;
     };
 
 type PagedAssistantTimelineItem =
@@ -7598,7 +7588,7 @@ function foldedRunWorkTimelineItems(
         return [{ kind: "model-change", eventId: event.id, change }];
       }
       return isRenderableAssistantEvent(event)
-        ? [{ kind: "run-work-message", event }]
+        ? [{ kind: "assistant", event }]
         : [];
     });
   });
@@ -7642,14 +7632,6 @@ function buildPagedAssistantTimeline({
   if (showAllHistory) {
     historyItems.push(
       ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
-    );
-  } else {
-    historyItems.push(
-      ...runWorkSection.previewMessages.map(
-        (event): PagedAssistantHistoryItem => {
-          return { kind: "run-work-message", event };
-        },
-      ),
     );
   }
   historyItems.push(
@@ -7731,15 +7713,6 @@ function PagedAssistantTimeline({
         </div>
       );
     }
-    if (item.kind === "run-work-message") {
-      return (
-        <PagedRunWorkMessage
-          key={item.event.id}
-          event={item.event}
-          thread={thread}
-        />
-      );
-    }
     if (item.kind === "run-work-main") {
       return (
         <div
@@ -7760,38 +7733,6 @@ function PagedAssistantTimeline({
       />
     );
   });
-}
-
-function PagedRunWorkMessage({
-  event,
-  thread,
-}: {
-  event: EnrichedChatEvent;
-  thread: ChatPanelSignals;
-}) {
-  const expandedIds = useGet(thread.timelineExpandedIds$);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const isScrollTarget =
-    useGet(thread.threadScrollPosition$, {
-      equalityFn: (previous, next) => {
-        return (
-          (previous?.targetEventId === event.id) ===
-          (next?.targetEventId === event.id)
-        );
-      },
-    })?.targetEventId === event.id;
-  const expanded = expandedIds.has(event.id) || isScrollTarget;
-  return withChatScrollLayout(
-    <RunWorkMessage
-      event={event}
-      expanded={expanded}
-      onToggle={() => {
-        toggleExpanded(event.id);
-      }}
-    >
-      <PagedAssistantEventItem event={event} thread={thread} compact />
-    </RunWorkMessage>,
-  );
 }
 
 function PagedRunWorkAssistantContent({
@@ -7975,11 +7916,9 @@ function PagedAssistantGroup({
 function PagedAssistantEventItem({
   event,
   thread,
-  compact = false,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  compact?: boolean;
 }) {
   const retryRichEventTree = useSet(thread.retryRichEventTree$);
   const pageSignal = useGet(pageSignal$);
@@ -7987,7 +7926,6 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <ChatAssistantMessageBody
-        className={compact ? "py-1 text-[13px] leading-5" : undefined}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -8006,11 +7944,7 @@ function PagedAssistantEventItem({
   ) {
     return (
       <ChatAssistantMessageBody
-        className={
-          compact
-            ? "py-1 text-[13px] leading-5"
-            : CHAT_THREAD_RESPONSE_LINE_CLASS
-        }
+        className={CHAT_THREAD_RESPONSE_LINE_CLASS}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >

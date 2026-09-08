@@ -88,8 +88,10 @@ import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import { debounceCommand } from "../command-scheduling.ts";
 import {
+  agentMessageMathEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
+  initialFeatureSwitchHydration$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
@@ -772,28 +774,10 @@ function createThreadOwnedSignals(threadId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: per-thread UI state (timeline expansion, copy)
+// Sub-factory: per-thread UI state (copy)
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
-  // Timeline expansion
-  const internalExpandedIds$ = state(new Set<string>());
-
-  const timelineExpandedIds$ = computed((get) => {
-    return get(internalExpandedIds$);
-  });
-
-  const toggleTimelineExpanded$ = command(({ get, set }, eventId: string) => {
-    const current = get(internalExpandedIds$);
-    const next = new Set(current);
-    if (next.has(eventId)) {
-      next.delete(eventId);
-    } else {
-      next.add(eventId);
-    }
-    set(internalExpandedIds$, next);
-  });
-
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
   const resetCopiedSignal$ = resetSignal();
@@ -834,8 +818,6 @@ function createThreadUIState() {
   );
 
   return {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
     copiedEventId$,
     copyEvent$,
   };
@@ -1863,6 +1845,7 @@ function createCardRefRegistrar({
 
 interface EventTree {
   readonly content: string;
+  readonly mathEnabled: boolean;
   readonly tree: Root | undefined;
   readonly error: boolean;
 }
@@ -1872,6 +1855,7 @@ interface RichEventTreePlan {
   readonly content: string;
   readonly treeSource: string;
   readonly descriptors: readonly CardDescriptorBlock[];
+  readonly mathEnabled: boolean;
 }
 
 function createEventTreeParser(registries: EventTreeRegistries) {
@@ -1891,6 +1875,7 @@ function createEventTreeParser(registries: EventTreeRegistries) {
       );
     }
     const tree = parseMarkdownTree(plan.treeSource, {
+      math: plan.mathEnabled,
       mermaid: true,
       cards,
     });
@@ -1914,6 +1899,7 @@ function planEventTreeUpdates(
   events: readonly ChatEvent[],
   current: ReadonlyMap<string, EventTree>,
   chatActionContext: ChatActionContext,
+  mathEnabled: boolean,
 ): {
   readonly next: Map<string, EventTree> | undefined;
   readonly richPlans: RichEventTreePlan[];
@@ -1922,7 +1908,11 @@ function planEventTreeUpdates(
   const richPlans: RichEventTreePlan[] = [];
   for (const event of events) {
     const content = chatEventTreeContent(event);
-    if (content === null || current.get(event.id)?.content === content) {
+    const previous = current.get(event.id);
+    if (
+      content === null ||
+      (previous?.content === content && previous.mathEnabled === mathEnabled)
+    ) {
       continue;
     }
     const plan = chatEventTreePlan(event, chatActionContext);
@@ -1930,12 +1920,13 @@ function planEventTreeUpdates(
       continue;
     }
     const plainTree = createPlainMarkdownTree(plan.treeSource, {
-      mathEnabled: false,
+      mathEnabled,
     });
     next ??= new Map(current);
     if (plainTree !== null) {
       next.set(event.id, {
         content: plan.content,
+        mathEnabled,
         tree: plainTree,
         error: false,
       });
@@ -1945,10 +1936,11 @@ function planEventTreeUpdates(
     // body loads. This pending identity also deduplicates concurrent ensures.
     next.set(event.id, {
       content: plan.content,
+      mathEnabled,
       tree: undefined,
       error: false,
     });
-    richPlans.push({ eventId: event.id, ...plan });
+    richPlans.push({ eventId: event.id, ...plan, mathEnabled });
   }
   return { next, richPlans };
 }
@@ -1962,6 +1954,7 @@ function markPendingEventTreesFailed(
     const entry = current.get(plan.eventId);
     if (
       entry?.content === plan.content &&
+      entry.mathEnabled === plan.mathEnabled &&
       entry.tree === undefined &&
       !entry.error
     ) {
@@ -2011,6 +2004,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         const pendingEntry = pending.get(plan.eventId);
         if (
           pendingEntry?.content !== plan.content ||
+          pendingEntry.mathEnabled !== plan.mathEnabled ||
           pendingEntry.tree !== undefined ||
           pendingEntry.error
         ) {
@@ -2020,6 +2014,7 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
         parsed ??= new Map(pending);
         parsed.set(plan.eventId, {
           content: plan.content,
+          mathEnabled: plan.mathEnabled,
           tree,
           error: false,
         });
@@ -2044,11 +2039,13 @@ function createEventTreeSignals(registries: EventTreeRegistries) {
       events: readonly ChatEvent[],
       signal: AbortSignal,
     ): Promise<void> => {
+      signal.throwIfAborted();
       const current = get(internalEventTrees$);
       const { next, richPlans } = planEventTreeUpdates(
         events,
         current,
         chatActionContext,
+        get(agentMessageMathEnabled$),
       );
       if (next) {
         set(internalEventTrees$, next);
@@ -2411,6 +2408,13 @@ function createChatEventPresentationLifecycle({
   readonly enableSidebarEntryAnimations$: Command<void, []>;
   readonly initialEventsReady$: State<boolean>;
 }) {
+  const syncHydratedEventTrees$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await get(initialFeatureSwitchHydration$);
+      signal.throwIfAborted();
+      await set(syncVisibleEventTrees$, false, signal);
+    },
+  );
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       set(
@@ -2437,7 +2441,7 @@ function createChatEventPresentationLifecycle({
       }
     },
   );
-  return { setup$, catchUp$ };
+  return { setup$, catchUp$, syncHydratedEventTrees$ };
 }
 
 function createReadyScrollAfterRenderRequest(
@@ -2652,6 +2656,7 @@ interface RunTrackingDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
   catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
+  syncHydratedEventTrees$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
@@ -3005,6 +3010,7 @@ function createRunTracking({
   threadId,
   setupChatEvents$,
   catchUpChatEvents$,
+  syncHydratedEventTrees$,
   reloadArtifacts$,
   subscribeBrowserSessions$,
   automationSignals,
@@ -3052,6 +3058,7 @@ function createRunTracking({
     );
 
     await Promise.all([
+      set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
       set(
         subscribeChatThreadRealtime$,
@@ -4346,6 +4353,7 @@ function createChatPanelSignalsWithDraft(
     threadId,
     setupChatEvents$: messages.setup$,
     catchUpChatEvents$: messages.catchUp$,
+    syncHydratedEventTrees$: messagePipeline.syncHydratedEventTrees$,
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,

@@ -482,7 +482,7 @@ test("Keep passage actions until the selection moves beyond the scroll buffer", 
   });
 });
 
-test("Keep an expanded work message in place when its run completes", async () => {
+test("Keep a visible work message in place when its run completes", async () => {
   const activeRunId = "scroll-expanded-work-run";
   const conversation = mockMutableConversation(
     THREAD_IDS.expandedWork,
@@ -529,12 +529,11 @@ test("Keep an expanded work message in place when its run completes", async () =
   });
 
   await screen.findByText("Checked the first rollout stage");
-  click(buttonByLabel("Checked the first rollout stage"));
   const container = chatScrollContainer();
   const geometry = installChatScrollGeometry(container);
   scrollFromUser(container, geometry.bottomScrollTop() - 150);
   await expectHistoryPositionHeld();
-  const expandedMessageTop = anchorById(
+  const historyMessageTop = anchorById(
     container,
     "scroll-expanded-work-earlier",
   ).getBoundingClientRect().top;
@@ -573,7 +572,7 @@ test("Keep an expanded work message in place when its run completes", async () =
         container,
         "scroll-expanded-work-earlier",
       ).getBoundingClientRect().top,
-    ).toBe(expandedMessageTop);
+    ).toBe(historyMessageTop);
   });
 });
 
