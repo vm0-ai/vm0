@@ -7,7 +7,6 @@ import {
   type HostedSitePrepareResponse,
 } from "@okouai/api-contracts/contracts/host";
 import { mapsContract } from "@okouai/api-contracts/contracts/maps";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -109,18 +108,11 @@ function notFoundS3Error(key: string): Error {
 const hostMapsRoutes: readonly RouteEntry[] = [...hostRoutes, ...mapsRoutes];
 
 export function createHostMapsBddApi(context: TestContext) {
-  function hostClient(publicBrand?: PublicBrand) {
+  function hostClient() {
     return setupAppWithRoutes({
       context,
       routes: hostMapsRoutes,
-      ...(publicBrand === undefined
-        ? {}
-        : {
-            baseUrl:
-              publicBrand === "okou"
-                ? "https://api.okou.ai"
-                : "https://api.vm0.ai",
-          }),
+      baseUrl: "https://api.okou.ai",
     })(hostContract);
   }
 
@@ -173,10 +165,9 @@ export function createHostMapsBddApi(context: TestContext) {
     async prepareHostedSite(
       actor: HostActor,
       body: HostedSitePrepareRequest,
-      requestBrand?: PublicBrand,
     ): Promise<HostedSitePrepareResponse> {
       const response = await accept(
-        hostClient(requestBrand).prepare({
+        hostClient().prepare({
           headers: authenticate(context, actor),
           body,
         }),
@@ -189,10 +180,9 @@ export function createHostMapsBddApi(context: TestContext) {
       actor: HostActor | null,
       body: HostedSitePrepareRequest,
       statuses: readonly HostPrepareStatus[],
-      requestBrand?: PublicBrand,
     ) {
       return await accept(
-        hostClient(requestBrand).prepare({
+        hostClient().prepare({
           headers: authenticate(context, actor),
           body,
         }),

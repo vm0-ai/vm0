@@ -2017,7 +2017,7 @@ describe("workflows", () => {
     mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", topicName);
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
-      "https://api.vm0.ai/api/webhooks/google-forms",
+      "https://api.okou.ai/api/webhooks/google-forms",
     );
     mockOptionalEnv(
       "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",

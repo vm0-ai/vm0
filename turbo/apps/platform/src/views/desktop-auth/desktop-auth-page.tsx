@@ -2,7 +2,6 @@ import { Button } from "@okouai/ui";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Building2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AuthBrandContext } from "../../signals/auth.ts";
 import type { DesktopAuthSignals } from "../../signals/desktop-auth/desktop-auth.ts";
 import type { DesktopAuthRoute } from "../../signals/desktop-auth/protocol.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -13,11 +12,9 @@ import { AuthV2ChoiceRow } from "../auth-v2/auth-v2-choice-row.tsx";
 export function DesktopAuthPage({
   signals,
   mode,
-  authBrand,
 }: {
   readonly signals: DesktopAuthSignals;
   readonly mode: DesktopAuthRoute;
-  readonly authBrand: AuthBrandContext;
 }) {
   const { t } = useTranslation();
   const phase = useGet(signals.phase$);
@@ -60,7 +57,6 @@ export function DesktopAuthPage({
       data-testid="desktop-auth"
     >
       <AuthV2Shell
-        authBrand={authBrand}
         focusKey={phase}
         title={title}
         description={description}

@@ -41,7 +41,7 @@ const FORM_ID = `1FAIpQLScWebhookGoogleFormsTest${randomUUID().replaceAll("-", "
 const FORM_URL = `https://docs.google.com/forms/d/${FORM_ID}/edit`;
 const FORM_TITLE = "Customer survey";
 const TOPIC_NAME = "projects/vm0-ai-488909/topics/forms-events";
-const AUDIENCE = "https://api.vm0.ai/api/webhooks/google-forms";
+const AUDIENCE = "https://api.okou.ai/api/webhooks/google-forms";
 const PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const RUNNER_GROUP = "vm0/google-forms-webhook-test";

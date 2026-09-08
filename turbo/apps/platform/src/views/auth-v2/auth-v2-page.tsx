@@ -47,7 +47,6 @@ export function AuthV2Page(props: AuthV2PageProps) {
     <AuthShell authBrand={props.platformContext.authBrand}>
       {invitationError ? (
         <AuthV2Shell
-          authBrand={props.platformContext.authBrand}
           title={copy.activationErrorTitle}
           description={copy.invitationError}
           focusKey="invitation-error"

@@ -22,8 +22,8 @@ export async function readOfficialWorkflowQueueInputFixture(eventId: string) {
 }
 
 /**
- * Production writers intentionally cannot produce canonical or corrupt queue
- * encodings yet. Append a test-owned persisted input and revoke the original;
+ * Production writers cannot produce historical-brand, canonical or corrupt
+ * queue encodings. Append a test-owned persisted input and revoke the original;
  * never update an immutable event or relax its storage constraints.
  */
 export async function appendOfficialWorkflowQueueInputFixture(args: {

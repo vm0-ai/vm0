@@ -7,7 +7,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { UserMessagePart } from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
@@ -139,7 +138,7 @@ const GMAIL_TOPIC_NAME =
 const GOOGLE_FORMS_TOPIC_NAME =
   "projects/vm0-ai-488909/topics/official-workflow-google-forms-events";
 const GOOGLE_FORMS_PUSH_AUDIENCE =
-  "https://api.vm0.ai/api/webhooks/google-forms";
+  "https://api.okou.ai/api/webhooks/google-forms";
 const GOOGLE_FORMS_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GOOGLE_FORM_ID = "1FAIpQLScOfficialWorkflowGoogleFormsTest";
@@ -499,7 +498,7 @@ function configureOfficialGoogleMeetMock() {
   const externalId = `official-google-meet-user-${testId}`;
   const topicName = `projects/vm0-ai-488909/topics/official-google-meet-${testId}`;
   const recorder = { createCalls: 0 };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -593,7 +592,7 @@ function configureOfficialGoogleMeetMultiAccountMock(
     createAccessTokens: [] as string[],
     deleteAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   mockOptionalEnv("GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME", topicName);
@@ -756,7 +755,7 @@ function configureOfficialCalendarWatchMock() {
     watchAccessTokens: [] as string[],
     stopAccessTokens: [] as string[],
   };
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   server.use(
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
@@ -1483,10 +1482,10 @@ function installCatalogStorageFixture() {
 }
 
 const officialQueueEncodings = [
-  { encoding: "legacy", origin: "web", brand: "vm0" },
-  { encoding: "canonical", origin: "web", brand: "okou" },
-  { encoding: "legacy", origin: "agent_run", brand: "okou" },
-  { encoding: "canonical", origin: "agent_run", brand: "vm0" },
+  { encoding: "legacy", origin: "web", storedBrand: "vm0" },
+  { encoding: "canonical", origin: "web", storedBrand: "okou" },
+  { encoding: "legacy", origin: "agent_run", storedBrand: "okou" },
+  { encoding: "canonical", origin: "agent_run", storedBrand: "vm0" },
 ] as const;
 
 type OfficialQueueEncoding = (typeof officialQueueEncodings)[number];
@@ -1508,7 +1507,6 @@ function officialQueueHeaders(
   sourceRunId: string,
   queueCase: {
     readonly origin: "web" | "agent_run";
-    readonly brand: PublicBrand;
   },
 ) {
   return queueCase.origin === "web"
@@ -1518,7 +1516,6 @@ function officialQueueHeaders(
           actor,
           sourceRunId,
           ["agent:write"],
-          queueCase.brand,
         )}`,
       };
 }
@@ -1535,7 +1532,7 @@ async function prepareOfficialQueueEncoding(
   const source = await readOfficialWorkflowQueueInputFixture(args.eventId);
   expect(source).toMatchObject({
     contextType: args.origin,
-    contextId: officialQueueContextIds.legacy[args.brand],
+    contextId: officialQueueContextIds.legacy.okou,
     requiredOfficialWorkflowIds: [args.workflowId],
   });
   const userMessage = source.payload?.userMessage;
@@ -1553,12 +1550,14 @@ async function prepareOfficialQueueEncoding(
       }),
     );
   }
-  if (args.encoding === "legacy") {
+  if (args.encoding === "legacy" && args.storedBrand === "okou") {
     return source.id;
   }
-  const canonical = await appendOfficialWorkflowQueueInputFixture({
+  // New API requests always write Okou. Historical brand markers and the
+  // canonical encoding require a persisted fixture to exercise older rows.
+  const encoded = await appendOfficialWorkflowQueueInputFixture({
     eventId: source.id,
-    contextId: officialQueueContextIds.canonical[args.brand],
+    contextId: officialQueueContextIds[args.encoding][args.storedBrand],
     contextType: args.origin,
     claim: source.requiredOfficialWorkflowIds,
     userMessage,
@@ -1566,7 +1565,7 @@ async function prepareOfficialQueueEncoding(
   await expect(
     readOfficialWorkflowQueueInputFixture(source.id),
   ).resolves.toStrictEqual(source);
-  return canonical.id;
+  return encoded.id;
 }
 
 async function assertOfficialQueueRawHistory(
@@ -1785,8 +1784,8 @@ async function connectStripeOAuthForOfficialWorkflow(
 
 function configureResultEmailRecipient(actor: ApiTestUser): void {
   const emailId = `email_${actor.userId}`;
-  mockEnv("APP_URL", "https://app.vm0.ai");
-  mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+  mockEnv("APP_URL", "https://app.okou.ai");
+  mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
   mockEnv("RESEND_FROM_DOMAIN", "mail.example.com");
   context.mocks.clerk.users.getUserList.mockResolvedValue({
     data: [
@@ -7990,7 +7989,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-producers-${suffix}`;
     await syncCatalog(
@@ -8750,7 +8749,7 @@ describe.sequential("Official Workflow Run admission", () => {
 
   it("creates no Run-family rows for unresolved explicit, schedule, once, or webhook admission", async () => {
     installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
     const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
     const definitionName = `api-test-unresolved-producers-${suffix}`;
     await syncCatalog(
@@ -9257,7 +9256,7 @@ describe.sequential("Official Workflow Run admission", () => {
   });
 
   it.each(officialQueueEncodings)(
-    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin $brand)",
+    "preserves and terminalizes a queued Official source claim before draining the ordinary message behind it ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-source-${suffix}`;
@@ -9329,7 +9328,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queuedOfficial = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9585,7 +9584,7 @@ describe.sequential("Official Workflow Run admission", () => {
   );
 
   it.each(officialQueueEncodings)(
-    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin $brand)",
+    "keeps a queued Official source claim retryable across an unexpected persisted-revision failure ($encoding $origin, persisted $storedBrand)",
     async (queueCase) => {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
       const definitionName = `api-test-queued-retry-${suffix}`;
@@ -9657,7 +9656,7 @@ describe.sequential("Official Workflow Run admission", () => {
       const queued = await accept(
         workflowClient().run({
           headers: queueHeaders,
-          extraHeaders: { origin: `https://app.${queueCase.brand}.ai` },
+          extraHeaders: { origin: "https://app.okou.ai" },
           params: { workflowId: installation.body.workflow.id },
         }),
         [200],
@@ -9814,7 +9813,10 @@ describe.sequential("Official Workflow Run admission", () => {
         throw new Error("Expected queued Run Okou token");
       }
       expect(verifyOkouToken(token)).toMatchObject({
-        publicBrand: queueCase.brand,
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId: retriedRunId,
+        capabilities: expect.arrayContaining(["agent:read"]),
       });
 
       await webhooks.requestAgentComplete(
@@ -10023,7 +10025,6 @@ describe.sequential("Official Workflow Run admission", () => {
         workflowClient().run({
           headers: officialQueueHeaders(actor, firstRunId, {
             origin: "agent_run",
-            brand: "okou",
           }),
           params: { workflowId: installation.body.workflow.id },
         }),

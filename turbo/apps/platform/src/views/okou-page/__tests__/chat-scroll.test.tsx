@@ -289,7 +289,7 @@ async function openConversation(
   await setupPage({
     context,
     path: `/chats/${threadId}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
   const loadedMessage = await screen.findByText(loadedText);
   expect(loadedMessage).toBeVisible();
@@ -505,7 +505,7 @@ test("Keep an expanded work message in place when its run completes", async () =
   await setupPage({
     context,
     path: `/chats/${THREAD_IDS.expandedWork}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
   });
   await screen.findByText("Reading the rollout health report");

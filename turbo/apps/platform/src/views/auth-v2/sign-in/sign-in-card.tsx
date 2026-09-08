@@ -59,7 +59,6 @@ export function AuthV2SignInCard({
   return (
     <AuthV2Shell
       announcement={description ?? title}
-      authBrand={authBrand}
       cardFooter={
         showsMethodsHelp ? (
           <SignInMethodsHelpFooter copy={copy} signals={signals} />

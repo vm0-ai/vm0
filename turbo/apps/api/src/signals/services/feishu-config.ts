@@ -1,10 +1,5 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import {
-  apiUrlForPublicBrand,
-  appUrlForPublicBrand,
-} from "@okouai/core/public-brand";
 
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
@@ -73,16 +68,13 @@ export async function loadFeishuInstallationConfig(
 
 /**
  * The event subscription URL an operator registers in their own Feishu Open
- * Platform app. The hostname carries the installation's product brand while
+ * Platform app. The configured callback origin determines the hostname;
  * the path and installation ID remain provider-compatible.
  */
-export function feishuCallbackUrl(
-  installationId: string,
-  publicBrand: PublicBrand,
-): string {
+export function feishuCallbackUrl(installationId: string): string {
   return new URL(
     `/api/webhooks/feishu/events/${encodeURIComponent(installationId)}`,
-    apiUrlForPublicBrand(env("FEISHU_CALLBACK_BASE_URL"), publicBrand),
+    env("FEISHU_CALLBACK_BASE_URL"),
   ).toString();
 }
 
@@ -99,29 +91,20 @@ export function feishuOAuthCallbackUrl(): string {
   ).toString();
 }
 
-export function feishuOAuthAppCallbackUrl(publicBrand: PublicBrand): string {
-  return new URL(
-    "/connectors/feishu/callback",
-    appUrlForPublicBrand(env("APP_URL"), publicBrand),
-  ).toString();
+export function feishuOAuthAppCallbackUrl(): string {
+  return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
 }
 
 /**
- * Historical VM0 app callback URI used by the legacy signed-state completion
- * path. Keep this URI and its historical routes while VM0 remains supported.
+ * App callback URI used by the legacy signed-state completion path.
+ * The signed state format remains compatible with historical states.
  */
 export function legacyFeishuOAuthAppCallbackUrl(): string {
   return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
 }
 
-export function feishuOAuthConnectUrl(
-  state: string,
-  publicBrand: PublicBrand,
-): string {
-  const url = new URL(
-    "/api/feishu/oauth/connect",
-    apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand),
-  );
+export function feishuOAuthConnectUrl(state: string): string {
+  const url = new URL("/api/feishu/oauth/connect", apiBackendUrl() ?? webUrl());
   url.searchParams.set("state", state);
   return url.toString();
 }

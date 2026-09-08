@@ -9,7 +9,6 @@ import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation"
 import { agents } from "@okouai/db/schema/agent";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { and, countDistinct, eq, isNotNull } from "drizzle-orm";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
@@ -422,7 +421,7 @@ export async function deliverSlackChatAdmissionFailure(
     footerParts.push(`Reply to <@${binding.slackUserId}>`);
   }
   const logsUrl = isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext)
-    ? `${appUrlForPublicBrand(env("APP_URL"), args.publicBrand)}/activities`
+    ? `${env("APP_URL")}/activities`
     : undefined;
   const botToken = await decryptPersistentSecretValue(
     binding.encryptedBotToken,

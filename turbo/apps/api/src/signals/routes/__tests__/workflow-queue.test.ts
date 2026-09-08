@@ -1375,6 +1375,7 @@ describe("workflow queue", () => {
       triggerBrief: admittedTriggerBrief,
       workflowName: WORKFLOW_NAME,
       automationEventType: "schedule",
+      automationPublicBrand: "okou",
       automationEventPayload: expect.objectContaining({
         automationId: created.body.id,
         trigger: "schedule",
@@ -1418,6 +1419,7 @@ describe("workflow queue", () => {
       contextId: pendingContext?.contextId,
       automationId: created.body.id,
       triggerBrief: admittedTriggerBrief,
+      automationPublicBrand: "okou",
     });
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
@@ -1770,6 +1772,7 @@ describe("workflow queue", () => {
     expect(scheduleContext).toMatchObject({
       workflowName: WORKFLOW_NAME,
       automationEventType: "manual",
+      automationPublicBrand: "okou",
       automationEventPayload: expect.objectContaining({
         automationId: scheduleAutomation.automationId,
         trigger: "manual",

@@ -27,7 +27,7 @@ async function stopApplication(): Promise<void> {
 describe("platform entrypoint", () => {
   beforeEach(() => {
     googleAdsRequestedAfterApplicationStart = false;
-    context.mocks.browser.url("https://app.vm0.ai/");
+    context.mocks.browser.url("https://app.okou.ai/");
     context.mocks.clerk();
     context.mocks.posthog();
     context.mocks.sentry();

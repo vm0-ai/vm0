@@ -6,7 +6,6 @@ import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -53,7 +52,6 @@ const updateAgentInstructionsBody$ = bodyResultOf(
 const updateAgentInstructionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const publicBrand = get(publicBrand$);
     const member = { userId: auth.userId, role: auth.orgRole ?? "member" };
     const params = get(pathParamsOf(agentInstructionsContract.update));
     const body = await get(updateAgentInstructionsBody$);
@@ -141,7 +139,7 @@ const updateAgentInstructionsInner$ = command(
 
     return {
       status: 200 as const,
-      body: agentResponse(result.agent, publicBrand),
+      body: agentResponse(result.agent),
     };
   },
 );

@@ -11,10 +11,10 @@ const presentationOnboardingParams = new URLSearchParams({
   prompt: PRESENTATION_LANDING_PROMPT,
   showcase: PRESENTATION_SHOWCASE_URL,
   vm0_source: "presentation",
-  landing_host: "www.vm0.ai",
+  landing_host: "www.okou.ai",
   landing_path: "/en/presentation",
   source_type: "direct",
 });
 
 export const PRESENTATION_ONBOARDING_PATH = `/onboarding?${presentationOnboardingParams.toString()}`;
-export const PRESENTATION_ONBOARDING_URL = `https://app.vm0.ai${PRESENTATION_ONBOARDING_PATH}`;
+export const PRESENTATION_ONBOARDING_URL = `https://app.okou.ai${PRESENTATION_ONBOARDING_PATH}`;

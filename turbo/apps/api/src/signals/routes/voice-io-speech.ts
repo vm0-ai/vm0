@@ -5,7 +5,6 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
@@ -33,6 +32,7 @@ import {
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
 import { onRejection } from "../utils";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("VoiceIoSpeech");
 const speechBody$ = bodyResultOf(voiceIoSpeechContract.post);
@@ -179,8 +179,7 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const admission = await set(
     startRunBuiltInAdmission$,
     { runId, kind: "voice" },

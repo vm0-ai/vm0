@@ -217,7 +217,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
       rawBody,
       agentPhoneWebhookHeaders(rawBody, `evt-bdd-agentphone-${randomUUID()}`),
       [200],
-      message.publicBrand ?? "vm0",
     );
     // Webhook handling is waitUntil-detached; drain it so follow-up steps
     // cannot observe provider sends before thread/session state is persisted.

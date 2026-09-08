@@ -8,7 +8,7 @@ import { accept } from "../../lib/accept.ts";
 import { DesktopAuthPage } from "../../views/desktop-auth/desktop-auth-page.tsx";
 import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { clerk$, resolveAppAuthUrl, resolveAuthBrandContext } from "../auth.ts";
+import { clerk$, resolveAppAuthUrl } from "../auth.ts";
 import { updatePage$ } from "../react-router.ts";
 import { replaceState } from "../location.ts";
 import { searchParams$ } from "../route.ts";
@@ -465,14 +465,7 @@ export function setupDesktopAuthPage(mode: DesktopAuthRoute) {
       { once: true, signal: lifetime },
     );
     const signals = createDesktopAuthSignals(mode, params, lifetime);
-    set(
-      updatePage$,
-      createElement(DesktopAuthPage, {
-        signals,
-        mode,
-        authBrand: resolveAuthBrandContext(),
-      }),
-    );
+    set(updatePage$, createElement(DesktopAuthPage, { signals, mode }));
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
     await set(signals.initialize$, lifetime);

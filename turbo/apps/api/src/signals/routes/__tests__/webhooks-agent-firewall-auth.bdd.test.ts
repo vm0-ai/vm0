@@ -993,9 +993,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       failureReason,
       connectedAfterFailure,
     }) => {
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, {
         registration,
         initialExpiresIn: 3600,

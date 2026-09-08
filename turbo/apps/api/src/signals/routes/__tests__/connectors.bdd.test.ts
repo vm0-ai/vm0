@@ -3317,9 +3317,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("connects an Automatic MCP OAuth account through Okou CIMD", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
     });
@@ -3400,9 +3400,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("resolves Automatic MCP auth and reconnects the exact account across none and OAuth", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       authentication: "none",
@@ -3535,9 +3535,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("rejects Automatic OAuth callback authority drift before token exchange", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
     });
@@ -3610,9 +3610,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("reuses one DCR client across Automatic MCP OAuth accounts", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "dcr",
     });
@@ -3696,9 +3696,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectedAuthorization,
       expectedClientSecret,
     }) => {
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, {
         registration: "dcr",
         dcrTokenEndpointAuthMethod: tokenEndpointAuthMethod,
@@ -3744,9 +3744,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   );
 
   it("discovers Automatic OAuth through RFC 9728 and OIDC fallbacks", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
       discovery: "well-known-oidc",
@@ -3785,9 +3785,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("serializes concurrent first Automatic DCR registrations", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "dcr",
       synchronizeAuthorizationServerDiscovery: true,
@@ -3819,9 +3819,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("maps temporary Automatic OAuth discovery and DCR failures to 502", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
@@ -3962,9 +3962,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   ])(
     "rejects Automatic OAuth with $boundary",
     async ({ expectedCode, providerOptions }) => {
-      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+      mockEnv("APP_URL", "https://app.okou.ai");
       const provider = mockAutomaticMcpOAuthProvider(context, providerOptions);
       const admin = createBddApi(context).user({ orgRole: "org:admin" });
       await connectorsApi.updateFeatureSwitches(admin, {
@@ -4002,9 +4002,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   );
 
   it("returns a distinct code when connected accounts hold an incompatible DCR client", async () => {
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.okou.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
+    mockEnv("APP_URL", "https://app.okou.ai");
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "dcr",
       challengeScope: "read",
@@ -7547,20 +7547,20 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     mockEnv("OKOU_WEB_URL", "https://app.vm0.test");
 
     const canonical = await requestOauthCallbackRaw(context, {
-      origin: "https://api.vm0.ai",
+      origin: "https://api.okou.ai",
       connectorSlug: "github",
       query: { code: "code-123", state: "state-123" },
     });
     expect(canonical.status).toBe(307);
     expect(canonical.headers.get("location")).toBe(
-      "https://www.vm0.ai/api/connectors/github/callback?code=code-123&state=state-123",
+      "https://www.okou.ai/api/connectors/github/callback?code=code-123&state=state-123",
     );
 
     const trustedHeader = await requestOauthCallbackRaw(context, {
-      origin: "https://api.vm0.ai",
+      origin: "https://api.okou.ai",
       connectorSlug: "github",
       query: { code: "code-123" },
-      headers: { "x-vm0-web-origin": "https://www.vm0.ai" },
+      headers: { "x-vm0-web-origin": "https://www.okou.ai" },
     });
     expect(trustedHeader.status).toBe(307);
     const trustedUrl = redirectLocation(trustedHeader);
@@ -7587,7 +7587,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 
 describe("CONN-02: test-oauth auth-code journey", () => {
   it("persists reported and normalized effective scopes through auth-code callbacks", async () => {
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     const bdd = createBddApi(context);
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
@@ -7701,7 +7701,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
   });
 
   it("replaces a manual-grant connection through the auth-code callback with method-scoped state cleanup", async () => {
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
     const provider = mockTestOAuthAuthCodeProvider({
       refreshToken: "bdd-test-oauth-refresh",
     });
@@ -7761,7 +7761,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expect(exchangeBody?.get("client_secret")).toBe("test-oauth-secret");
     expect(exchangeBody?.get("code")).toBe("bdd-test-oauth-code");
     expect(exchangeBody?.get("redirect_uri")).toBe(
-      "https://api.vm0.ai/api/connectors/test-oauth/callback",
+      "https://api.okou.ai/api/connectors/test-oauth/callback",
     );
 
     const oauthConnector = await connectorsApi.readConnectorBySlug(

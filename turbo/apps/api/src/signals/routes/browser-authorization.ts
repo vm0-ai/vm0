@@ -11,6 +11,7 @@ import {
 } from "../services/browser-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 function expired() {
   return {
@@ -57,8 +58,7 @@ const createAuthorizationRequestInner$ = command(
         "Cloud browser authorization requires a run token",
       );
     }
-    // Legacy sandbox tokens do not carry presentation context and remain VM0.
-    const publicBrand = auth.tokenType === "agent" ? auth.publicBrand : "vm0";
+    const publicBrand = PUBLIC_BRAND;
 
     const result = await set(
       createBrowserAuthorizationRequest$,

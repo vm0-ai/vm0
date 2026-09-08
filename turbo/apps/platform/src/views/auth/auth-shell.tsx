@@ -3,10 +3,6 @@ import { Moon, Sun } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  platformVm0LogoDarkImg,
-  platformVm0LogoImg,
-} from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
@@ -91,19 +87,7 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
             "left-6 top-6",
           )}
         >
-          {authBrand.brandName === "Okou" ? (
-            <ProductBrandMark brandName={authBrand.brandName} size="compact" />
-          ) : (
-            <img
-              src={
-                theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg
-              }
-              alt={authBrand.brandName}
-              crossOrigin="anonymous"
-              width={82}
-              height={20}
-            />
-          )}
+          <ProductBrandMark size="compact" />
         </a>
       )}
 

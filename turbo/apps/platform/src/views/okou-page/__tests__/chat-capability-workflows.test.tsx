@@ -245,7 +245,7 @@ test("Edit schedule and Gmail workflow triggers", async () => {
     return respond(200, scheduleSummary(current));
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   const dialog = await openAutomationEditor();
   click(within(dialog).getByRole("combobox", { name: "Every" }));
@@ -281,7 +281,7 @@ test("Edit Gmail match workflow trigger filters", async () => {
     return respond(200, gmailMatchSummary(current));
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   const dialog = await openAutomationEditor();
   const fixedField = within(dialog).getByLabelText("Thread ID field");
@@ -340,7 +340,7 @@ test("Edit a Gmail label workflow trigger", async () => {
     return respond(200, gmailLabelSummary(current));
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   const dialog = await openAutomationEditor();
   await fill(
@@ -443,7 +443,7 @@ test("Present workflow trigger events as meaningful chat history", async () => {
   ];
   installCapabilityChat({ events });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   const chat = await readyChat();
   expect(
@@ -471,7 +471,7 @@ test("Start creating a workflow from the chat composer", async () => {
     events: completedConversation("The composer is ready."),
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   click(await findButton("Create workflow"));

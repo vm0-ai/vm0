@@ -14,7 +14,6 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { publicBrand$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { settle } from "../utils";
@@ -53,6 +52,7 @@ import {
   type RunBuiltInAdmission,
 } from "../services/run-built-in-admission.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
+import { PUBLIC_BRAND } from "@okouai/core/public-brand";
 
 const L = logger("ImageGeneration");
 const imageBody$ = bodyResultOf(imageIoGenerateContract.post);
@@ -391,8 +391,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "agent" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const publicBrand =
-    auth.tokenType === "agent" ? auth.publicBrand : get(publicBrand$);
+  const publicBrand = PUBLIC_BRAND;
   const runImageModelDefault = await loadRunImageModelDefault(
     db,
     auth.orgId,

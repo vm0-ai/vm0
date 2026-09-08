@@ -32,7 +32,7 @@ import { shouldDeferDesktopUpdate } from "./desktop-auto-update-policy";
 import type { ComputerUseCommand } from "./computer-use-accessibility";
 import { cuaBoundary, deferred } from "./test/cua-boundary";
 
-const api = "https://api.vm0.ai";
+const api = "https://api.okou.ai";
 const server = setupServer();
 const cleanups: (() => Promise<void>)[] = [];
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

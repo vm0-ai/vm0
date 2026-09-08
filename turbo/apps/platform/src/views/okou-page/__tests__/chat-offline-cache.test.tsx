@@ -310,7 +310,7 @@ test("A previously known chat stays covered until its history is ready", async (
   await startPage({
     context,
     path: `/chats/${thread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -346,7 +346,7 @@ test("A missing chat is reported only after its current availability is confirme
   await startPage({
     context,
     path: `/chats/${threadId}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -396,7 +396,7 @@ test("Incomplete thread details wait for the full conversation record", async ()
   await startPage({
     context,
     path: `/chats/${thread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -448,7 +448,7 @@ test("Downloaded chat history replaces loading without a blank gap", async () =>
   await startPage({
     context,
     path: `/chats/${thread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -491,7 +491,7 @@ test("A stale remembered thread is replaced by its current availability", async 
   await startPage({
     context,
     path: `/chats/${thread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -564,7 +564,7 @@ test("A notification-opened thread waits until the foreground tab is current", a
   await setupPage({
     context,
     path: `/chats/${currentThread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 
@@ -573,7 +573,7 @@ test("A notification-opened thread waits until the foreground tab is current", a
 
   serviceWorker.dispatchMessage({
     type: "NOTIFICATION_CLICK",
-    url: `https://app.vm0.ai/chats/${notificationThread.id}`,
+    url: `https://app.okou.ai/chats/${notificationThread.id}`,
   });
 
   expect(screen.getByText(currentMessage)).toBeVisible();
@@ -625,7 +625,7 @@ test("Saved messages appear without an empty-state flash", async () => {
   await setupPage({
     context,
     path: `/chats/${thread.id}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     auth: identity.auth,
   });
 

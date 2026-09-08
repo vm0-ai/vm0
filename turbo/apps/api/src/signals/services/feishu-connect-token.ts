@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
@@ -74,10 +73,7 @@ export function buildFeishuConnectUrl(args: {
     ts: String(timestamp),
     sig: signFeishuConnectToken({ ...args, timestamp }),
   });
-  const url = new URL(
-    "/settings/feishu",
-    appUrlForPublicBrand(env("APP_URL"), args.publicBrand),
-  );
+  const url = new URL("/settings/feishu", env("APP_URL"));
   url.search = params.toString();
   return url.toString();
 }

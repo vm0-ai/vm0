@@ -79,7 +79,7 @@ function mockMail(status: "draft" | "sent"): void {
   context.mocks.api(mailContract.getDraft, ({ respond }) => {
     return respond(200, {
       mailDraftId: MAIL_DRAFT_ID,
-      mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+      mailDraftUrl: `https://app.okou.ai/mail/drafts/${MAIL_DRAFT_ID}`,
       mailDraft: draft,
     });
   });

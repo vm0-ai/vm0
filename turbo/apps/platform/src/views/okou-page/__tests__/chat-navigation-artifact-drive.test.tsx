@@ -350,7 +350,7 @@ test("Authorize the agent and sync an artifact to connected Google Drive", async
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await openDriveArtifactMenu();
@@ -379,7 +379,7 @@ test("Connect Google Drive and sync an artifact", async () => {
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await openDriveArtifactMenu();
@@ -420,7 +420,7 @@ test("Reconnect the Google Drive account selected for the artifact", async () =>
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await openDriveArtifactMenu();
@@ -466,7 +466,7 @@ test("Sync with the artifact's ready Drive account when the default needs attent
   await setupPage({
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await openDriveArtifactMenu("Upload to Google Drive");

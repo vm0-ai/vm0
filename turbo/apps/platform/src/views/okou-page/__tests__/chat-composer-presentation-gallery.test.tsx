@@ -82,7 +82,7 @@ test("Choose a presentation template theme", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -136,7 +136,7 @@ test("Use a presentation template's default theme", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -167,7 +167,7 @@ test("Navigate every slide in a presentation template", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -217,7 +217,7 @@ test("Navigate template categories on different screen sizes", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -252,7 +252,7 @@ test("Navigate template categories on a narrow screen", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: TEMPLATE_FEATURES,
   });
 
@@ -277,7 +277,7 @@ test("Show presentation import only when available", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     featureSwitches: { presentationTemplates: false },
   });
 

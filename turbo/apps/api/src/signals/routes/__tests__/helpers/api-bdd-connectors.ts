@@ -591,7 +591,7 @@ export function mockGitHubConnectorOAuth(
     readonly email?: string | null;
   } = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
 
@@ -633,7 +633,7 @@ interface StripeConnectorOAuthRecorder {
 export function mockStripeConnectorOAuth(
   options: StripeConnectorOAuthOptions = {},
 ): StripeConnectorOAuthRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
   mockOptionalEnv("STRIPE_OAUTH_CLIENT_SECRET", "sk_test_marketplace_secret");
 
@@ -675,7 +675,7 @@ interface DatadogOAuthProviderRecorder {
 }
 
 export function mockDatadogConnectorOAuth(): DatadogOAuthProviderRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_ID", "datadog-client-id");
   mockOptionalEnv("DATADOG_OAUTH_CLIENT_SECRET", "datadog-client-secret");
 
@@ -838,7 +838,7 @@ interface GoogleDriveConnectorOAuthRecorder {
 export function mockGoogleDriveConnectorOAuth(
   options: GoogleDriveConnectorOAuthOptions = {},
 ): GoogleDriveConnectorOAuthRecorder {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
   const recorded: GoogleDriveConnectorOAuthRecorder = { refreshBodies: [] };
@@ -913,7 +913,7 @@ interface GmailConnectorOAuthOptions {
 export function mockGmailConnectorOAuth(
   options: GmailConnectorOAuthOptions = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 
@@ -957,7 +957,7 @@ export function mockGoogleFormsConnectorOAuth(
     readonly email?: string;
   } = {},
 ): void {
-  mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+  mockEnv("OKOU_WEB_URL", "https://www.okou.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
 

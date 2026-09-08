@@ -196,7 +196,7 @@ test("Fail closed and recover clearly from permission errors", async () => {
     sends,
   });
 
-  await setupPage({ context, path: RUN_PATH, host: "app.vm0.ai" });
+  await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
 
   await readyChat();
   const card = await screen.findByTestId("permission-action-card");
