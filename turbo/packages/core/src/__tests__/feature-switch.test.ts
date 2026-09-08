@@ -37,9 +37,6 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.NotionWorkflowAutomations, {}),
-    ).toBe(true);
-    expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.FollowUpOptimize, {})).toBe(true);
@@ -370,9 +367,6 @@ describe("getFeatureSwitchMetadata", () => {
   it("should classify non-internal switches by rollout audience", () => {
     const metadata = getFeatureSwitchMetadata();
 
-    expect(
-      metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
-    ).toBe("released");
     expect(metadata[FeatureSwitchKey.FollowUpOptimize].rolloutStage).toBe(
       "released",
     );

@@ -3397,9 +3397,7 @@ test("Create a Notion database-item automation", async () => {
     createBodies.push(body);
   });
 
-  await setupWorkflowDetailPage(workflowDetailPath("automations"), {
-    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-  });
+  await setupWorkflowDetailPage(workflowDetailPath("automations"), {});
 
   await waitFor(() => {
     expect(buttonByText("Add automation")).toBeInTheDocument();

@@ -1240,8 +1240,6 @@ function AutomationCreateAction() {
   const capabilities = useLastResolved(orgPlanCapabilities$);
   const webhookTierEligible =
     capabilities?.workflowWebhookAutomationAllowed ?? true;
-  const notionWorkflowAutomationsEnabled =
-    features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
   const googleFormsWorkflowAutomationsEnabled =
     features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
   const stripeInvoicePaidAutomationsEnabled =
@@ -1259,7 +1257,6 @@ function AutomationCreateAction() {
       googleFormsWorkflowAutomationsEnabled={
         googleFormsWorkflowAutomationsEnabled
       }
-      notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
     />
@@ -4180,12 +4177,7 @@ function buildIntegrationAutomationOptions({
   ];
 }
 
-function buildNotionAutomationOptions(
-  notionWorkflowAutomationsEnabled: boolean,
-): AutomationCreateOption[] {
-  if (!notionWorkflowAutomationsEnabled) {
-    return [];
-  }
+function buildNotionAutomationOptions(): AutomationCreateOption[] {
   return [
     {
       kind: "notion-child-page",
@@ -4360,12 +4352,10 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 
 function buildAutomationCreateCategories({
   googleFormsWorkflowAutomationsEnabled,
-  notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
-  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
@@ -4376,9 +4366,7 @@ function buildAutomationCreateCategories({
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
   });
-  const notionOptions = buildNotionAutomationOptions(
-    notionWorkflowAutomationsEnabled,
-  );
+  const notionOptions = buildNotionAutomationOptions();
 
   const categories: readonly AutomationCreateCategory[] = [
     {
@@ -4508,13 +4496,11 @@ function AutomationCreateOptionCard({
 function AutomationCreateMenu({
   onSelect,
   googleFormsWorkflowAutomationsEnabled,
-  notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
-  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
@@ -4524,7 +4510,6 @@ function AutomationCreateMenu({
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
     googleFormsWorkflowAutomationsEnabled,
-    notionWorkflowAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     webhookTierEligible,
   });

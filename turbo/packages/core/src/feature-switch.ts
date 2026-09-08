@@ -218,12 +218,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NotionWorkflowAutomations]: {
-    maintainer: "lancy@okou.ai",
-    description:
-      "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
-    enabled: true,
-  },
   [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
     maintainer: "lancy@okou.ai",
     description: "Enable Google Forms response workflow automations.",
