@@ -8,6 +8,7 @@ import {
 } from "@okouai/api-contracts/contracts/personal-model-providers";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { codexDeviceAuthContract } from "@okouai/api-contracts/contracts/codex-device-auth";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,6 +22,7 @@ import { meModelProvidersResetSubscriptionRoutes } from "../me-model-providers-r
 import { meModelProviderAccountRoutes } from "../me-model-provider-accounts";
 import { codexDeviceAuthRoutes } from "../codex-device-auth";
 import { modelProvidersRoutes } from "../model-providers";
+import { featureSwitchesRoutes } from "../feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { mockCodexDeviceAuthProvider } from "./helpers/api-bdd-auth-device";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -674,11 +676,68 @@ describe("Codex expiry metadata resilience", () => {
     const remote = upstream();
     const first = await fixture();
     expectExpiry(await first.list(), remote.expiry);
+    const userIds = Array.from({ length: 129 }, () => {
+      return `user_expiry_${randomUUID()}`;
+    });
+    const owners = new Set(userIds);
+    context.mocks.clerk.authenticateRequest.mockImplementation((request) => {
+      if (!(request instanceof Request)) {
+        throw new Error("Expected a Clerk authentication request");
+      }
+      const userId = request.headers.get("authorization")?.slice(7);
+      if (!userId || !owners.has(userId)) {
+        throw new Error("Expected a capacity-test owner token");
+      }
+      return Promise.resolve({
+        isAuthenticated: true,
+        toAuth: () => {
+          return { userId, orgId: first.orgId, orgRole: "org:admin" };
+        },
+      });
+    });
+    const app = setupApp({
+      context,
+      routes: [...routes, ...featureSwitchesRoutes],
+    });
+    const providers = app(personalModelProvidersMainContract);
+    const switches = app(featureSwitchesContract);
     // Each API-created owner occupies a connect binding and a legacy binding.
     // More than 256 bindings must evict the oldest, without time manipulation.
-    for (let index = 0; index < 129; index += 1) {
-      const other = await fixture();
-      expectExpiry(await other.list(), remote.expiry);
+    // Token-scoped Clerk responses let independent owners prepare concurrently
+    // without racing the shared session mock or creating unrelated organizations.
+    for (let index = 0; index < userIds.length; index += 8) {
+      await Promise.all(
+        userIds.slice(index, index + 8).map(async (userId) => {
+          const ownerHeaders = { authorization: `Bearer ${userId}` };
+          await accept(
+            switches.update({
+              headers: ownerHeaders,
+              body: {
+                switches: {
+                  [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
+                },
+              },
+            }),
+            [200],
+          );
+          await accept(
+            providers.upsert({
+              headers: ownerHeaders,
+              body: {
+                type: "codex-oauth-token",
+                authMethod: "auth_json",
+                secrets: { CODEX_AUTH_JSON: credentials().raw },
+              },
+            }),
+            [200, 201],
+          );
+          const listed = await accept(
+            providers.list({ headers: ownerHeaders }),
+            [200],
+          );
+          expectExpiry(listed.body.modelProviders, remote.expiry);
+        }),
+      );
     }
     const before = remote.detailsCalls;
     remote.expiry = new Date(now() + 7_200_000).toISOString();
