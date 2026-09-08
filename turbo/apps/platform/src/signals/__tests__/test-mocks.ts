@@ -578,6 +578,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       ): ImageDimensionsMock => {
         return mockImageDimensions(getSignal(), results);
       },
+      requestCacheMode: (): void => {
+        mockRequestCacheMode(getSignal());
+      },
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
       },
@@ -1450,6 +1453,33 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
   });
 
   return { clipCircles, imageDraws, renders };
+}
+
+function mockRequestCacheMode(signal: AbortSignal): void {
+  const NativeRequest = window.Request;
+  class RequestWithCacheMode extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(input, init);
+      Object.defineProperty(this, "cache", {
+        configurable: true,
+        enumerable: true,
+        value:
+          init?.cache ??
+          (input instanceof NativeRequest ? input.cache : "default"),
+      });
+    }
+  }
+
+  // Happy DOM does not expose Request.cache yet. Preserve it so HTTP boundary
+  // mocks can cover cache-sensitive browser behavior without mocking fetch.
+  const descriptor = defineWindowProperty(
+    window,
+    "Request",
+    RequestWithCacheMode,
+  );
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(window, "Request", descriptor);
+  });
 }
 
 function defineWindowProperty(
