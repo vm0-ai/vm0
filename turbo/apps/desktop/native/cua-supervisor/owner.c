@@ -39,6 +39,14 @@ static int observe(siginfo_t *info) {
   return 0;
 }
 
+static int child_exited(const siginfo_t *info) {
+  // Darwin may report CLD_STOPPED with this waitid flag combination. A
+  // waitable event is not necessarily an exit and must never release ownership.
+  return info->si_pid == child &&
+    (info->si_code == CLD_EXITED || info->si_code == CLD_KILLED ||
+     info->si_code == CLD_DUMPED);
+}
+
 static int members(void) {
 #ifdef __APPLE__
   pid_t pids[4096];
@@ -186,7 +194,7 @@ static napi_value force(napi_env env, napi_callback_info info) {
     result = kill(-child, SIGKILL);
     // Keep the guardian available if main dies during force. Only terminate
     // its retained PID once every SDK descendant is gone or kernel-exited.
-    if (status.si_pid == 0 && descendants_exited()) kill(child, SIGKILL);
+    if (!child_exited(&status) && descendants_exited()) kill(child, SIGKILL);
   }
   napi_value value;
   napi_create_int32(env, result, &value);
@@ -201,7 +209,7 @@ static napi_value sample(napi_env env, napi_callback_info info) {
   napi_create_object(env, &output);
   number(env, output, "pid", child);
   number(env, output, "waitError", error);
-  number(env, output, "exited", error == 0 && status.si_pid == child);
+  number(env, output, "exited", error == 0 && child_exited(&status));
   number(env, output, "exitCode", status.si_code);
   number(env, output, "exitStatus", status.si_status);
   number(env, output, "remaining", error == 0 ? members() : -1);
@@ -212,7 +220,7 @@ static napi_value sample(napi_env env, napi_callback_info info) {
 static napi_value stop_guardian(napi_env env, napi_callback_info info) {
   (void)info;
   siginfo_t status;
-  if (observe(&status) != 0 || status.si_pid != 0)
+  if (observe(&status) != 0 || child_exited(&status))
     return fail(env, "guardian identity is unavailable");
   napi_value value;
   napi_create_int32(env, kill(child, SIGSTOP), &value);
@@ -222,7 +230,7 @@ static napi_value stop_guardian(napi_env env, napi_callback_info info) {
 static napi_value crash_guardian(napi_env env, napi_callback_info info) {
   (void)info;
   siginfo_t status;
-  if (observe(&status) != 0 || status.si_pid != 0)
+  if (observe(&status) != 0 || child_exited(&status))
     return fail(env, "guardian identity is unavailable");
   napi_value value;
   napi_create_int32(env, kill(child, SIGKILL), &value);
@@ -233,7 +241,7 @@ static napi_value crash_guardian(napi_env env, napi_callback_info info) {
 static napi_value reap(napi_env env, napi_callback_info info) {
   (void)info;
   siginfo_t status;
-  if (observe(&status) != 0 || status.si_pid != child || members() != 0)
+  if (observe(&status) != 0 || !child_exited(&status) || members() != 0)
     return fail(env, "cleanup_unproven: child reservation retained");
   int code;
   if (waitpid(child, &code, WNOHANG) != child)
