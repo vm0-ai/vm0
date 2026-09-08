@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@okouai/ui";
 import {
   connectorSlugSchema,
@@ -29,9 +30,7 @@ import {
   directedAuthorizeAgentId$,
   directedAuthorizeAgentName$,
   agentEnabledConnectorSlugs$,
-  justAuthorizedConnectorAgentKeys$,
   authorizeConnector$,
-  isJustAuthorizedConnectorAgent,
   directedAuthorizeConnectModalKey$,
   setDirectedAuthorizeConnectModalKey$,
 } from "../../signals/connectors-page/directed-authorize-slug.ts";
@@ -146,8 +145,8 @@ function useDirectedAuthorizeCatalogState(connectorSlug: ConnectorSlug | null) {
 function useDirectedAuthorizePermissionState(
   connectorSlug: ConnectorSlug | null,
   agentId: string | null,
+  isAuthorizing: boolean,
 ) {
-  const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
   const enabledLoadable = useLastLoadable(agentEnabledConnectorSlugs$);
   const enabledData =
     agentId !== null &&
@@ -161,15 +160,12 @@ function useDirectedAuthorizePermissionState(
     isAuthorized:
       connectorSlug !== null &&
       agentId !== null &&
-      (isJustAuthorizedConnectorAgent(justAuthorizedKeys, {
-        connectorSlug,
-        agentId,
-      }) ||
-        enabledConnectorSlugs.includes(connectorSlug)),
+      enabledConnectorSlugs.includes(connectorSlug),
     permissionLoading:
-      agentId !== null &&
-      (enabledLoadable.state === "loading" ||
-        (enabledLoadable.state === "hasData" && enabledData === null)),
+      isAuthorizing ||
+      (agentId !== null &&
+        (enabledLoadable.state === "loading" ||
+          (enabledLoadable.state === "hasData" && enabledData === null))),
   };
 }
 
@@ -369,7 +365,7 @@ function DirectedAuthorizeCard() {
   const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const authorize = useSet(authorizeConnector$);
+  const [authorizeLoadable, authorize] = useLoadableSet(authorizeConnector$);
   const reloadAuthorization = useSet(reloadAgentConnectorAuthorizations$);
   const signal = useGet(pageSignal$);
   const setDirectedAuthorizeConnectModalKey = useSet(
@@ -385,6 +381,7 @@ function DirectedAuthorizeCard() {
     useDirectedAuthorizePermissionState(
       connectorSlugForState,
       params?.agentId ?? null,
+      authorizeLoadable.state === "loading",
     );
   const connectModalOpen = useDirectedAuthorizeConnectModalOpen(
     connectorSlugForState,
