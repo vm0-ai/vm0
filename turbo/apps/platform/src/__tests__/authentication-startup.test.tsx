@@ -282,7 +282,7 @@ test("V1 comparison authentication loads the hosted Clerk UI", async () => {
   const clerk = context.mocks.clerk();
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/v1/sign-in",
     auth: null,
   });
