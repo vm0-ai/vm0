@@ -141,6 +141,7 @@ async fn write_private_files_sends_one_private_batch_and_tracks_until_result() {
         vec![
             ("/tmp/private-a.txt", b"alpha".to_vec()),
             ("/tmp/private-b.txt", b"beta".to_vec()),
+            ("/tmp/private-c.txt", b"gamma".to_vec()),
         ],
     );
 
@@ -150,6 +151,7 @@ async fn write_private_files_sends_one_private_batch_and_tracks_until_result() {
         vec![
             ("/tmp/private-a.txt".to_string(), b"alpha".to_vec()),
             ("/tmp/private-b.txt".to_string(), b"beta".to_vec()),
+            ("/tmp/private-c.txt".to_string(), b"gamma".to_vec()),
         ]
     );
     assert_eq!(
@@ -229,6 +231,10 @@ async fn write_private_files_oversized_aggregate_falls_back_to_private_single_wr
                         path: "/tmp/private-b.txt",
                         content: &second,
                     },
+                    WriteFileEntry {
+                        path: "/tmp/private-c.txt",
+                        content: b"last entry",
+                    },
                 ],
                 FrameWriteObserver::default(),
             )
@@ -248,7 +254,126 @@ async fn write_private_files_oversized_aggregate_falls_back_to_private_single_wr
     assert_eq!(second.content, vec![0xB2; 600]);
     send_write_file_success(&mut guest, second.seq()).await;
 
+    let third = expect_write_file(&mut guest).await;
+    assert_eq!(third.path, "/tmp/private-c.txt");
+    assert!(third.private);
+    assert_eq!(third.content, b"last entry");
+    send_write_file_success(&mut guest, third.seq()).await;
+
     write_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn write_private_files_fallback_failure_does_not_send_later_entries() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let content = vec![0xA1; 600];
+            write_private_files_with_small_limits(
+                &host,
+                &[
+                    WriteFileEntry {
+                        path: "/tmp/context.json",
+                        content: &content,
+                    },
+                    WriteFileEntry {
+                        path: "/tmp/env.json",
+                        content: &content,
+                    },
+                    WriteFileEntry {
+                        path: "/tmp/payload.json",
+                        content: b"last entry",
+                    },
+                ],
+                FrameWriteObserver::default(),
+            )
+            .await
+        })
+    };
+
+    let first = expect_write_file(&mut guest).await;
+    assert_eq!(first.path, "/tmp/context.json");
+    send_write_file_success(&mut guest, first.seq()).await;
+    let second = expect_write_file(&mut guest).await;
+    assert_eq!(second.path, "/tmp/env.json");
+    send_write_file_failure(&mut guest, second.seq(), "permission denied").await;
+
+    let error = write_task.await.unwrap().unwrap_err();
+    assert!(error.to_string().contains("permission denied"));
+    // A later command must be the next frame; no payload write or retry is allowed.
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_private_batch_missing_terminal_response_uses_one_deadline() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_private_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/context.json", b"context".to_vec()),
+            ("/tmp/env.json", b"env".to_vec()),
+            ("/tmp/payload.json", b"payload".to_vec()),
+        ],
+    );
+    let write = expect_write_private_files(&mut guest).await;
+    assert_eq!(write.files.len(), 3);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    // Freeze time only after real socket I/O has reached the terminal wait.
+    tokio::time::pause();
+    tokio::time::advance(guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE).await;
+    let error = write_task.await.unwrap().unwrap_err();
+
+    assert_request_timeout(
+        &error,
+        RequestTimeoutStage::AwaitingTerminalResponse,
+        guest_contracts::file_write::WRITE_FILE_REQUEST_DEADLINE,
+    );
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let later_error = host
+        .write_private_file("/tmp/later.json", b"later")
+        .await
+        .unwrap_err();
+    assert_eq!(later_error.kind(), io::ErrorKind::ConnectionReset);
+}
+
+#[tokio::test]
+async fn dropping_private_batch_after_request_prevents_connection_reuse() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_private_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/context.json", b"context".to_vec()),
+            ("/tmp/env.json", b"env".to_vec()),
+            ("/tmp/payload.json", b"payload".to_vec()),
+        ],
+    );
+    let write = expect_write_private_files(&mut guest).await;
+    assert_eq!(write.files.len(), 3);
+
+    write_task.abort();
+    assert!(write_task.await.unwrap_err().is_cancelled());
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let error = host
+        .write_private_file("/tmp/later.json", b"later")
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]

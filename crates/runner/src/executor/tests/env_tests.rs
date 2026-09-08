@@ -6,7 +6,6 @@ use api_contracts::generated::types::runners::{
 };
 use guest_contracts::env::{RunArtifact, RunArtifactMissingRootPolicy};
 use sandbox::SandboxId;
-use sandbox_mock::MockSandbox;
 use serde_json::json;
 
 use super::super::cli_framework::{
@@ -14,9 +13,8 @@ use super::super::cli_framework::{
 };
 use super::super::env::{
     HostEnv, build_env_json_with_host_env, build_env_json_with_host_env_for_run,
-    build_run_payload_for_run, build_user_env_json, guest_connector_account_context_file_path,
-    is_runner_owned_env_key, validate_execution_context_before_sandbox,
-    validate_model_provider_env_placeholders, write_connector_account_context_file,
+    build_run_payload_for_run, build_user_env_json, is_runner_owned_env_key,
+    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
 };
 use super::super::guest_runtime_dir;
 use super::support::{
@@ -26,10 +24,7 @@ use super::support::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
-use crate::types::{
-    ConnectorRuntimeTargetRegistration, ExecutionContext, ResumeSession, SandboxReuseResult,
-    WorkspaceReuseResult,
-};
+use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult, WorkspaceReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -981,83 +976,6 @@ fn build_env_json_user_vars_cannot_override_system() {
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
     assert_eq!(user_env.get("CUSTOM_PROMPT").unwrap(), "overridden");
-}
-
-#[tokio::test]
-async fn write_connector_account_context_file_projects_only_target_and_source() {
-    let sandbox = MockSandbox::new("test");
-    let mut context = minimal_context();
-    context.connector_runtime_targets = vec![
-        ConnectorRuntimeTargetRegistration::Builtin {
-            connector_slug: "github".to_string(),
-            base_url_vars: Some(HashMap::from([(
-                "API_ORIGIN".to_string(),
-                "https://api.github.com".to_string(),
-            )])),
-            source_id: Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-        },
-        ConnectorRuntimeTargetRegistration::Custom {
-            custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".to_string(),
-            base_url_vars: HashMap::from([(
-                "CUSTOM_ORIGIN".to_string(),
-                "https://custom.example.test".to_string(),
-            )]),
-            source_id: None,
-        },
-    ];
-
-    let path = write_connector_account_context_file(&sandbox, &context)
-        .await
-        .unwrap();
-
-    assert_eq!(
-        path,
-        guest_connector_account_context_file_path(context.run_id).unwrap()
-    );
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: guest_contracts::connector_account_context::RunConnectorAccountContext =
-        serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(
-        decoded,
-        guest_contracts::connector_account_context::RunConnectorAccountContext {
-            schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
-            targets: vec![
-                guest_contracts::connector_account_context::RunConnectorAccountTarget::Builtin {
-                    connector_slug: "github".to_string(),
-                    connection_id: Some("550e8400-e29b-41d4-a716-446655440000".to_string(),),
-                },
-                guest_contracts::connector_account_context::RunConnectorAccountTarget::Custom {
-                    custom_connector_id: "550e8400-e29b-41d4-a716-446655440001".to_string(),
-                    connection_id: None,
-                },
-            ],
-        }
-    );
-}
-
-#[tokio::test]
-async fn write_connector_account_context_file_writes_known_empty_projection() {
-    let sandbox = MockSandbox::new("test");
-    let context = minimal_context();
-
-    let path = write_connector_account_context_file(&sandbox, &context)
-        .await
-        .unwrap();
-
-    let writes = sandbox.private_write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(writes[0].path, path);
-    let decoded: guest_contracts::connector_account_context::RunConnectorAccountContext =
-        serde_json::from_slice(&writes[0].content).unwrap();
-    assert_eq!(
-        decoded,
-        guest_contracts::connector_account_context::RunConnectorAccountContext {
-            schema_version: guest_contracts::connector_account_context::SCHEMA_VERSION,
-            targets: Vec::new(),
-        }
-    );
 }
 
 #[test]
