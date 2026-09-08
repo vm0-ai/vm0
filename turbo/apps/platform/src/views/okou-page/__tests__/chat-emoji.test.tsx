@@ -27,9 +27,7 @@ function setupEmojiPage(): Promise<void> {
 }
 
 function buttonByLabel(label: string): HTMLButtonElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
+  const button = screen.getByLabelText(label);
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error(`Button not found: ${label}`);
   }
@@ -72,9 +70,7 @@ async function openEmojiPicker(): Promise<HTMLInputElement> {
 
   click(buttonByLabel("Change icon"));
 
-  const searchInput = await screen.findByRole("textbox", {
-    name: "Search emoji",
-  });
+  const searchInput = await screen.findByLabelText("Search emoji");
   if (!(searchInput instanceof HTMLInputElement)) {
     throw new Error("Emoji search is not an input");
   }
@@ -117,13 +113,11 @@ test("Change a thread icon from the mobile header and retain it on desktop", asy
   expect(screen.queryByTestId("agent-avatar")).not.toBeInTheDocument();
 
   click(buttonByLabel("Change icon"));
-  await screen.findByRole("textbox", { name: "Search emoji" });
+  await screen.findByLabelText("Search emoji");
   click(emojiButton("grinning face"));
   await waitFor(() => {
     expect(buttonByLabel("Change icon")).toHaveTextContent("😀");
-    expect(
-      screen.queryByRole("textbox", { name: "Search emoji" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Search emoji")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Chat thread" })).toHaveFocus();
   });
 
