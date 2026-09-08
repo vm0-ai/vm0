@@ -16,7 +16,10 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
-import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
+import {
+  userPreferencesContract,
+  type UserLocale,
+} from "@okouai/api-contracts/contracts/user-preferences";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -279,6 +282,19 @@ export function createBddApi(context: TestContext) {
         userPreferencesClient().update({
           headers: authenticate(nextUser),
           body: { timezone },
+        }),
+        [200],
+      );
+    },
+
+    async updateUserLocale(
+      nextUser: ApiTestUser,
+      locale: UserLocale,
+    ): Promise<void> {
+      await accept(
+        userPreferencesClient().update({
+          headers: authenticate(nextUser),
+          body: { locale },
         }),
         [200],
       );
