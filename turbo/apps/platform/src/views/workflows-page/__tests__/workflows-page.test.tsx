@@ -3923,26 +3923,6 @@ function mockCalendarReconnect(
   };
 }
 
-test("Reconnect the selected Calendar account and reload the warning state", async () => {
-  const workflow = {
-    ...salesResearch(),
-    automations: [
-      googleCalendarWorkflowAutomation({ warning: "reconnect_required" }),
-    ],
-  };
-  const reconnect = mockCalendarReconnect(workflow);
-  await reconnect.open();
-  workflow.automations[0] = googleCalendarWorkflowAutomation();
-  reconnect.complete();
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Google Calendar" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-  expect(screen.getByRole("switch")).toBeChecked();
-});
-
 test("Converge Calendar recovery after the first stale summary without another connector event", async () => {
   const workflow = {
     ...salesResearch(),
@@ -4275,6 +4255,26 @@ test.each([
       "This calendar is no longer available. Choose another calendar to resume this automation.",
     ),
   ).toHaveLength(change === "changed warning" ? 1 : 0);
+});
+
+test("Reconnect the selected Calendar account and reload the warning state", async () => {
+  const workflow = {
+    ...salesResearch(),
+    automations: [
+      googleCalendarWorkflowAutomation({ warning: "reconnect_required" }),
+    ],
+  };
+  const reconnect = mockCalendarReconnect(workflow);
+  await reconnect.open();
+  workflow.automations[0] = googleCalendarWorkflowAutomation();
+  reconnect.complete();
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Google Calendar" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole("switch")).toBeChecked();
 });
 
 test("Hide Google Forms automation creation when the feature is unavailable", async () => {
