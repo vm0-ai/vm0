@@ -1,9 +1,9 @@
 # Runner SSH authority API
 
 This is the API slice (#32386) of SSH execution (#32013, under #31932).
-It does not enable SSH or install an execution handler. Runner execution and
-generated secret-bearing Rust DTOs belong to #32387; Agent/CLI/UI and activation
-remain later delivery stages.
+It does not enable SSH. The [Runner execution slice](runner-ssh-execution.md)
+(#32387) consumes these routes through generated private Rust DTOs;
+Agent/CLI/UI and activation remain later delivery stages.
 
 ## Authority and secret handoff
 
@@ -66,7 +66,9 @@ must first validate the server's key-exchange proof of possession, then pin
 before sending authentication. This API cannot verify that network handshake.
 Accepted identities are Ed25519, NIST P-256/P-384/P-521 ECDSA and RSA, with a
 canonical unpadded SHA256 fingerprint. `ssh-rsa` identifies an RSA public key;
-it does **not** allow SHA-1 signatures. The Runner must use SHA-2 RSA signatures.
+it does **not** select SHA-1 signatures. The Runner advertises and signs RSA-SHA2;
+see the execution document's explicitly deferred russh host-proof algorithm
+consistency limitation.
 
 Pin first authorizes without locking. It then locks the owned connection row
 used by owner edit/reset, rechecks current authority and rollout state after

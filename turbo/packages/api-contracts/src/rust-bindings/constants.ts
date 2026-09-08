@@ -34,6 +34,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_HOSTNAME_MAX_LENGTH,
+  OFFICIAL_RUNNER_TOKEN_PREFIX,
   RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -223,6 +224,14 @@ function rustU64(value: number): RustConstantValue {
 }
 
 export const rustConstantBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "OFFICIAL_RUNNER_TOKEN_PREFIX",
+    value: { kind: "string", value: OFFICIAL_RUNNER_TOKEN_PREFIX },
+    rustDoc: [
+      "Official token kind; the API still authenticates the secret and winning claim.",
+    ],
+  },
   {
     rustModulePath: clientHeadersModule,
     rustConstName: "CLIENT_VERSION_HEADER",

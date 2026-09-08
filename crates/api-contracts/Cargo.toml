@@ -7,6 +7,7 @@ description = "Generated Rust bindings for selected TypeScript API contracts"
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+zeroize.workspace = true
 
 [lints]
 workspace = true

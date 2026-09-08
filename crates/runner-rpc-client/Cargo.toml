@@ -6,10 +6,10 @@ edition.workspace = true
 [dependencies]
 libc.workspace = true
 runner-rpc-proto.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "io-util", "io-std", "net", "time"] }
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "test-util"] }
 

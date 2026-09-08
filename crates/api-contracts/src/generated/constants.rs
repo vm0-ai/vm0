@@ -127,6 +127,9 @@ pub mod runners {
     /// Rust runners use this shared contract value to split target batches before calling the API.
     pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
+    /// Official token kind; the API still authenticates the secret and winning claim.
+    pub const OFFICIAL_RUNNER_TOKEN_PREFIX: &str = "vm0_official_";
+
     /// Current dialect-aware Pi model configuration generation.
     pub const PI_MODEL_CONFIG_CURRENT_GENERATION: u32 = 2;
 
