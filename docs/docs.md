@@ -30,6 +30,8 @@ surface; the index does not replace their detailed rules.
 
 ## Specialized Guidance
 
+- [Platform lint boundaries](./platform-lint.md): current transport and lifecycle
+  exceptions, polling policy, and retired configuration history.
 - [React commit analysis](./react-commit.md): measuring and attributing React
   work without confusing executions, scheduler events, or DOM mutations with
   commits.

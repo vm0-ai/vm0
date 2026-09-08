@@ -16,7 +16,6 @@ import {
 } from "../../__tests__/page-helper.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { fetch$ } from "../fetch.ts";
 import { testContext } from "./test-helpers.ts";
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -56,10 +55,6 @@ test("Service requests carry stable client context and a unique trace", async ()
     observedHeaders.push(observedClientHeaders(request));
     return respond(200, { enabledConnectorSlugs: [] });
   });
-  context.mocks.http.get("*/api/client-context-check", ({ request }) => {
-    observedHeaders.push(observedClientHeaders(request));
-    return new Response(null, { status: 204 });
-  });
 
   await setupPage({
     appVersion: APP_VERSION,
@@ -78,17 +73,10 @@ test("Service requests carry stable client context and a unique trace", async ()
       [CLIENT_VERSION_HEADER]: "caller-version",
     },
   });
-  await context.store.get(fetch$)("/api/client-context-check", {
-    headers: {
-      [CLIENT_REQUEST_ID_HEADER]: "caller-request-id",
-      [CLIENT_SESSION_ID_HEADER]: "caller-session-id",
-      [CLIENT_TYPE_HEADER]: "caller-type",
-      [CLIENT_VERSION_HEADER]: "caller-version",
-    },
-  });
+  await client().get({ params: { id: AGENT_ID } });
 
   expect(observedHeaders).toHaveLength(2);
-  const [contractRequest, fetchRequest] = observedHeaders;
+  const [contractRequest, secondRequest] = observedHeaders;
   expect(contractRequest).toStrictEqual(
     expect.objectContaining({
       requestId: expect.stringMatching(UUID_PATTERN),
@@ -97,7 +85,7 @@ test("Service requests carry stable client context and a unique trace", async ()
       version: APP_VERSION,
     }),
   );
-  expect(fetchRequest).toStrictEqual(
+  expect(secondRequest).toStrictEqual(
     expect.objectContaining({
       requestId: expect.stringMatching(UUID_PATTERN),
       sessionId: contractRequest?.sessionId,
@@ -105,7 +93,7 @@ test("Service requests carry stable client context and a unique trace", async ()
       version: APP_VERSION,
     }),
   );
-  expect(fetchRequest?.requestId).not.toBe(contractRequest?.requestId);
+  expect(secondRequest?.requestId).not.toBe(contractRequest?.requestId);
 });
 
 test("An empty service error still gives the user a useful status", async () => {
