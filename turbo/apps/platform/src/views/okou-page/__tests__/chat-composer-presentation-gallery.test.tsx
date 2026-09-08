@@ -259,9 +259,9 @@ test("Navigate template categories on a narrow screen", async () => {
   await openTemplatePicker(user);
   const category = screen.getByLabelText("Template category");
   await user.click(category);
-  await user.click(screen.getByRole("option", { name: "Video" }));
+  await user.click(screen.getByRole("option", { name: "Creative video" }));
   await waitFor(() => {
-    expect(category).toHaveTextContent("Video");
+    expect(category).toHaveTextContent("Creative video");
     expect(
       screen.getByLabelText(
         `Select video template ${VIDEO_TEMPLATE_ITEMS[0]!.title}`,

@@ -195,7 +195,7 @@ test("Preview and choose a video template", async () => {
     featureSwitches: TEMPLATE_FEATURES,
   });
 
-  const dialog = await openTemplatePicker(user, "Video");
+  const dialog = await openTemplatePicker(user, "Creative video");
   const previewControl = await waitFor(() => {
     return within(dialog).getByLabelText(
       `Play video template preview ${template.title}`,
@@ -230,7 +230,7 @@ test("Open plans from a gated video template", async () => {
     featureSwitches: TEMPLATE_FEATURES,
   });
 
-  await openTemplatePicker(user, "Video");
+  await openTemplatePicker(user, "Creative video");
   expect(screen.getAllByText("Need Pro").length).toBeGreaterThan(0);
   await user.click(
     screen.getByLabelText(`View plans for video template ${template.title}`),
