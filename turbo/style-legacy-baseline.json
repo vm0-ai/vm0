@@ -63,8 +63,6 @@
     "okou-thinking-enter",
     "okou-thinking-spinner",
     "okou-thinking-spinner-frame",
-    "okou-thread-drag-handle",
-    "okou-thread-reorder-row",
     "okou-viewport-shell",
     "okou-workspace-bg",
     "owf-diagram",
@@ -3683,176 +3681,6 @@
         "important": false
       }
     ],
-    "apps/platform/src/views/okou-page/sidebar-thread-reorder.css": [
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a",
-        "property": "transition",
-        "value": "padding-left 120ms ease-out,background-color 120ms ease-out",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-drag-handle",
-        "property": "opacity",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-drag-handle",
-        "property": "pointer-events",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-drag-handle",
-        "property": "transform",
-        "value": "translateX(-14px)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-drag-handle",
-        "property": "transition",
-        "value": "transform 120ms ease-out,opacity 120ms ease-out",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row[data-reorderable]:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging])>a",
-        "property": "padding-left",
-        "value": "32px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row[data-reorderable]:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging])>a",
-        "property": "transition-duration",
-        "value": "160ms",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging]) .okou-thread-drag-handle",
-        "property": "opacity",
-        "value": "1",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging]) .okou-thread-drag-handle",
-        "property": "pointer-events",
-        "value": "auto",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging]) .okou-thread-drag-handle",
-        "property": "transform",
-        "value": "translateX(0)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row:is(:has(.okou-thread-drag-handle:focus-visible),[data-dragging]) .okou-thread-drag-handle",
-        "property": "transition-duration",
-        "value": "160ms",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row[data-dragging=\"keyboard\"]>a",
-        "property": "opacity",
-        "value": "0.45",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-thread-reorder-row[data-dragging=\"pointer\"]>*",
-        "property": "opacity",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]:hover>a",
-        "property": "padding-left",
-        "value": "32px",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]:hover>a",
-        "property": "transition-duration",
-        "value": "160ms",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row:hover .okou-thread-drag-handle",
-        "property": "opacity",
-        "value": "1",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row:hover .okou-thread-drag-handle",
-        "property": "pointer-events",
-        "value": "auto",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row:hover .okou-thread-drag-handle",
-        "property": "transform",
-        "value": "translateX(0)",
-        "important": false
-      },
-      {
-        "atRules": ["@media (hover:hover) and (pointer:fine)"],
-        "selector": ".okou-thread-reorder-row:hover .okou-thread-drag-handle",
-        "property": "transition-duration",
-        "value": "160ms",
-        "important": false
-      },
-      {
-        "atRules": ["@media (any-pointer:coarse)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a",
-        "property": "-webkit-touch-callout",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (any-pointer:coarse)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a",
-        "property": "-webkit-user-select",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (any-pointer:coarse)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a",
-        "property": "user-select",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (any-pointer:coarse)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a",
-        "property": "touch-action",
-        "value": "manipulation",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-thread-reorder-row[data-reorderable]>a,.okou-thread-drag-handle",
-        "property": "transition",
-        "value": "none",
-        "important": false
-      }
-    ],
     "packages/ui/src/styles/globals.css": [
       {
         "atRules": ["@layer components"],
@@ -4247,9 +4075,6 @@
     "apps/platform/src/signals/chat-page/chat-thread-feedback.ts": {
       "okou-chat-bubble-assistant": 1
     },
-    "apps/platform/src/signals/chat-page/chat-thread-pin-order.ts": {
-      "okou-thread-drag-handle": 1
-    },
     "apps/platform/src/views/agents-page/agents-page-tabs.tsx": {
       "okou-btn-morandi": 1,
       "okou-card": 3
@@ -4565,10 +4390,6 @@
       "okou-nav-copy": 2,
       "okou-nav-copy-muted": 3,
       "okou-nav-copy-muted-hover": 1
-    },
-    "apps/platform/src/views/okou-page/sidebar-thread-reorder.tsx": {
-      "okou-thread-drag-handle": 1,
-      "okou-thread-reorder-row": 1
     },
     "apps/platform/src/views/okou-page/sidebar-threads.tsx": {
       "okou-nav-copy": 1,

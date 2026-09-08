@@ -21,7 +21,6 @@
     "check-types": "tsc -p tsconfig.production.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.tests.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs) && tsc -p tsconfig.build-config.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs)"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@axiomhq/js": "^1.5.0",
     "@base-ui/react": "^1.7.0",
     "@clerk/localizations": "^4.13.8",

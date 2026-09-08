@@ -1,10 +1,4 @@
-import type {
-  CSSProperties,
-  FocusEventHandler,
-  PointerEventHandler,
-  ReactNode,
-  UIEvent,
-} from "react";
+import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { useSet } from "ccstate-react";
 import type { SidebarChatThreadScrollSignals } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
@@ -14,8 +8,6 @@ interface OverlayScrollAreaProps {
   readonly className?: string;
   readonly contentClassName?: string;
   readonly children: ReactNode;
-  readonly onFocus?: FocusEventHandler<HTMLDivElement>;
-  readonly onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
   readonly scrollSignals: SidebarChatThreadScrollSignals;
   readonly style?: CSSProperties;
   readonly "data-testid"?: string;
@@ -28,8 +20,6 @@ export function OverlayScrollArea({
   className,
   contentClassName,
   children,
-  onFocus,
-  onPointerDownCapture,
   scrollSignals,
   style,
   "data-testid": dataTestId,
@@ -52,8 +42,6 @@ export function OverlayScrollArea({
         ref={setViewportRef}
         className="h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         style={style}
-        onFocus={onFocus}
-        onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
         tabIndex={tabIndex ?? -1}
         role={ariaLabel ? "region" : undefined}
