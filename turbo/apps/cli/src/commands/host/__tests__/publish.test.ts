@@ -44,6 +44,7 @@ describe("okou host publish command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    hostCommand.setOptionValue("json", undefined);
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     tempDir = join(tmpdir(), `host-publish-${Date.now()}`);
@@ -63,7 +64,7 @@ describe("okou host publish command", () => {
     }
   });
 
-  it("uploads a default robots.txt when the site does not include one", async () => {
+  it("uploads a default robots.txt and prints artifact presentation context", async () => {
     const index = "<!doctype html><main>Hosted site</main>";
     let uploadedRobots = false;
 
@@ -146,13 +147,37 @@ describe("okou host publish command", () => {
       "--site",
       "demo-site",
       "--spa",
-      "--json",
     ]);
 
     expect(uploadedRobots).toBe(true);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
+    expect(stdout).toContain("✓ Hosted site deployed");
+    expect(stdout).toContain(`Artifact: ${ARTIFACT_URL}`);
+    expect(stdout).toContain(`Alias: ${ALIAS_URL} → v1`);
+    expect(stdout).toContain("Artifact presentation context:");
+    expect(stdout).toContain(`[demo-site](<${ALIAS_URL}>)`);
+    expect(stdout).toContain(`\n\n![demo-site](<${ALIAS_URL}>)\n\n`);
+    expect(stdout).toContain(
+      "occupies its own Markdown paragraph, with a blank line before and after it, and is outside a code fence",
+    );
+    expect(stdout).toContain(
+      "Both forms reference the same artifact. Including both in one response creates two user-facing references.",
+    );
+
+    mockConsoleLog.mockClear();
+    await hostCommand.parseAsync([
+      "node",
+      "cli",
+      tempDir,
+      "--site",
+      "demo-site",
+      "--spa",
+      "--json",
+    ]);
+
+    const jsonOutput = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(jsonOutput) as Record<string, unknown>;
     expect(parsed).toMatchObject({
       publicSlug: "demo-site",
       deploymentVersion: 1,
@@ -163,6 +188,8 @@ describe("okou host publish command", () => {
       size:
         Buffer.byteLength(index) +
         Buffer.byteLength(DEFAULT_HOSTED_SITE_ROBOTS_TXT),
+      inlineMarkdownLink: `[demo-site](<${ALIAS_URL}>)`,
+      previewMarkdownBlock: `![demo-site](<${ALIAS_URL}>)`,
     });
   });
 
@@ -223,6 +250,8 @@ describe("okou host publish command", () => {
     expect(parsed).toMatchObject({
       publicSlug: legacyPublicSlug,
       url: legacyUrl,
+      inlineMarkdownLink: `[demo-site](<${legacyUrl}>)`,
+      previewMarkdownBlock: `![demo-site](<${legacyUrl}>)`,
     });
     expect(parsed.deploymentVersion).toBeUndefined();
     expect(parsed.artifactUrl).toBeUndefined();
