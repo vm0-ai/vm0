@@ -62,6 +62,19 @@ function emojiFeed(): HTMLElement {
   return feed;
 }
 
+async function waitForEmojiPicker(): Promise<HTMLInputElement> {
+  const searchInput = await screen.findByLabelText("Search emoji");
+  if (!(searchInput instanceof HTMLInputElement)) {
+    throw new Error("Emoji search is not an input");
+  }
+  await waitFor(() => {
+    expect(document.querySelectorAll("[data-chat-thread-emoji]")).toHaveLength(
+      20,
+    );
+  });
+  return searchInput;
+}
+
 async function openEmojiPicker(): Promise<HTMLInputElement> {
   await setupEmojiPage();
   await waitFor(() => {
@@ -70,11 +83,7 @@ async function openEmojiPicker(): Promise<HTMLInputElement> {
 
   click(buttonByLabel("Change icon"));
 
-  const searchInput = await screen.findByLabelText("Search emoji");
-  if (!(searchInput instanceof HTMLInputElement)) {
-    throw new Error("Emoji search is not an input");
-  }
-  return searchInput;
+  return waitForEmojiPicker();
 }
 
 function setCategoryLayout(feed: HTMLElement): void {
@@ -135,7 +144,7 @@ test("Change a thread icon before its save finishes", async () => {
   const changeIcon = buttonByLabel("Change icon");
 
   click(changeIcon);
-  const searchInput = await screen.findByLabelText("Search emoji");
+  const searchInput = await waitForEmojiPicker();
   click(emojiButton("grinning face"));
   await waitFor(() => {
     expect(changeIcon).toHaveTextContent("😀");
@@ -157,7 +166,7 @@ test("Restore chat focus after closing the mobile emoji picker", async () => {
   const changeIcon = buttonByLabel("Change icon");
 
   click(changeIcon);
-  const searchInput = await screen.findByLabelText("Search emoji");
+  const searchInput = await waitForEmojiPicker();
   click(changeIcon);
   await waitFor(() => {
     expect(searchInput).not.toBeInTheDocument();
