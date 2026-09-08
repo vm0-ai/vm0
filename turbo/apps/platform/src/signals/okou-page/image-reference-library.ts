@@ -38,11 +38,7 @@ import {
 } from "../utils.ts";
 import { uploadPrivateArtifactToStorage$ } from "./file-upload.ts";
 
-export type {
-  ImageReference,
-  ImageReferencePreviewAsset,
-  ImageReferenceVisibility,
-};
+export type { ImageReference, ImageReferenceVisibility };
 
 const IMAGE_REFERENCE_PREVIEW_URL_SAFETY_MS = 45 * 1000;
 const IMAGE_REFERENCE_CATALOG_REVALIDATE_AGE_MS =
@@ -53,27 +49,27 @@ interface ImageReferenceCatalog {
   readonly loadedAtMs: number;
 }
 
-export interface ImageReferenceCreator {
+interface ImageReferenceCreator {
   readonly userId: string;
   readonly displayName: string;
   readonly email: string;
   readonly imageUrl: string;
 }
 
-export type ImageReferenceImageSlot = "a" | "b";
+type ImageReferenceImageSlot = "a" | "b";
 
-export interface ImageReferenceLoadedImage {
+interface ImageReferenceLoadedImage {
   readonly desiredUrl: string;
   readonly sourceUrl: string;
   readonly slot: ImageReferenceImageSlot;
 }
 
-export interface ImageReferenceImageState {
+interface ImageReferenceImageState {
   readonly active: ImageReferenceLoadedImage | null;
   readonly failed: readonly ImageReferenceLoadedImage[];
 }
 
-export interface ImageReferenceImageSignals {
+interface ImageReferenceImageSignals {
   readonly desiredUrl$: Computed<Promise<string | null>>;
   readonly state$: Computed<ImageReferenceImageState>;
   readonly commitLoadedImage$: Command<
@@ -86,7 +82,7 @@ export interface ImageReferenceImageSignals {
   >;
 }
 
-export interface ImageReferenceImageBuffers {
+interface ImageReferenceImageBuffers {
   readonly card: ImageReferenceImageSignals;
   readonly detail: ImageReferenceImageSignals;
 }
@@ -151,7 +147,7 @@ const imageReferencesRealtimeReady$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
 
-export const imageReferencesEnabled$ = computed((get): boolean => {
+const imageReferencesEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ReferenceImages] === true;
 });
 

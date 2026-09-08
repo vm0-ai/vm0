@@ -337,7 +337,7 @@ export const uploadFileToStorage$ = command(
   },
 );
 
-export interface UploadedPrivateArtifact {
+interface UploadedPrivateArtifact {
   readonly id: string;
 }
 
