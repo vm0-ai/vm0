@@ -19,7 +19,7 @@ import {
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
 
-const APP_HOST = "app.vm0.ai";
+const APP_HOST = "app.okou.ai";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const VIEWPORT_TOP = 100;
 const VIEWPORT_HEIGHT = 360;

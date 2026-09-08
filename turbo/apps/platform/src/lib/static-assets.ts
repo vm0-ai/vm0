@@ -14,12 +14,6 @@ export function platformStaticAssetUrl(path: string) {
 export const platformEmptyPrivateAgentsImg = platformStaticAssetUrl(
   "views/agents-page/assets/empty-private-agents-9a8d7e3750b6.png",
 );
-export const platformVm0LogoImg = platformStaticAssetUrl(
-  "assets/vm0-logo-56cf3090a186.svg",
-);
-export const platformVm0LogoDarkImg = platformStaticAssetUrl(
-  "assets/vm0-logo-dark-f3de8c7713f8.svg",
-);
 export const platformOkouWordmarkDarkImg = platformPublicStaticUrl(
   "https://static.vm0.io/public/okou-logo-wordmark-dark-40e256bb155e.svg",
 );

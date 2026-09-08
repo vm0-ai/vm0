@@ -352,9 +352,7 @@ function signInTerminalCopy(
   t: TFunction<"common">,
   authBrand: AuthBrandContext,
 ) {
-  const supportEmail = publicBrandPresentation(
-    authBrand.brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+  const supportEmail = publicBrandPresentation("okou").supportEmail;
   return {
     accessNotAllowed: t(($) => {
       return $.auth.clerk.accessNotAllowed;

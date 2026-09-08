@@ -14,7 +14,6 @@ interface OkouClerkBootstrap {
   readonly domain?: string;
   readonly loadOptions: OkouClerkBootstrapLoadOptions;
   loaded?: Promise<void>;
-  readonly productionPrimaryAppDomain: "app.okou.ai" | "app.vm0.ai";
   readonly publishableKey: string;
 }
 

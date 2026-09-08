@@ -1,6 +1,5 @@
 export type PlatformService = "api" | "www" | "app" | "platform";
 
-const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
 const PREVIEW_API_DOMAIN = "vm6.ai";
@@ -21,14 +20,6 @@ export function okouAppWorkerPreviewJobRef(hostname: string): string | null {
 
 export function isOkouProductionHostname(hostname: string): boolean {
   return isDomainOrSubdomain(hostname.toLowerCase(), OKOU_PRODUCTION_DOMAIN);
-}
-
-export function isPlatformProductionHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase();
-  return (
-    isDomainOrSubdomain(normalizedHostname, PRODUCTION_DOMAIN) ||
-    isOkouProductionHostname(normalizedHostname)
-  );
 }
 
 export function rewritePlatformHostname(
@@ -90,12 +81,8 @@ export function derivePlatformServiceOrigin(
   target: PlatformService,
 ): string {
   const url = new URL(currentOrigin);
-  const productionDomain =
-    target === "api" && isOkouProductionHostname(url.hostname)
-      ? OKOU_PRODUCTION_DOMAIN
-      : PRODUCTION_DOMAIN;
-  url.hostname = isPlatformProductionHostname(url.hostname)
-    ? `${target}.${productionDomain}`
+  url.hostname = isOkouProductionHostname(url.hostname)
+    ? `${target}.${OKOU_PRODUCTION_DOMAIN}`
     : rewritePreviewServiceHostname(url.hostname, target);
 
   return url.origin;

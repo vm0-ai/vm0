@@ -12,7 +12,6 @@ mkdir -p "${canonical_dist}/icons" "$worker_shell"
 
 printf '%s\n' \
   '<!doctype html>' \
-  '<script>window.testPrimary="__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";</script>' \
   '<script type="module" src="https://static.okou.io/okou-app/assets/app-123.js"></script>' \
   > "${canonical_dist}/index.html"
 printf 'service worker\n' > "${canonical_dist}/sw.js"
@@ -39,7 +38,6 @@ test "$expected_files" = "$(printf '%s\n' \
   'robots.txt' \
   'sw.js' \
   'sw.txt')"
-grep -Fq 'window.testPrimary="app.okou.ai"' "${worker_shell}/index.html"
 grep -Fq 'https://static.okou.io/okou-app/assets/app-123.js' \
   "${worker_shell}/index.html"
 test ! -e "${worker_shell}/app.js.map"
@@ -47,15 +45,7 @@ test ! -e "${worker_shell}/app.js.map"
 empty_shell="${tmp_dir}/empty-shell"
 mkdir "$empty_shell"
 bash "$script" "$canonical_dist" "$empty_shell"
-grep -Fq 'window.testPrimary="app.okou.ai"' "${empty_shell}/index.html"
 
-for prepared_shell in "$worker_shell" "$empty_shell"; do
-  if grep -Fq '__OKOU_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__' \
-    "${prepared_shell}/index.html"; then
-    echo "expected the primary app domain marker to be replaced: $prepared_shell" >&2
-    exit 1
-  fi
-done
 
 nonempty_shell="${tmp_dir}/nonempty-shell"
 mkdir "$nonempty_shell"

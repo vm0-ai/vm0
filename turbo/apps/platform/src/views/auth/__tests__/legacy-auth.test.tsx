@@ -41,7 +41,7 @@ function setupChooseOrganizationPage(
   };
   return setupPage({
     context: currentContext,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path,
     auth: {
       organization: { activeOrg: null, memberships: [membership] },
@@ -88,7 +88,7 @@ test("Branded organization selection continues to the trusted destination", asyn
   if (!brandLink) {
     throw new Error("Expected the Okou home link");
   }
-  expect(brandLink).toHaveAttribute("href", "https://app.okou.ai");
+  expect(brandLink).toHaveAttribute("href", "/");
   expect(screen.getByRole("img", { name: "Okou" })).toHaveAttribute(
     "src",
     platformOkouWordmarkDarkImg,
@@ -116,20 +116,20 @@ test("A pending session can choose its required organization", async () => {
   ).resolves.toBeVisible();
   expect(authV2Button("Continue with Route Organization")).toBeVisible();
   expect(screen.queryByText(/create organization/i)).not.toBeInTheDocument();
-  expect(document.title).toBe("Sign in | VM0");
+  expect(document.title).toBe("Sign in | Okou");
 });
 
 test("Stable authentication routes show the correct experience", async () => {
   await setupPage({
     context,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
     path: "/sign-in",
     auth: null,
   });
   await expect(
-    screen.findByRole("region", { name: "Sign in to VM0" }),
+    screen.findByRole("region", { name: "Sign in to Okou" }),
   ).resolves.toBeVisible();
-  expect(document.title).toBe("Sign in | VM0");
+  expect(document.title).toBe("Sign in | Okou");
 
   const signUp = queryAllByRoleFast("link").find((candidate) => {
     return candidate.textContent?.trim() === "Sign up";
@@ -142,7 +142,7 @@ test("Stable authentication routes show the correct experience", async () => {
     expect(
       screen.getByRole("region", { name: "Create your account" }),
     ).toBeVisible();
-    expect(document.title).toBe("Sign up | VM0");
+    expect(document.title).toBe("Sign up | Okou");
   });
 
   pushState(null, "", "/sign-up/verify-email-address");
@@ -151,7 +151,7 @@ test("Stable authentication routes show the correct experience", async () => {
     expect(
       screen.getByRole("region", { name: "Create your account" }),
     ).toBeVisible();
-    expect(document.title).toBe("Sign up | VM0");
+    expect(document.title).toBe("Sign up | Okou");
   });
   expect(screen.getByTestId("app-auth-v2")).toBeVisible();
   expect(screen.getByTestId("app-skeleton")).toHaveAttribute(

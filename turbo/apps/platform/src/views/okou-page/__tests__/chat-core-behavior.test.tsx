@@ -69,7 +69,7 @@ test("A follow-up during an active run appears immediately", async () => {
   await setupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   await screen.findByText("I am reviewing the dependencies.");
@@ -132,7 +132,7 @@ test("A new message keeps its attachment, text, and selected model together", as
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    host: "app.vm0.ai",
+    host: "app.okou.ai",
   });
 
   const composer = await screen.findByRole("textbox", { name: "Message" });

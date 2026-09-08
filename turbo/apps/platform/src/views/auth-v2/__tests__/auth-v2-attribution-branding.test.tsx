@@ -102,7 +102,7 @@ function waitForRoleElement(
 
 function setupSignedOutPage(path: string): Promise<void> {
   mockNow(ATTRIBUTION_NOW, context.signal);
-  return setupPage({ auth: null, context, host: "app.vm0.ai", path });
+  return setupPage({ auth: null, context, host: "app.okou.ai", path });
 }
 
 function prepareAccountCreation(): void {
@@ -205,7 +205,7 @@ test("Campaign attribution survives a switch from sign-in to sign-up", async () 
 });
 
 test("An explicit sign-up destination wins over campaign onboarding", async () => {
-  const redirectUrl = "https://www.vm0.ai/connector/success";
+  const redirectUrl = "https://www.okou.ai/connector/success";
   const path = `/sign-up?gclid=click-123&redirect_url=${encodeURIComponent(redirectUrl)}`;
   prepareAccountCreation();
   mockedClerk.signUpAttemptEmailAddressVerification.mockImplementation(() => {
@@ -265,7 +265,7 @@ test("Sign-up campaign attribution survives verification and flow switches", asy
   }
   const completion = new URL(completionValue);
   expect(completion.pathname).toBe("/onboarding");
-  expect(completion.searchParams.get("landing_host")).toBe("app.vm0.ai");
+  expect(completion.searchParams.get("landing_host")).toBe("app.okou.ai");
   expect(completion.searchParams.get("landing_path")).toBe(
     "/sign-up/verify-email-address",
   );
@@ -275,7 +275,7 @@ test("Sign-up campaign attribution survives verification and flow switches", asy
     expect(pathname()).toBe("/sign-in");
   });
   await expect(
-    screen.findByRole("region", { name: "Sign in to VM0" }),
+    screen.findByRole("region", { name: "Sign in to Okou" }),
   ).resolves.toBeVisible();
   await completePasswordSignIn();
 
@@ -290,7 +290,7 @@ test("Sign-up campaign attribution survives verification and flow switches", asy
   ]);
 });
 
-test("A trusted Okou destination uses Okou authentication context", async () => {
+test("Authentication presents the Okou brand and links to the app home", async () => {
   const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
   mockSignInResource({ status: "needs_identifier" });
   preparePasswordSignIn();
@@ -305,10 +305,7 @@ test("A trusted Okou destination uses Okou authentication context", async () => 
   expect(
     screen.getByRole("region", { name: "Sign in to Okou" }),
   ).toHaveAccessibleDescription("Welcome back! Please sign in to continue");
-  expect(roleElement("link", "Go to Okou home")).toHaveAttribute(
-    "href",
-    "https://app.okou.ai",
-  );
+  expect(roleElement("link", "Go to Okou home")).toHaveAttribute("href", "/");
 
   await completePasswordSignIn();
 

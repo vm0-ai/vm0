@@ -145,7 +145,7 @@ function mockOnboardingNeeded(currentContext = context): void {
 }
 
 function setupCustomWorkflowPage(
-  host: "app.okou.ai" | "app.vm0.ai",
+  host: "app.okou.ai" | "app.okou.ai",
   onPrompt: (prompt: string) => void,
 ): Promise<void> {
   context.mocks.api(browserContract.get, ({ respond }) => {
@@ -706,7 +706,7 @@ test("A user can leave the catalog to create a custom workflow", async () => {
     screen.findByRole("heading", { name: "Engineer workflows" }),
   ).resolves.toBeInTheDocument();
 
-  click(buttonByText("Talk to Zero and make my own"));
+  click(buttonByText("Talk to Okou and make my own"));
 
   await waitFor(() => {
     expect(pathname()).not.toMatch(/^\/onboarding/u);
@@ -735,26 +735,26 @@ test("Okou custom workflow onboarding addresses Okou by default", async () => {
   await expect(runCreated.promise).resolves.toBe("@Okou Build a daily brief");
 });
 
-test("VM0 custom workflow onboarding addresses Zero by default", async () => {
+test("Custom workflow onboarding addresses Okou by default", async () => {
   const runCreated = context.mocks.deferred<string>();
-  await setupCustomWorkflowPage("app.vm0.ai", runCreated.resolve);
+  await setupCustomWorkflowPage("app.okou.ai", runCreated.resolve);
 
   await expect(
     screen.findByRole("heading", { name: "Describe your workflow" }),
   ).resolves.toBeInTheDocument();
   expect(
-    screen.getByPlaceholderText("Describe what you want Zero to build"),
+    screen.getByPlaceholderText("Describe what you want Okou to build"),
   ).toBeVisible();
   await fill(
     screen.getByLabelText("Describe your workflow"),
     "Build a daily brief",
   );
-  click(buttonByText("Continue with Zero"));
+  click(buttonByText("Continue with Okou"));
 
-  await expect(runCreated.promise).resolves.toBe("@Zero Build a daily brief");
+  await expect(runCreated.promise).resolves.toBe("@Okou Build a daily brief");
 });
 
-test("Okou custom workflow onboarding preserves an explicit assistant mention", async () => {
+test("Custom workflow onboarding preserves an explicit assistant mention", async () => {
   const runCreated = context.mocks.deferred<string>();
   await setupCustomWorkflowPage("app.okou.ai", runCreated.resolve);
 
@@ -899,7 +899,7 @@ test("A presentation landing prompt starts a chat with its source context", asyn
     prompt: MARKETING_PRESENTATION_PROMPT,
     showcase: MARKETING_PRESENTATION_SHOWCASE,
     vm0_source: "presentation",
-    landing_host: "www.vm0.ai",
+    landing_host: "www.okou.ai",
     landing_path: "/en/presentation",
     source_type: "direct",
   });
@@ -925,7 +925,7 @@ test("A presentation landing prompt starts a chat with its source context", asyn
   const handoffParams = new URLSearchParams(search());
   expect(handoffParams.get("showcase")).toBe(MARKETING_PRESENTATION_SHOWCASE);
   expect(handoffParams.get("vm0_source")).toBe("presentation");
-  expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
+  expect(handoffParams.get("landing_host")).toBe("www.okou.ai");
   expect(handoffParams.get("landing_path")).toBe("/en/presentation");
   expect(handoffParams.get("source_type")).toBe("direct");
 });

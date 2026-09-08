@@ -197,8 +197,8 @@ test("Explain unavailable email cards in a conversation", async () => {
       2,
       thread.id,
       [
-        `[Deleted launch note](https://app.vm0.ai/mail/drafts/${deletedDraftId})`,
-        `[Quarterly access review](https://app.vm0.ai/mail/drafts/${reconnectDraftId})`,
+        `[Deleted launch note](https://app.okou.ai/mail/drafts/${deletedDraftId})`,
+        `[Quarterly access review](https://app.okou.ai/mail/drafts/${reconnectDraftId})`,
       ].join("\n\n"),
       { id: runId },
     ),
@@ -228,7 +228,7 @@ test("Explain unavailable email cards in a conversation", async () => {
     }
     return respond(200, {
       mailDraftId: params.mailDraftId,
-      mailDraftUrl: `https://app.vm0.ai/mail/drafts/${params.mailDraftId}`,
+      mailDraftUrl: `https://app.okou.ai/mail/drafts/${params.mailDraftId}`,
       mailDraft: draft,
     });
   });

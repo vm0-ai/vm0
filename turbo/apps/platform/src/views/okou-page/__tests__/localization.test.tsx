@@ -159,11 +159,11 @@ test("Authentication copy falls back without changing the app language", async (
     screen.findByRole("heading", { name: "Preferência" }),
   ).resolves.toBeInTheDocument();
   expect(
-    screen.getByText("Escolha seu idioma preferido para a interface do VM0"),
+    screen.getByText("Escolha seu idioma preferido para a interface do Okou"),
   ).toBeVisible();
   const authentication = await openAddAccount(
     "Adicionar conta",
-    "Entrar no VM0",
+    "Entrar no Okou",
   );
   expect(within(authentication).getByLabelText("Seu e-mail")).toBeVisible();
   expect(document.documentElement).toHaveAttribute("lang", "pt-BR");
@@ -345,7 +345,7 @@ test("Only the selected authentication language is loaded and reused", async () 
   ).resolves.toBeInTheDocument();
   const frenchAuthentication = await openAddAccount(
     "Ajouter un compte",
-    "Se connecter à VM0",
+    "Se connecter à Okou",
   );
   expect(
     within(frenchAuthentication).getByLabelText("Adresse e-mail"),
@@ -358,7 +358,7 @@ test("Only the selected authentication language is loaded and reused", async () 
   ).resolves.toBeInTheDocument();
   const englishAuthentication = await openAddAccount(
     "Add account",
-    "Sign in to VM0",
+    "Sign in to Okou",
   );
   expect(
     within(englishAuthentication).getByLabelText("Email address"),
@@ -371,7 +371,7 @@ test("Only the selected authentication language is loaded and reused", async () 
   ).resolves.toBeInTheDocument();
   const reusedFrenchAuthentication = await openAddAccount(
     "Ajouter un compte",
-    "Se connecter à VM0",
+    "Se connecter à Okou",
   );
   expect(
     within(reusedFrenchAuthentication).getByLabelText("Adresse e-mail"),

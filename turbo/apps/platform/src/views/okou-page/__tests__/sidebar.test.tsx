@@ -1001,7 +1001,7 @@ test("Find conversations by title in workspace search", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 
@@ -1845,7 +1845,7 @@ test("Open and use workspace search with the keyboard", async () => {
         name: "Search workspace...",
       }),
     ).not.toBeInTheDocument();
-    expect(document.title).toBe("Support escalation | VM0");
+    expect(document.title).toBe("Support escalation | Okou");
   });
 });
 

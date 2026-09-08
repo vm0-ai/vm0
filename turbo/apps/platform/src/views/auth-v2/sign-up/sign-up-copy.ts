@@ -207,9 +207,7 @@ function signUpTerminalCopy(
   t: TFunction<"common">,
   brandName: AuthBrandContext["brandName"],
 ) {
-  const supportEmail = publicBrandPresentation(
-    brandName === "Okou" ? "okou" : "vm0",
-  ).supportEmail;
+  const supportEmail = publicBrandPresentation("okou").supportEmail;
   return {
     accessNotAllowed: t(($) => {
       return $.auth.clerk.accessNotAllowed;
