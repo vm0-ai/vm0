@@ -522,7 +522,7 @@ importers:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@electron-forge/cli':
