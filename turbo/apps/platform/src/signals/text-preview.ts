@@ -73,15 +73,16 @@ export async function fetchPreviewText(
 
 export function createTextPreviewComputed(
   url: string,
-  resourceUrl$?: Computed<Promise<string>>,
+  resourceUrl$?: Computed<Promise<string | null>>,
 ): TextPreviewComputed {
-  const urls$ = createAttachmentResourceUrl$(url);
+  const resolvedUrl$ = resourceUrl$ ?? createAttachmentResourceUrl$(url);
   return computed(async (get) => {
     // The canonical attachment URL needs an Authorization header this fetch
     // does not carry, so read the presigned object URL instead.
-    const resourceUrl = resourceUrl$
-      ? await get(resourceUrl$)
-      : (await get(urls$)).resourceUrl;
+    const resourceUrl = await get(resolvedUrl$);
+    if (!resourceUrl) {
+      throw new Error("Attachment preview is unavailable");
+    }
     return fetchPreviewText(resourceUrl, get(rootSignal$));
   });
 }

@@ -1,7 +1,4 @@
-import {
-  createAttachmentResourceUrl$,
-  type AttachmentUrlsComputed,
-} from "../attachment-resource-url.ts";
+import { createAttachmentPreviewSignals } from "../attachment-resource-url.ts";
 import { command, computed, state } from "ccstate";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import {
@@ -134,9 +131,8 @@ type AttachmentLightboxInput =
       splitViewAvailable?: boolean;
     };
 
-export type AttachmentLightboxState = AttachmentLightboxInput & {
-  readonly attachmentUrls$: AttachmentUrlsComputed;
-};
+export type AttachmentLightboxState = AttachmentLightboxInput &
+  ReturnType<typeof createAttachmentPreviewSignals>;
 
 const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
@@ -322,7 +318,7 @@ export const openImageLightbox$ = command(
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, {
       ...imageLightboxState(resource ? { ...input, url: resource.url } : input),
-      attachmentUrls$: createAttachmentResourceUrl$(resource?.url ?? input.url),
+      ...createAttachmentPreviewSignals(resource?.url ?? input.url),
     });
   },
 );
@@ -350,7 +346,7 @@ export const navigateImageLightbox$ = command(
     set(internalLightboxState$, {
       kind: "image",
       ...value,
-      attachmentUrls$: createAttachmentResourceUrl$(value.url),
+      ...createAttachmentPreviewSignals(value.url),
     });
   },
 );
@@ -367,21 +363,16 @@ export const openDocumentLightbox$ = command(
     const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    const attachmentUrls$ = createAttachmentResourceUrl$(value.url);
+    const preview = createAttachmentPreviewSignals(value.url);
     if (isAttachmentTextDocumentLightboxInput(value)) {
       const text$ =
         value.text$ ??
-        createTextPreviewComputed(
-          value.url,
-          computed(async (get) => {
-            return (await get(attachmentUrls$)).resourceUrl;
-          }),
-        );
+        createTextPreviewComputed(value.url, preview.resourceUrl$);
       if (value.kind === "markdown") {
         set(internalLightboxState$, {
           ...value,
           kind: "markdown",
-          attachmentUrls$,
+          ...preview,
           text$,
           markdownTree$: createMarkdownPreviewTree(text$, previewSignal),
         });
@@ -391,11 +382,11 @@ export const openDocumentLightbox$ = command(
         ...value,
         kind: value.kind,
         text$,
-        attachmentUrls$,
+        ...preview,
       });
       return;
     }
-    set(internalLightboxState$, { ...value, attachmentUrls$ });
+    set(internalLightboxState$, { ...value, ...preview });
   },
 );
 
@@ -411,7 +402,7 @@ function createSimpleLightboxOpener(kind: "audio" | "file" | "video") {
       set(internalLightboxState$, {
         kind,
         ...value,
-        attachmentUrls$: createAttachmentResourceUrl$(value.url),
+        ...createAttachmentPreviewSignals(value.url),
       });
     },
   );

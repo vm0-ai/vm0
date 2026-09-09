@@ -83,7 +83,6 @@ import {
   type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
 import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
@@ -709,7 +708,7 @@ function ArtifactDialogImageBody({
   imageNavigation?: ArtifactImageNavigationActions;
   preview: Extract<AttachmentLightboxState, { kind: "image" }>;
 }) {
-  const resourceUrl = useResolvedAttachmentUrl(preview.attachmentUrls$);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
   return (
     <ArtifactDialogImageStage
       filename={filename}
@@ -728,7 +727,7 @@ function ArtifactDialogVideoBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.attachmentUrls$);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
 
   return (
     <ArtifactDialogStage centered>
@@ -765,7 +764,7 @@ function ArtifactDialogAudioBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.attachmentUrls$);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
 
   return (
     <ArtifactDialogStage centered>
@@ -805,7 +804,7 @@ function ArtifactDialogDocumentFrameBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.attachmentUrls$);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail so the
   // embedded preview shows just the page and toolbar by default.
   const src =
@@ -860,11 +859,15 @@ function ArtifactDialogOfficeDocumentBody({
   filename: string;
   preview: Extract<AttachmentLightboxState, { kind: "file" }>;
 }) {
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
+  const shareUrl = useLastResolved(preview.shareUrl$);
   return (
     <ArtifactDialogStage scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
-          attachmentUrls$={preview.attachmentUrls$}
+          resourceUrl={
+            shareUrl === undefined ? null : (shareUrl ?? resourceUrl)
+          }
           filename={filename}
           focusKey={`${preview.url}:dialog`}
           focusOnMount={false}
@@ -953,7 +956,7 @@ function ArtifactDialogHtmlBody({
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const src = useResolvedAttachmentUrl(preview.attachmentUrls$);
+  const src = useLastResolved(preview.resourceUrl$) ?? null;
   const isPresentationHtml = artifact?.artifactKind === "presentation-html";
 
   if (src === null) {
@@ -1211,6 +1214,7 @@ function ArtifactPreviewDialogActions({
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
   );
+  const shareUrl = useLastResolved(preview.shareUrl$);
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const closeLightboxImmediately = useSet(closeLightboxImmediately$);
@@ -1248,7 +1252,7 @@ function ArtifactPreviewDialogActions({
       )}
       {showShare && (
         <ArtifactShareButton
-          attachmentUrls$={preview.attachmentUrls$}
+          shareUrl={shareUrl}
           ariaLabel={t(($) => {
             return $.artifacts.actions.share;
           })}
@@ -1617,19 +1621,19 @@ export function PreviewableAudioAttachmentChip({
  * transition. The canonical URL identifies the image load state.
  */
 function ComposerImagePreviewImage({
-  attachmentUrls$,
+  resourceUrl$,
   load,
   loaded,
   url,
 }: {
-  attachmentUrls$: ChatAttachment["attachmentUrls$"];
+  resourceUrl$: ChatAttachment["resourceUrl$"];
   load: ImageLoadSignals;
   loaded: boolean;
   url: string;
 }) {
   const markLoaded = useSet(load.loaded$);
   const markFailed = useSet(load.failed$);
-  const resolvedUrl = useResolvedAttachmentUrl(attachmentUrls$);
+  const resolvedUrl = useLastResolved(resourceUrl$) ?? null;
 
   if (resolvedUrl === null) {
     return null;
@@ -1649,14 +1653,14 @@ function ComposerImagePreviewImage({
 }
 
 function ComposerImagePreviewButton({
-  attachmentUrls$,
+  resourceUrl$,
   filename,
   load,
   markCount,
   openImageLightbox,
   url,
 }: {
-  attachmentUrls$: ChatAttachment["attachmentUrls$"];
+  resourceUrl$: ChatAttachment["resourceUrl$"];
   filename: string;
   load: ImageLoadSignals;
   markCount: number;
@@ -1717,7 +1721,7 @@ function ComposerImagePreviewButton({
         </span>
       )}
       <ComposerImagePreviewImage
-        attachmentUrls$={attachmentUrls$}
+        resourceUrl$={resourceUrl$}
         load={load}
         loaded={currentImageStatus === "loaded"}
         url={url}
@@ -1806,7 +1810,7 @@ function AttachmentChip({
     >
       {isImage ? (
         <ComposerImagePreviewButton
-          attachmentUrls$={attachment.attachmentUrls$}
+          resourceUrl$={attachment.resourceUrl$}
           filename={attachment.filename}
           load={attachment.imageLoad}
           markCount={annotationMarkCount(annotations)}

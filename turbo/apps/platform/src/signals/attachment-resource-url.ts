@@ -25,7 +25,7 @@ export function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
-export interface AttachmentUrls {
+interface AttachmentUrls {
   /**
    * URL this browser can load right now. Presigned for a private attachment,
    * so it expires and grants access only to that object.
@@ -39,11 +39,24 @@ export interface AttachmentUrls {
   readonly shareUrl: string | null;
 }
 
-export type AttachmentUrlsComputed = Computed<Promise<AttachmentUrls>>;
+export function createAttachmentResourceUrl$(url: string) {
+  const urls$ = createAttachmentUrls$(url);
+  return computed(async (get) => {
+    return (await get(urls$)).resourceUrl;
+  });
+}
 
-export const emptyAttachmentUrls$ = computed(() => {
-  return Promise.resolve(null);
-});
+export function createAttachmentPreviewSignals(url: string) {
+  const urls$ = createAttachmentUrls$(url);
+  return {
+    resourceUrl$: computed(async (get) => {
+      return (await get(urls$)).resourceUrl;
+    }),
+    shareUrl$: computed(async (get) => {
+      return (await get(urls$)).shareUrl;
+    }),
+  };
+}
 
 /**
  * Persisted chat attachments live behind an authenticated API route, and a bare
@@ -51,9 +64,9 @@ export const emptyAttachmentUrls$ = computed(() => {
  * API URL for the URLs the browser can actually use; the API still runs the
  * ownership check before answering.
  */
-export function createAttachmentResourceUrl$(
+export function createAttachmentUrls$(
   inputUrl: string,
-): AttachmentUrlsComputed {
+): Computed<Promise<AttachmentUrls>> {
   const url = publicAttachmentUrl(inputUrl);
   return computed(async (get) => {
     const reference = parseArtifactReference(url, location.origin);

@@ -1,12 +1,7 @@
 import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { Button, cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 
@@ -275,7 +270,6 @@ function ThreadArtifactDetail({
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
   const close = useSet(sidebar.close$);
   const open = useSet(sidebar.open$);
-  const attachmentUrls$ = useLastResolved(sidebar.selectedArtifactUrls$);
   const backToArtifacts = useOpenThreadArtifacts(thread);
   const detailLoadable = useLastLoadable(
     sidebar.artifactCatalog.selectedArtifactDetail$,
@@ -304,12 +298,7 @@ function ThreadArtifactDetail({
     );
   }
 
-  if (
-    detailLoadable.state === "loading" ||
-    (detailLoadable.state === "hasData" &&
-      detailLoadable.data !== null &&
-      !attachmentUrls$)
-  ) {
+  if (detailLoadable.state === "loading") {
     return (
       <aside
         aria-label={t(($) => {
@@ -369,7 +358,8 @@ function ThreadArtifactDetail({
     <ArtifactSidebar
       artifactRef={{
         url: preview.url,
-        ...(attachmentUrls$ ? { attachmentUrls$ } : {}),
+        resourceUrl$: sidebar.selectedArtifactResourceUrl$,
+        shareUrl$: sidebar.selectedArtifactShareUrl$,
         kind: preview.kind,
         filename: preview.filename,
       }}

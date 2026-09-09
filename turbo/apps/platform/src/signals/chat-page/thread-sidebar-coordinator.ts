@@ -1,4 +1,4 @@
-import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
+import { createAttachmentPreviewSignals } from "../attachment-resource-url.ts";
 import { command, computed } from "ccstate";
 
 import {
@@ -128,6 +128,7 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   const attachment = previewAttachmentFromUrl(url);
   return {
     url,
+    ...createAttachmentPreviewSignals(url),
     kind: classifyChatAttachment(attachment),
     filename: attachment.filename,
   };
@@ -146,17 +147,8 @@ function withTextPreview(
   if (!isTextPreviewKind(ref.kind)) {
     return ref;
   }
-  const attachmentUrls$ = ref.attachmentUrls$;
   const text$ =
-    ref.text$ ??
-    createTextPreviewComputed(
-      ref.url,
-      attachmentUrls$
-        ? computed(async (get) => {
-            return (await get(attachmentUrls$)).resourceUrl;
-          })
-        : undefined,
-    );
+    ref.text$ ?? createTextPreviewComputed(ref.url, ref.resourceUrl$);
   return {
     ...ref,
     text$,
@@ -175,7 +167,6 @@ const materializeArtifactRef$ = command(
         {
           ...artifactRefFromUrl(input),
           resetResources$,
-          attachmentUrls$: createAttachmentResourceUrl$(input),
         },
         previewSignal,
       );
@@ -184,7 +175,7 @@ const materializeArtifactRef$ = command(
       return withTextPreview(
         {
           url: input.url,
-          attachmentUrls$: createAttachmentResourceUrl$(input.url),
+          ...createAttachmentPreviewSignals(input.url),
           kind: classifyChatAttachment({
             contentType: input.contentType,
             filename: input.filename,
@@ -204,7 +195,7 @@ const materializeArtifactRef$ = command(
     return withTextPreview(
       {
         url: resource.url,
-        attachmentUrls$: createAttachmentResourceUrl$(resource.url),
+        ...createAttachmentPreviewSignals(resource.url),
         kind: classifyChatAttachment({
           contentType: input.file.type,
           filename: input.file.name,

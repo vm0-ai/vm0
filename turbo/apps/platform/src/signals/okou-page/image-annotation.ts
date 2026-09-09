@@ -565,9 +565,7 @@ function createAnnotationSessionSignals(viewport: AnnotationViewport) {
   });
   const annotationResourceUrl$ = computed(async (get) => {
     const target = get(annotationSessionTarget$);
-    return target
-      ? (await get(createAttachmentResourceUrl$(target.url))).resourceUrl
-      : null;
+    return target ? await get(createAttachmentResourceUrl$(target.url)) : null;
   });
 
   const openAnnotationEditor$ = command(({ set }, target: AnnotationTarget) => {

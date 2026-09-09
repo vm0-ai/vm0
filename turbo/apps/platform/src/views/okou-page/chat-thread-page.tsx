@@ -5751,7 +5751,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
-        attachmentUrls$={a.signals.attachmentUrls$}
+        resourceUrl$={a.signals.resourceUrl$}
         posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
@@ -6190,7 +6190,7 @@ function UserMessageFileReference({
   if (signals.kind === "video") {
     reference = (
       <ChatVideoPreviewButton
-        attachmentUrls$={signals.attachmentUrls$}
+        resourceUrl$={signals.resourceUrl$}
         posterLoad={signals.previewImageLoad}
         ariaLabel={t(
           ($) => {

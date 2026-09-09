@@ -7,10 +7,7 @@ import {
   createTextPreviewComputed,
   isTextPreviewKind,
 } from "../text-preview.ts";
-import {
-  createAttachmentResourceUrl$,
-  type AttachmentUrlsComputed,
-} from "../attachment-resource-url.ts";
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -39,7 +36,6 @@ export interface ArtifactSignals extends ArtifactDescriptor {
   readonly previewImageLoad: ImageLoadSignals;
   readonly previewImageUrl$: Computed<Promise<string | undefined>>;
   readonly resourceUrl$: Computed<Promise<string>>;
-  readonly attachmentUrls$: AttachmentUrlsComputed;
   readonly text$?: Computed<Promise<string>>;
 }
 
@@ -57,18 +53,11 @@ export function createArtifactPreviewImageUrls$(
   });
 }
 
-function needsTextPreview(kind: ArtifactKind): boolean {
-  return isTextPreviewKind(kind);
-}
-
 function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactSignals {
-  const attachmentUrls$ = createAttachmentResourceUrl$(descriptor.url);
-  const resourceUrl$ = computed(async (get) => {
-    return (await get(attachmentUrls$)).resourceUrl;
-  });
+  const resourceUrl$ = createAttachmentResourceUrl$(descriptor.url);
   const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
@@ -76,26 +65,16 @@ function createArtifactSignals(
     }
     const previewImageUrlsByUrl = await get(previewImageUrlsByUrl$);
     const url = previewImageUrlsByUrl.get(descriptor.url);
-    return url
-      ? (await get(createAttachmentResourceUrl$(url))).resourceUrl
-      : undefined;
+    return url ? await get(createAttachmentResourceUrl$(url)) : undefined;
   });
-  if (!needsTextPreview(descriptor.kind)) {
-    return {
-      ...descriptor,
-      previewImageLoad,
-      previewImageUrl$,
-      resourceUrl$,
-      attachmentUrls$,
-    };
-  }
   return {
     ...descriptor,
-    attachmentUrls$,
     previewImageLoad,
     previewImageUrl$,
     resourceUrl$,
-    text$: createTextPreviewComputed(descriptor.url, resourceUrl$),
+    ...(isTextPreviewKind(descriptor.kind)
+      ? { text$: createTextPreviewComputed(descriptor.url, resourceUrl$) }
+      : {}),
   };
 }
 

@@ -1,4 +1,3 @@
-import type { AttachmentUrlsComputed } from "../../signals/attachment-resource-url.ts";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
@@ -35,7 +34,6 @@ import {
   artifactPreviewUrlsMatch,
   publicAttachmentUrl,
 } from "./attachment-url.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource";
 import { lightboxDialogVisible$ } from "../../signals/okou-page/attachment-chips.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { jsonParseOr } from "../../signals/utils.ts";
@@ -219,6 +217,8 @@ function ArtifactSidebarContent({
   useTranslation();
   const fullscreen = fullscreenState.active;
   const toggleFullscreen = fullscreenState.toggle;
+  const resourceUrl = useLastResolved(artifactRef.resourceUrl$) ?? null;
+  const shareUrl = useLastResolved(artifactRef.shareUrl$);
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -229,7 +229,8 @@ function ArtifactSidebarContent({
 
   return (
     <ArtifactSidebarResolvedContent
-      attachmentUrls$={artifactRef.attachmentUrls$}
+      resourceUrl={resourceUrl}
+      shareUrl={shareUrl}
       closePreview={onClose}
       display={display}
       fullscreen={fullscreen}
@@ -245,7 +246,8 @@ function ArtifactSidebarContent({
 }
 
 type ArtifactSidebarResolvedContentProps = {
-  readonly attachmentUrls$?: AttachmentUrlsComputed;
+  readonly resourceUrl: string | null;
+  readonly shareUrl: string | null | undefined;
   readonly closePreview: () => void;
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
@@ -259,7 +261,8 @@ type ArtifactSidebarResolvedContentProps = {
 };
 
 function ArtifactSidebarResolvedContent({
-  attachmentUrls$,
+  resourceUrl,
+  shareUrl,
   closePreview,
   display,
   fullscreen,
@@ -274,7 +277,7 @@ function ArtifactSidebarResolvedContent({
   return (
     <ArtifactSidebarSurface fullscreen={fullscreen}>
       <ArtifactSidebarHeader
-        attachmentUrls$={attachmentUrls$}
+        shareUrl={shareUrl}
         title={display.filename}
         kind={display.kind}
         artifactKind={display.artifactKind}
@@ -289,7 +292,8 @@ function ArtifactSidebarResolvedContent({
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
         <ArtifactBody
-          attachmentUrls$={attachmentUrls$}
+          resourceUrl={resourceUrl}
+          shareUrl={shareUrl}
           url={display.url}
           kind={display.kind}
           filename={display.filename}
@@ -418,7 +422,7 @@ function resolveArtifactDisplay(
 }
 
 function ArtifactSidebarHeader({
-  attachmentUrls$,
+  shareUrl,
   title,
   kind,
   artifactKind,
@@ -431,7 +435,7 @@ function ArtifactSidebarHeader({
   onToggleFullscreen,
   onClose,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  shareUrl?: string | null;
   title: string;
   kind?: ArtifactKindForBody;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
@@ -480,7 +484,7 @@ function ArtifactSidebarHeader({
         )}
       </div>
       <ArtifactSidebarActions
-        attachmentUrls$={attachmentUrls$}
+        shareUrl={shareUrl}
         compactActions={compactActions}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
@@ -497,7 +501,7 @@ function ArtifactSidebarHeader({
 }
 
 function ArtifactSidebarActions({
-  attachmentUrls$,
+  shareUrl,
   artifactKind,
   compactActions,
   fullscreen,
@@ -509,7 +513,7 @@ function ArtifactSidebarActions({
   title,
   url,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  shareUrl?: string | null;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
@@ -525,7 +529,7 @@ function ArtifactSidebarActions({
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <ArtifactSidebarPreviewActions
-          attachmentUrls$={attachmentUrls$}
+          shareUrl={shareUrl}
           artifactKind={artifactKind}
           kind={kind}
           shareAvailable={shareAvailable}
@@ -548,7 +552,7 @@ function ArtifactSidebarActions({
 }
 
 function ArtifactSidebarPreviewActions({
-  attachmentUrls$,
+  shareUrl,
   artifactKind,
   kind,
   shareAvailable,
@@ -556,7 +560,7 @@ function ArtifactSidebarPreviewActions({
   title,
   url,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  shareUrl?: string | null;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   kind?: ArtifactKindForBody;
   shareAvailable: boolean;
@@ -570,7 +574,7 @@ function ArtifactSidebarPreviewActions({
       {kind === "html" && <ArtifactOpenExternalAction url={url} />}
       {shareAvailable && (
         <ArtifactShareButton
-          attachmentUrls$={attachmentUrls$}
+          shareUrl={shareUrl}
           ariaLabel={t(($) => {
             return $.artifacts.actions.shareArtifact;
           })}
@@ -707,7 +711,8 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
 }
 
 function ArtifactBody({
-  attachmentUrls$,
+  resourceUrl,
+  shareUrl,
   url,
   kind,
   filename,
@@ -718,7 +723,8 @@ function ArtifactBody({
   markdownTree$,
   text$,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
+  shareUrl: string | null | undefined;
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
@@ -766,7 +772,7 @@ function ArtifactBody({
   if (kind === "image") {
     return (
       <ArtifactImageBody
-        attachmentUrls$={attachmentUrls$}
+        resourceUrl={resourceUrl}
         fullscreen={fullscreen}
         imageCanvasSignals={imageCanvasSignals}
         imageNavigation={imageNavigation}
@@ -776,25 +782,15 @@ function ArtifactBody({
     );
   }
   if (kind === "video") {
-    return (
-      <ArtifactVideoBody
-        attachmentUrls$={attachmentUrls$}
-        filename={filename}
-      />
-    );
+    return <ArtifactVideoBody resourceUrl={resourceUrl} filename={filename} />;
   }
   if (kind === "audio") {
-    return (
-      <ArtifactAudioBody
-        attachmentUrls$={attachmentUrls$}
-        filename={filename}
-      />
-    );
+    return <ArtifactAudioBody resourceUrl={resourceUrl} filename={filename} />;
   }
   if (kind === "html" || kind === "pdf") {
     return (
       <ArtifactIframeBody
-        attachmentUrls$={attachmentUrls$}
+        resourceUrl={resourceUrl}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
@@ -805,7 +801,7 @@ function ArtifactBody({
   if (isOfficeFilePreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
-        attachmentUrls$={attachmentUrls$}
+        resourceUrl={shareUrl === undefined ? null : (shareUrl ?? resourceUrl)}
         filename={filename}
         fullscreen={fullscreen}
         url={url}
@@ -1094,14 +1090,14 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
 }
 
 function ArtifactImageBody({
-  attachmentUrls$,
+  resourceUrl,
   fullscreen,
   imageCanvasSignals,
   imageNavigation,
   url,
   filename,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
   fullscreen: boolean;
   imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
@@ -1109,7 +1105,6 @@ function ArtifactImageBody({
   filename: string;
 }) {
   const modalOpen = useGet(lightboxDialogVisible$);
-  const resourceUrl = useResolvedAttachmentUrl(attachmentUrls$);
 
   if (resourceUrl === null) {
     return <ArtifactSpinner />;
@@ -1157,14 +1152,13 @@ function ArtifactImageBody({
 }
 
 function ArtifactVideoBody({
-  attachmentUrls$,
+  resourceUrl,
   filename,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(attachmentUrls$);
   return (
     <ArtifactStageShell centered>
       <div
@@ -1192,14 +1186,13 @@ function ArtifactVideoBody({
 }
 
 function ArtifactAudioBody({
-  attachmentUrls$,
+  resourceUrl,
   filename,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
   filename: string;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(attachmentUrls$);
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
@@ -1225,20 +1218,19 @@ function ArtifactAudioBody({
 }
 
 function ArtifactIframeBody({
-  attachmentUrls$,
+  resourceUrl,
   kind,
   filename,
   artifactKind,
   fullscreen,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
   kind: "html" | "pdf";
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(attachmentUrls$);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
@@ -1301,12 +1293,12 @@ function ArtifactIframeBody({
 }
 
 function ArtifactOfficeDocumentBody({
-  attachmentUrls$,
+  resourceUrl,
   filename,
   fullscreen,
   url,
 }: {
-  attachmentUrls$?: AttachmentUrlsComputed;
+  resourceUrl: string | null;
   filename: string;
   fullscreen: boolean;
   url: string;
@@ -1315,7 +1307,7 @@ function ArtifactOfficeDocumentBody({
     <ArtifactStageShell scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
-          attachmentUrls$={attachmentUrls$}
+          resourceUrl={resourceUrl}
           filename={filename}
           focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen}

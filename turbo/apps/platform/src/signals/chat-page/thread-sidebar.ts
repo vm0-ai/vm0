@@ -1,7 +1,4 @@
-import {
-  createAttachmentResourceUrl$,
-  type AttachmentUrlsComputed,
-} from "../attachment-resource-url.ts";
+import { createAttachmentUrls$ } from "../attachment-resource-url.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import {
   command,
@@ -60,7 +57,8 @@ export type ArtifactPreviewKind =
   | "file";
 
 export type ArtifactRef = {
-  readonly attachmentUrls$?: AttachmentUrlsComputed;
+  readonly resourceUrl$: Computed<Promise<string | null>>;
+  readonly shareUrl$: Computed<Promise<string | null>>;
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
@@ -107,9 +105,8 @@ export type ThreadSidebarTarget =
 export interface ThreadSidebarSignals {
   readonly target$: Computed<ThreadSidebarTarget | null>;
   readonly open$: Command<void, [ThreadSidebarTarget]>;
-  readonly selectedArtifactUrls$: Computed<
-    Promise<AttachmentUrlsComputed | null>
-  >;
+  readonly selectedArtifactResourceUrl$: Computed<Promise<string | null>>;
+  readonly selectedArtifactShareUrl$: Computed<Promise<string | null>>;
   readonly close$: Command<void, []>;
   /**
    * Whether the current sidebar session should animate into the split layout.
@@ -159,8 +156,15 @@ function createCatalogArtifactPreviewSignals(
     get(internalArtifactPreviewSignal$);
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     return detail
-      ? createAttachmentResourceUrl$(artifactDetailPreview(detail).url)
+      ? await get(createAttachmentUrls$(artifactDetailPreview(detail).url))
       : null;
+  });
+
+  const resourceUrl$ = computed(async (get) => {
+    return (await get(selectedArtifactUrls$))?.resourceUrl ?? null;
+  });
+  const shareUrl$ = computed(async (get) => {
+    return (await get(selectedArtifactUrls$))?.shareUrl ?? null;
   });
 
   const selectedArtifactText$ = computed(async (get): Promise<string> => {
@@ -172,12 +176,11 @@ function createCatalogArtifactPreviewSignals(
     if (!isTextPreviewKind(preview.kind)) {
       throw new Error("Selected artifact is not a text preview");
     }
-    const attachmentUrls$ = await get(selectedArtifactUrls$);
-    if (!attachmentUrls$) {
+    const resourceUrl = await get(resourceUrl$);
+    if (!resourceUrl) {
       throw new Error("Selected artifact preview is unavailable");
     }
-    const urls = await get(attachmentUrls$);
-    return fetchPreviewText(urls.resourceUrl, get(rootSignal$));
+    return fetchPreviewText(resourceUrl, get(rootSignal$));
   });
   const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
     selectedArtifactText$,
@@ -185,7 +188,8 @@ function createCatalogArtifactPreviewSignals(
   );
 
   return {
-    urls$: selectedArtifactUrls$,
+    resourceUrl$,
+    shareUrl$,
     text$: selectedArtifactText$,
     markdownTree$: selectedArtifactMarkdownTree$,
   };
@@ -230,23 +234,7 @@ export function createThreadSidebarSignals(
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
-    set(
-      internalTarget$,
-      target.type === "artifact" && target.source.kind === "attachment"
-        ? {
-            ...target,
-            source: {
-              ...target.source,
-              ref: {
-                ...target.source.ref,
-                attachmentUrls$:
-                  target.source.ref.attachmentUrls$ ??
-                  createAttachmentResourceUrl$(target.source.ref.url),
-              },
-            },
-          }
-        : target,
-    );
+    set(internalTarget$, target);
     if (currentResourceReset$ && currentResourceReset$ !== nextResourceReset$) {
       set(currentResourceReset$);
     }
@@ -310,6 +298,7 @@ export function createThreadSidebarSignals(
     artifactCatalog,
     selectedArtifactText$: preview.text$,
     selectedArtifactMarkdownTree$: preview.markdownTree$,
-    selectedArtifactUrls$: preview.urls$,
+    selectedArtifactResourceUrl$: preview.resourceUrl$,
+    selectedArtifactShareUrl$: preview.shareUrl$,
   };
 }

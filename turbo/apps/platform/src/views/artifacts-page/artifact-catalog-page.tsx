@@ -12,7 +12,7 @@ import {
   Globe,
 } from "lucide-react";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { surfaceVariants, cn } from "@okouai/ui";
 import { Alert, AlertDescription } from "@okouai/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -29,7 +29,6 @@ import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifa
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
-import { useResolvedAttachmentUrl } from "../okou-page/attachment-resource.ts";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -144,7 +143,7 @@ function ArtifactCatalogVideoPreview({
 }: {
   artifact: CatalogArtifact;
 }) {
-  const resourceUrl = useResolvedAttachmentUrl(artifact.videoUrls$);
+  const resourceUrl = useLastResolved(artifact.videoUrl$);
   return (
     <video
       src={resourceUrl ? `${resourceUrl}#t=0.001` : undefined}
@@ -169,7 +168,7 @@ function ArtifactCatalogCard({
 }) {
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
-  const thumbnailUrl = useResolvedAttachmentUrl(artifact.thumbnailUrls$);
+  const thumbnailUrl = useLastResolved(artifact.thumbnailUrl$);
   const sourceVideo = artifact.videoSourceUrl ? (
     <ArtifactCatalogVideoPreview artifact={artifact} />
   ) : null;

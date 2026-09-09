@@ -1,5 +1,3 @@
-import type { AttachmentUrlsComputed } from "../../signals/attachment-resource-url.ts";
-import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -202,7 +200,7 @@ export function ChatImagePreviewLink({
 }
 
 type ChatVideoPreviewButtonProps = {
-  attachmentUrls$: AttachmentUrlsComputed;
+  resourceUrl$: ArtifactSignals["resourceUrl$"];
   ariaLabel: string;
   buttonClassName: string;
   filename: string;
@@ -221,7 +219,7 @@ function videoPosterFrameUrl(url: string): string {
 }
 
 export function ChatVideoPreviewButton({
-  attachmentUrls$,
+  resourceUrl$,
   ariaLabel,
   buttonClassName,
   filename,
@@ -232,7 +230,7 @@ export function ChatVideoPreviewButton({
   previewImageUrl,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
-  const videoUrl = useResolvedAttachmentUrl(attachmentUrls$);
+  const videoUrl = useLastResolved(resourceUrl$) ?? null;
   const posterVideoUrl =
     videoUrl === null ? undefined : videoPosterFrameUrl(videoUrl);
   const videoFallback = (
@@ -390,7 +388,7 @@ function ArtifactCardView({
   if (signals.kind === "video") {
     return withChatScrollLayout(
       <ChatVideoPreviewButton
-        attachmentUrls$={signals.attachmentUrls$}
+        resourceUrl$={signals.resourceUrl$}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -417,7 +415,7 @@ function ArtifactCardView({
   }
   return withChatScrollLayout(
     <AttachmentPreview
-      attachmentUrls$={signals.attachmentUrls$}
+      resourceUrl$={signals.resourceUrl$}
       attachment={{
         filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,
