@@ -3,10 +3,17 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
-import { chromium, expect, type Locator, type Page } from "@playwright/test";
+import {
+  chromium,
+  expect as playwrightExpect,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
 import { compareImages, sha256 } from "./images";
+
+const expect = playwrightExpect.configure({ timeout: 30_000 });
 
 interface VisualCase {
   id: string;
@@ -242,6 +249,17 @@ async function run() {
       });
       let releaseSave: (() => void) | undefined;
       try {
+        // The shell's first paint prefers this cookie over localStorage.
+        await context.clearCookies({ name: "__Secure-okou-theme" });
+        await context.addCookies([
+          {
+            name: "__Secure-okou-theme",
+            value: `v1.${item.theme}`,
+            url: appOrigin,
+            secure: true,
+            sameSite: "Lax",
+          },
+        ]);
         await context.addInitScript(
           ({ theme }) => {
             localStorage.setItem("theme", theme);
@@ -347,7 +365,6 @@ async function run() {
         ).toHaveAttribute("content", appBuildSha);
         const dialog = page.getByRole("dialog");
         await expect(dialog).toBeVisible();
-        await page.waitForLoadState("networkidle");
         const light = dialog.getByRole("button", {
           name: "Light",
           exact: true,
@@ -459,9 +476,9 @@ async function run() {
         await page.keyboard.press("Escape");
         await expect(dialog).not.toBeVisible();
       } catch (error) {
-        manifest.failures.push(
-          `${item.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const failure = `${item.id}: ${error instanceof Error ? error.message : String(error)}`;
+        manifest.failures.push(failure);
+        console.error(failure);
       } finally {
         releaseSave?.();
         await context.close();

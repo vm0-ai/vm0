@@ -31,11 +31,15 @@ and run `pnpm lint:style:prune`. Record unrelated design defects separately.
 ## Initial repeatable cases
 
 `e2e/playwright/style-migration/cases.json` covers the real settings preference
-dialog in desktop Light/Dark and narrow DPR 2 Chromium. Each case exercises
+dialog in desktop Light/Dark and narrow DPR 2 Chromium with touch/mobile
+emulation. Each case exercises
 appearance, hover, keyboard focus, send mode, delayed saving, successful saving,
 and Escape dismissal. Authentication uses an isolated TEST account prepared
-through the existing preview onboarding flow. The runner uses its private
-Playwright storage state; it never archives that state.
+through the existing preview onboarding flow after both deployment jobs finish
+(redeployment can reset the preview database). The runner uses its private
+Playwright storage state; it never archives that state. Theme cookie,
+localStorage, system color scheme and controlled preference responses agree
+before each page load.
 
 Only the exact API origin's user-preferences endpoint is replaced with explicit
 deterministic responses. This verifies rendered states and client interaction,
@@ -69,7 +73,7 @@ against the final PR deployment, with its actual build/source SHAs, and the same
 `--baseline`. `--executable-path` optionally selects a managed Chromium binary.
 
 The runner checks the actual App build metadata at every capture, exact browser version, frozen
-case hash, baseline image hashes, full-page pixels, and control semantics,
+case and runner hashes, baseline image hashes, full-page pixels, and control semantics,
 geometry and effective styles. It requires three identical painted frames.
 Finite animations settle; infinite screenshot animations pause at phase zero.
 This initial protocol has zero pixel tolerance and no masks. Normal-motion,
