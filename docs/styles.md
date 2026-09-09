@@ -82,6 +82,10 @@ Only two exception kinds exist:
 - `global-environment` covers document-level browser or theme state that cannot be represented by a component utility.
 - `third-party-dom-adapter` covers DOM or isolated documents whose element classes are owned outside the business component.
 
+Hosted Clerk authentication does not use a third-party DOM adapter. It stays on
+Clerk's public appearance API under the narrower rules in
+[Clerk customization](./clerk-customize.md).
+
 Every exception identifies the exact file and selector or injected-style fingerprint, its owner, rationale, and removal condition. Third-party adapters also identify their upstream DOM owner. A styling convenience, missing utility, or existing first-party convention is not an exception. Vendored CSS is pinned by exact path and SHA-256 rather than by a directory-wide ignore.
 
 ## Shrink-only legacy state
