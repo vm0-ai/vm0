@@ -41,13 +41,6 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function attemptId(start: { readonly oauthAttemptId?: string }): string {
-  if (!start.oauthAttemptId) {
-    throw new Error("Expected an OAuth attempt ID");
-  }
-  return start.oauthAttemptId;
-}
-
 function state(start: { readonly authorizationUrl: string }): string {
   const value = new URL(start.authorizationUrl).searchParams.get("state");
   if (!value) {
@@ -79,7 +72,7 @@ async function createGithubAccount(actor: ApiTestUser) {
     state: state(start),
   });
   expect(completed.body.status).toBe("success");
-  const result = await receipt(actor, attemptId(start));
+  const result = await receipt(actor, start.oauthAttemptId);
   expect(result.status).toBe(200);
   if (result.status !== 200) {
     throw new Error("Expected completed GitHub account");
@@ -91,7 +84,7 @@ test("exposes a receipt only to its owner and exact current connector target", a
   await installApiTestConnectorCatalog();
   const actor = bdd.user();
   const { start, connectionId } = await createGithubAccount(actor);
-  const id = attemptId(start);
+  const id = start.oauthAttemptId;
   const completed = await receipt(actor, id);
   expect(completed.body).toStrictEqual({ connectionId });
   expect(completed.headers.get("cache-control")).toBe("no-store");
@@ -143,13 +136,13 @@ test("does not complete a denied reconnect after rename or default-account chang
     "github",
     connectionId,
   );
-  expect((await receipt(actor, attemptId(cancelled))).status).toBe(404);
+  expect((await receipt(actor, cancelled.oauthAttemptId)).status).toBe(404);
   const denied = await connectors.completeOauthCallbackResult("github", {
     error: "access_denied",
     state: state(cancelled),
   });
   expect(denied.body.status).toBe("error");
-  expect((await receipt(actor, attemptId(cancelled))).status).toBe(404);
+  expect((await receipt(actor, cancelled.oauthAttemptId)).status).toBe(404);
 
   const retry = await connectors.startOauth(
     actor,
@@ -162,16 +155,16 @@ test("does not complete a denied reconnect after rename or default-account chang
     code: "retry",
     state: state(retry),
   });
-  expect((await receipt(actor, attemptId(retry))).body).toStrictEqual({
+  expect((await receipt(actor, retry.oauthAttemptId)).body).toStrictEqual({
     connectionId,
   });
-  expect((await receipt(actor, attemptId(cancelled))).status).toBe(404);
+  expect((await receipt(actor, cancelled.oauthAttemptId)).status).toBe(404);
   const replay = await connectors.completeOauthCallbackResult("github", {
     code: "replay",
     state: state(cancelled),
   });
   expect(replay.body.status).toBe("error");
-  expect((await receipt(actor, attemptId(cancelled))).status).toBe(404);
+  expect((await receipt(actor, cancelled.oauthAttemptId)).status).toBe(404);
 });
 
 test("retains independent receipts for overlapping GitHub adds that reuse the same account", async () => {
@@ -184,14 +177,14 @@ test("retains independent receipts for overlapping GitHub adds that reuse the sa
     code: "second",
     state: state(second),
   });
-  expect((await receipt(actor, attemptId(first))).status).toBe(404);
+  expect((await receipt(actor, first.oauthAttemptId)).status).toBe(404);
   await connectors.completeOauthCallbackResult("github", {
     code: "first",
     state: state(first),
   });
   for (const start of [first, second]) {
     expect(start.connectionId).not.toBe(connectionId);
-    expect((await receipt(actor, attemptId(start))).body).toStrictEqual({
+    expect((await receipt(actor, start.oauthAttemptId)).body).toStrictEqual({
       connectionId,
     });
   }
@@ -202,7 +195,7 @@ test("expires completed attempts without expiring their connector account", asyn
   const actor = bdd.user();
   const { start, connectionId } = await createGithubAccount(actor);
   await withMockNowForTest(now() + 16 * 60 * 1000, async () => {
-    expect((await receipt(actor, attemptId(start))).status).toBe(404);
+    expect((await receipt(actor, start.oauthAttemptId)).status).toBe(404);
     const account = await accept(
       accountClient(actor).connection({
         headers: authHeaders(),
@@ -235,9 +228,13 @@ test("cleans expired receipts in bounded batches without deleting current receip
   );
   expect(cleanup.body.deleted).toBe(2);
   for (const previous of expired) {
-    expect((await receipt(actor, attemptId(previous.start))).status).toBe(404);
+    expect((await receipt(actor, previous.start.oauthAttemptId)).status).toBe(
+      404,
+    );
   }
-  expect((await receipt(actor, attemptId(current.start))).body).toStrictEqual({
+  expect(
+    (await receipt(actor, current.start.oauthAttemptId)).body,
+  ).toStrictEqual({
     connectionId: current.connectionId,
   });
   await connectors.deleteBuiltinConnectorAccount(
@@ -304,16 +301,16 @@ test.each(["http", "mcp"] as const)(
     if (started.status !== 200 || started.body.result !== "authorization") {
       throw new Error("Expected custom OAuth authorization");
     }
-    expect((await receipt(actor, attemptId(started.body), target)).status).toBe(
-      404,
-    );
+    expect(
+      (await receipt(actor, started.body.oauthAttemptId, target)).status,
+    ).toBe(404);
     const completed =
       await connectors.completeCustomConnectorOAuth2CallbackResult({
         code: "custom-success",
         state: state(started.body),
       });
     expect(completed.body.status).toBe("success");
-    const connected = await receipt(actor, attemptId(started.body), target);
+    const connected = await receipt(actor, started.body.oauthAttemptId, target);
     if (connected.status !== 200) {
       throw new Error("Expected a completed custom account");
     }
@@ -341,10 +338,10 @@ test.each(["http", "mcp"] as const)(
     );
     expect(denied.body.status).toBe("error");
     expect(
-      (await receipt(actor, attemptId(cancelled.body), target)).status,
+      (await receipt(actor, cancelled.body.oauthAttemptId, target)).status,
     ).toBe(404);
     expect(
-      (await receipt(actor, attemptId(started.body), target)).body,
+      (await receipt(actor, started.body.oauthAttemptId, target)).body,
     ).toStrictEqual({ connectionId });
     await connectors.deleteCustomConnector(actor, connector.id);
   },

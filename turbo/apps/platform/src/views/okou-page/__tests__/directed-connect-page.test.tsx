@@ -327,6 +327,7 @@ function mockConnectorOauthStart(args?: {
 }): {
   readonly authWindow: Window;
 } {
+  mockOAuthCompletions(context);
   const authWindow = context.mocks.browser.authWindow();
   authWindow.closed = args?.popupClosed ?? true;
   Object.defineProperty(authWindow, "location", {
@@ -340,6 +341,7 @@ function mockConnectorOauthStart(args?: {
       args?.onStart?.(body.agentId, body.authorizeAgent);
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
+        oauthAttemptId: crypto.randomUUID(),
       });
     },
   );
@@ -1166,6 +1168,7 @@ test("Reconnect the expired public OAuth account shown on the page", async () =>
   let startedAgentId: string | null = null;
   let startedAuthorizeAgent = false;
   let startedConnectionId: string | null = null;
+  mockOAuthCompletions(context);
   context.mocks.api(
     connectorOauthStartContract.start,
     ({ body, params, respond }) => {
@@ -1180,6 +1183,7 @@ test("Reconnect the expired public OAuth account shown on the page", async () =>
       }
       return respond(200, {
         authorizationUrl: "https://oauth.test/github/reconnect",
+        oauthAttemptId: crypto.randomUUID(),
       });
     },
   );

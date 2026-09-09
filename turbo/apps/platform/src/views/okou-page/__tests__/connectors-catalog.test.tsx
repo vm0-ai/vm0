@@ -20,6 +20,7 @@ import {
   listAgent,
   mockConnectors,
   mockCustomConnectorStory,
+  mockOAuthCompletions,
   mockPublicConnectorStatus,
   publicStatusItem,
   queryConnectorAction,
@@ -401,11 +402,13 @@ test("Present a connector with no accounts", async () => {
     }),
   ]);
   const oauthStarted = context.mocks.deferred<void>();
+  mockOAuthCompletions(context);
   context.mocks.browser.open(context.mocks.browser.authWindow());
   context.mocks.api(connectorOauthStartContract.start, async ({ respond }) => {
     await oauthStarted.promise;
     return respond(200, {
       authorizationUrl: "https://oauth.test/github/authorize",
+      oauthAttemptId: crypto.randomUUID(),
     });
   });
   await setupPage({

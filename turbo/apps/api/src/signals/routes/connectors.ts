@@ -495,7 +495,7 @@ const startConnectorOauthInner$ = command(
         allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
-        return { resolution, connectionId: null, oauthAttemptId: null };
+        return resolution;
       }
       const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
@@ -514,17 +514,15 @@ const startConnectorOauthInner$ = command(
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return {
-        resolution,
+        kind: "ready" as const,
         oauthAttemptId: oauthStateId,
         connectionId:
           bodyResult.data.account.intent === "add" ? oauthStateId : null,
       };
     });
     signal.throwIfAborted();
-    if (mutationStart.resolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(
-        mutationStart.resolution.kind,
-      );
+    if (mutationStart.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(mutationStart.kind);
     }
 
     return {
@@ -532,7 +530,7 @@ const startConnectorOauthInner$ = command(
       body: {
         authorizationUrl: authResult.url,
         connectionId: mutationStart.connectionId ?? undefined,
-        oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
+        oauthAttemptId: mutationStart.oauthAttemptId,
       },
     };
   },
@@ -621,7 +619,7 @@ const startConnectorOpenIdInner$ = command(
         allowSiblings: true,
       });
       if (resolution.kind !== "ready") {
-        return { resolution, connectionId: null, oauthAttemptId: null };
+        return resolution;
       }
       const oauthStateId = await insertConnectorOAuthState(tx, {
         state: prepared.state,
@@ -639,17 +637,15 @@ const startConnectorOpenIdInner$ = command(
         expiresAt: connectorOAuthStateExpiresAt(),
       });
       return {
-        resolution,
+        kind: "ready" as const,
         oauthAttemptId: oauthStateId,
         connectionId:
           bodyResult.data.account.intent === "add" ? oauthStateId : null,
       };
     });
     signal.throwIfAborted();
-    if (mutationStart.resolution.kind !== "ready") {
-      return connectorAccountMutationFailureResponse(
-        mutationStart.resolution.kind,
-      );
+    if (mutationStart.kind !== "ready") {
+      return connectorAccountMutationFailureResponse(mutationStart.kind);
     }
 
     return {
@@ -657,7 +653,7 @@ const startConnectorOpenIdInner$ = command(
       body: {
         authorizationUrl: authResult.url,
         connectionId: mutationStart.connectionId ?? undefined,
-        oauthAttemptId: mutationStart.oauthAttemptId ?? undefined,
+        oauthAttemptId: mutationStart.oauthAttemptId,
       },
     };
   },

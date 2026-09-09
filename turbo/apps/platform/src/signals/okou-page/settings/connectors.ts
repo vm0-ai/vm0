@@ -2185,7 +2185,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     signal: AbortSignal,
   ): Promise<{
     readonly authWindow: Window | null;
-    readonly oauthAttemptId: string | undefined;
+    readonly oauthAttemptId: string;
     readonly options: PostConnectOptions;
   }> => {
     const standalone = isStandaloneMode();
@@ -2221,8 +2221,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     }
 
     let navigated = false;
-    let oauthAttemptId: string | undefined;
-    const options = await withCleanup(
+    const { options, oauthAttemptId } = await withCleanup(
       (async () => {
         if (!isBrowserAuthGrantKind(args.method.grantKind)) {
           throw new Error(
@@ -2273,7 +2272,6 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 [200],
               );
         signal.throwIfAborted();
-        oauthAttemptId = startResult.body.oauthAttemptId;
 
         if (authWindow) {
           authWindow.location.href = startResult.body.authorizationUrl;
@@ -2281,7 +2279,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
         } else if (standalone) {
           window.location.href = startResult.body.authorizationUrl;
         }
-        return options;
+        return { options, oauthAttemptId: startResult.body.oauthAttemptId };
       })(),
       () => {
         if (authWindow && !navigated) {
@@ -2314,7 +2312,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       readonly account: PlatformConnectorAccountMutationIntent;
       readonly oauthStart: {
         readonly authWindow: Window | null;
-        readonly oauthAttemptId: string | undefined;
+        readonly oauthAttemptId: string;
       };
     },
     signal: AbortSignal,

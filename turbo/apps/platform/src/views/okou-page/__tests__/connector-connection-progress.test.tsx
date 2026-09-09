@@ -402,6 +402,7 @@ test.each([false, true])(
 );
 
 test("Show progress for a custom connection after dismissing the previous attempt", async () => {
+  mockOAuthCompletions(context);
   const connector = customConnector({
     authMode: "oauth",
     oauthConfig: customOAuthConfig(),
@@ -413,7 +414,11 @@ test("Show progress for a custom connection after dismissing the previous attemp
   });
   const authorizationUrl = "https://oauth.test/custom/authorize";
   context.mocks.api(customConnectorOAuth2Contract.start, ({ respond }) => {
-    return respond(200, { result: "authorization", authorizationUrl });
+    return respond(200, {
+      result: "authorization",
+      authorizationUrl,
+      oauthAttemptId: crypto.randomUUID(),
+    });
   });
   const firstPopup = authorizationWindow();
   await setupPage({ context, path: "/connectors?tab=custom" });
