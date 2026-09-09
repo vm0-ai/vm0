@@ -25,7 +25,7 @@ export function getAuthV1ComponentAppearance(
         "mx-auto flex w-full max-w-[var(--okou-auth-card-max-width)] flex-col",
       cardBox: cn(cardClassName, "w-full shadow-none"),
       card: "m-0 w-full rounded-none border-0 bg-card px-[var(--okou-auth-card-padding-inline)] py-[var(--okou-auth-card-padding-block)] shadow-none",
-      logoBox: "mb-5 h-auto",
+      // Clerk owns the header rhythm; only the wordmark keeps its brand width.
       logoImage: "h-auto w-[76px]",
     },
   };

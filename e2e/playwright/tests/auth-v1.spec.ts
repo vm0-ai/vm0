@@ -94,6 +94,19 @@ async function expectPasswordControlFits(
     .toBeGreaterThanOrEqual(0);
 }
 
+/**
+ * Clerk prepares the verification after the code card mounts. A code entered
+ * before that response lands is rejected with a card-level error instead of
+ * the field feedback under the inputs, so wait for the prepared factor.
+ */
+async function clickAndAwaitPreparedFactor(action: Locator): Promise<void> {
+  const prepared = action.page().waitForResponse((response) => {
+    return response.url().includes("/prepare_first_factor") && response.ok();
+  });
+  await action.click();
+  await prepared;
+}
+
 async function enterInvalidCode(page: Page, code: string): Promise<void> {
   // Clerk's six visible slots are not inputs. The accessible textbox owns
   // typing/paste and resets after a rejected attempt. Wait for that visible
@@ -394,7 +407,7 @@ for (const device of [
           name: /reset your password/i,
         });
         await expect(reset).toBeEnabled();
-        await reset.click();
+        await clickAndAwaitPreparedFactor(reset);
         await enterInvalidCode(page, "000000");
         await expectSeparated(
           page.locator(".cl-otpCodeFieldInputs"),
