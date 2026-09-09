@@ -333,14 +333,6 @@ test("A recommended follow-up edits the draft without sending it", async () => {
   expect(onSendRequest).not.toHaveBeenCalled();
 });
 
-function resizeToPhoneWidth(): void {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    value: 390,
-    writable: true,
-  });
-}
-
 test("A touch device renders the recommended follow-ups as quick replies", async () => {
   context.mocks.browser.matchMedia((query) => {
     return query === "(pointer: coarse)";
@@ -361,10 +353,11 @@ test("A touch device renders the recommended follow-ups as quick replies", async
   expect(followupButtons(group)).toHaveLength(variedFollowups().length);
 });
 
-test("A narrow desktop window keeps the recommended follow-up rows", async () => {
-  // The layout follows the pointer, never the viewport: a desktop window
-  // dragged to phone width previously flipped to the mobile treatment.
-  resizeToPhoneWidth();
+test("A fine-pointer device keeps the recommended follow-up rows at any width", async () => {
+  // The layout follows the pointer, never the viewport. Width is deliberately
+  // left unset: a desktop window dragged narrow must keep these rows, and
+  // pinning that in jsdom is not possible because it evaluates neither layout
+  // nor container queries.
   context.mocks.browser.matchMedia((query) => {
     return query === "(any-pointer: fine)";
   });

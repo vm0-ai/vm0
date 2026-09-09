@@ -3977,9 +3977,11 @@ function RecommendedFollowupList({
               // A quick reply hugs its own text so three suggestions read as
               // one glanceable stack. `active:` rather than `hover:` carries
               // the press: Tailwind gates `hover:` behind `(hover: hover)`,
-              // which is exactly the devices this branch never runs on.
+              // which is exactly the devices this branch never runs on. Rest
+              // already sits on the hover layer, so hover and press each take
+              // the next step up the ladder rather than starting from it.
               showFollowupCards
-                ? "min-h-11 w-fit max-w-full items-center gap-1.5 rounded-[var(--okou-card-radius)] bg-state-hover px-4 py-2.5 hover:bg-state-selected active:bg-state-selected focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                ? "min-h-11 w-fit max-w-full items-center gap-1.5 rounded-[var(--okou-card-radius)] bg-state-hover px-4 py-2.5 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-8 w-full items-center gap-0 rounded-lg px-2 py-1 hover:bg-state-hover",
             )}
             onClick={() => {
