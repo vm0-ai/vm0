@@ -1968,7 +1968,6 @@
       "directory": {
         "allCategories": "All",
         "askAdmin": "Ask an admin to enable",
-        "browse": "Browse connectors",
         "configure": "Configure",
         "connected": "Connected",
         "createCustom": "Create custom",
@@ -1980,8 +1979,6 @@
         "detailPermissions": "Permissions",
         "emptyCustomBody": "Build one from any HTTP API or MCP server, and Okou can use it like any other connector.",
         "emptyCustomTitle": "No custom connectors yet",
-        "emptyYoursBody": "Connect an app and Okou can read and act in it for you.",
-        "emptyYoursTitle": "You haven't connected anything yet",
         "matchCount_one": "{{count}} match",
         "matchCount_other": "{{count}} matches",
         "moreAccounts_one": "+{{count}}",
@@ -1993,12 +1990,10 @@
         "otherCategory": "Other",
         "permissionCount_one": "{{count}} permission",
         "permissionCount_other": "{{count}} permissions",
-        "searchYours": "Search your connectors",
         "showAll_one": "Show all {{count}}",
         "showAll_other": "Show all {{count}}",
         "tabCustom": "Custom",
-        "tabDiscover": "Discover",
-        "tabYours": "Your connectors"
+        "tabDiscover": "Discover"
       },
       "fallsBackTo": "Falls back to {{account}}",
       "find": "Find connectors...",

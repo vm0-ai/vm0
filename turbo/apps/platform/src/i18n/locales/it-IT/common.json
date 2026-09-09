@@ -1998,7 +1998,6 @@
       "directory": {
         "allCategories": "Tutti",
         "askAdmin": "Chiedi a un amministratore di abilitarlo",
-        "browse": "Esplora i connettori",
         "configure": "Configura",
         "connected": "Connesso",
         "createCustom": "Crea personalizzato",
@@ -2010,8 +2009,6 @@
         "detailPermissions": "Autorizzazioni",
         "emptyCustomBody": "Creane uno da qualsiasi API HTTP o server MCP e Okou potrà usarlo come ogni altro connettore.",
         "emptyCustomTitle": "Nessun connettore personalizzato",
-        "emptyYoursBody": "Connetti un'app e Okou potrà leggerla e agire al posto tuo.",
-        "emptyYoursTitle": "Non hai ancora connesso nulla",
         "matchCount_one": "{{count}} risultato",
         "matchCount_many": "{{count}} risultati",
         "matchCount_other": "{{count}} risultati",
@@ -2026,13 +2023,11 @@
         "permissionCount_one": "{{count}} autorizzazione",
         "permissionCount_many": "{{count}} autorizzazioni",
         "permissionCount_other": "{{count}} autorizzazioni",
-        "searchYours": "Cerca tra i tuoi connettori",
         "showAll_one": "Mostra tutti ({{count}})",
         "showAll_many": "Mostra tutti ({{count}})",
         "showAll_other": "Mostra tutti ({{count}})",
         "tabCustom": "Personalizzati",
-        "tabDiscover": "Scopri",
-        "tabYours": "I tuoi connettori"
+        "tabDiscover": "Scopri"
       },
       "fallsBackTo": "Passa a {{account}} come alternativa",
       "find": "Trova connettori...",

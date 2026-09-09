@@ -1,10 +1,11 @@
 import type { ConnectorCategorySection } from "./connector-categories.ts";
 
 /**
- * A shelf is one category shown six deep, closed by a cell that names what is
- * behind it. It exists because a catalog of four thousand connectors cannot be
- * browsed by a filter: the person opening it does not know the product's name,
- * so the surface has to say "Lark, Zendesk and 321 more" rather than "327".
+ * A shelf is one category shown a few cards deep, closed by a cell that names
+ * what is behind it. It exists because a catalog of four thousand connectors
+ * cannot be browsed by a filter: the person opening it does not know the
+ * product's name, so the surface has to say "Lark, Zendesk and 321 more"
+ * rather than "327".
  */
 export interface ConnectorShelf<T> {
   /** The category this shelf opens, or null for the cross-category head. */
@@ -39,7 +40,11 @@ interface ShelfConnector {
   readonly popularityRank?: number;
 }
 
-/** How many a shelf shows before it closes. */
+/**
+ * How many a shelf shows before it closes, when the caller does not say. Each
+ * surface passes the number that fills whole rows of its own card grid, so a
+ * shelf never ends on a ragged row.
+ */
 const CONNECTOR_SHELF_PREVIEW = 6;
 
 /**

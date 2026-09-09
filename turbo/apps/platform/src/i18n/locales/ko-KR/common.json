@@ -1965,7 +1965,6 @@
       "directory": {
         "allCategories": "전체",
         "askAdmin": "관리자에게 활성화를 요청하세요",
-        "browse": "커넥터 둘러보기",
         "configure": "설정",
         "connected": "연결됨",
         "createCustom": "커스텀 만들기",
@@ -1977,8 +1976,6 @@
         "detailPermissions": "권한",
         "emptyCustomBody": "HTTP API나 MCP 서버로 만들면 Okou가 다른 커넥터와 똑같이 사용할 수 있습니다.",
         "emptyCustomTitle": "아직 커스텀 커넥터가 없습니다",
-        "emptyYoursBody": "앱을 연결하면 Okou가 대신 읽고 작업할 수 있습니다.",
-        "emptyYoursTitle": "아직 아무것도 연결하지 않았습니다",
         "matchCount_other": "{{count}}개 일치",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "확인 필요",
@@ -1987,11 +1984,9 @@
         "openDetailAria": "{{connector}} 세부 정보 열기",
         "otherCategory": "기타",
         "permissionCount_other": "권한 {{count}}개",
-        "searchYours": "내 커넥터 검색",
         "showAll_other": "전체 {{count}}개 보기",
         "tabCustom": "커스텀",
-        "tabDiscover": "탐색",
-        "tabYours": "내 커넥터"
+        "tabDiscover": "탐색"
       },
       "fallsBackTo": "{{account}} 계정으로 대체",
       "find": "커넥터 찾기...",

@@ -1998,7 +1998,6 @@
       "directory": {
         "allCategories": "Tous",
         "askAdmin": "Demandez à un administrateur de l'activer",
-        "browse": "Parcourir les connecteurs",
         "configure": "Configurer",
         "connected": "Connecté",
         "createCustom": "Créer un connecteur",
@@ -2010,8 +2009,6 @@
         "detailPermissions": "Autorisations",
         "emptyCustomBody": "Créez-en un à partir de n'importe quelle API HTTP ou serveur MCP, et Okou l'utilisera comme les autres.",
         "emptyCustomTitle": "Aucun connecteur personnalisé",
-        "emptyYoursBody": "Connectez une application et Okou pourra y lire et y agir pour vous.",
-        "emptyYoursTitle": "Vous n'avez encore rien connecté",
         "matchCount_one": "{{count}} résultat",
         "matchCount_many": "{{count}} résultats",
         "matchCount_other": "{{count}} résultats",
@@ -2026,13 +2023,11 @@
         "permissionCount_one": "{{count}} autorisation",
         "permissionCount_many": "{{count}} autorisations",
         "permissionCount_other": "{{count}} autorisations",
-        "searchYours": "Rechercher vos connecteurs",
         "showAll_one": "Afficher les {{count}}",
         "showAll_many": "Afficher les {{count}}",
         "showAll_other": "Afficher les {{count}}",
         "tabCustom": "Personnalisés",
-        "tabDiscover": "Découvrir",
-        "tabYours": "Vos connecteurs"
+        "tabDiscover": "Découvrir"
       },
       "fallsBackTo": "Utilise {{account}} en repli",
       "find": "Rechercher des connecteurs...",

@@ -1965,7 +1965,6 @@
       "directory": {
         "allCategories": "すべて",
         "askAdmin": "管理者に有効化を依頼してください",
-        "browse": "コネクターを見る",
         "configure": "設定",
         "connected": "接続済み",
         "createCustom": "カスタムを作成",
@@ -1977,8 +1976,6 @@
         "detailPermissions": "権限",
         "emptyCustomBody": "HTTP API や MCP サーバーから作成すると、Okou は他のコネクターと同じように使えます。",
         "emptyCustomTitle": "カスタムコネクターはまだありません",
-        "emptyYoursBody": "アプリを接続すると、Okou が代わりに読み取り、操作できます。",
-        "emptyYoursTitle": "まだ何も接続していません",
         "matchCount_other": "{{count}} 件の一致",
         "moreAccounts_other": "+{{count}}",
         "needsAttention": "対応が必要",
@@ -1987,11 +1984,9 @@
         "openDetailAria": "{{connector}} の詳細を開く",
         "otherCategory": "その他",
         "permissionCount_other": "{{count}} 件の権限",
-        "searchYours": "接続済みのコネクターを検索",
         "showAll_other": "すべて表示 ({{count}})",
         "tabCustom": "カスタム",
-        "tabDiscover": "見つける",
-        "tabYours": "接続済み"
+        "tabDiscover": "見つける"
       },
       "fallsBackTo": "{{account}} にフォールバック",
       "find": "コネクタを検索...",

@@ -75,7 +75,7 @@ async function openDirectory(
   return dialog;
 }
 
-test("Separate connected connectors from the catalog", async () => {
+test("Offer the catalog for adding, and find a connected connector by name", async () => {
   const user = userEvent.setup({ delay: null });
   installComposerConnectorFixture({ catalog: directoryCatalog() });
 
@@ -85,20 +85,26 @@ test("Separate connected connectors from the catalog", async () => {
     featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
   });
 
+  // The composer's connector popover already lists what is connected, so the
+  // directory opens on what can be added and does not repeat GitHub.
   const dialog = await openDirectory(user);
-  expect(
-    within(dialog).getByRole("heading", { name: "Connected" }),
-  ).toBeVisible();
-  expect(within(dialog).getByText("GitHub")).toBeVisible();
-  // Discovery lives behind its own tab, so the catalog never mixes into the
-  // list of what is already connected.
-  expect(within(dialog).queryByText("Notion")).not.toBeInTheDocument();
-
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await waitFor(() => {
     expect(within(dialog).getByText("Notion")).toBeVisible();
   });
   expect(within(dialog).queryByText("GitHub")).not.toBeInTheDocument();
+
+  // Searching for it must still answer, or the search reads as "we do not have
+  // GitHub" for a connector the user already connected.
+  await fill(
+    within(dialog).getByPlaceholderText("Find connectors..."),
+    "github",
+  );
+  await waitFor(() => {
+    expect(within(dialog).getByText("GitHub")).toBeVisible();
+  });
+  expect(
+    within(dialog).getByRole("heading", { name: "Connected" }),
+  ).toBeVisible();
 });
 
 test("Find a connector by a tag that is not in its name", async () => {
@@ -112,7 +118,6 @@ test("Find a connector by a tag that is not in its name", async () => {
   });
 
   const dialog = await openDirectory(user);
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await fill(
     within(dialog).getByPlaceholderText("Find connectors..."),
     "email",
@@ -145,6 +150,13 @@ test("Open connector detail and step back to the list", async () => {
   });
 
   const dialog = await openDirectory(user);
+  await fill(
+    within(dialog).getByPlaceholderText("Find connectors..."),
+    "github",
+  );
+  await waitFor(() => {
+    expect(within(dialog).getByText("GitHub")).toBeVisible();
+  });
   await user.click(dialogButton(dialog, "Open GitHub details"));
 
   await waitFor(() => {
@@ -188,7 +200,6 @@ test("Keep the category chips the same width when the selection moves", async ()
   });
 
   const dialog = await openDirectory(user);
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await waitFor(() => {
     expect(within(dialog).getByText("Notion")).toBeVisible();
   });
@@ -266,14 +277,13 @@ test("Close a shelf with the products behind it, and open that category", async 
   });
 
   const dialog = await openDirectory(user);
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await waitFor(() => {
     expect(within(dialog).getByTestId("connector-shelf-mail")).toBeVisible();
   });
 
   // A count alone says nothing to someone who does not know the product names,
   // so the closing cell has to name what it stands for.
-  const tail = dialogButton(dialog, "See Zendesk, Intercom and 321 more");
+  const tail = dialogButton(dialog, "See Telegram, Lark and 323 more");
   expect(tail).toBeVisible();
 
   // A category with one ranked connector cannot fill a shelf and is offered as
@@ -302,7 +312,6 @@ test("Show a connector on one shelf only", async () => {
   });
 
   const dialog = await openDirectory(user);
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await waitFor(() => {
     expect(within(dialog).getByTestId("connector-shelf-head")).toBeVisible();
   });
@@ -323,7 +332,6 @@ test("List the catalog when it is too small for any category to fill a shelf", a
   });
 
   const dialog = await openDirectory(user);
-  await user.click(within(dialog).getByRole("radio", { name: "Discover" }));
   await waitFor(() => {
     expect(within(dialog).getByText("Notion")).toBeVisible();
   });

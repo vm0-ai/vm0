@@ -65,8 +65,12 @@ export interface ComposerConnectorUiState {
   readonly directoryActiveIndex: number;
 }
 
-/** Which half of the directory is showing: what is connected, or what is not. */
-export type ConnectorDirectoryTab = "yours" | "discover" | "custom";
+/**
+ * Which half of the directory is showing. There is no "yours": the composer's
+ * connector popover already lists every connected connector with its accounts
+ * and permissions, so the directory is the surface for adding one.
+ */
+export type ConnectorDirectoryTab = "discover" | "custom";
 
 interface ComposerConnectorData {
   readonly relatedCatalogItems: readonly PlatformConnectorCatalogStatusItem[];
@@ -206,7 +210,7 @@ function initialComposerConnectorUiState(): ComposerConnectorUiState {
     popoverSearch: "",
     popoverSortOrder: null,
     permissionConnectorSlug: null,
-    directoryTab: "yours",
+    directoryTab: "discover",
     directoryCategory: null,
     directoryDetailSlug: null,
     directoryActiveIndex: 0,

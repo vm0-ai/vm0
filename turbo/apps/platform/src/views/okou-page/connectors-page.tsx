@@ -80,7 +80,6 @@ import {
 } from "./components/settings/connector-card.tsx";
 import {
   ConnectorShelfChips,
-  ConnectorShelfRow,
   ConnectorShelfSection,
 } from "./components/settings/connector-shelf.tsx";
 import {
@@ -712,23 +711,15 @@ function ConnectorCategoryGroupSection({
 function ConnectorShelfBrowse({
   connected,
   layout,
-  busySlugs,
   renderCard,
   onOpenCategory,
-  onConnect,
-  onOpenConnected,
 }: {
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
-  readonly busySlugs: ReadonlySet<ConnectorSlug>;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
   readonly onOpenCategory: (category: string) => void;
-  readonly onConnect: (connector: PlatformConnectorCatalogStatusItem) => void;
-  readonly onOpenConnected: (
-    connector: PlatformConnectorCatalogStatusItem,
-  ) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -757,23 +748,7 @@ function ConnectorShelfBrowse({
               columns={3}
               onOpenCategory={onOpenCategory}
             >
-              {shelf.connectors.map((connector) => {
-                return (
-                  <ConnectorShelfRow
-                    key={connector.slug}
-                    connector={connector}
-                    connected={connector.connected}
-                    busy={busySlugs.has(connector.slug)}
-                    onActivate={() => {
-                      if (connector.connected) {
-                        onOpenConnected(connector);
-                        return;
-                      }
-                      onConnect(connector);
-                    }}
-                  />
-                );
-              })}
+              {shelf.connectors.map(renderCard)}
             </ConnectorShelfSection>
           );
         })}
@@ -790,17 +765,6 @@ function discoveryCategoryCounts(
   return catalogStatusLoadable.state === "hasData"
     ? catalogStatusLoadable.data.categoryConnectorCounts
     : undefined;
-}
-
-/** The connectors a connect flow is currently in flight for. */
-function connectorBusySlugs(
-  slugs: readonly (ConnectorSlug | null)[],
-): ReadonlySet<ConnectorSlug> {
-  return new Set(
-    slugs.filter((slug): slug is ConnectorSlug => {
-      return slug !== null;
-    }),
-  );
 }
 
 interface ConnectorsBrowseModel {
@@ -863,6 +827,8 @@ function buildConnectorsBrowseModel({
     ),
     categoryCounts,
     headLabel,
+    // The page's card grid is three wide, so six is two whole rows.
+    previewSize: 6,
   });
   return {
     // Shelves need something to shelve: a catalog too small for any category to
@@ -889,25 +855,17 @@ function ConnectorsBuiltinPanel({
   shelfEnabled,
   categoryFilter,
   setCategoryFilter,
-  busySlugs,
   renderCard,
   fallback,
-  onConnect,
-  onOpenConnected,
 }: {
   readonly browse: ConnectorsBrowseModel;
   readonly shelfEnabled: boolean;
   readonly categoryFilter: string | null;
   readonly setCategoryFilter: (category: string | null) => void;
-  readonly busySlugs: ReadonlySet<ConnectorSlug>;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
   readonly fallback: ReactNode;
-  readonly onConnect: (connector: PlatformConnectorCatalogStatusItem) => void;
-  readonly onOpenConnected: (
-    connector: PlatformConnectorCatalogStatusItem,
-  ) => void;
 }) {
   return (
     <>
@@ -923,11 +881,8 @@ function ConnectorsBuiltinPanel({
         <ConnectorShelfBrowse
           connected={browse.connected}
           layout={browse.layout}
-          busySlugs={busySlugs}
           renderCard={renderCard}
           onOpenCategory={setCategoryFilter}
-          onConnect={onConnect}
-          onOpenConnected={onOpenConnected}
         />
       ) : (
         fallback
@@ -1389,11 +1344,6 @@ export function ConnectorsPage() {
     connectionFilter,
     ready: shelfEnabled && filteredCatalogItemsLoadable.state === "hasData",
   });
-  const busySlugs = connectorBusySlugs([
-    pollingAuthCodeSlug,
-    pollingDeviceAuthSlug,
-    connectFlowSlug,
-  ]);
 
   const builtinList = renderBuiltinList({
     loadingState: filteredCatalogItemsLoadable.state,
@@ -1466,18 +1416,8 @@ export function ConnectorsPage() {
                 shelfEnabled={shelfEnabled}
                 categoryFilter={categoryFilter}
                 setCategoryFilter={setCategoryFilter}
-                busySlugs={busySlugs}
                 renderCard={renderCard}
                 fallback={builtinList}
-                onConnect={(connector) => {
-                  launchConnectorConnect({
-                    connector,
-                    ...accountConnectHandlers(connector),
-                  });
-                }}
-                onOpenConnected={(connector) => {
-                  return openAccountManager(connector, signal);
-                }}
               />
             )}
 
