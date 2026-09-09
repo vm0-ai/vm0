@@ -1040,29 +1040,39 @@ function connectorMatchesKeyword(
   );
 }
 
-function rankedEffectiveConnectors(
+function sortedByPopularity(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
   const index = createConnectorPopularityIndex();
-  return [...effective]
-    .filter((entry) => {
-      return !isInternalConnector(entry.connector.slug);
-    })
-    .sort((left, right) => {
-      return compareConnectorPopularity(index, left.connector, right.connector);
-    });
+  return [...effective].sort((left, right) => {
+    return compareConnectorPopularity(index, left.connector, right.connector);
+  });
+}
+
+function withoutInternalConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
+  return effective.filter((entry) => {
+    return !isInternalConnector(entry.connector.slug);
+  });
 }
 
 /**
- * The keyword-free response. Every category contributes its own top slice, so
- * a category holding a quarter of the catalog cannot crowd out the eleven
- * others, and each slice is ordered by rank rather than alphabetically.
+ * The keyword-free discovery response. Every category contributes its own top
+ * slice, so a category holding a quarter of the catalog cannot crowd out the
+ * eleven others, and each slice is ordered by rank rather than alphabetically.
+ *
+ * Only discovery browses this way. `/api/connectors/search` answers a
+ * keyword-free call with a ranked head of the whole catalog, because an agent
+ * asking that endpoint for "everything" wants the catalog, not a shelf layout.
  */
 function browseEffectiveConnectors(
   effective: readonly EffectiveConnector[],
 ): EffectiveConnector[] {
   const perCategory = new Map<string, EffectiveConnector[]>();
-  for (const entry of rankedEffectiveConnectors(effective)) {
+  for (const entry of withoutInternalConnectors(
+    sortedByPopularity(effective),
+  )) {
     const bucket = perCategory.get(entry.connector.category);
     if (bucket) {
       if (bucket.length < CONNECTOR_DISCOVERY_PER_CATEGORY) {
@@ -1078,12 +1088,16 @@ function browseEffectiveConnectors(
 function searchEffectiveConnectors(
   effective: readonly EffectiveConnector[],
   keyword: string | undefined,
+  options: { readonly excludeInternal: boolean } = { excludeInternal: false },
 ): EffectiveConnector[] {
+  const ranked = options.excludeInternal
+    ? withoutInternalConnectors(sortedByPopularity(effective))
+    : sortedByPopularity(effective);
   const normalizedKeyword = keyword?.trim().toLowerCase();
   if (!normalizedKeyword) {
-    return browseEffectiveConnectors(effective);
+    return ranked.slice(0, CONNECTOR_SEARCH_LIMIT);
   }
-  return rankedEffectiveConnectors(effective)
+  return ranked
     .filter((entry) => {
       return connectorMatchesKeyword(entry, normalizedKeyword);
     })
@@ -1110,7 +1124,9 @@ function discoveryEffectiveConnectors(
   args: Pick<ExternalCatalogDiscoveryArgs, "connections" | "keyword">,
 ): EffectiveConnector[] {
   if (args.keyword?.trim()) {
-    return searchEffectiveConnectors(effective, args.keyword);
+    return searchEffectiveConnectors(effective, args.keyword, {
+      excludeInternal: true,
+    });
   }
   const connectedSlugs = new Set(
     args.connections.map((connection) => {
