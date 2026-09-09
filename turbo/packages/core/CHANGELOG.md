@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.638.1](https://github.com/vm0-ai/vm0/compare/core-v8.638.0...core-v8.638.1) (2026-09-09)
+
+
+### Refactoring
+
+* **platform:** remove chat run work folding switch ([#32727](https://github.com/vm0-ai/vm0/issues/32727)) ([1357f20](https://github.com/vm0-ai/vm0/commit/1357f20a71a4ddfad029682d776826593492f0cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.418.1
+
 ## [8.638.0](https://github.com/vm0-ai/vm0/compare/core-v8.637.2...core-v8.638.0) (2026-09-08)
 
 
