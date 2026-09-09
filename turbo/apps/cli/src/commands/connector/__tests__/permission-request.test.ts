@@ -161,17 +161,26 @@ describe("okou connector permission-request command", () => {
   it("rejects custom slugs from the builtin permission-request flow", async () => {
     vi.stubEnv("OKOU_AGENT_ID", "agent-1");
     server.use(
-      http.post("https://app.okou.ai/api/connectors/diagnostics/check", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "BAD_REQUEST",
-              message: "Invalid builtin connector slug",
+      http.post(
+        "https://app.okou.ai/api/connectors/diagnostics/check",
+        async ({ request }) => {
+          const parsed = connectorCheckRequestSchema.safeParse(
+            await request.json(),
+          );
+          if (parsed.success) {
+            return HttpResponse.json(resolvedUrlDiagnostic());
+          }
+          return HttpResponse.json(
+            {
+              error: {
+                code: "BAD_REQUEST",
+                message: "Invalid builtin connector slug",
+              },
             },
-          },
-          { status: 400 },
-        );
-      }),
+            { status: 400 },
+          );
+        },
+      ),
     );
 
     await expect(

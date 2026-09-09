@@ -312,7 +312,14 @@ describe("okou connector custom update", () => {
         prefixTemplates: ["https://api.acme.example/"],
       });
       let requests = 0;
+      let inventoryRequests = 0;
       server.use(
+        http.get("http://localhost:3000/api/custom-connectors", () => {
+          inventoryRequests += 1;
+          return HttpResponse.json({
+            connectors: [mcpResponse(manualMcpDefinition())],
+          });
+        }),
         http.put(
           `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
           () => {
@@ -339,6 +346,13 @@ describe("okou connector custom update", () => {
         ]);
 
         expect(requests).toBe(0);
+        expect(inventoryRequests).toBe(0);
+        expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+          "prefixTemplates",
+        );
+        expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+          "Invalid input",
+        );
         expect(mockExit).toHaveBeenCalledWith(1);
       } finally {
         mockConsoleError.mockRestore();
