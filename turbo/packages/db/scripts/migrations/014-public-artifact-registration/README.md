@@ -30,6 +30,11 @@ These hooks run regardless of the switch.
 
 Drain earlier API writers and their already-issued upload credentials before
 accepting final coverage; current public PUT credentials last up to one hour.
+Multipart completion can outlive those signatures. The migration also inventories
+all pending public multipart uploads, including their pagination, before its final
+object scan. An old session without a valid public registration blocks verified
+coverage until it completes or expires in storage; newly pre-registered sessions
+can continue. The report includes pending and unregistered multipart counts.
 Run an independent verification after this drain. API binary rollback must
 retain incremental registration. Use the same
 `privateArtifacts` rollout switch for new artifact behavior; there is no second
@@ -110,7 +115,8 @@ extension, and no source object is rewritten.
    `dry-run`, then `migrate`, then an independent `verify` after the old-writer and
    upload-credential drain. It uses production R2 credentials and read-only Neon
    queries, saves the report as a GitHub artifact, and never passes `--finalize`.
-   Accept coverage only with zero missing, conflicting or unclassified records.
+   Accept coverage only with zero missing, conflicting or unclassified records
+   and zero unregistered pending multipart uploads.
 3. Review the separate `a.okou.io` delivery cutover (#32959) after coverage is
    complete. The planned unified host serves old registered public files and new
    opaque public-share aliases through `zero-host-worker`. Existing URLs and old

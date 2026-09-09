@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListMultipartUploadsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -116,6 +117,74 @@ function objectRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Invalid historical pointer or manifest");
   return value as Record<string, unknown>;
+}
+
+async function pendingMultipartRegistrations(
+  publicClient: S3Client,
+  hostedClient: S3Client,
+  options: Options,
+) {
+  let keyMarker: string | undefined;
+  let uploadIdMarker: string | undefined;
+  let pending = 0;
+  let unregistered = 0;
+  do {
+    const page = await publicClient.send(
+      new ListMultipartUploadsCommand({
+        Bucket: options.publicBucket,
+        Prefix: "artifacts/",
+        MaxUploads: 1000,
+        KeyMarker: keyMarker,
+        UploadIdMarker: uploadIdMarker,
+      }),
+    );
+    await forEachConcurrent(
+      page.Uploads ?? [],
+      options.concurrency ?? 16,
+      async (upload) => {
+        const key = upload.Key;
+        if (!key?.startsWith("artifacts/") || !upload.UploadId)
+          throw new Error("Invalid pending multipart upload identity");
+        if (++pending > options.maxObjects)
+          throw new Error("Pending multipart upload inventory limit reached");
+        const value = await readJson(
+          hostedClient,
+          options.hostedBucket,
+          artifactDeliveryKey("vm0", "file", key.slice("artifacts/".length)),
+        );
+        if (value === undefined) {
+          unregistered++;
+          return;
+        }
+        const record = objectRecord(value);
+        if (
+          record.version !== 1 ||
+          record.kind !== "legacy-file" ||
+          record.audience !== "public" ||
+          record.key !== key ||
+          (record.publicBrand !== "vm0" && record.publicBrand !== "okou") ||
+          typeof record.filename !== "string" ||
+          !record.filename ||
+          typeof record.contentType !== "string" ||
+          !record.contentType
+        )
+          throw new Error("Pending multipart upload registration is invalid");
+      },
+    );
+    if (
+      page.IsTruncated &&
+      (!page.NextKeyMarker ||
+        !page.NextUploadIdMarker ||
+        (page.NextKeyMarker === keyMarker &&
+          page.NextUploadIdMarker === uploadIdMarker))
+    )
+      throw new Error("Pending multipart upload pagination is incomplete");
+    keyMarker = page.IsTruncated ? page.NextKeyMarker : undefined;
+    uploadIdMarker = page.IsTruncated ? page.NextUploadIdMarker : undefined;
+  } while (keyMarker);
+  options.onProgress?.("pending-multipart-uploads", pending);
+  options.onProgress?.("unregistered-multipart-uploads", unregistered);
+  return { pending, unregistered };
 }
 
 function stringField(value: Record<string, unknown>, key: string): string {
@@ -460,6 +529,14 @@ export async function registerHistoricalPublicArtifacts(
         options.onProgress?.("registration", processed);
     },
   );
+  // Parts can be completed long after their PUT signatures expire. Check them
+  // before the final object inventory so an old session completing during this
+  // boundary is either blocked here or included in the final object coverage.
+  const multipart = await pendingMultipartRegistrations(
+    publicClient,
+    hostedClient,
+    options,
+  );
   const final = await inventory(publicClient, hostedClient, options);
   await reconcile(final.sourceFiles, final.sourceDeployments);
   // Online writers register before exposing objects. Accept concurrent additions
@@ -476,6 +553,10 @@ export async function registerHistoricalPublicArtifacts(
   if ((options.migrate || options.verify) && final.skipped > 0)
     throw new Error(
       "Unclassified historical artifact objects require reconciliation before verification",
+    );
+  if ((options.migrate || options.verify) && multipart.unregistered > 0)
+    throw new Error(
+      `${multipart.unregistered} unregistered multipart uploads must finish or expire before coverage can be accepted`,
     );
   const inventoryHash = digest(final.entries);
   if (options.finalize) {
@@ -516,6 +597,8 @@ export async function registerHistoricalPublicArtifacts(
     finalFiles: final.sourceFiles.size,
     finalAliases: final.entries.size,
     resolvedContentTypes: final.resolvedContentTypes,
+    pendingMultipartUploads: multipart.pending,
+    unregisteredMultipartUploads: multipart.unregistered,
     verified: options.verify || options.migrate,
     finalized: options.finalize,
   };
