@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.29.0"
+version = "0.29.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -955,7 +955,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-mock"
-version = "0.21.141"
+version = "0.21.142"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -982,7 +982,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "codex-mock"
-version = "0.10.31"
+version = "0.10.32"
 dependencies = [
  "chrono",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.86.23"
+version = "0.87.0"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.13.8"
+version = "0.14.0"
 dependencies = [
  "api-contracts",
  "base64 0.23.1",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "guest-control-client"
-version = "0.19.7"
+version = "0.20.0"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -1747,14 +1747,14 @@ dependencies = [
 
 [[package]]
 name = "guest-control-proto"
-version = "0.20.1"
+version = "0.21.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "guest-control-server"
-version = "0.20.6"
+version = "0.21.0"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1769,7 +1769,7 @@ dependencies = [
 
 [[package]]
 name = "guest-control-tests"
-version = "0.10.7"
+version = "0.11.0"
 dependencies = [
  "guest-control-client",
  "guest-control-proto",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.247"
+version = "0.16.248"
 dependencies = [
  "guest-contracts",
  "guest-control-server",
@@ -1803,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "guest-storage-apply"
-version = "0.23.74"
+version = "0.23.75"
 dependencies = [
  "flate2",
  "guest-contracts",
@@ -1819,7 +1819,7 @@ dependencies = [
 
 [[package]]
 name = "guest-telemetry"
-version = "0.3.69"
+version = "0.3.70"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1831,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "guest-tool-exec"
-version = "0.1.57"
+version = "0.1.58"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.147"
+version = "0.1.148"
 dependencies = [
  "guest-contracts",
  "guest-control-proto",
@@ -3365,7 +3365,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.189.2"
+version = "0.189.3"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3694,7 +3694,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.22.3"
+version = "0.22.4"
 dependencies = [
  "async-trait",
  "serde",
@@ -3708,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-firecracker"
-version = "0.40.7"
+version = "0.41.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -3741,7 +3741,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.10.29"
+version = "0.10.30"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3989,7 +3989,7 @@ dependencies = [
 
 [[package]]
 name = "session-history-selector"
-version = "0.3.83"
+version = "0.3.84"
 dependencies = [
  "guest-contracts",
  "proptest",

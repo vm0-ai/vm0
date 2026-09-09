@@ -8,6 +8,25 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.575.3](https://github.com/vm0-ai/vm0/compare/api-v1.575.2...api-v1.575.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+* **voice:** recover transient provider capacity failures ([#32918](https://github.com/vm0-ai/vm0/issues/32918)) ([6600861](https://github.com/vm0-ai/vm0/commit/660086182f9ecf4a7f67eb8cf43166af2071dbf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/db bumped to 1.248.4
+    * @okouai/pi-agent-runtime bumped to 1.24.3
+
 ## [1.575.2](https://github.com/vm0-ai/vm0/compare/api-v1.575.1...api-v1.575.2) (2026-09-09)
 
 

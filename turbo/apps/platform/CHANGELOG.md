@@ -11,6 +11,36 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.874.0](https://github.com/vm0-ai/vm0/compare/app-v0.873.0...app-v0.874.0) (2026-09-09)
+
+
+### Features
+
+* **web-chat:** lay out mobile follow-ups as a horizontal quick reply rail ([#32916](https://github.com/vm0-ai/vm0/issues/32916)) ([2a0245c](https://github.com/vm0-ai/vm0/commit/2a0245c5bfe062996a15400df5f625570f29c0db))
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+* lighten chat header pin controls ([#32922](https://github.com/vm0-ai/vm0/issues/32922)) ([5f07dad](https://github.com/vm0-ai/vm0/commit/5f07dadccb8706e707eab4be8ca069a4b85edf13))
+* **voice:** recover transient provider capacity failures ([#32918](https://github.com/vm0-ai/vm0/issues/32918)) ([6600861](https://github.com/vm0-ai/vm0/commit/660086182f9ecf4a7f67eb8cf43166af2071dbf6))
+
+
+### Refactoring
+
+* **app:** migrate agent tone choices to shared control ([#32873](https://github.com/vm0-ai/vm0/issues/32873)) ([cd00125](https://github.com/vm0-ai/vm0/commit/cd0012572ce91c992d330c1599961e4248207303))
+* **platform:** remove page visibility and reconnect recovery ([#32861](https://github.com/vm0-ai/vm0/issues/32861)) ([ed4e519](https://github.com/vm0-ai/vm0/commit/ed4e5193b70610b70a4fc1a15ef0370882a853af))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/ui bumped to 1.6.9
+
 ## [0.873.0](https://github.com/vm0-ai/vm0/compare/app-v0.872.0...app-v0.873.0) (2026-09-09)
 
 

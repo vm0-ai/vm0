@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.643.0](https://github.com/vm0-ai/vm0/compare/core-v8.642.1...core-v8.643.0) (2026-09-09)
+
+
+### Features
+
+* **web-chat:** lay out mobile follow-ups as a horizontal quick reply rail ([#32916](https://github.com/vm0-ai/vm0/issues/32916)) ([2a0245c](https://github.com/vm0-ai/vm0/commit/2a0245c5bfe062996a15400df5f625570f29c0db))
+
+
+### Bug Fixes
+
+* **ads:** route browser conversions by verified account ownership ([#32902](https://github.com/vm0-ai/vm0/issues/32902)) ([bb561b8](https://github.com/vm0-ai/vm0/commit/bb561b8ee07aa5c8ae4bcddfadc633e9900ad550))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.3
+
 ## [8.642.1](https://github.com/vm0-ai/vm0/compare/core-v8.642.0...core-v8.642.1) (2026-09-09)
 
 

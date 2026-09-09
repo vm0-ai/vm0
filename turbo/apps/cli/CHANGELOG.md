@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.320.1](https://github.com/vm0-ai/vm0/compare/cli-v9.320.0...cli-v9.320.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **pi-memory:** preserve unchanged files and safe failure diagnostics ([#32911](https://github.com/vm0-ai/vm0/issues/32911)) ([dcf5e10](https://github.com/vm0-ai/vm0/commit/dcf5e10bb749b56b091ad0d0de6770928195db23)), closes [#32744](https://github.com/vm0-ai/vm0/issues/32744)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.420.3
+    * @okouai/connectors bumped to 3.8.7
+    * @okouai/core bumped to 8.643.0
+    * @okouai/pi-agent-runtime bumped to 1.24.3
+
 ## [9.320.0](https://github.com/vm0-ai/vm0/compare/cli-v9.319.1...cli-v9.320.0) (2026-09-09)
 
 

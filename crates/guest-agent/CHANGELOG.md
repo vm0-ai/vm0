@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.87.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.23...guest-agent-v0.87.0) (2026-09-09)
+
+
+### Features
+
+* **guest-control:** attribute storage apply resource usage ([#32907](https://github.com/vm0-ai/vm0/issues/32907)) ([65cd810](https://github.com/vm0-ai/vm0/commit/65cd810030c0eac6a5e8e1a377f4562f2cb58c48))
+
+
+### Bug Fixes
+
+* **pi-memory:** preserve unchanged files and safe failure diagnostics ([#32911](https://github.com/vm0-ai/vm0/issues/32911)) ([dcf5e10](https://github.com/vm0-ai/vm0/commit/dcf5e10bb749b56b091ad0d0de6770928195db23)), closes [#32744](https://github.com/vm0-ai/vm0/issues/32744)
+
 ## [0.86.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.22...guest-agent-v0.86.23) (2026-09-09)
 
 ## [0.86.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.86.21...guest-agent-v0.86.22) (2026-09-09)

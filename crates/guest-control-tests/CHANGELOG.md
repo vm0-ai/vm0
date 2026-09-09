@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.7...guest-control-tests-v0.11.0) (2026-09-09)
+
+
+### Features
+
+* **guest-control:** attribute storage apply resource usage ([#32907](https://github.com/vm0-ai/vm0/issues/32907)) ([65cd810](https://github.com/vm0-ai/vm0/commit/65cd810030c0eac6a5e8e1a377f4562f2cb58c48))
+
 ## [0.10.7](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.6...guest-control-tests-v0.10.7) (2026-09-09)
 
 ## [0.10.6](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.10.5...guest-control-tests-v0.10.6) (2026-09-09)

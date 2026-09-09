@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.189.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.2...runner-rs-v0.189.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **pi-memory:** preserve unchanged files and safe failure diagnostics ([#32911](https://github.com/vm0-ai/vm0/issues/32911)) ([dcf5e10](https://github.com/vm0-ai/vm0/commit/dcf5e10bb749b56b091ad0d0de6770928195db23)), closes [#32744](https://github.com/vm0-ai/vm0/issues/32744)
+* **runner:** preserve jsonl framing after partial append failures ([#32928](https://github.com/vm0-ai/vm0/issues/32928)) ([6de90ea](https://github.com/vm0-ai/vm0/commit/6de90eacb2d78ff367384723ef2097e37628b387))
+
 ## [0.189.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.1...runner-rs-v0.189.2) (2026-09-09)
 
 
