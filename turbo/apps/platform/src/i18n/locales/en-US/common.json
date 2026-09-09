@@ -5190,7 +5190,6 @@
           "log": "Event log",
           "offline": "offline",
           "online": "online",
-          "recovery": "recovery",
           "refresh": "Refresh",
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable",

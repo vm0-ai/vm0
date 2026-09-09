@@ -64,9 +64,11 @@ const keepAliveLoop$ = command((_ctx, _signal: AbortSignal) => {
   return Promise.resolve(false);
 });
 
-const failReadyCatchup$ = command((_ctx, _signal: AbortSignal) => {
-  throw new Error("ready catch-up failed");
-});
+const failSubscriptionInitialization$ = command(
+  (_ctx, _signal: AbortSignal) => {
+    throw new Error("subscription initialization failed");
+  },
+);
 
 function mockSignedInUser(): void {
   const clerk = context.mocks.clerk();
@@ -277,7 +279,7 @@ test("Realtime authentication failure does not leave stale live updates", async 
   expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
 });
 
-test("Reconnecting catches up active resources", async () => {
+test("Live updates remain usable after the transport reconnects", async () => {
   mockSignedInUser();
   const topic = "test:reconnect";
   const subscriber = testSubscriber();
@@ -307,6 +309,7 @@ test("Reconnecting catches up active resources", async () => {
   });
 
   context.mocks.ably.triggerReconnect();
+  context.mocks.ably.trigger(topic);
   await waitFor(() => {
     expect(runs).toBe(2);
   });
@@ -383,22 +386,27 @@ test("A transient live-update error is retried", async () => {
   expect(runs).toBe(2);
 });
 
-test("Payload updates and reconnect catch-up work together", async () => {
+test("Payload updates received during subscription initialization are applied", async () => {
   mockSignedInUser();
-  const topic = "test:payload-catch-up";
+  const topic = "test:payload-initialization";
   const subscriber = testSubscriber();
   const payloads: unknown[] = [];
-  let catchUps = 0;
+  const initializationStarted = context.mocks.deferred<void>();
+  const initializationFinished = context.mocks.deferred<void>();
   const loop$ = command(
     (_ctx, payload: unknown, _signal: AbortSignal): boolean => {
       payloads.push(payload);
       return false;
     },
   );
-  const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
-    catchUps += 1;
-    return false;
-  });
+  const initialize$ = command(
+    async (_ctx, signal: AbortSignal): Promise<boolean> => {
+      initializationStarted.resolve();
+      await initializationFinished.promise;
+      signal.throwIfAborted();
+      return false;
+    },
+  );
 
   await setupAuthAndRealtime();
   const loopPromise = context.store.set(
@@ -406,26 +414,18 @@ test("Payload updates and reconnect catch-up work together", async () => {
     {
       topic,
       loopCommand$: loop$,
-      catchUpCommand$: catchUp$,
-      options: { runOnSubscribe: true },
+      initializeCommand$: initialize$,
     },
     subscriber.signal,
   );
   detach(loopPromise, Reason.Daemon, "test realtime loop");
 
-  await waitFor(() => {
-    expect(catchUps).toBe(1);
-  });
+  await initializationStarted.promise;
   context.mocks.ably.trigger(topic, { connectorSlug: "gmail" });
+  initializationFinished.resolve();
   await waitFor(() => {
     expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
   });
-
-  context.mocks.ably.triggerReconnect();
-  await waitFor(() => {
-    expect(catchUps).toBe(2);
-  });
-  expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
 });
 
 test("A permanently bad live update does not block later updates", async () => {
@@ -508,9 +508,9 @@ test("A persistent refresh error pauses until a new update", async () => {
   expect(runs).toBe(5);
 });
 
-test("A catch-up failure does not destroy live subscriptions", async () => {
+test("An initial refresh failure does not destroy live subscriptions", async () => {
   mockSignedInUser();
-  const threadId = "test-thread-ready-catchup-failure";
+  const threadId = "test-thread-initialization-failure";
   await context.store.set(setupRealtime$, context.signal);
 
   await expect(
@@ -523,12 +523,12 @@ test("A catch-up failure does not destroy live subscriptions", async () => {
           onAutomationsChanged$: keepAliveLoop$,
           onArtifactsChanged$: keepAliveLoop$,
           onWorkflowsChanged$: keepAliveLoop$,
-          onSubscribed$: failReadyCatchup$,
+          onSubscribed$: failSubscriptionInitialization$,
         },
       },
       context.signal,
     ),
-  ).rejects.toThrow("ready catch-up failed");
+  ).rejects.toThrow("subscription initialization failed");
 
   expect(
     context.mocks.ably.hasSubscription(

@@ -31,7 +31,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { apiClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
-import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import { settle, tapError, withCleanup } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
@@ -713,17 +713,12 @@ const reloadBillingStatusFromRealtime$ = command(
 
 export const setupBillingRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(
-      subscribeRealtimeReadyCatchUp$,
-      reloadBillingStatusFromRemoteChange$,
-      signal,
-    );
     await set(
       setAblyLoop$,
       {
         topic: "billing:changed",
         loopCommand$: reloadBillingStatusFromRealtime$,
-        options: { runOnReconnect: false, runOnSubscribe: true },
+        options: { runOnSubscribe: true },
       },
       signal,
     );

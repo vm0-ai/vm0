@@ -15,7 +15,6 @@ import {
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
@@ -296,11 +295,6 @@ const syncSharedEventDrivenChatThreads$ = command(
 
 const subscribeSharedEventDrivenChatThreads$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    set(
-      subscribeRealtimeReadyCatchUp$,
-      syncSharedEventDrivenChatThreads$,
-      signal,
-    );
     const dataKey = await get(sharedChatThreadEventDataKey$);
     signal.throwIfAborted();
     const cached = await set(

@@ -20,7 +20,6 @@ const connectionDiagnosticEventNameSchema = z.enum([
   "realtime.connection",
   "realtime.initial-connection",
   "realtime.pending-subscribers",
-  "realtime.subscriber-catch-up",
   "realtime.subscription",
 ]);
 
@@ -32,7 +31,6 @@ const connectionDiagnosticPhaseSchema = z.enum([
   "error",
   "finish",
   "instant",
-  "join",
   "start",
 ]);
 
@@ -84,11 +82,9 @@ const connectionDiagnosticDetailsSchema = z
     previousConnectionState:
       connectionDiagnosticConnectionStateSchema.optional(),
     retryInMs: z.number().optional(),
-    skipReason: z.enum(["hidden", "no-realtime-session"]).optional(),
     statusCode: z.number().optional(),
     subscriberCount: z.number().optional(),
     subscriptionKind: z.enum(["channel", "payload", "topic"]).optional(),
-    tokenAvailable: z.boolean().optional(),
     trigger: z
       .enum([
         "blur",
@@ -96,7 +92,6 @@ const connectionDiagnosticDetailsSchema = z
         "initial",
         "offline",
         "online",
-        "realtime-connected",
         "visibilitychange",
       ])
       .optional(),
@@ -169,10 +164,6 @@ export const connectionDiagnosticsSchema = z
         connectionState: connectionDiagnosticConnectionStateSchema.nullable(),
         focused: z.boolean(),
         online: z.boolean(),
-        recoveryPhase: z.union([
-          connectionDiagnosticEventNameSchema,
-          z.literal("idle"),
-        ]),
         visibilityState: visibilityStateSchema,
       })
       .strict()
@@ -260,11 +251,9 @@ function sanitizeDiagnosticDetails(
     previousChannelState: details.previousChannelState,
     previousConnectionState: details.previousConnectionState,
     retryInMs: details.retryInMs,
-    skipReason: details.skipReason,
     statusCode: details.statusCode,
     subscriberCount: details.subscriberCount,
     subscriptionKind: details.subscriptionKind,
-    tokenAvailable: details.tokenAvailable,
     trigger: details.trigger,
     visibilityState: details.visibilityState,
   };
@@ -399,7 +388,6 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
       ...states,
       focused: browserState.focused,
       online: browserState.online,
-      recoveryPhase: activeWaits.at(-1)?.event ?? "idle",
       visibilityState: browserState.visibilityState,
     },
   };

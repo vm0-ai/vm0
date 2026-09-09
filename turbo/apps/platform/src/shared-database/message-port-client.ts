@@ -82,10 +82,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         await this.events.databaseInvalidated(message.dataKey);
         return;
       }
-      if (message.type === "reconnect") {
-        await this.events.databaseReconnected();
-        return;
-      }
       if (message.type === "worker-unavailable") {
         this.events.workerUnavailable(message.reason);
         return;

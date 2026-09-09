@@ -23,7 +23,6 @@ import {
 } from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
-  onDomEventFn,
   onRejection,
   settle,
   setLoop,
@@ -38,22 +37,6 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
 export type RealtimeConnectionState = ConnectionStateChange["current"];
-
-interface RealtimeConnectionUpdate {
-  readonly state: RealtimeConnectionState;
-  readonly reconnected: boolean;
-}
-
-function realtimeConnectionUpdate(
-  stateChange: ConnectionStateChange,
-  initialConnectionComplete: boolean,
-): RealtimeConnectionUpdate {
-  return {
-    state: stateChange.current,
-    reconnected:
-      initialConnectionComplete && stateChange.current === "connected",
-  };
-}
 
 function connectionStateDetails(
   stateChange: ConnectionStateChange,
@@ -176,17 +159,15 @@ export const setSharedWorkerRealtimeBridge$ = command(
 );
 
 const internalRealtimeSession$ = state<RealtimeSession | null>(null);
-type RealtimeConnectionStateListener = (
-  update: RealtimeConnectionUpdate,
-) => void;
+type RealtimeConnectionStateListener = (state: RealtimeConnectionState) => void;
 const realtimeConnectionStateListeners$ = state<
   ReadonlySet<RealtimeConnectionStateListener>
 >(new Set());
 
 const notifyRealtimeConnectionState$ = command(
-  ({ get }, update: RealtimeConnectionUpdate): void => {
+  ({ get }, state: RealtimeConnectionState): void => {
     for (const listener of get(realtimeConnectionStateListeners$)) {
-      listener(update);
+      listener(state);
     }
   },
 );
@@ -214,57 +195,8 @@ export const subscribeRealtimeConnectionState$ = command(
     );
     const session = get(internalRealtimeSession$);
     if (session) {
-      listener({
-        state: session.ably.connection.state,
-        reconnected: false,
-      });
+      listener(session.ably.connection.state);
     }
-  },
-);
-
-const subscriberPokeTarget$ = state(new EventTarget());
-const SUBSCRIBER_POKE_EVENT = "poke";
-type RealtimeReadyCatchUpCommand = Command<Promise<void> | void, [AbortSignal]>;
-const realtimeReadyCatchUpCommands$ = state<
-  ReadonlySet<RealtimeReadyCatchUpCommand>
->(new Set());
-
-/**
- * Register snapshot catch-up after the realtime connection is restored.
- */
-export const subscribeRealtimeReadyCatchUp$ = command(
-  (
-    { get, set },
-    callback$: RealtimeReadyCatchUpCommand,
-    signal: AbortSignal,
-  ) => {
-    set(
-      realtimeReadyCatchUpCommands$,
-      new Set([...get(realtimeReadyCatchUpCommands$), callback$]),
-    );
-    signal.addEventListener(
-      "abort",
-      () => {
-        const commands = new Set(get(realtimeReadyCatchUpCommands$));
-        commands.delete(callback$);
-        set(realtimeReadyCatchUpCommands$, commands);
-      },
-      { once: true },
-    );
-  },
-);
-
-export const catchUpRealtimeSubscribers$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    signal.throwIfAborted();
-    get(subscriberPokeTarget$).dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
-    await Promise.all(
-      [...get(realtimeReadyCatchUpCommands$)].map(async (callback$) => {
-        await set(callback$, signal);
-        signal.throwIfAborted();
-      }),
-    );
-    signal.throwIfAborted();
   },
 );
 
@@ -281,7 +213,6 @@ const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
 
 interface RealtimeSubscribeOptions {
   readonly onSubscribed?: () => void;
-  readonly runOnReconnect?: boolean;
   readonly runOnSubscribe?: boolean;
 }
 
@@ -300,7 +231,10 @@ interface RealtimePayloadLoopArgs {
     [unknown, AbortSignal]
   >;
   readonly includeMessage?: boolean;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly initializeCommand$?: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
   readonly options?: RealtimeSubscribeOptions;
 }
 
@@ -319,14 +253,16 @@ interface SetAblyPayloadLoopArgs {
     [unknown, AbortSignal]
   >;
   readonly includeMessage?: boolean;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly initializeCommand$?: Command<
+    Promise<boolean> | boolean,
+    [AbortSignal]
+  >;
   readonly options?: RealtimeSubscribeOptions;
 }
 
 interface RealtimePayloadLoopState {
   deferred: ReturnType<typeof createDeferredPromise<boolean>>;
   poked: boolean;
-  catchUpRequested: boolean;
   transientRetryCount: number;
   readonly pendingPayloads: unknown[];
 }
@@ -337,7 +273,6 @@ interface RealtimePayloadLoopIterationArgs {
     Promise<boolean> | boolean,
     [unknown, AbortSignal]
   >;
-  readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly pokeLoop: () => void;
 }
 
@@ -356,24 +291,13 @@ async function waitForTransientRetry(
 
 interface SubscribeChannelArgs {
   readonly channel: RealtimeSubscriptionChannel;
-  readonly listenForReconnect: boolean;
   readonly topic: string | null;
   readonly callback: ChannelCallback;
-  readonly poke: () => void;
-  readonly subscriberPokeTarget: EventTarget;
   readonly run: () => Promise<void>;
 }
 
 async function subscribeChannel(
-  {
-    channel,
-    listenForReconnect,
-    topic,
-    callback,
-    poke,
-    subscriberPokeTarget,
-    run,
-  }: SubscribeChannelArgs,
+  { channel, topic, callback, run }: SubscribeChannelArgs,
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted();
@@ -382,27 +306,17 @@ async function subscribeChannel(
     signal.removeEventListener("abort", unsubscribeChannel);
     channel.unsubscribe(topic, callback);
   };
-  const release = () => {
-    subscriberPokeTarget.removeEventListener(SUBSCRIBER_POKE_EVENT, poke);
-    unsubscribeChannel();
-  };
-
-  if (listenForReconnect) {
-    subscriberPokeTarget.addEventListener(SUBSCRIBER_POKE_EVENT, poke, {
-      signal,
-    });
-  }
   signal.addEventListener("abort", unsubscribeChannel, { once: true });
 
-  await onRejection(channel.subscribe(topic, callback), release);
+  await onRejection(channel.subscribe(topic, callback), unsubscribeChannel);
   signal.throwIfAborted();
-  await withCleanup(run(), release);
+  await withCleanup(run(), unsubscribeChannel);
   signal.throwIfAborted();
 }
 
 const runWithChannel$ = command(
   async (
-    { get, set },
+    { set },
     { channel, topic, loopCommand$, options }: RealtimeLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -413,7 +327,6 @@ const runWithChannel$ = command(
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
     let poked = false;
-    let catchUpRequested = false;
     let transientRetryCount = 0;
 
     const pokeLoop = () => {
@@ -423,11 +336,6 @@ const runWithChannel$ = command(
       poked = true;
       deferred.resolve(true);
     };
-    const requestCatchUp = () => {
-      catchUpRequested = true;
-      pokeLoop();
-    };
-
     const callback = (message: RealtimeMessage) => {
       if (signal.aborted) {
         return;
@@ -438,11 +346,8 @@ const runWithChannel$ = command(
     await subscribeChannel(
       {
         channel,
-        listenForReconnect: options?.runOnReconnect !== false,
         topic,
         callback,
-        poke: requestCatchUp,
-        subscriberPokeTarget: get(subscriberPokeTarget$),
         run: async () => {
           options?.onSubscribed?.();
           if (options?.runOnSubscribe) {
@@ -456,34 +361,10 @@ const runWithChannel$ = command(
               loopSignal.throwIfAborted();
               deferred = createDeferredPromise(loopSignal);
               poked = false;
-              const isCatchUp = catchUpRequested;
-              catchUpRequested = false;
-              const catchUpSpanId = isCatchUp
-                ? createConnectionDiagnosticSpanId()
-                : null;
-              const catchUpStartedAtMs = isCatchUp ? now() : null;
-              if (catchUpSpanId !== null) {
-                publishConnectionDiagnostic({
-                  details: { subscriptionKind: "topic" },
-                  event: "realtime.subscriber-catch-up",
-                  phase: "start",
-                  spanId: catchUpSpanId,
-                });
-              }
-
               // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
               try {
                 const done = await set(loopCommand$, loopSignal);
                 loopSignal.throwIfAborted();
-                if (catchUpSpanId !== null && catchUpStartedAtMs !== null) {
-                  publishConnectionDiagnostic({
-                    details: { subscriptionKind: "topic" },
-                    durationMs: now() - catchUpStartedAtMs,
-                    event: "realtime.subscriber-catch-up",
-                    phase: "finish",
-                    spanId: catchUpSpanId,
-                  });
-                }
                 transientRetryCount = 0;
                 if (done) {
                   return true;
@@ -491,18 +372,6 @@ const runWithChannel$ = command(
               } catch (error) {
                 throwIfAbort(error);
                 loopSignal.throwIfAborted();
-                if (catchUpSpanId !== null && catchUpStartedAtMs !== null) {
-                  publishConnectionDiagnostic({
-                    details: {
-                      ...connectionDiagnosticError(error),
-                      subscriptionKind: "topic",
-                    },
-                    durationMs: now() - catchUpStartedAtMs,
-                    event: "realtime.subscriber-catch-up",
-                    phase: "error",
-                    spanId: catchUpSpanId,
-                  });
-                }
                 if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
                   L.warn(
                     `giving up on ably notification after repeated handler failures`,
@@ -516,7 +385,6 @@ const runWithChannel$ = command(
                 await waitForTransientRetry(loopSignal, transientRetryCount);
                 loopSignal.throwIfAborted();
                 transientRetryCount++;
-                catchUpRequested = isCatchUp;
                 pokeLoop();
               }
               return false;
@@ -534,12 +402,7 @@ const runWithChannel$ = command(
 const runPayloadLoopIteration$ = command(
   async (
     { set },
-    {
-      state,
-      loopCommand$,
-      catchUpCommand$,
-      pokeLoop,
-    }: RealtimePayloadLoopIterationArgs,
+    { state, loopCommand$, pokeLoop }: RealtimePayloadLoopIterationArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
     await state.deferred.promise;
@@ -547,57 +410,7 @@ const runPayloadLoopIteration$ = command(
     state.deferred = createDeferredPromise(signal);
     state.poked = false;
 
-    const hasPayload = state.pendingPayloads.length > 0;
-    if (
-      !hasPayload &&
-      (!state.catchUpRequested || catchUpCommand$ === undefined)
-    ) {
-      return false;
-    }
-    if (!hasPayload && catchUpCommand$ !== undefined) {
-      state.catchUpRequested = false;
-      const catchUpSpanId = createConnectionDiagnosticSpanId();
-      const catchUpStartedAtMs = now();
-      publishConnectionDiagnostic({
-        details: { subscriptionKind: "payload" },
-        event: "realtime.subscriber-catch-up",
-        phase: "start",
-        spanId: catchUpSpanId,
-      });
-      const result = await settle(
-        (async () => {
-          return await set(catchUpCommand$, signal);
-        })(),
-        signal,
-      );
-      if (!result.ok) {
-        publishConnectionDiagnostic({
-          details: {
-            ...connectionDiagnosticError(result.error),
-            subscriptionKind: "payload",
-          },
-          durationMs: now() - catchUpStartedAtMs,
-          event: "realtime.subscriber-catch-up",
-          phase: "error",
-          spanId: catchUpSpanId,
-        });
-        L.warn(`ably catch-up failed`, result.error);
-        set(notifyRealtimeDegraded$);
-      } else {
-        publishConnectionDiagnostic({
-          details: { subscriptionKind: "payload" },
-          durationMs: now() - catchUpStartedAtMs,
-          event: "realtime.subscriber-catch-up",
-          phase: "finish",
-          spanId: catchUpSpanId,
-        });
-      }
-      if (result.ok && result.value) {
-        return true;
-      }
-      if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
-        pokeLoop();
-      }
+    if (state.pendingPayloads.length === 0) {
       return false;
     }
 
@@ -615,7 +428,7 @@ const runPayloadLoopIteration$ = command(
         state.pendingPayloads.shift();
         state.transientRetryCount = 0;
         set(notifyRealtimeDegraded$);
-        if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
+        if (state.pendingPayloads.length > 0) {
           pokeLoop();
         }
         return false;
@@ -632,7 +445,7 @@ const runPayloadLoopIteration$ = command(
     if (done) {
       return true;
     }
-    if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
+    if (state.pendingPayloads.length > 0) {
       pokeLoop();
     }
     return false;
@@ -641,7 +454,7 @@ const runPayloadLoopIteration$ = command(
 
 const runWithChannelPayload$ = command(
   async (
-    { get, set },
+    { set },
     args: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -650,7 +463,7 @@ const runWithChannelPayload$ = command(
       topic,
       loopCommand$,
       includeMessage,
-      catchUpCommand$,
+      initializeCommand$,
       options,
     } = args;
     signal.throwIfAborted();
@@ -658,7 +471,6 @@ const runWithChannelPayload$ = command(
     const state: RealtimePayloadLoopState = {
       deferred: createDeferredPromise(signal),
       poked: false,
-      catchUpRequested: false,
       transientRetryCount: 0,
       pendingPayloads: [],
     };
@@ -669,13 +481,6 @@ const runWithChannelPayload$ = command(
       }
       state.poked = true;
       state.deferred.resolve(true);
-    };
-
-    const requestCatchUp = () => {
-      if (catchUpCommand$ !== undefined) {
-        state.catchUpRequested = true;
-      }
-      pokeLoop();
     };
 
     const callback = (message: RealtimeMessage) => {
@@ -689,15 +494,27 @@ const runWithChannelPayload$ = command(
     await subscribeChannel(
       {
         channel,
-        listenForReconnect: options?.runOnReconnect !== false,
         topic,
         callback,
-        poke: requestCatchUp,
-        subscriberPokeTarget: get(subscriberPokeTarget$),
         run: async () => {
           options?.onSubscribed?.();
-          if (options?.runOnSubscribe) {
-            requestCatchUp();
+          if (initializeCommand$) {
+            const initialized = await settle(
+              (async () => {
+                return await set(initializeCommand$, signal);
+              })(),
+              signal,
+            );
+            signal.throwIfAborted();
+            if (!initialized.ok) {
+              L.warn(
+                "realtime subscription initialization failed",
+                initialized.error,
+              );
+              set(notifyRealtimeDegraded$);
+            } else if (initialized.value) {
+              return;
+            }
           }
           L.debug("subscribed to payload topic: " + subscriptionLabel);
 
@@ -708,7 +525,6 @@ const runWithChannelPayload$ = command(
                 {
                   state,
                   loopCommand$,
-                  catchUpCommand$,
                   pokeLoop,
                 },
                 loopSignal,
@@ -898,24 +714,16 @@ const connectRealtimeClient$ = command(
       event: "realtime.client",
       phase: "instant",
     });
-    let initialConnectionComplete = false;
-    const handleConnectionStateChange = onDomEventFn(
-      async (stateChange: ConnectionStateChange): Promise<void> => {
-        const update = realtimeConnectionUpdate(
-          stateChange,
-          initialConnectionComplete,
-        );
-        set(notifyRealtimeConnectionState$, update);
-        publishConnectionDiagnostic({
-          details: connectionStateDetails(stateChange),
-          event: "realtime.connection",
-          phase: "instant",
-        });
-        if (update.reconnected) {
-          await set(catchUpRealtimeSubscribers$, signal);
-        }
-      },
-    );
+    const handleConnectionStateChange = (
+      stateChange: ConnectionStateChange,
+    ): void => {
+      set(notifyRealtimeConnectionState$, stateChange.current);
+      publishConnectionDiagnostic({
+        details: connectionStateDetails(stateChange),
+        event: "realtime.connection",
+        phase: "instant",
+      });
+    };
     ably.connection.on(handleConnectionStateChange);
 
     let closed = false;
@@ -976,7 +784,6 @@ const connectRealtimeClient$ = command(
       phase: "finish",
       spanId: initialConnectionSpanId,
     });
-    initialConnectionComplete = true;
 
     const channels = connectedRealtimeChannels(
       ably,
@@ -1047,10 +854,7 @@ export const setupRealtime$ = command(
       ably: connected.ably,
       channels,
     });
-    set(notifyRealtimeConnectionState$, {
-      state: connected.ably.connection.state,
-      reconnected: false,
-    });
+    set(notifyRealtimeConnectionState$, connected.ably.connection.state);
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {
@@ -1158,7 +962,7 @@ export const setAblyPayloadLoop$ = command(
       topic,
       loopCommand$,
       includeMessage,
-      catchUpCommand$,
+      initializeCommand$,
       options,
     }: SetAblyPayloadLoopArgs,
     signal: AbortSignal,
@@ -1172,7 +976,7 @@ export const setAblyPayloadLoop$ = command(
         topic,
         loopCommand$,
         includeMessage,
-        catchUpCommand$,
+        initializeCommand$,
         options,
       },
       signal,

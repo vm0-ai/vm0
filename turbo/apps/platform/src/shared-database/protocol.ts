@@ -227,10 +227,6 @@ const invalidateMessageSchema = z
   })
   .strict();
 
-const reconnectMessageSchema = z
-  .object({ type: z.literal("reconnect") })
-  .strict();
-
 const getTokenRequestSchema = z
   .object({
     type: z.literal("get-token"),
@@ -305,7 +301,6 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   resultMessageSchema,
   errorMessageSchema,
   invalidateMessageSchema,
-  reconnectMessageSchema,
   getTokenRequestSchema,
   workerUnavailableMessageSchema,
   reloadComputedMessageSchema,

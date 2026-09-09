@@ -115,7 +115,7 @@ test("The Agents document title rejects a look-alike Okou host", async () => {
   expect(document.title).toBe("Agents | Okou");
 });
 
-test("Unread indicators recover after realtime reconnects", async () => {
+test("Unread indicators update after a thread-list event", async () => {
   let showUnread = false;
   const refreshed = context.mocks.deferred<void>();
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
@@ -154,7 +154,7 @@ test("Unread indicators recover after realtime reconnects", async () => {
   ).not.toBeInTheDocument();
 
   showUnread = true;
-  context.mocks.ably.triggerReconnect();
+  context.mocks.ably.trigger("threadListChanged");
   await refreshed.promise;
 
   await waitFor(() => {

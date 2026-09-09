@@ -625,13 +625,12 @@ test("Preserve the reading position when new messages are added", async () => {
     ).toBe(readingTop);
   });
 
-  conversation.add(completedTurn(12));
   act(() => {
-    context.mocks.ably.triggerReconnect();
+    conversation.publish(completedTurn(12));
   });
 
-  const recoveredAnswer = await screen.findByText("History answer 12");
-  expect(recoveredAnswer).toBeVisible();
+  const nextAnswer = await screen.findByText("History answer 12");
+  expect(nextAnswer).toBeVisible();
   await waitFor(() => {
     expect(
       anchorById(container, readingAnchorId).getBoundingClientRect().top,

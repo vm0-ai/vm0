@@ -138,7 +138,6 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
     chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
-    databaseReconnected: vi.fn<() => void>(),
     workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
