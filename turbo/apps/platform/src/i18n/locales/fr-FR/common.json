@@ -2915,6 +2915,7 @@
         "notConnected": "Aucun connecteur restant à connecter",
         "search": "Aucun connecteur correspondant à \"{{search}}\""
       },
+      "filterCategory": "Catégorie",
       "filters": {
         "agents": "Agents",
         "all": "Tous",
@@ -2923,18 +2924,19 @@
         "notConnected": "Non connecté",
         "status": "Statut"
       },
+      "filterWith": "Filtre : {{category}}",
       "iconUnavailable": "Icône du connecteur indisponible",
       "newConnector": "Nouveau connecteur",
       "noConnectorsAlt": "Aucun connecteur",
       "otherCategory": "Autre",
       "search": "Trouver des connecteurs",
       "shelf": {
-        "browseAll": "Tous",
         "moreCategories": "Autres catégories",
         "popular": "Populaires",
         "seeMore_one": "Voir {{names}} et {{count}} autre",
         "seeMore_many": "Voir {{names}} et {{count}} autres",
         "seeMore_other": "Voir {{names}} et {{count}} autres",
+        "top": "Connecteurs principaux",
         "yours": "Vos connecteurs"
       },
       "tabs": {

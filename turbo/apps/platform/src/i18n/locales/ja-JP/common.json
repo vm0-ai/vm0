@@ -2854,6 +2854,7 @@
         "notConnected": "接続するコネクタが残っていない",
         "search": "「{{search}}」に一致するコネクタはありません"
       },
+      "filterCategory": "カテゴリ",
       "filters": {
         "agents": "エージェント",
         "all": "すべて",
@@ -2862,17 +2863,18 @@
         "notConnected": "接続されていません",
         "status": "ステータス"
       },
+      "filterWith": "フィルタ: {{category}}",
       "iconUnavailable": "コネクタアイコンが使用不可",
       "newConnector": "新しいコネクタ",
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
       "search": "コネクターを検索",
       "shelf": {
-        "browseAll": "すべて",
         "moreCategories": "その他のカテゴリ",
         "popular": "人気",
         "seeMore_one": "{{names}} ほか {{count}} 件を見る",
         "seeMore_other": "{{names}} ほか {{count}} 件を見る",
+        "top": "人気のコネクタ",
         "yours": "あなたのコネクタ"
       },
       "tabs": {

@@ -2854,6 +2854,7 @@
         "notConnected": "Tidak ada konektor lagi untuk dihubungkan",
         "search": "Tidak ada konektor yang cocok dengan \"{{search}}\""
       },
+      "filterCategory": "Kategori",
       "filters": {
         "agents": "Agen",
         "all": "Semua",
@@ -2862,17 +2863,18 @@
         "notConnected": "Tidak terhubung",
         "status": "Status"
       },
+      "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Ikon konektor tidak tersedia",
       "newConnector": "Konektor baru",
       "noConnectorsAlt": "Tidak ada konektor",
       "otherCategory": "Lainnya",
       "search": "Cari konektor",
       "shelf": {
-        "browseAll": "Semua",
         "moreCategories": "Kategori lainnya",
         "popular": "Populer",
         "seeMore_one": "Lihat {{names}} dan {{count}} lainnya",
         "seeMore_other": "Lihat {{names}} dan {{count}} lainnya",
+        "top": "Konektor teratas",
         "yours": "Konektor Anda"
       },
       "tabs": {

@@ -2866,6 +2866,7 @@
         "notConnected": "Keine weiteren Integrationen verfügbar",
         "search": "Keine Integrationen passend zu „{{search}}“"
       },
+      "filterCategory": "Kategorie",
       "filters": {
         "agents": "Agenten",
         "all": "Alle",
@@ -2874,17 +2875,18 @@
         "notConnected": "Nicht verbunden",
         "status": "Status"
       },
+      "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Integrationssymbol nicht verfügbar",
       "newConnector": "Neue Integration",
       "noConnectorsAlt": "Keine Integrationen",
       "otherCategory": "Andere",
       "search": "Finden Sie Integrationen",
       "shelf": {
-        "browseAll": "Alle",
         "moreCategories": "Weitere Kategorien",
         "popular": "Beliebt",
         "seeMore_one": "{{names}} und {{count}} weiteren ansehen",
         "seeMore_other": "{{names}} und {{count}} weitere ansehen",
+        "top": "Top-Konnektoren",
         "yours": "Deine Konnektoren"
       },
       "tabs": {

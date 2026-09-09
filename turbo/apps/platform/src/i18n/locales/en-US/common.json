@@ -2858,6 +2858,7 @@
         "notConnected": "No connectors left to connect",
         "search": "No connectors matching \"{{search}}\""
       },
+      "filterCategory": "Category",
       "filters": {
         "agents": "Agents",
         "all": "All",
@@ -2866,17 +2867,18 @@
         "notConnected": "Not connected",
         "status": "Status"
       },
+      "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Connector icon unavailable",
       "newConnector": "New connector",
       "noConnectorsAlt": "No connectors",
       "otherCategory": "Other",
       "search": "Find connectors",
       "shelf": {
-        "browseAll": "All",
         "moreCategories": "More categories",
         "popular": "Popular",
         "seeMore_one": "See {{names}} and {{count}} more",
         "seeMore_other": "See {{names}} and {{count}} more",
+        "top": "Top connectors",
         "yours": "Your connectors"
       },
       "tabs": {

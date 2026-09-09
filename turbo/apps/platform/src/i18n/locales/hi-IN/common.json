@@ -2866,6 +2866,7 @@
         "notConnected": "कनेक्ट करने के लिए कोई कनेक्टर नहीं बचा",
         "search": "\"{{search}}\" से मेल खाने वाला कोई कनेक्टर नहीं"
       },
+      "filterCategory": "श्रेणी",
       "filters": {
         "agents": "एजेंटों",
         "all": "सभी",
@@ -2874,17 +2875,18 @@
         "notConnected": "जुड़े नहीं हैं",
         "status": "स्थिति"
       },
+      "filterWith": "फ़िल्टर: {{category}}",
       "iconUnavailable": "कनेक्टर आइकन अनुपलब्ध",
       "newConnector": "नया कनेक्टर",
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
       "otherCategory": "अन्य",
       "search": "कनेक्टर खोजें",
       "shelf": {
-        "browseAll": "सभी",
         "moreCategories": "और श्रेणियाँ",
         "popular": "लोकप्रिय",
         "seeMore_one": "{{names}} और {{count}} अन्य देखें",
         "seeMore_other": "{{names}} और {{count}} अन्य देखें",
+        "top": "शीर्ष कनेक्टर",
         "yours": "आपके कनेक्टर"
       },
       "tabs": {

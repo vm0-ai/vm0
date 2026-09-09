@@ -2854,6 +2854,7 @@
         "notConnected": "연결할 커넥터가 남아 있지 않습니다",
         "search": "\"{{search}}\"와(과) 일치하는 커넥터가 없습니다"
       },
+      "filterCategory": "카테고리",
       "filters": {
         "agents": "에이전트",
         "all": "전체",
@@ -2862,17 +2863,18 @@
         "notConnected": "연결 안 됨",
         "status": "상태"
       },
+      "filterWith": "필터: {{category}}",
       "iconUnavailable": "커넥터 아이콘을 사용할 수 없습니다",
       "newConnector": "새 커넥터",
       "noConnectorsAlt": "커넥터 없음",
       "otherCategory": "기타",
       "search": "커넥터 찾기",
       "shelf": {
-        "browseAll": "전체",
         "moreCategories": "다른 카테고리",
         "popular": "인기",
         "seeMore_one": "{{names}} 외 {{count}}개 보기",
         "seeMore_other": "{{names}} 외 {{count}}개 보기",
+        "top": "인기 커넥터",
         "yours": "내 커넥터"
       },
       "tabs": {

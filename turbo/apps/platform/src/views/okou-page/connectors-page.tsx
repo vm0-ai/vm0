@@ -20,10 +20,6 @@ import type {
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
 import { Tabs, TabsList, TabsTrigger } from "@okouai/ui/components/ui/tabs";
-import {
-  SegmentControl,
-  SegmentControlItem,
-} from "@okouai/ui/components/ui/segment-control";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
@@ -75,7 +71,6 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   ConnectorCard,
   connectorAccountSummaryStatus,
-  DIRECTORY_HAIRLINE,
   type ConnectorAccountSummaryStatus,
 } from "./components/settings/connector-card.tsx";
 import {
@@ -101,7 +96,6 @@ import {
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
-  cn,
   surfaceVariants,
   Button,
   DropdownMenu,
@@ -450,121 +444,178 @@ function ConnectorFilterDropdown({
 }
 
 /**
- * Status as its own control. The dropdown it replaces mixed three unrelated
- * dimensions — everything, connection status, and one entry per agent — into a
- * single mutually exclusive list that grew without bound as the account aged,
- * while category, the only dimension that organises four thousand connectors,
- * was not offered at all. Which agents may use a connector is answered on the
- * connector's own card, where the question is actually asked.
+ * The directory toolbar. Category is the only dimension that organises four
+ * thousand connectors, so it owns the filter; connection status does not need
+ * a control because the page opens on what is already connected.
  */
-function ConnectorStatusSegment({
-  value,
-  onChange,
+function ConnectorsDirectoryToolbar({
+  search,
+  setSearch,
+  categories,
+  categoryCounts,
+  categoryFilter,
+  setCategoryFilter,
+  isAdmin,
+  onCreateCustom,
 }: {
-  readonly value: ConnectorsConnectionFilter;
-  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+  readonly search: string;
+  readonly setSearch: (value: string) => void;
+  readonly categories: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly categoryFilter: string | null;
+  readonly setCategoryFilter: (category: string | null) => void;
+  readonly isAdmin: boolean;
+  readonly onCreateCustom: () => void;
 }) {
   const { t } = useTranslation();
-  const selected =
-    value.kind === "connected" || value.kind === "not-connected"
-      ? value.kind
-      : "all";
+  const active = categories.find((section) => {
+    return section.category === categoryFilter;
+  });
   return (
-    <SegmentControl
-      size="sm"
-      value={selected}
-      onValueChange={(next: string) => {
-        onChange(
-          next === "connected"
-            ? { kind: "connected" }
-            : next === "not-connected"
-              ? { kind: "not-connected" }
-              : { kind: "all" },
-        );
-      }}
-      aria-label={t(($) => {
-        return $.connectors.catalog.filters.status;
-      })}
-    >
-      <SegmentControlItem value="all">
-        {t(($) => {
-          return $.connectors.catalog.filters.all;
-        })}
-      </SegmentControlItem>
-      <SegmentControlItem value="connected">
-        {t(($) => {
-          return $.connectors.catalog.filters.connected;
-        })}
-      </SegmentControlItem>
-      <SegmentControlItem value="not-connected">
-        {t(($) => {
-          return $.connectors.catalog.filters.notConnected;
-        })}
-      </SegmentControlItem>
-    </SegmentControl>
+    <div className="flex flex-col gap-3">
+      {active && (
+        <ConnectorsBreadcrumb
+          label={active.label}
+          onBack={() => {
+            setCategoryFilter(null);
+          }}
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+            aria-hidden="true"
+          />
+          <Input
+            type="text"
+            placeholder={t(($) => {
+              return $.connectors.catalog.search;
+            })}
+            value={search}
+            onChange={(event) => {
+              return setSearch(event.target.value);
+            }}
+            className="pl-9 pr-3"
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0 gap-1.5"
+              aria-label={t(($) => {
+                return $.connectors.catalog.filters.aria;
+              })}
+            >
+              <Filter size={14} aria-hidden="true" />
+              <span className="max-w-[160px] truncate">
+                {t(
+                  ($) => {
+                    return $.connectors.catalog.filterWith;
+                  },
+                  {
+                    category:
+                      active?.menuLabel ??
+                      t(($) => {
+                        return $.connectors.catalog.filters.all;
+                      }),
+                  },
+                )}
+              </span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="max-h-[min(420px,var(--available-height))] w-64 overflow-y-auto"
+          >
+            <ConnectorFilterSectionLabel>
+              {t(($) => {
+                return $.connectors.catalog.filterCategory;
+              })}
+            </ConnectorFilterSectionLabel>
+            <ConnectorFilterOption
+              active={categoryFilter === null}
+              onSelect={() => {
+                setCategoryFilter(null);
+              }}
+            >
+              {t(($) => {
+                return $.connectors.catalog.filters.all;
+              })}
+            </ConnectorFilterOption>
+            {categories.map((section) => {
+              const total = categoryCounts?.[section.category];
+              return (
+                <ConnectorFilterOption
+                  key={section.category}
+                  active={categoryFilter === section.category}
+                  onSelect={() => {
+                    setCategoryFilter(section.category);
+                  }}
+                >
+                  <span className="min-w-0 truncate">{section.menuLabel}</span>
+                  {total !== undefined && (
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
+                      {total}
+                    </span>
+                  )}
+                </ConnectorFilterOption>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-2"
+            onClick={onCreateCustom}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {t(($) => {
+              return $.connectors.catalog.newConnector;
+            })}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
-/** Category chips: the browse dimension the filter dropdown never offered. */
-function ConnectorCategoryChipRow({
-  sections,
-  categoryCounts,
-  selected,
-  onSelect,
+/**
+ * A category is a place, not a filter chip: entering one has to leave a way
+ * back to the directory it was entered from.
+ */
+function ConnectorsBreadcrumb({
+  label,
+  onBack,
 }: {
-  readonly sections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
-  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
-  readonly selected: string | null;
-  readonly onSelect: (category: string | null) => void;
+  readonly label: string;
+  readonly onBack: () => void;
 }) {
   const { t } = useTranslation();
-  // Weight stays on the base class: the row is horizontal and every chip is
-  // auto-width, so a heavier selected label would shift every chip after it.
-  const chipClass = (active: boolean) => {
-    return cn(
-      "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-gray-50 px-2.5 text-xs font-medium transition-colors",
-      DIRECTORY_HAIRLINE,
-      active
-        ? "bg-state-selected text-foreground"
-        : "text-muted-foreground hover:text-foreground",
-    );
-  };
   return (
-    <div className="overflow-x-auto [scrollbar-width:none]">
-      <div className="flex w-max gap-1.5 pb-1">
-        <button
-          type="button"
-          data-connector-category-chip=""
-          className={chipClass(selected === null)}
-          onClick={() => {
-            onSelect(null);
-          }}
-        >
-          {t(($) => {
-            return $.connectors.catalog.shelf.browseAll;
-          })}
-        </button>
-        {sections.map((section) => {
-          return (
-            <button
-              key={section.category}
-              type="button"
-              data-connector-category-chip=""
-              className={chipClass(selected === section.category)}
-              onClick={() => {
-                onSelect(section.category);
-              }}
-            >
-              {section.menuLabel}
-              <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                {categoryCounts?.[section.category] ??
-                  section.connectors.length}
-              </span>
-            </button>
-          );
+    <nav className="flex items-center gap-1.5 text-sm">
+      <button
+        type="button"
+        className="cursor-pointer rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
+        onClick={onBack}
+      >
+        {t(($) => {
+          return $.connectors.catalog.title;
         })}
-      </div>
-    </div>
+      </button>
+      <span className="text-muted-foreground/50" aria-hidden="true">
+        /
+      </span>
+      <span aria-current="page" className="font-medium text-foreground">
+        {label}
+      </span>
+    </nav>
   );
 }
 
@@ -573,7 +624,6 @@ function ConnectorsToolbarActions({
   search,
   setSearch,
   showAccessManagement,
-  shelfEnabled,
   connectionFilter,
   agents,
   setConnectionFilter,
@@ -584,7 +634,6 @@ function ConnectorsToolbarActions({
   readonly search: string;
   readonly setSearch: (value: string) => void;
   readonly showAccessManagement: boolean;
-  readonly shelfEnabled: boolean;
   readonly connectionFilter: ConnectorsConnectionFilter;
   readonly agents: readonly AgentResponse[];
   readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
@@ -613,20 +662,13 @@ function ConnectorsToolbarActions({
           />
         </div>
       )}
-      {activeTab === "builtin" &&
-        showAccessManagement &&
-        (shelfEnabled ? (
-          <ConnectorStatusSegment
-            value={connectionFilter}
-            onChange={setConnectionFilter}
-          />
-        ) : (
-          <ConnectorFilterDropdown
-            value={connectionFilter}
-            agents={agents}
-            onChange={setConnectionFilter}
-          />
-        ))}
+      {activeTab === "builtin" && showAccessManagement && (
+        <ConnectorFilterDropdown
+          value={connectionFilter}
+          agents={agents}
+          onChange={setConnectionFilter}
+        />
+      )}
       {activeTab === "custom" && isAdmin && (
         <Button
           variant="outline"
@@ -712,15 +754,14 @@ function ConnectorShelfBrowse({
   connected,
   layout,
   renderCard,
-  onOpenCategory,
 }: {
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
-  readonly onOpenCategory: (category: string) => void;
 }) {
+  const onOpenCategory = useSet(setConnectorsCategoryFilter$);
   const { t } = useTranslation();
   return (
     <>
@@ -852,41 +893,35 @@ function buildConnectorsBrowseModel({
  */
 function ConnectorsBuiltinPanel({
   browse,
-  shelfEnabled,
   categoryFilter,
-  setCategoryFilter,
   renderCard,
   fallback,
+  customPanel,
 }: {
   readonly browse: ConnectorsBrowseModel;
-  readonly shelfEnabled: boolean;
   readonly categoryFilter: string | null;
-  readonly setCategoryFilter: (category: string | null) => void;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
   readonly fallback: ReactNode;
+  readonly customPanel: ReactNode;
 }) {
   return (
     <>
-      {shelfEnabled && (
-        <ConnectorCategoryChipRow
-          sections={browse.chipSections}
-          categoryCounts={browse.categoryCounts}
-          selected={categoryFilter}
-          onSelect={setCategoryFilter}
-        />
-      )}
       {browse.showShelves ? (
         <ConnectorShelfBrowse
           connected={browse.connected}
           layout={browse.layout}
           renderCard={renderCard}
-          onOpenCategory={setCategoryFilter}
         />
       ) : (
         fallback
       )}
+      {/* Custom connectors used to be a tab. They are one more thing the
+          directory offers, so they sit at the end of the directory rather
+          than behind a switch of surfaces -- but a chosen category is a
+          filtered view of the built-in catalog and does not include them. */}
+      {categoryFilter === null && customPanel}
     </>
   );
 }
@@ -1337,7 +1372,7 @@ export function ConnectorsPage() {
     categoryCounts: discoveryCategoryCounts(catalogStatusLoadable),
     otherCategoryLabel,
     headLabel: t(($) => {
-      return $.connectors.catalog.shelf.popular;
+      return $.connectors.catalog.shelf.top;
     }),
     search,
     categoryFilter,
@@ -1376,52 +1411,66 @@ export function ConnectorsPage() {
             )}
 
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
-            <div className="flex items-center justify-between gap-3">
-              <Tabs
-                value={activeTab}
-                onValueChange={(v) => {
-                  return setActiveTab(v === "custom" ? "custom" : "builtin");
-                }}
-              >
-                <TabsList>
-                  <TabsTrigger value="builtin">
-                    {t(($) => {
-                      return $.connectors.catalog.tabs.builtin;
-                    })}
-                  </TabsTrigger>
-                  <TabsTrigger value="custom">
-                    {t(($) => {
-                      return $.connectors.catalog.tabs.custom;
-                    })}
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <ConnectorsToolbarActions
-                activeTab={activeTab}
+            {shelfEnabled ? (
+              <ConnectorsDirectoryToolbar
                 search={search}
                 setSearch={setSearch}
-                shelfEnabled={shelfEnabled}
-                showAccessManagement
-                connectionFilter={connectionFilter}
-                agents={agents}
-                setConnectionFilter={setConnectionFilter}
+                categories={browse.chipSections}
+                categoryCounts={browse.categoryCounts}
+                categoryFilter={categoryFilter}
+                setCategoryFilter={setCategoryFilter}
                 isAdmin={isAdmin}
                 onCreateCustom={openCreateCustom}
               />
-            </div>
-
-            {activeTab === "builtin" && (
-              <ConnectorsBuiltinPanel
-                browse={browse}
-                shelfEnabled={shelfEnabled}
-                categoryFilter={categoryFilter}
-                setCategoryFilter={setCategoryFilter}
-                renderCard={renderCard}
-                fallback={builtinList}
-              />
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => {
+                    return setActiveTab(v === "custom" ? "custom" : "builtin");
+                  }}
+                >
+                  <TabsList>
+                    <TabsTrigger value="builtin">
+                      {t(($) => {
+                        return $.connectors.catalog.tabs.builtin;
+                      })}
+                    </TabsTrigger>
+                    <TabsTrigger value="custom">
+                      {t(($) => {
+                        return $.connectors.catalog.tabs.custom;
+                      })}
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <ConnectorsToolbarActions
+                  activeTab={activeTab}
+                  search={search}
+                  setSearch={setSearch}
+                  showAccessManagement
+                  connectionFilter={connectionFilter}
+                  agents={agents}
+                  setConnectionFilter={setConnectionFilter}
+                  isAdmin={isAdmin}
+                  onCreateCustom={openCreateCustom}
+                />
+              </div>
             )}
 
-            {activeTab === "custom" && <CustomConnectorsPanel />}
+            {shelfEnabled ? (
+              <ConnectorsBuiltinPanel
+                browse={browse}
+                categoryFilter={categoryFilter}
+                renderCard={renderCard}
+                fallback={builtinList}
+                customPanel={<CustomConnectorsPanel />}
+              />
+            ) : (
+              <>
+                {activeTab === "builtin" && builtinList}
+                {activeTab === "custom" && <CustomConnectorsPanel />}
+              </>
+            )}
           </div>
         </div>
       </main>

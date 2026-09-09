@@ -475,7 +475,7 @@ function shelfCatalog() {
   ];
 }
 
-test("Browse the catalog as shelves and filter it with category chips", async () => {
+test("Browse the catalog as shelves, then enter a category and come back", async () => {
   mockConnectors(context, []);
   mockPublicConnectorStatus(context, shelfCatalog(), undefined, {
     "communication-collaboration": 327,
@@ -495,15 +495,14 @@ test("Browse the catalog as shelves and filter it with category chips", async ()
     screen.getByTestId("connector-shelf-communication-collaboration"),
   ).toBeInTheDocument();
 
-  // The status dimension is its own control now, and the agent list is gone
-  // from the filter: which agents may use a connector is answered on its card.
-  expect(screen.getByRole("radio", { name: "Not connected" })).toBeVisible();
-  expect(screen.queryByLabelText("Filter connectors")).toBeNull();
+  // Status has no control: the page already opens on what is connected. The
+  // agent list is gone from the filter too -- that question is answered on the
+  // connector's own card.
+  expect(screen.queryByRole("radio", { name: "Not connected" })).toBeNull();
+  expect(screen.queryByLabelText("Filter connectors")).toBeInTheDocument();
 
-  const communicationChip = queryAllByRoleFast("button").find((element) => {
-    return element.textContent?.startsWith("Communication");
-  });
-  await click(communicationChip!);
+  // A category is a place: entering it filters the page and leaves a way back.
+  await click(screen.getByText("See Zendesk and 321 more"));
   await waitFor(() => {
     expect(locationSearch()).toContain("category=communication-collaboration");
   });
@@ -511,4 +510,15 @@ test("Browse the catalog as shelves and filter it with category chips", async ()
     screen.queryByTestId("connector-shelf-communication-collaboration"),
   ).toBeNull();
   expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+
+  const back = queryAllByRoleFast("button").find((element) => {
+    return element.textContent === "Connectors";
+  });
+  await click(back!);
+  await waitFor(() => {
+    expect(locationSearch()).not.toContain("category=");
+  });
+  expect(
+    screen.getByTestId("connector-shelf-communication-collaboration"),
+  ).toBeInTheDocument();
 });
