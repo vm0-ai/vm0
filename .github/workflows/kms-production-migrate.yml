@@ -1,4 +1,4 @@
-name: KMS Production Preflight
+name: KMS Production Migrate
 
 env:
   npm_config_audit: "false"
@@ -10,6 +10,15 @@ on:
         description: "Current production API deployment ID, recorded before approval"
         required: true
         type: string
+      max_rows:
+        description: "Maximum field values to scan in this bounded migration (1-100000)"
+        required: true
+        type: string
+        default: "1000"
+      cursor:
+        description: "Optional migration cursor from the previous sanitized migration.json"
+        type: string
+        default: ""
 
 concurrency:
   group: kms-production-operation-32264
@@ -19,10 +28,10 @@ permissions:
   contents: read
 
 jobs:
-  preflight:
+  migrate:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     environment: production
     permissions:
       contents: read
@@ -40,12 +49,15 @@ jobs:
           corepack enable pnpm
           pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
           command -v aws
-      - name: Verify target runtime, rollback reads, and all production ciphertext
+      - name: Verify runtime and rewrap a bounded production batch with the operator role
         working-directory: turbo/packages/db
         env:
-          KMS_OPERATION: verify
+          KMS_OPERATION: migrate
           EXPECTED_BACKUP_SHA256: 60d1500d90c83a8b40996c3e9e6fbb9453ffbf598a9ae1c670d38f60b340e9f8
           EXPECTED_DEPLOYMENT_ID: ${{ inputs.expected_deployment_id }}
+          MAX_ROWS: ${{ inputs.max_rows }}
+          CURSOR: ${{ inputs.cursor }}
+          KMS_MIGRATION_ROLE_ARN: ${{ vars.KMS_MIGRATION_ROLE_ARN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ""
@@ -60,7 +72,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: kms-production-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          name: kms-production-migration-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/kms-production-reports/*.json
           if-no-files-found: warn
           retention-days: 7

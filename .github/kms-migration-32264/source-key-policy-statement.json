@@ -1,0 +1,14 @@
+{
+  "Sid": "AllowGithubProductionKmsMigration32264",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264"
+  },
+  "Action": ["kms:Decrypt", "kms:ReEncryptFrom", "kms:ReEncryptTo"],
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "kms:EncryptionContext:purpose": "vm0-stored-secret"
+    }
+  }
+}

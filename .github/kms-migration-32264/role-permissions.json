@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RewrapAndVerifyOnlyProductionKeys",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:ReEncryptFrom", "kms:ReEncryptTo"],
+      "Resource": [
+        "arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f92a7a8",
+        "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:purpose": "vm0-stored-secret"
+        }
+      }
+    },
+    {
+      "Sid": "ReencryptNestedProductionPayloads",
+      "Effect": "Allow",
+      "Action": ["kms:GenerateDataKey"],
+      "Resource": "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947",
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:purpose": "vm0-stored-secret"
+        }
+      }
+    }
+  ]
+}
