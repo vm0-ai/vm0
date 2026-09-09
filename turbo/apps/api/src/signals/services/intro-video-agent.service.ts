@@ -737,11 +737,11 @@ const reconcileAgentSession$ = command(
       getHeyGenVideoAgentSession(internal.providerSessionId, apiKey, signal),
       signal,
     );
-    if (!sessionResult.ok || isHeyGenErrorResponse(sessionResult.value)) {
+    const session = sessionResult.ok ? sessionResult.value : null;
+    if (!session || isHeyGenErrorResponse(session)) {
       const message =
-        sessionResult.ok && isHeyGenErrorResponse(sessionResult.value)
-          ? sessionResult.value.body.error.message
-          : "Provider status is temporarily unavailable.";
+        session?.body.error.message ??
+        "Provider status is temporarily unavailable.";
       await set(
         mergeBuiltInGenerationJobInternal$,
         {
@@ -752,9 +752,12 @@ const reconcileAgentSession$ = command(
         },
         signal,
       );
-      return null;
+      // A session lookup can fail while its assigned video remains available.
+      // Keep invalid or mismatched session responses blocked.
+      return session?.body.error.code === "HEYGEN_BAD_RESPONSE"
+        ? null
+        : (videoId ?? null);
     }
-    const session = sessionResult.value;
     if (session.videoId && videoId && session.videoId !== videoId) {
       await set(
         mergeBuiltInGenerationJobInternal$,

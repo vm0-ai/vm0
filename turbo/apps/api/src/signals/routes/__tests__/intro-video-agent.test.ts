@@ -86,6 +86,7 @@ interface ProviderState {
   publicVoiceAvailable: boolean;
   voiceCatalogType: "public" | "private";
   submitStatus: number;
+  sessionLookupStatus: number | "network-error";
   sessionStatus: string;
   videoId: string | null;
   videoStatus: string;
@@ -196,6 +197,7 @@ function mockProvider(): ProviderState {
     publicVoiceAvailable: true,
     voiceCatalogType: "public",
     submitStatus: 200,
+    sessionLookupStatus: 200,
     sessionStatus: "thinking",
     videoId: null,
     videoStatus: "processing",
@@ -311,6 +313,17 @@ function mockProvider(): ProviderState {
       });
     }),
     http.get(`${HEYGEN_CREATE_URL}/${SESSION_ID}`, () => {
+      if (state.sessionLookupStatus === "network-error") {
+        return HttpResponse.error();
+      }
+      if (state.sessionLookupStatus !== 200) {
+        return HttpResponse.json(
+          {
+            error: { code: "resource_not_found", message: "Session not found" },
+          },
+          { status: state.sessionLookupStatus },
+        );
+      }
       return HttpResponse.json({
         data: {
           session_id: SESSION_ID,
@@ -749,6 +762,141 @@ describe("Managed Intro Video Agent", () => {
     expect(inaccessible.status).toBe(404);
     expect((await submit(other, body)).status).toBe(404);
     expect(provider.submissions).toHaveLength(1);
+  });
+
+  it.each([404, "network-error"] as const)(
+    "completes an assigned video once when session lookup returns %s",
+    async (sessionLookupStatus) => {
+      const f = await fixture();
+      const provider = mockProvider();
+      provider.videoId = VIDEO_ID;
+      provider.sessionLookupStatus = sessionLookupStatus;
+      const body = request();
+      expect((await submit(f, body)).status).toBe(202);
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        status: "running",
+        sessionId: SESSION_ID,
+        videoId: VIDEO_ID,
+      });
+      await expect(credits(f)).resolves.toBe(10_000);
+
+      provider.videoStatus = "completed";
+      const completed = await status(f, body.requestId);
+      expect(completed).toMatchObject({
+        status: "completed",
+        sessionId: SESSION_ID,
+        videoId: VIDEO_ID,
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+        durationSeconds: 61,
+        creditsCharged: 610,
+      });
+      expect(completed.url).toBeDefined();
+      expect(completed.url).not.toBe(VIDEO_URL);
+
+      const callback = provider.submissions[0]?.callback_url;
+      if (typeof callback !== "string") {
+        throw new Error("Expected a provider callback URL");
+      }
+      const callbackUrl = new URL(callback);
+      expect(
+        (
+          await app(f).request(`${callbackUrl.pathname}${callbackUrl.search}`, {
+            method: "POST",
+            body: "{}",
+          })
+        ).status,
+      ).toBe(200);
+      await flushWaitUntilForTest();
+      await expect(status(f, body.requestId)).resolves.toStrictEqual(completed);
+      expect(provider.submissions).toHaveLength(1);
+      expect(provider.videoDownloads).toBe(1);
+      await expect(credits(f)).resolves.toBe(9390);
+    },
+  );
+
+  it("waits for a video ID when session lookup is unavailable", async () => {
+    const f = await fixture();
+    const provider = mockProvider();
+    provider.sessionLookupStatus = 404;
+    const body = request();
+    expect((await submit(f, body)).status).toBe(202);
+    await expect(status(f, body.requestId)).resolves.toMatchObject({
+      status: "running",
+      sessionId: SESSION_ID,
+      videoId: null,
+      notice: expect.stringContaining("Session not found"),
+    });
+    expect(provider.videoDownloads).toBe(0);
+    await expect(credits(f)).resolves.toBe(10_000);
+
+    provider.sessionLookupStatus = 200;
+    provider.videoId = VIDEO_ID;
+    provider.sessionStatus = "completed";
+    provider.videoStatus = "completed";
+    await expect(status(f, body.requestId)).resolves.toMatchObject({
+      status: "completed",
+      videoId: VIDEO_ID,
+      creditsCharged: 610,
+    });
+    expect(provider.submissions).toHaveLength(1);
+    await expect(credits(f)).resolves.toBe(9390);
+  });
+
+  it("reports a failed assigned video when session lookup is unavailable", async () => {
+    const f = await fixture();
+    const provider = mockProvider();
+    provider.videoId = VIDEO_ID;
+    provider.sessionLookupStatus = 404;
+    const body = request();
+    expect((await submit(f, body)).status).toBe(202);
+    provider.videoStatus = "failed";
+    await expect(status(f, body.requestId)).resolves.toMatchObject({
+      status: "failed",
+      videoId: VIDEO_ID,
+      error: { code: "HEYGEN_GENERATION_FAILED" },
+    });
+    expect(provider.submissions).toHaveLength(1);
+    expect(provider.videoDownloads).toBe(0);
+    await expect(credits(f)).resolves.toBe(10_000);
+  });
+
+  it.each([
+    {
+      name: "conflicting session",
+      data: { session_id: "another-session", video_id: VIDEO_ID },
+      notice: "different Video Agent session",
+    },
+    {
+      name: "conflicting video",
+      data: { session_id: SESSION_ID, video_id: "another-video" },
+      notice: "different video for this session",
+    },
+    {
+      name: "malformed session",
+      data: { video_id: VIDEO_ID },
+      notice: "invalid Video Agent session",
+    },
+  ])("blocks completion for a $name response", async ({ data, notice }) => {
+    const f = await fixture();
+    const provider = mockProvider();
+    provider.videoId = VIDEO_ID;
+    const body = request();
+    expect((await submit(f, body)).status).toBe(202);
+    provider.videoStatus = "completed";
+    server.use(
+      http.get(`${HEYGEN_CREATE_URL}/${SESSION_ID}`, () => {
+        return HttpResponse.json({ data: { ...data, status: "completed" } });
+      }),
+    );
+    await expect(status(f, body.requestId)).resolves.toMatchObject({
+      status: "running",
+      videoId: VIDEO_ID,
+      notice: expect.stringContaining(notice),
+    });
+    expect(provider.submissions).toHaveLength(1);
+    expect(provider.videoDownloads).toBe(0);
+    await expect(credits(f)).resolves.toBe(10_000);
   });
 
   it.each([false, true])(
