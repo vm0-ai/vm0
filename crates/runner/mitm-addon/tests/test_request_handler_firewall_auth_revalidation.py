@@ -20,6 +20,7 @@ from tests.auth_base_forwarder_helpers import (
     fake_forwarder_upstream,
     forwarder_concurrency_harness,
 )
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_registry_with_cache
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
@@ -278,26 +279,17 @@ def _firewall_flow(
 
 
 def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
-    cache_entry_identity = auth.FirewallAuthCacheEntryIdentity()
     if auth_base:
-        return {
-            "headers": {},
-            "base": _RESOLVED_AUTH_BASE,
-            "resolved_secrets": ["WEBHOOK_URL"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-            "cache_entry_identity": cache_entry_identity,
-        }
-    return {
-        "headers": {"Authorization": _RESOLVED_AUTHORIZATION},
-        "query": {"managed": "resolved-for-old-authorization"},
-        "resolved_secrets": ["GITHUB_TOKEN"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-        "cache_entry_identity": cache_entry_identity,
-    }
+        return firewall_auth_response(
+            headers={},
+            base=_RESOLVED_AUTH_BASE,
+            resolved_secrets=["WEBHOOK_URL"],
+        )
+    return firewall_auth_response(
+        headers={"Authorization": _RESOLVED_AUTHORIZATION},
+        query={"managed": "resolved-for-old-authorization"},
+        resolved_secrets=["GITHUB_TOKEN"],
+    )
 
 
 def _assert_current_denial(flow: http.HTTPFlow, mutation: RegistryMutation) -> None:

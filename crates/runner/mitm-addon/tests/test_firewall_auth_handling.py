@@ -30,6 +30,7 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_auth_helpers import (
+    firewall_auth_response,
     firewall_auth_success,
     handle_firewall_request_without_upstream_admission,
 )
@@ -150,24 +151,6 @@ def _sandbox_info(
     return sandbox_info
 
 
-def _token_meta(
-    *,
-    headers: dict[str, str] | None = None,
-    resolved_secrets: list[str] | None = None,
-    refreshed_connectors: list[str] | None = None,
-    refreshed_secrets: list[str] | None = None,
-    cache_hit: bool = False,
-) -> dict:
-    return {
-        "headers": dict(headers or {}),
-        "resolved_secrets": list(resolved_secrets or []),
-        "refreshed_connectors": list(refreshed_connectors or []),
-        "refreshed_secrets": list(refreshed_secrets or []),
-        "cache_hit": cache_hit,
-        "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
-    }
-
-
 class TestHandleFirewallRequest:
     async def test_success_injects_headers_and_audit_metadata(
         self, real_flow, headers, mitm_ctx, tmp_path
@@ -181,7 +164,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, params={"owner": "octocat", "repo": "hello"})
-        token_meta = _token_meta(
+        token_meta = firewall_auth_response(
             headers={"Authorization": "Bearer real-token", "X-Custom": "value"},
             resolved_secrets=["GITHUB_TOKEN"],
         )
@@ -281,7 +264,7 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry(auth_config={})
         sandbox_info = _sandbox_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
-        token_meta = _token_meta(headers={})
+        token_meta = firewall_auth_response(headers={})
 
         get_firewall_headers = AsyncMock(return_value=token_meta)
 
@@ -496,7 +479,7 @@ class TestHandleFirewallRequest:
         )
         first_flow = _firewall_flow(real_flow, run_id="run-1")
         second_flow = _firewall_flow(real_flow, run_id="run-1")
-        mock_get_firewall_headers = AsyncMock(return_value=_token_meta())
+        mock_get_firewall_headers = AsyncMock(return_value=firewall_auth_response())
 
         with (
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
@@ -558,7 +541,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
-        token_meta = _token_meta(
+        token_meta = firewall_auth_response(
             headers={
                 "Connection": "Authorization, X-Injected",
                 "Host": "evil.example.com",
@@ -640,7 +623,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
-        token_meta = _token_meta(
+        token_meta = firewall_auth_response(
             headers={
                 "Host": "evil.example.com",
                 "X-Amz-Meta-Test": "trusted-meta",
@@ -704,7 +687,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
-        token_meta = _token_meta()
+        token_meta = firewall_auth_response()
         token_meta["aws_sigv4"] = resolved_aws_sigv4_credentials()
         get_firewall_headers = AsyncMock(return_value=token_meta)
 
@@ -742,7 +725,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
-        token_meta = _token_meta(headers={"Authorization": "Bearer managed-token"})
+        token_meta = firewall_auth_response(headers={"Authorization": "Bearer managed-token"})
         token_meta["query"] = {"api_key": "managed-query"}
         get_firewall_headers = AsyncMock(return_value=token_meta)
         revalidation_count = 0
@@ -804,7 +787,7 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry()
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
-        token_meta = _token_meta(headers={"Authorization": "Bearer token"})
+        token_meta = firewall_auth_response(headers={"Authorization": "Bearer token"})
         token_meta["base"] = "https://unexpected.example.com"
 
         with (
@@ -846,7 +829,7 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry()
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
-        token_meta = _token_meta(headers={"Authorization": "Bearer token"})
+        token_meta = firewall_auth_response(headers={"Authorization": "Bearer token"})
         if cache_entry_identity is None:
             token_meta.pop("cache_entry_identity")
         else:
@@ -914,7 +897,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="POST /", rel_path="/")
-        token_meta = _token_meta()
+        token_meta = firewall_auth_response()
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -961,7 +944,7 @@ class TestHandleFirewallRequest:
         )
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry)
-        token_meta = _token_meta(
+        token_meta = firewall_auth_response(
             headers={
                 **resolved_headers,
                 "Authorization": "Bearer real-token",
@@ -997,7 +980,7 @@ class TestHandleFirewallRequest:
         api_entry = _api_entry(api_id="run-1:0")
         sandbox_info = _sandbox_info(tmp_path)
         allow = _allow(api_entry, rule="GET /repos")
-        token_meta = _token_meta()
+        token_meta = firewall_auth_response()
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -1639,14 +1622,9 @@ class TestHandleFirewallRequest:
                 auth,
                 "get_firewall_headers",
                 AsyncMock(
-                    return_value={
-                        "headers": {"Auth": "tok"},
-                        "resolved_secrets": [],
-                        "refreshed_connectors": [],
-                        "refreshed_secrets": [],
-                        "cache_hit": False,
-                        "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
-                    }
+                    return_value=firewall_auth_response(
+                        headers={"Auth": "tok"},
+                    )
                 ),
             ),
             mitm_ctx(),

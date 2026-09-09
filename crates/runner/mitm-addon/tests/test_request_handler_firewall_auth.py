@@ -24,6 +24,7 @@ from tests.auth_state_helpers import (
     has_auth_state,
     require_cached_headers,
 )
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
@@ -471,15 +472,11 @@ async def test_custom_firewall_change_during_auth_discards_stale_credentials(
     async def resolve_auth(*_args, **_kwargs):
         auth_resolution_entered.set()
         await release_auth_resolution.wait()
-        return {
-            "headers": {"Authorization": "Bearer stale"},
-            "query": {},
-            "resolved_secrets": ["CUSTOM_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
-        }
+        return firewall_auth_response(
+            headers={"Authorization": "Bearer stale"},
+            query={},
+            resolved_secrets=["CUSTOM_TOKEN"],
+        )
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     request_task: asyncio.Task[None] | None = None
@@ -864,14 +861,9 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
     async def resolve_auth(*_args, **_kwargs):
         auth_resolution_entered.set()
         await release_auth_resolution.wait()
-        return {
-            "headers": {"Authorization": "Bearer resolved"},
-            "resolved_secrets": [],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-            "cache_entry_identity": auth_cache.FirewallAuthCacheEntryIdentity(),
-        }
+        return firewall_auth_response(
+            headers={"Authorization": "Bearer resolved"},
+        )
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     with (

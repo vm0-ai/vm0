@@ -11,6 +11,7 @@ import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_catalog_cache
 from tests.registry_helpers import write_multi_sandbox_registry
@@ -337,15 +338,11 @@ async def test_catalog_removal_during_auth_revalidation_discards_old_credentials
     async def resolve_auth(*_args, **_kwargs):
         auth_resolution_entered.set()
         await release_auth_resolution.wait()
-        return {
-            "headers": {"Authorization": "Bearer stale"},
-            "query": {},
-            "resolved_secrets": ["REMOVED_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-            "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-        }
+        return firewall_auth_response(
+            headers={"Authorization": "Bearer stale"},
+            query={},
+            resolved_secrets=["REMOVED_TOKEN"],
+        )
 
     auth_fetch = AsyncMock(side_effect=resolve_auth)
     monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
