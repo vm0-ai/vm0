@@ -8,6 +8,28 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.579.0](https://github.com/vm0-ai/vm0/compare/api-v1.578.0...api-v1.579.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** poll thinking summaries from thread subscriptions ([#33040](https://github.com/vm0-ai/vm0/issues/33040)) ([53d3529](https://github.com/vm0-ai/vm0/commit/53d3529abdb3adf52a464018fb1127f9149c391c))
+
+
+### Bug Fixes
+
+* **api:** record browser screenshot outcome metrics without warnings ([#33041](https://github.com/vm0-ai/vm0/issues/33041)) ([cd49667](https://github.com/vm0-ai/vm0/commit/cd496676846ef48e60a35426f48bc1404405a95e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+    * @okouai/core bumped to 8.648.0
+    * @okouai/db bumped to 1.250.1
+    * @okouai/pi-agent-runtime bumped to 1.24.9
+
 ## [1.578.0](https://github.com/vm0-ai/vm0/compare/api-v1.577.2...api-v1.578.0) (2026-09-09)
 
 

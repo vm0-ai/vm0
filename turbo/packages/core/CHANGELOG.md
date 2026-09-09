@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.648.0](https://github.com/vm0-ai/vm0/compare/core-v8.647.0...core-v8.648.0) (2026-09-09)
+
+
+### Features
+
+* **chat:** poll thinking summaries from thread subscriptions ([#33040](https://github.com/vm0-ai/vm0/issues/33040)) ([53d3529](https://github.com/vm0-ai/vm0/commit/53d3529abdb3adf52a464018fb1127f9149c391c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.0
+
 ## [8.647.0](https://github.com/vm0-ai/vm0/compare/core-v8.646.1...core-v8.647.0) (2026-09-09)
 
 
