@@ -242,7 +242,7 @@ test("A presentation suggestion inserts a canonical template and preserves the p
         PRESENTATION_TEMPLATE_PICKER_ITEMS[3]!.title
       );
     }),
-  ).toBe(false);
+  ).toBeFalsy();
   const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
   click(button(template.title, templates));
   await waitFor(() => {
