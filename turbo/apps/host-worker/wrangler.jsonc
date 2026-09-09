@@ -22,6 +22,10 @@
       "binding": "HOSTED_SITES_BUCKET",
       "bucket_name": "vm0-hosted-sites",
     },
+    {
+      "binding": "PRIVATE_ARTIFACTS_BUCKET",
+      "bucket_name": "user-artifact-private-prod",
+    },
   ],
   "env": {
     "test": {
@@ -39,6 +43,10 @@
         {
           "binding": "HOSTED_SITES_BUCKET",
           "bucket_name": "vm0-hosted-sites-dev",
+        },
+        {
+          "binding": "PRIVATE_ARTIFACTS_BUCKET",
+          "bucket_name": "user-artifact-private-dev",
         },
       ],
     },

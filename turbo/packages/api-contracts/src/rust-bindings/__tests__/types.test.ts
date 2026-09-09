@@ -84,6 +84,11 @@ const expectedBindings = [
     direction: "response",
   },
   {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV4",
+    direction: "response",
+  },
+  {
     rustModulePath: ["runners", "runs", "active_inputs", "reserve"],
     rustTypeName: "Response",
     direction: "response",

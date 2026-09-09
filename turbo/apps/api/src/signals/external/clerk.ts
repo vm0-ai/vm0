@@ -117,6 +117,7 @@ export interface ClerkOrganizationsApi {
   getOrganizationMembershipList(
     params: {
       organizationId: string;
+      userId?: string[];
       limit?: number;
       offset?: number;
     },
@@ -259,6 +260,10 @@ export function clerkReadUnavailable(
   error: unknown,
 ): ClerkReadUnavailable | null {
   return error instanceof ClerkReadUnavailableError ? error : null;
+}
+
+export function isClerkResourceNotFound(error: unknown): boolean {
+  return isClerkAPIResponseError(error) && error.status === 404;
 }
 
 interface ClerkRateLimitRetry {

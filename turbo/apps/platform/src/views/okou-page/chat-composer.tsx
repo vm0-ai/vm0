@@ -298,6 +298,7 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { ComposerVideoOptionsChip } from "./composer-video-options.tsx";
+import { ComposerPresentationOptions } from "./composer-presentation-options.tsx";
 import {
   localizedWorkflowTemplate,
   localizedWorkflowTemplateCategory,
@@ -10527,6 +10528,7 @@ function ComposerFooter({
                 the model picker: it configures the message being written,
                 not which model the composer points at. */}
             <ComposerVideoOptionsChip signals={signals} />
+            <ComposerPresentationOptions signals={signals} />
           </div>
           <div
             className={cn(

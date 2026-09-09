@@ -602,6 +602,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     );
   }
   const requests: { path: string; body: string; status: number }[] = [];
+  const proxyUsageBodies: string[] = [];
   let providerCount = 0;
   let commitCount = 0;
   let baseUrl = "";
@@ -627,33 +628,35 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
       response.destroy();
       return;
     }
-    // This harness runs the real CLI/Guest but has no runner proxy. Model the
-    // proxy's HTTP ingress from the same provider response that fills the
-    // child's journal, so the full boundary catches cross-writer double billing.
+    // This harness runs the real CLI/Guest but has no runner proxy. Model its
+    // canonical usage ingress from each observed provider response and retain
+    // the exact request so retries exercise the same idempotency keys.
     if (fault !== "provider" || providerCount === 0) {
+      const body = JSON.stringify({
+        runId,
+        events: [
+          { category: "tokens.input", quantity: 8 },
+          { category: "tokens.output", quantity: 5 },
+          { category: "tokens.cache_read", quantity: 2 },
+        ].map((entry) => {
+          return {
+            ...entry,
+            idempotencyKey: randomUUID(),
+            kind: "model",
+            provider: "gpt-5.6-terra",
+          };
+        }),
+      });
       const proxyUsage = await app.request("/api/webhooks/agent/usage-event", {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          runId,
-          events: [
-            { category: "tokens.input", quantity: 8 },
-            { category: "tokens.output", quantity: 5 },
-            { category: "tokens.cache_read", quantity: 2 },
-          ].map((entry) => {
-            return {
-              ...entry,
-              idempotencyKey: randomUUID(),
-              kind: "model",
-              provider: "gpt-5.6-terra",
-            };
-          }),
-        }),
+        body,
       });
       expect(proxyUsage.status).toBe(200);
+      proxyUsageBodies.push(body);
     }
     sse(response, providerCount++, fault === "provider");
     return;
@@ -686,7 +689,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
           response.end("unavailable");
           return;
         }
-        if (path.endsWith("/pi-memory-phase2/usage")) {
+        if (path === "/test/maintenance-completed") {
           if (fault === "revoked") {
             const replacement = randomUUID();
             await db()
@@ -701,10 +704,14 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
               runtime,
               "pi-launch-payload/maintenance-validation.json",
             );
-            // The HTTP usage boundary is after the real child exits, before Guest
-            // checkpoint preparation. This mutation never injects valid evidence.
+            // The fixture awaits this barrier after mounted validation and
+            // before exiting, so Guest has not started checkpoint preparation.
+            // This mutation never injects valid evidence.
             await writeFile(marker, "{}", { mode: 0o600 });
           }
+          response.writeHead(204);
+          response.end();
+          return;
         }
         const headers = new Headers();
         for (const [key, value] of Object.entries(request.headers)) {
@@ -812,7 +819,10 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     repo,
     "turbo/apps/cli/src/test/fixtures/pi-agent-loop-rpc-host.ts",
   );
-  const shim = `#!/bin/sh\nprintf '%s' "$$" > ${quote(join(root, "child.pid"))}\nexec ${[process.execPath, "--import", import.meta.resolve("tsx"), fixture, join(root, "agent"), join(root, "sessions"), memory].map(quote).join(" ")}\n`;
+  const completionBarrier = ["revoked", "invalid_marker"].includes(fault)
+    ? [`${baseUrl}/test/maintenance-completed`]
+    : [];
+  const shim = `#!/bin/sh\nprintf '%s' "$$" > ${quote(join(root, "child.pid"))}\nexec ${[process.execPath, "--import", import.meta.resolve("tsx"), fixture, join(root, "agent"), join(root, "sessions"), memory, ...completionBarrier].map(quote).join(" ")}\n`;
   await writeFile(join(bin, "npx"), shim, { mode: 0o700 });
   const payloadFile = join(runtime, "run-payload/payload.json");
   const userEnvFile = join(runtime, "user-env/env.json");
@@ -925,6 +935,7 @@ async function launch(fault: Fault, noDiff = false, cleanupMode?: CleanupMode) {
     usage,
     run,
     requests,
+    proxyUsageBodies,
     providerCount,
     objects,
     memory,
@@ -962,25 +973,22 @@ async function assertUsageReplay(
         }),
     ).toBeTruthy();
   }
-  const usage = run.requests.find((request) => {
-    return request.path.endsWith("/pi-memory-phase2/usage");
-  });
-  if (!usage) {
-    throw new Error("Missing actual private usage report");
-  }
+  expect(run.proxyUsageBodies).toHaveLength(billedResponses);
   for (let retry = 0; retry < 2; retry++) {
-    expect(
-      (
-        await run.app.request(usage.path, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${run.token}`,
-            "content-type": "application/json",
-          },
-          body: usage.body,
-        })
-      ).status,
-    ).toBe(200);
+    for (const body of run.proxyUsageBodies) {
+      expect(
+        (
+          await run.app.request("/api/webhooks/agent/usage-event", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${run.token}`,
+              "content-type": "application/json",
+            },
+            body,
+          })
+        ).status,
+      ).toBe(200);
+    }
   }
   const replayUsage = await db()
     .select()

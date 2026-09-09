@@ -36,6 +36,8 @@ pub enum ExecControlStatus {
     QueueFull = 0x07,
     /// Wire value `0x08`: the sink failed while processing or exchanging the request.
     SinkError = 0x08,
+    /// Wire value `0x09`: the connected control sink closed during request I/O.
+    SinkClosed = 0x09,
 }
 
 const EXEC_CONTROL_STATUS_DELIVERED: u8 = ExecControlStatus::Delivered as u8;
@@ -47,6 +49,7 @@ const EXEC_CONTROL_STATUS_SINK_UNAVAILABLE: u8 = ExecControlStatus::SinkUnavaila
 const EXEC_CONTROL_STATUS_SINK_TIMEOUT: u8 = ExecControlStatus::SinkTimeout as u8;
 const EXEC_CONTROL_STATUS_QUEUE_FULL: u8 = ExecControlStatus::QueueFull as u8;
 const EXEC_CONTROL_STATUS_SINK_ERROR: u8 = ExecControlStatus::SinkError as u8;
+const EXEC_CONTROL_STATUS_SINK_CLOSED: u8 = ExecControlStatus::SinkClosed as u8;
 
 /// Decoded exec_control payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +166,7 @@ fn status_to_wire(status: ExecControlStatus) -> u8 {
         ExecControlStatus::SinkTimeout => EXEC_CONTROL_STATUS_SINK_TIMEOUT,
         ExecControlStatus::QueueFull => EXEC_CONTROL_STATUS_QUEUE_FULL,
         ExecControlStatus::SinkError => EXEC_CONTROL_STATUS_SINK_ERROR,
+        ExecControlStatus::SinkClosed => EXEC_CONTROL_STATUS_SINK_CLOSED,
     }
 }
 
@@ -177,6 +181,7 @@ fn status_from_wire(value: u8) -> Result<ExecControlStatus, ProtocolError> {
         EXEC_CONTROL_STATUS_SINK_TIMEOUT => Ok(ExecControlStatus::SinkTimeout),
         EXEC_CONTROL_STATUS_QUEUE_FULL => Ok(ExecControlStatus::QueueFull),
         EXEC_CONTROL_STATUS_SINK_ERROR => Ok(ExecControlStatus::SinkError),
+        EXEC_CONTROL_STATUS_SINK_CLOSED => Ok(ExecControlStatus::SinkClosed),
         _ => Err(ProtocolError::InvalidPayload(
             "exec_control_result status invalid",
         )),

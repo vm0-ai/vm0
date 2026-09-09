@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.48.16](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.15...desktop-v0.48.16) (2026-09-09)
+
+
+### Bug Fixes
+
+* **desktop:** refresh cua application discovery ([#32807](https://github.com/vm0-ai/vm0/issues/32807)) ([4124c76](https://github.com/vm0-ai/vm0/commit/4124c769f0d72342d73b2806ace7bf73c0605962))
+* **naming:** refresh remaining desktop and developer copy ([#32823](https://github.com/vm0-ai/vm0/issues/32823)) ([2271fe9](https://github.com/vm0-ai/vm0/commit/2271fe947f4df8e4925fe5a3d1d6889a13c6b953))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.419.0
+
 ## [0.48.15](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.14...desktop-v0.48.15) (2026-09-09)
 
 

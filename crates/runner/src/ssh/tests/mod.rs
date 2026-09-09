@@ -1,5 +1,6 @@
 mod cache;
 mod credentials;
+mod framing;
 mod harness;
 mod lifecycle;
 mod proof;

@@ -63,20 +63,23 @@ pub fn parse_request(bytes: &[u8]) -> io::Result<Request> {
     Ok(request)
 }
 
-/// Read one request through EOF. After cancellation or failure, drop the stream.
+/// Read the first complete request frame without waiting for transport EOF.
+///
+/// A connection carries one operation: callers must dispatch at most once and
+/// then drop the stream after all handler work. Bytes after this frame are not
+/// part of the request and must never become another operation. Do not drain
+/// them: a guest may keep sending indefinitely. JSON inside the frame is strict.
+/// After cancellation or failure, drop the stream rather than resuming a frame.
 pub async fn read_request(reader: &mut (impl AsyncRead + Unpin)) -> io::Result<Request> {
     let bytes = read_frame(reader, MAX_REQUEST_BYTES)
         .await?
         .ok_or_else(|| invalid("missing RPC request"))?;
-    let request = parse_request(&bytes)?;
-    let mut trailing = [0u8; 1];
-    if reader.read(&mut trailing).await? != 0 {
-        return Err(invalid("trailing RPC request data"));
-    }
-    Ok(request)
+    parse_request(&bytes)
 }
 
-/// Write once; the caller half-closes its stream and never retries on failure.
+/// Write once and never retry on failure. The caller may half-close its stream,
+/// but only the frame length defines completion: Firecracker does not forward
+/// guest send-half shutdown as EOF on the host stream.
 pub async fn write_request(
     writer: &mut (impl AsyncWrite + Unpin),
     request: &Request,

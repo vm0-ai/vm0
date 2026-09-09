@@ -40,6 +40,48 @@ jobs:
           corepack enable pnpm
           pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
           command -v aws
+      - name: Create synthetic fixtures using the current production credentials
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/kms-canary"
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts prepare-old "$RUNNER_TEMP/kms-canary"
+      - name: Load the existing target production credentials
+        id: target
+        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534 # v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: prd_kms_migration_32264
+      - name: Verify target production runtime reads and writes
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.target.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.target.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ steps.target.outputs.SECRETS_KMS_KEY_ID }}
+        run: |
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-new "$RUNNER_TEMP/kms-canary"
+      - name: Verify rollback using the current production credentials
+        working-directory: turbo/packages/db
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ""
+          AWS_REGION: us-west-2
+          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
+        run: |
+          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
+          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-rollback "$RUNNER_TEMP/kms-canary"
       - name: Resolve the production database
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -92,52 +134,10 @@ jobs:
           args=()
           if [ -n "$CURSOR" ]; then args+=(--cursor "$CURSOR"); fi
           pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
-            --verify --batch-size 100 --max-rows 100000 \
+            --verify --verify-concurrency 8 --batch-size 100 --max-rows 1000000 \
             --source-key arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f92a7a8 \
             --target-key arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947 \
             --report-path "$RUNNER_TEMP/kms-production-inventory.json" "${args[@]}"
-      - name: Create synthetic fixtures using the current production credentials
-        working-directory: turbo/packages/db
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ""
-          AWS_REGION: us-west-2
-          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
-        run: |
-          mkdir -m 700 "$RUNNER_TEMP/kms-canary"
-          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
-          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts prepare-old "$RUNNER_TEMP/kms-canary"
-      - name: Load the existing target production credentials
-        id: target
-        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534 # v2.0.0
-        with:
-          auth-method: oidc
-          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
-          doppler-project: vm0
-          doppler-config: prd_kms_migration_32264
-      - name: Verify target production runtime reads and writes
-        working-directory: turbo/packages/db
-        env:
-          AWS_ACCESS_KEY_ID: ${{ steps.target.outputs.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ steps.target.outputs.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ""
-          AWS_REGION: us-west-2
-          SECRETS_KMS_KEY_ID: ${{ steps.target.outputs.SECRETS_KMS_KEY_ID }}
-        run: |
-          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
-          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-new "$RUNNER_TEMP/kms-canary"
-      - name: Verify rollback using the current production credentials
-        working-directory: turbo/packages/db
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ""
-          AWS_REGION: us-west-2
-          SECRETS_KMS_KEY_ID: ${{ secrets.SECRETS_KMS_KEY_ID }}
-        run: |
-          aws sts get-caller-identity > "$RUNNER_TEMP/kms-canary/identity.json"
-          pnpm exec tsx scripts/migrations/013-kms-account-rotation/runtime-canary.ts verify-rollback "$RUNNER_TEMP/kms-canary"
       - name: Retain sanitized inventory
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

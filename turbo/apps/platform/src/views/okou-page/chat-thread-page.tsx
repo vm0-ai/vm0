@@ -3922,7 +3922,7 @@ function RecommendedFollowupList({
   const { t } = useTranslation();
   const responsiveFollowupCards =
     useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
-  // Card rail only on actual mobile/touch text-entry devices, mirroring the
+  // Quick replies only on actual mobile/touch text-entry devices, mirroring the
   // composer auto-focus heuristic. A desktop window dragged narrow must still
   // render the flat list, so container width is not the deciding factor.
   const showFollowupCards =
@@ -3954,13 +3954,16 @@ function RecommendedFollowupList({
       aria-label={t(($) => {
         return $.chat.run.keepGoing;
       })}
+      // The layout is decided by the device, not by width, so it is not
+      // observable through a media query. Tests and e2e read this instead of
+      // the styling classes.
+      data-followup-layout={showFollowupCards ? "quick-replies" : "rows"}
       className={cn(
         // The flat list pulls out by the row buttons' own px-2 so its text
-        // aligns with the message column. Cards carry no such inner offset,
-        // so the rail must stay flush with the column and the composer.
-        showFollowupCards
-          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          : "-mx-2",
+        // aligns with the message column. Quick replies carry a deeper inner
+        // offset of their own, so the stack stays flush with the column and
+        // the composer instead of pulling out to meet it.
+        showFollowupCards ? "flex flex-col items-start gap-1.5" : "-mx-2",
       )}
     >
       {source.followups.map((followup, followupIndex) => {
@@ -3971,8 +3974,14 @@ function RecommendedFollowupList({
             title={followup.prompt}
             className={cn(
               "group flex text-left transition-colors",
+              // A quick reply hugs its own text so three suggestions read as
+              // one glanceable stack. `active:` rather than `hover:` carries
+              // the press: Tailwind gates `hover:` behind `(hover: hover)`,
+              // which is exactly the devices this branch never runs on. Rest
+              // already sits on the hover layer, so hover and press each take
+              // the next step up the ladder rather than starting from it.
               showFollowupCards
-                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--okou-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                ? "min-h-11 w-fit max-w-full items-center gap-1.5 rounded-[var(--okou-card-radius)] bg-state-hover px-4 py-2.5 hover:bg-state-selected active:bg-state-pressed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-8 w-full items-center gap-0 rounded-lg px-2 py-1 hover:bg-state-hover",
             )}
             onClick={() => {
@@ -3981,17 +3990,24 @@ function RecommendedFollowupList({
           >
             <span
               className={cn(
-                CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
                 "text-muted-foreground/70 transition-colors group-hover:text-foreground",
-                showFollowupCards && "hidden",
+                // A quick reply drops the 28px response rail, but keeps the
+                // icon for `generate`: mispicking one there costs a real
+                // generation rather than another message.
+                showFollowupCards
+                  ? "inline-flex shrink-0 items-center justify-center"
+                  : CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
+                showFollowupCards && followup.kind !== "generate" && "hidden",
               )}
             >
               <RecommendedFollowupIcon followup={followup} />
             </span>
             <span
               className={cn(
-                "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 group-hover:text-foreground",
-                showFollowupCards ? "text-foreground" : "text-muted-foreground",
+                "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground",
+                // Prompt length is unbounded server-side, so a runaway
+                // suggestion is clamped rather than allowed to grow the stack.
+                showFollowupCards && "line-clamp-3",
               )}
             >
               {followup.prompt}

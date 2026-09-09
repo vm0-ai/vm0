@@ -9,7 +9,7 @@ const MAX_GENERATED_TEXT_CHARS: usize = 12;
 const MAX_GENERATED_PAYLOAD_BYTES: usize = 64;
 const MAX_ARBITRARY_PAYLOAD_BYTES: usize = 512;
 
-const EXEC_CONTROL_STATUSES: [ExecControlStatus; 9] = [
+const EXEC_CONTROL_STATUSES: [ExecControlStatus; 10] = [
     ExecControlStatus::Delivered,
     ExecControlStatus::Inactive,
     ExecControlStatus::NonceMismatch,
@@ -19,6 +19,7 @@ const EXEC_CONTROL_STATUSES: [ExecControlStatus; 9] = [
     ExecControlStatus::SinkTimeout,
     ExecControlStatus::QueueFull,
     ExecControlStatus::SinkError,
+    ExecControlStatus::SinkClosed,
 ];
 
 #[derive(Debug, Clone)]

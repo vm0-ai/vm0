@@ -9,7 +9,7 @@ import {
   listCustomConnectors,
 } from "../../../lib/api/domains/connectors";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { getOkouAgentId } from "../../../lib/okou-env";
+import { resolveConnectorAgentId } from "../agent-context";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
 
@@ -33,13 +33,12 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
   readonly displayName: string;
   readonly authorizedIds: Set<string>;
 } | null> {
-  const resolvedAgentId = agentId ?? getOkouAgentId();
-  if (!resolvedAgentId) {
+  if (!agentId) {
     return null;
   }
   const [agent, grants] = await Promise.all([
-    getAgent(resolvedAgentId),
-    getAgentCustomConnectorGrants(resolvedAgentId),
+    getAgent(agentId),
+    getAgentCustomConnectorGrants(agentId),
   ]);
   return {
     agentId: agent.agentId,
@@ -56,12 +55,16 @@ const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List org custom connectors")
-  .option("--agent <id>", "Show per-agent authorization column")
+  .option(
+    "--agent <id>",
+    "Show per-agent authorization column (must match the current Agent inside a run)",
+  )
   .action(
     withErrorHandler(async (options: { agent?: string }) => {
+      const agentId = resolveConnectorAgentId(options.agent);
       const [connectors, agentCtx] = await Promise.all([
         listCustomConnectors(),
-        resolveCustomAgentContext(options.agent),
+        resolveCustomAgentContext(agentId),
       ]);
       const idWidth = Math.max(
         2,
@@ -108,13 +111,17 @@ const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a custom connector")
   .argument("<connector-id>", "Custom connector id")
-  .option("--agent <id>", "Show authorization state for the given agent")
+  .option(
+    "--agent <id>",
+    "Show authorization state for the given Agent (must match the current Agent inside a run)",
+  )
   .action(
     withErrorHandler(
       async (connectorId: string, options: { agent?: string }) => {
+        const agentId = resolveConnectorAgentId(options.agent);
         const [connector, agentCtx] = await Promise.all([
           getCustomConnector(connectorId),
-          resolveCustomAgentContext(options.agent),
+          resolveCustomAgentContext(agentId),
         ]);
         if (!connector) {
           throw new Error(`Custom connector not found: ${connectorId}`);

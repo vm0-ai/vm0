@@ -63,7 +63,6 @@ import {
   type PiMemoryPhase2PreparedResult,
   type PiMemoryPhase2ProviderUsage,
   type PiMemoryPhase2SelectedSnapshot,
-  type PiMemoryPhase2UsageEvent,
   type RunPiMemoryPhase2Consolidation,
 } from "./phase2-memory-types";
 import type {
@@ -127,7 +126,6 @@ export type {
   PiMemoryPhase2PreparedResult,
   PiMemoryPhase2ProviderUsage,
   PiMemoryPhase2SelectedSnapshot,
-  PiMemoryPhase2UsageEvent,
   RunPiMemoryPhase2Consolidation,
 };
 

@@ -1169,6 +1169,16 @@ async function apiFirstTurnModelConfig(
         executionContext.secretConnectorMap?.[binding.secretName];
       const metadata =
         executionContext.secretConnectorMetadataMap?.[binding.secretName];
+      if (
+        "schemaVersion" in modelConfig &&
+        modelConfig.schemaVersion === 4 &&
+        providerKey === "claude-code-oauth-token"
+      ) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Claude subscription credentials cannot be used by Pi",
+        );
+      }
       if (!value && providerKey && metadata) {
         const resolved = await settle(
           resolveModelProviderRuntimeSecretForApi({
@@ -1216,7 +1226,15 @@ async function recordApiFirstTurnUsage(
     billableFirewalls: activation.executionContext.billableFirewalls,
     modelUsageProvider: activation.executionContext.modelUsageProvider,
     piProvider: activation.executionContext.piModelConfig.provider,
-    requestedServiceTier: activation.executionContext.piModelConfig.serviceTier,
+    nativeModelConfig:
+      "schemaVersion" in activation.executionContext.piModelConfig &&
+      activation.executionContext.piModelConfig.schemaVersion === 4
+        ? activation.executionContext.piModelConfig
+        : undefined,
+    requestedServiceTier:
+      "serviceTier" in activation.executionContext.piModelConfig
+        ? activation.executionContext.piModelConfig.serviceTier
+        : undefined,
     turn,
   });
 }

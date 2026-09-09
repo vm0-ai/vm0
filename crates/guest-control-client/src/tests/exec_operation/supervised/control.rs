@@ -364,28 +364,43 @@ async fn supervised_exec_control_reports_guest_status_and_error() {
     } = start_control_supervised_exec_fixture("control-status").await;
     let start_seq = start.seq();
 
-    let status_task = tokio::spawn({
-        let control_handle = control_handle.clone();
-        async move {
-            control_handle
-                .control("status", b"payload", Duration::from_secs(5))
-                .await
-        }
-    });
-    let status_control = read_guest_message(&mut guest).await;
-    send_exec_control_result(
-        &mut guest,
-        status_control.seq,
-        start_seq,
-        control_nonce,
-        "status",
-        ExecControlStatus::QueueFull,
-        "queue full",
-    )
-    .await;
-    let err = status_task.await.unwrap().unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
-    assert_eq!(err.to_string(), "queue full");
+    for (status, diagnostic, error_kind, error_message) in [
+        (
+            ExecControlStatus::QueueFull,
+            "queue full",
+            io::ErrorKind::WouldBlock,
+            "queue full",
+        ),
+        (
+            ExecControlStatus::SinkClosed,
+            "",
+            io::ErrorKind::BrokenPipe,
+            "exec control sink closed",
+        ),
+    ] {
+        let status_task = tokio::spawn({
+            let control_handle = control_handle.clone();
+            async move {
+                control_handle
+                    .control("status", b"payload", Duration::from_secs(5))
+                    .await
+            }
+        });
+        let status_control = read_guest_message(&mut guest).await;
+        send_exec_control_result(
+            &mut guest,
+            status_control.seq,
+            start_seq,
+            control_nonce,
+            "status",
+            status,
+            diagnostic,
+        )
+        .await;
+        let err = status_task.await.unwrap().unwrap_err();
+        assert_eq!(err.kind(), error_kind);
+        assert_eq!(err.to_string(), error_message);
+    }
 
     let error_task = tokio::spawn({
         let control_handle = control_handle.clone();

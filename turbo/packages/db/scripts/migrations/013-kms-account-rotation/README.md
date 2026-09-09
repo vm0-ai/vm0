@@ -17,21 +17,22 @@ After this PR merges, manually run **KMS Production Preflight** on `main`.
 It uses the existing GitHub `production` environment's protected-branch and
 required-reviewer gates. PR branches cannot access that job.
 
-The job resolves the exact `production` branch in Neon project
+The job first uses the actual old production IAM user, the existing target
+credentials from Doppler `vm0/prd_kms_migration_32264`, and the old user again to
+verify synthetic envelope/legacy reads, target writes, rollback reads, and denial
+of old-key writes, test-key access, and the wrong encryption context. STS must
+identify the exact `vm0-kms-prod` user in each expected account. Only synthetic
+ciphertext fixtures are written locally and they are removed at the end.
+Credential verification finishes before the potentially long database scan.
+This canary checks production IAM cryptography; production application business
+flows still need verification after deployment.
+
+It then resolves the exact `production` branch in Neon project
 `hidden-lab-39609750`, verifies stored ciphertext with PostgreSQL read-only mode,
 and uploads a sanitized inventory with seven-day retention. KMS plaintext is
 used only in process memory for authentication checks and nested queue parsing;
 it is never logged, written to a report, or uploaded. JavaScript strings cannot
 be explicitly zeroed; plaintext byte buffers are cleared after use.
-
-It then uses the actual old production IAM user, the existing target credentials
-from Doppler `vm0/prd_kms_migration_32264`, and the old user again to verify
-synthetic envelope/legacy reads, target writes, rollback reads, and denial of
-old-key writes, test-key access, and the wrong encryption context. STS must
-identify the exact `vm0-kms-prod` user in each expected account. Only synthetic
-ciphertext fixtures are written locally and they are removed at the end.
-This canary checks production IAM cryptography; production application business
-flows still need verification after deployment.
 
 The workflow has no deployment, secret-update, or database-mutation step. It
 does not grant runtime users `ReEncrypt`. A migrate command must run separately
@@ -57,7 +58,7 @@ pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
 # Read-only verification: authenticate every envelope and inspect inner queue ciphertext.
 pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
   --source-key "$SOURCE_KMS_ARN" --target-key "$TARGET_KMS_ARN" \
-  --verify --max-rows 100000 --report-path ./verified.json
+  --verify --verify-concurrency 8 --max-rows 1000000 --report-path ./verified.json
 
 # Explicit mutation, using a complete, fresh verification report (at most 24 hours old).
 pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
@@ -66,8 +67,14 @@ pnpm exec tsx scripts/migrations/013-kms-account-rotation/backfill.ts \
   --report-path ./migration.json
 ```
 
-Default batch size is 100, maximum 500; default run limit is 5,000 field values,
-maximum 100,000. A report's `cursor` resumes after its last completed value:
+Default batch size is 100, maximum 500; default run limit is 5,000 field values.
+Verification allows up to 1,000,000 values; inventory and migration retain the
+100,000-value limit. `--verify-concurrency` runs 1–16 rows concurrently (default
+1); the production preflight uses 8. This option is rejected outside verification
+mode, and migration writes remain serial. Each bounded group finishes before its
+results are recorded in primary-key order. On failure, the checkpoint advances
+only through the successful prefix; later completed rows are verified again on
+resume. A report's `cursor` resumes after its last completed value:
 pass `--cursor '<cursor>'` with the same database, mode, keys, and manifest.
 Migration resumes also require the verified preflight. Reports checkpoint each
 page and before reporting a handled failure. An abrupt process kill can require

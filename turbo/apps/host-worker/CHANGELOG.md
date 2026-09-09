@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.3.0...host-worker-v1.4.0) (2026-09-09)
+
+
+### Features
+
+* **artifacts:** add explicit organization and public sharing ([#32721](https://github.com/vm0-ai/vm0/issues/32721)) ([0b1a54a](https://github.com/vm0-ai/vm0/commit/0b1a54a43889c361c4a47669923ca5c5c4d909bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.419.0
+
 ## [1.3.0](https://github.com/vm0-ai/vm0/compare/host-worker-v1.2.2...host-worker-v1.3.0) (2026-09-08)
 
 

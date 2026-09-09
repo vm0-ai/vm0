@@ -1,3 +1,7 @@
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { artifactSharingTarget } from "../../signals/artifact-sharing.ts";
+import { ArtifactShareMenu } from "./artifact-share-menu.tsx";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
   ChevronLeft,
@@ -49,7 +53,7 @@ import {
 } from "../../signals/okou-page/settings/connectors.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { copyAttachmentLinkToClipboard } from "./attachment-url.ts";
-import { useAttachmentShareUrl } from "./attachment-resource.ts";
+import { useAttachmentUrls } from "./attachment-resource.ts";
 import { shouldIgnoreImageArtifactNavigationKey } from "./artifact-image-navigation.ts";
 import type { ZoomableImageControls } from "./zoomable-image-canvas.tsx";
 
@@ -164,12 +168,29 @@ export function ArtifactShareButton({
   url: string;
 }) {
   const { t } = useTranslation();
-  const shareUrl = useAttachmentShareUrl(url);
+  const attachmentUrls = useAttachmentUrls(url);
+  const shareUrl = attachmentUrls?.shareUrl ?? null;
+  const features = useLastResolved(featureSwitch$);
   const label =
     ariaLabel ??
     t(($) => {
       return $.artifacts.actions.share;
     });
+  if (
+    attachmentUrls &&
+    shareUrl === null &&
+    features?.[FeatureSwitchKey.PrivateArtifacts] &&
+    artifactSharingTarget(url)
+  ) {
+    return (
+      <ArtifactShareMenu
+        url={url}
+        ariaLabel={label}
+        className={className}
+        iconSize={iconSize}
+      />
+    );
+  }
   if (shareUrl === null) {
     // Private artifacts have no public address. Keep the action hidden while
     // resolving, and until explicit publication provides a share URL.

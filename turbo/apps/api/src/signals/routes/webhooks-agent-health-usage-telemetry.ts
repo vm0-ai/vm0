@@ -276,7 +276,7 @@ const maintenanceUsage$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Existing Guest/commit-pinned CLI contexts still submit this journal. ACK
   // their validated private binding, but only usageEvent$ charges the provider
   // work. The proxy survives a killed child and also covers missing journals.
-  // Retire the journal reporters/endpoint under #32168 only after the last old
+  // Retire this ACK under #32788 only after the last old
   // producer's contexts drain: up to two hours queued, two hours executing,
   // and bounded finalization. New API + old Guest/CLI keeps the same response.
   return { status: 200 as const, body: { success: true } };

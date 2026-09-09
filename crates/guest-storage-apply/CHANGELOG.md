@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.72](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.71...guest-storage-apply-v0.23.72) (2026-09-09)
+
+
+### Performance Improvements
+
+* **guest-storage-apply:** index preserved paths during cleanup ([#32796](https://github.com/vm0-ai/vm0/issues/32796)) ([d899717](https://github.com/vm0-ai/vm0/commit/d899717bfb51e63e3f357933f375e485e3b32f75))
+
 ## [0.23.71](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.70...guest-storage-apply-v0.23.71) (2026-09-08)
 
 ## [0.23.70](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.69...guest-storage-apply-v0.23.70) (2026-09-08)

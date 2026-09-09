@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.19...app-worker-v1.6.0) (2026-09-09)
+
+
+### Features
+
+* **artifacts:** add explicit organization and public sharing ([#32721](https://github.com/vm0-ai/vm0/issues/32721)) ([0b1a54a](https://github.com/vm0-ai/vm0/commit/0b1a54a43889c361c4a47669923ca5c5c4d909bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.641.0
+
 ## [1.5.19](https://github.com/vm0-ai/vm0/compare/app-worker-v1.5.18...app-worker-v1.5.19) (2026-09-09)
 
 

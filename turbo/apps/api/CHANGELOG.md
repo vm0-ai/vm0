@@ -8,6 +8,32 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.574.0](https://github.com/vm0-ai/vm0/compare/api-v1.573.1...api-v1.574.0) (2026-09-09)
+
+
+### Features
+
+* **artifacts:** add explicit organization and public sharing ([#32721](https://github.com/vm0-ai/vm0/issues/32721)) ([0b1a54a](https://github.com/vm0-ai/vm0/commit/0b1a54a43889c361c4a47669923ca5c5c4d909bf))
+* **db:** archive and settle retired okou goals ([#32813](https://github.com/vm0-ai/vm0/issues/32813)) ([3e1544d](https://github.com/vm0-ai/vm0/commit/3e1544d55ac0dc54a1cdb21d6aee72d651a6808d))
+
+
+### Bug Fixes
+
+* **api:** silence expected terminal codex reconnect failures ([#32808](https://github.com/vm0-ai/vm0/issues/32808)) ([67a7f6b](https://github.com/vm0-ai/vm0/commit/67a7f6b4c380f1715f7a0319fdf7f2be2064d41b))
+* **api:** stop retrying expired aws sign-in refresh tokens ([#32806](https://github.com/vm0-ai/vm0/issues/32806)) ([7678fec](https://github.com/vm0-ai/vm0/commit/7678fec836b77198e5e9eda5ebe1995a1c6a1a70))
+* **naming:** refresh remaining desktop and developer copy ([#32823](https://github.com/vm0-ai/vm0/issues/32823)) ([2271fe9](https://github.com/vm0-ai/vm0/commit/2271fe947f4df8e4925fe5a3d1d6889a13c6b953))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.419.0
+    * @okouai/connectors bumped to 3.8.6
+    * @okouai/core bumped to 8.641.0
+    * @okouai/db bumped to 1.248.0
+    * @okouai/pi-agent-runtime bumped to 1.23.8
+
 ## [1.573.1](https://github.com/vm0-ai/vm0/compare/api-v1.573.0...api-v1.573.1) (2026-09-09)
 
 

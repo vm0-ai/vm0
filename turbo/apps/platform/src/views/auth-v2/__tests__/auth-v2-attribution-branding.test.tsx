@@ -161,7 +161,7 @@ async function completePasswordSignIn(): Promise<void> {
 
 test("Campaign attribution survives a switch from sign-in to sign-up", async () => {
   const path =
-    "/sign-in?gclid=click-123&utm_campaign=summer#/factor-one?step=code";
+    "/sign-in?gclid=click-123&utm_campaign=summer&okou_campaign_id=24220469665&okou_ad_group_id=123456#/factor-one?step=code";
   mockSignInResource({ status: "needs_identifier" });
   mockedClerk.clientSignInCreate.mockImplementation(() => {
     return moveSignInToAsync({
@@ -192,6 +192,8 @@ test("Campaign attribution survives a switch from sign-in to sign-up", async () 
   expect(completion.pathname).toBe("/onboarding");
   expect(completion.searchParams.get("gclid")).toBe("click-123");
   expect(completion.searchParams.get("utm_campaign")).toBe("summer");
+  expect(completion.searchParams.get("vm0_campaign_id")).toBe("24220469665");
+  expect(completion.searchParams.get("vm0_ad_group_id")).toBe("123456");
 
   click(signUp);
 

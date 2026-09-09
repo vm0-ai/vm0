@@ -161,6 +161,7 @@ pub(crate) struct LifecycleOverrideState {
     pub(crate) destroy_behaviors: Mutex<VecDeque<DestroyBehavior>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     pub(crate) park_calls: Mutex<u32>,
+    pub(crate) blank_park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
     pub(crate) unpark_calls: Mutex<u32>,
     /// Total terminal-only `unpark()` calls across all attached sandboxes.
@@ -957,6 +958,11 @@ impl MockSandboxOverrides {
     /// Total `park()` calls across all sandboxes built from this override set.
     pub fn park_call_count(&self) -> u32 {
         *self.lifecycle.park_calls.lock_ignoring_poison()
+    }
+
+    /// Total blank preparation park calls, also included in ordinary park counts.
+    pub fn blank_park_call_count(&self) -> u32 {
+        *self.lifecycle.blank_park_calls.lock_ignoring_poison()
     }
 
     /// Total `unpark()` calls across all sandboxes built from this override set.
