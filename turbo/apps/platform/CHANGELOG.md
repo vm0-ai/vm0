@@ -11,6 +11,22 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.882.2](https://github.com/vm0-ai/vm0/compare/app-v0.882.1...app-v0.882.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **auth:** keep Clerk V1 path navigation in app ([#33046](https://github.com/vm0-ai/vm0/issues/33046)) ([ecf8518](https://github.com/vm0-ai/vm0/commit/ecf8518d8e98964f594174ceab7186c3862a14f4))
+* **platform:** move mobile chat pin into menu ([#33048](https://github.com/vm0-ai/vm0/issues/33048)) ([28c0fcd](https://github.com/vm0-ai/vm0/commit/28c0fcd80102630cad15d7869c92875caf7714dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.424.1
+    * @okouai/core bumped to 8.648.2
+
 ## [0.882.1](https://github.com/vm0-ai/vm0/compare/app-v0.882.0...app-v0.882.1) (2026-09-09)
 
 
