@@ -2,7 +2,6 @@
   "version": 1,
   "issue": "https://github.com/vm0-ai/vm0/issues/32402",
   "owner": "bingjiez666",
-  "caseFile": "../e2e/playwright/style-migration/cases.json",
   "families": [
     {
       "id": "local-controls",
@@ -164,7 +163,7 @@
         "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx"
       ],
       "cases": ["preferences-light", "preferences-dark", "preferences-mobile"],
-      "status": "verified",
+      "status": "merged",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay",
@@ -179,7 +178,21 @@
           "commit": "beee41651324fb0563ecdfa635cbffdf68a07a5e"
         }
       ],
-      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843"
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/32843",
+      "mergeCommit": "afe297e93dea741a95527536db8f9c16a36110e6"
+    },
+    {
+      "id": "agent-tone-choices",
+      "family": "local-controls",
+      "tokens": ["okou-chip"],
+      "consumers": ["apps/platform/src/views/okou-page/settings-tab.tsx"],
+      "cases": ["tone-light", "tone-dark", "tone-mobile"],
+      "status": "planned",
+      "evidence": []
     }
+  ],
+  "caseFiles": [
+    "../e2e/playwright/style-migration/cases.json",
+    "../e2e/playwright/style-migration/tone-cases.json"
   ]
 }
