@@ -132,3 +132,46 @@ state and its temporary helpers in that later migration. The transition test
 stays until the deployed S5 contract completes and surviving history invariants
 are covered permanently, per [MIGRATIONS.md](../turbo/packages/db/MIGRATIONS.md).
 No elapsed waiting period replaces these gates.
+
+## Literal historical projection (#32834)
+
+The full objective is arbitrary historical text. A citation envelope, unmatched
+opener, inline code, fence, Unicode, or whitespace in that suffix is not assistant
+citation transport. The reader recognizes **only** the immutable 1094 format:
+`output.message`, null run/revoker/context/run-event coordinates, exactly one string
+`content` payload key, and the entire frozen notice with a valid UUID and the exact
+status-specific explanation. Unknown formats and actual assistant copies keep the
+ordinary citation filter. This support has no Goal lifecycle or lookup authority.
+Do not rewrite 1093/1094, hot events, snapshots, or append another archive.
+
+| Consumer                                 | Preservation boundary                                                                                                                                                                         |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Raw history, Platform hot/snapshot cache | `chatEventFromRow` uses the strict shared raw-source projection. Raw CLI files remain unchanged.                                                                                              |
+| SQL history consumers                    | `canonicalChatEventVisibleContent` carries provenance only in SELECT; `canonicalChatEventContent` retains its original text/null/regex expression for predicates and run-scoped consumers.    |
+| Snapshot history and user export         | `canonicalArchivedChatEventContent` uses the same strict raw-source projection, independently of receipts or Goal tables.                                                                     |
+| New shares and saved intact shares       | Hot and snapshot selection project first; the saved reader checks absence of run/group indices plus the complete frozen grammar before preserving already-projected text.                     |
+| Search projection/results                | Canonical projection preserves exact whitespace; the result reader checks null run ID plus full grammar before avoiding a second filter.                                                      |
+| Chat and public-share pages              | Identified runless archives use a text tree with preserved whitespace, without HTML/Markdown interpretation, generated closing tags, or action cards. Copy/export retain the original source. |
+
+The remaining SQL content callers are run-scoped callback/session/incomplete-context
+readers, run-bound initial-thinking readers, or input/control/followup validation.
+Their selections and text/null/regex predicates retain the previous behavior.
+Title/followup context selection uses the provenance-aware projection because its
+thread-wide query can include runless historical output. No callback, queue,
+notification, usage, budget, or native-runtime policy is changed.
+
+An old search projector can advance its watermark after stripping objective text.
+The bounded, idempotent [014 search recovery](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md)
+reads only receipt-addressed canonical history inside the authorized repair process
+and replaces only those derived search documents. Its default is read-only; its
+reports contain counts and opaque cursors, never objective text. This operational
+processing exception does not expand MaskDB's seven-field policy or authorize an
+objective census/export. The separate release owner must run and verify recovery
+after the repaired API serves and outgoing projectors finish, before controller S2
+acceptance and before S5 removes the repair inventory.
+
+Public shares are intentionally immutable copies. A previously stripped copy is
+not automatically changed or republished. Its owner can explicitly create a new
+share. This repair establishes that limitation with synthetic fixtures; no affected
+production public share inventory has been observed or claimed. Existing raw data
+remains lossless. Merge alone establishes neither controller acceptance nor release.

@@ -6,6 +6,7 @@ import type { CustomConnectorMcpResponse } from "@okouai/api-contracts/contracts
 import { server } from "../../../../mocks/server";
 import {
   customConnector,
+  customMcpConnector,
   stubAgentCustomConnectors,
   stubCustomConnectors,
 } from "../../../__tests__/helpers/custom-connectors";
@@ -21,11 +22,137 @@ describe("okou connector custom readers", () => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
+    for (const command of customConnectorCommand.commands) {
+      command.setOptionValue("agent", undefined);
+      command.setOptionValue("json", false);
+    }
   });
 
   afterEach(() => {
     consoleLog.mockClear();
     vi.unstubAllEnvs();
+    process.exitCode = undefined;
+  });
+
+  it("emits current org JSON with protocol and grants even from inside a run", async () => {
+    const connector = customConnector({
+      connectedAccountId: "55555555-5555-4555-8555-555555555555",
+    });
+    const mcp = customMcpConnector();
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    server.use(
+      stubCustomConnectors([connector, mcp]),
+      http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
+        return HttpResponse.json({
+          agentId: AGENT_ID,
+          ownerId: "owner-1",
+          description: null,
+          displayName: "Maya",
+          sound: null,
+          avatarUrl: null,
+        });
+      }),
+      stubAgentCustomConnectors([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]),
+    );
+    chalk.level = 3;
+    await customConnectorCommand.parseAsync(["node", "okou", "list", "--json"]);
+    const output = consoleLog.mock.calls.flat().join("\n");
+    const json: unknown = JSON.parse(output);
+    expect(json).toMatchObject({
+      context: "current",
+      agent: { agentId: AGENT_ID },
+      connectors: [
+        {
+          kind: "http",
+          connectorType: "custom-http",
+          target: { kind: "custom", customConnectorId: connector.id },
+          connectionId: connector.connectedAccountId,
+          connected: false,
+          authorized: true,
+        },
+        {
+          kind: "mcp",
+          connectorType: "custom-mcp",
+          target: { kind: "custom", customConnectorId: mcp.id },
+          authorized: false,
+        },
+      ],
+    });
+    expect(consoleLog).toHaveBeenCalledTimes(1);
+    expect(output).not.toContain("\u001b[");
+  });
+
+  it("returns an empty org inventory as JSON", async () => {
+    server.use(stubCustomConnectors([]));
+    await customConnectorCommand.parseAsync(["node", "okou", "list", "--json"]);
+    const json: unknown = JSON.parse(consoleLog.mock.calls.flat().join("\n"));
+    expect(json).toMatchObject({
+      context: "current",
+      agent: null,
+      connectors: [],
+    });
+  });
+
+  it.each([customConnector(), customMcpConnector()])(
+    "exposes $kind definition details through status JSON",
+    async (connector) => {
+      server.use(
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${connector.id}`,
+          () => {
+            return HttpResponse.json(connector);
+          },
+        ),
+      );
+      await customConnectorCommand.parseAsync([
+        "node",
+        "okou",
+        "status",
+        connector.id,
+        "--json",
+      ]);
+      const json: unknown = JSON.parse(consoleLog.mock.calls.flat().join("\n"));
+      expect(json).toMatchObject({
+        context: "current",
+        state: "available",
+        connector: {
+          ...connector,
+          connectorType: `custom-${connector.kind}`,
+          authorized: null,
+        },
+      });
+    },
+  );
+
+  it("preserves an unavailable definition's target and nonzero exit in JSON", async () => {
+    server.use(
+      http.get(
+        `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+        () => {
+          return HttpResponse.json(
+            { error: { code: "NOT_FOUND", message: "Not found" } },
+            { status: 404 },
+          );
+        },
+      ),
+    );
+    await customConnectorCommand.parseAsync([
+      "node",
+      "okou",
+      "status",
+      CONNECTOR_ID,
+      "--json",
+    ]);
+    const json: unknown = JSON.parse(consoleLog.mock.calls.flat().join("\n"));
+    expect(json).toMatchObject({
+      context: "current",
+      target: { kind: "custom", customConnectorId: CONNECTOR_ID },
+      state: "unavailable",
+      connector: null,
+    });
+    expect(process.exitCode).toBe(1);
   });
 
   it("renders tagged HTTP connectors in list output", async () => {
@@ -46,45 +173,75 @@ describe("okou connector custom readers", () => {
     expect(output).toContain("http");
   });
 
-  it("renders grant-based authorization for an agent", async () => {
-    const connector = customConnector();
-    server.use(
-      stubCustomConnectors([connector]),
-      http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
-        return HttpResponse.json({
-          agentId: AGENT_ID,
-          ownerId: "owner-1",
-          description: null,
-          displayName: "Maya",
-          sound: null,
-          avatarUrl: null,
-        });
-      }),
-      stubAgentCustomConnectors([
-        {
-          customConnectorId: connector.id,
-          permissionNames: ["chat:write"],
+  it.each([
+    { context: "non-run", runAgent: undefined, args: ["--agent", AGENT_ID] },
+    { context: "run with omitted selector", runAgent: AGENT_ID, args: [] },
+    {
+      context: "run with matching selector",
+      runAgent: AGENT_ID,
+      args: ["--agent", AGENT_ID],
+    },
+  ])(
+    "renders custom grants in list and status for $context",
+    async ({ runAgent, args }) => {
+      vi.stubEnv("OKOU_AGENT_ID", runAgent);
+      const connector = customConnector();
+      server.use(
+        stubCustomConnectors([connector]),
+        http.get(
+          `http://localhost:3000/api/custom-connectors/${CONNECTOR_ID}`,
+          () => {
+            return HttpResponse.json(connector);
+          },
+        ),
+        http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
+          return HttpResponse.json({
+            agentId: AGENT_ID,
+            ownerId: "owner-1",
+            description: null,
+            displayName: "Maya",
+            sound: null,
+            avatarUrl: null,
+          });
+        }),
+        stubAgentCustomConnectors([
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["chat:write"],
+          },
+        ]),
+      );
+
+      await customConnectorCommand.parseAsync([
+        "node",
+        "okou",
+        "list",
+        ...args,
+      ]);
+
+      const output = consoleLog.mock.calls.flat().join("\n");
+      expect(output).toContain("AUTHORIZED FOR Maya");
+      const connectorRow = (consoleLog.mock.calls.flat() as string[]).find(
+        (line) => {
+          return line.startsWith(connector.id);
         },
-      ]),
-    );
+      );
+      expect(connectorRow).toMatch(/✓$/u);
 
-    await customConnectorCommand.parseAsync([
-      "node",
-      "okou",
-      "list",
-      "--agent",
-      AGENT_ID,
-    ]);
+      consoleLog.mockClear();
+      await customConnectorCommand.parseAsync([
+        "node",
+        "okou",
+        "status",
+        CONNECTOR_ID,
+        ...args,
+      ]);
 
-    const output = consoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("AUTHORIZED FOR Maya");
-    const connectorRow = (consoleLog.mock.calls.flat() as string[]).find(
-      (line) => {
-        return line.startsWith(connector.id);
-      },
-    );
-    expect(connectorRow).toMatch(/✓$/u);
-  });
+      const status = consoleLog.mock.calls.flat().join("\n");
+      expect(status).toContain("Custom connector: Acme Search");
+      expect(status).toMatch(/Authorized:\s+yes/u);
+    },
+  );
 
   it("shows tagged HTTP routing details in status", async () => {
     const connector = customConnector();

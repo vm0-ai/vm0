@@ -4620,9 +4620,11 @@ function IllustrationTemplateGrid({
 function PptImportCard({
   signals,
   onImported,
+  compact = false,
 }: {
   signals: ComposerSignals;
   onImported: () => void;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
@@ -4640,6 +4642,7 @@ function PptImportCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "block aspect-video bg-muted/40 transition-colors duration-150 group-hover/tile:bg-muted/60 group-active/tile:bg-muted/80 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-ring",
+          compact && "bg-gray-50 group-hover/tile:bg-state-hover",
         )}
       >
         <Plus
@@ -4667,7 +4670,12 @@ function PptImportCard({
           }}
         />
       </span>
-      <span className={TEMPLATE_TILE_CAPTION}>
+      <span
+        className={cn(
+          TEMPLATE_TILE_CAPTION,
+          compact && "flex-col items-stretch gap-0.5",
+        )}
+      >
         <span className={TEMPLATE_TILE_NAME}>{label}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {t(($) => {
@@ -5794,6 +5802,134 @@ function useImportedPresentationTemplates(
   return useImportedPresentationTemplatePickerItems(signals).map((item) => {
     return item.template;
   });
+}
+
+function ComposerPresentationSuggestion({
+  title,
+  children,
+  onSelect,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="quiet"
+      className="group/tile block h-auto min-w-0 rounded-xl p-0 text-left font-normal hover:bg-gray-50"
+      onClick={onSelect}
+    >
+      <span
+        className={cn(
+          TEMPLATE_TILE_MEDIA,
+          TEMPLATE_TILE_RING,
+          "block aspect-video group-hover/tile:opacity-90",
+        )}
+      >
+        {children}
+      </span>
+      <span className={cn(TEMPLATE_TILE_CAPTION, "block")}>
+        <span className={cn(TEMPLATE_TILE_NAME, "block")} title={title}>
+          {title}
+        </span>
+      </span>
+    </Button>
+  );
+}
+
+export function ComposerPresentationRecommendations({
+  signals,
+}: {
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const picker = useComposerTemplatePicker(signals);
+  const imported = useImportedPresentationTemplatePickerItems(signals).slice(
+    0,
+    3,
+  );
+  const builtIn = PRESENTATION_TEMPLATE_PICKER_ITEMS.slice(
+    0,
+    3 - imported.length,
+  );
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
+  const setMode = useSet(signals.create.setMode$);
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.taskChips.presentationTemplates;
+      })}
+    >
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="quiet"
+          size="xs"
+          className="font-normal hover:bg-gray-50"
+          onClick={() => {
+            openTemplates({ kind: "insert", category: "slides" });
+          }}
+        >
+          {t(($) => {
+            return $.chat.taskChips.moreTemplates;
+          })}
+        </Button>
+      </div>
+      <div className="grid min-w-0 grid-cols-2 items-start gap-4 sm:grid-cols-4">
+        <PptImportCard
+          signals={signals}
+          compact
+          onImported={() => {
+            setMode(null);
+          }}
+        />
+        {imported.map(({ imageBuffers, template }) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={template.id}
+              title={template.title}
+              onSelect={() => {
+                picker.onChange(
+                  toImportedPresentationGenerationTemplate(template),
+                );
+              }}
+            >
+              <ImportedPptImage
+                imageSignals={imageBuffers.card}
+                label=""
+                loading="eager"
+                fetchPriority="high"
+                size={TEMPLATE_CARD_PREVIEW_SIZE}
+                placeholder={<ImageIcon size={24} aria-hidden />}
+                className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+        {builtIn.map((item) => {
+          return (
+            <ComposerPresentationSuggestion
+              key={item.slug}
+              title={item.title}
+              onSelect={() => {
+                picker.onChange(toPresentationGenerationTemplate(item));
+              }}
+            >
+              <img
+                src={presentationTemplateCardSlideImage(item, 0)}
+                alt=""
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            </ComposerPresentationSuggestion>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function PptTemplateGrid({

@@ -52,8 +52,6 @@ const SCROLL_EDGE_FADE =
 
 const SECTION_PREVIEW_LIMIT = 6;
 
-const KEYCAP = "rounded-md bg-gray-0 px-1.5 py-px";
-
 type UpdateDirectoryState = (patch: Partial<ComposerConnectorUiState>) => void;
 
 type RenderConnectorCard = (
@@ -281,13 +279,16 @@ function DirectoryCategoryChips({
   readonly onSelect: (category: string | null) => void;
 }) {
   const { t } = useTranslation();
+  // The row is horizontal and every chip is auto-width, so selection may not
+  // change a chip's metrics: a heavier selected label widens that chip and
+  // shifts every chip after it, one frame after the click. Weight stays
+  // constant and selection is carried by the fill and the ink, which is how
+  // SegmentControl already does it.
   const chipClass = (active: boolean) => {
     return cn(
-      "flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 text-xs whitespace-nowrap transition-colors",
+      "flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 text-xs font-medium whitespace-nowrap transition-colors",
       DIRECTORY_HAIRLINE,
-      active
-        ? "bg-state-selected font-medium text-foreground"
-        : "text-muted-foreground",
+      active ? "bg-state-selected text-foreground" : "text-muted-foreground",
     );
   };
   return (
@@ -295,6 +296,7 @@ function DirectoryCategoryChips({
       <div className="flex w-max gap-1.5 pb-1">
         <button
           type="button"
+          data-connector-category-chip=""
           className={chipClass(selected === null)}
           onClick={() => {
             onSelect(null);
@@ -309,6 +311,7 @@ function DirectoryCategoryChips({
             <button
               key={section.category}
               type="button"
+              data-connector-category-chip=""
               className={chipClass(selected === section.category)}
               onClick={() => {
                 onSelect(section.category);
@@ -583,32 +586,6 @@ function DirectoryToolbar({
   );
 }
 
-function DirectoryFooter() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex shrink-0 items-center gap-1.5 border-t border-border/50 bg-gray-50 px-6 py-2.5 text-xs text-muted-foreground">
-      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↑</span>
-      <span className={cn(KEYCAP, DIRECTORY_HAIRLINE)}>↓</span>
-      <span>
-        {t(($) => {
-          return $.chat.connectors.directory.keyMove;
-        })}
-      </span>
-      <span className={cn(KEYCAP, "ml-2", DIRECTORY_HAIRLINE)}>↵</span>
-      <span>
-        {t(($) => {
-          return $.chat.connectors.directory.keyOpen;
-        })}
-      </span>
-      <span className="ml-auto hidden sm:inline">
-        {t(($) => {
-          return $.chat.connectors.directory.matchedOn;
-        })}
-      </span>
-    </div>
-  );
-}
-
 function DirectoryBody({
   tab,
   loading,
@@ -730,7 +707,6 @@ function DirectoryBrowseView({
           onConnectCustom={onConnectCustom}
         />
       </div>
-      <DirectoryFooter />
     </>
   );
 }

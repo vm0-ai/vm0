@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { oomEvidenceSchema } from "@okouai/api-contracts/contracts/oom-evidence";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
@@ -2242,6 +2244,124 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         );
       }),
     ).toBeFalsy();
+  });
+
+  it("ingests bounded OOM evidence from the Rust wire fixture and rejects cross-run or forged payloads", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      `OOM evidence ${randomUUID()}`,
+    );
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    const evidence = oomEvidenceSchema.parse(fixture);
+    const ingested: unknown[][] = [];
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", `xaat-oom-${randomUUID()}`);
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-metrics/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected telemetry event array");
+          }
+          ingested.push(events);
+          return HttpResponse.json(successfulAxiomIngestStatus(events.length));
+        },
+      ),
+    );
+    const response = await api.requestAgentTelemetry(
+      { runId, oomEvidence: evidence },
+      headers,
+      [200],
+    );
+    expect(response.body).toMatchObject({
+      success: true,
+      oomEvidenceVersion: 1,
+    });
+    expect(ingested[0]).toContainEqual(
+      expect.objectContaining({
+        type: "guest_oom_incident",
+        runId,
+        userId: actor.userId,
+        operation_id: evidence.operation_id,
+        guest_boot_id: evidence.guest_boot_id,
+        _time: evidence.incidents[0]?.captured_at,
+        incident_id: evidence.incidents[0]?.id,
+        groups: evidence.incidents[0]?.groups,
+        kernel_events: evidence.incidents[0]?.kernel_events,
+        kernel_status: "available",
+        before_cleanup: true,
+        after_observation: true,
+      }),
+    );
+    expect(ingested[0]).toContainEqual(
+      expect.objectContaining({
+        type: "guest_memory_snapshot",
+        sampled_at: evidence.sampled_at,
+        groups: evidence.groups,
+      }),
+    );
+    await api.requestAgentTelemetry(
+      { runId: randomUUID(), oomEvidence: evidence },
+      headers,
+      [401],
+    );
+    for (const altered of [
+      { ...evidence, prompt: "must never enter telemetry" },
+      {
+        ...evidence,
+        incidents: Array.from({ length: 5 }, () => {
+          return evidence.incidents[0];
+        }),
+      },
+      { ...evidence, operation_id: randomUUID() },
+      {
+        ...evidence,
+        incidents: evidence.incidents.map((incident) => {
+          return {
+            ...incident,
+            kernel_events: incident.kernel_events.map((event) => {
+              return { ...event, source: "host" };
+            }),
+          };
+        }),
+      },
+    ]) {
+      await api.requestAgentTelemetryUnchecked(
+        { runId, oomEvidence: altered },
+        headers,
+        [400],
+      );
+    }
+    expect(ingested).toHaveLength(1);
+  });
+
+  it("does not acknowledge OOM evidence when the Axiom destination is unavailable", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      `OOM unavailable ${randomUUID()}`,
+    );
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
+    const response = await api.requestAgentTelemetry(
+      { runId, oomEvidence: oomEvidenceSchema.parse(fixture) },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({ success: true, id: runId });
   });
 
   it("projects only present control-path metric fields", async () => {

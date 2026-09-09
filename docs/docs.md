@@ -30,6 +30,8 @@ surface; the index does not replace their detailed rules.
 
 ## Specialized Guidance
 
+- [Connector inspection JSON](./connector-inspection-json.md): command output
+  contracts, current versus run evidence, account identity, and next actions.
 - [Platform lint boundaries](./platform-lint.md): current transport and lifecycle
   exceptions, polling policy, and retired configuration history.
 - [React commit analysis](./react-commit.md): measuring and attributing React

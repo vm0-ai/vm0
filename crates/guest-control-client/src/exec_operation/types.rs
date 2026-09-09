@@ -384,7 +384,7 @@ fn exec_control_status_error_kind(status: ExecControlStatus) -> io::ErrorKind {
         ExecControlStatus::SinkUnavailable => io::ErrorKind::NotConnected,
         ExecControlStatus::SinkTimeout => io::ErrorKind::TimedOut,
         ExecControlStatus::QueueFull => io::ErrorKind::WouldBlock,
-        ExecControlStatus::SinkError => io::ErrorKind::BrokenPipe,
+        ExecControlStatus::SinkError | ExecControlStatus::SinkClosed => io::ErrorKind::BrokenPipe,
     }
 }
 
@@ -399,5 +399,6 @@ fn default_exec_control_status_message(status: ExecControlStatus) -> &'static st
         ExecControlStatus::SinkTimeout => "exec control sink timed out",
         ExecControlStatus::QueueFull => "exec control queue is full",
         ExecControlStatus::SinkError => "exec control sink error",
+        ExecControlStatus::SinkClosed => "exec control sink closed",
     }
 }

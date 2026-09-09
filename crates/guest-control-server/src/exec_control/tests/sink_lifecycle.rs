@@ -7,7 +7,9 @@ use std::time::Duration;
 use guest_control_proto::{ExecControlStatus, MSG_EXEC_CONTROL_RESULT};
 
 use super::super::forward::forward_control_request;
-use super::super::sink::{ControlSinkInner, ControlSinkState, ControlStreamLockError};
+use super::super::sink::{
+    ControlSinkFailure, ControlSinkInner, ControlSinkState, ControlStreamLockError,
+};
 use super::super::{EXEC_REQUEST_TIMEOUT_DIAGNOSTIC, request_deadline};
 use super::support::{
     connected_sink, connected_stream_handle, guest_writer_pair, owned_control_request,
@@ -54,7 +56,7 @@ fn fail_does_not_wait_for_busy_control_stream_lock() {
     let worker = std::thread::spawn({
         let sink = Arc::clone(&sink);
         move || {
-            sink.fail("failed".to_owned());
+            sink.fail(ControlSinkFailure::Other("failed".to_owned()));
             done_tx.send(()).unwrap();
         }
     });
@@ -78,7 +80,7 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
 
-    sink.fail("failed".to_owned());
+    sink.fail(ControlSinkFailure::Other("failed".to_owned()));
 
     let error = match stream.lock_until(request_deadline(5000), &sink.active) {
         Ok(_) => panic!("failed sink should reject existing connected stream handles"),
@@ -86,7 +88,7 @@ fn failed_control_sink_rejects_existing_connected_stream_handle() {
     };
     assert!(matches!(
         error,
-        ControlStreamLockError::SinkError(message) if message == "failed"
+        ControlStreamLockError::SinkError(ControlSinkFailure::Other(message)) if message == "failed"
     ));
     drop(stream_guard);
 }
@@ -95,8 +97,8 @@ fn control_sink_failure_preserves_first_diagnostic() {
     let (sink, _peer) = connected_sink();
     let stream = connected_stream_handle(&sink);
 
-    sink.fail("first failure".to_owned());
-    sink.fail("second failure".to_owned());
+    sink.fail(ControlSinkFailure::Other("first failure".to_owned()));
+    sink.fail(ControlSinkFailure::Other("second failure".to_owned()));
 
     let error = match sink.wait_for_stream(request_deadline(5000)) {
         Ok(_) => panic!("failed sink should reject future stream lookups"),
@@ -113,7 +115,7 @@ fn control_sink_failure_preserves_first_diagnostic() {
     };
     assert!(matches!(
         error,
-        ControlStreamLockError::SinkError(message) if message == "first failure"
+        ControlStreamLockError::SinkError(ControlSinkFailure::Other(message)) if message == "first failure"
     ));
 }
 #[test]
@@ -125,6 +127,7 @@ fn queued_control_request_is_not_delivered_after_close() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
     let (writer, mut host) = guest_writer_pair();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -136,10 +139,19 @@ fn queued_control_request_is_not_delivered_after_close() {
                 owned_control_request(17, 9, 5000, "msg-after-close"),
                 writer,
             );
+            done_tx.send(()).unwrap();
         }
     });
 
+    assert!(
+        stream.wait_for_waiter(Duration::from_secs(1)),
+        "forwarder should enter the connected-stream wait before close"
+    );
     sink.close();
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("close should wake the queued forwarder before its request deadline");
+    worker.join().unwrap();
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
@@ -147,7 +159,6 @@ fn queued_control_request_is_not_delivered_after_close() {
     assert_eq!(status, ExecControlStatus::Inactive);
     assert_eq!(message_id, "msg-after-close");
     assert_eq!(diagnostic, "exec operation is not active");
-    worker.join().unwrap();
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
     drop(stream_guard);
 
@@ -166,6 +177,7 @@ fn queued_control_request_is_not_delivered_after_fail() {
         .lock_until(request_deadline(5000), &sink.active)
         .unwrap();
     let (writer, mut host) = guest_writer_pair();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
 
     let pending_slot = sink.reserve_pending_slot().unwrap();
     let worker = std::thread::spawn({
@@ -177,10 +189,19 @@ fn queued_control_request_is_not_delivered_after_fail() {
                 owned_control_request(23, 9, 5000, "msg-after-fail"),
                 writer,
             );
+            done_tx.send(()).unwrap();
         }
     });
 
-    sink.fail("failed".to_owned());
+    assert!(
+        stream.wait_for_waiter(Duration::from_secs(1)),
+        "forwarder should enter the connected-stream wait before failure"
+    );
+    sink.fail(ControlSinkFailure::Other("failed".to_owned()));
+    done_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("failure should wake the queued forwarder before its request deadline");
+    worker.join().unwrap();
 
     let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
     assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
@@ -188,7 +209,6 @@ fn queued_control_request_is_not_delivered_after_fail() {
     assert_eq!(status, ExecControlStatus::SinkError);
     assert_eq!(message_id, "msg-after-fail");
     assert_eq!(diagnostic, "failed");
-    worker.join().unwrap();
     assert_eq!(sink.pending.load(Ordering::Acquire), 0);
 
     let err = process_control_ipc::read_request(&mut peer).unwrap_err();

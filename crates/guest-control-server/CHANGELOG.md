@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.4...guest-control-server-v0.20.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* **guest:** preserve bounded oom evidence before cleanup ([#32845](https://github.com/vm0-ai/vm0/issues/32845)) ([075ccba](https://github.com/vm0-ai/vm0/commit/075ccbaaf8f90231687267218ef1e77d05771d3a))
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+
 ## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.3...guest-control-server-v0.20.4) (2026-09-08)
 
 

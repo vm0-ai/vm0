@@ -448,6 +448,7 @@ define_per_run_logs! {
     system_log => ("system-", ".log"),
     system_stream_log => ("system-stream-", ".log"),
     metrics_log => ("metrics-", ".jsonl"),
+    oom_evidence_log => ("oom-evidence-", ".json"),
     sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
 }
 
@@ -744,6 +745,7 @@ mod tests {
             lp.system_log(id),
             lp.system_stream_log(id),
             lp.metrics_log(id),
+            lp.oom_evidence_log(id),
             lp.sandbox_ops_log(id),
             lp.proxy_log(id),
         ];

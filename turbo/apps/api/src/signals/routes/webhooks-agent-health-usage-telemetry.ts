@@ -375,6 +375,7 @@ function telemetryMetricEvent(
     runId,
     userId,
     cpu: metric.cpu,
+    ...(metric.memory === undefined ? {} : { memory: metric.memory }),
     ...(metric.cpu_steal_percent === undefined
       ? {}
       : { cpu_steal_percent: metric.cpu_steal_percent }),
@@ -404,6 +405,50 @@ function telemetryMetricEvent(
       ? {}
       : { workload_cpu_throttled_usec: metric.workload_cpu_throttled_usec }),
   };
+}
+
+function telemetryOomEvents(
+  evidence: NonNullable<TelemetryBody["oomEvidence"]>,
+  runId: string,
+  userId: string,
+  sandboxId: string | undefined,
+): Record<string, unknown>[] {
+  const identity = {
+    runId: runId,
+    userId: userId,
+    sandboxId: sandboxId,
+    operation_id: evidence.operation_id,
+    guest_boot_id: evidence.guest_boot_id,
+    started_boottime_us: evidence.started_boottime_us,
+    kernel_cursor: evidence.kernel_cursor,
+    ingested_at: nowDate().toISOString(),
+    dropped_incidents: evidence.dropped_incidents,
+  };
+  return [
+    {
+      ...identity,
+      type: "guest_memory_snapshot",
+      _time: evidence.sampled_at,
+      sampled_at: evidence.sampled_at,
+      kernel_status: evidence.kernel_status,
+      groups: evidence.groups,
+    },
+    ...evidence.incidents.map((incident) => {
+      return {
+        ...identity,
+        type: "guest_oom_incident",
+        _time: incident.captured_at,
+        incident_id: incident.id,
+        captured_at: incident.captured_at,
+        reason: incident.reason,
+        after_observation: incident.after_observation,
+        before_cleanup: incident.before_cleanup,
+        kernel_status: incident.kernel_status,
+        kernel_events: incident.kernel_events,
+        groups: incident.groups,
+      };
+    }),
+  ];
 }
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
@@ -439,6 +484,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const telemetryBatches: {
     readonly dataset: string;
     readonly events: readonly Record<string, unknown>[];
+    readonly includesOomEvidence?: boolean;
   }[] = [];
 
   if (body.systemLog) {
@@ -464,6 +510,19 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     });
   }
 
+  if (body.oomEvidence) {
+    telemetryBatches.push({
+      includesOomEvidence: true,
+      dataset: getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
+      events: telemetryOomEvents(
+        body.oomEvidence,
+        body.runId,
+        auth.userId,
+        body.sandboxId,
+      ),
+    });
+  }
+
   if (body.networkLogs && body.networkLogs.length > 0) {
     telemetryBatches.push({
       dataset: getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
@@ -478,18 +537,23 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     });
   }
 
+  let oomEvidenceIngested = false;
   if (telemetryBatches.length > 0) {
-    await Promise.all(
+    const ingestionResults = await Promise.all(
       telemetryBatches.map(async (batch) => {
-        await ingestAxiomDirect(
+        const result = await ingestAxiomDirect(
           batch.dataset,
           batch.events,
           TELEMETRY_INGEST_TIMEOUT_MS,
           signal,
         );
+        return batch.includesOomEvidence === true && result.configured;
       }),
     );
     signal.throwIfAborted();
+    oomEvidenceIngested = ingestionResults.some((ingested) => {
+      return ingested;
+    });
   }
 
   if (body.sandboxOperations && body.sandboxOperations.length > 0) {
@@ -514,6 +578,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     body: {
       success: true,
       id: body.runId,
+      ...(oomEvidenceIngested ? { oomEvidenceVersion: 1 as const } : {}),
     },
   };
 });

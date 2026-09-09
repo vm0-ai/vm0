@@ -113,7 +113,11 @@ export function createComposerCreateSignals(
     },
   );
   const enabled$ = computed((get) => {
-    return get(featureSwitch$)[FeatureSwitchKey.ComposerCreateCommands];
+    const features = get(featureSwitch$);
+    return (
+      features[FeatureSwitchKey.ComposerCreateCommands] ||
+      features[FeatureSwitchKey.ComposerTaskChips]
+    );
   });
   const mode$ = computed((get) => {
     const mode = get(internalMode$);

@@ -4159,18 +4159,12 @@
     "apps/platform/src/views/okou-page/components/settings/sections/account-section.tsx": {
       "okou-border": 1
     },
-    "apps/platform/src/views/okou-page/components/settings/sections/chat-section.tsx": {
-      "okou-chip": 1
-    },
     "apps/platform/src/views/okou-page/components/settings/sections/credit-balance-section.tsx": {
       "okou-app": 1,
       "okou-border": 2
     },
     "apps/platform/src/views/okou-page/components/settings/sections/debug-section.tsx": {
       "okou-border": 1
-    },
-    "apps/platform/src/views/okou-page/components/settings/sections/preference-section.tsx": {
-      "okou-chip": 1
     },
     "apps/platform/src/views/okou-page/components/settings/settings-dialog.tsx": {
       "okou-app": 1,

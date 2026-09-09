@@ -141,6 +141,7 @@ fn process_control_outcome_label(outcome: &ProcessControlOutcome) -> &'static st
             ProcessControlGuestStatus::SinkTimeout => "guest_sink_timeout",
             ProcessControlGuestStatus::QueueFull => "guest_queue_full",
             ProcessControlGuestStatus::SinkError => "guest_sink_error",
+            ProcessControlGuestStatus::SinkClosed => "guest_sink_closed",
         },
         ProcessControlOutcome::GuestError(_) => "guest_error",
         ProcessControlOutcome::Failed {
@@ -1052,6 +1053,9 @@ impl FirecrackerSandbox {
             }
             guest_control_proto::ExecControlStatus::SinkError => {
                 ProcessControlGuestStatus::SinkError
+            }
+            guest_control_proto::ExecControlStatus::SinkClosed => {
+                ProcessControlGuestStatus::SinkClosed
             }
             guest_control_proto::ExecControlStatus::Delivered => {
                 return Err(io::Error::new(

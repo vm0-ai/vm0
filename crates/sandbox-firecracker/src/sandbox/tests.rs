@@ -3655,6 +3655,12 @@ async fn process_control_preserves_guest_statuses_and_legacy_errors() {
             io::ErrorKind::BrokenPipe,
             "exec control sink error",
         ),
+        (
+            ExecControlStatus::SinkClosed,
+            ProcessControlGuestStatus::SinkClosed,
+            io::ErrorKind::BrokenPipe,
+            "exec control sink closed",
+        ),
     ];
 
     for (index, (guest_status, status, error_kind, error_message)) in cases.into_iter().enumerate()

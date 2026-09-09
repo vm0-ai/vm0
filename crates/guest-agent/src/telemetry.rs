@@ -24,7 +24,7 @@ use serde_json::json;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
@@ -33,6 +33,91 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// Buffer size for the command channel. Only one flush is in flight at a
 /// time during cleanup, so a small bounded queue is plenty.
 const COMMAND_CHANNEL_CAPACITY: usize = 8;
+
+/// At most two two-second attempts for each changed incident set.
+const INCIDENT_ATTEMPTS: u8 = 2;
+const INCIDENT_UPLOAD_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Latest-value handoff to the existing uploader; there is no diagnostic queue.
+#[derive(Clone, Debug)]
+pub struct IncidentReporter {
+    tx: watch::Sender<Option<(guest_contracts::oom_evidence::OomEvidence, Option<String>)>>,
+    sandbox_id: Option<String>,
+}
+
+impl IncidentReporter {
+    /// Attach the Runner-owned sandbox identity from the launch configuration.
+    pub fn with_sandbox_id(mut self, sandbox_id: String) -> Self {
+        self.sandbox_id = Some(sandbox_id);
+        self
+    }
+
+    /// Retain the newest bounded incident set without blocking a producer.
+    pub fn record(&self, evidence: guest_contracts::oom_evidence::OomEvidence) {
+        if !evidence.incidents.is_empty() {
+            self.tx
+                .send_replace(Some((evidence, self.sandbox_id.clone())));
+        }
+    }
+}
+
+struct IncidentUploads {
+    rx: watch::Receiver<Option<(guest_contracts::oom_evidence::OomEvidence, Option<String>)>>,
+    last: Option<Vec<guest_contracts::oom_evidence::OomIncident>>,
+    path: String,
+}
+
+impl IncidentUploads {
+    async fn flush(&mut self, http: &HttpClient, run_id: &str) {
+        let Some((evidence, sandbox_id)) = self.rx.borrow_and_update().clone() else {
+            return;
+        };
+        if self.last.as_ref() == Some(&evidence.incidents) {
+            return;
+        }
+        self.last = Some(evidence.incidents.clone());
+        let Ok(encoded) = serde_json::to_vec(&evidence) else {
+            return;
+        };
+        if encoded.len() > guest_contracts::oom_evidence::MAX_EVIDENCE_BYTES {
+            return;
+        }
+        // Keep the bounded payload even after successful delivery. The Runner
+        // independently receives the same IDs from containment cleanup.
+        if paths::write_private(&self.path, &encoded).is_err() {
+            log_warn!(LOG_TAG, "OOM evidence local persistence unavailable");
+        }
+        let Ok(url) = http.telemetry_url() else {
+            return;
+        };
+        let mut payload = serde_json::Map::from_iter([
+            ("runId".into(), json!(run_id)),
+            ("oomEvidence".into(), json!(evidence)),
+        ]);
+        if let Some(sandbox_id) = sandbox_id {
+            payload.insert("sandboxId".into(), sandbox_id.into());
+        }
+        for _ in 0..INCIDENT_ATTEMPTS {
+            let result =
+                tokio::time::timeout(INCIDENT_UPLOAD_TIMEOUT, http.post_json(url, &payload, 1))
+                    .await;
+            // Old receivers strip unknown fields. A successful HTTP status alone
+            // must never acknowledge evidence they did not ingest.
+            if let Ok(Ok(Some(body))) = result
+                && body
+                    .get("oomEvidenceVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(1)
+            {
+                return;
+            }
+        }
+        log_warn!(
+            LOG_TAG,
+            "OOM evidence upload unacknowledged; bounded local evidence retained"
+        );
+    }
+}
 
 /// Log and position files owned by one telemetry uploader.
 #[derive(Clone)]
@@ -255,6 +340,7 @@ enum Cmd {
 pub struct Telemetry {
     tx: mpsc::Sender<Cmd>,
     handle: JoinHandle<()>,
+    incident_reporter: IncidentReporter,
 }
 
 impl Telemetry {
@@ -266,8 +352,26 @@ impl Telemetry {
         http: HttpClient,
     ) -> Self {
         let (tx, rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
-        let handle = tokio::spawn(run(rx, run_id, telemetry_paths, masker, http));
-        Self { tx, handle }
+        let (incident_tx, incident_rx) = watch::channel(None);
+        let incidents = IncidentUploads {
+            rx: incident_rx,
+            last: None,
+            path: format!("{}.oom-evidence.json", telemetry_paths.metrics_log_file),
+        };
+        let handle = tokio::spawn(run(rx, run_id, telemetry_paths, masker, http, incidents));
+        Self {
+            tx,
+            handle,
+            incident_reporter: IncidentReporter {
+                tx: incident_tx,
+                sandbox_id: None,
+            },
+        }
+    }
+
+    /// Nonblocking producer handle for prioritized incident payloads.
+    pub fn incident_reporter(&self) -> IncidentReporter {
+        self.incident_reporter.clone()
     }
 
     /// Spawn the uploader task using explicit guest runtime paths.
@@ -352,31 +456,8 @@ async fn run(
     telemetry_paths: TelemetryPaths,
     masker: Arc<SecretMasker>,
     http: HttpClient,
+    mut incidents: IncidentUploads,
 ) {
-    if !http.has_api() {
-        // Drain commands so callers don't block on `reply_rx`. Flushes
-        // are a no-op (no API to upload to); Shutdown ends the loop.
-        while let Some(cmd) = rx.recv().await {
-            match cmd {
-                Cmd::Flush { reply, .. } => {
-                    let _ = reply.send(Ok(FlushReport {
-                        uploaded: false,
-                        position_persisted: true,
-                    }));
-                }
-                Cmd::FinalFlushAndShutdown { reply } => {
-                    let _ = reply.send(Ok(FlushReport {
-                        uploaded: false,
-                        position_persisted: true,
-                    }));
-                    break;
-                }
-                Cmd::Shutdown => break,
-            }
-        }
-        return;
-    }
-
     let mut interval =
         tokio::time::interval(Duration::from_secs(constants::TELEMETRY_INTERVAL_SECS));
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -390,26 +471,58 @@ async fn run(
             biased;
             cmd = rx.recv() => match cmd {
                 Some(Cmd::Flush { mode, reply }) => {
-                    let result = upload_telemetry(&http, &masker, &run_id, &telemetry_paths, mode).await;
+                    let result = upload_with_incidents(&http, &masker, &run_id, &telemetry_paths, mode, &mut incidents).await;
                     let _ = reply.send(result);
                 }
                 Some(Cmd::FinalFlushAndShutdown { reply }) => {
-                    let result = upload_telemetry(
+                    let result = upload_with_incidents(
                         &http,
                         &masker,
                         &run_id,
                         &telemetry_paths,
                         UploadMode::Final,
+                        &mut incidents,
                     )
                     .await;
                     let _ = reply.send(result);
                     break;
                 }
-                Some(Cmd::Shutdown) | None => break,
+                Some(Cmd::Shutdown) | None => { incidents.flush(&http, &run_id).await; break; },
             },
-            _ = interval.tick() => {
-                let _ = upload_telemetry(&http, &masker, &run_id, &telemetry_paths, UploadMode::Live).await;
+            result = incidents.rx.changed() => {
+                if result.is_ok() { incidents.flush(&http, &run_id).await; }
             }
+            _ = interval.tick() => {
+                let _ = upload_with_incidents(&http, &masker, &run_id, &telemetry_paths, UploadMode::Live, &mut incidents).await;
+            }
+        }
+    }
+}
+
+async fn upload_with_incidents(
+    http: &HttpClient,
+    masker: &SecretMasker,
+    run_id: &str,
+    paths: &TelemetryPaths,
+    mode: UploadMode,
+    incidents: &mut IncidentUploads,
+) -> Result<FlushReport, AgentError> {
+    incidents.flush(http, run_id).await;
+    if !http.has_api() {
+        return Ok(FlushReport {
+            uploaded: false,
+            position_persisted: true,
+        });
+    }
+    let upload = upload_telemetry(http, masker, run_id, paths, mode);
+    tokio::pin!(upload);
+    loop {
+        tokio::select! {
+            biased;
+            result = incidents.rx.changed() => {
+                if result.is_ok() { incidents.flush(http, run_id).await; }
+            }
+            result = &mut upload => return result,
         }
     }
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.40.6](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.5...sandbox-firecracker-v0.40.6) (2026-09-09)
+
+
+### Bug Fixes
+
+* **rpc:** dispatch complete request frames without waiting for eof ([#32821](https://github.com/vm0-ai/vm0/issues/32821)) ([cb025d6](https://github.com/vm0-ai/vm0/commit/cb025d643f9348b2f2a5f8ebc2725fb353c1524f))
+* **runner:** classify recovered cooperative cancellation races ([#32812](https://github.com/vm0-ai/vm0/issues/32812)) ([4e6a603](https://github.com/vm0-ai/vm0/commit/4e6a603da4241cfcb81e6329c91df828696ce89f))
+* **runner:** defer blank memory reclamation until agent readiness ([#32824](https://github.com/vm0-ai/vm0/issues/32824)) ([29040ac](https://github.com/vm0-ai/vm0/commit/29040ac3b52f14bfb415bc5eeb0adcb7383b17d5))
+
+
+### Documentation
+
+* **rust:** correct codex snapshot prewarm runtime claims ([#32850](https://github.com/vm0-ai/vm0/issues/32850)) ([ededc02](https://github.com/vm0-ai/vm0/commit/ededc0210e5c4b55e6bb03c75060d03d41091111))
+
 ## [0.40.5](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.40.4...sandbox-firecracker-v0.40.5) (2026-09-09)
 
 
