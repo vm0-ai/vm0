@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Inventory only, register and verify, or independently verify"
+        description: "Inventory, backfill then independently verify, or verify only"
         type: choice
         options: [dry-run, migrate, verify]
         default: dry-run
@@ -155,11 +155,23 @@ jobs:
             --concurrency "$REGISTRATION_CONCURRENCY" \
             --report public-artifact-registration.json
 
+          # A separate read-only process verifies fresh storage and DB state.
+          # Preserve the backfill report even if this independent pass fails.
+          if [ "$REGISTRATION_MODE" = migrate ]; then
+            pnpm exec tsx scripts/migrations/014-public-artifact-registration/backfill.ts \
+              --verify \
+              --max-objects "$REGISTRATION_LIMIT" \
+              --concurrency "$REGISTRATION_CONCURRENCY" \
+              --report public-artifact-registration-verification.json
+          fi
+
       - name: Preserve registration evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: public-artifact-registration-${{ github.run_id }}
-          path: turbo/packages/db/public-artifact-registration.json
+          path: |
+            turbo/packages/db/public-artifact-registration.json
+            turbo/packages/db/public-artifact-registration-verification.json
           if-no-files-found: ignore
           retention-days: 30

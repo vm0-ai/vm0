@@ -121,11 +121,17 @@ click-only records and later optional pointer/typing fields are recognized.
    on its current public R2 path, including its existing Cloudflare cache and image
    transformations. No Worker route or cache-rule changes belong to this phase.
 2. Run the protected **Public Artifact Registration** GitHub Action on `main`: first
-   `dry-run`, then `migrate`, then an independent `verify` after the old-writer and
-   upload-credential drain. It uses production R2 credentials and read-only Neon
-   queries, saves the report as a GitHub artifact, and never passes `--finalize`.
-   Accept coverage only with zero missing, conflicting or unclassified records
-   and zero unregistered pending multipart uploads.
+   `dry-run`, then `migrate` after the old-writer and upload-credential drain.
+   After a successful backfill, `migrate` starts a separate read-only `--verify`
+   process with fresh storage inventories and database reconciliation. The same
+   protected job continues through both passes and succeeds only if both succeed.
+   Its artifact preserves `public-artifact-registration.json` for the backfill
+   and `public-artifact-registration-verification.json` for the independent pass,
+   including the first report if the second pass fails. The `verify` mode remains
+   available for a standalone read-only run. All modes use production R2 credentials
+   and read-only Neon queries and never pass `--finalize`. Accept coverage only
+   with zero missing, conflicting or unclassified records and zero unregistered
+   pending multipart uploads.
 3. Review the separate `a.okou.io` delivery cutover (#32959) after coverage is
    complete. The planned unified host serves old registered public files and new
    opaque public-share aliases through `zero-host-worker`. Existing URLs and old
