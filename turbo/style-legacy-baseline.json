@@ -100,13 +100,6 @@
   "cssAtoms": {
     "apps/platform/src/views/css/index.css": [
       {
-        "atRules": ["@media (display-mode:standalone)"],
-        "selector": "[data-chat-composer] .okou-composer",
-        "property": "scroll-margin-block-end",
-        "value": "16px",
-        "important": false
-      },
-      {
         "atRules": [],
         "selector": ".okou-viewport-shell",
         "property": "box-sizing",
@@ -3877,9 +3870,6 @@
     ]
   },
   "classUsages": {
-    "apps/platform/src/lib/visual-viewport-keyboard.ts": {
-      "okou-composer": 1
-    },
     "apps/platform/src/signals/chat-page/chat-thread-feedback.ts": {
       "okou-chat-bubble-assistant": 1
     },
@@ -3955,8 +3945,6 @@
       "mic-starting-spinner": 1,
       "mic-volume-icon-meter": 1,
       "okou-app": 1,
-      "okou-border": 3,
-      "okou-composer": 1,
       "zoom-in-95": 4
     },
     "apps/platform/src/views/okou-page/chat-forward-dialog.tsx": {

@@ -262,6 +262,12 @@ pub struct SupervisedExecRequest<'a> {
     /// `ExecTimeoutPolicy::None` lets the process run until it exits, is
     /// cancelled, or the connection closes.
     pub timeout: ExecTimeoutPolicy,
+    /// Whether a clean Workload execution timeout should be logged at info.
+    ///
+    /// Host-only diagnostic intent, registered before writing the start frame.
+    /// Does not affect Agent timeouts, deadlines, start/wait errors, result
+    /// semantics, or warnings for diagnostics, truncation, or output overflow.
+    pub timeout_is_expected: bool,
     /// Shell command to run in the guest.
     pub command: &'a str,
     /// Environment variables injected into the guest shell command.

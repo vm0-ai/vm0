@@ -1,8 +1,3 @@
-import { mkdtempSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
 import {
@@ -17,17 +12,6 @@ import {
 
 import { server } from "../../../mocks/server";
 import { peopleSearchCommand } from "../index";
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "people-search-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
 
 const responseBody = {
   query: "platform engineering leaders",
@@ -67,8 +51,7 @@ describe("okou people-search command", () => {
     throw new Error("process.exit called");
   }) as never);
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-okou-token");
@@ -76,21 +59,19 @@ describe("okou people-search command", () => {
     peopleSearchCommand.setOptionValue("json", undefined);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     mockStderrWrite.mockClear();
     mockExit.mockClear();
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     mockConsoleLog.mockRestore();
     mockConsoleError.mockRestore();
     mockStderrWrite.mockRestore();
     mockExit.mockRestore();
-    await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   function output(): string {

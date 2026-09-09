@@ -30,7 +30,9 @@ async function messageComposer(): Promise<HTMLElement> {
 }
 
 function composerDropTarget(): HTMLElement {
-  const target = document.querySelector<HTMLElement>(".okou-composer");
+  const target = document.querySelector<HTMLElement>(
+    "[data-slot='chat-composer-card']",
+  );
   if (!target) {
     throw new Error("Expected the composer drop target");
   }

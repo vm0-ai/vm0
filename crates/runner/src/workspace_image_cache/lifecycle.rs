@@ -1593,6 +1593,10 @@ impl WorkspaceImagePromotionContext {
         self.run_id
     }
 
+    pub(crate) fn terminal_status(&self) -> WorkspaceCacheTerminalStatus {
+        self.terminal_status
+    }
+
     pub(crate) fn sandbox_id(&self) -> sandbox::SandboxId {
         self.sandbox_id
     }

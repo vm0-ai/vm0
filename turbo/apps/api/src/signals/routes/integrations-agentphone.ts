@@ -1,5 +1,4 @@
 import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { agentphoneVerificationSendCooldowns } from "@okouai/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@okouai/db/schema/agentphone-user-link";
 import {
@@ -264,7 +263,6 @@ const sendAgentPhoneVerificationText$ = command(
       readonly cooldownKeys: readonly VerificationSendCooldownKey[];
       readonly phoneHandle: string;
       readonly connectUrl: string;
-      readonly publicBrand: PublicBrand;
     },
     signal: AbortSignal,
   ) => {
@@ -350,7 +348,6 @@ const sendAgentPhoneVerificationText$ = command(
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = PUBLIC_BRAND;
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -389,7 +386,7 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (currentLink) {
-    return connectConflict("vm0-org-linked");
+    return connectConflict("org-linked");
   }
 
   const [existingPhoneLink] = await readDb
@@ -427,7 +424,6 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
       cooldownKeys,
       phoneHandle,
       connectUrl,
-      publicBrand,
     },
     signal,
   );
@@ -471,14 +467,14 @@ function connectConflict(reason: LinkConflictReason) {
   const message =
     reason === "phone-handle-linked"
       ? `This phone number is already connected to another ${brandName} account or organization. Disconnect it first.`
-      : reason === "vm0-org-linked"
+      : reason === "org-linked"
         ? `Your ${brandName} account is already connected to another phone number in this organization. Disconnect it first.`
         : "This phone number link already exists. Disconnect it first and try again.";
 
   return conflict(message);
 }
 
-type LinkConflictReason = "phone-handle-linked" | "vm0-org-linked" | "conflict";
+type LinkConflictReason = "phone-handle-linked" | "org-linked" | "conflict";
 
 const connectAgentPhone$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -491,13 +487,12 @@ const connectAgentPhone$ = command(
     }
 
     const body = bodyResult.data;
-    const flowPublicBrand = body.publicBrand ?? publicBrand;
     const channel: AgentPhoneChannel =
       body.channel && isAgentPhoneChannel(body.channel) ? body.channel : "sms";
     const phoneHandle = normalizeAgentPhoneHandle(body.phoneHandle, channel);
     if (
       !phoneHandle ||
-      flowPublicBrand !== publicBrand ||
+      body.publicBrand !== publicBrand ||
       !verifyAgentPhoneConnectSignature({
         phoneHandle,
         agentphoneAgentId: body.agentphoneAgentId,
@@ -520,7 +515,7 @@ const connectAgentPhone$ = command(
       channel,
       userId: auth.userId,
       orgId: auth.orgId,
-      publicBrand: flowPublicBrand,
+      publicBrand,
     });
     signal.throwIfAborted();
 

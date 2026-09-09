@@ -12,12 +12,13 @@ use guest_contracts::session_history_identity::{
 use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 use shell_quote::quote_shell_arg;
 use tokio::fs;
-use tracing::warn;
+use tracing::{Level, warn};
 
+use crate::error::RunnerError;
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::guest;
 use crate::workspace_image_cache::{
-    WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
+    WorkspaceCacheTerminalStatus, WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
     WorkspaceSessionHistorySidecarEntryGuard, WorkspaceSessionHistorySidecarPromotionSource,
 };
 use crate::workspace_mount::freeze_workspace_drive;
@@ -104,15 +105,11 @@ pub(crate) async fn prepare_workspace_image_from_active_sandbox(
             reason,
         }),
         Ok(Err(e)) => {
-            warn!(
-                run_id = %promotion.run_id(),
-                sandbox_id = %promotion.sandbox_id(),
-                profile_name = promotion.profile_name(),
-                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+            log_guest_operation_failure(
+                &promotion,
                 reason,
-                error = %e,
-                "workspace image cache promotion skipped because guest freeze failed"
+                &e,
+                "workspace image cache promotion skipped because guest freeze failed",
             );
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
             None
@@ -130,6 +127,44 @@ pub(crate) async fn prepare_workspace_image_from_active_sandbox(
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
             None
         }
+    }
+}
+
+fn log_guest_operation_failure(
+    promotion: &WorkspaceImagePromotionContext,
+    reason: &'static str,
+    error: &RunnerError,
+    message: &'static str,
+) {
+    let skipped_after_cancellation = promotion.terminal_status()
+        == WorkspaceCacheTerminalStatus::Cancelled
+        && matches!(
+            error,
+            RunnerError::Sandbox(sandbox::SandboxError::Operation {
+                reason: sandbox::SandboxOperationReason::GuestConnectionUnavailable,
+                ..
+            })
+        );
+    macro_rules! emit {
+        ($level:expr) => {
+            tracing::event!(
+                $level,
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
+                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+                reason,
+                skipped_after_cancellation,
+                error = %error,
+                "{message}"
+            );
+        };
+    }
+    if skipped_after_cancellation {
+        emit!(Level::INFO);
+    } else {
+        emit!(Level::WARN);
     }
 }
 
@@ -279,15 +314,11 @@ async fn export_session_history_sidecar(
     let result = match result {
         Ok(result) => result,
         Err(e) => {
-            warn!(
-                run_id = %promotion.run_id(),
-                sandbox_id = %promotion.sandbox_id(),
-                profile_name = promotion.profile_name(),
-                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+            log_guest_operation_failure(
+                promotion,
                 reason,
-                error = %e,
-                "workspace image cache session history sidecar export errored"
+                &e.into(),
+                "workspace image cache session history sidecar export errored",
             );
             return None;
         }
@@ -389,15 +420,11 @@ async fn export_session_history_sidecar(
         Ok(result) => result,
         Err(e) => {
             sidecar_source.discard().await;
-            warn!(
-                run_id = %promotion.run_id(),
-                sandbox_id = %promotion.sandbox_id(),
-                profile_name = promotion.profile_name(),
-                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+            log_guest_operation_failure(
+                promotion,
                 reason,
-                error = %e,
-                "workspace image cache session history sidecar copy failed"
+                &e.into(),
+                "workspace image cache session history sidecar copy failed",
             );
             return None;
         }

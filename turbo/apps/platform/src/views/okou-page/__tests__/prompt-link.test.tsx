@@ -58,7 +58,7 @@ function capturePromptLaunch(): PromptLaunchCapture {
 
 function mountedComposer(): HTMLElement {
   const composer = document.querySelector(
-    '.okou-composer [contenteditable="true"]',
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
   );
   if (!(composer instanceof HTMLElement)) {
     throw new Error("Message composer not found");

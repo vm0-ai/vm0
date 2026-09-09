@@ -67,9 +67,7 @@ describe("GitHub OAuth account mutation selection", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: `Okou GitHub setup ${randomUUID()}`,
     });
-    const installation = await github.installGithubApp(actor, agent.agentId, {
-      publicBrand: "okou",
-    });
+    const installation = await github.installGithubApp(actor, agent.agentId);
     const update = await github.requestSetupCallback(
       new URLSearchParams({
         installation_id: installation.remoteInstallationId,

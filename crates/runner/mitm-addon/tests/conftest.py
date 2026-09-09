@@ -45,6 +45,7 @@ import upstream_admission
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
+from tests.firewall_auth_helpers import firewall_auth_response
 from tests.process_log_helpers import capture_addon_process_events
 from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 from usage.providers import connectors as _usage_connectors
@@ -440,14 +441,9 @@ def fake_firewall_headers():
         headers: dict[str, str] | None = None,
     ) -> Iterator[AsyncMock]:
         mock = AsyncMock(
-            return_value={
-                "headers": headers if headers is not None else {"Authorization": "Bearer x"},
-                "resolved_secrets": [],
-                "refreshed_connectors": [],
-                "refreshed_secrets": [],
-                "cache_hit": False,
-                "cache_entry_identity": auth.FirewallAuthCacheEntryIdentity(),
-            }
+            return_value=firewall_auth_response(
+                headers=headers if headers is not None else {"Authorization": "Bearer x"},
+            )
         )
         with patch.object(auth, "get_firewall_headers", mock):
             yield mock

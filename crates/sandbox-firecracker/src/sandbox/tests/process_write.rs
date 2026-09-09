@@ -10,6 +10,7 @@ async fn start_process_partial_write_error_rejects_later_guest_work() {
         // the complete frame remains unwritten.
         let payload = "x".repeat(4 * 1024 * 1024);
         let request = StartProcessRequest {
+            timeout_is_expected: true,
             cmd: "prefetch",
             timeout: Duration::from_secs(5),
             start_timeout: Duration::from_secs(5),

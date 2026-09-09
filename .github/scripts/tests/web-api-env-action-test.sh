@@ -6,19 +6,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ACTION="${REPO_ROOT}/.github/actions/web-api-env/action.yml"
 EXPECTED_BUILD_COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --verify HEAD)"
 TEMP_DIRS=()
-# These are not retired names. Their readers are live: lib/env.ts defines both,
-# host.service.ts resolves the VM0-brand hosted-site host from them,
-# artifact-preview.service.ts accepts the domain, and turbo.json still lists
-# them. The action no longer sources either name and must not start again: an
-# emitted value would restore the retired repo-variable source for live brand
-# configuration, and for ZERO_HOST_SCHEME it would additionally feed the last
-# remaining OKOU_ENV_FALLBACKS entry (OKOU_HOST_SCHEME) and falsify its drain
-# evidence. Both retire with the VM0-brand host under #26701, and these
-# assertions retire with them.
-ZERO_KEYS_WITH_LIVE_READERS=(
-  ZERO_HOST_DOMAIN
-  ZERO_HOST_SCHEME
-)
 GITHUB_APP_VAR_SUFFIXES=(
   SLUG
   ID
@@ -156,14 +143,6 @@ assert_web_url_canonical() {
 assert_web_url_absent() {
   local env_file="$1"
   assert_env_key_absent "$env_file" OKOU_WEB_URL
-}
-
-assert_zero_keys_with_live_readers_absent() {
-  local env_file="$1"
-  local key
-  for key in "${ZERO_KEYS_WITH_LIVE_READERS[@]}"; do
-    assert_env_key_absent "$env_file" "$key"
-  done
 }
 
 assert_no_fixture_secret_values() {
@@ -402,12 +381,6 @@ if ! oauth_client_config_prefixes | grep -qx SLACK; then
   fail "expected Slack OAuth client config to come from Doppler"
 fi
 
-# Both the variable and the secret sources are canonical-only now, so no
-# source read in the action may name a legacy ZERO_ variable or secret.
-if grep -En '(repo_var|repo_secret|add_(var|secret) [A-Z0-9_]+) "?ZERO_' "$ACTION"; then
-  fail "environment sources must read canonical OKOU_ names, not ZERO_"
-fi
-
 github_app_canonical_vars_json='{"OKOU_GITHUB_APP_SLUG":" github-canonical-slug ","OKOU_GITHUB_APP_ID":"github-canonical-id","OKOU_GITHUB_APP_CLIENT_ID":"github-canonical-client-id"}'
 github_app_canonical_secrets_json='{"OKOU_GITHUB_APP_CLIENT_SECRET":"github-canonical-client-secret","OKOU_GITHUB_APP_WEBHOOK_SECRET":"github-canonical-webhook-secret","OKOU_GITHUB_APP_PRIVATE_KEY":"github-canonical-private-key"}'
 github_app_canonical_dir="$(mktemp -d)"
@@ -510,7 +483,6 @@ success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${succ
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
 assert_machine_secret_values_absent_from_output "$success_output" "github-atom-machine-secret"
-assert_zero_keys_with_live_readers_absent "$success_env_file"
 assert_debug_canonical "$success_env_file"
 assert_env_value "$success_env_file" R2_PRIVATE_ARTIFACTS_BUCKET_NAME "user-artifact-private-dev"
 assert_env_value "$success_env_file" R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID "private-dev-key"
@@ -618,7 +590,6 @@ empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api prev
 empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_dir}/github-output")"
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
-assert_zero_keys_with_live_readers_absent "$empty_env_file"
 assert_debug_canonical "$empty_env_file"
 assert_api_backend_url_canonical "$empty_env_file" "https://pr-123-api-backend.vm0.test"
 assert_machine_secret_absent "$empty_env_file"
@@ -637,7 +608,7 @@ production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
 assert_machine_secret_values_absent_from_output "$production_web_output" "github-atom-machine-secret"
-assert_zero_keys_with_live_readers_absent "$production_web_env_file"
+assert_env_value "$production_web_env_file" OKOU_HOST_SCHEME "https"
 assert_debug_absent "$production_web_env_file"
 assert_api_backend_url_canonical "$production_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_web_url_absent "$production_web_env_file"
@@ -667,7 +638,7 @@ production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
 assert_machine_secret_values_absent_from_output "$production_api_output" "github-atom-machine-secret"
-assert_zero_keys_with_live_readers_absent "$production_api_env_file"
+assert_env_value "$production_api_env_file" OKOU_HOST_SCHEME "https"
 assert_debug_absent "$production_api_env_file"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_BUCKET_NAME "user-artifact-private-prod"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_ACCESS_KEY_ID "private-prod-key"

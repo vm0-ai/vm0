@@ -168,7 +168,7 @@ export async function sendComposerMessage(
 ): Promise<void> {
   const editor = await waitFor(() => {
     const candidate = document.querySelector<HTMLElement>(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!candidate) {
       throw new Error("Composer editor not found");

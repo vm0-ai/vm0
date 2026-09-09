@@ -1,6 +1,5 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type { ConnectorCatalogSyncFailureCode } from "@okouai/api-contracts/contracts/connector-catalog-diagnostics";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@okouai/api-contracts/contracts/connectors";
 import type {
@@ -115,11 +114,7 @@ interface ExternalCatalogReadArgs {
   readonly featureStates: ConnectorFeatureStates;
 }
 
-interface ExternalBrandedCatalogReadArgs extends ExternalCatalogReadArgs {
-  readonly publicBrand: PublicBrand;
-}
-
-interface ExternalCatalogConnectorReadArgs extends ExternalBrandedCatalogReadArgs {
+interface ExternalCatalogConnectorReadArgs extends ExternalCatalogReadArgs {
   readonly connectorSlug: string;
 }
 
@@ -131,7 +126,7 @@ interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
   readonly keyword: string | undefined;
 }
 
-interface ExternalCatalogStatusArgs extends ExternalBrandedCatalogReadArgs {
+interface ExternalCatalogStatusArgs extends ExternalCatalogReadArgs {
   readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
 }
@@ -905,7 +900,6 @@ function connectorCatalogStatusItem(args: {
   readonly catalog: AcceptedConnectorCatalogSnapshot;
   readonly effective: EffectiveConnector;
   readonly connection: ConnectorCatalogConnection | null;
-  readonly publicBrand: PublicBrand;
 }): PublicConnectorCatalogStatusItem {
   const detail = connectorCatalogDetail(args.effective);
   const response = args.connection?.response ?? null;
@@ -1005,7 +999,7 @@ function compactDefaultPolicy(
 }
 
 export async function listExternalPublicConnectorCatalog(
-  args: ExternalBrandedCatalogReadArgs,
+  args: ExternalCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const connectors = effectiveConnectors({
@@ -1139,7 +1133,6 @@ export async function getExternalPublicConnectorCatalogStatus(
     catalog,
     effective: entry,
     connection: connection ?? null,
-    publicBrand: args.publicBrand,
   });
 }
 
@@ -1156,7 +1149,6 @@ export async function listExternalPublicConnectorCatalogStatus(
     effective,
     connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
-    publicBrand: args.publicBrand,
   });
 }
 
@@ -1173,7 +1165,6 @@ export async function discoverExternalPublicConnectorCatalogStatus(
     effective: discoveryEffectiveConnectors(effective, args),
     connections: args.connections,
     referenceConnectorSlugs: args.referenceConnectorSlugs,
-    publicBrand: args.publicBrand,
   });
   return {
     ...read,
@@ -1189,7 +1180,6 @@ function connectorCatalogStatusRead(args: {
   readonly effective: readonly EffectiveConnector[];
   readonly connections: readonly ConnectorCatalogConnection[];
   readonly referenceConnectorSlugs: readonly string[];
-  readonly publicBrand: PublicBrand;
 }): ConnectorCatalogStatusRead {
   const connectionsBySlug = new Map(
     args.connections.map((connection) => {
@@ -1201,7 +1191,6 @@ function connectorCatalogStatusRead(args: {
       catalog: args.catalog,
       effective: entry,
       connection: connectionsBySlug.get(entry.connector.slug) ?? null,
-      publicBrand: args.publicBrand,
     });
   });
   return {

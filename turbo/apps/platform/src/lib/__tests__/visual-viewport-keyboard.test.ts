@@ -108,7 +108,7 @@ function focusComposer(inExistingThread: boolean): {
   }
 
   const composer = document.createElement("div");
-  composer.className = "okou-composer";
+  composer.dataset.slot = "chat-composer-card";
   const scrollIntoView = vi.fn<HTMLElement["scrollIntoView"]>();
   Object.defineProperty(composer, "scrollIntoView", {
     configurable: true,

@@ -42,7 +42,9 @@ use super::{
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
-use crate::error::{ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult};
+use crate::error::{
+    ApiBodyReadError, ApiFailureKind, ApiStatusError, ApiTransportError, RunnerError, RunnerResult,
+};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
@@ -222,32 +224,32 @@ struct DegradationEpisode {
 }
 
 #[derive(Clone, Copy)]
-struct DegradationObservation {
-    consecutive_failures: u64,
-    failure_elapsed: Duration,
-    degraded: bool,
-    emit_degradation: bool,
+pub(super) struct DegradationObservation {
+    pub(super) consecutive_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) degraded: bool,
+    pub(super) emit_degradation: bool,
 }
 
 #[derive(Clone, Copy)]
-struct DegradationRecovery {
-    recovered_after_failures: u64,
-    failure_elapsed: Duration,
-    was_degraded: bool,
+pub(super) struct DegradationRecovery {
+    pub(super) recovered_after_failures: u64,
+    pub(super) failure_elapsed: Duration,
+    pub(super) was_degraded: bool,
 }
 
-struct DegradationEpisodeTracker {
+pub(super) struct DegradationEpisodeTracker {
     active_episode: Mutex<Option<DegradationEpisode>>,
 }
 
 impl DegradationEpisodeTracker {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             active_episode: Mutex::new(None),
         }
     }
 
-    async fn observe_failure(
+    pub(super) async fn observe_failure(
         &self,
         now: Instant,
         degraded_after: Duration,
@@ -273,7 +275,7 @@ impl DegradationEpisodeTracker {
         }
     }
 
-    async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
+    pub(super) async fn recover(&self, now: Instant) -> Option<DegradationRecovery> {
         self.active_episode
             .lock()
             .await
@@ -1603,9 +1605,31 @@ impl ApiClient {
                 Ok(None) => break,
                 Err(_) if !status.is_success() => return Err(api_status_error(LABEL, status, "")),
                 Err(error) => {
-                    return Err(RunnerError::Api(format!(
-                        "{LABEL} decode read body: {error}"
-                    )));
+                    let content_type = match resp.headers().get(reqwest::header::CONTENT_TYPE) {
+                        None => "missing",
+                        Some(value) => match value.to_str() {
+                            Err(_) => "invalid",
+                            Ok(value) => {
+                                let media_type = value
+                                    .split_once(';')
+                                    .map_or(value, |(media_type, _)| media_type)
+                                    .trim();
+                                if media_type.eq_ignore_ascii_case("application/json") {
+                                    "application/json"
+                                } else {
+                                    "other"
+                                }
+                            }
+                        },
+                    };
+                    return Err(RunnerError::ApiBodyRead(Box::new(ApiBodyReadError {
+                        endpoint_label: LABEL,
+                        status,
+                        content_type,
+                        content_length,
+                        received_bytes: body_len,
+                        failure_cause: crate::http::api_transport_cause(&error),
+                    })));
                 }
             };
             let chunk_len = u64::try_from(chunk.len()).map_err(|error| {

@@ -93,19 +93,9 @@ const SCHEMA = {
   CLOUDFLARE_BROWSER_RENDERING_API_TOKEN: z.string().min(1).optional(),
   ARTIFACT_PREVIEW_WAF_SECRET: z.string().min(32).optional(),
   OKOU_PUBLIC_HOST_DOMAIN: z.string().min(1),
-  // ZERO_HOST_DOMAIN and ZERO_HOST_SCHEME are not legacy aliases waiting to be
-  // drained. Here the ZERO_ prefix marks which brand a value belongs to, and
-  // both brands are live at the same time: host.service.ts picks the domain and
-  // scheme per request from the public brand, and artifact-preview.service.ts
-  // accepts both domains. These two hold the VM0-brand hosted-site
-  // configuration (sites.vm0.io); removing them breaks every VM0-brand hosted
-  // site URL. They retire with the VM0-brand host under #26701, not with the
-  // rest of the ZERO_* variables.
+  OKOU_HOST_SCHEME: z.enum(["http", "https"]),
+  // Historical sites.vm0.io URLs retain their own domain and scheme.
   ZERO_HOST_DOMAIN: z.string().min(1).default("sites.vm0.io"),
-  OKOU_HOST_SCHEME: z.enum(["http", "https"]).optional(),
-  // Brand-scoped live configuration, same as ZERO_HOST_DOMAIN above. It also
-  // serves as the one remaining OKOU_ENV_FALLBACKS source, for
-  // OKOU_HOST_SCHEME.
   ZERO_HOST_SCHEME: z.enum(["http", "https"]).default("https"),
   S3_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().min(1).optional(),
@@ -181,13 +171,6 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 type EnvShape = typeof baseEnv;
 type EnvName = keyof EnvShape;
 
-const OKOU_ENV_FALLBACKS = {
-  OKOU_HOST_SCHEME: "ZERO_HOST_SCHEME",
-} as const satisfies Partial<Record<EnvName, EnvName>>;
-
-type OkouEnvName = keyof typeof OKOU_ENV_FALLBACKS;
-type RequiredOkouEnvName = "OKOU_HOST_SCHEME";
-
 const {
   get: getOverrideEnv,
   set: setOverrideEnv,
@@ -204,28 +187,12 @@ const {
   return {};
 });
 
-function readEnv<K extends EnvName>(name: K): EnvShape[K] {
+export function env<K extends EnvName>(name: K): EnvShape[K] {
   const overrideEnv = getOverrideEnv();
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
   }
   return baseEnv[name];
-}
-
-function isOkouEnvName(name: EnvName): name is OkouEnvName {
-  return Object.prototype.hasOwnProperty.call(OKOU_ENV_FALLBACKS, name);
-}
-
-export function env<K extends RequiredOkouEnvName>(
-  name: K,
-): NonNullable<EnvShape[K]>;
-export function env<K extends EnvName>(name: K): EnvShape[K];
-export function env<K extends EnvName>(name: K): EnvShape[K] {
-  const value = readEnv(name);
-  if (value !== undefined || !isOkouEnvName(name)) {
-    return value;
-  }
-  return readEnv(OKOU_ENV_FALLBACKS[name]) as EnvShape[K];
 }
 
 export function optionalEnv(name: string): string | undefined {

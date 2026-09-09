@@ -52,7 +52,6 @@ import {
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import {
   agentsMainContract,
@@ -142,7 +141,6 @@ type BddSendEventBody =
     };
 
 interface RequestSendEventOptions {
-  readonly publicBrand?: PublicBrand;
   readonly usagePricingResolution?: UsagePricingResolution;
 }
 
@@ -1321,7 +1319,6 @@ export function createChatFilesBddApi(context: TestContext) {
       options: RequestSendEventOptions = {},
       signal?: AbortSignal,
     ) {
-      const publicBrand = options.publicBrand ?? "vm0";
       const client = setupAppWithRoutes({
         context,
         routes: chatFilesRoutes,
@@ -1412,9 +1409,6 @@ export function createChatFilesBddApi(context: TestContext) {
       return await accept(
         client.send({
           headers: authenticate(context, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
           body: requestBody,
         }),
         statuses,

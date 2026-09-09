@@ -30,6 +30,7 @@ pub(in crate::exec_operation) enum ExecTerminalLogSeverity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::exec_operation) enum ExecTerminalLogReason {
     ExpectedCancel,
+    ExpectedTimeout,
     Notable,
     Slow,
 }
@@ -38,6 +39,7 @@ impl ExecTerminalLogReason {
     fn as_str(self) -> &'static str {
         match self {
             ExecTerminalLogReason::ExpectedCancel => "expected_cancel",
+            ExecTerminalLogReason::ExpectedTimeout => "expected_timeout",
             ExecTerminalLogReason::Notable => "notable",
             ExecTerminalLogReason::Slow => "slow",
         }
@@ -53,6 +55,7 @@ pub(in crate::exec_operation) struct ExecTerminalLogDecision {
 #[derive(Clone, Copy)]
 pub(in crate::exec_operation) struct ExecTerminalLogContext {
     pub(in crate::exec_operation) lifecycle: ExecTerminalLogLifecycle,
+    pub(in crate::exec_operation) timeout_is_expected: bool,
     pub(in crate::exec_operation) slow: bool,
     pub(in crate::exec_operation) termination: ExecTermination,
     pub(in crate::exec_operation) stdout_truncated: bool,
@@ -65,6 +68,7 @@ pub(in crate::exec_operation) struct ExecTerminalLogContext {
 #[derive(Clone)]
 pub(in crate::exec_operation) struct ExecOperationDiagnostic {
     pub(in crate::exec_operation) seq: u32,
+    pub(in crate::exec_operation) timeout_is_expected: bool,
     pub(in crate::exec_operation) label_log: String,
     pub(in crate::exec_operation) registered_at: Instant,
     pub(in crate::exec_operation) first_output_at: Option<Instant>,
@@ -99,6 +103,7 @@ impl ExecOperationDiagnostic {
         label: &str,
         role: ExecProcessRole,
         supervised: bool,
+        timeout_is_expected: bool,
     ) -> Self {
         let process_class = match role {
             ExecProcessRole::Workload => "contained_workload",
@@ -120,6 +125,9 @@ impl ExecOperationDiagnostic {
         };
         Self {
             seq,
+            timeout_is_expected: timeout_is_expected
+                && supervised
+                && role == ExecProcessRole::Workload,
             label_log: exec_operation_label_log(label),
             registered_at: Instant::now(),
             first_output_at: None,
@@ -189,6 +197,7 @@ impl ExecOperationDiagnostic {
         let diagnostic_present = !result.diagnostic.is_empty();
         let Some(decision) = exec_terminal_log_decision(ExecTerminalLogContext {
             lifecycle,
+            timeout_is_expected: self.timeout_is_expected,
             slow,
             termination: result.termination,
             stdout_truncated,
@@ -293,6 +302,19 @@ pub(in crate::exec_operation) fn exec_terminal_log_decision(
         return Some(ExecTerminalLogDecision {
             severity: ExecTerminalLogSeverity::Info,
             reason: ExecTerminalLogReason::ExpectedCancel,
+        });
+    }
+
+    if context.timeout_is_expected
+        && matches!(context.termination, ExecTermination::TimedOut)
+        && !context.stdout_truncated
+        && !context.stderr_truncated
+        && !context.stream_overflowed
+        && !context.diagnostic_present
+    {
+        return Some(ExecTerminalLogDecision {
+            severity: ExecTerminalLogSeverity::Info,
+            reason: ExecTerminalLogReason::ExpectedTimeout,
         });
     }
 

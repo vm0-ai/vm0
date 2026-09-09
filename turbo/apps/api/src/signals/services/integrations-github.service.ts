@@ -304,7 +304,6 @@ export const getGithubInstallation$ = command(
               userId: auth.userId,
               orgId: auth.orgId,
               origin: callbackOrigin,
-              publicBrand,
               authMethodId: resolvedMethod.authMethodId,
               method: resolvedMethod.method,
               readEnv: optionalEnv,

@@ -8,10 +8,7 @@ import {
   type ChatThreadArtifactGoogleDriveSync,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  cronCompactChatThreadSnapshotsContract,
-  cronProjectChatEventSearchContract,
-} from "@okouai/api-contracts/contracts/cron";
+import { cronProjectChatEventSearchContract } from "@okouai/api-contracts/contracts/cron";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -19,6 +16,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
+import { testChatThreadSnapshotCompactionContract } from "@okouai/api-contracts/contracts/test-chat-thread-snapshot-compaction";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { createHash, randomUUID } from "node:crypto";
@@ -58,7 +56,7 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { chatThreadRoutes } from "../chat-threads";
-import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { testChatThreadSnapshotCompactionRoutes } from "../test-chat-thread-snapshot-compaction";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { goalsRoutes } from "../goals";
 import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
@@ -95,7 +93,6 @@ import {
 } from "./helpers/usage-state";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...chatThreadRoutes,
   ...goalsRoutes,
@@ -125,7 +122,6 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createRouteMocks(context);
 const store = createStore();
-const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
@@ -156,15 +152,23 @@ type UserMessage = Extract<
 type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
-async function compactChatThreadSnapshots() {
+async function compactChatThreadSnapshots(
+  actor: ApiTestUser,
+  ...otherActors: readonly ApiTestUser[]
+) {
   const client = setupApp({
     context,
-    routes: cronCompactChatThreadSnapshotsRoutes,
-  })(cronCompactChatThreadSnapshotsContract);
+    routes: testChatThreadSnapshotCompactionRoutes,
+  })(testChatThreadSnapshotCompactionContract);
   const response = await accept(
     client.compact({
-      headers: {
-        authorization: `Bearer ${CHAT_THREAD_SNAPSHOT_CRON_SECRET}`,
+      body: {
+        scopes: [actor, ...otherActors].map((ownedActor) => {
+          if (!ownedActor.orgId) {
+            throw new Error("Expected an organization-scoped snapshot actor");
+          }
+          return { user_id: ownedActor.userId, org_id: ownedActor.orgId };
+        }),
       },
     }),
     [200],
@@ -426,7 +430,6 @@ async function allThreadEvents(actor: ApiTestUser) {
 }
 
 async function createSnapshotCursorScenario(label: string) {
-  mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Expected an organization-scoped chat actor");
@@ -455,7 +458,7 @@ async function createSnapshotCursorScenario(label: string) {
     throw new Error("Expected snapshot cursor lifecycle events");
   }
 
-  await compactChatThreadSnapshots();
+  await compactChatThreadSnapshots(actor);
   const snapshot = await chat.getThreadSnapshot(actor);
   const { latestEventId, latestSeqId } = snapshot;
   expect(latestEventId).toBe(markerEvent.id);
@@ -1213,7 +1216,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       eventId: removedThreadEventId,
     });
 
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const boundary = await chat.getThreadSnapshot(actor);
     expect(boundary.latestEventId).toBe(removedThreadEventId);
     expect(boundary.chatThreads).toContainEqual(
@@ -1254,10 +1257,26 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       threadEventPage(actor, boundary.latestSeqId),
     ).resolves.toStrictEqual({ events: [], hasMore: false });
 
+    const unrelatedActor = bdd.user();
+    const unrelatedAgent = await bdd.createAgent(unrelatedActor, {
+      displayName: "Unrelated snapshot compaction agent",
+    });
+    await chat.createThread(unrelatedActor, {
+      agentId: unrelatedAgent.agentId,
+      title: "Unrelated event arriving before stale compaction",
+    });
+
     mockNow(snapshotAt + DAY_MS + 1);
-    const staleCompact = await compactChatThreadSnapshots();
+    const staleCompact = await compactChatThreadSnapshots(actor);
     expect(staleCompact.eventsApplied).toBe(0);
     expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
+    await expect(chat.getThreadSnapshot(unrelatedActor)).resolves.toStrictEqual(
+      {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    );
     const preserved = await chat.getThreadSnapshot(actor);
     expect({
       latestEventId: preserved.latestEventId,
@@ -1308,7 +1327,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(laterEvent.seqId).toBe(boundary.latestSeqId + 2);
     await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
 
-    const advancedCompact = await compactChatThreadSnapshots();
+    const advancedCompact = await compactChatThreadSnapshots(actor);
     expect(advancedCompact.eventsApplied).toBeGreaterThanOrEqual(1);
     const advanced = await chat.getThreadSnapshot(actor);
     expect({
@@ -1319,7 +1338,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       latestSeqId: laterEvent.seqId,
     });
 
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const repeated = await chat.getThreadSnapshot(actor);
     expect({
       latestEventId: repeated.latestEventId,
@@ -1330,8 +1349,100 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
   }, 90_000);
 
+  it("isolates snapshot refresh and retention by both user and organization", async () => {
+    const createdAt = now();
+    mockNow(createdAt);
+    const actor = bdd.user();
+    const otherOrg = bdd.user({ userId: actor.userId });
+    const otherUser = bdd.user({ orgId: actor.orgId });
+    const fixtures = [];
+    for (const owner of [actor, otherOrg, otherUser]) {
+      const agent = await bdd.createAgent(owner, {
+        displayName: "Scoped snapshot retention agent",
+      });
+      const createdEventId = randomUUID();
+      const thread = await chat.createThread(owner, {
+        agentId: agent.agentId,
+        title: "Before scoped compaction",
+        eventId: createdEventId,
+      });
+      fixtures.push({
+        owner,
+        thread,
+        createdEventId,
+        renamedEventId: randomUUID(),
+      });
+    }
+    await compactChatThreadSnapshots(actor, otherOrg, otherUser);
+
+    for (const fixture of fixtures) {
+      await chat.renameThread(
+        fixture.owner,
+        fixture.thread.id,
+        "After scoped compaction",
+        fixture.renamedEventId,
+      );
+    }
+
+    mockNow(createdAt + 8 * DAY_MS);
+    await expect(compactChatThreadSnapshots(actor)).resolves.toStrictEqual({
+      success: true,
+      scopes: 1,
+      eventsApplied: 1,
+      removedDeletedAgentThreads: 0,
+      eventsPruned: 2,
+    });
+    for (const fixture of fixtures) {
+      const selected = fixture.owner === actor;
+      const snapshot = await chat.getThreadSnapshot(fixture.owner);
+      expect(snapshot.latestEventId).toBe(
+        selected ? fixture.renamedEventId : fixture.createdEventId,
+      );
+      expect(snapshot.chatThreads).toStrictEqual([
+        expect.objectContaining({
+          id: fixture.thread.id,
+          title: selected
+            ? "After scoped compaction"
+            : "Before scoped compaction",
+        }),
+      ]);
+      const events = await allThreadEvents(fixture.owner);
+      expect(
+        events.map((event) => {
+          return event.id;
+        }),
+      ).toStrictEqual(
+        selected ? [] : [fixture.createdEventId, fixture.renamedEventId],
+      );
+    }
+  });
+
+  it("rejects snapshot compaction test requests in production", async () => {
+    mockEnv("ENV", "production");
+    const client = setupApp({
+      context,
+      routes: testChatThreadSnapshotCompactionRoutes,
+    })(testChatThreadSnapshotCompactionContract);
+    const response = await client.compact({
+      body: {
+        scopes: [
+          { user_id: `user_${randomUUID()}`, org_id: `org_${randomUUID()}` },
+        ],
+      },
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("rejects snapshot compaction without explicitly owned scopes", async () => {
+    const client = setupApp({
+      context,
+      routes: testChatThreadSnapshotCompactionRoutes,
+    })(testChatThreadSnapshotCompactionContract);
+    const response = await client.compact({ body: { scopes: [] } });
+    expect(response.status).toBe(400);
+  });
+
   it("prunes covered lifecycle events in retry-safe deterministic batches", async () => {
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     mockOptionalEnv("CHAT_THREAD_EVENT_PRUNE_BATCH_SIZE", "2");
     const actor = bdd.user();
     if (!actor.orgId) {
@@ -1418,15 +1529,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(snapshotAt);
-    let boundaryCompact = await compactChatThreadSnapshots();
-    for (
-      let attempt = 0;
-      attempt < 4 && boundaryCompact.scopes > 0;
-      attempt++
-    ) {
-      expect(boundaryCompact.eventsPruned).toBe(0);
-      boundaryCompact = await compactChatThreadSnapshots();
-    }
+    const boundaryCompact = await compactChatThreadSnapshots(actor);
     expect(boundaryCompact).toMatchObject({ scopes: 0, eventsPruned: 0 });
     await expect(
       readChatThreadEventIdsFixture({
@@ -1452,8 +1555,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     mockNow(snapshotAt.getTime() + 1);
     const overlappingCompactions = await Promise.all([
-      compactChatThreadSnapshots(),
-      compactChatThreadSnapshots(),
+      compactChatThreadSnapshots(actor),
+      compactChatThreadSnapshots(actor),
     ]);
     expect(
       overlappingCompactions
@@ -1472,7 +1575,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       }),
     ).resolves.toStrictEqual([nullAgentMarker.id]);
 
-    const converged = await compactChatThreadSnapshots();
+    const converged = await compactChatThreadSnapshots(actor);
     expect(converged.eventsPruned).toBe(1);
     await expect(
       readChatThreadEventIdsFixture({
@@ -1481,7 +1584,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         eventIds: coveredEventIds,
       }),
     ).resolves.toStrictEqual([]);
-    const retry = await compactChatThreadSnapshots();
+    const retry = await compactChatThreadSnapshots(actor);
     expect(retry.eventsPruned).toBe(0);
 
     concurrentAppend.release();
@@ -1536,7 +1639,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       title: "Keep the retention scope out of this snapshot batch",
     });
 
-    const aboveWatermarkCompact = await compactChatThreadSnapshots();
+    const aboveWatermarkCompact = await compactChatThreadSnapshots(
+      actor,
+      isolatedActor,
+      compactionBlocker,
+    );
     expect(aboveWatermarkCompact.eventsPruned).toBe(0);
     const unchangedBoundary = await chat.getThreadSnapshot(actor);
     expect({
@@ -1708,7 +1815,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       clearMockNow();
       stubTestTimezone("UTC");
     });
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     const actor = bdd.user();
     await api.ensureOrgModelProvider(actor);
     const liveAgent = await bdd.createAgent(actor, {
@@ -1747,7 +1853,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         Date.parse(deletedCreateEvent.createdAt),
       ) + 1000;
     mockNow(initialSnapshotAt);
-    const initialCompact = await compactChatThreadSnapshots();
+    const initialCompact = await compactChatThreadSnapshots(actor);
     expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
 
     const baselineSnapshot = await chat.getThreadSnapshot(actor);
@@ -1784,14 +1890,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const incrementalSnapshotAt = initialSnapshotAt + 1000;
     mockNow(incrementalSnapshotAt);
-    const incrementalCompact = await compactChatThreadSnapshots();
+    const incrementalCompact = await compactChatThreadSnapshots(actor);
     expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
 
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
     mockNow(incrementalSnapshotAt + DAY_MS);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const boundarySnapshot = await chat.getThreadSnapshot(actor);
     expect(
       boundarySnapshot.chatThreads.map((thread) => {
@@ -1800,7 +1906,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     ).toContain(deletedAgentThread.id);
 
     mockNow(incrementalSnapshotAt + DAY_MS + 1);
-    const staleCompact = await compactChatThreadSnapshots();
+    const staleCompact = await compactChatThreadSnapshots(actor);
     expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).not.toBeNull();
@@ -1822,7 +1928,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const retentionBoundary =
       Date.parse(liveCreateEvent.createdAt) + 7 * DAY_MS;
     mockNow(retentionBoundary);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     expect(
       (await allThreadEvents(actor)).some((event) => {
         return event.id === liveCreateEvent.id;
@@ -1841,7 +1947,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(retentionBoundary + 1);
-    const retentionCompact = await compactChatThreadSnapshots();
+    const retentionCompact = await compactChatThreadSnapshots(actor);
     expect(retentionCompact.eventsPruned).toBeGreaterThanOrEqual(1);
     const prunedCursor = await chat.requestThreadEvents(
       actor,
@@ -1856,7 +1962,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
 
     mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
-    await compactChatThreadSnapshots();
+    await compactChatThreadSnapshots(actor);
     const coveredDeletedAgentCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: deletedCreateEvent.seqId },

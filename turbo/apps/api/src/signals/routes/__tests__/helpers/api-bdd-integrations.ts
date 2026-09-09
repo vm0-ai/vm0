@@ -36,7 +36,10 @@ import {
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { testSlackStateContract } from "@okouai/api-contracts/contracts/test-slack-state";
-import { integrationsAgentPhoneContract } from "@okouai/api-contracts/contracts/integrations-agentphone";
+import {
+  integrationsAgentPhoneContract,
+  type AgentPhoneConnectRequest,
+} from "@okouai/api-contracts/contracts/integrations-agentphone";
 import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { integrationsTelegramContract } from "@okouai/api-contracts/contracts/integrations-telegram";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
@@ -253,7 +256,6 @@ interface SlackCommandRequest {
   readonly text: string;
   readonly channelId?: string;
   readonly triggerId?: string;
-  readonly publicBrand?: PublicBrand;
 }
 
 interface SlackPickerSubmissionArgs {
@@ -519,22 +521,18 @@ async function requestRawTelegramWebhook(
   telegramBotId: string,
   body: string,
   headers: { readonly "x-telegram-bot-api-secret-token"?: string },
-  publicBrand?: PublicBrand,
 ): Promise<TelegramWebhookResponse> {
   const response = await createApp({
     signal: context.signal,
     routes: TEST_APP_ROUTES,
-  }).request(
-    `${publicBrand === "okou" ? "https://api.okou.ai" : ""}/api/telegram/webhook/${telegramBotId}`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  }).request(`https://api.okou.ai/api/telegram/webhook/${telegramBotId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -662,7 +660,6 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubOauthInstall(
       query: GithubOauthInstallQuery,
       statuses: readonly (307 | 503)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         baseUrl: "https://api.okou.ai",
@@ -672,9 +669,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.install({
           query,
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
         }),
         statuses,
       );
@@ -684,7 +678,6 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       query: GithubOauthConnectQuery,
       statuses: readonly (307 | 401 | 503)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         baseUrl: "https://api.okou.ai",
@@ -695,9 +688,6 @@ export function createBddIntegrationApi(context: TestContext) {
         client.connect({
           extraHeaders: {
             ...extraHeaders(authenticate(context, routeMocks, actor)),
-            ...(publicBrand === "okou"
-              ? { origin: "https://app.okou.ai" }
-              : {}),
           },
           query,
         }),
@@ -708,7 +698,6 @@ export function createBddIntegrationApi(context: TestContext) {
     async requestGithubAppSetupCallback(
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
-      publicBrand: PublicBrand = "vm0",
       baseUrl = "https://api.okou.ai",
     ) {
       const client = setupApp({
@@ -719,9 +708,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.setupCallback({
           query,
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
         }),
         statuses,
       );
@@ -1454,7 +1440,6 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: TelegramLinkBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1463,9 +1448,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.link({
           headers: authenticate(context, routeMocks, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
           body,
         }),
         statuses,
@@ -1542,7 +1524,6 @@ export function createBddIntegrationApi(context: TestContext) {
         | 500
         | 502
       )[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1551,9 +1532,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.register({
           headers: authenticate(context, routeMocks, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
           body,
         }),
         statuses,
@@ -1716,7 +1694,6 @@ export function createBddIntegrationApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: { readonly phoneHandle: string },
       statuses: readonly (200 | 400 | 401 | 409 | 429 | 503)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1725,9 +1702,6 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.startLink({
           headers: authenticate(context, routeMocks, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
           body,
         }),
         statuses,
@@ -1762,7 +1736,6 @@ export function createBddIntegrationApi(context: TestContext) {
         readonly publicBrandSignature?: string;
       },
       statuses: readonly (200 | 400 | 401 | 409)[],
-      publicBrand: PublicBrand = "vm0",
     ) {
       const client = setupApp({
         context,
@@ -1771,10 +1744,7 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.connectAgentPhone({
           headers: authenticate(context, routeMocks, actor),
-          ...(publicBrand === "okou"
-            ? { extraHeaders: { origin: "https://app.okou.ai" } }
-            : {}),
-          body,
+          body: body as AgentPhoneConnectRequest,
         }),
         statuses,
       );
@@ -1801,16 +1771,9 @@ export function createBddIntegrationApi(context: TestContext) {
       body: string,
       headers: { readonly "x-telegram-bot-api-secret-token"?: string },
       statuses: readonly TelegramWebhookStatus[],
-      publicBrand?: PublicBrand,
     ) {
       return await accept(
-        requestRawTelegramWebhook(
-          context,
-          telegramBotId,
-          body,
-          headers,
-          publicBrand,
-        ),
+        requestRawTelegramWebhook(context, telegramBotId, body, headers),
         statuses,
       );
     },

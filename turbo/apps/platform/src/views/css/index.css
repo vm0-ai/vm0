@@ -129,10 +129,6 @@ body {
     height: var(--okou-keyboard-scroll-reserve, 0px);
     pointer-events: none;
   }
-
-  [data-chat-composer] .okou-composer {
-    scroll-margin-block-end: 16px;
-  }
 }
 
 .okou-viewport-shell {

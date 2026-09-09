@@ -19,7 +19,6 @@ import {
   chatThreadArtifactsContract,
   type ChatEvent,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -141,7 +140,6 @@ function okouToken(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly capabilities?: readonly string[];
-  readonly publicBrand?: PublicBrand;
 }): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
@@ -150,7 +148,6 @@ function okouToken(args: {
     orgId: args.orgId,
     runId: args.runId,
     capabilities: (args.capabilities ?? ["slack:write"]) as never,
-    ...(args.publicBrand ? { publicBrand: args.publicBrand } : {}),
     iat: seconds,
     exp: seconds + 60,
   });
@@ -486,7 +483,6 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       userId,
       orgId,
       runId,
-      publicBrand: "okou",
     });
     context.mocks.slack.files.getUploadURLExternal.mockClear();
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
@@ -739,25 +735,22 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     );
     expect(retryDriveSync.body.name).toBe("report.csv");
 
-    for (const legacyBrand of [undefined, "vm0", "okou"] as const) {
-      const runDriveSync = await accept(
-        driveClient.syncGoogleDrive({
-          headers: {
-            authorization: `Bearer ${okouToken({
-              userId,
-              orgId,
-              runId,
-              capabilities: ["file:write"],
-              publicBrand: legacyBrand,
-            })}`,
-          },
-          params: { threadId },
-          body: { runId, fileId: canonicalAssetId },
-        }),
-        [200],
-      );
-      expect(runDriveSync.body.name).toBe("report.csv");
-    }
+    const runDriveSync = await accept(
+      driveClient.syncGoogleDrive({
+        headers: {
+          authorization: `Bearer ${okouToken({
+            userId,
+            orgId,
+            runId,
+            capabilities: ["file:write"],
+          })}`,
+        },
+        params: { threadId },
+        body: { runId, fileId: canonicalAssetId },
+      }),
+      [200],
+    );
+    expect(runDriveSync.body.name).toBe("report.csv");
 
     expect(driveFolders).toHaveLength(2);
     expect(
@@ -769,7 +762,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
           return folder.name;
         }),
     ).toStrictEqual(["Okou Artifacts"]);
-    expect(driveUploadBodies).toHaveLength(5);
+    expect(driveUploadBodies).toHaveLength(3);
     for (const body of driveUploadBodies) {
       expect(body).toContain('"parents":["drive-folder-2"]');
       expect(body).toContain(`"vm0Artifact":"true"`);
@@ -1153,7 +1146,7 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     });
   });
 
-  it("stores an Okou Slack video preview when a legacy token carries the VM0 brand", async () => {
+  it("stores a Slack video preview in the configured artifact host", async () => {
     const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
@@ -1186,7 +1179,6 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
       userId,
       orgId,
       runId,
-      publicBrand: "vm0",
     });
 
     const client = setupApp({

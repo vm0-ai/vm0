@@ -209,14 +209,16 @@ async function expectLocalizedComposerAttributes(
 ): Promise<HTMLElement> {
   const composer = await waitFor(() => {
     const editor = document.querySelector<HTMLElement>(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!editor) {
       throw new Error("Composer editor not found");
     }
     expect(editor).toHaveAttribute("aria-label", copy.message);
     expect(editor).toHaveAttribute("placeholder", copy.placeholder);
-    const root = editor.closest<HTMLElement>(".okou-composer");
+    const root = editor.closest<HTMLElement>(
+      "[data-slot='chat-composer-card']",
+    );
     if (!root) {
       throw new Error("Composer root not found");
     }

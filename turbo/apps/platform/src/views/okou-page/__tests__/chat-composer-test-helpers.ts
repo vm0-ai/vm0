@@ -543,7 +543,7 @@ export async function selectTemplate(
 export async function findComposerEditor(): Promise<HTMLElement> {
   return await waitFor(() => {
     const editor = document.querySelector(
-      '.okou-composer [contenteditable="true"]',
+      '[data-slot="chat-composer-card"] [contenteditable="true"]',
     );
     if (!(editor instanceof HTMLElement)) {
       throw new Error("Composer editor not found");
