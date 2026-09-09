@@ -76,7 +76,15 @@ The runner checks the actual App build metadata at every capture, exact browser 
 case and runner hashes, baseline image hashes, full-page pixels, and control semantics,
 geometry and effective styles. It requires three identical painted frames.
 Finite animations settle; infinite screenshot animations pause at phase zero.
-This initial protocol has zero pixel tolerance and no masks. Normal-motion,
+`channel-rounding-v1` freezes a maximum of eight changed opaque pixels per
+full-page image, with at most one 8-bit level per RGB channel. Unchanged-code
+calibration observed 2–5 such rounding differences at rounded edges across
+browser processes. Larger color changes, denser differences, alpha changes,
+dimensions and any control observation difference still fail. Every raw changed
+pixel remains visible in the diff and counted separately in the manifest.
+There are no masks. This is a bounded visual noise budget, not byte identity.
+Chromium uses fixed sRGB/software rendering arguments; those arguments and the
+dependency lock are part of the runner hash. Normal-motion,
 WebKit and native PWA/Desktop cases must be added before migrating their
 contracts; the initial cases do not certify those surfaces.
 

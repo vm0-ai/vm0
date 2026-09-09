@@ -11,7 +11,7 @@ import {
 } from "@playwright/test";
 
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
-import { compareImages, sha256 } from "./images";
+import { compareImages, roundingTolerance, sha256 } from "./images";
 
 const expect = playwrightExpect.configure({ timeout: 30_000 });
 
@@ -31,14 +31,17 @@ interface Capture {
   sha256: string;
   observation: unknown;
   changedPixels?: number;
+  contentChangedPixels?: number;
+  roundingPixels?: number;
   status: "BASELINE" | "PASS" | "FAIL";
 }
 
 interface Manifest {
   version: 1;
-  protocol: "exact-pixels-v1";
+  protocol: "channel-rounding-v1";
   caseSha256: string;
   runnerSha256: string;
+  roundingTolerance: typeof roundingTolerance;
   sourceSha: string;
   appBuildSha: string;
   appOrigin: string;
@@ -186,6 +189,7 @@ async function run() {
         readFile(__filename),
         readFile(path.join(__dirname, "images.ts")),
         readFile(path.join(__dirname, "../lib/preview-bypass.ts")),
+        readFile(path.join(__dirname, "../../pnpm-lock.yaml")),
       ]),
     ),
   );
@@ -199,7 +203,7 @@ async function run() {
       )
     : undefined;
   if (baseline) {
-    assert.equal(baseline.protocol, "exact-pixels-v1");
+    assert.equal(baseline.protocol, "channel-rounding-v1");
     assert.equal(baseline.runnerSha256, runnerSha256, "Frozen runner changed");
     assert.equal(
       baseline.caseSha256,
@@ -212,12 +216,18 @@ async function run() {
   await mkdir(out);
   const browser = await chromium.launch({
     executablePath: values["executable-path"],
+    args: [
+      "--disable-gpu",
+      "--force-color-profile=srgb",
+      "--deterministic-mode",
+    ],
   });
   const manifest: Manifest = {
     version: 1,
-    protocol: "exact-pixels-v1",
+    protocol: "channel-rounding-v1",
     caseSha256: sha256(caseBytes),
     runnerSha256,
+    roundingTolerance,
     sourceSha,
     appBuildSha,
     appOrigin,
@@ -411,11 +421,15 @@ async function run() {
             );
             const result = compareImages(before, bytes);
             record.changedPixels = result.changedPixels;
+            record.contentChangedPixels = result.contentChangedPixels;
+            record.roundingPixels = result.roundingPixels;
             const observationsEqual =
               JSON.stringify(reference.observation) ===
               JSON.stringify(observation);
             record.status =
-              result.changedPixels === 0 && observationsEqual ? "PASS" : "FAIL";
+              result.contentChangedPixels === 0 && observationsEqual
+                ? "PASS"
+                : "FAIL";
             await writeFile(path.join(out, `${id}-before.png`), before, {
               flag: "wx",
             });
@@ -424,12 +438,12 @@ async function run() {
             });
             if (record.status === "FAIL")
               manifest.failures.push(
-                `${id}: ${result.changedPixels} changed pixels; observationsEqual=${observationsEqual}`,
+                `${id}: ${result.contentChangedPixels} content pixels, ${result.roundingPixels} rounding pixels; observationsEqual=${observationsEqual}`,
               );
           }
           manifest.captures.push(record);
           console.log(
-            `${id}: ${record.status}${record.changedPixels === undefined ? "" : ` (${record.changedPixels} pixels)`}`,
+            `${id}: ${record.status}${record.changedPixels === undefined ? "" : ` (${record.contentChangedPixels} content pixels, ${record.roundingPixels} rounding pixels)`}`,
           );
         }
 
