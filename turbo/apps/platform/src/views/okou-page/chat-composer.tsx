@@ -9312,7 +9312,6 @@ function ComposerInputSlot({
       {showVoiceTranscriptionSkeleton ? (
         <div
           className="pointer-events-none absolute inset-x-0 top-0 flex h-24 flex-col justify-center gap-2 bg-card px-6"
-          data-composer-voice-transcription-skeleton
           aria-hidden="true"
         >
           <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />

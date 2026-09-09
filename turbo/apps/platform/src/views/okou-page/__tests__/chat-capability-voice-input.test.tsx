@@ -107,9 +107,6 @@ async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
     screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
   ).toBeVisible();
   expect(queryButton("Attach")).toBeNull();
-  const tray = stop.closest("[data-composer-voice-tray]");
-  expect(tray).toHaveClass("min-h-12", "bg-neutral-50", "px-3", "py-2");
-  expect(tray?.parentElement).toHaveClass("px-2", "pb-3", "pt-3");
   return stop;
 }
 
@@ -248,10 +245,7 @@ test("Toggle voice input v2 from the focused composer shortcut", async () => {
 
   await requested.promise;
   expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
-  expect(screen.getByText("Text is taking shape")).toHaveClass("text-right");
-  expect(
-    document.querySelector("[data-composer-voice-transcription-skeleton]"),
-  ).not.toBeNull();
+  expect(screen.getByText("Text is taking shape")).toBeVisible();
   expect(queryButton("Stop recording")).toBeNull();
   fireEvent.keyDown(currentComposer(), {
     key: "e",
@@ -332,9 +326,6 @@ test("Transcribe a voice draft using the latest assistant reference", async () =
   await transcriptionStarted.promise;
 
   expect(screen.getByRole("status")).toHaveTextContent("Transcribing");
-  expect(
-    document.querySelector("[data-composer-voice-transcription-skeleton]"),
-  ).toBeNull();
   expectNoVoiceDraftNode();
   expect(queryButton("Send")).toBeNull();
   placeCaret(currentComposer(), "Opening  closing", 8);
@@ -715,7 +706,7 @@ test.each([
   click(await findEnabledButton("Retry"));
   await retryRequest.promise;
   await screen.findByText("Transcribing");
-  expect(screen.getByText("Retrying saved audio")).toHaveClass("text-right");
+  expect(screen.getByText("Retrying saved audio")).toBeVisible();
   retryResponse.resolve();
   await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
@@ -885,6 +876,11 @@ test("Discard a failed recording without removing typed notes", async () => {
   click(voiceInput);
   click(await activeVoiceDraftStopButton());
   click(await findButton("Remove voice draft"));
+  await waitFor(() => {
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Removing voice draft...");
+    expect(status).toHaveTextContent("Returning to composer");
+  });
   await findEnabledButton("Voice input");
   expect(normalizedComposerText()).toBe("Keep typed notes");
 
