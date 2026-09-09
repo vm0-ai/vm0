@@ -194,3 +194,10 @@ was captured against the unmigrated UI. The old archives remain available. This
 changes the explicitly recorded external fixture boundary, not pixel limits or
 the expected rendered behavior. Actual onboarding and persistence remain live
 checks outside the screenshot fixture.
+
+The App Worker may embed successful API responses in inert bootstrap scripts
+inside the initial HTML. The runner applies the same controlled fixtures to
+those external responses before rendering; otherwise real preferences or Agent
+metadata can bypass browser request interception. Bootstrap handling is included
+in the frozen runner hash. Failed baseline attempts retain page evidence and
+must never be accepted by a replay.

@@ -12,6 +12,7 @@ import {
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
 import { compareImages, roundingTolerance, sha256 } from "./images";
 import { browserArgs, stableScreenshot } from "./capture";
+import { fixtureBootstrap } from "./bootstrap";
 
 const expect = playwrightExpect.configure({ timeout: 30_000 });
 
@@ -154,6 +155,7 @@ async function run() {
         readFile(__filename),
         readFile(path.join(__dirname, "images.ts")),
         readFile(path.join(__dirname, "capture.ts")),
+        readFile(path.join(__dirname, "bootstrap.ts")),
         readFile(path.join(__dirname, "../lib/preview-bypass.ts")),
         readFile(path.join(__dirname, "../../pnpm-lock.yaml")),
       ]),
@@ -325,32 +327,35 @@ async function run() {
             await route.fulfill({ json: preferences });
           },
         );
-        // Preview API redeploys reset its database. Pin the synthetic Agent's
-        // default-role metadata at the same external boundary as its profile.
+        let profile = { ...fixture };
+        const onboarding = () => ({
+          needsOnboarding: false,
+          onboardingComplete: true,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: fixture.agentId,
+          defaultAgentMetadata: {
+            displayName: profile.displayName,
+            sound: profile.sound,
+            avatarUrl: profile.avatarUrl,
+          },
+        });
+        // Preview redeploys recreate the real default Agent with a new ID.
         await page.route(
           (url) =>
             url.origin === apiOrigin &&
             url.pathname === "/api/onboarding/status",
           async (route) => {
             assert.equal(route.request().method(), "GET");
-            await route.fulfill({
-              json: {
-                needsOnboarding: false,
-                onboardingComplete: true,
-                isAdmin: true,
-                hasOrg: true,
-                hasDefaultAgent: true,
-                defaultAgentId: fixture.agentId,
-                defaultAgentMetadata: {
-                  displayName: fixture.displayName,
-                  sound: fixture.sound,
-                  avatarUrl: fixture.avatarUrl,
-                },
-              },
-            });
+            await route.fulfill({ json: onboarding() });
           },
         );
-        let profile = { ...fixture };
+        await fixtureBootstrap(page, appOrigin, () => ({
+          "/api/user-preferences": preferences,
+          "/api/onboarding/status": onboarding(),
+          "/api/agents": [profile],
+        }));
         let savePending: Promise<void> | undefined;
         await page.route(
           (url) =>
@@ -609,6 +614,18 @@ async function run() {
         const failure = `${item.id}: ${error instanceof Error ? error.message : String(error)}`;
         manifest.failures.push(failure);
         console.error(failure);
+        const failedPage = context.pages()[0];
+        if (failedPage) {
+          await failedPage.screenshot({
+            path: path.join(out, `${item.id}-failure.png`),
+            fullPage: true,
+          });
+          await writeFile(
+            path.join(out, `${item.id}-failure.txt`),
+            await failedPage.locator("body").innerText(),
+            { flag: "wx" },
+          );
+        }
       } finally {
         releaseSave?.();
         await context.close();

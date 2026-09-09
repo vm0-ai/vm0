@@ -12,6 +12,7 @@ import {
 import { seedPreviewBypassCookie } from "../lib/preview-bypass";
 import { compareImages, roundingTolerance, sha256 } from "./images";
 import { browserArgs, stableScreenshot } from "./capture";
+import { fixtureBootstrap } from "./bootstrap";
 
 const expect = playwrightExpect.configure({ timeout: 30_000 });
 
@@ -147,6 +148,7 @@ async function run() {
         readFile(__filename),
         readFile(path.join(__dirname, "images.ts")),
         readFile(path.join(__dirname, "capture.ts")),
+        readFile(path.join(__dirname, "bootstrap.ts")),
         readFile(path.join(__dirname, "../lib/preview-bypass.ts")),
         readFile(path.join(__dirname, "../../pnpm-lock.yaml")),
       ]),
@@ -271,6 +273,9 @@ async function run() {
           captureNetworkBodiesRemaining: 0,
           voiceInputModel: null,
         };
+        await fixtureBootstrap(page, appOrigin, () => ({
+          "/api/user-preferences": preferences,
+        }));
         let savePending: Promise<void> | undefined;
         await page.route(
           (url) =>
@@ -448,6 +453,18 @@ async function run() {
         const failure = `${item.id}: ${error instanceof Error ? error.message : String(error)}`;
         manifest.failures.push(failure);
         console.error(failure);
+        const failedPage = context.pages()[0];
+        if (failedPage) {
+          await failedPage.screenshot({
+            path: path.join(out, `${item.id}-failure.png`),
+            fullPage: true,
+          });
+          await writeFile(
+            path.join(out, `${item.id}-failure.txt`),
+            await failedPage.locator("body").innerText(),
+            { flag: "wx" },
+          );
+        }
       } finally {
         releaseSave?.();
         await context.close();
