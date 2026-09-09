@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { AgentSshAccess } from "../okou-page/agent-ssh-access.tsx";
 import { SshLoadError } from "../okou-page/ssh-load-error.tsx";
 import type { ReactNode } from "react";
-import { currentAgentSshAccess$ } from "../../signals/ssh.ts";
+import { currentAgentSshAccess$, sshIdentity$ } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   FileText,
@@ -640,12 +640,18 @@ function AgentPermissionsDrawer({
 
 function sshAccessForAgent(
   access: Loadable<{
+    readonly identity: string;
     readonly agentId: string;
     readonly enabled: boolean;
   } | null>,
   agentId: string,
+  identity: Loadable<string | null>,
 ) {
-  return access.state === "hasData" && access.data?.agentId === agentId
+  return identity.state === "hasData" &&
+    identity.data !== null &&
+    access.state === "hasData" &&
+    access.data?.identity === identity.data &&
+    access.data.agentId === agentId
     ? access.data
     : null;
 }
@@ -659,7 +665,8 @@ function JobPermissionsTab({
 }) {
   const { t } = useTranslation("agents");
   const sshAccessLoadable = useLastLoadable(currentAgentSshAccess$);
-  const sshAccess = sshAccessForAgent(sshAccessLoadable, agentId);
+  const sshIdentity = useLoadable(sshIdentity$);
+  const sshAccess = sshAccessForAgent(sshAccessLoadable, agentId, sshIdentity);
   // Use useLastLoadable so the list keeps showing the previous data while the
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change

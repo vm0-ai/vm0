@@ -348,7 +348,8 @@ export const saveSsh$ = command(
 
 export const currentAgentSshAccess$ = computed(async (get) => {
   get(reload$);
-  if (!(await get(sshIdentity$))) {
+  const identity = await get(sshIdentity$);
+  if (!identity) {
     return null;
   }
   const [agent, summary] = await Promise.all([
@@ -367,7 +368,7 @@ export const currentAgentSshAccess$ = computed(async (get) => {
     { showErrorToast: false },
   );
   return result.status === 200
-    ? { agentId: agent.agentId, ...result.body }
+    ? { identity, agentId: agent.agentId, ...result.body }
     : null;
 });
 export const updateAgentSshAccess$ = command(

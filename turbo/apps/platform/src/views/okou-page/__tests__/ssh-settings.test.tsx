@@ -765,6 +765,55 @@ test("A visible shared Agent offers the current user's SSH authorization", async
   ).not.toBeChecked();
 });
 
+test("Changing users hides the previous user's SSH grant while the new grant loads", async () => {
+  const agent: AgentResponse = {
+    agentId,
+    ownerId: "shared-agent-owner",
+    displayName: "Shared Agent",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "public",
+  };
+  context.mocks.data.agents([agent]);
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, agent);
+  });
+  const nextOwner = context.mocks.deferred<void>();
+  let changing = false;
+  context.mocks.api(sshConnectionsContract.summary, async ({ respond }) => {
+    if (changing) {
+      await nextOwner.promise;
+    }
+    return respond(200, { configuredCount: 1 });
+  });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: !changing });
+  });
+  await page(`/agents/${agentId}?tab=authorization`);
+  await screen.findByRole("switch", { name: "Revoke SSH access" });
+  const clerk = context.mocks.clerk();
+  changing = true;
+  act(() => {
+    clerk.user(
+      { id: "other-owner", fullName: "Other Owner" },
+      { token: "other-token" },
+    );
+    clerk.stateChanged();
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("switch", { name: /SSH access/ })).toBeNull();
+  });
+  nextOwner.resolve();
+  const control = await screen.findByRole("switch", {
+    name: "Grant SSH access",
+  });
+  expect(control).not.toBeChecked();
+});
+
 test("A last-host deletion notification hides Authorization without clearing its retained grant", async () => {
   const agent: AgentResponse = {
     agentId,
