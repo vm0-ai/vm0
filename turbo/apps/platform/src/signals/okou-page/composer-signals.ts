@@ -554,6 +554,13 @@ function unavailableImageReferenceIds(
   );
 }
 
+async function unavailableImageReferenceIdsAfterLoad(
+  selectedIds: ReadonlySet<string>,
+  references: Promise<readonly { readonly id: string }[]>,
+): Promise<ReadonlySet<string>> {
+  return unavailableImageReferenceIds(selectedIds, await references);
+}
+
 function createUnavailableImageReferenceIds$(
   workflowComposer: WorkflowComposerSignals,
   references$: Computed<Promise<readonly { readonly id: string }[]>>,
@@ -566,9 +573,7 @@ function createUnavailableImageReferenceIds$(
       // disabled action when no reusable image reference is selected.
       return new Set<string>();
     }
-    return get(references$).then((references) => {
-      return unavailableImageReferenceIds(selectedIds, references);
-    });
+    return unavailableImageReferenceIdsAfterLoad(selectedIds, get(references$));
   });
 }
 

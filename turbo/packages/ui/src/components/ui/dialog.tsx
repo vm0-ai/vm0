@@ -95,6 +95,7 @@ const dialogMaxWidthClasses = {
   "2xl": { base: "max-w-2xl", sm: "sm:max-w-2xl" },
   "3xl": { base: "max-w-3xl", sm: "sm:max-w-3xl" },
   "4xl": { base: "max-w-4xl", sm: "sm:max-w-4xl" },
+  "5xl": { base: "max-w-5xl", sm: "sm:max-w-5xl" },
   "6xl": { base: "max-w-6xl", sm: "sm:max-w-6xl" },
   "25rem": { base: "max-w-[25rem]", sm: "sm:max-w-[25rem]" },
   "26.5rem": { base: "max-w-[26.5rem]", sm: "sm:max-w-[26.5rem]" },

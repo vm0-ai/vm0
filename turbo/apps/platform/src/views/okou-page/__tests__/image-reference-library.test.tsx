@@ -9,15 +9,18 @@ import {
 import { uploadsContract } from "@okouai/api-contracts/contracts/uploads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { formatUserImageReferenceId } from "@okouai/core/image-reference-selection";
+import { ILLUSTRATION_TEMPLATE_ITEMS } from "@okouai/core/illustration-template-items";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { agentChatComposerSignals$ } from "../../../signals/okou-page/agent-composer-signals.ts";
 import type { ImageReferenceLibrarySignals } from "../../../signals/okou-page/image-reference-library.ts";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "../../../lib/platform-template-items.ts";
 import { mockNow, now } from "../../../lib/time.ts";
 import {
   AGENT_ID,
@@ -655,6 +658,19 @@ function cardForReference(title: string): HTMLElement {
   return card;
 }
 
+function buttonByName(name: string, container: ParentNode): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
+  });
+  if (!button) {
+    throw new Error(`Button ${name} not found`);
+  }
+  return button;
+}
+
 test("keep the disabled picker on the exact built-in Illustration experience", async () => {
   mockTemplateChat();
   installImageReferenceLibrary([
@@ -694,11 +710,7 @@ test("group, select, and serialize one reusable reference in the Illustration sl
   expect(within(dialog).getByText("Organization")).toBeVisible();
   expect(within(dialog).getByText("Only you")).toBeVisible();
   expect(within(dialog).getByText("Shared by Casey Creator")).toBeVisible();
-  await user.click(
-    within(cardForReference(own.title)).getByRole("button", {
-      name: "Use reference",
-    }),
-  );
+  await user.click(buttonByName("Use reference", cardForReference(own.title)));
 
   await waitFor(() => {
     expect(screen.getByText(`Reference · ${own.title}`)).toBeVisible();
@@ -731,11 +743,7 @@ test("replace built-in and custom Illustration choices and block a revoked refer
     within(dialog).getByLabelText(`Select template ${builtIn.title}`),
   );
   dialog = await openTemplatePicker(user, "Illustration");
-  await user.click(
-    within(cardForReference(own.title)).getByRole("button", {
-      name: "Use reference",
-    }),
-  );
+  await user.click(buttonByName("Use reference", cardForReference(own.title)));
   await waitFor(() => {
     expect(
       document.querySelectorAll("[data-composer-inline-template]"),

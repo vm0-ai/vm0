@@ -61,7 +61,7 @@ function pickerItem(
     creatorName: ownedByCurrentUser
       ? null
       : (item.creator?.displayName ?? null),
-    previewUrl: item.reference.previewAsset.url,
+    previewUrl: item.reference.previewUrl,
     canManage: item.reference.canManage,
     canUnshare: item.reference.canModerate,
     cardImage: item.imageBuffers.card,

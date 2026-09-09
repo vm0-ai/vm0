@@ -817,7 +817,8 @@ function ReferenceUploadDialog({
     >
       <DialogContent
         ref={lifecycleRef}
-        className="max-h-[92vh] max-w-5xl overflow-y-auto"
+        maxWidth="5xl"
+        contentClassName="overflow-y-auto"
       >
         <DialogHeader>
           <DialogTitle>
@@ -1031,7 +1032,7 @@ function ReferenceDetailDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+      <DialogContent maxWidth="4xl" contentClassName="overflow-y-auto">
         {item ? (
           <>
             <DialogHeader>
