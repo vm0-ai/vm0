@@ -1,3 +1,4 @@
+use guest_contracts::storage_resources::StorageResourceUsage;
 use std::io;
 use std::time::Duration;
 
@@ -16,6 +17,8 @@ const TERMINAL_MSG_TYPES: &[u8] = &[MSG_ERROR, MSG_GUEST_STORAGE_MANIFEST_RESULT
 /// Owned result of the fixed guest storage-manifest helper.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GuestStorageManifestResult {
+    /// Validated optional resource evidence, never helper output or an error.
+    pub resources: Option<StorageResourceUsage>,
     /// Terminal process state.
     pub termination: ExecTermination,
     /// Guest-observed helper duration in milliseconds.
@@ -30,6 +33,22 @@ pub struct GuestStorageManifestResult {
     pub stderr_truncated: bool,
     /// Bounded process or internal diagnostic.
     pub diagnostic: String,
+}
+
+impl GuestStorageManifestResult {
+    /// Record validated resource evidence with its host-owned sandbox identity.
+    /// Missing terminal evidence produces no fabricated zero-usage event.
+    pub fn log_resources(&self, sandbox_id: &str) {
+        if let Some(resources) = &self.resources
+            && let Ok(resources) = serde_json::to_string(resources)
+        {
+            tracing::info!(
+                id = %sandbox_id,
+                resources = %resources,
+                "storage apply resources"
+            );
+        }
+    }
 }
 
 impl GuestControlClient {
@@ -83,9 +102,27 @@ impl GuestControlClient {
 
         let decoded = decode_guest_storage_manifest_result(&response.payload)
             .map_err(protocol_invalid_data)?;
+        let resources = if decoded.resource_summary.is_empty() {
+            None
+        } else {
+            match serde_json::from_slice::<StorageResourceUsage>(decoded.resource_summary) {
+                Ok(resources) if resources.matches_request(run_id, response.seq) => Some(resources),
+                _ => {
+                    // Optional evidence cannot fail a valid core result. Never
+                    // log raw peer bytes or parser errors containing those bytes.
+                    tracing::warn!(
+                        request_seq = response.seq,
+                        "storage resource summary unavailable: invalid metadata"
+                    );
+                    None
+                }
+            }
+        };
+        let decoded = decoded.result;
         let (stdout, stdout_truncated) = owned_capture(decoded.stdout, "stdout")?;
         let (stderr, stderr_truncated) = owned_capture(decoded.stderr, "stderr")?;
         Ok(GuestStorageManifestResult {
+            resources,
             termination: decoded.termination,
             duration_ms: decoded.duration_ms,
             stdout,

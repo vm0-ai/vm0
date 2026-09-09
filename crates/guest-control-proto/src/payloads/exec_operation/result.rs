@@ -189,9 +189,38 @@ pub(crate) fn encode_exec_result_frame_into_with_type<const MSG_TYPE: u8>(
     stderr: ExecCapturedOutput<'_>,
     diagnostic: &str,
 ) -> Result<(), ProtocolError> {
+    encode_exec_result_frame_into_with_prefix::<MSG_TYPE>(
+        frame,
+        seq,
+        DecodedExecResult {
+            termination,
+            duration_ms,
+            stdout,
+            stderr,
+            diagnostic,
+        },
+        &[],
+    )
+}
+
+pub(crate) fn encode_exec_result_frame_into_with_prefix<const MSG_TYPE: u8>(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    result: DecodedExecResult<'_>,
+    prefix: &[u8],
+) -> Result<(), ProtocolError> {
+    let DecodedExecResult {
+        termination,
+        duration_ms,
+        stdout,
+        stderr,
+        diagnostic,
+    } = result;
     let (diagnostic_len, payload_len) =
         validate_exec_result_payload(termination, stdout, stderr, diagnostic)?;
+    let payload_len = checked_payload_len_add(prefix.len(), payload_len)?;
     encode_into(frame, MSG_TYPE, seq, payload_len, |frame| {
+        frame.extend_from_slice(prefix);
         append_exec_result_payload(
             frame,
             termination,

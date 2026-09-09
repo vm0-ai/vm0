@@ -2,13 +2,13 @@ use std::path::Path;
 
 use crate::ProtocolError;
 use crate::frame::encode_into;
-use crate::payloads::exec_operation::encode_exec_result_frame_into_with_type;
+use crate::payloads::exec_operation::encode_exec_result_frame_into_with_prefix;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_slice, read_str, read_u16, read_u32,
 };
 use crate::wire::{MSG_GUEST_STORAGE_MANIFEST, MSG_GUEST_STORAGE_MANIFEST_RESULT};
-use crate::{DecodedExecResult, ExecCapturedOutput, ExecTermination, MAX_EXEC_STDIN_BYTES};
+use crate::{DecodedExecResult, ExecCapturedOutput, MAX_EXEC_STDIN_BYTES};
 
 /// Maximum encoded run-id length accepted by the fixed storage operation.
 pub const GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES: usize = 256;
@@ -18,6 +18,19 @@ pub const GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES: usize = 4 * 1024;
 
 /// Fixed stdout/stderr capture bound for the storage helper.
 pub const GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
+
+/// Maximum optional JSON resource summary, separate from helper output/errors.
+pub const GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES: usize = 4 * 1024;
+
+/// Dedicated storage result with bounded optional resource evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DecodedGuestStorageManifestResult<'a> {
+    /// Original terminal process metadata and captured helper output.
+    pub result: DecodedExecResult<'a>,
+    /// Optional resource JSON; empty means unavailable. Typed validation belongs
+    /// to the host consumer and cannot change the core operation outcome.
+    pub resource_summary: &'a [u8],
+}
 
 /// Decoded fixed guest storage-manifest request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -166,15 +179,22 @@ pub fn decode_guest_storage_manifest_request(
 
 /// Encode a fixed guest storage-manifest terminal result payload.
 pub fn encode_guest_storage_manifest_result(
-    termination: ExecTermination,
-    duration_ms: u32,
-    stdout: ExecCapturedOutput<'_>,
-    stderr: ExecCapturedOutput<'_>,
-    diagnostic: &str,
+    result: DecodedExecResult<'_>,
+    resource_summary: &[u8],
 ) -> Result<Vec<u8>, ProtocolError> {
-    validate_result_output(stdout, "stdout")?;
-    validate_result_output(stderr, "stderr")?;
-    crate::encode_exec_result(termination, duration_ms, stdout, stderr, diagnostic)
+    validate_result_output(result.stdout, "stdout")?;
+    validate_result_output(result.stderr, "stderr")?;
+    let mut payload = resource_prefix(resource_summary)?;
+    let output = crate::encode_exec_result(
+        result.termination,
+        result.duration_ms,
+        result.stdout,
+        result.stderr,
+        result.diagnostic,
+    )?;
+    ensure_payload_fits_message(checked_payload_len_add(payload.len(), output.len())?)?;
+    payload.extend_from_slice(&output);
+    Ok(payload)
 }
 
 /// Encode a full fixed guest storage-manifest terminal result frame.
@@ -183,41 +203,64 @@ pub fn encode_guest_storage_manifest_result(
 ///
 /// Returns [`ProtocolError`] if stdout or stderr was discarded or exceeds
 /// [`GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES`] bytes; if `diagnostic` cannot
-/// fit its wire length field; or if the encoded payload exceeds the maximum
-/// message size.
+/// fit its wire length field; if resources exceed
+/// [`GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES`]; or if the encoded payload
+/// exceeds the maximum message size.
 ///
 /// Validation runs before the shared frame encoder clears `frame`, so a
 /// validation error leaves the destination unchanged.
 pub fn encode_guest_storage_manifest_result_frame_into(
     frame: &mut Vec<u8>,
     seq: u32,
-    termination: ExecTermination,
-    duration_ms: u32,
-    stdout: ExecCapturedOutput<'_>,
-    stderr: ExecCapturedOutput<'_>,
-    diagnostic: &str,
+    result: DecodedExecResult<'_>,
+    resource_summary: &[u8],
 ) -> Result<(), ProtocolError> {
-    validate_result_output(stdout, "stdout")?;
-    validate_result_output(stderr, "stderr")?;
-    encode_exec_result_frame_into_with_type::<MSG_GUEST_STORAGE_MANIFEST_RESULT>(
-        frame,
-        seq,
-        termination,
-        duration_ms,
-        stdout,
-        stderr,
-        diagnostic,
+    validate_result_output(result.stdout, "stdout")?;
+    validate_result_output(result.stderr, "stderr")?;
+    let prefix = resource_prefix(resource_summary)?;
+    encode_exec_result_frame_into_with_prefix::<MSG_GUEST_STORAGE_MANIFEST_RESULT>(
+        frame, seq, result, &prefix,
     )
+}
+
+fn resource_prefix(resources: &[u8]) -> Result<Vec<u8>, ProtocolError> {
+    if resources.len() > GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES {
+        return Err(ProtocolError::PayloadTooLarge(
+            "storage resources",
+            resources.len(),
+        ));
+    }
+    let length = ensure_u16_len("storage resources", resources.len())?;
+    let mut prefix = Vec::with_capacity(2 + resources.len());
+    prefix.extend_from_slice(&length.to_be_bytes());
+    prefix.extend_from_slice(resources);
+    Ok(prefix)
 }
 
 /// Decode a fixed guest storage-manifest terminal result payload.
 pub fn decode_guest_storage_manifest_result(
     payload: &[u8],
-) -> Result<DecodedExecResult<'_>, ProtocolError> {
-    let decoded = crate::decode_exec_result(payload)?;
+) -> Result<DecodedGuestStorageManifestResult<'_>, ProtocolError> {
+    let mut offset = 0;
+    let length = usize::from(read_u16(
+        payload,
+        &mut offset,
+        "storage resources length truncated",
+    )?);
+    if length > GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES {
+        return Err(ProtocolError::PayloadTooLarge("storage resources", length));
+    }
+    let resource_summary = read_slice(payload, &mut offset, length, "storage resources truncated")?;
+    let result = payload
+        .get(offset..)
+        .ok_or(ProtocolError::InvalidPayload("storage result truncated"))?;
+    let decoded = crate::decode_exec_result(result)?;
     validate_result_output(decoded.stdout, "stdout")?;
     validate_result_output(decoded.stderr, "stderr")?;
-    Ok(decoded)
+    Ok(DecodedGuestStorageManifestResult {
+        result: decoded,
+        resource_summary,
+    })
 }
 
 #[derive(Clone, Copy)]

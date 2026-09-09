@@ -55,7 +55,7 @@
 //! | 0x16 | H→G       | guest_dns_readiness | `[4B positive timeout_ms][2B hostname_len][hostname]` |
 //! | 0x17 | G→H       | guest_dns_readiness_result | `[termination][4B duration_ms][1B flags][2B answer_len][answer][2B diagnostic_len][diagnostic]` |
 //! | 0x18 | H→G       | guest_storage_manifest | `[4B positive timeout_ms][2B run_id_len][run_id][2B runtime_dir_len][runtime_dir][4B manifest_len][manifest]` |
-//! | 0x19 | G→H       | guest_storage_manifest_result | same payload as `exec_result`, with both streams captured and bounded to 1 MiB each |
+//! | 0x19 | G→H       | guest_storage_manifest_result | `[2B resource_json_len][resource_json][exec_result]`; optional resources bounded to 4 KiB, both streams captured and bounded to 1 MiB each |
 //! | 0x1A | H→G       | guest_state_restore | `[4B positive timeout_ms][8B unix_seconds][4B unix_nanoseconds][1B timezone_mode][2B timezone_len][timezone][256B entropy]` |
 //! | 0x1B | G→H       | guest_state_restore_result | same payload as `exec_result`, with empty stdout and stderr bounded to 64 KiB |
 //! | 0x1C | G→H       | exec_agent_ready | `[4B containment_create_us][4B placement_broker_setup_us][4B shell_spawn_us][4B bootstrap_ready_wait_us]` |
@@ -245,8 +245,9 @@ pub use payloads::guest_state_restore::{
     encode_guest_state_restore_result_frame_into,
 };
 pub use payloads::guest_storage_manifest::{
-    DecodedGuestStorageManifestRequest, GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES,
-    GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES, GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES,
+    DecodedGuestStorageManifestRequest, DecodedGuestStorageManifestResult,
+    GUEST_STORAGE_MANIFEST_MAX_RUN_ID_BYTES, GUEST_STORAGE_MANIFEST_MAX_RUNTIME_DIR_BYTES,
+    GUEST_STORAGE_MANIFEST_OUTPUT_LIMIT_BYTES, GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES,
     decode_guest_storage_manifest_request, decode_guest_storage_manifest_result,
     encode_guest_storage_manifest_request, encode_guest_storage_manifest_request_frame_into,
     encode_guest_storage_manifest_result, encode_guest_storage_manifest_result_frame_into,

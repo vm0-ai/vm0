@@ -1057,6 +1057,8 @@ async fn urgent_oom_retries_transient_failure_and_retains_unacknowledged_old_rec
 #[tokio::test]
 async fn urgent_oom_arrives_while_normal_http_response_is_held_open() {
     use tokio::io::AsyncWriteExt;
+    // The private HTTP listener still shares process-global telemetry paths.
+    let _api = SharedApiMock::new().await;
     let files = ExplicitTelemetryFiles::new("urgent-inflight").unwrap();
     guest_agent::paths::write_private(files.paths.system_log_file(), "normal backlog\n").unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1136,6 +1138,7 @@ async fn urgent_oom_arrives_while_normal_http_response_is_held_open() {
 
 #[tokio::test]
 async fn urgent_oom_stalled_http_has_two_bounded_attempts_and_retains_evidence() {
+    let _api = SharedApiMock::new().await;
     let files = ExplicitTelemetryFiles::new("urgent-stalled").unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http = guest_agent::http::HttpClient::with_api_config(

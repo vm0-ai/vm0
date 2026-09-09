@@ -24,9 +24,14 @@ use guest_contracts::process_containment::{
     WORKLOAD_CGROUP_NAME, WORKLOAD_MEMORY_OOM_GROUP, WorkloadResourceEvents,
     WorkloadResourcePolicy,
 };
+use guest_contracts::storage_resources::StorageResourceUsage;
 use guest_control_proto::ExecProcessRole;
 
 use crate::log::log;
+
+mod storage_resources;
+
+use storage_resources::{StorageOperation, read_resource_file};
 
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
@@ -72,6 +77,10 @@ enum ContainmentBackend {
     Cgroup(CgroupGuard),
     ProcessGroup,
     TestNoop,
+    TestResourceFiles {
+        resource_path: PathBuf,
+        operation: StorageOperation,
+    },
     #[cfg(test)]
     TestDirectory(PathBuf),
 }
@@ -84,6 +93,7 @@ struct CgroupGuard {
     tools_path: Option<PathBuf>,
     create_elapsed: Duration,
     oom_evidence: Option<Arc<Mutex<crate::oom_evidence::EvidenceMonitor>>>,
+    storage_operation: Option<StorageOperation>,
 }
 
 pub(crate) struct PreparedProcessContainmentCommand<'a> {
@@ -242,6 +252,19 @@ impl ProcessContainmentError {
 }
 
 impl ExecProcessContainment {
+    pub(crate) fn for_test_storage_resources(
+        resource_path: PathBuf,
+        run_id: &str,
+        sequence: u32,
+    ) -> Self {
+        Self {
+            backend: ContainmentBackend::TestResourceFiles {
+                resource_path,
+                operation: StorageOperation::new(run_id, sequence, Instant::now()),
+            },
+        }
+    }
+
     pub(crate) fn create(
         sequence: u32,
         mode: ProcessContainmentMode,
@@ -272,12 +295,12 @@ impl ExecProcessContainment {
     pub(crate) fn prepare_command(&self) -> PreparedProcessContainmentCommand<'_> {
         match &self.backend {
             ContainmentBackend::Cgroup(guard) => guard.prepare_command(),
-            ContainmentBackend::ProcessGroup | ContainmentBackend::TestNoop => {
-                PreparedProcessContainmentCommand {
-                    directory: None,
-                    deny_process_inspection: false,
-                }
-            }
+            ContainmentBackend::ProcessGroup
+            | ContainmentBackend::TestNoop
+            | ContainmentBackend::TestResourceFiles { .. } => PreparedProcessContainmentCommand {
+                directory: None,
+                deny_process_inspection: false,
+            },
             #[cfg(test)]
             ContainmentBackend::TestDirectory(_) => PreparedProcessContainmentCommand {
                 directory: None,
@@ -286,10 +309,19 @@ impl ExecProcessContainment {
         }
     }
 
+    pub(crate) fn with_storage_resources(mut self, run_id: &str, sequence: u32) -> Self {
+        if let ContainmentBackend::Cgroup(guard) = &mut self.backend {
+            guard.storage_operation = Some(StorageOperation::new(run_id, sequence, Instant::now()));
+        }
+        self
+    }
+
     pub(crate) fn create_elapsed(&self) -> Duration {
         match &self.backend {
             ContainmentBackend::Cgroup(guard) => guard.create_elapsed,
-            ContainmentBackend::ProcessGroup | ContainmentBackend::TestNoop => Duration::ZERO,
+            ContainmentBackend::ProcessGroup
+            | ContainmentBackend::TestNoop
+            | ContainmentBackend::TestResourceFiles { .. } => Duration::ZERO,
             #[cfg(test)]
             ContainmentBackend::TestDirectory(_) => Duration::ZERO,
         }
@@ -308,7 +340,9 @@ impl ExecProcessContainment {
             ContainmentBackend::Cgroup(guard) => guard
                 .start_workload_placement_bootstrap(control_endpoint, expected_uid)
                 .map(Some),
-            ContainmentBackend::ProcessGroup | ContainmentBackend::TestNoop => Ok(None),
+            ContainmentBackend::ProcessGroup
+            | ContainmentBackend::TestNoop
+            | ContainmentBackend::TestResourceFiles { .. } => Ok(None),
             #[cfg(test)]
             ContainmentBackend::TestDirectory(_) => Ok(None),
         }
@@ -334,9 +368,40 @@ impl ExecProcessContainment {
         self,
         mode: ProcessContainmentCleanupMode,
     ) -> Result<Option<String>, ProcessContainmentError> {
+        self.cleanup_with_outputs(mode, &mut None)
+    }
+
+    pub(crate) fn cleanup_with_storage_resources(
+        self,
+        mode: ProcessContainmentCleanupMode,
+        resources: &mut Option<StorageResourceUsage>,
+    ) -> Result<(), ProcessContainmentError> {
+        self.cleanup_with_outputs(mode, resources).map(|_| ())
+    }
+
+    fn cleanup_with_outputs(
+        self,
+        mode: ProcessContainmentCleanupMode,
+        resources: &mut Option<StorageResourceUsage>,
+    ) -> Result<Option<String>, ProcessContainmentError> {
         match self.backend {
-            ContainmentBackend::Cgroup(guard) => guard.cleanup(mode),
+            ContainmentBackend::Cgroup(guard) => guard.cleanup(mode, resources),
             ContainmentBackend::ProcessGroup | ContainmentBackend::TestNoop => Ok(None),
+            ContainmentBackend::TestResourceFiles {
+                resource_path,
+                operation,
+            } => {
+                let snapshot_started = Instant::now();
+                let events = ResourceEventFiles::read(&resource_path);
+                *resources = Some(operation.collect(
+                    &format!("exec-1-{}-1", operation.sequence),
+                    &resource_path,
+                    mode,
+                    snapshot_started,
+                    &events,
+                ));
+                Ok(None)
+            }
             #[cfg(test)]
             ContainmentBackend::TestDirectory(group_path) => fs::remove_dir(group_path)
                 .map(|()| None)
@@ -514,6 +579,7 @@ impl CgroupGuard {
             workload_placement,
             tools_path,
             create_elapsed: started.elapsed(),
+            storage_operation: None,
         })
     }
 
@@ -648,6 +714,7 @@ impl CgroupGuard {
     fn cleanup(
         self,
         mode: ProcessContainmentCleanupMode,
+        resources: &mut Option<StorageResourceUsage>,
     ) -> Result<Option<String>, ProcessContainmentError> {
         let started = Instant::now();
         let CgroupGuard {
@@ -658,11 +725,18 @@ impl CgroupGuard {
             tools_path: _,
             create_elapsed,
             oom_evidence,
+            storage_operation,
         } = self;
         drop(outer_placement);
         drop(workload_placement);
 
-        log_resource_events(&group_name, &group_path.join(WORKLOAD_CGROUP_NAME));
+        log_resource_events(
+            &group_name,
+            &group_path.join(WORKLOAD_CGROUP_NAME),
+            storage_operation.as_ref(),
+            mode,
+            resources,
+        );
 
         // Capture before any cleanup enumeration, signal or removal. Placement
         // workers have joined, so this lock cannot wait behind socket IO.
@@ -824,8 +898,20 @@ fn open_placement(
         .map_err(|error| ProcessContainmentError::new(stage, error))
 }
 
-fn log_resource_events(group_name: &str, workload_path: &Path) {
-    let events = match read_resource_events(workload_path) {
+fn log_resource_events(
+    group_name: &str,
+    workload_path: &Path,
+    storage_operation: Option<&StorageOperation>,
+    mode: ProcessContainmentCleanupMode,
+    resources: &mut Option<StorageResourceUsage>,
+) {
+    let snapshot_started = Instant::now();
+    let files = ResourceEventFiles::read(workload_path);
+    if let Some(operation) = storage_operation {
+        *resources =
+            Some(operation.collect(group_name, workload_path, mode, snapshot_started, &files));
+    }
+    let events = match files.into_events() {
         Ok(events) => events,
         Err(error) => {
             log(
@@ -861,11 +947,24 @@ fn log_resource_events(group_name: &str, workload_path: &Path) {
     }
 }
 
-fn read_resource_events(workload_path: &Path) -> io::Result<WorkloadResourceEvents> {
-    let cpu = fs::read_to_string(workload_path.join(CPU_STAT_FILE))?;
-    let memory = fs::read_to_string(workload_path.join(MEMORY_EVENTS_FILE))?;
-    let pids = fs::read_to_string(workload_path.join(PIDS_EVENTS_FILE))?;
-    WorkloadResourceEvents::from_file_contents(&cpu, &memory, &pids)
+struct ResourceEventFiles {
+    cpu: io::Result<String>,
+    memory: io::Result<String>,
+    pids: io::Result<String>,
+}
+
+impl ResourceEventFiles {
+    fn read(workload_path: &Path) -> Self {
+        Self {
+            cpu: read_resource_file(workload_path, CPU_STAT_FILE),
+            memory: read_resource_file(workload_path, MEMORY_EVENTS_FILE),
+            pids: read_resource_file(workload_path, PIDS_EVENTS_FILE),
+        }
+    }
+
+    fn into_events(self) -> io::Result<WorkloadResourceEvents> {
+        WorkloadResourceEvents::from_file_contents(&self.cpu?, &self.memory?, &self.pids?)
+    }
 }
 
 #[derive(Debug)]
@@ -1787,12 +1886,15 @@ mod tests {
             tools_path: None,
             create_elapsed: Duration::ZERO,
             oom_evidence: Some(Arc::new(Mutex::new(monitor))),
+            storage_operation: None,
         };
+        let mut resources = None;
         let diagnostic = guard
-            .cleanup(ProcessContainmentCleanupMode::Forced)
+            .cleanup(ProcessContainmentCleanupMode::Forced, &mut resources)
             .unwrap()
             .unwrap();
         assert!(!root.exists());
+        assert!(resources.is_none());
         let evidence: guest_contracts::oom_evidence::OomEvidence = serde_json::from_str(
             diagnostic
                 .strip_prefix(guest_contracts::oom_evidence::EVIDENCE_PREFIX)

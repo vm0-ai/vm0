@@ -9,6 +9,8 @@ use guest_control_proto::{
 
 use super::support::*;
 
+mod resources;
+
 fn create_program(body: &str) -> (tempfile::TempDir, PathBuf) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("guest-storage-apply-test");
@@ -37,6 +39,7 @@ fn send_request(
 }
 
 struct TestResult {
+    resources: Vec<u8>,
     termination: ExecTermination,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
@@ -51,9 +54,12 @@ fn read_result(stream: &mut impl std::io::Read, seq: u32) -> TestResult {
     assert_eq!(message.seq, seq);
     let decoded =
         guest_control_proto::decode_guest_storage_manifest_result(&message.payload).unwrap();
+    let resources = decoded.resource_summary.to_vec();
+    let decoded = decoded.result;
     let (stdout, stdout_truncated) = captured(decoded.stdout);
     let (stderr, stderr_truncated) = captured(decoded.stderr);
     TestResult {
+        resources,
         termination: decoded.termination,
         stdout,
         stderr,

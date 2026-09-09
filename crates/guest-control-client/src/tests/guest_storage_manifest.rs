@@ -15,17 +15,20 @@ use crate::tests::support::{
 
 fn success_payload() -> Vec<u8> {
     guest_control_proto::encode_guest_storage_manifest_result(
-        ExecTermination::Exited { exit_code: 0 },
-        17,
-        ExecCapturedOutput::Captured {
-            bytes: b"out",
-            truncated: false,
+        guest_control_proto::DecodedExecResult {
+            termination: ExecTermination::Exited { exit_code: 0 },
+            duration_ms: 17,
+            stdout: ExecCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: false,
+            },
+            stderr: ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: true,
+            },
+            diagnostic: "",
         },
-        ExecCapturedOutput::Captured {
-            bytes: b"err",
-            truncated: true,
-        },
-        "",
+        &[],
     )
     .unwrap()
 }
@@ -72,10 +75,93 @@ async fn guest_storage_manifest_sends_request_and_decodes_result() {
     assert_eq!(result.stderr, b"err");
     assert!(!result.stdout_truncated);
     assert!(result.stderr_truncated);
+    assert!(result.resources.is_none());
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    release_tx.send(()).unwrap();
+    guest.await.unwrap();
+}
+
+#[tokio::test]
+async fn storage_resources_are_bound_to_the_request_without_changing_core_results() {
+    let (host_stream, guest_stream) = make_pair();
+    let (release_tx, release_rx) = oneshot::channel();
+    let guest = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest_stream);
+        guest.complete_handshake().await;
+        for case in 0..6 {
+            let request = guest.expect_message(MSG_GUEST_STORAGE_MANIFEST).await;
+            let mut resource = serde_json::json!({
+                "run_id": "8d7a07c8-15b2-446f-9f47-36d32028baa6",
+                "request_seq": request.seq,
+                "group": format!("exec-7-{}-1", request.seq),
+                "cleanup_mode": "Graceful",
+                "containment_wall_us": 1000,
+                "collection_us": 170,
+                "cpu_usage_usec": 0,
+                "unknown_peer_field": "never logged"
+            });
+            match case {
+                1 => resource["run_id"] = serde_json::json!("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+                2 => resource["request_seq"] = serde_json::json!(request.seq + 1),
+                3 => resource["group"] = serde_json::json!("secret-group\nforged"),
+                4 => resource["cpu_usage_usec"] = serde_json::json!(-1),
+                _ => {}
+            }
+            let resources = if case == 5 {
+                vec![0xff]
+            } else {
+                serde_json::to_vec(&resource).unwrap()
+            };
+            let original = success_payload();
+            let result = guest_control_proto::decode_guest_storage_manifest_result(&original)
+                .unwrap()
+                .result;
+            let payload =
+                guest_control_proto::encode_guest_storage_manifest_result(result, &resources)
+                    .unwrap();
+            guest
+                .send_response(MSG_GUEST_STORAGE_MANIFEST_RESULT, request.seq, &payload)
+                .await;
+        }
+        release_rx.await.unwrap();
+    });
+    let host = host_from_stream(host_stream).await.unwrap();
+    for case in 0..6 {
+        let result = host
+            .guest_storage_manifest(
+                b"{}",
+                "8d7a07c8-15b2-446f-9f47-36d32028baa6",
+                "/run",
+                1000,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+        assert_eq!(result.stdout, b"out");
+        assert_eq!(result.stderr, b"err");
+        assert!(result.stderr_truncated);
+        assert!(result.diagnostic.is_empty());
+        if case == 0 {
+            let resources = result.resources.unwrap();
+            assert_eq!(resources.cpu_usage_usec, Some(0));
+            assert_eq!(resources.memory_peak_bytes, None);
+            assert!(
+                !serde_json::to_string(&resources)
+                    .unwrap()
+                    .contains("never logged")
+            );
+        } else {
+            assert!(result.resources.is_none());
+        }
+        assert_eq!(
+            normal_operation_readiness(&host),
+            NormalOperationReadiness::Idle
+        );
+    }
     release_tx.send(()).unwrap();
     guest.await.unwrap();
 }

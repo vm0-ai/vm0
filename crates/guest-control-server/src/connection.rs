@@ -975,6 +975,29 @@ pub fn handle_connection_with_test_storage_manifest_program(
     )
 }
 
+/// Exercises storage RPC diagnostics using owned resource files.
+/// No real guest cgroup hierarchy is accessed by this integration-test hook.
+#[doc(hidden)]
+pub fn handle_connection_with_test_storage_resources(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+    resource_path: std::path::PathBuf,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        ConnectionPrograms {
+            guest_storage_manifest: GuestStorageManifestProgram::for_test_resources(
+                program,
+                resource_path,
+            ),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
+    )
+}
+
 /// Handles a host-side test connection with a test workspace mount executable
 /// and child timeout.
 #[doc(hidden)]

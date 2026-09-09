@@ -1,3 +1,4 @@
+use guest_contracts::storage_resources::StorageResourceUsage;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ChildStdin;
@@ -40,6 +41,10 @@ const MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
 pub(crate) enum GuestStorageManifestProgram {
     Production,
     Test(PathBuf),
+    TestResources {
+        program: PathBuf,
+        resource_path: PathBuf,
+    },
 }
 
 impl GuestStorageManifestProgram {
@@ -51,11 +56,36 @@ impl GuestStorageManifestProgram {
         Self::Test(path)
     }
 
+    pub(crate) fn for_test_resources(program: PathBuf, resource_path: PathBuf) -> Self {
+        Self::TestResources {
+            program,
+            resource_path,
+        }
+    }
+
     fn path(&self) -> &Path {
         match self {
             Self::Production => Path::new(guest_contracts::guest_binary::STORAGE_APPLY_PATH),
             Self::Test(path) => path,
+            Self::TestResources { program, .. } => program,
         }
+    }
+
+    fn create_containment(
+        &self,
+        seq: u32,
+        mode: ProcessContainmentMode,
+        run_id: &str,
+    ) -> Result<ExecProcessContainment, ProcessContainmentError> {
+        if let Self::TestResources { resource_path, .. } = self {
+            return Ok(ExecProcessContainment::for_test_storage_resources(
+                resource_path.clone(),
+                run_id,
+                seq,
+            ));
+        }
+        ExecProcessContainment::create(seq, mode, guest_control_proto::ExecProcessRole::Workload)
+            .map(|containment| containment.with_storage_resources(run_id, seq))
     }
 }
 
@@ -176,9 +206,10 @@ fn handle_request(
         operation_guard,
         admission,
     } = request;
+    let mut resources = None;
     let output = run_manifest(RunManifestInput {
         seq,
-        program: program.path(),
+        program,
         timeout_ms,
         run_id: &run_id,
         runtime_dir: &runtime_dir,
@@ -186,18 +217,29 @@ fn handle_request(
         connection_cancel,
         process_containment_mode,
         drain_deadline,
+        resources: &mut resources,
     });
     let stdout = captured_output(&output.stdout);
     let stderr = captured_output(&output.stderr);
+    let resource_summary = resources
+        .as_ref()
+        .and_then(|value| serde_json::to_vec(value).ok())
+        .filter(|value| {
+            value.len() <= guest_control_proto::GUEST_STORAGE_RESOURCE_SUMMARY_LIMIT_BYTES
+        })
+        .unwrap_or_default();
     let mut frame = Vec::new();
     guest_control_proto::encode_guest_storage_manifest_result_frame_into(
         &mut frame,
         seq,
-        output.termination,
-        output.duration_ms,
-        stdout,
-        stderr,
-        &output.diagnostic,
+        guest_control_proto::DecodedExecResult {
+            termination: output.termination,
+            duration_ms: output.duration_ms,
+            stdout,
+            stderr,
+            diagnostic: &output.diagnostic,
+        },
+        &resource_summary,
     )
     .map_err(to_io_error)?;
 
@@ -210,8 +252,9 @@ fn handle_request(
 }
 
 struct RunManifestInput<'a> {
+    resources: &'a mut Option<StorageResourceUsage>,
     seq: u32,
-    program: &'a Path,
+    program: &'a GuestStorageManifestProgram,
     timeout_ms: u32,
     run_id: &'a str,
     runtime_dir: &'a str,
@@ -232,6 +275,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         connection_cancel,
         process_containment_mode,
         drain_deadline,
+        resources,
     } = input;
     let started = Instant::now();
     let drain_cancel = match DrainCancellation::new() {
@@ -244,21 +288,18 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             );
         }
     };
-    let process_containment = match ExecProcessContainment::create(
-        seq,
-        process_containment_mode,
-        guest_control_proto::ExecProcessRole::Workload,
-    ) {
-        Ok(process_containment) => process_containment,
-        Err(error) => {
-            return failed_output(
-                ExecTermination::StartFailed,
-                started,
-                format!("Failed to initialize storage helper process containment: {error}"),
-            );
-        }
-    };
-    let mut command = Command::new(program);
+    let process_containment =
+        match program.create_containment(seq, process_containment_mode, run_id) {
+            Ok(process_containment) => process_containment,
+            Err(error) => {
+                return failed_output(
+                    ExecTermination::StartFailed,
+                    started,
+                    format!("Failed to initialize storage helper process containment: {error}"),
+                );
+            }
+        };
+    let mut command = Command::new(program.path());
     command
         .arg("--manifest-stdin")
         .env(guest_contracts::env::RUN_ID_ENV, run_id)
@@ -272,7 +313,8 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
     let mut child = match command.spawn(false, &process_containment) {
         Ok(child) => child,
         Err(error) => {
-            let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            let _ = process_containment
+                .cleanup_with_storage_resources(ProcessContainmentCleanupMode::Forced, resources);
             return failed_output(
                 ExecTermination::StartFailed,
                 started,
@@ -285,6 +327,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         return abort_spawned(
             child,
             process_containment,
+            resources,
             started,
             "storage helper stdin pipe missing",
         );
@@ -294,6 +337,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         return abort_spawned(
             child,
             process_containment,
+            resources,
             started,
             "storage helper stdout pipe missing",
         );
@@ -304,6 +348,7 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         return abort_spawned(
             child,
             process_containment,
+            resources,
             started,
             "storage helper stderr pipe missing",
         );
@@ -321,7 +366,8 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             drop(stdin);
             drop(stderr);
             kill_and_reap_child(child);
-            let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            let cleanup = process_containment
+                .cleanup_with_storage_resources(ProcessContainmentCleanupMode::Forced, resources);
             return failed_output(
                 ExecTermination::WaitFailed,
                 started,
@@ -343,7 +389,8 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
             drain_cancel.cancel();
             drop(stdin);
             kill_and_reap_child(child);
-            let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            let cleanup = process_containment
+                .cleanup_with_storage_resources(ProcessContainmentCleanupMode::Forced, resources);
             drop(drain_done_tx);
             let _ = stdout_drain.join();
             return failed_output(
@@ -361,7 +408,8 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
         Err(error) => {
             drain_cancel.cancel();
             kill_and_reap_child(child);
-            let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+            let cleanup = process_containment
+                .cleanup_with_storage_resources(ProcessContainmentCleanupMode::Forced, resources);
             drop(drain_done_tx);
             let _ = stdout_drain.join();
             let _ = stderr_drain.join();
@@ -387,7 +435,8 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
     );
     let cancellation_observed = connection_cancel.load(Ordering::Acquire);
     let cleanup_mode = cleanup_mode_for_wait_outcome(&outcome, cancellation_observed);
-    let containment_result = process_containment.cleanup(cleanup_mode);
+    let containment_result =
+        process_containment.cleanup_with_storage_resources(cleanup_mode, resources);
     let stdin_result = stdin_writer.join();
     if !matches!(outcome, WaitOutcome::Exited(_))
         || cancellation_observed
@@ -451,11 +500,13 @@ fn run_manifest(input: RunManifestInput<'_>) -> GuestStorageManifestOutput {
 fn abort_spawned(
     child: Child,
     process_containment: ExecProcessContainment,
+    resources: &mut Option<StorageResourceUsage>,
     started: Instant,
     diagnostic: &str,
 ) -> GuestStorageManifestOutput {
     kill_and_reap_child(child);
-    let cleanup = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+    let cleanup = process_containment
+        .cleanup_with_storage_resources(ProcessContainmentCleanupMode::Forced, resources);
     failed_output(
         ExecTermination::WaitFailed,
         started,

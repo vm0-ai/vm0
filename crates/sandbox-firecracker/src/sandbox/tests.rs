@@ -2810,6 +2810,9 @@ fn exec_result_from_operation_result_preserves_terminal_metadata() {
 
 #[tokio::test]
 async fn apply_storage_manifest_preserves_terminal_metadata() {
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let request = StorageManifestRequest {
@@ -2833,18 +2836,35 @@ async fn apply_storage_manifest_preserves_terminal_metadata() {
         assert_eq!(decoded.runtime_dir, "/run/vm0/runs/run-1");
         assert_eq!(decoded.manifest_json, b"{\"storages\":[]}");
 
+        let resources = serde_json::to_vec(&serde_json::json!({
+            "run_id": null,
+            "request_seq": request.seq,
+            "group": format!("exec-7-{}-1", request.seq),
+            "cleanup_mode": "Forced",
+            "containment_wall_us": 19000,
+            "collection_us": 170,
+            "cpu_usage_usec": 16000,
+            "memory_peak_bytes": 1048576,
+            "memory_high_limit_bytes": "max",
+            "unknown_peer_field": "must-not-be-logged"
+        }))
+        .unwrap();
+
         let payload = guest_control_proto::encode_guest_storage_manifest_result(
-            guest_control_proto::ExecTermination::WaitFailed,
-            19,
-            guest_control_proto::ExecCapturedOutput::Captured {
-                bytes: b"out",
-                truncated: true,
+            guest_control_proto::DecodedExecResult {
+                termination: guest_control_proto::ExecTermination::WaitFailed,
+                duration_ms: 19,
+                stdout: guest_control_proto::ExecCapturedOutput::Captured {
+                    bytes: b"out",
+                    truncated: true,
+                },
+                stderr: guest_control_proto::ExecCapturedOutput::Captured {
+                    bytes: b"err",
+                    truncated: false,
+                },
+                diagnostic: "containment cleanup failed",
             },
-            guest_control_proto::ExecCapturedOutput::Captured {
-                bytes: b"err",
-                truncated: false,
-            },
-            "containment cleanup failed",
+            &resources,
         )
         .unwrap();
         let response = guest_control_proto::encode(
@@ -2865,6 +2885,21 @@ async fn apply_storage_manifest_preserves_terminal_metadata() {
     assert!(result.stdout_truncated);
     assert!(!result.stderr_truncated);
     assert_eq!(result.diagnostic, "containment cleanup failed");
+    let events = captured.entries();
+    let summaries: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event.fields.get("message").map(String::as_str) == Some("storage apply resources")
+        })
+        .collect();
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].fields["id"], sandbox.id.to_string());
+    let resources: serde_json::Value =
+        serde_json::from_str(&summaries[0].fields["resources"]).unwrap();
+    assert_eq!(resources["cpu_usage_usec"], 16000);
+    assert_eq!(resources["memory_high_limit_bytes"], "max");
+    assert!(resources["memory_pgscan"].is_null());
+    assert!(!summaries[0].fields["resources"].contains("must-not-be-logged"));
 }
 
 #[tokio::test]
