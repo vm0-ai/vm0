@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-13",
   "routes": [
+    { "pattern": "f.okou.io/*", "zone_name": "okou.io" },
     {
       "pattern": "*.sites.vm0.io/*",
       "zone_name": "vm0.io",
@@ -16,8 +17,13 @@
   "vars": {
     "HOST_DOMAIN": "sites.vm0.io",
     "OKOU_HOST_DOMAIN": "okou.app",
+    "PUBLIC_ARTIFACT_HOST": "f.okou.io",
   },
   "r2_buckets": [
+    {
+      "binding": "PUBLIC_ARTIFACTS_BUCKET",
+      "bucket_name": "user-artifact-prod",
+    },
     {
       "binding": "HOSTED_SITES_BUCKET",
       "bucket_name": "vm0-hosted-sites",
@@ -38,8 +44,13 @@
       "vars": {
         "HOST_DOMAIN": "sites.vm7.io",
         "OKOU_HOST_DOMAIN": "sites.vm7.io",
+        "PUBLIC_ARTIFACT_HOST": "files.sites.vm7.io",
       },
       "r2_buckets": [
+        {
+          "binding": "PUBLIC_ARTIFACTS_BUCKET",
+          "bucket_name": "user-artifact-dev",
+        },
         {
           "binding": "HOSTED_SITES_BUCKET",
           "bucket_name": "vm0-hosted-sites-dev",

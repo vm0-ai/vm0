@@ -5,21 +5,14 @@ import {
   privateHostedDeployments,
   hostedSites,
 } from "@okouai/db/schema/hosted-site";
-import { apiBackendUrl } from "../../lib/api-backend-url";
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$ } from "../external/db";
 import { putHostedSitesS3Object } from "../external/s3";
 
 export function privateHostedArtifactUrl(deploymentId: string): string {
-  const origin = apiBackendUrl();
-  if (!origin) {
-    throw new Error(
-      "OKOU_API_BACKEND_URL is required for private hosted artifacts",
-    );
-  }
-  return new URL(`/api/host/private-deployments/${deploymentId}/view`, origin)
-    .href;
+  return artifactReferencePath(deploymentId, "index.html");
 }
 
 /** An isolated, temporary origin authorizes every resource without cookies. */

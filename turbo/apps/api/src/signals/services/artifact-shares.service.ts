@@ -1,4 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { artifactFilenameExtension } from "@okouai/api-contracts/contracts/artifact-delivery";
+import { registerArtifactDelivery$ } from "./artifact-delivery.service";
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 import { command, computed } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
 import { artifactShares } from "@okouai/db/schema/artifact-share";
@@ -177,6 +180,37 @@ function shareIdentity(
 }
 
 function publicShareUrl(policy: ArtifactSharePolicy): string {
+  if (!policy.publicToken) {
+    throw new Error("Public artifact has no publication token");
+  }
+  // Persisted pre-registry grants keep their working URL without a read-time
+  // write. Retain until #32492 accounts for every durable old share link.
+  if (!policy.delivery) {
+    const domain =
+      policy.publicBrand === "okou"
+        ? env("OKOU_PUBLIC_HOST_DOMAIN")
+        : env("ZERO_HOST_DOMAIN");
+    const scheme =
+      policy.publicBrand === "okou"
+        ? env("OKOU_HOST_SCHEME")
+        : env("ZERO_HOST_SCHEME");
+    if (!domain || !scheme) {
+      throw new Error("Legacy public artifact delivery is not configured");
+    }
+    return `${scheme}://sh-${policy.shareId.replaceAll("-", "")}-${policy.publicToken}.${domain}/`;
+  }
+  if (policy.target.kind === "file") {
+    const origin = env("PUBLIC_ARTIFACT_SHARES_BASE_URL");
+    if (!origin) {
+      throw new Error(
+        "PUBLIC_ARTIFACT_SHARES_BASE_URL is required for file sharing",
+      );
+    }
+    return new URL(
+      `/${policy.publicToken}${artifactFilenameExtension(policy.target.filename)}`,
+      origin,
+    ).href;
+  }
   const domain =
     policy.publicBrand === "okou"
       ? env("OKOU_PUBLIC_HOST_DOMAIN")
@@ -185,7 +219,10 @@ function publicShareUrl(policy: ArtifactSharePolicy): string {
     policy.publicBrand === "okou"
       ? env("OKOU_HOST_SCHEME")
       : env("ZERO_HOST_SCHEME");
-  return `${scheme}://sh-${policy.shareId.replaceAll("-", "")}-${policy.publicToken}.${domain}/`;
+  if (!domain || !scheme) {
+    throw new Error("Public HTML delivery is not configured");
+  }
+  return `${scheme}://${policy.publicToken}.${domain}/`;
 }
 
 const shareStatus$ = command(
@@ -219,8 +256,15 @@ const shareStatus$ = command(
           ? null
           : policy.audience === "public"
             ? publicShareUrl(policy)
-            : new URL(`/share/artifacts/${policy.shareId}`, env("APP_URL"))
-                .href,
+            : new URL(
+                artifactReferencePath(
+                  policy.shareId,
+                  policy.target.kind === "file"
+                    ? policy.target.filename
+                    : "index.html",
+                ),
+                env("APP_URL"),
+              ).href,
     };
   },
 );
@@ -403,6 +447,7 @@ export const updateArtifactShare$ = command(
           : await set(snapshotTarget$, candidate, signal);
       const next = artifactSharePolicySchema.parse({
         version: 1,
+        delivery: "artifact-registry-v1",
         revision: randomUUID(),
         shareId: row.id,
         ownerId: row.userId,
@@ -416,6 +461,28 @@ export const updateArtifactShare$ = command(
             : null,
         target,
       });
+      if (next.publicToken) {
+        publicShareUrl(next);
+        await set(
+          registerArtifactDelivery$,
+          {
+            alias:
+              next.target.kind === "file"
+                ? `${next.publicToken}${artifactFilenameExtension(next.target.filename)}`
+                : next.publicToken,
+            targetKind: next.target.kind,
+            record: {
+              version: 1,
+              kind: "publication",
+              publicBrand: next.publicBrand,
+              shareId: next.shareId,
+              publicToken: next.publicToken,
+              targetKind: next.target.kind,
+            },
+          },
+          signal,
+        );
+      }
       // R2 is the only mutable authority. Acknowledge only after its strongly
       // consistent write completes. No database commit can resurrect old scope.
       // The row lock serializes owner changes, including different site versions.
@@ -476,7 +543,7 @@ export const resolveArtifactShare$ = command(
       return null;
     }
     if (policy.target.kind === "html") {
-      return await set(
+      const preview = await set(
         createPrivateHostedPreview$,
         {
           deploymentId: policy.target.id,
@@ -486,6 +553,14 @@ export const resolveArtifactShare$ = command(
         },
         signal,
       );
+      return preview
+        ? {
+            ...preview,
+            filename: "index.html",
+            contentType: "text/html",
+            target: { kind: "html" as const, id: policy.target.id },
+          }
+        : null;
     }
     const file = await get(privateArtifactRecord(policy.target.id));
     signal.throwIfAborted();
@@ -510,6 +585,9 @@ export const resolveArtifactShare$ = command(
     return {
       url,
       expiresAt: new Date(nowDate().getTime() + 900_000).toISOString(),
+      filename: file.filename,
+      contentType: file.contentType,
+      target: { kind: "file" as const, id: policy.target.id },
     };
   },
 );

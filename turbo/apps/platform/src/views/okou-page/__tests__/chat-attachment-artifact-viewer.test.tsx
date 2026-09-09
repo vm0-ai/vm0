@@ -1,4 +1,7 @@
-import { hostContract } from "@okouai/api-contracts/contracts/host";
+import {
+  artifactReferencePath,
+  artifactReferencesContract,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -463,7 +466,7 @@ test("Image navigation remains inside its split-view chat", async () => {
 
 test("Private HTML links open an isolated preview and refresh without exposing a share URL", async () => {
   const deploymentId = "00000000-0000-4000-8000-000000000009";
-  const canonicalUrl = `http://localhost/api/host/private-deployments/${deploymentId}/view#slide-2`;
+  const canonicalUrl = `${artifactReferencePath(deploymentId, "index.html")}#slide-2`;
   const firstPreview = `https://pv-${"a".repeat(48)}.sites.vm7.io/`;
   const nextPreview = `https://pv-${"b".repeat(48)}.sites.vm7.io/`;
   let currentPreview = firstPreview;
@@ -479,12 +482,23 @@ test("Private HTML links open an isolated preview and refresh without exposing a
       }),
     ],
   });
-  context.mocks.api(hostContract.privatePreview, ({ respond }) => {
-    return respond(200, {
-      url: currentPreview,
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    });
-  });
+  context.mocks.api(
+    artifactReferencesContract.resolve,
+    ({ params, respond }) => {
+      expect(params.reference).toBe(
+        artifactReferencePath(deploymentId, "index.html").slice(
+          "/artifacts/".length,
+        ),
+      );
+      return respond(200, {
+        url: currentPreview,
+        filename: "index.html",
+        contentType: "text/html",
+        target: { kind: "html", id: deploymentId },
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      });
+    },
+  );
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
   click(await findNamedLink("Private report"));
   await waitFor(() => {

@@ -20,6 +20,8 @@ export const artifactSharePolicySchema = z
     ownerId: z.string().min(1),
     orgId: z.string().min(1),
     publicBrand: z.enum(["vm0", "okou"]),
+    // Absent only on persisted shares from before the delivery registry.
+    delivery: z.literal("artifact-registry-v1").optional(),
     audience: audienceSchema,
     status: z.enum(["active", "revoked"]),
     publicToken: z

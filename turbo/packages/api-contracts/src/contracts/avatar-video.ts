@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactUrlSchema } from "./artifact-references";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
@@ -40,7 +41,7 @@ export const avatarVideoGenerateRequestSchema = z
     avatarId: z.number().int().positive(),
     voiceId: avatarVideoVoiceIdSchema,
     script: z.string().trim().min(1).optional(),
-    audioUrl: z.url().optional(),
+    audioUrl: artifactUrlSchema.optional(),
     aspectRatio: avatarVideoAspectRatioSchema.optional(),
     screenStyle: avatarVideoScreenStyleSchema.optional(),
     caption: z.boolean().optional(),

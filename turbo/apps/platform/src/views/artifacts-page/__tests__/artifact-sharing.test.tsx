@@ -1,4 +1,7 @@
-import { hostContract } from "@okouai/api-contracts/contracts/host";
+import {
+  artifactReferencesContract,
+  artifactReferencePath,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
   artifactSharesContract,
@@ -38,11 +41,12 @@ function action(role: "button" | "menuitem", name: string): HTMLElement {
 
 const deploymentId = "00000000-0000-4000-8000-000000000009";
 const shareId = "00000000-0000-4000-8000-000000000010";
-const canonical = `http://localhost/api/host/private-deployments/${deploymentId}/view`;
-const organizationUrl = `https://app.okou.ai/share/artifacts/${shareId}`;
-const publicUrl = `https://sh-${shareId.replaceAll("-", "")}-${"b".repeat(24)}.okou.app/`;
+const canonical = artifactReferencePath(deploymentId, "index.html");
+const organizationUrl = `https://app.okou.ai${artifactReferencePath(shareId, "index.html")}`;
+const publicUrl = `https://${"b".repeat(24)}.okou.app/`;
 
 async function openArtifact(enabled = true) {
+  const resolutions: string[] = [];
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
     return respond(200, {
       artifacts: [artifact({ kind: "hosted-site", title: "Private report" })],
@@ -64,12 +68,19 @@ async function openArtifact(enabled = true) {
       },
     });
   });
-  context.mocks.api(hostContract.privatePreview, ({ respond }) => {
-    return respond(200, {
-      url: `https://pv-${"a".repeat(48)}.okou.app/`,
-      expiresAt: "2099-01-01T00:00:00Z",
-    });
-  });
+  context.mocks.api(
+    artifactReferencesContract.resolve,
+    ({ params, respond }) => {
+      resolutions.push(params.reference);
+      return respond(200, {
+        url: `https://pv-${"a".repeat(48)}.okou.app/`,
+        expiresAt: "2099-01-01T00:00:00Z",
+        filename: "index.html",
+        contentType: "text/html",
+        target: { kind: "html", id: deploymentId },
+      });
+    },
+  );
   await setupPage({
     context,
     path: "/artifacts",
@@ -77,6 +88,7 @@ async function openArtifact(enabled = true) {
   });
   click(await findArtifactAction("Private report"));
   await screen.findByTestId("artifact-dialog-site-frame");
+  return resolutions;
 }
 
 async function openShareMenu() {
@@ -126,7 +138,7 @@ test("the two share actions create and copy links, then only copy the existing a
     return respond(200, status);
   });
   const clipboard = context.mocks.browser.clipboardWriteText();
-  await openArtifact();
+  const resolutions = await openArtifact();
   expect(reads).toBe(0);
   await openShareMenu();
   expect(changes).toStrictEqual([]);
@@ -143,6 +155,7 @@ test("the two share actions create and copy links, then only copy the existing a
   });
   expect(changes).toStrictEqual(["organization"]);
   await openShareMenu();
+  const beforeCopy = resolutions.length;
   click(action("menuitem", "Share to organization"));
   await waitFor(() => {
     return expect(clipboard.writes).toStrictEqual([
@@ -151,6 +164,7 @@ test("the two share actions create and copy links, then only copy the existing a
     ]);
   });
   expect(changes).toStrictEqual(["organization"]);
+  expect(resolutions).toHaveLength(beforeCopy);
   await openShareMenu();
   click(action("menuitem", "Share to Public"));
   await waitFor(() => {
@@ -219,34 +233,46 @@ test("the shared rollout switch keeps the private share menu hidden", async () =
   expect(queryAction("menuitem", "Share to Public")).toBeUndefined();
 });
 
-test("an authorized organization link navigates straight to isolated content with no viewer", async () => {
-  const redirect = vi
-    .spyOn(window.location, "replace")
-    .mockImplementation(() => {});
-  const temporary = `https://ps-${"c".repeat(48)}.okou.app/`;
-  context.mocks.api(artifactSharesContract.resolve, ({ respond }) => {
-    return respond(200, { url: temporary, expiresAt: "2099-01-01T00:00:00Z" });
-  });
-  await startPage({
-    context,
-    path: `/share/artifacts/${shareId}`,
-    host: "app.okou.ai",
-  });
-  await waitFor(() => {
-    return expect(redirect).toHaveBeenCalledWith(temporary);
-  });
-  expect(document.querySelector("iframe")).toBeNull();
-});
+test.each([
+  artifactReferencePath(shareId, "index.html"),
+  `/share/artifacts/${shareId}`,
+])(
+  "an authorized link preserves its fragment and navigates straight to isolated content: %s",
+  async (path) => {
+    const redirect = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {});
+    const temporary = `https://ps-${"c".repeat(48)}.okou.app/`;
+    context.mocks.api(artifactReferencesContract.resolve, ({ respond }) => {
+      return respond(200, {
+        url: temporary,
+        expiresAt: "2099-01-01T00:00:00Z",
+        filename: "index.html",
+        contentType: "text/html",
+        target: { kind: "html", id: deploymentId },
+      });
+    });
+    await startPage({
+      context,
+      path: `${path}#slide-2`,
+      host: "app.okou.ai",
+    });
+    await waitFor(() => {
+      return expect(redirect).toHaveBeenCalledWith(`${temporary}#slide-2`);
+    });
+    expect(document.querySelector("iframe")).toBeNull();
+  },
+);
 
 test("denied links display no artifact metadata or content", async () => {
-  context.mocks.api(artifactSharesContract.resolve, ({ respond }) => {
+  context.mocks.api(artifactReferencesContract.resolve, ({ respond }) => {
     return respond(404, {
       error: { code: "NOT_FOUND", message: "Artifact unavailable" },
     });
   });
   await setupPage({
     context,
-    path: `/share/artifacts/${shareId}`,
+    path: artifactReferencePath(shareId, "index.html"),
     host: "app.okou.ai",
   });
   expect(
@@ -260,7 +286,7 @@ test("logged-out recipients use the existing login with a same-origin artifact r
     .spyOn(window.location, "replace")
     .mockImplementation(() => {});
   let resolves = 0;
-  context.mocks.api(artifactSharesContract.resolve, ({ respond }) => {
+  context.mocks.api(artifactReferencesContract.resolve, ({ respond }) => {
     resolves++;
     return respond(404, {
       error: { code: "NOT_FOUND", message: "Artifact unavailable" },
@@ -268,7 +294,7 @@ test("logged-out recipients use the existing login with a same-origin artifact r
   });
   await startPage({
     context,
-    path: `/share/artifacts/${shareId}?redirect_url=https://attacker.example`,
+    path: `${artifactReferencePath(shareId, "index.html")}?redirect_url=https://attacker.example#slide-2`,
     host: "app.okou.ai",
     auth: null,
   });
@@ -278,7 +304,7 @@ test("logged-out recipients use the existing login with a same-origin artifact r
   const destination = String(redirect.mock.calls[0]?.[0]);
   expect(destination).toContain("sign-in");
   expect(decodeURIComponent(destination)).toContain(
-    `/share/artifacts/${shareId}`,
+    `${artifactReferencePath(shareId, "index.html")}#slide-2`,
   );
   expect(destination).not.toContain("attacker.example");
   expect(resolves).toBe(0);

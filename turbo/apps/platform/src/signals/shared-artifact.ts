@@ -1,6 +1,10 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { artifactSharesContract } from "@okouai/api-contracts/contracts/artifact-shares";
+import {
+  artifactReferencePath,
+  artifactReferencesContract,
+} from "@okouai/api-contracts/contracts/artifact-references";
+import { z } from "zod";
 import { accept } from "../lib/accept.ts";
 import { i18n } from "../i18n/index.ts";
 import { clerk$ } from "./auth.ts";
@@ -12,7 +16,11 @@ import { hideAppSkeleton$ } from "./app-skeleton.ts";
 // This is a login/authorization handoff, never an artifact viewer or iframe.
 export const setupSharedArtifact$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const id = String(get(pathParams$)?.artifactShareId ?? "");
+    const requestedId = String(get(pathParams$)?.artifactShareId ?? "");
+    const legacyId = z.uuid().safeParse(requestedId);
+    const id = legacyId.success
+      ? artifactReferencePath(legacyId.data).slice("/artifacts/".length)
+      : requestedId;
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.loaded) {
@@ -20,22 +28,27 @@ export const setupSharedArtifact$ = command(
     }
     if (!clerk.user) {
       const returnUrl = new URL(
-        `/share/artifacts/${encodeURIComponent(id)}`,
+        `/artifacts/${encodeURIComponent(id)}`,
         location.origin,
-      ).href;
-      window.location.replace(clerk.buildSignInUrl({ redirectUrl: returnUrl }));
+      );
+      returnUrl.hash = location.hash;
+      window.location.replace(
+        clerk.buildSignInUrl({ redirectUrl: returnUrl.href }),
+      );
       return;
     }
     const result = await accept(
-      get(apiClient$)(artifactSharesContract).resolve({
-        params: { id },
+      get(apiClient$)(artifactReferencesContract).resolve({
+        params: { reference: id },
         fetchOptions: { signal, cache: "no-store" },
       }),
-      [200, 404],
+      [200, 400, 404],
       signal,
     );
     if (result.status === 200) {
-      window.location.replace(result.body.url);
+      const contentUrl = new URL(result.body.url);
+      contentUrl.hash = location.hash;
+      window.location.replace(contentUrl.href);
       return;
     }
     set(

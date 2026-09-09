@@ -473,6 +473,7 @@ api_backend_url_absent_output="$(
 api_backend_url_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${api_backend_url_absent_dir}/github-output")"
 assert_contains "$api_backend_url_absent_output" "Rendered"
 assert_api_backend_url_absent "$api_backend_url_absent_env_file"
+assert_env_value "$api_backend_url_absent_env_file" PUBLIC_ARTIFACT_SHARES_BASE_URL "https://f.okou.io"
 assert_env_value "$api_backend_url_absent_env_file" FEISHU_CALLBACK_BASE_URL ""
 assert_env_value "$api_backend_url_absent_env_file" FINICITY_WEBHOOK_BASE_URL ""
 
@@ -541,6 +542,7 @@ assert_env_value "$success_env_file" OKOU_PRICE_CUSTOM_CREDITS "price_test_custo
 assert_env_value "$success_env_file" OKOU_PRICE_CUSTOM_CREDIT_UNIT "price_test_custom_credit_unit"
 assert_env_value "$success_env_file" OKOU_PRICE_CONCURRENCY "price_test_concurrency"
 assert_env_value "$success_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL "https://cdn.okou.test"
+assert_env_value "$success_env_file" PUBLIC_ARTIFACT_SHARES_BASE_URL "https://files.sites.vm7.io"
 assert_env_value "$success_env_file" OKOU_PUBLIC_HOST_DOMAIN "okou.app"
 assert_env_value "$success_env_file" OKOU_HOST_SCHEME "https"
 assert_env_value "$success_env_file" OKOU_ONE_TIME_CAMPAIGN "test-campaign"
