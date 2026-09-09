@@ -2128,7 +2128,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV.into(),
         run_payload_file,
     );
-    env_map.insert(guest_contracts::env::OOM_EVIDENCE_VERSION_ENV.into(), "1".into());
     let env_diagnostics = build_agent_env_diagnostics(&env_map, &user_env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
@@ -2480,9 +2479,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 warn!(run_id = %context.run_id, "guest oom evidence persistence unavailable or timed out");
             }
         }
-        telemetry
-            .upload_oom_evidence(&evidence, &sandbox.id().to_string())
-            .await;
+        telemetry.upload_oom_evidence(&evidence, sandbox.id()).await;
     }
     if exit.stream_overflowed {
         warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");

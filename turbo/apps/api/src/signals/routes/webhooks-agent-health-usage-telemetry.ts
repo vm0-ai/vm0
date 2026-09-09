@@ -484,6 +484,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   const telemetryBatches: {
     readonly dataset: string;
     readonly events: readonly Record<string, unknown>[];
+    readonly includesOomEvidence?: boolean;
   }[] = [];
 
   if (body.systemLog) {
@@ -511,6 +512,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
 
   if (body.oomEvidence) {
     telemetryBatches.push({
+      includesOomEvidence: true,
       dataset: getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
       events: telemetryOomEvents(
         body.oomEvidence,
@@ -535,18 +537,23 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     });
   }
 
+  let oomEvidenceIngested = false;
   if (telemetryBatches.length > 0) {
-    await Promise.all(
+    const ingestionResults = await Promise.all(
       telemetryBatches.map(async (batch) => {
-        await ingestAxiomDirect(
+        const result = await ingestAxiomDirect(
           batch.dataset,
           batch.events,
           TELEMETRY_INGEST_TIMEOUT_MS,
           signal,
         );
+        return batch.includesOomEvidence === true && result.configured;
       }),
     );
     signal.throwIfAborted();
+    oomEvidenceIngested = ingestionResults.some((ingested) => {
+      return ingested;
+    });
   }
 
   if (body.sandboxOperations && body.sandboxOperations.length > 0) {
@@ -571,7 +578,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     body: {
       success: true,
       id: body.runId,
-      ...(body.oomEvidence ? { oomEvidenceVersion: 1 as const } : {}),
+      ...(oomEvidenceIngested ? { oomEvidenceVersion: 1 as const } : {}),
     },
   };
 });

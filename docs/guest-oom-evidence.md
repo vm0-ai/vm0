@@ -30,7 +30,11 @@ CLI abnormal completion and root containment cleanup are fallback capture points
 Root captures before cleanup enumerates/signals/removes descendants, emits a
 bounded metadata log, and retains the same incident IDs for the terminal frame.
 A late kernel record may enrich the matching counter incident without changing
-its ID. Cleanup also supplies a fresh final snapshot alongside prior incidents.
+its ID. A kernel-first kill decision can reconcile its later kill-counter tail
+only with a fully drained healthy reader and no new OOM attempt. This bounded
+correlation excludes control-cgroup victims, resets on kernel uncertainty, and
+preserves the original incident time/snapshot. Missing samples remain unavailable
+in telemetry while internal comparison retains the last valid counter observation. Cleanup also supplies a fresh final snapshot alongside prior incidents.
 Snapshots explicitly describe post-observation values, not exact pre-kill usage.
 
 ## Bounds and failure behavior
@@ -74,20 +78,17 @@ is best effort, not a delivery guarantee or an automatic replay service.
 Receiver-first deployment is required for reliable new evidence ingestion:
 API, then Runner and Guest components. This PR does not perform that deployment.
 
-| Combination                        | Behavior                                                                                                                                      |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| old producer, new API              | optional fields absent; existing telemetry unchanged                                                                                          |
-| new producer, old API              | HTTP 200 without `oomEvidenceVersion: 1` is unacknowledged; bounded attempts and local retention                                              |
-| new producer, new API              | strict validation and existing Axiom ingestion precede the version acknowledgement                                                            |
-| old Guest control, new Guest Agent | placement still succeeds; closed evidence socket disables optional capture                                                                    |
-| new Guest control, old Guest Agent | placement still succeeds; root error/cleanup capture remains available                                                                        |
-| old Runner, new Guest control      | no opt-in, so no OOM envelope is inserted into terminal diagnostic text                                                                       |
-| new Runner, old Guest control      | Runner's `OKOU_OOM_EVIDENCE_VERSION=1` bootstrap key is ignored; absent evidence is tolerated                                                 |
-| new Runner, new Guest control      | opt-in enables `OKOU_OOM_EVIDENCE_V1` metadata in the existing bounded terminal diagnostic frame; Runner removes it before outcome processing |
+| Combination           | Behavior                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| old producer, new API | optional fields absent; existing telemetry unchanged                                             |
+| new producer, old API | HTTP 200 without `oomEvidenceVersion: 1` is unacknowledged; bounded attempts and local retention |
+| new producer, new API | strict validation and configured successful Axiom ingestion precede the version acknowledgement  |
 
-The binary Guest-control frame shape does not change. The Runner-owned bootstrap
-namespace already excludes user overrides. The Rust generated route bindings are
-regenerated; telemetry has no generated body consumer to update.
+Runner and all Guest binaries ship as one artifact; unsupported mixed versions
+need no handshake. The binary Guest-control frame shape does not change. Its
+bounded `OKOU_OOM_EVIDENCE_V1` terminal metadata is removed by Runner before
+outcome processing. Rust route bindings are regenerated; telemetry has no
+generated body consumer to update.
 
 The API validates the same shared fixture used by Rust serialization tests,
 authenticates the run with existing sandbox credentials, validates operation

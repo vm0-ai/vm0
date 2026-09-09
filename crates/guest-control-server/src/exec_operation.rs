@@ -1110,8 +1110,7 @@ impl RunningExec {
         let containment_evidence = containment_result
             .as_ref()
             .ok()
-            .and_then(|evidence| evidence.as_deref())
-            .filter(|evidence| terminal_evidence_supported(evidence, &request.env));
+            .and_then(|evidence| evidence.as_deref());
         let diagnostic = successful_containment_evidence_diagnostic(
             request.lifecycle,
             &request.label,
@@ -1250,13 +1249,6 @@ fn resolve_exec_result(
     (termination, diagnostic)
 }
 
-fn terminal_evidence_supported(evidence: &str, env: &[(String, String)]) -> bool {
-    !evidence.starts_with(guest_contracts::oom_evidence::EVIDENCE_PREFIX)
-        || env.iter().any(|(name, value)| {
-            name == guest_contracts::env::OOM_EVIDENCE_VERSION_ENV && value == "1"
-        })
-}
-
 fn successful_containment_evidence_diagnostic(
     lifecycle: ExecOperationLifecycle,
     label: &str,
@@ -1268,8 +1260,8 @@ fn successful_containment_evidence_diagnostic(
         && evidence.starts_with(guest_contracts::oom_evidence::EVIDENCE_PREFIX)
     {
         // The existing diagnostic frame transports metadata independently of
-        // outcome, and only to a Runner that explicitly opted in. Never let
-        // optional evidence exhaust the existing u16 diagnostic length field.
+        // outcome. Runner and Guest ship as one artifact. Never let optional
+        // evidence exhaust the existing u16 diagnostic length field.
         if diagnostic
             .len()
             .saturating_add(evidence.len())
@@ -2668,23 +2660,8 @@ mod tests {
     }
 
     #[test]
-    fn terminal_oom_evidence_requires_receiver_opt_in_and_cannot_overflow_diagnostic() {
+    fn terminal_oom_evidence_cannot_overflow_diagnostic() {
         let evidence = format!("{}{{}}", guest_contracts::oom_evidence::EVIDENCE_PREFIX);
-        assert!(!terminal_evidence_supported(&evidence, &[]));
-        assert!(terminal_evidence_supported(
-            &evidence,
-            &[(
-                guest_contracts::env::OOM_EVIDENCE_VERSION_ENV.into(),
-                "1".into()
-            )]
-        ));
-        assert!(!terminal_evidence_supported(
-            &evidence,
-            &[(
-                guest_contracts::env::OOM_EVIDENCE_VERSION_ENV.into(),
-                "2".into()
-            )]
-        ));
         let diagnostic = "x".repeat(u16::MAX as usize);
         assert_eq!(
             successful_containment_evidence_diagnostic(

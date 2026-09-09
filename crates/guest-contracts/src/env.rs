@@ -14,11 +14,6 @@
 /// Guest root bootstrap, and exposed to managed CLI children.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
-/// Runner opt-in to the bounded v1 OOM metadata envelope in terminal diagnostics.
-/// Old Guest control ignores this key; new Guest control omits the envelope for
-/// old Runners so they never expose it as a user-facing failure diagnostic.
-pub const OOM_EVIDENCE_VERSION_ENV: &str = "OKOU_OOM_EVIDENCE_VERSION";
-
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
 pub const RUN_ID_ENV: &str = "OKOU_RUN_ID";

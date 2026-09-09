@@ -2342,6 +2342,28 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expect(ingested).toHaveLength(1);
   });
 
+  it("does not acknowledge OOM evidence when the Axiom destination is unavailable", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      `OOM unavailable ${randomUUID()}`,
+    );
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../../../../crates/guest-contracts/tests/fixtures/oom-evidence-v1.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
+    const response = await api.requestAgentTelemetry(
+      { runId, oomEvidence: oomEvidenceSchema.parse(fixture) },
+      headers,
+      [200],
+    );
+    expect(response.body).toStrictEqual({ success: true, id: runId });
+  });
+
   it("projects only present control-path metric fields", async () => {
     const { actor, runId, headers } = await createEventWebhookRun(
       `control-path metrics ${randomUUID()}`,

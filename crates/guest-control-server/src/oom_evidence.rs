@@ -19,6 +19,9 @@ pub(crate) struct EvidenceMonitor {
     kernel_status: EvidenceStatus,
     last_sequence: Option<u64>,
     previous_events: MemoryEvents,
+    // Kernel decisions can precede the corresponding workload kill counter.
+    // Credits belong only to the latest incident and never exceed four.
+    pending_kernel_kills: u64,
 }
 
 impl EvidenceMonitor {
@@ -64,6 +67,7 @@ impl EvidenceMonitor {
         Self {
             root,
             previous_events: initial[0].events.clone(),
+            pending_kernel_kills: 0,
             initial,
             evidence,
             kernel: kernel_result.ok(),
@@ -85,7 +89,36 @@ impl EvidenceMonitor {
         }
         let counters = groups[0].events.delta(&self.previous_events);
         let new_oom = groups[0].status != EvidenceStatus::Recreated && counters.has_oom();
-        self.previous_events = groups[0].events.clone();
+        retain_observed_counters(&mut self.previous_events, &groups[0].events);
+        if !matches!(
+            kernel_status,
+            EvidenceStatus::Available | EvidenceStatus::Missing
+        ) {
+            self.pending_kernel_kills = 0;
+        }
+        // A fully drained reader with no new OOM decision can reconcile only
+        // the kill-counter tail of a previously captured workload victim.
+        // Keep its original capture time/snapshot; current groups below carry
+        // the later observed counters. Any fresh attempt or source gap prevents
+        // correlation, so stale credits cannot hide an independent incident.
+        let deferred_kernel_counter = kernel_events.is_empty()
+            && counters.oom == Some(0)
+            && counters.oom_group_kill == Some(0)
+            && counters
+                .oom_kill
+                .is_some_and(|count| count > 0 && count <= self.pending_kernel_kills);
+        if deferred_kernel_counter {
+            self.pending_kernel_kills -= counters.oom_kill.unwrap_or_default();
+        }
+        let incoming_kernel_kills = kernel_events
+            .iter()
+            .filter(|event| {
+                event.task_cgroup == groups[0].cgroup
+                    || event
+                        .task_cgroup
+                        .starts_with(&format!("{}/", groups[0].cgroup))
+            })
+            .count() as u64;
         self.evidence.sampled_at = timestamp();
         self.evidence.kernel_cursor = self.last_sequence;
         self.evidence.kernel_status = kernel_status;
@@ -103,8 +136,23 @@ impl EvidenceMonitor {
         {
             last.kernel_events = kernel_events;
             last.kernel_status = kernel_status;
+            // The counter-first incident already accounted for these kills.
+            self.pending_kernel_kills = 0;
             self.persist_latest();
-        } else if new_oom || has_kernel || (candidate && self.evidence.incidents.is_empty()) {
+        } else if (new_oom && !deferred_kernel_counter)
+            || has_kernel
+            || (candidate && self.evidence.incidents.is_empty())
+        {
+            self.pending_kernel_kills = if matches!(
+                kernel_status,
+                EvidenceStatus::Available | EvidenceStatus::Missing
+            ) {
+                counters
+                    .oom_kill
+                    .map_or(0, |observed| incoming_kernel_kills.saturating_sub(observed))
+            } else {
+                0
+            };
             if self.evidence.incidents.len() < MAX_INCIDENTS {
                 self.evidence.incidents.push(OomIncident {
                     id: format!(
@@ -152,6 +200,14 @@ impl EvidenceMonitor {
             deadline,
         )
     }
+}
+
+fn retain_observed_counters(previous: &mut MemoryEvents, current: &MemoryEvents) {
+    previous.high = current.high.or(previous.high);
+    previous.max = current.max.or(previous.max);
+    previous.oom = current.oom.or(previous.oom);
+    previous.oom_kill = current.oom_kill.or(previous.oom_kill);
+    previous.oom_group_kill = current.oom_group_kill.or(previous.oom_group_kill);
 }
 
 fn read_kernel_records(
@@ -651,6 +707,103 @@ mod tests {
             assert!(incident.after_observation && incident.before_cleanup);
             assert!(serde_json::to_vec(&captured).unwrap().len() < MAX_EVIDENCE_BYTES);
         }
+    }
+
+    #[test]
+    fn recovered_counter_after_missing_read_still_records_tool_oom() {
+        let mut fixture = Fixture::new();
+        fs::remove_file(fixture.root.join("workload/memory.events")).unwrap();
+        let missing = fixture.monitor.capture(CaptureReason::Sample);
+        assert_eq!(missing.groups[0].events.oom_kill, None);
+        assert!(missing.incidents.is_empty());
+        fixture.counters(1);
+        let restored = fixture.monitor.capture(CaptureReason::Sample);
+        assert_eq!(restored.incidents.len(), 1);
+        assert_eq!(restored.incidents[0].groups[0].delta.oom_kill, Some(1));
+        assert_eq!(
+            restored.incidents[0].kernel_status,
+            EvidenceStatus::Unavailable
+        );
+        assert_eq!(
+            fixture
+                .monitor
+                .capture(CaptureReason::Cleanup)
+                .incidents
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn kernel_first_kill_counter_tail_reuses_incident_but_new_oom_is_distinct() {
+        for constraint in ["CONSTRAINT_NONE", "CONSTRAINT_MEMCG"] {
+            let mut fixture = Fixture::new();
+            let oom = u64::from(constraint == "CONSTRAINT_MEMCG");
+            let events_path = fixture.root.join("workload/memory.events");
+            let write_events = |kills, attempts| {
+                fs::write(
+                    &events_path,
+                    format!("oom {attempts}\noom_kill {kills}\noom_group_kill 0\n"),
+                )
+                .unwrap();
+            };
+            write_events(0, oom);
+            fixture.kernel(10, 2000, constraint);
+            let first = fixture.monitor.capture(CaptureReason::Sample);
+            write_events(1, oom);
+            let tail = fixture.monitor.capture(CaptureReason::Sample);
+            assert_eq!(
+                tail.incidents, first.incidents,
+                "original snapshot and time remain true"
+            );
+            assert_eq!(tail.groups[0].events.oom_kill, Some(1));
+            write_events(2, oom + 1);
+            fixture.kernel(11, 3000, constraint);
+            let second = fixture.monitor.capture(CaptureReason::Sample);
+            assert_eq!(second.incidents.len(), 2);
+            assert_ne!(second.incidents[0].id, second.incidents[1].id);
+        }
+    }
+
+    #[test]
+    fn uncertain_kernel_gap_and_control_victim_cannot_consume_workload_counter() {
+        for status in [EvidenceStatus::Unavailable, EvidenceStatus::Overwritten] {
+            let mut fixture = Fixture::new();
+            fixture.kernel(10, 2000, "CONSTRAINT_NONE");
+            fixture.monitor.capture(CaptureReason::Sample);
+            fixture.monitor.kernel = None;
+            fixture.monitor.kernel_status = status;
+            fs::write(
+                fixture.root.join("workload/memory.events"),
+                "oom 0\noom_kill 1\noom_group_kill 0\n",
+            )
+            .unwrap();
+            assert_eq!(
+                fixture
+                    .monitor
+                    .capture(CaptureReason::Sample)
+                    .incidents
+                    .len(),
+                2
+            );
+        }
+        let mut fixture = Fixture::new();
+        let control = format!("{}/control", fixture.root.display());
+        fixture.record(&format!("6,10,2000,-;oom-kill:constraint=CONSTRAINT_NONE,task_memcg={control},task=guest-agent,pid=999999,uid=1000\n"));
+        fixture.monitor.capture(CaptureReason::Sample);
+        fs::write(
+            fixture.root.join("workload/memory.events"),
+            "oom 0\noom_kill 1\noom_group_kill 0\n",
+        )
+        .unwrap();
+        assert_eq!(
+            fixture
+                .monitor
+                .capture(CaptureReason::Sample)
+                .incidents
+                .len(),
+            2
+        );
     }
 
     #[test]
