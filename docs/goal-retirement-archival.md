@@ -170,6 +170,12 @@ objective census/export. The separate release owner must run and verify recovery
 after the repaired API serves and outgoing projectors finish, before controller S2
 acceptance and before S5 removes the repair inventory.
 
+For the intact 4,162-Goal production cohort, use the temporary
+[protected execution entry and full certificate](goal-archive-search-recovery.md)
+added by #32875. Its main-only manual workflow enforces the complete original
+ID set around recovery. The controller owns S2 production acceptance and assigns
+removal of that temporary workflow/wrapper in S3/S4, before S5 deletes receipts.
+
 Public shares are intentionally immutable copies. A previously stripped copy is
 not automatically changed or republished. Its owner can explicitly create a new
 share. This repair establishes that limitation with synthetic fixtures; no affected

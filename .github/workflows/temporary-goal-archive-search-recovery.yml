@@ -1,0 +1,153 @@
+name: Temporary Goal Archive Search Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Full cohort preflight, or preflight/apply/full verification"
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-goal-archive-search-recovery-32875
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  npm_config_audit: "false"
+
+jobs:
+  recovery:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    steps:
+      - name: Check out dispatched source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          # Required for accepted-source ancestry and exact tree comparison.
+          fetch-depth: 0
+
+      - name: Validate mode and accepted operation source
+        env:
+          RECOVERY_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$RECOVERY_MODE" in
+            dry-run|apply) ;;
+            *) echo '::error::invalid_mode'; exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 3e1544d55ac0dc54a1cdb21d6aee72d651a6808d HEAD
+          git merge-base --is-ancestor cede9cbfb62872ddabb705de852dc6fd81a3cc6d HEAD
+          # Include the engine's local import closure and original SQL. A later
+          # source change requires controller review, never an override input.
+          git diff --quiet cede9cbfb62872ddabb705de852dc6fd81a3cc6d HEAD -- \
+            turbo/packages/db/scripts/migrations/014-goal-archive-search \
+            turbo/packages/db/src/migrations/1093_goal_retirement_receipt.sql \
+            turbo/packages/db/src/migrations/1094_archive_retired_goals.sql \
+            turbo/apps/api/src/lib/chat-search-bigram.ts \
+            turbo/packages/api-contracts/src/contracts/chat-event-rows.ts \
+            turbo/packages/api-contracts/src/contracts/chat-events.ts \
+            turbo/packages/api-contracts/src/contracts/run-failure-reasons.ts \
+            turbo/packages/api-contracts/src/contracts/retired-goal-archive.ts \
+            turbo/packages/api-contracts/src/contracts/pi-memory-citations.ts \
+            turbo/packages/api-contracts/src/contracts/pi-memory-citation-literals.ts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+
+      - name: Install frozen operation dependencies before credentials
+        working-directory: turbo
+        run: |
+          corepack enable pnpm
+          pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
+
+      - name: Resolve protected production database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          # Same HTTP resolver boundary as kms-production-preflight; fail closed
+          # without exposing provider responses, exception text or credentials.
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise ValueError("redirect")
+
+          def resolve():
+              project = os.environ["NEON_PROJECT_ID"]
+              if project != "hidden-lab-39609750":
+                  raise ValueError("project")
+              base = f"https://console.neon.tech/api/v2/projects/{project}"
+              headers = {"Authorization": "Bearer " + os.environ["NEON_API_KEY"]}
+              opener = urllib.request.build_opener(NoRedirect())
+
+              def read(url):
+                  with opener.open(urllib.request.Request(url, headers=headers), timeout=30) as response:
+                      return json.load(response)
+
+              result = read(base + "/branches")
+              # Never infer uniqueness from an explicitly truncated listing.
+              if result.get("pagination", {}).get("cursor"):
+                  raise ValueError("partial_branches")
+              production = [b for b in result["branches"] if b["name"] == "production"]
+              if len(production) != 1 or not production[0]["id"]:
+                  raise ValueError("branch")
+              query = urllib.parse.urlencode({"branch_id": production[0]["id"], "database_name": "neondb", "role_name": "neondb_owner", "pooled": "false"})
+              uri = read(base + "/connection_uri?" + query)["uri"]
+              if not isinstance(uri, str) or any(ord(c) <= 32 or ord(c) == 127 for c in uri):
+                  raise ValueError("uri")
+              parsed = urllib.parse.urlsplit(uri)
+              if (parsed.scheme not in ("postgres", "postgresql")
+                  or not parsed.hostname or not parsed.hostname.endswith(".neon.tech")
+                  or parsed.port not in (None, 5432) or parsed.path != "/neondb"
+                  or parsed.username != "neondb_owner" or not parsed.password or parsed.fragment):
+                  raise ValueError("uri")
+              parameters = urllib.parse.parse_qsl(parsed.query, strict_parsing=True)
+              if any(k not in ("sslmode", "channel_binding") for k, v in parameters):
+                  raise ValueError("uri_options")
+              if len({k for k, v in parameters}) != len(parameters):
+                  raise ValueError("uri_options")
+              parameters = dict(parameters)
+              parameters["sslmode"] = "verify-full"
+              uri = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(parameters)))
+              print("::add-mask::" + uri.replace("%", "%25"), flush=True)
+              with open(os.environ["GITHUB_ENV"], "a") as output:
+                  output.write("DATABASE_URL=" + uri + "\n")
+
+          try:
+              resolve()
+          except Exception:
+              raise SystemExit("production_database_resolution_failed") from None
+          PYTHON
+
+      # Operator must first record current normal serving/projector evidence:
+      # docs/goal-archive-search-recovery.md. No release or cron invokes this job.
+      - name: Certify full Goal archive search recovery
+        working-directory: turbo/packages/db
+        env:
+          RECOVERY_MODE: ${{ inputs.mode }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+        run: node --import tsx scripts/goal-archive-search-recovery/run.ts "$RECOVERY_MODE"
