@@ -1694,7 +1694,6 @@
       "saving": "Salvataggio...",
       "send": "Invia",
       "stop": "Interrompi",
-      "undo": "Annulla",
       "view": "Visualizza"
     },
     "actionUnavailable": {
@@ -2644,10 +2643,7 @@
     },
     "toasts": {
       "copied": "Copiato",
-      "deleted": "Chat eliminata",
-      "pinned": "Chat fissata",
-      "pinUpdateFailed": "Impossibile confermare la modifica. Ricarica la pagina per verificare lo stato salvato.",
-      "unpinned": "Chat non più fissata"
+      "deleted": "Chat eliminata"
     },
     "translation": {
       "action": "Traduci",
