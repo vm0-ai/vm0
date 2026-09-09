@@ -328,12 +328,24 @@ for (const device of [
       const error = page.locator(".cl-otpCodeFieldErrorText:visible");
       const resend = page.locator(".cl-formResendCodeLink");
       await expect(inputs).toBeVisible();
+      const slots = page.locator(".cl-otpCodeFieldInput");
+      await expect(slots).toHaveCount(6);
+      const expectedBorderColor =
+        device.theme === "light" ? "rgb(207, 204, 203)" : "rgb(86, 84, 84)";
+      for (const slot of await slots.all()) {
+        await expect(slot).toHaveCSS("border-color", expectedBorderColor);
+      }
       const code = page.getByRole("textbox", {
         name: "Enter verification code",
       });
       await code.fill("1");
       await expect(code).toBeFocused();
       await expect(code).toHaveValue("1");
+      const activeSlot = page.locator(
+        '.cl-otpCodeFieldInput[data-focus-within="true"]',
+      );
+      await expect(activeSlot).toHaveCount(1);
+      await expect(activeSlot).toHaveCSS("box-shadow", /3px/u);
       await code.clear();
       await enterInvalidCode(page, "000000");
       await expect(error).not.toBeEmpty();
