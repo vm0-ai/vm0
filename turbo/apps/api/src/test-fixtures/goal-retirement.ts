@@ -30,9 +30,11 @@ async function withGoalRetirementFixture(
     `);
     await work(client);
   };
-  await runFixture().finally(async () => {
-    await client.end();
-  });
+  const [result] = await Promise.allSettled([runFixture()]);
+  await client.end();
+  if (result.status === "rejected") {
+    throw result.reason;
+  }
 }
 
 export async function seedGoalRetirementHistory(
