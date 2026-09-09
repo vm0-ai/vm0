@@ -61,7 +61,7 @@ function openThreadMenu(threadId: string): void {
   if (!row) {
     throw new Error(`Expected sidebar row for ${threadId}`);
   }
-  click(within(row).getByTestId("chat-thread-menu-trigger"));
+  click(within(row).getByLabelText("Open chat menu"));
 }
 
 function menuItemNamedOrNull(name: string): HTMLElement | null {
@@ -425,7 +425,9 @@ test("Apply displayed shortcuts to the chat whose menu is open", async () => {
 
   openThreadMenu(menuTarget.id);
   const pinItem = menuItemNamed("Pin chat");
-  pinItem.focus();
+  await waitFor(() => {
+    expect(pinItem).toHaveFocus();
+  });
   await userEvent.keyboard("{Control>}{Shift>}D{/Shift}{/Control}");
 
   await waitFor(() => {
@@ -439,8 +441,10 @@ test("Apply displayed shortcuts to the chat whose menu is open", async () => {
   });
 
   openThreadMenu(menuTarget.id);
-  const renameItem = menuItemNamed("Rename chat");
-  renameItem.focus();
+  const unpinItem = menuItemNamed("Unpin chat");
+  await waitFor(() => {
+    expect(unpinItem).toHaveFocus();
+  });
   await userEvent.keyboard("{F2}");
 
   const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
