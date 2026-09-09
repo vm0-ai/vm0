@@ -7,6 +7,7 @@ import type {
   PasswordValidation,
   UpdateUserPasswordParams,
 } from "@clerk/react/types";
+import type { ClerkOptions } from "@clerk/shared/types";
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
@@ -1046,6 +1047,8 @@ const defaultBuildUserProfileUrlImpl = () => {
 
 export interface MockedClerkLoadOptions {
   afterSignOutUrl?: string;
+  routerPush?: NonNullable<ClerkOptions["routerPush"]>;
+  routerReplace?: NonNullable<ClerkOptions["routerReplace"]>;
   signInUrl?: string;
   signUpUrl?: string;
   touchSession?: boolean;

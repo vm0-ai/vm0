@@ -8,9 +8,11 @@ import {
   useContext,
 } from "react";
 import { vi } from "vitest";
-import type { BrowserClerk } from "@clerk/shared/types";
+import type { BrowserClerk, ClerkOptions } from "@clerk/shared/types";
 
 const MockClerkContext = createContext<BrowserClerk | null>(null);
+
+type ClerkRouter = NonNullable<ClerkOptions["routerPush"]>;
 
 export function useClerk(): BrowserClerk {
   const clerk = useContext(MockClerkContext);
@@ -60,6 +62,8 @@ interface ClerkProviderProps {
       start?: { actionLink?: string; title?: string };
     };
   };
+  routerPush?: ClerkRouter;
+  routerReplace?: ClerkRouter;
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;
   signUpFallbackRedirectUrl?: string;
@@ -71,6 +75,8 @@ export function ClerkProvider({
   afterSignOutUrl,
   children,
   localization,
+  routerPush,
+  routerReplace,
   signInUrl,
   signUpUrl,
 }: ClerkProviderProps) {
@@ -81,6 +87,8 @@ export function ClerkProvider({
     createElement("span", {
       "data-clerk-sign-in-start-action-link": start.actionLink,
       "data-clerk-after-sign-out-url": afterSignOutUrl,
+      "data-clerk-provider-router-push": typeof routerPush,
+      "data-clerk-provider-router-replace": typeof routerReplace,
       "data-clerk-provider-sign-in-url": signInUrl,
       "data-clerk-provider-sign-up-url": signUpUrl,
       "data-testid": "clerk-provider-config",

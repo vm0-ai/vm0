@@ -420,6 +420,10 @@ for (const device of [
       try {
         await createUser(email, password);
         await openAuth(page, "/v1/sign-in", device.theme);
+        const documentMarker = randomUUID();
+        await page.evaluate((marker) => {
+          Reflect.set(window, "__okouAuthV1DocumentMarker", marker);
+        }, documentMarker);
         const passkey = page.locator(
           ".cl-footerAction__usePasskey .cl-footerActionLink",
         );
@@ -434,6 +438,11 @@ for (const device of [
         await expect(
           page.getByLabel("Password", { exact: true }),
         ).toBeVisible();
+        expect(
+          await page.evaluate(() => {
+            return Reflect.get(window, "__okouAuthV1DocumentMarker");
+          }),
+        ).toBe(documentMarker);
 
         const otherMethod = page.getByRole("link", {
           name: "Use another method",

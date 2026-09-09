@@ -1,4 +1,5 @@
 import type { ClerkUIConstructor } from "@clerk/shared/ui";
+import type { ClerkOptions } from "@clerk/shared/types";
 import type { ui } from "@clerk/ui";
 import type { PlatformClerk } from "./lib/clerk-runtime";
 import type { DebugLoggers } from "./types/global-method";
@@ -25,6 +26,13 @@ interface OkouClerkBootstrap {
   readonly resolveClerkUI: (ui: ClerkUIConstructor) => void;
 }
 
+type OkouClerkRouter = NonNullable<ClerkOptions["routerPush"]>;
+
+interface OkouClerkRouterHandlers {
+  readonly push: OkouClerkRouter;
+  readonly replace: OkouClerkRouter;
+}
+
 interface OkouGlobal {
   readonly rootSignal: AbortSignal;
   readonly switchClerkSession: (sessionId: string) => Promise<void>;
@@ -40,6 +48,8 @@ declare global {
   interface Window {
     _okou: OkouGlobal | undefined;
     __okouClerkBootstrap?: OkouClerkBootstrap;
+    /** Route-owned handlers used by the callbacks captured during Clerk load. */
+    __okouClerkRouter?: OkouClerkRouterHandlers;
     __okouClerkUI?: typeof ui;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
