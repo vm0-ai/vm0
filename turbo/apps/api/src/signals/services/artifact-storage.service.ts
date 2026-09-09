@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { registerLegacyArtifactFile$ } from "./artifact-delivery.service";
 
 import { command, computed, type Computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -364,6 +365,16 @@ export const storeGeneratedArtifactObject$ = command(
       ),
     );
     signal.throwIfAborted();
+    await set(
+      registerLegacyArtifactFile$,
+      {
+        key: artifact.key,
+        filename,
+        contentType: args.contentType,
+        publicBrand: args.publicBrand,
+      },
+      signal,
+    );
     return { ...artifact, filename, metadata, isPrivate: false };
   },
 );

@@ -1,3 +1,7 @@
+import {
+  artifactReferencePath,
+  artifactReferencesContract,
+} from "@okouai/api-contracts/contracts/artifact-references";
 import type {
   ArtifactCatalogListQuery,
   ArtifactDetail,
@@ -402,14 +406,25 @@ test("Render a generated private image from the authenticated file reference", a
   const fileId = "f0000000-0000-4000-a000-000000000938";
   const resourceUrl =
     "https://private-r2.example/private-image.png?signature=image";
-  context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
-    expect(query.file_id).toBe(fileId);
-    return respond(200, { url: resourceUrl, publicUrl: null });
-  });
+  context.mocks.api(
+    artifactReferencesContract.resolve,
+    ({ params, respond }) => {
+      expect(params.reference).toBe(
+        artifactReferencePath(fileId, filename).slice("/artifacts/".length),
+      );
+      return respond(200, {
+        url: resourceUrl,
+        expiresAt: "2099-01-01T00:00:00Z",
+        filename,
+        contentType: "image/png",
+        target: { kind: "file", id: fileId },
+      });
+    },
+  );
   await setupGeneratedFilePreview(
     filename,
     "image/png",
-    `https://api.okou.ai/api/web/download-file?file_id=${fileId}&filename=${filename}`,
+    artifactReferencePath(fileId, filename),
   );
   const embedded = await screen.findByAltText(filename);
   expect(embedded).toHaveAttribute("src", resourceUrl);
@@ -420,6 +435,22 @@ test("Render a generated private image from the authenticated file reference", a
   ).toHaveAttribute("src", resourceUrl);
   expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
 });
+
+test.each(["https://f.okou.io", "https://files.sites.vm7.io"])(
+  "public CDN images use the file viewer on %s",
+  async (origin) => {
+    const filename = "shared-image.png";
+    const url = `${origin}/${"a".repeat(24)}.png`;
+    await setupGeneratedFilePreview(filename, "image/png", url);
+    const image = await screen.findByAltText(filename);
+    expect(image).toHaveAttribute("src", url);
+    click(image);
+    const dialog = await screen.findByTestId("attachment-lightbox");
+    expect(
+      within(dialog).getByTestId("attachment-lightbox-image"),
+    ).toHaveAttribute("src", url);
+  },
+);
 
 test("Explain empty and unavailable CSV previews", async () => {
   useWideScreen();

@@ -1323,6 +1323,40 @@ impl PreparedGuestRuntime {
 }
 
 impl RunControls {
+    pub(super) async fn prepare_codex_model_catalog_prefetch(
+        &mut self,
+        sandbox: &dyn Sandbox,
+        context: &ExecutionContext,
+        start: &RunStart<'_>,
+        telemetry: &mut JobTelemetry,
+    ) -> Option<PreparedGuestRuntime> {
+        if !is_codex_model_catalog_prefetch_eligible(context, start.reuse_result) {
+            return None;
+        }
+        if self.guest_state_prepared {
+            Some(
+                PreparedGuestRuntime::start_codex_model_catalog_prefetch(
+                    sandbox,
+                    context,
+                    start.reuse_result,
+                    &self.cancel,
+                    telemetry,
+                )
+                .await,
+            )
+        } else {
+            PreparedGuestRuntime::prepare_for_codex_model_catalog_prefetch(
+                sandbox,
+                context,
+                start.restore_guest_state,
+                start.reuse_result,
+                &self.cancel,
+                telemetry,
+            )
+            .await
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn new(
         cancel: CancellationToken,
@@ -1715,12 +1749,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         PreparedGuestRuntime::Failed(error) => {
             if let Some(prepared) = prepared_storage.as_mut() {
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         PreparedGuestRuntime::Cancelled => {
@@ -1741,6 +1777,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .as_ref()
                     .map(|failure| failure.error.as_str()),
             );
+            session_history_restore_plan.cancel_and_drain().await;
             return Ok(result);
         }
     };
@@ -1766,6 +1803,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 prepared.delivery.cancel_and_drain(telemetry).await;
             }
             model_catalog_prefetch.finish(telemetry).await;
+            session_history_restore_plan.cancel_and_drain().await;
             return Err(error);
         }
         None => {
@@ -1787,6 +1825,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .as_ref()
                     .map(|failure| failure.error.as_str()),
             );
+            session_history_restore_plan.cancel_and_drain().await;
             return Ok(result);
         }
     };

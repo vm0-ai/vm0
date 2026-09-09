@@ -195,6 +195,12 @@ const ROUTE_CONFIG = [
     analytics: false,
   },
   {
+    // Retained share links have no TTL; #32492 owns their compatibility drain.
+    path: ROUTES.legacySharedArtifact,
+    setup: setupPageWrapper(setupSharedArtifact$),
+    analytics: false,
+  },
+  {
     path: ROUTES.sharedThread,
     setup: setupSharedThreadPage$,
     analytics: false,

@@ -587,6 +587,13 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageSourcePartSchema,
   z
     .object({
+      /** Client-authored context included in agent prompts, not visible text. */
+      type: z.literal("additional_info"),
+      text: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("automation"),
       workflowName: z.string().min(1),
       workflowId: z.string().uuid().optional(),

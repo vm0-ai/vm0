@@ -412,7 +412,7 @@ function AvatarMakerDialogBody({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden"
+      contentClassName="p-0 gap-0 overflow-hidden"
     >
       <DialogHeader className="sr-only">
         <DialogTitle>{title}</DialogTitle>

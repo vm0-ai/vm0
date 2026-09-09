@@ -261,13 +261,33 @@ async function printRunConnectorStatus(
 
 export const statusCommand = new Command()
   .name("status")
-  .description("Show detailed status of a connector")
-  .argument("<slug>", "Connector slug (e.g., github)")
+  .description("Show run account status, or builtin status outside a run")
+  .argument(
+    "<slug>",
+    "Slug shown by connector list (builtin only outside a run)",
+  )
   .option(
     "--agent <id>",
-    "Show authorization state for the given Agent (must match the current Agent inside a run)",
+    "Show per-agent authorization outside a run (must match the current Agent inside a run)",
   )
   .option("--json", "Output connector status as JSON")
+  .addHelpText(
+    "after",
+    `
+Scope:
+  Inside a run, accepts builtin or custom HTTP/MCP slugs shown by connector list
+  and reports the account selected for that run. Missing account context is
+  reported as unavailable. Omit --agent or match the current Agent; the flag
+  does not change the run's accounts.
+  Outside a run, accepts builtin catalog slugs and shows the current member's
+  connection plus optional --agent authorization.
+  For org custom definition/member status, use connector custom status <uuid>.
+
+Examples:
+  okou connector status github --json
+  okou connector custom list
+  okou connector custom status <connector-id>`,
+  )
   .action(
     withErrorHandler(
       async (

@@ -8,6 +8,25 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.575.1](https://github.com/vm0-ai/vm0/compare/api-v1.575.0...api-v1.575.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** quietly degrade codex expiry 503 responses ([#32876](https://github.com/vm0-ai/vm0/issues/32876)) ([4fb5bb9](https://github.com/vm0-ai/vm0/commit/4fb5bb99875c68b7ecf7314d653bce522c07cd93))
+* **api:** validate dataforseo labs locations ([#32785](https://github.com/vm0-ai/vm0/issues/32785)) ([f2c8fff](https://github.com/vm0-ai/vm0/commit/f2c8fff24537303713047f2abe9a690d913046b0))
+* preserve composer context as hidden additional info ([#32782](https://github.com/vm0-ai/vm0/issues/32782)) ([ff22c3b](https://github.com/vm0-ai/vm0/commit/ff22c3bedc2784c46bc6f9bcc3a3731a6f5b404f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.1
+    * @okouai/core bumped to 8.642.0
+    * @okouai/db bumped to 1.248.2
+    * @okouai/pi-agent-runtime bumped to 1.24.1
+
 ## [1.575.0](https://github.com/vm0-ai/vm0/compare/api-v1.574.0...api-v1.575.0) (2026-09-09)
 
 

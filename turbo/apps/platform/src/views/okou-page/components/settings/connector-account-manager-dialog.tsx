@@ -501,7 +501,7 @@ function DeleteAccountConfirmation({
         return !open && clear();
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent maxWidth="md">
         <DialogHeader>
           <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
             {t(
@@ -604,6 +604,37 @@ function enrichedDefaultConnection(
   );
 }
 
+function ConnectorAccountManagerHeader({
+  connectorLabel,
+  icon,
+}: Pick<ConnectorAccountManagerDialogProps, "connectorLabel" | "icon">) {
+  const { t } = useTranslation();
+  return (
+    <DialogHeader className="shrink-0 gap-2">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <DialogTitle className="text-base">
+            {t(
+              ($) => {
+                return $.connectors.accounts.managerTitle;
+              },
+              { connector: connectorLabel },
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {t(($) => {
+              return $.connectors.accounts.managerDescription;
+            })}
+          </DialogDescription>
+        </div>
+      </div>
+    </DialogHeader>
+  );
+}
+
 export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
@@ -649,29 +680,14 @@ export function ConnectorAccountManagerDialog({
         return !open && leave(onClose);
       }}
     >
-      <DialogContent className="!flex w-full max-w-xl !flex-col !overflow-hidden">
-        <DialogHeader className="shrink-0 gap-2">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              {icon}
-            </span>
-            <div className="min-w-0">
-              <DialogTitle className="text-base">
-                {t(
-                  ($) => {
-                    return $.connectors.accounts.managerTitle;
-                  },
-                  { connector: connectorLabel },
-                )}
-              </DialogTitle>
-              <DialogDescription>
-                {t(($) => {
-                  return $.connectors.accounts.managerDescription;
-                })}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
+      <DialogContent
+        maxWidth="xl"
+        contentClassName="flex flex-col overflow-hidden"
+      >
+        <ConnectorAccountManagerHeader
+          connectorLabel={connectorLabel}
+          icon={icon}
+        />
         {showSearch ? (
           <div className="shrink-0">
             <ConnectorAccountSearch value={search} />

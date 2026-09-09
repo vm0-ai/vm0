@@ -11,6 +11,30 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.872.0](https://github.com/vm0-ai/vm0/compare/app-v0.871.0...app-v0.872.0) (2026-09-09)
+
+
+### Features
+
+* add pin controls to chat thread headers ([#32867](https://github.com/vm0-ai/vm0/issues/32867)) ([6e36691](https://github.com/vm0-ai/vm0/commit/6e3669108941cbc17fbeb41865d82fd4d8454029))
+* **app:** add lightweight composer task chips behind a switch ([#32698](https://github.com/vm0-ai/vm0/issues/32698)) ([b95ee8c](https://github.com/vm0-ai/vm0/commit/b95ee8c26bccebccc7ee8b113e837dbfbd535523))
+
+
+### Bug Fixes
+
+* **app:** connector directory chip metrics and footer ([#32794](https://github.com/vm0-ai/vm0/issues/32794)) ([b2d6e43](https://github.com/vm0-ai/vm0/commit/b2d6e43aa259351c7a26906b3039be88a9f1aee9))
+* **platform:** illustrate empty credit balance ([#32866](https://github.com/vm0-ai/vm0/issues/32866)) ([9da8218](https://github.com/vm0-ai/vm0/commit/9da8218db8b78940c71c675a3004b9ba7cfe4734))
+* **platform:** move avatar heads to the chin baseline instead of resizing them ([#32825](https://github.com/vm0-ai/vm0/issues/32825)) ([45ea514](https://github.com/vm0-ai/vm0/commit/45ea514eb8700e1997acfe521037d50f445ec0d0))
+* preserve composer context as hidden additional info ([#32782](https://github.com/vm0-ai/vm0/issues/32782)) ([ff22c3b](https://github.com/vm0-ai/vm0/commit/ff22c3bedc2784c46bc6f9bcc3a3731a6f5b404f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.420.1
+    * @okouai/core bumped to 8.642.0
+
 ## [0.871.0](https://github.com/vm0-ai/vm0/compare/app-v0.870.0...app-v0.871.0) (2026-09-09)
 
 

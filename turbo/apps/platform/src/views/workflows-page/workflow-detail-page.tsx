@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
+  surfaceVariants,
   Button,
   Checkbox,
   cn,
@@ -1403,7 +1404,7 @@ function WorkflowInfoTab({
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
-      <div className="okou-card overflow-hidden">
+      <div className={surfaceVariants({ className: "overflow-hidden" })}>
         <div className="p-4 sm:p-5">
           <InlineSettingsRow
             label={i18n.t(($) => {
@@ -1435,7 +1436,7 @@ function WorkflowInfoTab({
         <OfficialWorkflowInstallationSettings detail={detail} />
       ) : null}
       {detail.canManage && !detail.official ? (
-        <div className="okou-card overflow-hidden border-destructive/20">
+        <div className={surfaceVariants({ className: "overflow-hidden" })}>
           <div className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
               <div className="min-w-0 sm:max-w-[46%]">
@@ -1551,7 +1552,7 @@ function OfficialWorkflowReconfigureCard({
         return $.workflows.official.reconfigureUnavailable;
       });
   return (
-    <div className="okou-card overflow-hidden">
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1597,7 +1598,7 @@ function OfficialWorkflowReconfigureCard({
 function OfficialWorkflowUninstallCard() {
   const setActionDialog = useSet(setWorkflowActionDialog$);
   return (
-    <div className="okou-card overflow-hidden border-destructive/20">
+    <div className={surfaceVariants({ className: "overflow-hidden" })}>
       <div className="p-4 sm:p-5">
         <InlineSettingsRow
           label={i18n.t(($) => {
@@ -1681,7 +1682,7 @@ function OfficialWorkflowReconfigureDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[680px]">
+      <DialogContent smMaxWidth={680} contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -1990,7 +1991,7 @@ function WorkflowMetadataForm({
     <>
       <form
         aria-label={copy.aria}
-        className="okou-card overflow-hidden"
+        className={surfaceVariants({ className: "overflow-hidden" })}
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault();
           if (!event.currentTarget.checkValidity()) {
@@ -2020,7 +2021,9 @@ function WorkflowInstructionsTab({
 }) {
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-3">
-      <div className="okou-card overflow-hidden px-5 pb-5">
+      <div
+        className={surfaceVariants({ className: "overflow-hidden px-5 pb-5" })}
+      >
         <WorkflowFilePreview detail={detail} />
       </div>
     </div>
@@ -2383,7 +2386,7 @@ function WorkflowCopyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent smMaxWidth={560}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -4547,7 +4550,7 @@ function AutomationCreateMenu({
           </span>
         </button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[880px]">
+      <DialogContent smMaxWidth={880}>
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -4998,7 +5001,7 @@ function AutomationsSection({
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex flex-col gap-2">
         {automations.length > 0 ? (
-          <div className="okou-card overflow-visible">
+          <div className={surfaceVariants({ className: "overflow-visible" })}>
             {automations.map((automation, index) => {
               return (
                 <AutomationRow
@@ -5015,7 +5018,12 @@ function AutomationsSection({
             })}
           </div>
         ) : (
-          <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+          <div
+            className={surfaceVariants({
+              className:
+                "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+            })}
+          >
             <img
               src={emptyAutomationsImg}
               alt={i18n.t(($) => {
@@ -6669,7 +6677,7 @@ function CreateGmailNewMessageAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -7685,7 +7693,7 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -7826,7 +7834,7 @@ function CreateGithubWebhookAutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent contentClassName="overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>
@@ -8092,7 +8100,7 @@ function CreateWebhookAutomationDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -8250,7 +8258,7 @@ function RevealWebhookSecretDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent maxWidth="2xl">
         <DialogHeader>
           <DialogTitle>
             {i18n.t(($) => {
@@ -9249,13 +9257,13 @@ function EditWorkflowAutomationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={
+        maxWidth={
           automation.kind === "event" &&
           (automation.eventType === "gmail-new-message" ||
             automation.eventType === "github-workflow-run-completed" ||
             isGithubWebhookWorkflowAutomation(automation))
-            ? "max-w-2xl"
-            : ""
+            ? "2xl"
+            : "lg"
         }
       >
         <DialogHeader>

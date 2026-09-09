@@ -497,16 +497,12 @@ function notifyAuthChanged(): void {
   const authority = authSession?.getAuthority() ?? null;
   if (lastSessionAuthority !== authority) {
     lastSessionAuthority = authority;
-    computerUseController.cancelPermissionRefresh();
     resetComputerUsePermissionState();
-    if (
-      driverSelection.requestedDriver().id === "cua" ||
-      computerUseDriver.selectedDriver.id === "cua"
-    ) {
-      void computerUseController.stopForAuthChange().catch(() => {
-        console.warn("Computer Use session cleanup remains unproven");
-      });
-    }
+    // Every driver must finish the auth-owned cleanup before permissions can
+    // resume. Cancelling a probe alone leaves the default driver paused.
+    void computerUseController.stopForAuthChange().catch(() => {
+      console.warn("Computer Use session cleanup remains unproven");
+    });
   }
   notifyDesktopAuthChanged();
   refreshDesktopTrayAuth();

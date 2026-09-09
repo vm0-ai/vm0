@@ -372,6 +372,17 @@ export default [
         {
           paths: [
             {
+              name: "@base-ui/react/dialog",
+              message:
+                "Use DialogContent from @okouai/ui. The shared dialog owns safe-area bounds, sizing, scrolling, and native focus behavior.",
+            },
+            {
+              name: "@base-ui/react",
+              importNames: ["Dialog"],
+              message:
+                "Use DialogContent from @okouai/ui so dialogs retain their safe-area boundary.",
+            },
+            {
               name: "ably",
               allowTypeImports: true,
               message:
@@ -381,6 +392,13 @@ export default [
               name: "@clerk/clerk-js",
               message:
                 "Use src/lib/clerk-runtime.ts so Clerk loads the official browser runtime without bundled wallet adapters.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@base-ui/react/dialog/*"],
+              message:
+                "Use the shared DialogContent instead of constructing a dialog viewport in business code.",
             },
           ],
         },

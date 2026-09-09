@@ -1669,6 +1669,7 @@
       "saving": "저장 중...",
       "send": "전송",
       "stop": "중지",
+      "undo": "실행 취소",
       "view": "보기"
     },
     "actionUnavailable": {
@@ -2592,7 +2593,10 @@
     },
     "toasts": {
       "copied": "복사됨",
-      "deleted": "채팅 삭제됨"
+      "deleted": "채팅 삭제됨",
+      "pinned": "채팅을 고정했습니다",
+      "pinUpdateFailed": "고정 변경을 확인하지 못했습니다. 새로고침하여 저장된 상태를 확인하세요.",
+      "unpinned": "채팅 고정을 해제했습니다"
     },
     "translation": {
       "action": "번역",
@@ -2747,7 +2751,6 @@
       "authorized": "승인됨",
       "connectAria": "{{connector}} 연결",
       "connected": "연결됨",
-      "connecting": "연결 중…",
       "connectionExpired": "연결이 만료되었습니다",
       "connectToContinue": "계정을 연결해야 계속할 수 있습니다",
       "managePermissions": "권한 관리",

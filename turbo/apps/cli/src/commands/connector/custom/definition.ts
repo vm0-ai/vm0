@@ -13,7 +13,7 @@ const customConnectorDefinitionFileSchema = z
     (definition) => {
       return definition.authMode !== undefined;
     },
-    { message: 'Custom connector authMode must be "manual" or "oauth"' },
+    { message: "Custom connector authMode is required" },
   )
   .refine(
     (definition) => {

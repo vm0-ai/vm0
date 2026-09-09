@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Loader2, Plus, Wand } from "lucide-react";
 import {
+  surfaceVariants,
   Card,
   CardContent,
   Dialog,
@@ -254,7 +255,12 @@ function AgentTabsView({
 function PrivateEmptyState() {
   const { t } = useTranslation("agents");
   return (
-    <div className="okou-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+    <div
+      className={surfaceVariants({
+        className:
+          "flex min-h-[20rem] flex-col items-center justify-center px-6 text-center",
+      })}
+    >
       <img
         src={platformEmptyPrivateAgentsImg}
         alt=""
@@ -321,7 +327,7 @@ function AgentGridSkeleton() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {[1, 2, 3].map((i) => {
         return (
-          <Card key={i} className="okou-card">
+          <Card key={i} className={surfaceVariants()}>
             <CardContent className="p-4">
               <div className="flex items-center gap-3 animate-pulse">
                 <div className="h-10 w-10 rounded-full bg-muted" />
@@ -561,7 +567,8 @@ function CreateTeammateDialogContent({
       closeLabel={t(($) => {
         return $.actions.close;
       })}
-      className="sm:max-w-[480px] p-0 gap-0 overflow-hidden"
+      smMaxWidth={480}
+      contentClassName="p-0 gap-0 overflow-hidden"
     >
       <DialogHeader className="sr-only">
         <DialogTitle>
@@ -708,7 +715,12 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
           }))
     : "";
   return (
-    <Card className="okou-card cursor-pointer flex flex-col hover:bg-state-hover transition-colors h-full">
+    <Card
+      className={surfaceVariants({
+        interactive: true,
+        className: "flex flex-col h-full",
+      })}
+    >
       <CardContent className="flex flex-1 flex-col gap-3 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="relative h-10 w-10 shrink-0">

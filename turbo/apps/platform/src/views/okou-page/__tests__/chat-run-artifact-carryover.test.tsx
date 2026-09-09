@@ -216,11 +216,7 @@ test("A carried image keeps its label and opens a lightbox over the dialog", asy
     screen.findByTestId("attachment-lightbox-image"),
   ).resolves.toHaveAttribute("src", url);
   expect(dialog).toBeVisible();
-  click(screen.getByTestId("attachment-lightbox-backdrop"));
-  await waitFor(() => {
-    expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
-  });
-  expect(dialog).toBeVisible();
+  await closeRelatedArtifactPreview(dialog);
 });
 
 async function openRelatedArtifactOverSidebar(filename: string, body?: string) {
@@ -260,7 +256,13 @@ async function openRelatedArtifactOverSidebar(filename: string, body?: string) {
 }
 
 async function closeRelatedArtifactPreview(dialog: HTMLElement) {
-  click(screen.getByTestId("attachment-lightbox-backdrop"));
+  const viewport = screen
+    .getByTestId("attachment-lightbox")
+    .closest('[data-slot="dialog-viewport"]');
+  if (!viewport) {
+    throw new Error("Expected the active artifact preview viewport");
+  }
+  click(viewport);
   await waitFor(() => {
     expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
   });

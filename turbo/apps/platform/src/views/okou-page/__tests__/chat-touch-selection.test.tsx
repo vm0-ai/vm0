@@ -174,8 +174,11 @@ test("Disabling touch selection removes an active selection and restores native 
 });
 
 test.each([false, true])(
-  "Touch selection survives release and quotes an adjusted range with desktop selection %s",
-  async (desktopSelection) => {
+  "Touch selection survives release and quotes an adjusted range with a coarse pointer %s",
+  async (coarsePointer) => {
+    context.mocks.browser.matchMedia((query) => {
+      return coarsePointer && query === "(pointer: coarse)";
+    });
     const sends: CapturedChatSend[] = [];
     mockTouchLayout(PASSAGE);
     installCapabilityChat({
@@ -189,7 +192,6 @@ test.each([false, true])(
       path: RUN_PATH,
       featureSwitches: {
         [FeatureSwitchKey.ChatTouchSelection]: true,
-        [FeatureSwitchKey.ChatDesktopSelection]: desktopSelection,
       },
     });
     await readyChat();

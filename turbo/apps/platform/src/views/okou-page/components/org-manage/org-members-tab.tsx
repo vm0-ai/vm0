@@ -829,7 +829,8 @@ function InvitePurchaseConfirmationDialogContent() {
       }}
     >
       <DialogContent
-        className="max-w-[26.5rem] gap-0"
+        maxWidth="26.5rem"
+        contentClassName="gap-0"
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}

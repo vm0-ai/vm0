@@ -49,6 +49,8 @@ function desktop(initial?: string) {
   const file = path.join(directory, "preferences.json");
   const helper = path.join(directory, "helper.cjs");
   const nativeEvents = path.join(directory, "native-events");
+  const permissionGate = path.join(directory, "permission-gate");
+  const exitRelease = path.join(directory, "exit-release");
   writeFileSync(nativeEvents, "");
   if (initial !== undefined) writeFileSync(file, initial);
   // The actuator is an external process; the real native protocol client,
@@ -57,10 +59,22 @@ function desktop(initial?: string) {
     helper,
     `#!${process.execPath}
 const fs = require('node:fs');
+const blocked = fs.existsSync(${JSON.stringify(permissionGate)});
+const lines = require('node:readline').createInterface({input:process.stdin});
+if (blocked) lines.on('close', () => {
+  const watcher = fs.watch(${JSON.stringify(directory)}, () => {
+    if (fs.existsSync(${JSON.stringify(exitRelease)})) { watcher.close(); process.exit(0); }
+  });
+  fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'exit-waiting\\n');
+});
 fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'start\\n');
-require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+lines.on('line', line => {
   const r=JSON.parse(line);
-  const result=r.kind.startsWith('permissions.') ? {accessibility:true,screenRecording:true} : {apps:[{name:'Okou fixture',bundleId:'test.editor'}]};
+  if (blocked && r.kind === 'permissions.state') {
+    fs.appendFileSync(${JSON.stringify(nativeEvents)}, 'permission-waiting\\n');
+    return;
+  }
+  const result=r.kind==='permissions.probe_automation' ? {status:'granted',reason:null} : r.kind.startsWith('permissions.') ? {accessibility:true,screenRecording:true} : {apps:[{name:'Okou fixture',bundleId:'test.editor'}]};
   process.stdout.write(JSON.stringify({id:r.id,status:'succeeded',result})+'\\n');
 });
 `,
@@ -229,13 +243,8 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     const current = auth.getAuthority();
     if (lastAuth !== current) {
       lastAuth = current;
-      controller.cancelPermissionRefresh();
       permissions.resetComputerUsePermissionState();
-      if (
-        selection.requestedDriver().id === "cua" ||
-        driver.selectedDriver.id === "cua"
-      )
-        own(controller.stopForAuthChange());
+      own(controller.stopForAuthChange());
     }
     developer.requestRefresh();
   };
@@ -319,6 +328,12 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     directory,
     tick,
     completed,
+    holdNativePermissions: () => writeFileSync(permissionGate, "hold"),
+    releaseNativeExit: () => {
+      rmSync(permissionGate, { force: true });
+      writeFileSync(exitRelease, "exit");
+    },
+    nativeEvents: () => readFileSync(nativeEvents, "utf8"),
     nativeStarts: () =>
       readFileSync(nativeEvents, "utf8").split("start\n").length - 1,
     restore: () => controller.transitionDriver(selection.requestedDriver()),
@@ -955,3 +970,57 @@ it("withdraws live CUA immediately on unresolved access, resumes only an existin
   );
   expect(app.nativeStarts()).toBe(0);
 });
+
+it.each(["refresh", "sign-out", "quit"] as const)(
+  "settles cancelled default-driver permission inspection after %s",
+  async (next) => {
+    const app = desktop();
+    await app.restore();
+    app.holdNativePermissions();
+    const stale = app.permissions.refreshComputerUsePermissionState().then(
+      () => "published",
+      () => "cancelled",
+    );
+    await vi.waitFor(() =>
+      expect(app.nativeEvents()).toContain("permission-waiting"),
+    );
+    await app.authorize();
+    expect(await stale).toBe("cancelled");
+    await vi.waitFor(() =>
+      expect(app.nativeEvents()).toContain("exit-waiting"),
+    );
+    expect(
+      await app.permissions.probeComputerUseAutomationPermission("chrome"),
+    ).toMatchObject({
+      automation: { chrome: { status: "unknown" } },
+    });
+    expect(app.nativeStarts()).toBe(1);
+    if (next === "sign-out") app.auth.signOut();
+    const quit = next === "quit" ? app.controller.stopForQuit() : null;
+    app.releaseNativeExit();
+    if (quit) await quit;
+    await vi.waitFor(() => expect(app.driver.cleanupPending).toBe(false));
+    if (next === "quit") {
+      await expect(
+        app.permissions.refreshComputerUsePermissionState(),
+      ).rejects.toThrow("cancelled");
+    } else {
+      expect(
+        await app.permissions.refreshComputerUsePermissionState(),
+      ).toMatchObject({ accessibility: true, screenRecording: true });
+    }
+    expect(
+      await app.permissions.probeComputerUseAutomationPermission("chrome"),
+    ).toMatchObject({
+      automation: {
+        chrome: { status: next === "quit" ? "unknown" : "granted" },
+      },
+    });
+    expect(app.nativeStarts()).toBe(next === "quit" ? 1 : 2);
+    expect(app.driver.getCapabilities()).toEqual([]);
+    expect(app.boundaries).toHaveLength(0);
+    expect(
+      app.requests.some((request) => request.path.endsWith("/hosts/start")),
+    ).toBe(false);
+  },
+);

@@ -1,3 +1,4 @@
+import { artifactUrlSchema } from "./artifact-references";
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
@@ -24,7 +25,7 @@ const uploadMetadataSchema = z.object({
   contentType: z.string(),
   size: z.number(),
   /** Stable file reference; private artifacts require owner authentication. */
-  url: z.string().url(),
+  url: artifactUrlSchema,
 });
 
 const prepareResponseSchema = uploadMetadataSchema.extend({
@@ -64,7 +65,7 @@ const multipartCompleteRequestSchema = multipartUploadIdentitySchema.extend({
 
 const multipartResponseSchema = z.object({
   id: z.string().uuid(),
-  url: z.string().url(),
+  url: artifactUrlSchema,
 });
 
 const multipartAbortResponseSchema = z.object({
@@ -81,7 +82,7 @@ const completeResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number(),
-  url: z.string().url(),
+  url: artifactUrlSchema,
 });
 
 // ---------------------------------------------------------------------------

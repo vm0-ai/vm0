@@ -183,15 +183,15 @@ function closestExpandedFeedbackSource(node: Node | null): Element | null {
   );
 }
 
-function shouldExpandSelectionToAssistantReply(enabled: boolean): boolean {
-  return enabled && !window.matchMedia(COARSE_POINTER_QUERY).matches;
+function shouldExpandSelectionToAssistantReply(): boolean {
+  return !window.matchMedia(COARSE_POINTER_QUERY).matches;
 }
 
 function resolveSelectionSource(
   range: Range,
-  expandToAssistantReply: boolean,
+  touchSelection: boolean,
 ): Element | null {
-  if (expandToAssistantReply) {
+  if (!touchSelection && shouldExpandSelectionToAssistantReply()) {
     const startSource = closestExpandedFeedbackSource(range.startContainer);
     const endSource = closestExpandedFeedbackSource(range.endContainer);
     return startSource !== null && startSource === endSource
@@ -340,7 +340,6 @@ function rectFromRange(range: Range): ChatThreadFeedbackSelection["rect"] {
 }
 
 function readFeedbackSelection(
-  expandToAssistantReply: boolean,
   touchRange?: Range,
 ): CapturedFeedbackSelection | null {
   const selection = window.getSelection();
@@ -362,10 +361,7 @@ function readFeedbackSelection(
   if (!text) {
     return null;
   }
-  const sourceElement = resolveSelectionSource(
-    range,
-    !touchRange && expandToAssistantReply,
-  );
+  const sourceElement = resolveSelectionSource(range, touchRange !== undefined);
   if (!sourceElement) {
     return null;
   }
@@ -418,12 +414,7 @@ function createSelectionReconciliation({
     if (!currentSelection) {
       return;
     }
-    const selection = readFeedbackSelection(
-      shouldExpandSelectionToAssistantReply(
-        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-      ),
-      currentSelection.touchRange,
-    );
+    const selection = readFeedbackSelection(currentSelection.touchRange);
     if (
       !selection ||
       selection.threadId !== threadId ||
@@ -503,12 +494,7 @@ function createSelectionState(threadId: string) {
     return get(internalSelection$)?.touchRange ?? null;
   });
   const capture$ = command(({ get, set }, touchRange?: Range) => {
-    const selection = readFeedbackSelection(
-      shouldExpandSelectionToAssistantReply(
-        get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-      ),
-      touchRange,
-    );
+    const selection = readFeedbackSelection(touchRange);
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
@@ -916,9 +902,7 @@ function createListenersRef({
           mouseSelectionInProgress =
             event.button === 0 &&
             event.target instanceof Node &&
-            (shouldExpandSelectionToAssistantReply(
-              get(featureSwitch$)[FeatureSwitchKey.ChatDesktopSelection],
-            )
+            (shouldExpandSelectionToAssistantReply()
               ? closestExpandedFeedbackSource(event.target)
               : closestFeedbackSource(event.target)) !== null;
           const activeElement = doc.activeElement;

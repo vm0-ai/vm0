@@ -727,25 +727,6 @@ body {
   }
 }
 
-/* White card: shared border, radius (all white cards except chat bubbles) */
-.okou-app .okou-card {
-  background-color: hsl(var(--card));
-  border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--okou-card-radius);
-  box-shadow: var(--okou-card-shadow);
-  transition: background-color 0.15s;
-}
-.okou-app .okou-card.cursor-pointer {
-  border-color: hsl(var(--gray-400));
-  box-shadow: var(--okou-card-shadow);
-}
-.okou-app .okou-card.cursor-pointer:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-}
-
 /* Message bubble (e.g. Meet Okou tone samples) */
 .okou-app .okou-bubble-cool {
   background-color: hsl(var(--gray-100) / 0.95);

@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
-import { Button } from "@okouai/ui";
+import { surfaceVariants, Button } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { resolveAppAuthUrl } from "../../signals/auth.ts";
 import { Link } from "../router/link.tsx";
@@ -15,7 +15,12 @@ export function PageShell({ children }: { children: ReactNode }) {
   return (
     <div className="okou-app okou-viewport-shell flex w-full bg-background okou-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
-        <div className="okou-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
+        <div
+          className={surfaceVariants({
+            className:
+              "w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6",
+          })}
+        >
           {children}
         </div>
       </div>

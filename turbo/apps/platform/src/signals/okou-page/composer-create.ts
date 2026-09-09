@@ -16,7 +16,7 @@ export const PRESENTATION_SLIDE_COUNTS = [
   "20-24",
 ] as const;
 
-type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
+export type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
 
 export type ComposerCreateMode = (typeof COMPOSER_CREATE_MODES)[number];
 export type ComposerCreateCommand = ComposerCreateMode | "choose";

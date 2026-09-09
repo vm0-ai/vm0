@@ -1694,6 +1694,7 @@
       "saving": "Salvando...",
       "send": "Enviar",
       "stop": "Parar",
+      "undo": "Desfazer",
       "view": "Ver"
     },
     "actionUnavailable": {
@@ -2645,7 +2646,10 @@
     },
     "toasts": {
       "copied": "Copiado",
-      "deleted": "Conversa excluída"
+      "deleted": "Conversa excluída",
+      "pinned": "Conversa fixada",
+      "pinUpdateFailed": "Não foi possível confirmar a alteração. Atualize a página para verificar o estado salvo.",
+      "unpinned": "Conversa desafixada"
     },
     "translation": {
       "action": "Traduzir",
@@ -2808,7 +2812,6 @@
       "authorized": "Autorizado",
       "connectAria": "Conectar {{connector}}",
       "connected": "Conectado",
-      "connecting": "Conectando…",
       "connectionExpired": "A conexão expirou",
       "connectToContinue": "Conecte esta conta para continuar",
       "managePermissions": "Gerenciar permissões",

@@ -1,3 +1,4 @@
+import { artifactReferencePath } from "@okouai/api-contracts/contracts/artifact-references";
 /**
  * Tests for okou web upload-file command
  *
@@ -69,17 +70,20 @@ describe("okou web upload-file command", () => {
       writeFileSync(filePath, Buffer.from("%PDF-1.4 fake"));
 
       const prepared = {
-        id: "file-uuid-1",
+        id: "00000000-0000-4000-8000-000000000027",
         filename: "report.pdf",
         contentType: "application/pdf",
         size: 13,
         uploadUrl: PUT_URL,
         uploadHeaders: {
-          "x-amz-meta-artifact-id": "file-uuid-1",
+          "x-amz-meta-artifact-id": "00000000-0000-4000-8000-000000000027",
           "x-amz-meta-filename": "report.pdf",
           "x-amz-meta-user-id": "user-test",
         },
-        url: "https://api.okou.ai/api/web/download-file?file_id=file-uuid-1&filename=report.pdf",
+        url: artifactReferencePath(
+          "00000000-0000-4000-8000-000000000027",
+          "report.pdf",
+        ),
       };
 
       let putReceivedContentType: string | null = null;
@@ -119,7 +123,7 @@ describe("okou web upload-file command", () => {
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
           expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
-            "file-uuid-1",
+            "00000000-0000-4000-8000-000000000027",
           );
           expect(request.headers.get("x-amz-meta-filename")).toBe("report.pdf");
           expect(request.headers.get("x-amz-meta-user-id")).toBe("user-test");

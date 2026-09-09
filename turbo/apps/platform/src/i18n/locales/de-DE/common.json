@@ -1670,6 +1670,7 @@
       "saving": "Speichern...",
       "send": "Senden",
       "stop": "Stoppen",
+      "undo": "Rückgängig",
       "view": "Anzeigen"
     },
     "actionUnavailable": {
@@ -2600,7 +2601,10 @@
     },
     "toasts": {
       "copied": "Kopiert",
-      "deleted": "Chat gelöscht"
+      "deleted": "Chat gelöscht",
+      "pinned": "Chat angeheftet",
+      "pinUpdateFailed": "Die Änderung konnte nicht bestätigt werden. Lade die Seite neu, um den gespeicherten Status zu prüfen.",
+      "unpinned": "Chat gelöst"
     },
     "translation": {
       "action": "Übersetzen",
@@ -2759,7 +2763,6 @@
       "authorized": "Autorisiert",
       "connectAria": "Verbinden Sie {{connector}}",
       "connected": "Verbunden",
-      "connecting": "Verbinden…",
       "connectionExpired": "Verbindung abgelaufen",
       "connectToContinue": "Verbinden Sie dieses Konto, um fortzufahren",
       "managePermissions": "Berechtigungen verwalten",

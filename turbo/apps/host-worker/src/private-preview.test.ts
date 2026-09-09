@@ -62,12 +62,22 @@ function fixture() {
     HOST_DOMAIN: "sites.vm0.io",
     OKOU_HOST_DOMAIN: "okou.app",
     HOSTED_SITES_BUCKET: {
+      head: async (key) => {
+        const body = objects.get(key);
+        return body === undefined
+          ? null
+          : {
+              size: new TextEncoder().encode(body).length,
+              httpEtag: '"private-test"',
+            };
+      },
       get: async (key) => {
         reads.push(key);
         const body = objects.get(key);
         return body === undefined
           ? null
           : {
+              size: new TextEncoder().encode(body).length,
               body: new Response(body).body!,
               httpEtag: '"private-test"',
               writeHttpMetadata(headers) {

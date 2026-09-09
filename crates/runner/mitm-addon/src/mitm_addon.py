@@ -1701,6 +1701,7 @@ def _release_terminal_flow_state(
         websocket_framing.log_limit_violation(flow)
         websocket_retention.release_terminal_messages(flow)
         terminal_usage.release_model_websocket_terminal_state(flow)
+        codex_output_timing.release_flow_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)

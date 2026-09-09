@@ -1148,7 +1148,9 @@ function PricingStepDialog({
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
-        className="flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+        maxWidth={860}
+        height={688}
+        contentClassName="flex flex-col gap-0 overflow-hidden p-0"
       >
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share

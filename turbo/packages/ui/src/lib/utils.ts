@@ -1,6 +1,15 @@
 import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+const mergeUtilities = extendTailwindMerge({
+  extend: {
+    theme: {
+      radius: ["surface", "surface-compact"],
+      shadow: ["surface"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return mergeUtilities(clsx(inputs));
 }
