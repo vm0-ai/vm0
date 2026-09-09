@@ -2006,6 +2006,7 @@ def done():
     pending. After joining the usage executor, retained billing and diagnostic
     work is drained through synchronous delivery. Model-provider
     failure delivery stops admission and receives one bounded drain window.
+    Catalog validation closes admission and joins its bounded off-loop work.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
@@ -2020,7 +2021,10 @@ def done():
             try:
                 model_provider_failure.shutdown()
             finally:
-                shutdown_log_writer()
+                try:
+                    codex_model_catalog_cache.shutdown()
+                finally:
+                    shutdown_log_writer()
 
 
 # ============================================================================
