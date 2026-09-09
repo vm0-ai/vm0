@@ -37,6 +37,7 @@ import {
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_HOSTNAME_MAX_LENGTH,
   OFFICIAL_RUNNER_TOKEN_PREFIX,
+  NATIVE_REASONING_EFFORT_HEADER,
   RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -397,6 +398,12 @@ export const rustConstantBindings = [
       "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
       "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
     ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NATIVE_REASONING_EFFORT_HEADER",
+    value: rustString(NATIVE_REASONING_EFFORT_HEADER),
+    rustDoc: ["Claim header advertising native reasoning effort support."],
   },
   {
     rustModulePath: ["runners"],

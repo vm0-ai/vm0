@@ -144,6 +144,10 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+// A header is additive for old APIs, whose claim capability JSON is strict.
+// The runner and guest are shipped together in the same artifact.
+export const NATIVE_REASONING_EFFORT_HEADER = "X-Okou-Native-Reasoning-Effort";
+
 export const runnerClaimCapabilitiesSchema = z
   .object({
     piModelConfigGenerations: z

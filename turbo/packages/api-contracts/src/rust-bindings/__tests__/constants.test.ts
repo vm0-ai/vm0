@@ -48,6 +48,7 @@ import {
   PI_MODEL_CONFIG_LEGACY_GENERATION,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+  NATIVE_REASONING_EFFORT_HEADER,
   RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX,
   RUNNER_HOSTNAME_MAX_LENGTH,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -349,6 +350,12 @@ const expectedBindings = [
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
     value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
     rustDoc: resumeSessionHistoryMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NATIVE_REASONING_EFFORT_HEADER",
+    value: rustString(NATIVE_REASONING_EFFORT_HEADER),
+    rustDoc: ["Claim header advertising native reasoning effort support."],
   },
   {
     rustModulePath: ["runners"],

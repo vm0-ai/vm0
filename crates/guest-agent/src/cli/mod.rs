@@ -42,6 +42,7 @@ mod pi_memory_citation;
 mod pi_rpc;
 mod process_group;
 mod provider_event_normalization;
+mod reasoning_effort;
 mod termination;
 
 pub use codex_setup::setup_codex_for_config;
@@ -350,6 +351,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     codex_runtime_config: Option<CodexRuntimeConfig>,
     codex_oauth_mode: bool,
     codex_fast_mode: bool,
+    reasoning_effort: Option<&'a str>,
     disable_builtin_web_search: bool,
     agent_execution_deadline: Option<AgentExecutionDeadline>,
     stuck_tool_timeout_secs: u64,
@@ -426,6 +428,7 @@ impl<'a> CliRuntimeConfig<'a> {
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             codex_fast_mode: matches!(config.framework, env::Framework::Codex)
                 && user_env_value(&config.user_env, CODEX_SERVICE_TIER_CANONICAL_ENV) == "fast",
+            reasoning_effort: reasoning_effort::resolve(config.framework, &config.user_env)?,
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
@@ -480,15 +483,25 @@ impl<'a> CliRuntimeConfig<'a> {
     }
 
     fn child_user_env(&self) -> Cow<'_, HashMap<String, String>> {
-        if self.codex_runtime_config.is_none()
-            || !self.user_env.contains_key(OPENAI_BASE_URL_ENV_KEY)
-        {
+        let remove_base_url = self.codex_runtime_config.is_some()
+            && self.user_env.contains_key(OPENAI_BASE_URL_ENV_KEY);
+        let remove_claude_effort = matches!(self.framework, env::Framework::ClaudeCode)
+            && self.reasoning_effort.is_some()
+            && self.user_env.contains_key("CLAUDE_CODE_EFFORT_LEVEL");
+        if !remove_base_url && !remove_claude_effort {
             return Cow::Borrowed(self.user_env);
         }
         // Structured Codex runtime config is authoritative; do not let stale
         // provider env leak a conflicting base URL into the child process.
         let mut user_env = self.user_env.clone();
-        user_env.remove(OPENAI_BASE_URL_ENV_KEY);
+        if remove_base_url {
+            user_env.remove(OPENAI_BASE_URL_ENV_KEY);
+        }
+        // Claude's env override takes precedence over --effort, including
+        // ultracode. An explicit chat choice must win over restored user env.
+        if remove_claude_effort {
+            user_env.remove("CLAUDE_CODE_EFFORT_LEVEL");
+        }
         Cow::Owned(user_env)
     }
 }
@@ -2377,6 +2390,7 @@ mod tests {
             codex_runtime_config: None,
             codex_oauth_mode: false,
             codex_fast_mode: false,
+            reasoning_effort: None,
             disable_builtin_web_search: false,
             agent_execution_deadline: None,
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
@@ -2404,6 +2418,34 @@ mod tests {
             pi_model_config: Cow::Borrowed(""),
             user_env,
         }
+    }
+
+    #[test]
+    fn explicit_claude_effort_overrides_user_env_without_mutating_it() {
+        let user_env = HashMap::from([
+            ("CLAUDE_CODE_EFFORT_LEVEL".to_string(), "low".to_string()),
+            ("CUSTOM_USER_ENV".to_string(), "keep".to_string()),
+        ]);
+        let mut runtime =
+            runtime_for_command_test(env::Framework::ClaudeCode, "prompt", "", &user_env);
+        assert_eq!(
+            runtime.child_user_env().get("CLAUDE_CODE_EFFORT_LEVEL"),
+            Some(&"low".to_string())
+        );
+        runtime.reasoning_effort = Some("ultracode");
+        assert!(
+            !runtime
+                .child_user_env()
+                .contains_key("CLAUDE_CODE_EFFORT_LEVEL")
+        );
+        assert_eq!(
+            runtime.child_user_env().get("CUSTOM_USER_ENV"),
+            Some(&"keep".to_string())
+        );
+        assert_eq!(
+            user_env.get("CLAUDE_CODE_EFFORT_LEVEL"),
+            Some(&"low".to_string())
+        );
     }
 
     #[test]

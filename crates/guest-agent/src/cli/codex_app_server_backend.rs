@@ -916,9 +916,9 @@ fn turn_start_params(thread_id: &str, runtime: &CliRuntimeConfig<'_>) -> Value {
             Value::String(runtime.openai_model.to_string()),
         );
     }
-    if let Some(effort) =
+    if let Some(effort) = runtime.reasoning_effort.or_else(|| {
         codex_runtime_config::default_reasoning_effort_for_model(runtime.openai_model.as_ref())
-    {
+    }) {
         params.insert("effort".to_string(), Value::String(effort.to_string()));
     }
     Value::Object(params)

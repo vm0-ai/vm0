@@ -2595,12 +2595,6 @@ function resolveTimedThread(
       ) {
         return badRequestMessage("Reasoning effort selection is not enabled");
       }
-      const effortError = validateReasoningEffortDispatch(
-        args.body.runOptions?.reasoningEffort,
-      );
-      if (effortError) {
-        return effortError;
-      }
       const resolved = await resolveThread({
         db,
         orgId: args.orgId,
@@ -2626,6 +2620,12 @@ function resolveTimedThread(
       if (!("status" in resolved)) {
         const storedEffortError = validateReasoningEffortDispatch(
           resolved.runConfiguration.reasoningEffort,
+          usesPi(
+            args,
+            resolved.thread,
+            resolved.runConfiguration,
+            featureSwitches,
+          ),
         );
         if (storedEffortError) {
           return storedEffortError;

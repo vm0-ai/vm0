@@ -5,6 +5,7 @@ import {
 } from "../services/goal-retirement.service";
 import { command } from "ccstate";
 import {
+  NATIVE_REASONING_EFFORT_HEADER,
   claimCompatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
@@ -2480,6 +2481,7 @@ async function resolveStoredExecutionContextForClaim(
     readonly runId: string;
     readonly orgId: string;
     readonly executionContext: unknown;
+    readonly supportsNativeReasoningEffort: boolean;
     readonly capabilities: RunnerClaimCapabilities | undefined;
     readonly timing: ClaimRouteTimingCollector;
     readonly scheduleFailedSideEffects: (
@@ -2507,6 +2509,16 @@ async function resolveStoredExecutionContextForClaim(
     return {
       compatible: false as const,
       response: await failClaimForInvalidStoredExecutionContext(args, signal),
+    };
+  }
+  if (
+    storedContextResult.data.platformEnvironment.OKOU_REASONING_EFFORT !==
+      undefined &&
+    !args.supportsNativeReasoningEffort
+  ) {
+    return {
+      compatible: false as const,
+      response: notFound("Job not found in queue"),
     };
   }
   const piModelConfigResolution = resolvePiModelConfigForClaim({
@@ -2556,6 +2568,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerAttribution: RunnerClaimAttribution | undefined;
+      readonly supportsNativeReasoningEffort: boolean;
       readonly capabilities: RunnerClaimCapabilities | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
@@ -2573,6 +2586,7 @@ const claimAuthorizedJob$ = command(
         runId,
         orgId: run.orgId,
         executionContext: jobWithRun.job.executionContext,
+        supportsNativeReasoningEffort: args.supportsNativeReasoningEffort,
         capabilities: args.capabilities,
         timing: claimRouteTiming,
         scheduleFailedSideEffects(failedArgs) {
@@ -2736,6 +2750,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId,
       authType: auth.type,
       runnerAttribution,
+      supportsNativeReasoningEffort:
+        get(request$).header(NATIVE_REASONING_EFFORT_HEADER) === "1",
       capabilities: body.data.capabilities,
       jobWithRun,
       telemetry: body.data.telemetry,

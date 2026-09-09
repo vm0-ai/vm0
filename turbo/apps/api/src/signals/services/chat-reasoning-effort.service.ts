@@ -44,17 +44,26 @@ export function resolveChatReasoningEffort(args: {
   };
 }
 
-/**
- * Keep dispatch closed until the native runtime consumers ship in #32903 PR 2.
- * Feature switches accept user overrides, so the rollout flag alone cannot
- * prevent a requested setting from being silently ignored by older runtimes.
- */
+/** Do not advertise an override that the chosen execution route cannot honor. */
 export function validateReasoningEffortDispatch(
   effort: ReasoningEffort | null | undefined,
+  piExecution: boolean,
 ) {
-  return effort === null || effort === undefined
-    ? undefined
-    : badRequestMessage(
-        "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      );
+  if (effort === null || effort === undefined) {
+    return undefined;
+  }
+  if (piExecution) {
+    return badRequestMessage(
+      "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+    );
+  }
+  // Claude Code accepts --effort ultracode but silently uses ordinary xhigh
+  // when dynamic workflows are unavailable. Keep admission closed until the
+  // runtime can establish mode availability for the actual provider/session.
+  if (effort === "ultracode") {
+    return badRequestMessage(
+      "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+    );
+  }
+  return undefined;
 }
