@@ -18,6 +18,7 @@ use tracing_test_support::{CapturedEvent, CapturedEvents};
 mod guest_connection_timing;
 mod guest_rpc;
 mod private_write_diagnostics;
+mod process_timeout_logging;
 mod process_write;
 
 struct TestNormalOperationFence;
@@ -333,6 +334,7 @@ async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
     let start_task = tokio::spawn(async move {
         start_host
             .start_supervised_exec(SupervisedExecRequest {
+                timeout_is_expected: false,
                 role: guest_control_proto::ExecProcessRole::Agent,
                 timeout: ExecTimeoutPolicy::Duration { timeout_ms: 60_000 },
                 command: "sleep 60",
@@ -2332,6 +2334,7 @@ async fn start_process_output_rejects_invalid_stream_configuration() {
     ] {
         let error = match sandbox
             .start_process(&StartProcessRequest {
+                timeout_is_expected: false,
                 cmd: "agent",
                 start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
@@ -2370,6 +2373,7 @@ async fn start_process_output_accepts_maximum_queue_capacity() {
         stderr_capture_limit_bytes: None,
     };
     let request = StartProcessRequest {
+        timeout_is_expected: false,
         cmd: "agent",
         start_timeout: sandbox::DEFAULT_PROCESS_START_TIMEOUT,
         timeout: Duration::from_secs(5),
@@ -2423,6 +2427,7 @@ async fn start_process_timeout_before_write_preserves_guest_connection() {
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let timed_out_request = StartProcessRequest {
+        timeout_is_expected: true,
         cmd: "prefetch",
         timeout: Duration::from_secs(5),
         start_timeout: Duration::ZERO,
@@ -2502,6 +2507,7 @@ async fn start_process_timeout_after_write_rejects_later_guest_operation() {
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
     let start_timeout = Duration::from_millis(20);
     let request = StartProcessRequest {
+        timeout_is_expected: true,
         cmd: "prefetch",
         timeout: Duration::from_secs(5),
         start_timeout,

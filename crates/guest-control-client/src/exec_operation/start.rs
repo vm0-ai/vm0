@@ -193,6 +193,7 @@ async fn start_exec_operation_on_shared_with_tracking_and_admission(
             stream_queue_capacity,
             stream_queue_kind: ExecStreamQueueKind::Events,
             lifecycle: ExecOperationLifecycle::OneShot,
+            timeout_is_expected: false,
             role,
             tracking,
         },
@@ -370,6 +371,7 @@ where
             },
             role: request.role,
             tracking: ExecOperationTracking::Tracked,
+            timeout_is_expected: request.timeout_is_expected,
         },
     )?;
     let mut start_cancel_on_drop = ExecOperationCancelOnDropGuard::new_for_route(

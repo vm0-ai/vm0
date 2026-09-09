@@ -49,6 +49,7 @@ fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
             label,
             guest_control_proto::ExecProcessRole::Workload,
             false,
+            false,
         ),
         result_tx,
         stream_tx: None,
@@ -176,6 +177,7 @@ fn capture_terminal_log_events_with_context(
         7,
         "terminal-log",
         guest_control_proto::ExecProcessRole::Workload,
+        false,
         false,
     );
     if slow {
@@ -522,6 +524,7 @@ fn shared_with_logged_operation(
         label,
         guest_control_proto::ExecProcessRole::Workload,
         false,
+        false,
     );
     diagnostic.registered_at =
         Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
@@ -775,6 +778,7 @@ fn clean_terminal_log_context(
 ) -> ExecTerminalLogContext {
     ExecTerminalLogContext {
         lifecycle,
+        timeout_is_expected: false,
         slow,
         termination,
         stdout_truncated: false,
@@ -1124,6 +1128,7 @@ fn exec_operation_diagnostic_keeps_only_truncated_label_log() {
         &label,
         guest_control_proto::ExecProcessRole::Workload,
         false,
+        false,
     );
     diagnostic.registered_at =
         Instant::now() - EXEC_OPERATION_STAGE_SLOW_THRESHOLD - Duration::from_millis(1);
@@ -1153,6 +1158,7 @@ fn exec_operation_diagnostic_derives_agent_class_and_operation_kind() {
         "agent",
         guest_control_proto::ExecProcessRole::Agent,
         true,
+        false,
     );
 
     assert_eq!(diagnostic.process_class, "controlled_agent");
@@ -1169,6 +1175,7 @@ fn exec_operation_diagnostic_derives_agent_class_and_operation_kind() {
 fn exec_operation_diagnostic_marks_only_first_slow_output() {
     let mut diagnostic = ExecOperationDiagnostic {
         seq: 9,
+        timeout_is_expected: false,
         label_log: "slow-first-output".to_string(),
         registered_at: Instant::now()
             - EXEC_OPERATION_STAGE_SLOW_THRESHOLD

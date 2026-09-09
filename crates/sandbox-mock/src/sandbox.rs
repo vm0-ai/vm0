@@ -1344,6 +1344,7 @@ impl Sandbox for MockSandbox {
                 .start_process_calls
                 .lock_ignoring_poison()
                 .push(StartProcessCall {
+                    timeout_is_expected: request.timeout_is_expected,
                     cmd: request.cmd.to_string(),
                     timeout: request.timeout,
                     start_timeout: request.start_timeout,
@@ -1386,6 +1387,7 @@ impl Sandbox for MockSandbox {
                 });
         }
         let process_request = StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "",
             timeout: request.timeout,
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,

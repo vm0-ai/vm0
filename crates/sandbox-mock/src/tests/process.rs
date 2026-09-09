@@ -9,6 +9,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
     let sandbox = factory.create(test_sandbox_config()).await.unwrap();
     let buffered = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -22,6 +23,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
 
     let streamed = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -37,6 +39,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
         overrides.start_process_calls(),
         vec![
             StartProcessCall {
+                timeout_is_expected: false,
                 cmd: "agent".to_string(),
                 timeout: Duration::from_secs(5),
                 start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
@@ -45,6 +48,7 @@ async fn overrides_record_start_process_output_modes_in_order() {
                 output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
             },
             StartProcessCall {
+                timeout_is_expected: false,
                 cmd: "agent".to_string(),
                 timeout: Duration::from_secs(5),
                 start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
@@ -66,6 +70,7 @@ async fn start_process_emits_queued_stdout_chunks() {
     let sandbox = MockSandbox::with_overrides("test", overrides);
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -100,6 +105,7 @@ async fn process_stream_capacity_overflow_retains_one_chunk_and_marks_exit() {
     let sandbox = MockSandbox::with_overrides("test", overrides);
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -134,6 +140,7 @@ async fn start_agent_process_returns_mandatory_control_handle() {
 
     let without_control = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -378,6 +385,7 @@ async fn start_process_validates_stream_configuration() {
     ] {
         let error = match sandbox
             .start_process(&StartProcessRequest {
+                timeout_is_expected: false,
                 cmd: "agent",
                 start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
@@ -407,6 +415,7 @@ async fn start_process_validates_stream_configuration() {
     };
     let handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -429,6 +438,7 @@ async fn start_process_rejects_invalid_env_key() {
     let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
     let result = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -466,6 +476,7 @@ async fn queued_start_process_errors_are_consumed_fifo() {
     });
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let request = StartProcessRequest {
+        timeout_is_expected: false,
         cmd: "agent",
         start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
         timeout: Duration::from_secs(5),
@@ -513,6 +524,7 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
         tokio::spawn(async move {
             sandbox
                 .start_process(&StartProcessRequest {
+                    timeout_is_expected: false,
                     cmd: "blocked-agent",
                     start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                     timeout: Duration::from_secs(5),
@@ -539,6 +551,7 @@ async fn start_process_lifecycle_gate_blocks_before_recording_or_cancellation() 
     drop(
         sandbox
             .start_process(&StartProcessRequest {
+                timeout_is_expected: false,
                 cmd: "next-agent",
                 start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
                 timeout: Duration::from_secs(5),
@@ -564,6 +577,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
 
     let invalid_start = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "invalid-agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -578,6 +592,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
 
     let first_handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "first-agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -592,6 +607,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
 
     let second_handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "second-agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -605,6 +621,7 @@ async fn process_result_cancellations_are_success_only_and_fifo() {
 
     let mut invalid_wait_handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "invalid-wait-agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -653,6 +670,7 @@ async fn wait_process_rejects_consumed_guest_process_handle() {
     let sandbox = factory.create(test_sandbox_config()).await.unwrap();
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -689,6 +707,7 @@ async fn wait_process_returns_queued_process_exit() {
     overrides.push_wait_process_exit(exit);
     let handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -716,6 +735,7 @@ async fn wait_process_default_exit_is_unchanged_without_queued_exit() {
     let sandbox = MockSandbox::with_overrides("test", overrides);
     let handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -773,6 +793,7 @@ async fn wait_process_lifecycle_gate_blocks_until_released() {
     let sandbox = MockSandbox::with_overrides("test", overrides);
     let handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -805,6 +826,7 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
     let first_sandbox = MockSandbox::with_overrides("first", Arc::clone(&overrides));
     let first_handle = first_sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -831,6 +853,7 @@ async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
     let second_sandbox = MockSandbox::with_overrides("second", overrides);
     let second_handle = second_sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),
@@ -868,6 +891,7 @@ async fn process_cancel_releases_wait_process_lifecycle_gate() {
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let mut handle = sandbox
         .start_process(&StartProcessRequest {
+            timeout_is_expected: false,
             cmd: "agent",
             start_timeout: DEFAULT_PROCESS_START_TIMEOUT,
             timeout: Duration::from_secs(5),

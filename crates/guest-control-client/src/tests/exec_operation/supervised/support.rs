@@ -23,6 +23,7 @@ use crate::{ExecOperationResult, GuestControlClient};
 
 pub(super) fn supervised_request(command: &str) -> SupervisedExecRequest<'_> {
     SupervisedExecRequest {
+        timeout_is_expected: false,
         role: guest_control_proto::ExecProcessRole::Workload,
         timeout: ExecTimeoutPolicy::None,
         command,
