@@ -44,9 +44,10 @@ import {
   publishBrowserSessionChangedSafely,
   publishChatThreadMessageCreatedSafely,
 } from "../external/realtime";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
+import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
 import { putImmutableS3Object } from "../external/s3";
-import { settle, settleIncludingAbort, tapError } from "../utils";
+import { settle, settleIncludingAbort } from "../utils";
 import {
   BrowserUseProviderError,
   captureBrowserUseScreenshot,
@@ -815,97 +816,171 @@ async function lockBrowserThread(
   );
 }
 
+type BrowserScreenshotStage = "prepare" | "capture" | "upload" | "save";
+
+function browserScreenshotFailureKind(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "other";
+  }
+  if (
+    error.name === "TimeoutError" ||
+    (error.name === "AbortError" &&
+      error.cause instanceof Error &&
+      error.cause.name === "TimeoutError")
+  ) {
+    return "timeout";
+  }
+  switch (error.message) {
+    case "Browser Use CDP returned no page target": {
+      return "no_page_target";
+    }
+    case "No target with given id found": {
+      return "target_disappeared";
+    }
+    case "Browser Use CDP connection failed": {
+      return "connection_failed";
+    }
+    case "Browser Use CDP connection closed": {
+      return "connection_closed";
+    }
+    default: {
+      return error.name === "AbortError" ? "aborted" : "other";
+    }
+  }
+}
+
+async function recordBrowserScreenshotResult(result: {
+  readonly startedAt: number;
+  readonly outcome: "success" | "failure";
+  readonly failureStage?: BrowserScreenshotStage;
+  readonly failureKind?: string;
+}): Promise<void> {
+  const ingested = ingestToAxiom(getDatasetName("web-logs"), [
+    {
+      _time: nowDate().toISOString(),
+      type: "managed_browser_screenshot",
+      source: "api",
+      outcome: result.outcome,
+      duration_ms: Math.max(0, now() - result.startedAt),
+      ...(result.failureStage === undefined
+        ? {}
+        : { failure_stage: result.failureStage }),
+      ...(result.failureKind === undefined
+        ? {}
+        : { failure_kind: result.failureKind }),
+    },
+  ]);
+  if (ingested) {
+    await flushAxiom({ client: "telemetry" });
+  }
+}
+
 const captureAndStoreBrowserScreenshot$ = command(
-  async (
-    { get, set },
-    browser: BrowserSessionRow,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    if (!(await browserScreenshotSchemaAvailable(db))) {
-      signal.throwIfAborted();
-      return;
-    }
-    const instance = await loadActiveInstance(db, browser.chatThreadId);
-    signal.throwIfAborted();
-    if (!instance) {
-      return;
-    }
-    const provider = await getBrowserUseSession(
-      instance.providerSessionId,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (provider.status !== "active" || !provider.cdpUrl) {
-      return;
-    }
-    const image = await captureBrowserUseScreenshot(provider.cdpUrl, signal);
-    signal.throwIfAborted();
-    const artifact = await set(
-      allocateArtifactObject$,
-      {
-        userId: browser.userId,
-        filename: BROWSER_SCREENSHOT_FILENAME,
-        publicBrand: browser.publicBrand,
-      },
-      signal,
-    );
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    await get(
-      putImmutableS3Object(
-        bucket,
-        artifact.key,
-        image,
-        BROWSER_SCREENSHOT_CONTENT_TYPE,
-        { signal, metadata: artifact.metadata },
-      ),
-    );
-    signal.throwIfAborted();
-
-    await db.transaction(async (tx) => {
-      await lockBrowserThread(tx, browser.chatThreadId);
-      await tx
-        .insert(browserSessionScreenshots)
-        .values({
-          chatThreadId: browser.chatThreadId,
-          objectKey: artifact.key,
-          url: artifact.url,
-        })
-        .onConflictDoUpdate({
-          target: browserSessionScreenshots.chatThreadId,
-          set: {
-            objectKey: artifact.key,
-            url: artifact.url,
-            updatedAt: nowDate(),
+  async ({ get, set }, browser: BrowserSessionRow): Promise<void> => {
+    const startedAt = now();
+    const signal = AbortSignal.timeout(BROWSER_SCREENSHOT_CAPTURE_TIMEOUT_MS);
+    let stage: BrowserScreenshotStage = "prepare";
+    // This task owns its timeout. Include aborts in the final outcome instead
+    // of losing timed-out attempts through tapError's cancellation path.
+    const [result] = await Promise.allSettled([
+      (async () => {
+        const db = set(writeDb$);
+        if (!(await browserScreenshotSchemaAvailable(db))) {
+          signal.throwIfAborted();
+          return;
+        }
+        const instance = await loadActiveInstance(db, browser.chatThreadId);
+        signal.throwIfAborted();
+        if (!instance) {
+          return;
+        }
+        const provider = await getBrowserUseSession(
+          instance.providerSessionId,
+          signal,
+        );
+        signal.throwIfAborted();
+        if (provider.status !== "active" || !provider.cdpUrl) {
+          return;
+        }
+        stage = "capture";
+        const image = await captureBrowserUseScreenshot(
+          provider.cdpUrl,
+          signal,
+        );
+        signal.throwIfAborted();
+        stage = "upload";
+        const artifact = await set(
+          allocateArtifactObject$,
+          {
+            userId: browser.userId,
+            filename: BROWSER_SCREENSHOT_FILENAME,
+            publicBrand: browser.publicBrand,
           },
-        });
-    });
-    signal.throwIfAborted();
+          signal,
+        );
+        const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+        await get(
+          putImmutableS3Object(
+            bucket,
+            artifact.key,
+            image,
+            BROWSER_SCREENSHOT_CONTENT_TYPE,
+            { signal, metadata: artifact.metadata },
+          ),
+        );
+        signal.throwIfAborted();
 
-    await publishBrowserSessionChangedSafely(browser.userId, {
-      threadId: browser.chatThreadId,
-    });
-    signal.throwIfAborted();
+        stage = "save";
+        await db.transaction(async (tx) => {
+          await lockBrowserThread(tx, browser.chatThreadId);
+          await tx
+            .insert(browserSessionScreenshots)
+            .values({
+              chatThreadId: browser.chatThreadId,
+              objectKey: artifact.key,
+              url: artifact.url,
+            })
+            .onConflictDoUpdate({
+              target: browserSessionScreenshots.chatThreadId,
+              set: {
+                objectKey: artifact.key,
+                url: artifact.url,
+                updatedAt: nowDate(),
+              },
+            });
+        });
+
+        // Persistence is the success boundary; a deadline after commit must
+        // not turn an available preview into a failed capture metric.
+        await publishBrowserSessionChangedSafely(browser.userId, {
+          threadId: browser.chatThreadId,
+        });
+        return true;
+      })(),
+    ]);
+    if (result.status === "fulfilled" && !result.value) {
+      return;
+    }
+    // Flush after the background result exists, within the same waitUntil.
+    // Telemetry delivery must not reject the screenshot task.
+    await Promise.allSettled([
+      recordBrowserScreenshotResult({
+        startedAt,
+        ...(result.status === "fulfilled"
+          ? { outcome: "success" }
+          : {
+              outcome: "failure",
+              failureStage: stage,
+              failureKind: browserScreenshotFailureKind(result.reason),
+            }),
+      }),
+    ]);
   },
 );
 
 const scheduleBrowserScreenshotCapture$ = command(
   ({ set }, browser: BrowserSessionRow): void => {
-    waitUntil(
-      tapError(
-        set(
-          captureAndStoreBrowserScreenshot$,
-          browser,
-          AbortSignal.timeout(BROWSER_SCREENSHOT_CAPTURE_TIMEOUT_MS),
-        ),
-        (error) => {
-          L.warn("Managed browser screenshot capture failed", {
-            chatThreadId: browser.chatThreadId,
-            error,
-          });
-        },
-      ),
-    );
+    waitUntil(set(captureAndStoreBrowserScreenshot$, browser));
   },
 );
 
