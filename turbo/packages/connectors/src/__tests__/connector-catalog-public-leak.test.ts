@@ -224,8 +224,9 @@ describe("connector catalog public projection", () => {
   );
 
   it("keeps sensitive matching scoped to its connector", () => {
-    const first = catalogArtifact("Public description");
-    const second = catalogArtifact(PRIVATE_NAME, "OTHER_CREDENTIAL");
+    const firstPrivateName = "FIRST_PRIVATE_FIELD";
+    const first = catalogArtifact("Public description", firstPrivateName);
+    const second = catalogArtifact(firstPrivateName, "SECOND_PRIVATE_FIELD");
     for (const connector of second.connectors) {
       connector.slug = "another-connector";
       connector.skill = { kind: "none" };
