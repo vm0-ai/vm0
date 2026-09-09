@@ -204,6 +204,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SshAccess]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -228,6 +229,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(false);
   });
 
   it("should enable the model picker menu for Bingjie by email outside the staff org", () => {
