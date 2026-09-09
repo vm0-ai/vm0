@@ -480,19 +480,13 @@ pub(super) fn complete_pending_normal_operation(
 }
 
 pub(super) fn normal_operation_rejection_error(error: NormalOperationRejection) -> io::Error {
-    match error {
-        NormalOperationRejection::Fenced => io::Error::new(
-            io::ErrorKind::WouldBlock,
-            "normal operations are currently fenced",
-        ),
-        NormalOperationRejection::NotParkable => io::Error::new(
-            io::ErrorKind::ConnectionReset,
-            "normal operations are not available on this connection",
-        ),
-        NormalOperationRejection::Closed => {
-            io::Error::new(io::ErrorKind::ConnectionReset, "connection closed")
+    let kind = match error {
+        NormalOperationRejection::Fenced => io::ErrorKind::WouldBlock,
+        NormalOperationRejection::NotParkable | NormalOperationRejection::Closed => {
+            io::ErrorKind::ConnectionReset
         }
-    }
+    };
+    io::Error::new(kind, error)
 }
 
 pub(crate) fn normal_operation_transition_error(

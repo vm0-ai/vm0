@@ -796,7 +796,18 @@ impl FirecrackerSandbox {
                 timeout_ms: u64::try_from(timeout.timeout().as_millis()).unwrap_or(u64::MAX),
             };
         }
-        let reason = if error.kind() == io::ErrorKind::TimedOut {
+        let admission_rejection = error.get_ref().and_then(|source| {
+            source.downcast_ref::<guest_control_client::NormalOperationRejection>()
+        });
+        let reason = if matches!(
+            admission_rejection,
+            Some(
+                guest_control_client::NormalOperationRejection::NotParkable
+                    | guest_control_client::NormalOperationRejection::Closed
+            )
+        ) {
+            SandboxOperationReason::GuestConnectionUnavailable
+        } else if error.kind() == io::ErrorKind::TimedOut {
             SandboxOperationReason::Timeout
         } else {
             SandboxOperationReason::Guest

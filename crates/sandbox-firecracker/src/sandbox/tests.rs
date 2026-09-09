@@ -2550,11 +2550,77 @@ async fn start_process_timeout_after_write_rejects_later_guest_operation() {
         Ok(_) => panic!("post-write timeout connection must reject later operations"),
         Err(error) => error,
     };
-    assert!(
-        later_error
-            .to_string()
-            .contains("normal operations are not available on this connection"),
-        "got: {later_error}"
+    assert_operation_error(
+        later_error,
+        SandboxOperation::Exec,
+        SandboxOperationReason::GuestConnectionUnavailable,
+    );
+}
+
+#[tokio::test]
+async fn cancelled_guest_write_classifies_later_admission_without_another_frame() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    {
+        let write = sandbox.write_file("/tmp/cancelled-write", b"contents");
+        tokio::pin!(write);
+        tokio::select! {
+            result = &mut write => panic!("write completed without guest acknowledgement: {result:?}"),
+            request = read_vsock_message(&mut guest) => {
+                assert_eq!(request.msg_type, guest_control_proto::MSG_WRITE_FILE);
+            }
+        }
+        // Dropping this in-flight request abandons its terminal proof.
+    }
+
+    let error = sandbox
+        .write_file("/tmp/later-write", b"later")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::GuestConnectionUnavailable,
+    );
+    assert_eq!(
+        guest.try_read(&mut [0_u8; 1]).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+}
+
+#[tokio::test]
+async fn closed_guest_connection_is_distinct_from_temporary_fencing() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let guest = attach_mock_shutdown_guest(&sandbox).await;
+    let host = sandbox.guest.lock().await.as_ref().unwrap().clone();
+    let fence = host.try_fence_normal_operations().unwrap();
+    assert_operation_error(
+        sandbox
+            .write_file("/tmp/fenced", b"contents")
+            .await
+            .unwrap_err(),
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+    );
+    drop(fence);
+    drop(guest);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !matches!(
+            host.try_fence_normal_operations(),
+            Err(guest_control_client::NormalOperationFenceRejection::Closed)
+        ) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_operation_error(
+        sandbox
+            .write_file("/tmp/closed", b"contents")
+            .await
+            .unwrap_err(),
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::GuestConnectionUnavailable,
     );
 }
 
