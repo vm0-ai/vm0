@@ -39,6 +39,10 @@ const validPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0YQAAAAASUVORK5CYII=",
   "base64",
 );
+const validWebp = Buffer.from(
+  "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vz0AAA=",
+  "base64",
+);
 
 interface StoredObject {
   readonly id: string;
@@ -430,15 +434,8 @@ describe("image reference catalog routes", () => {
     session(userId, orgId);
     const spoofed = await completeUpload(storage, {
       purpose: "image-reference",
+      body: validWebp,
     });
-    const jpegHeader = Buffer.from([
-      0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01,
-      0x01, 0x11, 0x00, 0xff, 0xd9,
-    ]);
-    spoofed.body = Buffer.concat([
-      jpegHeader,
-      Buffer.alloc(spoofed.size - jpegHeader.length),
-    ]);
     const mismatch = await accept(
       imageClient().create({
         headers,
