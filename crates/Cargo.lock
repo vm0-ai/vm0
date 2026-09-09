@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "guest-storage-apply"
-version = "0.23.71"
+version = "0.23.72"
 dependencies = [
  "flate2",
  "guest-contracts",
@@ -3363,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.188.18"
+version = "0.188.19"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

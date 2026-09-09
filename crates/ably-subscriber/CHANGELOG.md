@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.1.0...ably-subscriber-v1.1.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** batch connector runtime sync wakeups ([#32798](https://github.com/vm0-ai/vm0/issues/32798)) ([8db8218](https://github.com/vm0-ai/vm0/commit/8db8218568b4735afc314b1ce4a5ba9b5498eee5))
+
 ## [1.1.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.21...ably-subscriber-v1.1.0) (2026-09-08)
 
 
