@@ -25,7 +25,10 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import { avatarComposerUrl } from "@okouai/core/agent-avatar";
+import {
+  avatarComposerUrl,
+  DEFAULT_AGENT_AVATAR_URL,
+} from "@okouai/core/agent-avatar";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
@@ -95,7 +98,10 @@ interface SidebarThread {
   readonly sortAt?: string;
 }
 
-function prepareDefaultAgent(targetContext = context): void {
+function prepareDefaultAgent(
+  targetContext = context,
+  avatarUrl: string | null = null,
+): void {
   targetContext.mocks.data.agents([
     {
       agentId: AGENT_ID,
@@ -103,7 +109,7 @@ function prepareDefaultAgent(targetContext = context): void {
       displayName: "Zero",
       description: null,
       sound: null,
-      avatarUrl: null,
+      avatarUrl,
       visibility: "public",
     },
   ]);
@@ -2452,7 +2458,23 @@ test("Reorder pinned agents while keeping Zero first", async () => {
   expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
 });
 
-test("Keep pinned agent drag feedback on the dragged agent", async () => {
+test("Keep the default Okou sweater outside a circular mask", async () => {
+  prepareDefaultAgent(context, DEFAULT_AGENT_AVATAR_URL);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  const avatar = grid.querySelector(`img[src="${DEFAULT_AGENT_AVATAR_URL}"]`);
+  if (!(avatar instanceof HTMLImageElement)) {
+    throw new Error("Default Okou avatar not found");
+  }
+  expect(avatar).not.toHaveClass("rounded-full");
+});
+
+test("Use the complete layered avatar without a drag handle", async () => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents(
     context,
     LAYERED_AVATAR_URL,
@@ -2473,7 +2495,6 @@ test("Keep pinned agent drag feedback on the dragged agent", async () => {
   });
 
   const dragged = pinnedAgentLink(grid, "Support Agent");
-  const target = pinnedAgentLink(grid, "Operations Agent");
   const avatar = dragged.querySelector('[data-slot="pinned-agent-avatar"]');
   if (!(avatar instanceof HTMLElement)) {
     throw new Error("Pinned-agent avatar not found");
@@ -2486,11 +2507,8 @@ test("Keep pinned agent drag feedback on the dragged agent", async () => {
   const dataTransfer = createDataTransferStub();
 
   expect(
-    within(dragged).getByTestId("pinned-agent-drag-handle"),
-  ).toBeInTheDocument();
-  expect(
-    within(target).getByTestId("pinned-agent-drag-handle"),
-  ).toBeInTheDocument();
+    within(grid).queryByTestId("pinned-agent-drag-handle"),
+  ).not.toBeInTheDocument();
 
   fireEvent.dragStart(topAvatarLayer, { dataTransfer });
 
@@ -2498,10 +2516,7 @@ test("Keep pinned agent drag feedback on the dragged agent", async () => {
   // boundary that proves the complete composite was selected as its image.
   expect(dataTransfer.dragImage).toBe(avatar);
   expect(
-    within(dragged).getByTestId("pinned-agent-drag-handle"),
-  ).toBeInTheDocument();
-  expect(
-    within(target).queryByTestId("pinned-agent-drag-handle"),
+    within(grid).queryByTestId("pinned-agent-drag-handle"),
   ).not.toBeInTheDocument();
 });
 

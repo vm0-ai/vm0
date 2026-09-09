@@ -208,45 +208,6 @@ interface PinnedGridAgent {
 type PinnedDropSide = "before" | "after";
 
 /**
- * The drag handle shown above a reorderable pinned tile on hover or focus. It
- * stays visible on the source tile while dragging, without appearing on the
- * other drop targets. It is absolutely positioned so it costs no layout: the
- * tile keeps its size and the avatar never moves.
- *
- * Every inset is a whole pixel. The tile is a `1fr` grid column, so the handle
- * is centred on a fractional x; a half-pixel padding would round up on one edge
- * and down on the other and visibly push the dots off-centre.
- */
-function PinnedAgentDragHandle({ isActive }: { readonly isActive: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      data-testid="pinned-agent-drag-handle"
-      className={`pointer-events-none absolute -top-[8px] left-1/2 z-10 flex -translate-x-1/2 flex-col gap-[2px] rounded border border-border bg-popover p-[3px] transition-opacity ${
-        isActive
-          ? "opacity-100"
-          : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-      }`}
-    >
-      {[0, 1].map((row) => {
-        return (
-          <span key={row} className="flex gap-[2px]">
-            {[0, 1, 2].map((dot) => {
-              return (
-                <span
-                  key={dot}
-                  className="h-[2px] w-[2px] rounded-full bg-[hsl(var(--gray-500))]"
-                />
-              );
-            })}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-/**
  * A grid tile is only a fifth of the sidebar wide, so almost every agent name
  * is truncated down to a few characters. The tile carries a hover tooltip with
  * the full name — a native `title` is too slow and too easy to miss for a label
@@ -257,12 +218,14 @@ function PinnedAgentGridCard({
   agent,
   isPrimarySelected,
   hasUnread,
+  isDefaultAgent,
   isReorderable,
   dropSide,
 }: {
   readonly agent: PinnedGridAgent;
   readonly isPrimarySelected: boolean;
   readonly hasUnread: boolean;
+  readonly isDefaultAgent: boolean;
   readonly isReorderable: boolean;
   readonly dropSide: PinnedDropSide | null;
 }) {
@@ -346,15 +309,12 @@ function PinnedAgentGridCard({
         );
         endDrag();
       }}
-      className={`group relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
+      className={`relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
         isPrimarySelected
           ? "bg-state-selected text-sidebar-foreground"
           : "text-sidebar-foreground hover:bg-state-hover"
       } ${isReorderable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      {isReorderable && (!isDragInFlight || isDragging) && (
-        <PinnedAgentDragHandle isActive={isDragging} />
-      )}
       {dropSide && (
         <span
           aria-hidden="true"
@@ -379,7 +339,9 @@ function PinnedAgentGridCard({
         <AgentAvatarImg
           name={agent.agentId}
           alt=""
-          className="block h-full w-full rounded-full object-cover object-top"
+          className={`block h-full w-full object-cover object-top ${
+            isDefaultAgent ? "" : "rounded-full"
+          }`}
         />
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 flex">
@@ -528,6 +490,7 @@ export function PinnedAgentListSection({
                   agent={agent}
                   isPrimarySelected={isPrimarySelected}
                   hasUnread={hasUnread}
+                  isDefaultAgent={isDefaultAgent}
                   isReorderable={isPinned && !isDefaultAgent}
                   dropSide={resolveDropSide({
                     agents: horizontalPinnedAgents,
