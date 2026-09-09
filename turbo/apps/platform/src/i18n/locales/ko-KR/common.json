@@ -2251,6 +2251,7 @@
       "thinking": {
         "assembling": "조립 중...",
         "brewing": "응답 준비 중...",
+        "default": "생각 중...",
         "mapping": "구성 중...",
         "onIt": "작업 중...",
         "piecingTogether": "조합 중...",

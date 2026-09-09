@@ -2258,6 +2258,7 @@
       "thinking": {
         "assembling": "Assembling the pieces...",
         "brewing": "Brewing up a response...",
+        "default": "Thinking...",
         "mapping": "Mapping it out...",
         "onIt": "On it...",
         "piecingTogether": "Piecing things together...",

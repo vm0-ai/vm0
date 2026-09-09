@@ -2302,6 +2302,7 @@
       "thinking": {
         "assembling": "Assemblage des pièces...",
         "brewing": "Préparation d'une réponse...",
+        "default": "Réflexion en cours...",
         "mapping": "Cartographie en cours...",
         "onIt": "En cours...",
         "piecingTogether": "Mise en place des éléments...",

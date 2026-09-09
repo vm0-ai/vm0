@@ -2251,6 +2251,7 @@
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
         "brewing": "Meracik respons...",
+        "default": "Sedang berpikir...",
         "mapping": "Memetakan...",
         "onIt": "Sedang dikerjakan...",
         "piecingTogether": "Menyusun semuanya...",

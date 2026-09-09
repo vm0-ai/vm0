@@ -2258,6 +2258,7 @@
       "thinking": {
         "assembling": "Teile werden zusammengesetzt...",
         "brewing": "Eine Antwort wird vorbereitet...",
+        "default": "Denke nach...",
         "mapping": "Schritte werden geplant...",
         "onIt": "Wird erledigt...",
         "piecingTogether": "Details werden zusammengefügt...",

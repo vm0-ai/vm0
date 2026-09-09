@@ -2302,6 +2302,7 @@
       "thinking": {
         "assembling": "Juntando as peças...",
         "brewing": "Preparando uma resposta...",
+        "default": "Pensando...",
         "mapping": "Mapeando tudo...",
         "onIt": "Já estou cuidando...",
         "piecingTogether": "Organizando as ideias...",
