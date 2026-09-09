@@ -145,16 +145,14 @@ export type PiApiAssistantStopReason =
   | "aborted"
   | "deferred";
 
-export interface PiApiAssistantMessage {
+interface PiApiAssistantMessageFields {
   readonly content: readonly PiApiAssistantContent[];
   /** Private, bounded provenance removed from every user-visible text field. */
   readonly memoryCitation?: PiMemoryCitation;
   readonly model: string;
   readonly responseId?: string;
-  readonly stopReason: PiApiAssistantStopReason;
   /** Content-free product classification; native provider diagnostics stay private. */
   readonly failureReason?: "reconnect_required" | "usage_limit";
-  readonly failureDiagnostic?: PiApiModelFailureDiagnostic;
   readonly timestamp: number;
   readonly usage: {
     readonly input: number;
@@ -165,6 +163,21 @@ export interface PiApiAssistantMessage {
     readonly cacheWrite1h?: number;
   };
 }
+
+export type PiApiAssistantMessage = PiApiAssistantMessageFields &
+  (
+    | {
+        readonly stopReason: "error" | "aborted";
+        readonly failureDiagnostic: PiApiModelFailureDiagnostic;
+      }
+    | {
+        readonly stopReason: Exclude<
+          PiApiAssistantStopReason,
+          "error" | "aborted"
+        >;
+        readonly failureDiagnostic?: never;
+      }
+  );
 
 /** Terminal Responses payload service tier, kept outside persisted Pi state. */
 export type PiObservedServiceTier = string | null | undefined;

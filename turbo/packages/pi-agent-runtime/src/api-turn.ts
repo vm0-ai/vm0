@@ -73,23 +73,14 @@ export function projectPiApiAssistantMessage(
     message.provider === "openai-codex"
       ? classifyPiApiProviderFailure(message.errorMessage)
       : undefined;
-  return {
+  const projected = {
     content: projection.content,
     ...(projection.memoryCitation
       ? { memoryCitation: projection.memoryCitation }
       : {}),
     model: message.model,
     responseId: message.responseId,
-    stopReason: message.stopReason,
     ...(failureReason ? { failureReason } : {}),
-    ...(message.stopReason === "error" || message.stopReason === "aborted"
-      ? {
-          failureDiagnostic: projectPiApiModelFailure(
-            message.errorMessage,
-            responseStatus,
-          ),
-        }
-      : {}),
     timestamp: message.timestamp,
     usage: {
       input: message.usage.input,
@@ -101,6 +92,17 @@ export function projectPiApiAssistantMessage(
         : { cacheWrite1h: message.usage.cacheWrite1h }),
     },
   };
+  if (message.stopReason === "error" || message.stopReason === "aborted") {
+    return {
+      ...projected,
+      stopReason: message.stopReason,
+      failureDiagnostic: projectPiApiModelFailure(
+        message.errorMessage,
+        responseStatus,
+      ),
+    };
+  }
+  return { ...projected, stopReason: message.stopReason };
 }
 
 /** Run exactly one provider request using Pi's official prompt and tool schemas. */

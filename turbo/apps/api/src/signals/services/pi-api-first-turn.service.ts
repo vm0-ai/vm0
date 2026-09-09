@@ -1297,7 +1297,7 @@ function validateApiModelTurnOutcome(turn: PiApiFirstTurnResult): void {
     turn.assistantMessage.stopReason === "aborted"
   ) {
     throw new PiApiFirstTurnModelFailureError(
-      turn.assistantMessage.failureDiagnostic ?? { category: "unknown" },
+      turn.assistantMessage.failureDiagnostic,
       turn.assistantMessage.failureReason,
     );
   }
