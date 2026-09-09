@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import {
   testContext,
@@ -20,7 +20,7 @@ warmMermaidParser();
 
 describe("built-in welcome thread", () => {
   it("stays closed until selected and renders native rich-text deliverables without thread actions", async () => {
-    detachedSetupPage({
+    await setupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
@@ -109,7 +109,7 @@ describe("built-in welcome thread", () => {
   });
 
   it("hides the entry and redirects the built-in route while the feature is disabled", async () => {
-    detachedSetupPage({
+    await setupPage({
       context,
       path: "/chats/welcome",
       featureSwitches: {
